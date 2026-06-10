@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user
+  labels: {{- include "user.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: user
+  template:
+    metadata:
+      labels: {{- include "user.labels" . | nindent 8 }}
+      annotations:
+        # Re-rolls pods when the secret *shape* changes; live value
+        # rotation re-rolls via Tilt re-apply in dev.
+        checksum/externalsecret: {{ include (print $.Template.BasePath "/externalsecret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: user
+      initContainers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate"]
+          env: &appEnv
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: user-pg-credentials, key: password }
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.postgres.username }}:$(PG_PASSWORD)@{{ include "user.pgHost" . }}:5432/{{ .Values.postgres.database }}?sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt"
+            - name: JWKS_URL
+              value: {{ .Values.env.jwksUrl | quote }}
+            - name: JWT_ISSUER
+              value: {{ .Values.env.jwtIssuer | quote }}
+            - name: JWT_AUDIENCE
+              value: {{ .Values.env.jwtAudience | quote }}
+          volumeMounts: &caMount
+            - name: pg-ca
+              mountPath: /etc/vg/pg-ca
+              readOnly: true
+      containers:
+        - name: user
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8080 }
+          env: *appEnv
+          volumeMounts: *caMount
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: pg-ca
+          secret:
+            secretName: user-pg-tls
+            items: [{ key: ca.crt, path: ca.crt }]

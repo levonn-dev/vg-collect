@@ -1,0 +1,30 @@
+image:
+  repository: vg-collect/user
+  tag: dev
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+env:
+  jwksUrl: http://auth:8080/.well-known/jwks.json  # resolves once the auth service exists
+  jwtIssuer: vg-collect-auth
+  jwtAudience: vg-collect
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { memory: 128Mi }
+
+postgres:
+  enabled: true            # the prod-path seam: disable + set externalUrl for RDS/CNPG
+  image: postgres:17-alpine
+  database: user
+  username: user
+  storage: 1Gi
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 256Mi }
+
+secretStore:
+  name: vg-fake
+  kind: ClusterSecretStore
+  passwordKey: user/pg-password
