@@ -1,0 +1,13 @@
+version: "2"
+linters:
+  enable:
+    - misspell
+    - gosec
+  exclusions:
+    generated: lax
+    paths:
+      - internal/gen
+formatters:
+  enable:
+    - gofmt
+    - goimports

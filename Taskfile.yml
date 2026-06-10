@@ -1,0 +1,70 @@
+version: "3"
+
+vars:
+  GO_MODULES:
+    sh: find . -name go.mod -not -path '*/node_modules/*' -exec dirname {} \; | sort
+
+tasks:
+  bootstrap:
+    desc: Verify tools, scaffold .env
+    cmds:
+      - for tool in go docker kubectl helm tilt golangci-lint; do
+          command -v $tool >/dev/null || { echo "MISSING $tool; see README Prerequisites"; exit 1; };
+        done
+      - test -f .env || cp .env.example .env
+      - echo "bootstrap OK"
+
+  bootstrap:cluster:
+    desc: 'One-shot platform install (cert-manager + ESO, then issuers). Idempotent.'
+    cmds:
+      - helm repo add jetstack https://charts.jetstack.io --force-update >/dev/null
+      - helm repo add external-secrets https://charts.external-secrets.io --force-update >/dev/null
+      - helm dependency update deploy/charts/platform
+      - helm upgrade --install vg-platform deploy/charts/platform
+          -n vg-platform --create-namespace --wait --timeout 5m
+      - helm upgrade --install vg-platform-config deploy/charts/platform-config
+          -n vg-platform --wait --timeout 2m
+      - kubectl get clusterissuer vg-ca -o name
+
+  lint:
+    desc: golangci-lint every Go module + helm lint charts
+    cmds:
+      - for: { var: GO_MODULES, as: MOD }
+        cmd: cd {{.MOD}} && golangci-lint run ./...
+      - test ! -d deploy/charts/platform || (helm repo add jetstack https://charts.jetstack.io --force-update >/dev/null &&
+          helm repo add external-secrets https://charts.external-secrets.io --force-update >/dev/null &&
+          helm dependency build deploy/charts/platform >/dev/null)
+      - test ! -d deploy/charts || for charts in deploy/charts/*/; do helm lint "$charts" || exit 1; done
+
+  test:
+    desc: go test every module
+    cmds:
+      - for: { var: GO_MODULES, as: MOD }
+        cmd: cd {{.MOD}} && go test ./...
+
+  test:cover:
+    desc: Coverage gate (80%, generated code excluded)
+    cmds: [scripts/coverage.sh 80]
+
+  build:
+    desc: Compile every module
+    cmds:
+      - for: { var: GO_MODULES, as: MOD }
+        cmd: cd {{.MOD}} && go build ./...
+
+  gen:
+    desc: Regenerate code from OpenAPI contracts
+    cmds: [task user:gen]
+
+  run:
+    desc: Start the dev stack
+    cmds: [tilt up]
+
+  down:
+    cmds: [tilt down]
+
+includes:
+  user:
+    taskfile: services/user/Taskfile.yml
+    dir: services/user
+    optional: true

@@ -1,0 +1,8 @@
+.env
+*.out
+*.filtered
+dist/
+node_modules/
+deploy/charts/*/charts/
+deploy/charts/*/Chart.lock
+.task/
