@@ -1,0 +1,20 @@
+# The CA pair lives in the cert-manager controller's namespace because the CA
+# ClusterIssuer below can only read its secret from the cluster-resource-namespace
+# (which defaults to the cert-manager install namespace, i.e. .Release.Namespace).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vg-ca
+  namespace: {{ .Release.Namespace }}
+spec:
+  isCA: true
+  commonName: vg-collect-dev-ca
+  duration: 87600h # 10y dev CA
+  secretName: vg-ca-key-pair
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: vg-selfsigned-root
+    kind: ClusterIssuer
+    group: cert-manager.io

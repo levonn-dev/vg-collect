@@ -1,0 +1,12 @@
+apiVersion: v2
+name: vg-platform
+description: Third-party platform operators for vg-collect (cert-manager, external-secrets)
+type: application
+version: 0.1.0
+dependencies:
+  - name: cert-manager
+    version: v1.16.2
+    repository: https://charts.jetstack.io
+  - name: external-secrets
+    version: 0.12.1
+    repository: https://charts.external-secrets.io
