@@ -1,8 +1,27 @@
-.env
+# Build artifacts (dist/ is the frontend build output; .task/ is the
+# Taskfile checksum cache).
+dist/
+/.task/
+
+# Test artifacts (Go coverage profiles written per-module by
+# scripts/coverage.sh; cleaned up nowhere on purpose, cheap to regen).
 *.out
 *.filtered
-dist/
+
+# Environment; committed example, real values gitignored. See .env.example.
+.env*
+!.env.example
+
+# Editor / IDE.
+/.idea/
+/.vscode/
+*.swp
+.DS_Store
+
+# Node.
 node_modules/
+
+# Helm dependency artifacts; re-fetched by `task lint` and
+# `task bootstrap:cluster` (helm dependency build/update).
 deploy/charts/*/charts/
 deploy/charts/*/Chart.lock
-.task/
