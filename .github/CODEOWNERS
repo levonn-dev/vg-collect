@@ -1,0 +1,9 @@
+# Code owners for vg-collect.
+#
+# Listed owners are the default reviewers for every pull request and the
+# fallback owners for any path not matched by a more specific rule below.
+# Order matters: the last matching pattern wins.
+#
+# Docs: https://docs.github.com/articles/about-code-owners
+
+* @levonn-dev

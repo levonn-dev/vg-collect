@@ -55,3 +55,11 @@ Foundations and the user service are complete. The user service API returns
 401 in-cluster until the auth service is ready (its JWKS endpoint doesn't exist
 yet); integration tests cover the API with a local JWKS. Bruno collections
 arrive with the auth service (they need dev-provider tokens to authenticate).
+
+## License
+
+Licensed under the [GNU Affero General Public License v3.0](LICENSE)
+(SPDX `AGPL-3.0-only`). You may use, modify, and distribute this code, including
+commercially, provided derivative works and any network-hosted modified versions
+are released under the same license with complete corresponding source. As the
+copyright holder you may also grant separate commercial licenses.
