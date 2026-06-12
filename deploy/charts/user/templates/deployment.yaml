@@ -34,6 +34,11 @@ spec:
               value: {{ .Values.env.jwtIssuer | quote }}
             - name: JWT_AUDIENCE
               value: {{ .Values.env.jwtAudience | quote }}
+            # Stamped onto telemetry as service.version; the image tag
+            # is the truth of what is running ("dev" locally, a release
+            # tag wherever a pipeline sets one).
+            - name: SERVICE_VERSION
+              value: {{ .Values.image.tag | quote }}
           volumeMounts: &caMount
             - name: pg-ca
               mountPath: /etc/vg/pg-ca
