@@ -1,0 +1,223 @@
+openapi: 3.0.3
+info:
+  title: vg-collect auth service
+  version: 0.1.0
+  description: >
+    OIDC relying party and first-party token issuer. These endpoints carry
+    no bearerAuth security scheme on purpose: they are where tokens come
+    from, and the JWKS must be readable by every service. The service is
+    cluster-internal; network reachability is the access control.
+paths:
+  /oauth/start:
+    post:
+      operationId: oauthStart
+      summary: Begin a provider login; returns the URL to redirect the browser to
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartRequest"
+      responses:
+        "200":
+          description: Authorize URL with state, nonce, and PKCE challenge bound server-side
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /oauth/callback:
+    post:
+      operationId: oauthCallback
+      summary: Complete a provider login (code exchange, ID-token verification, session mint)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CallbackRequest"
+      responses:
+        "200":
+          description: First-party session tokens
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403":
+          description: Provider did not assert a verified email (code email_unverified)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /oauth/dev/token:
+    post:
+      operationId: devToken
+      summary: Mint a session for a dev fixture user (dev provider only; 404 unless enabled)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevTokenRequest"
+      responses:
+        "200":
+          description: First-party session tokens for the fixture
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+        "400":
+          description: Malformed body, or unknown fixture handle (code unknown_fixture)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          description: Dev provider disabled
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /token/refresh:
+    post:
+      operationId: refreshToken
+      summary: Rotate a refresh token; reuse of a consumed token revokes its whole chain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: New token pair (old refresh token is consumed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+        "401":
+          description: >
+            Invalid, expired, revoked, or reused refresh token. On reuse
+            (code refresh_reused) revoke_jtis lists access-token jtis from
+            the revoked chain that may still be alive, for denylisting.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/RefreshProblem"
+        "503":
+          description: Role source (user service) unavailable; retry later, token not consumed
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /token/revoke:
+    post:
+      operationId: revokeToken
+      summary: Revoke a refresh token's whole chain (logout); idempotent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevokeRequest"
+      responses:
+        "204":
+          description: Chain revoked (or token unknown; idempotent)
+  /.well-known/jwks.json:
+    get:
+      operationId: getJwks
+      summary: Public signing keys (Ed25519) for access-JWT verification
+      responses:
+        "200":
+          description: JWKS document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Jwks"
+components:
+  responses:
+    BadRequest:
+      description: Malformed request
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    UpstreamError:
+      description: Identity provider or user service error
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    StartRequest:
+      type: object
+      required: [provider]
+      properties:
+        provider: { type: string, enum: [google, twitch] }
+    StartResponse:
+      type: object
+      required: [authorize_url]
+      properties:
+        authorize_url: { type: string, format: uri }
+    CallbackRequest:
+      type: object
+      required: [code, state]
+      properties:
+        code: { type: string }
+        state: { type: string }
+    DevTokenRequest:
+      type: object
+      required: [user]
+      properties:
+        user: { type: string, description: "Fixture handle (alice, bob, admin); never a real account" }
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+    RevokeRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+    TokenPair:
+      type: object
+      required: [access_token, token_type, expires_in, refresh_token, refresh_expires_in]
+      properties:
+        access_token: { type: string, description: "Ed25519 JWT, ~5 min TTL" }
+        token_type: { type: string, description: "Always Bearer" }
+        expires_in: { type: integer, format: int64, description: "Access token lifetime, seconds" }
+        refresh_token: { type: string, description: "Opaque, single-use; rotated on every refresh" }
+        refresh_expires_in: { type: integer, format: int64, description: "Seconds until the session's absolute expiry" }
+    Jwks:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items: { $ref: "#/components/schemas/Jwk" }
+    Jwk:
+      type: object
+      description: "OKP key (RFC 8037). use and alg are omitted; every key here is an Ed25519 signing key."
+      required: [kty, crv, kid, x]
+      properties:
+        kty: { type: string }
+        crv: { type: string }
+        kid: { type: string }
+        x: { type: string, description: "base64url raw Ed25519 public key" }
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        code: { type: string }
+    RefreshProblem:
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          properties:
+            revoke_jtis:
+              type: array
+              items: { type: string }
+              description: Present only with code refresh_reused
