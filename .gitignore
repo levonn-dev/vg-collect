@@ -25,3 +25,8 @@ node_modules/
 # `task bootstrap:cluster` (helm dependency build/update).
 deploy/charts/*/charts/
 deploy/charts/*/Chart.lock
+
+# Locally built service binaries (a go build in a service directory
+# drops the binary next to its source; never committed).
+/services/user/user
+/services/auth/auth
