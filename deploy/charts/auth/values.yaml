@@ -1,0 +1,63 @@
+image:
+  repository: vg-collect/auth
+  tag: dev
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+env:
+  jwtIssuer: vg-collect-auth
+  jwtAudience: vg-collect
+  accessTokenTtl: 5m
+  refreshTokenTtl: 720h
+  userServiceUrl: http://user:8080
+  # The public callback URL registered with real providers (the
+  # gateway's /api/auth/callback once the edge exists). Required only
+  # when Google or Twitch credentials are supplied.
+  oauthRedirectUrl: ""
+  googleIssuerUrl: https://accounts.google.com
+  twitchIssuerUrl: https://id.twitch.tv/oauth2
+  # Dev fixtures only; a production values file MUST set this false
+  # (the dev token endpoint then answers 404).
+  devProviderEnabled: true
+
+# Signing-key rotation (manual procedure): generate a new 32-byte seed,
+# update the auth/jwt-signing-key secret value, roll the deployment
+# (the new kid registers itself and joins the JWKS alongside the old
+# key), then after the last old-key token expires (access TTL) mark the
+# old row retired: UPDATE signing_keys SET retired_at = now() WHERE kid = '<old>';
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { memory: 128Mi }
+
+postgres:
+  enabled: true            # the prod-path seam: disable + point DATABASE_URL at RDS/CNPG
+  image: postgres:17-alpine
+  database: auth
+  username: auth
+  storage: 1Gi
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 256Mi }
+
+providers:
+  # Set to true (via Tilt --set or a prod values file) only when the
+  # corresponding client-id/secret keys are present in the secret store.
+  # When false the ExternalSecret omits those keys and the deployment
+  # omits those env vars, so the auth service sees empty strings and
+  # keeps the provider disabled.
+  google:
+    enabled: false
+  twitch:
+    enabled: false
+
+secretStore:
+  name: vg-fake
+  kind: ClusterSecretStore
+  keys:
+    pgPassword: auth/pg-password
+    jwtSigningKey: auth/jwt-signing-key
+    googleClientId: auth/google-client-id
+    googleClientSecret: auth/google-client-secret
+    twitchClientId: auth/twitch-client-id
+    twitchClientSecret: auth/twitch-client-secret

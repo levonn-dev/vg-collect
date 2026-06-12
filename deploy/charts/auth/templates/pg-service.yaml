@@ -1,0 +1,12 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-pg
+  labels: {{- include "auth.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: auth-pg
+  ports:
+    - { name: pg, port: 5432, targetPort: pg }
+{{- end }}

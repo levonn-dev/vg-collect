@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+  labels: {{- include "auth.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auth
+  template:
+    metadata:
+      labels: {{- include "auth.labels" . | nindent 8 }}
+      annotations:
+        # Re-rolls pods when the secret *shape* changes; live value
+        # rotation re-rolls via Tilt re-apply in dev.
+        checksum/externalsecret: {{ include (print $.Template.BasePath "/externalsecret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: auth
+      initContainers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate"]
+          env: &appEnv
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: auth-secrets, key: pg-password }
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.postgres.username }}:$(PG_PASSWORD)@{{ include "auth.pgHost" . }}:5432/{{ .Values.postgres.database }}?sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt"
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef: { name: auth-secrets, key: jwt-signing-key }
+            {{- if .Values.providers.google.enabled }}
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef: { name: auth-secrets, key: google-client-id }
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: auth-secrets, key: google-client-secret }
+            {{- end }}
+            {{- if .Values.providers.twitch.enabled }}
+            - name: TWITCH_CLIENT_ID
+              valueFrom:
+                secretKeyRef: { name: auth-secrets, key: twitch-client-id }
+            - name: TWITCH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: auth-secrets, key: twitch-client-secret }
+            {{- end }}
+            - name: JWT_ISSUER
+              value: {{ .Values.env.jwtIssuer | quote }}
+            - name: JWT_AUDIENCE
+              value: {{ .Values.env.jwtAudience | quote }}
+            - name: ACCESS_TOKEN_TTL
+              value: {{ .Values.env.accessTokenTtl | quote }}
+            - name: REFRESH_TOKEN_TTL
+              value: {{ .Values.env.refreshTokenTtl | quote }}
+            - name: USER_SERVICE_URL
+              value: {{ .Values.env.userServiceUrl | quote }}
+            - name: OAUTH_REDIRECT_URL
+              value: {{ .Values.env.oauthRedirectUrl | quote }}
+            - name: GOOGLE_ISSUER_URL
+              value: {{ .Values.env.googleIssuerUrl | quote }}
+            - name: TWITCH_ISSUER_URL
+              value: {{ .Values.env.twitchIssuerUrl | quote }}
+            - name: DEV_PROVIDER_ENABLED
+              value: {{ .Values.env.devProviderEnabled | quote }}
+            # Stamped onto telemetry as service.version; the image tag
+            # is the truth of what is running ("dev" locally, a release
+            # tag wherever a pipeline sets one).
+            - name: SERVICE_VERSION
+              value: {{ .Values.image.tag | quote }}
+          volumeMounts: &caMount
+            - name: pg-ca
+              mountPath: /etc/vg/pg-ca
+              readOnly: true
+      containers:
+        - name: auth
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8080 }
+          env: *appEnv
+          volumeMounts: *caMount
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: pg-ca
+          secret:
+            secretName: auth-pg-tls
+            items: [{ key: ca.crt, path: ca.crt }]
