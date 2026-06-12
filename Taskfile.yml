@@ -54,7 +54,7 @@ tasks:
 
   gen:
     desc: Regenerate code from OpenAPI contracts
-    cmds: [task user:gen]
+    cmds: [task user:gen, task auth:gen]
 
   run:
     desc: Start the dev stack
@@ -67,4 +67,8 @@ includes:
   user:
     taskfile: services/user/Taskfile.yml
     dir: services/user
+    optional: true
+  auth:
+    taskfile: services/auth/Taskfile.yml
+    dir: services/auth
     optional: true
