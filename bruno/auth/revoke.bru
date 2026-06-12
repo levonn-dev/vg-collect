@@ -1,0 +1,22 @@
+meta {
+  name: revoke (logout)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{auth_url}}/token/revoke
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "refresh_token": "{{refresh_token}}"
+  }
+}
+
+docs {
+  204 always (idempotent). Afterwards refresh returns 401 and a new
+  login is required.
+}

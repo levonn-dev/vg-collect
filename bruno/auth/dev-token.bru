@@ -1,0 +1,26 @@
+meta {
+  name: dev token (fixture login)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{auth_url}}/oauth/dev/token
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "user": "alice"
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setEnvVar("access_token", res.body.access_token);
+    bru.setEnvVar("refresh_token", res.body.refresh_token);
+    const payload = JSON.parse(Buffer.from(res.body.access_token.split(".")[1], "base64url").toString());
+    bru.setEnvVar("user_id", payload.sub);
+  }
+}

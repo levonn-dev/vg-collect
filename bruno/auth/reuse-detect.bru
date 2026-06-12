@@ -1,0 +1,24 @@
+meta {
+  name: reuse detection (replay the consumed token)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{auth_url}}/token/refresh
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "refresh_token": "{{prev_refresh_token}}"
+  }
+}
+
+docs {
+  Run "refresh" first. This replays the token that refresh just
+  consumed: expect 401 problem+json with code refresh_reused and a
+  revoke_jtis list, and the whole session chain (including the token
+  refresh handed back) is now revoked. Log in again via "dev token".
+}
