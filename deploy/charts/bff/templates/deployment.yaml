@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bff
+  labels: {{- include "bff.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: bff
+  template:
+    metadata:
+      labels: {{- include "bff.labels" . | nindent 8 }}
+      annotations:
+        # Re-rolls pods when the secret *shape* changes; live value
+        # rotation re-rolls via Tilt re-apply in dev.
+        checksum/externalsecret: {{ include (print $.Template.BasePath "/externalsecret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: bff
+      # No init container: the bff has no database and no migrations.
+      containers:
+        - name: bff
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8080 }
+          env:
+            - name: COOKIE_KEY
+              valueFrom:
+                secretKeyRef: { name: bff-secrets, key: cookie-key }
+            - name: COOKIE_SECURE
+              value: {{ .Values.env.cookieSecure | quote }}
+            - name: PUBLIC_ORIGINS
+              value: {{ .Values.env.publicOrigins | quote }}
+            - name: AUTH_SERVICE_URL
+              value: {{ .Values.env.authServiceUrl | quote }}
+            - name: USER_SERVICE_URL
+              value: {{ .Values.env.userServiceUrl | quote }}
+            - name: VALKEY_URL
+              value: {{ .Values.env.valkeyUrl | quote }}
+            {{- if .Values.valkey.enabled }}
+            - name: VALKEY_CA_FILE
+              value: /etc/vg/valkey-ca/ca.crt
+            {{- end }}
+            - name: ACCESS_TOKEN_TTL
+              value: {{ .Values.env.accessTokenTtl | quote }}
+            - name: REFRESH_WINDOW
+              value: {{ .Values.env.refreshWindow | quote }}
+            - name: ME_CACHE_TTL
+              value: {{ .Values.env.meCacheTtl | quote }}
+            - name: SERVE_STATIC
+              value: {{ .Values.env.serveStatic | quote }}
+            # Stamped onto telemetry as service.version; the image tag
+            # is the truth of what is running.
+            - name: SERVICE_VERSION
+              value: {{ .Values.image.tag | quote }}
+          {{- if .Values.valkey.enabled }}
+          volumeMounts:
+            - name: valkey-ca
+              mountPath: /etc/vg/valkey-ca
+              readOnly: true
+          {{- end }}
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.valkey.enabled }}
+      volumes:
+        - name: valkey-ca
+          secret:
+            secretName: bff-valkey-tls
+            items: [{ key: ca.crt, path: ca.crt }]
+      {{- end }}

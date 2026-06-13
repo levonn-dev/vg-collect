@@ -1,0 +1,6 @@
+apiVersion: v2
+name: bff
+description: vg-collect bff (the only public service; browser session + SPA serving)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

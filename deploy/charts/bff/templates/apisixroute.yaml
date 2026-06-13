@@ -1,0 +1,49 @@
+apiVersion: apisix.apache.org/v2
+kind: ApisixRoute
+metadata:
+  name: bff
+  labels: {{- include "bff.labels" . | nindent 4 }}
+spec:
+  ingressClassName: apisix
+  http:
+    - name: auth-endpoints
+      priority: 10
+      match:
+        paths: ["/api/auth/*"]
+      backends:
+        - serviceName: bff
+          servicePort: 8080
+      plugins:
+        - name: limit-count
+          enable: true
+          config:
+            count: {{ .Values.rateLimit.authPerMinute }}
+            time_window: 60
+            key_type: var
+            key: remote_addr
+            rejected_code: 429
+            policy: local
+    - name: api
+      priority: 5
+      match:
+        paths: ["/api/*"]
+      backends:
+        - serviceName: bff
+          servicePort: 8080
+      plugins:
+        - name: limit-count
+          enable: true
+          config:
+            count: {{ .Values.rateLimit.apiPerMinute }}
+            time_window: 60
+            key_type: var
+            key: remote_addr
+            rejected_code: 429
+            policy: local
+    - name: app
+      priority: 1
+      match:
+        paths: ["/*"]
+      backends:
+        - serviceName: bff
+          servicePort: 8080

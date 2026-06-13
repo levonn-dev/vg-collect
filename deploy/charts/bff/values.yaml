@@ -1,0 +1,49 @@
+image:
+  repository: vg-collect/bff
+  tag: dev
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+env:
+  authServiceUrl: http://auth:8080
+  userServiceUrl: http://user:8080
+  valkeyUrl: rediss://bff-valkey:6379/0
+  # Browser-visible origins allowed to send mutating requests: the
+  # gateway port-forward and the Vite dev server.
+  publicOrigins: "http://localhost:8090,http://localhost:5173"
+  # Browsers treat http://localhost as trustworthy, so Secure works in dev.
+  cookieSecure: true
+  serveStatic: true
+  # Must match the auth chart's accessTokenTtl (bounds denylist TTLs).
+  accessTokenTtl: 5m
+  refreshWindow: 30s
+  meCacheTtl: 45s
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { memory: 128Mi }
+
+valkey:
+  enabled: true            # the prod-path seam: disable + point valkeyUrl at a managed cache
+  image: valkey/valkey:8-alpine
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 128Mi }
+
+# Per-minute, per-client-IP budgets enforced at the gateway: tight on
+# the credential-adjacent auth surface, loose on the rest of the API,
+# none on static assets.
+rateLimit:
+  authPerMinute: 20
+  apiPerMinute: 300
+
+gateway:
+  # Where APISIX runs; the NetworkPolicy admits ingress from there.
+  namespace: vg-platform
+
+secretStore:
+  name: vg-fake
+  kind: ClusterSecretStore
+  keys:
+    cookieKey: bff/cookie-key

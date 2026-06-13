@@ -1,0 +1,18 @@
+{{- if .Values.valkey.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: bff-valkey-tls
+  labels: {{- include "bff.labels" . | nindent 4 }}
+spec:
+  secretName: bff-valkey-tls
+  duration: 2160h
+  dnsNames:
+    - {{ include "bff.valkeyHost" . }}
+    - {{ include "bff.valkeyHost" . }}.{{ .Release.Namespace }}.svc
+    - {{ include "bff.valkeyHost" . }}.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    name: vg-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
+{{- end }}
