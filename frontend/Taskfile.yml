@@ -1,0 +1,33 @@
+version: "3"
+
+tasks:
+  deps:
+    desc: Install node_modules when the lockfile changes
+    sources: [package.json, package-lock.json]
+    generates: [node_modules/.package-lock.json]
+    cmds: [npm ci]
+  dev:
+    desc: Vite dev server on :5173 (proxies /api to the gateway on :8090)
+    deps: [deps]
+    cmds: [npm run dev]
+  gen:
+    desc: Regenerate API types from the bff OpenAPI contract
+    deps: [deps]
+    cmds: [npm run gen]
+  lint:
+    deps: [deps]
+    cmds: [npm run lint]
+  test:
+    deps: [deps]
+    cmds: [npm run test]
+  test:cover:
+    desc: vitest with 80 percent coverage thresholds
+    deps: [deps]
+    cmds: [npm run test:cover]
+  build:
+    deps: [deps]
+    cmds: [npm run build]
+  e2e:
+    desc: Playwright smoke against the running stack (gateway on localhost 8090)
+    deps: [deps]
+    cmds: [npx playwright test]
