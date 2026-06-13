@@ -1,0 +1,146 @@
+// Package server owns the bff's HTTP surface: the session middleware
+// (allowlist, denylist, transparent refresh), CSRF origin checks,
+// security headers, and the browser-facing handlers.
+package server
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
+	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
+)
+
+// SessionCache is the Valkey surface the server needs (implemented by
+// the cache package, stubs in tests). Errors mean "Valkey is having a
+// moment"; each call site decides its own fail-open behavior.
+type SessionCache interface {
+	DenylistAdd(ctx context.Context, jtis []string, ttl time.Duration) error
+	DenylistHas(ctx context.Context, jti string) (bool, error)
+	AcquireRefreshLock(ctx context.Context, key, holder string, ttl time.Duration) (bool, error)
+	ReleaseRefreshLock(ctx context.Context, key, holder string) error
+	PutRefreshResult(ctx context.Context, key, sealed string, ttl time.Duration) error
+	GetRefreshResult(ctx context.Context, key string) (string, error)
+	GetMe(ctx context.Context, sub string) ([]byte, error)
+	PutMe(ctx context.Context, sub string, body []byte, ttl time.Duration) error
+}
+
+// AuthAPI is the auth service surface (implemented by authclient).
+type AuthAPI interface {
+	Start(ctx context.Context, provider string) (string, error)
+	Callback(ctx context.Context, code, state string) (authclient.TokenPair, error)
+	DevToken(ctx context.Context, user string) (authclient.TokenPair, error)
+	Refresh(ctx context.Context, refreshToken string) (authclient.TokenPair, error)
+	Revoke(ctx context.Context, refreshToken string) error
+	Providers(ctx context.Context) ([]string, error)
+}
+
+// UserAPI is the user service surface (implemented by userclient).
+type UserAPI interface {
+	Get(ctx context.Context, id, bearer string) (userapi.User, error)
+}
+
+const (
+	// lockTTL caps how long a crashed rotation can block others.
+	lockTTL = 10 * time.Second
+	// resultTTL is how long a published rotation result stays adoptable
+	// by a concurrent or slightly-late request still bearing the
+	// pre-rotation token. It must exceed the in-flight lifetime of such a
+	// request (bounded by client and proxy timeouts) so a late arrival
+	// adopts the successor instead of re-refreshing the consumed token;
+	// keep it above the gateway's maximum request timeout.
+	resultTTL = 60 * time.Second
+)
+
+// Options carries tunables that vary between environments.
+type Options struct {
+	// AccessTokenTTL must match the auth service's access-token TTL;
+	// bounds denylist entry lifetimes.
+	AccessTokenTTL time.Duration
+	// RefreshWindow: refresh starts when less than this remains on the
+	// access token.
+	RefreshWindow time.Duration
+	MeCacheTTL    time.Duration
+	// PublicOrigins are the origins allowed to send mutating requests.
+	PublicOrigins []string
+	Logger        *slog.Logger
+}
+
+// Handlers owns the codec, backing services, and tunable knobs for
+// every HTTP handler in the bff.
+type Handlers struct {
+	codec         *session.Codec
+	cache         SessionCache
+	auth          AuthAPI
+	users         UserAPI
+	logger        *slog.Logger
+	accessTTL     time.Duration
+	refreshWindow time.Duration
+	meTTL         time.Duration
+	publicOrigins []string
+	failOpen      metric.Int64Counter
+
+	// Test seams: clock and result-adoption pacing.
+	now          func() time.Time
+	pollInterval time.Duration
+	pollBudget   time.Duration
+}
+
+// New builds a Handlers. The OTel meter is best-effort: a counter
+// registration failure is logged but does not prevent startup.
+func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, opts Options) *Handlers {
+	failOpen, err := otel.Meter("github.com/levonn-dev/vg-collect/services/bff").
+		Int64Counter("vg.bff.cache.fail_open",
+			metric.WithDescription("Valkey operations that failed and were failed open"))
+	if err != nil {
+		// A telemetry hiccup must not stop logins; failOpenEvent
+		// guards the nil.
+		opts.Logger.Error("fail-open counter unavailable", "err", err)
+	}
+	return &Handlers{
+		codec: codec, cache: cache, auth: auth, users: users,
+		logger:        opts.Logger,
+		accessTTL:     opts.AccessTokenTTL,
+		refreshWindow: opts.RefreshWindow,
+		meTTL:         opts.MeCacheTTL,
+		publicOrigins: opts.PublicOrigins,
+		failOpen:      failOpen,
+		now:           time.Now,
+		pollInterval:  100 * time.Millisecond,
+		// pollBudget is deliberately shorter than the auth refresh timeout:
+		// a waiter returns 401 promptly and the browser's retry adopts the late result.
+		pollBudget: 3 * time.Second,
+	}
+}
+
+// failOpenEvent records a Valkey failure that the caller is about to
+// fail open on (log + metric; alerting watches the metric).
+func (h *Handlers) failOpenEvent(ctx context.Context, op string, err error) {
+	h.logger.ErrorContext(ctx, "valkey unavailable; failing open", "op", op, "err", err)
+	if h.failOpen != nil {
+		h.failOpen.Add(ctx, 1, metric.WithAttributes(attribute.String("op", op)))
+	}
+}
+
+func writeProblem(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
+	httpkit.WriteProblem(w, r, httpkit.Problem{
+		Status: status, Title: http.StatusText(status), Code: code, Detail: detail,
+	})
+}
+
+func (h *Handlers) unauthorized(w http.ResponseWriter, r *http.Request) {
+	writeProblem(w, r, http.StatusUnauthorized, "unauthenticated", "no valid session")
+}
+
+func (h *Handlers) clearAndUnauthorized(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, h.codec.ClearCookie())
+	h.unauthorized(w, r)
+}
