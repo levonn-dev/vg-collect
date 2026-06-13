@@ -1,6 +1,6 @@
 apiVersion: v2
 name: vg-platform
-description: Third-party platform operators for vg-collect (cert-manager, external-secrets)
+description: Third-party platform operators for vg-collect (cert-manager, external-secrets, APISIX)
 type: application
 version: 0.1.0
 dependencies:
@@ -10,3 +10,6 @@ dependencies:
   - name: external-secrets
     version: 0.12.1
     repository: https://charts.external-secrets.io
+  - name: apisix
+    version: 2.14.1
+    repository: https://charts.apiseven.com

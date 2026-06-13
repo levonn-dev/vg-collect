@@ -3,3 +3,51 @@ cert-manager:
     enabled: true
 external-secrets:
   installCRDs: true
+apisix:
+  # The gateway is reached via kubectl port-forward in dev (cluster-agnostic;
+  # LoadBalancer/NodePort behavior differs across docker-desktop/kind/minikube).
+  service:
+    type: ClusterIP
+    # The chart renders externalTrafficPolicy unconditionally and defaults
+    # it to Cluster, which the API server rejects on ClusterIP services.
+    # An empty value makes Helm emit the key with a YAML null, which
+    # admission treats as unset. If the gateway type ever changes to
+    # NodePort or LoadBalancer, drop this override so the chart default
+    # applies again.
+    externalTrafficPolicy: ""
+  # Single-node etcd: dev tier, no HA. The bundled etcd subchart is the
+  # accepted trade-off of running APISIX in its etcd-backed mode.
+  etcd:
+    replicaCount: 1
+    # The subchart's pre-upgrade hook removes obsolete members from an
+    # EXISTING etcd cluster; on a release where etcd is being introduced
+    # it deadlocks (the hook mounts the jwt-token secret that only the
+    # install itself creates). Single-node dev etcd has no obsolete
+    # members to remove.
+    preUpgradeJob:
+      enabled: false
+  ingress-controller:
+    enabled: true
+    # Controller 2.x: the IngressClass "apisix" plus a default GatewayProxy
+    # wired to this release's admin service. Routes opt in with
+    # spec.ingressClassName: apisix.
+    gatewayProxy:
+      createDefault: true
+      provider:
+        controlPlane:
+          service:
+            name: vg-platform-apisix-admin
+            port: 9180
+          auth:
+            type: AdminKey
+            adminKey:
+              # The chart's well-known default admin key. Acceptable for the
+              # dev tier: the admin API is ClusterIP-only and never exposed
+              # through the gateway. A production values file must override
+              # both apisix.admin.credentials.admin and this value together.
+              value: edd1c9f034335f136f87ad84b625c8f1
+    # Disabled per the upstream chart's own values note: the webhook
+    # relies on the /apisix/admin/configs/validate endpoint, which needs
+    # APISIX 3.17 or later; this release runs 3.16.
+    webhook:
+      enabled: false
