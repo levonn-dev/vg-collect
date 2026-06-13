@@ -17,3 +17,26 @@ spec:
       ports:
         - { port: 5432, protocol: TCP }
 {{- end }}
+---
+# User's callers: auth (profile upsert + role reads at mint/refresh)
+# and the bff (me composition).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: user-from-callers-only
+  labels: {{- include "user.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: user
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: auth
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: bff
+      ports:
+        - { port: 8080, protocol: TCP }

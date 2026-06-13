@@ -11,8 +11,9 @@ local_resource(
     'preflight-platform',
     cmd=' '.join([
         'kubectl get clusterissuer vg-ca >/dev/null 2>&1 &&',
-        'kubectl get crd clustersecretstores.external-secrets.io >/dev/null 2>&1 ||',
-        '(echo "platform not installed; run: task bootstrap:cluster" && exit 1)',
+        'kubectl get crd clustersecretstores.external-secrets.io >/dev/null 2>&1 &&',
+        'kubectl get crd apisixroutes.apisix.apache.org >/dev/null 2>&1 ||',
+        '(echo "platform not installed or outdated; run: task bootstrap:cluster" && exit 1)',
     ]),
     labels=['preflight'],
 )
@@ -48,6 +49,7 @@ SECRET_KEYS = {k: v for k, v in {
     'auth/google-client-secret': ENV.get('GOOGLE_CLIENT_SECRET', ''),
     'auth/twitch-client-id': ENV.get('TWITCH_CLIENT_ID', ''),
     'auth/twitch-client-secret': ENV.get('TWITCH_CLIENT_SECRET', ''),
+    'bff/cookie-key': ENV.get('BFF_COOKIE_KEY', ''),
 }.items() if v != ''}
 
 k8s_yaml(encode_yaml({
@@ -91,7 +93,45 @@ if ENV.get('GOOGLE_CLIENT_ID', '') != '' and ENV.get('GOOGLE_CLIENT_SECRET', '')
     _auth_set.append('providers.google.enabled=true')
 if ENV.get('TWITCH_CLIENT_ID', '') != '' and ENV.get('TWITCH_CLIENT_SECRET', '') != '':
     _auth_set.append('providers.twitch.enabled=true')
+if _auth_set:
+    _auth_set.append('env.oauthRedirectUrl=' + ENV.get('OAUTH_REDIRECT_URL', 'http://localhost:8090/api/auth/callback'))
 k8s_yaml(helm('deploy/charts/auth', name='auth', namespace='vg-collect', set=_auth_set))
 k8s_resource('auth', port_forwards=['8082:8080'],
              resource_deps=['secret-store', 'auth-pg', 'user'], labels=['services'])
 k8s_resource('auth-pg', port_forwards=['5434:5432'], labels=['datastores'])
+
+# ----- edge -----
+# The gateway is the browser's entrypoint; everything else stays
+# cluster-internal. kubectl port-forward keeps this cluster-agnostic.
+local_resource(
+    'gateway',
+    serve_cmd='kubectl port-forward -n vg-platform svc/vg-platform-apisix-gateway 8090:80',
+    resource_deps=['preflight-platform'],
+    labels=['platform'],
+)
+
+# ----- bff service -----
+docker_build(
+    'vg-collect/bff', '.',
+    dockerfile='services/bff/Dockerfile',
+    only=['libs/go', 'services/bff', 'frontend'],
+    ignore=['frontend/node_modules', 'frontend/dist', 'frontend/playwright-report', 'frontend/test-results'],
+)
+k8s_yaml(helm('deploy/charts/bff', name='bff', namespace='vg-collect'))
+k8s_resource('bff', port_forwards=['8083:8080'],
+             resource_deps=['secret-store', 'bff-valkey', 'auth'], labels=['services'])
+k8s_resource('bff-valkey', labels=['datastores'])
+
+# ----- frontend dev loop (manual: trigger when iterating on the SPA;
+# the in-cluster bff serves the built bundle either way) -----
+local_resource(
+    'frontend-dev',
+    cmd='test -d node_modules || npm ci',
+    serve_cmd='npm run dev',
+    dir='frontend',
+    serve_dir='frontend',
+    resource_deps=['gateway'],
+    auto_init=False,
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    labels=['frontend'],
+)
