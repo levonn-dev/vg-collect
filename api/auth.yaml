@@ -51,6 +51,19 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /providers:
+    get:
+      operationId: listProviders
+      summary: Login provider names currently enabled, in display order
+      responses:
+        "200":
+          description: >
+            Always 200. Real providers with credentials configured, plus dev
+            when gated on; empty array when nothing is enabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Providers"
   /oauth/dev/token:
     post:
       operationId: devToken
@@ -202,6 +215,14 @@ components:
         crv: { type: string }
         kid: { type: string }
         x: { type: string, description: "base64url raw Ed25519 public key" }
+    Providers:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          description: "Subset of: google, twitch, dev"
+          items: { type: string }
     Problem:
       type: object
       required: [type, title, status]

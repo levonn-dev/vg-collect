@@ -318,6 +318,22 @@ func (h *Handlers) DevToken(w http.ResponseWriter, r *http.Request) {
 	h.completeLogin(w, r, "dev", claims)
 }
 
+// ListProviders reports which login options exist right now, so a login
+// page renders exactly the buttons that can succeed. Order is stable:
+// real providers first, dev last.
+func (h *Handlers) ListProviders(w http.ResponseWriter, r *http.Request) {
+	names := []string{}
+	for _, name := range []string{"google", "twitch"} {
+		if _, ok := h.providers[name]; ok {
+			names = append(names, name)
+		}
+	}
+	if h.devEnabled {
+		names = append(names, "dev")
+	}
+	writeJSON(w, http.StatusOK, api.Providers{Providers: names})
+}
+
 // writeReuseProblem emits the 401 problem+json carrying the revoked
 // chain's possibly-live jtis (the refresh response is the only channel
 // back to the BFF's denylist; no new call direction).

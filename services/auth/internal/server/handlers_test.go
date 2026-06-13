@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
 	"github.com/levonn-dev/vg-collect/libs/go/pgkit"
+	"github.com/levonn-dev/vg-collect/services/auth/internal/gen/api"
 	"github.com/levonn-dev/vg-collect/services/auth/internal/oidc"
 	"github.com/levonn-dev/vg-collect/services/auth/internal/server"
 	"github.com/levonn-dev/vg-collect/services/auth/internal/store"
@@ -720,5 +722,41 @@ func TestHealthEndpoints(t *testing.T) {
 			t.Fatalf("%s: %v %d", path, err, resp.StatusCode)
 		}
 		_ = resp.Body.Close()
+	}
+}
+
+func TestListProviders(t *testing.T) {
+	cases := []struct {
+		name       string
+		providers  map[string]oidc.Provider
+		devEnabled bool
+		want       []string
+	}{
+		{"none enabled", map[string]oidc.Provider{}, false, []string{}},
+		{"dev only", map[string]oidc.Provider{}, true, []string{"dev"}},
+		{"google plus dev", map[string]oidc.Provider{
+			"google": oidc.NewGoogle("id", "secret", "http://cb", "http://issuer"),
+		}, true, []string{"google", "dev"}},
+		{"both real, no dev", map[string]oidc.Provider{
+			"google": oidc.NewGoogle("id", "secret", "http://cb", "http://issuer"),
+			"twitch": oidc.NewTwitch("id", "secret", "http://cb", "http://issuer"),
+		}, false, []string{"google", "twitch"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := server.New(nil, nil, nil, tc.providers, tc.devEnabled, 0)
+			rec := httptest.NewRecorder()
+			h.ListProviders(rec, httptest.NewRequest(http.MethodGet, "/providers", nil))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d", rec.Code)
+			}
+			var body api.Providers
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(body.Providers, tc.want) {
+				t.Fatalf("providers = %v, want %v", body.Providers, tc.want)
+			}
+		})
 	}
 }

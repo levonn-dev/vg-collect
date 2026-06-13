@@ -53,6 +53,12 @@ type Problem struct {
 	Type     string  `json:"type"`
 }
 
+// Providers defines model for Providers.
+type Providers struct {
+	// Providers Subset of: google, twitch, dev
+	Providers []string `json:"providers"`
+}
+
 // RefreshProblem defines model for RefreshProblem.
 type RefreshProblem struct {
 	Code     *string `json:"code,omitempty"`
@@ -142,6 +148,9 @@ type ServerInterface interface {
 	// Begin a provider login; returns the URL to redirect the browser to
 	// (POST /oauth/start)
 	OauthStart(w http.ResponseWriter, r *http.Request)
+	// Login provider names currently enabled, in display order
+	// (GET /providers)
+	ListProviders(w http.ResponseWriter, r *http.Request)
 	// Rotate a refresh token; reuse of a consumed token revokes its whole chain
 	// (POST /token/refresh)
 	RefreshToken(w http.ResponseWriter, r *http.Request)
@@ -206,6 +215,20 @@ func (siw *ServerInterfaceWrapper) OauthStart(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OauthStart(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListProviders operation middleware
+func (siw *ServerInterfaceWrapper) ListProviders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProviders(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -367,6 +390,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/oauth/callback", wrapper.OauthCallback)
 	m.HandleFunc("POST "+options.BaseURL+"/oauth/dev/token", wrapper.DevToken)
 	m.HandleFunc("POST "+options.BaseURL+"/oauth/start", wrapper.OauthStart)
+	m.HandleFunc("GET "+options.BaseURL+"/providers", wrapper.ListProviders)
 	m.HandleFunc("POST "+options.BaseURL+"/token/refresh", wrapper.RefreshToken)
 	m.HandleFunc("POST "+options.BaseURL+"/token/revoke", wrapper.RevokeToken)
 
