@@ -1,6 +1,8 @@
-# Build artifacts (dist/ is the frontend build output; .task/ is the
-# Taskfile checksum cache).
-dist/
+# Build artifacts (the frontend Vite build output; .task/ is the
+# Taskfile checksum cache). Scoped to the frontend so it does not catch
+# the bff's committed placeholder bundle, which ships embedded in the
+# binary and is overwritten by the real build inside the image.
+/frontend/dist/
 /.task/
 
 # Test artifacts (Go coverage profiles written per-module by
