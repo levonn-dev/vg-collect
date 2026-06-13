@@ -5,6 +5,7 @@ go 1.26.2
 require (
 	github.com/redis/go-redis/extra/redisotel/v9 v9.7.0
 	github.com/redis/go-redis/v9 v9.7.0
+	github.com/testcontainers/testcontainers-go v0.35.0
 	github.com/testcontainers/testcontainers-go/modules/valkey v0.35.0
 )
 
@@ -50,7 +51,6 @@ require (
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
-	github.com/testcontainers/testcontainers-go v0.35.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.14 // indirect
 	github.com/tklauser/numcpus v0.8.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
