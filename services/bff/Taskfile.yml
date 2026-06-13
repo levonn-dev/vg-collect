@@ -1,0 +1,9 @@
+version: "3"
+
+tasks:
+  gen:
+    desc: Regenerate server stubs from api/bff.yaml and typed clients for the auth and user services
+    cmds:
+      - go tool oapi-codegen -config oapi.server.yaml ../../api/bff.yaml
+      - go tool oapi-codegen -config oapi.authclient.yaml ../../api/auth.yaml
+      - go tool oapi-codegen -config oapi.userclient.yaml ../../api/user.yaml

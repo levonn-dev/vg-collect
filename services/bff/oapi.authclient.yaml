@@ -1,0 +1,5 @@
+package: authapi
+generate:
+  models: true
+  client: true
+output: internal/gen/authapi/client.gen.go

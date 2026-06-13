@@ -1,0 +1,138 @@
+openapi: 3.0.3
+info:
+  title: vg-collect bff
+  version: 0.1.0
+  description: >
+    The browser-facing API. Authentication is a sealed HttpOnly cookie,
+    never a header: the SPA calls these endpoints same-origin. Errors are
+    application/problem+json with stable machine-readable codes. The
+    login and callback endpoints are navigations (they redirect), not
+    XHR targets.
+paths:
+  /api/auth/providers:
+    get:
+      operationId: listProviders
+      summary: Login provider names currently enabled (drives the login page buttons)
+      responses:
+        "200":
+          description: "Subset of: google, twitch, dev; display order"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Providers" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/auth/login:
+    get:
+      operationId: login
+      summary: Begin a login; redirects the browser to the provider (or straight back for dev)
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          schema: { type: string }
+          description: "google, twitch, or dev (when the dev provider is enabled)"
+        - name: user
+          in: query
+          required: false
+          schema: { type: string }
+          description: "Dev provider only: fixture handle (alice, bob, admin)"
+      responses:
+        "302":
+          description: >
+            Location is the provider authorize URL; for the dev provider,
+            / with the session cookie set; on failure, /login?error=<code>.
+          headers:
+            Location: { schema: { type: string } }
+  /api/auth/callback:
+    get:
+      operationId: callback
+      summary: The provider redirect URI; completes login and seals the session cookie
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema: { type: string }
+        - name: state
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "302":
+          description: / with Set-Cookie on success, /login?error=<code> otherwise
+          headers:
+            Location: { schema: { type: string } }
+  /api/auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke the session (jti denylist + refresh chain) and clear the cookie; idempotent
+      responses:
+        "204":
+          description: Logged out (also when no session existed)
+        "403": { $ref: "#/components/responses/OriginForbidden" }
+  /api/me:
+    get:
+      operationId: getMe
+      summary: The signed-in user's profile (composed from the user service; briefly cached)
+      responses:
+        "200":
+          description: Profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+        "503":
+          description: Session refresh blocked on a dependency; retry (code user_unavailable)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+components:
+  responses:
+    Unauthenticated:
+      description: No valid session (cookie missing, malformed, expired, revoked, or denylisted)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    OriginForbidden:
+      description: Mutating request from a foreign origin (code origin_forbidden)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    UpstreamError:
+      description: A downstream service failed (code upstream_error)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Providers:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          description: "Subset of: google, twitch, dev"
+          items: { type: string }
+    Me:
+      description: >
+        Browser-facing projection of the user service's User. Timestamps
+        are intentionally omitted; add fields only when the SPA has a
+        concrete use for them.
+      type: object
+      required: [id, email, display_name, roles]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        display_name: { type: string }
+        avatar_url: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        code: { type: string }
