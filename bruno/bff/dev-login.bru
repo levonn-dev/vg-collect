@@ -1,0 +1,11 @@
+meta {
+  name: dev login (populates the cookie jar)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{bff_url}}/api/auth/login?provider=dev&user=alice
+  body: none
+  auth: none
+}

@@ -1,0 +1,11 @@
+meta {
+  name: logout (clears the cookie, revokes the chain)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{bff_url}}/api/auth/logout
+  body: none
+  auth: none
+}
