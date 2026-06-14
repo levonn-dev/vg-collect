@@ -1,33 +1,75 @@
 version: "3"
 
 tasks:
+
+  default:
+    desc: List available tasks (run with no args)
+    silent: true
+    cmds:
+      - task --list
+
   deps:
     desc: Install node_modules when the lockfile changes
-    sources: [package.json, package-lock.json]
-    generates: [node_modules/.package-lock.json]
-    cmds: [npm ci]
+    sources:
+      - package.json
+      - package-lock.json
+    generates:
+      - node_modules/.package-lock.json
+    cmds:
+     - npm ci
+
   dev:
     desc: Vite dev server on :5173 (proxies /api to the gateway on :8090)
-    deps: [deps]
-    cmds: [npm run dev]
+    deps:
+     - deps
+    cmds:
+      - npm run dev
+
   gen:
     desc: Regenerate API types from the bff OpenAPI contract
-    deps: [deps]
-    cmds: [npm run gen]
+    deps:
+      - deps
+    cmds:
+     - npm run gen
+
   lint:
-    deps: [deps]
-    cmds: [npm run lint]
+    desc: eslint (type-aware) over the SPA sources
+    deps:
+      - deps
+    cmds:
+      - npm run lint
+
+  lint:fix:
+    desc: eslint --fix (autofix) over the SPA sources
+    deps:
+      - deps
+    cmds:
+      - npm run lint -- --fix
+
   test:
-    deps: [deps]
-    cmds: [npm run test]
+    desc: vitest unit tests (jsdom)
+    deps:
+      - deps
+    cmds:
+      - npm run test
+
   test:cover:
     desc: vitest with 80 percent coverage thresholds
-    deps: [deps]
-    cmds: [npm run test:cover]
+    deps:
+      - deps
+    cmds:
+      - npm run test:cover
+
   build:
-    deps: [deps]
-    cmds: [npm run build]
+    desc: Production Vite build into dist/ (embedded by the bff image)
+    deps:
+      - deps
+    cmds:
+      - npm run build
+
   e2e:
     desc: Playwright smoke against the running stack (gateway on localhost 8090)
-    deps: [deps]
-    cmds: [npx playwright test]
+    deps:
+      - deps
+    cmds:
+      - npx playwright test

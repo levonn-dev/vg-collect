@@ -1,12 +1,37 @@
+# go-task taskfile (https://taskfile.dev). Run `task` with no args to list
+# every task with its description. The layout mirrors the dev flow:
+# bootstrap -> lint -> build/test -> gen -> run.
+#
+# vg-collect is a multi-module Go monorepo plus a Vite/React frontend. The
+# Go tasks fan out over every module discovered by the GO_MODULES var
+# (every directory containing a go.mod); the frontend and the per-service
+# OpenAPI codegen live in included Taskfiles (see `includes:` at the bottom
+# and call them namespaced, e.g. `task frontend:test`, `task auth:gen`).
+#
+# CI (.github/workflows/ci.yml) runs `task lint`, `task test:cover`, and
+# `task gen` (drift-checked). `task check` is the local pre-commit
+# equivalent (non-mutating).
+
 version: "3"
 
 vars:
+  # Every directory with a go.mod, one per line. Drives the fan-out loops
+  # below, so a new service is picked up automatically once it has a module.
   GO_MODULES:
     sh: find . -name go.mod -not -path '*/node_modules/*' -exec dirname {} \; | sort
 
 tasks:
+
+  default:
+    desc: List available tasks (run with no args)
+    silent: true
+    cmds:
+      - task --list
+
+  # ------------------------------ bootstrap ------------------------------
+
   bootstrap:
-    desc: Verify tools, scaffold .env
+    desc: Verify required tools are installed and scaffold .env from .env.example
     cmds:
       - for tool in go docker kubectl helm tilt golangci-lint node npm; do
           command -v $tool >/dev/null || { echo "MISSING $tool; see README Prerequisites"; exit 1; };
@@ -27,52 +52,113 @@ tasks:
           -n vg-platform --wait --timeout 2m
       - kubectl get clusterissuer vg-ca -o name
 
+  # -------------------------------- lint ---------------------------------
+  #
+  # golangci-lint v2 has formatters (gofmt + goimports) enabled, so `lint`
+  # also checks formatting (there is no separate fmt task) and `lint:fix`
+  # applies it. helm lint is check-only (no autofix), so it runs in both.
+
   lint:
-    desc: golangci-lint every Go module + helm lint charts
+    desc: 'Verify everything: golangci-lint (incl. gofmt/goimports) per module + helm lint + frontend eslint. The CI gate.'
     cmds:
       - for: { var: GO_MODULES, as: MOD }
         cmd: cd {{.MOD}} && golangci-lint run ./...
+      - task: lint:helm
+      - task: frontend:lint
+
+  lint:fix:
+    desc: 'Auto-fix what is fixable: golangci-lint --fix (formatting + lint) per module + frontend eslint --fix; helm lint runs too (check-only, no autofix).'
+    cmds:
+      - for: { var: GO_MODULES, as: MOD }
+        cmd: cd {{.MOD}} && golangci-lint run --fix ./...
+      - task: lint:helm
+      - task: frontend:lint:fix
+
+  lint:helm:
+    desc: helm lint every chart (registers chart repos + builds the platform subchart deps first)
+    cmds:
+      # helm lint of the platform chart needs its subchart deps vendored
+      # first, which needs the chart repos registered.
       - test ! -d deploy/charts/platform || (helm repo add jetstack https://charts.jetstack.io --force-update >/dev/null &&
           helm repo add external-secrets https://charts.external-secrets.io --force-update >/dev/null &&
           helm repo add apiseven https://charts.apiseven.com --force-update >/dev/null &&
           helm dependency build deploy/charts/platform >/dev/null)
       - test ! -d deploy/charts || for charts in deploy/charts/*/; do helm lint "$charts" || exit 1; done
-      - task frontend:lint
 
-  test:
-    desc: go test every module
-    cmds:
-      - for: { var: GO_MODULES, as: MOD }
-        cmd: cd {{.MOD}} && go test ./...
-      - task frontend:test
-
-  test:cover:
-    desc: Coverage gate (80%, generated code excluded)
-    cmds:
-      - scripts/coverage.sh 80
-      - task frontend:test:cover
+  # --------------------------- build / codegen ---------------------------
 
   build:
-    desc: Compile every module
+    desc: Compile every Go module + build the frontend bundle
     cmds:
       - for: { var: GO_MODULES, as: MOD }
         cmd: cd {{.MOD}} && go build ./...
-      - task frontend:build
+      - task: frontend:build
 
   gen:
-    desc: Regenerate code from OpenAPI contracts
-    cmds: [task user:gen, task auth:gen, task bff:gen, task frontend:gen]
+    desc: Regenerate code from the OpenAPI contracts (run after editing any api/*.yaml; CI fails on drift)
+    cmds:
+      - task: user:gen
+      - task: auth:gen
+      - task: bff:gen
+      - task: frontend:gen
 
-  e2e:
-    desc: Browser smoke against the running stack
-    cmds: [task frontend:e2e]
+  # -------------------------------- test ---------------------------------
+
+  test:
+    desc: 'Full test suite for every module (integration tests included; needs Docker) + frontend'
+    cmds:
+      - for: { var: GO_MODULES, as: MOD }
+        cmd: cd {{.MOD}} && go test ./...
+      - task: frontend:test
+
+  test:short:
+    desc: 'Fast unit tests only (-short; no Docker) for every module + frontend. Quick dev loop; `task check` and CI run the full suite.'
+    cmds:
+      - for: { var: GO_MODULES, as: MOD }
+        cmd: cd {{.MOD}} && go test -short ./...
+      - task: frontend:test
+
+  test:cover:
+    desc: Coverage gate (80%, generated code excluded) for Go + frontend
+    cmds:
+      - scripts/coverage.sh 80
+      - task: frontend:test:cover
+
+  # ---------------------------- check / clean ----------------------------
+
+  check:
+    desc: 'Pre-commit gate: lint (incl. formatting) + build + full test suite (needs Docker for the integration tests). Non-mutating. (CI additionally enforces the 80% coverage gate via test:cover and codegen drift via gen.)'
+    cmds:
+      - task: lint
+      - task: build
+      - task: test
+
+  clean:
+    desc: Remove build/test artifacts (Go build & test caches, frontend dist & coverage)
+    cmds:
+      - go clean -cache -testcache
+      - rm -rf frontend/dist frontend/coverage
+
+  # -------------------------------- run ----------------------------------
+  #
+  # The dev stack runs under Tilt (see Tiltfile); `task run` is the
+  # day-to-day entrypoint. `task bootstrap:cluster` installs the platform
+  # prerequisites once before the first run.
 
   run:
-    desc: Start the dev stack
-    cmds: [tilt up]
+    desc: Start the full dev stack under Tilt (foreground; Ctrl-C to stop)
+    cmds:
+      - tilt up
 
   down:
-    cmds: [tilt down]
+    desc: Stop the Tilt-managed dev stack
+    cmds:
+      - tilt down
+
+  e2e:
+    desc: Browser smoke (Playwright) against the running stack
+    cmds:
+      - task: frontend:e2e
 
 includes:
   user:

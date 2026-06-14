@@ -1,6 +1,13 @@
 version: "3"
 
 tasks:
+
+  default:
+    desc: List available tasks (run with no args)
+    silent: true
+    cmds:
+      - task --list
+
   gen:
     desc: Regenerate server stubs from api/bff.yaml and typed clients for the auth and user services
     cmds:
