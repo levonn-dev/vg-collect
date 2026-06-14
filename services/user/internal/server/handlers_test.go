@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -105,8 +106,13 @@ func newTestServer(t *testing.T) (*httptest.Server, authEnv) {
 func do(t *testing.T, method, url, token string, body any) *http.Response {
 	t.Helper()
 	var buf bytes.Buffer
-	if body != nil {
-		if err := json.NewEncoder(&buf).Encode(body); err != nil {
+	switch v := body.(type) {
+	case nil:
+		// empty body
+	case string:
+		buf.WriteString(v) // raw body, for the malformed-JSON cases
+	default:
+		if err := json.NewEncoder(&buf).Encode(v); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -256,5 +262,289 @@ func TestGetUser_AdminCanReadAnyUser(t *testing.T) {
 	// admin role can read any user
 	if resp2 := do(t, "GET", srv.URL+"/users/"+created.ID, a.token(t, "different-user", "admin"), nil); resp2.StatusCode != 200 {
 		t.Fatalf("admin get: %d, want 200", resp2.StatusCode)
+	}
+}
+
+// ============================================================================
+// Fast unit layer (no Docker, runs under -short)
+//
+// The tests below drive the real handlers and real router with the in-memory
+// stubStore defined just below. Claims reach the handlers through the real
+// jwtauth.Middleware -- jwtauth's context key is unexported, so there is no
+// direct context injection path. Instead, each test mints a real Ed25519 token
+// via the existing newAuthEnv/authEnv.token helper (in-process JWKS over
+// httptest; fast; no network outside the process) and hits the router over
+// httptest. The store is the only collaborator stubbed out. No Docker, no
+// Postgres, no testing.Short() skip.
+//
+// Each test asserts the distinctive outcome of its branch: exact HTTP status
+// AND the problem code from the response body where applicable; for success,
+// the response body fields. A test that only checks the status code would
+// survive handler regressions silently; these do not.
+// ============================================================================
+
+// stubStore implements server.Store via function fields. A method whose
+// field is nil panics with a clear message -- an unexpected collaborator call
+// is a loud test failure, not a silent zero value.
+type stubStore struct {
+	upsert func(ctx context.Context, email, displayName string, avatarURL *string) (store.User, error)
+	get    func(ctx context.Context, id uuid.UUID) (store.User, error)
+}
+
+var _ server.Store = (*stubStore)(nil)
+
+func (s *stubStore) Upsert(ctx context.Context, email, displayName string, avatarURL *string) (store.User, error) {
+	if s.upsert == nil {
+		panic("unexpected Upsert")
+	}
+	return s.upsert(ctx, email, displayName, avatarURL)
+}
+
+func (s *stubStore) Get(ctx context.Context, id uuid.UUID) (store.User, error) {
+	if s.get == nil {
+		panic("unexpected Get")
+	}
+	return s.get(ctx, id)
+}
+
+// newUnitServer builds a test HTTP server wired to the given stub store.
+// Claims travel through the real jwtauth.Middleware, so each test calls
+// a.token(...) to mint a valid signed JWT for the role(s) under test.
+func newUnitServer(t *testing.T, st server.Store) (*httptest.Server, authEnv) {
+	t.Helper()
+	a := newAuthEnv(t)
+	h := server.New(st)
+	router := server.NewRouter(h, a.v, slog.Default(), func(context.Context) error { return nil })
+	srv := httptest.NewServer(router)
+	t.Cleanup(srv.Close)
+	return srv, a
+}
+
+// problemResponse decodes a problem+json body and asserts content-type.
+type problemResponse struct {
+	Status int    `json:"status"`
+	Code   string `json:"code"`
+}
+
+func wantUnitProblem(t *testing.T, resp *http.Response, wantStatus int, wantCode string) {
+	t.Helper()
+	if resp.StatusCode != wantStatus {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, wantStatus)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/problem+json" {
+		t.Fatalf("content-type = %q, want application/problem+json", ct)
+	}
+	var p problemResponse
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+		t.Fatalf("decode problem body: %v", err)
+	}
+	if p.Code != wantCode {
+		t.Fatalf("problem code = %q, want %q", p.Code, wantCode)
+	}
+}
+
+// errStubUser is a generic non-sentinel error used to drive the generic 500
+// branches, distinct from store.ErrNotFound which the handlers special-case.
+var errStubUser = errors.New("stub store failure")
+
+// --- UpsertUser unit branch matrix ---
+
+func TestUnitUpsert_MissingServiceRole_Forbidden(t *testing.T) {
+	// A token with the "user" role (not "service") must get 403 forbidden.
+	srv, a := newUnitServer(t, &stubStore{})
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
+		a.token(t, "u1", "user"),
+		map[string]string{"email": "a@example.com", "display_name": "Alice"})
+	wantUnitProblem(t, resp, http.StatusForbidden, "forbidden")
+}
+
+func TestUnitUpsert_MalformedJSON_BadRequest(t *testing.T) {
+	// A service-role token with a syntactically invalid body must get 400.
+	srv, a := newUnitServer(t, &stubStore{})
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
+		a.token(t, "svc", "service"), "{not json}")
+	wantUnitProblem(t, resp, http.StatusBadRequest, "invalid_body")
+}
+
+func TestUnitUpsert_EmptyEmail_BadRequest(t *testing.T) {
+	// Missing email (empty string) must get 400 before the store is called.
+	srv, a := newUnitServer(t, &stubStore{})
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
+		a.token(t, "svc", "service"),
+		map[string]string{"email": "", "display_name": "Alice"})
+	wantUnitProblem(t, resp, http.StatusBadRequest, "invalid_body")
+}
+
+func TestUnitUpsert_EmptyDisplayName_BadRequest(t *testing.T) {
+	// Missing display_name must get 400 before the store is called.
+	srv, a := newUnitServer(t, &stubStore{})
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
+		a.token(t, "svc", "service"),
+		map[string]string{"email": "a@example.com", "display_name": ""})
+	wantUnitProblem(t, resp, http.StatusBadRequest, "invalid_body")
+}
+
+func TestUnitUpsert_StoreError_InternalServerError(t *testing.T) {
+	// When the store returns a non-nil error, the handler must return 500.
+	st := &stubStore{
+		upsert: func(context.Context, string, string, *string) (store.User, error) {
+			return store.User{}, errStubUser
+		},
+	}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
+		a.token(t, "svc", "service"),
+		map[string]string{"email": "a@example.com", "display_name": "Alice"})
+	wantUnitProblem(t, resp, http.StatusInternalServerError, "internal")
+}
+
+func TestUnitUpsert_Success_ReturnsAPIUser(t *testing.T) {
+	// Happy path: service role + valid body + successful store -> 200 with
+	// the full api.User shape (id, email, display_name, roles).
+	wantID := uuid.New()
+	st := &stubStore{
+		upsert: func(_ context.Context, email, displayName string, _ *string) (store.User, error) {
+			return store.User{
+				ID: wantID, Email: email, DisplayName: displayName,
+				Roles: []string{"user"}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+			}, nil
+		},
+	}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
+		a.token(t, "svc", "service"),
+		map[string]string{"email": "a@example.com", "display_name": "Alice"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		ID          string   `json:"id"`
+		Email       string   `json:"email"`
+		DisplayName string   `json:"display_name"`
+		Roles       []string `json:"roles"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.ID != wantID.String() {
+		t.Errorf("id = %q, want %q", body.ID, wantID.String())
+	}
+	if body.Email != "a@example.com" {
+		t.Errorf("email = %q", body.Email)
+	}
+	if body.DisplayName != "Alice" {
+		t.Errorf("display_name = %q", body.DisplayName)
+	}
+	if len(body.Roles) != 1 || body.Roles[0] != "user" {
+		t.Errorf("roles = %v, want [user]", body.Roles)
+	}
+}
+
+// --- GetUser unit branch matrix ---
+
+func TestUnitGetUser_NotSubjectNotServiceNotAdmin_Forbidden(t *testing.T) {
+	// A "user"-role caller requesting a different user's profile gets 403.
+	targetID := uuid.New()
+	srv, a := newUnitServer(t, &stubStore{})
+	resp := do(t, "GET", srv.URL+"/users/"+targetID.String(),
+		a.token(t, "different-user-id", "user"), nil)
+	wantUnitProblem(t, resp, http.StatusForbidden, "forbidden")
+}
+
+func TestUnitGetUser_NotFound_404(t *testing.T) {
+	// When the store returns store.ErrNotFound, the handler must return 404
+	// with the "user_not_found" problem code.
+	targetID := uuid.New()
+	st := &stubStore{
+		get: func(_ context.Context, _ uuid.UUID) (store.User, error) {
+			return store.User{}, store.ErrNotFound
+		},
+	}
+	srv, a := newUnitServer(t, st)
+	// Service role bypasses the authz guard.
+	resp := do(t, "GET", srv.URL+"/users/"+targetID.String(),
+		a.token(t, "svc", "service"), nil)
+	wantUnitProblem(t, resp, http.StatusNotFound, "user_not_found")
+}
+
+func TestUnitGetUser_StoreError_InternalServerError(t *testing.T) {
+	// When the store returns a generic (non-sentinel) error, the handler
+	// must return 500 with the "internal" problem code.
+	targetID := uuid.New()
+	st := &stubStore{
+		get: func(_ context.Context, _ uuid.UUID) (store.User, error) {
+			return store.User{}, errStubUser
+		},
+	}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "GET", srv.URL+"/users/"+targetID.String(),
+		a.token(t, "svc", "service"), nil)
+	wantUnitProblem(t, resp, http.StatusInternalServerError, "internal")
+}
+
+func TestUnitGetUser_SelfRead_OK(t *testing.T) {
+	// A user reading their own profile (sub == userId) must get 200.
+	userID := uuid.New()
+	st := &stubStore{
+		get: func(_ context.Context, id uuid.UUID) (store.User, error) {
+			return store.User{
+				ID: id, Email: "self@example.com", DisplayName: "Self",
+				Roles: []string{"user"}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+			}, nil
+		},
+	}
+	srv, a := newUnitServer(t, st)
+	// Token subject matches the requested userId -- the authz guard passes.
+	resp := do(t, "GET", srv.URL+"/users/"+userID.String(),
+		a.token(t, userID.String(), "user"), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("self read: status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.ID != userID.String() {
+		t.Errorf("id = %q, want %q", body.ID, userID.String())
+	}
+}
+
+func TestUnitGetUser_ServiceRole_CanReadAny(t *testing.T) {
+	// A service-role token may read any user (not just itself).
+	targetID := uuid.New()
+	st := &stubStore{
+		get: func(_ context.Context, id uuid.UUID) (store.User, error) {
+			return store.User{
+				ID: id, Email: "other@example.com", DisplayName: "Other",
+				Roles: []string{"user"}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+			}, nil
+		},
+	}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "GET", srv.URL+"/users/"+targetID.String(),
+		a.token(t, "svc-identity", "service"), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("service read: status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestUnitGetUser_AdminRole_CanReadAny(t *testing.T) {
+	// An admin-role token may read any user (not just itself).
+	targetID := uuid.New()
+	st := &stubStore{
+		get: func(_ context.Context, id uuid.UUID) (store.User, error) {
+			return store.User{
+				ID: id, Email: "target@example.com", DisplayName: "Target",
+				Roles: []string{"user"}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+			}, nil
+		},
+	}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "GET", srv.URL+"/users/"+targetID.String(),
+		a.token(t, "admin-identity", "admin"), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("admin read: status = %d, want 200", resp.StatusCode)
 	}
 }

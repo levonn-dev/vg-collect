@@ -1,5 +1,3 @@
-// Package server maps HTTP (generated ServerInterface) onto the store,
-// enforcing per-route authorization from JWT claims.
 package server
 
 import (
@@ -9,15 +7,10 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
 	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
 	"github.com/levonn-dev/vg-collect/services/user/internal/gen/api"
 	"github.com/levonn-dev/vg-collect/services/user/internal/store"
 )
-
-type Handlers struct{ store *store.Store }
-
-func New(st *store.Store) *Handlers { return &Handlers{store: st} }
 
 var _ api.ServerInterface = (*Handlers)(nil)
 
@@ -77,16 +70,4 @@ func toAPI(u store.User) api.User {
 		CreatedAt:   u.CreatedAt,
 		UpdatedAt:   u.UpdatedAt,
 	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func problem(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
-	httpkit.WriteProblem(w, r, httpkit.Problem{
-		Status: status, Title: http.StatusText(status), Code: code, Detail: detail,
-	})
 }
