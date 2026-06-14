@@ -1,6 +1,3 @@
-// Package server maps HTTP (generated ServerInterface) onto the oidc
-// adapters, token minter, store, and user-service client. It owns the
-// login and token lifecycle orchestration.
 package server
 
 import (
@@ -24,23 +21,6 @@ import (
 // review, a fresh Twitch login) can take a while; 10 minutes follows
 // common practice for human-facing OAuth flows.
 const stateTTL = 10 * time.Minute
-
-type Handlers struct {
-	store      *store.Store
-	minter     *token.Minter
-	users      *userclient.Client
-	providers  map[string]oidc.Provider
-	devEnabled bool
-	refreshTTL time.Duration
-}
-
-func New(st *store.Store, m *token.Minter, users *userclient.Client,
-	providers map[string]oidc.Provider, devEnabled bool, refreshTTL time.Duration) *Handlers {
-	return &Handlers{
-		store: st, minter: m, users: users,
-		providers: providers, devEnabled: devEnabled, refreshTTL: refreshTTL,
-	}
-}
 
 var _ api.ServerInterface = (*Handlers)(nil)
 
@@ -183,18 +163,6 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 		return false
 	}
 	return true
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func problem(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
-	httpkit.WriteProblem(w, r, httpkit.Problem{
-		Status: status, Title: http.StatusText(status), Code: code, Detail: detail,
-	})
 }
 
 // RefreshToken rotates a refresh token. Ordering is deliberate: the
