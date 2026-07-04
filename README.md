@@ -37,6 +37,23 @@ add yours to `allow_k8s_contexts` in the Tiltfile if it's not listed.
 | `task build` | compile every module + the frontend bundle |
 | `task e2e` | Playwright login smoke against the running stack |
 | `task run` / `task down` | tilt up / down |
+| `task nuke` | full app-stack reset: tilt down + the vg-collect namespace (see Teardown) |
+
+## Teardown
+
+```bash
+task down                    # stop the dev stack; namespace, datastore PVCs, issued TLS secrets survive
+task nuke                    # app layer: tilt down + delete the vg-collect namespace (drops PVCs + TLS secrets)
+task bootstrap:cluster:down  # remove the platform: helm uninstalls + the vg-platform namespace
+```
+
+Reinstalling the platform mints a fresh dev CA, and cert-manager does not
+reissue previously issued certificates (they still match their Certificate
+specs), so TLS secrets from before a platform-only teardown keep chaining
+to the dead CA until their renewal window. For platform down/up cycles
+prefer `task nuke && task bootstrap:cluster:down`, which drops those secrets
+(and the datastore PVCs) with the vg-collect namespace; 
+`task bootstrap:cluster && task run` then brings everything back from scratch.
 
 ## Edge and ports
 

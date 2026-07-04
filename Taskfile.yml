@@ -52,6 +52,23 @@ tasks:
           -n vg-platform --wait --timeout 2m
       - kubectl get clusterissuer vg-ca -o name
 
+  bootstrap:cluster:down:
+    desc: 'Tear down the platform (both helm releases + the vg-platform namespace). The next bootstrap:cluster mints a NEW dev CA, so TLS secrets already issued in vg-collect keep chaining to the old one; for a full reset run `task nuke && task bootstrap:cluster:down`.'
+    cmds:
+      # helm uninstall (never a bare namespace delete): the releases own
+      # cluster-scoped objects (ClusterIssuers, cert-manager/ESO webhook
+      # configs, IngressClass, RBAC) that a namespace delete would strand,
+      # leaving webhooks pointing at dead services. Reverse install order.
+      - helm uninstall vg-platform-config -n vg-platform --ignore-not-found
+      - helm uninstall vg-platform -n vg-platform --ignore-not-found
+      # Survivors by design: cert-manager CRDs (helm.sh/resource-policy
+      # keep) and APISIX ingress CRDs (chart crds/ dir); the next
+      # bootstrap:cluster re-adopts them. ESO CRDs are plain templates, so
+      # their removal cascades to ExternalSecrets/ClusterSecretStores
+      # cluster-wide. The delete below waits for finalization, so an
+      # immediate bootstrap:cluster does not race a Terminating namespace.
+      - kubectl delete namespace vg-platform --ignore-not-found
+
   # -------------------------------- lint ---------------------------------
   #
   # golangci-lint v2 has formatters (gofmt + goimports) enabled, so `lint`
@@ -144,7 +161,8 @@ tasks:
   #
   # The dev stack runs under Tilt (see Tiltfile); `task run` is the
   # day-to-day entrypoint. `task bootstrap:cluster` installs the platform
-  # prerequisites once before the first run.
+  # prerequisites once before the first run. Teardown tiers: `down` (stop
+  # the stack), `nuke` (fresh start).
 
   run:
     desc: Start the full dev stack under Tilt (foreground; Ctrl-C to stop)
@@ -152,9 +170,19 @@ tasks:
       - tilt up
 
   down:
-    desc: Stop the Tilt-managed dev stack
+    desc: Stop the Tilt-managed dev stack (the vg-collect namespace, datastore PVCs, and issued TLS secrets survive)
     cmds:
       - tilt down
+
+  nuke:
+    desc: 'Full reset: tilt down + delete the vg-collect namespace (drops datastore PVCs + issued TLS secrets)'
+    cmds:
+      - task: down
+      # Tilt never deletes namespaces on `tilt down`; dropping vg-collect
+      # clears the datastore PVCs and the cert-manager-issued *-tls
+      # secrets, so a platform cycle (bootstrap:cluster:down, then
+      # bootstrap:cluster) cannot leave them chained to a replaced CA.
+      - kubectl delete namespace vg-collect --ignore-not-found
 
   e2e:
     desc: Browser smoke (Playwright) against the running stack
