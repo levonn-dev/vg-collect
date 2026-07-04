@@ -1,0 +1,27 @@
+meta {
+  name: resolve hardware (console)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{enrichment_url}}/products/resolve
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "type": "console",
+    "pc_product_id": 6001
+  }
+}
+
+docs {
+  Expect 200 with a console product carrying pricecharting metadata
+  (match_confidence 1.0).
+}

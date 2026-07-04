@@ -1,0 +1,30 @@
+meta {
+  name: recommendations score
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{enrichment_url}}/recommendations:score
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "library": [
+      { "igdb_game_id": 1001, "rating": 10 },
+      { "igdb_game_id": 1042 },
+      { "igdb_game_id": 1012, "status": "dropped" }
+    ],
+    "limit": 10
+  }
+}
+
+docs {
+  Expect 200 with scored recommendations excluding the owned games.
+}

@@ -1,0 +1,36 @@
+meta {
+  name: resolve game (deliberately unmatched fixture)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{enrichment_url}}/products/resolve
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "type": "game",
+    "igdb_game_id": 1018,
+    "platform_igdb_id": 19
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setEnvVar("unmatched_product_id", res.body.id);
+  }
+}
+
+docs {
+  Expect 200; on a FRESH catalog this fixture has no PriceCharting
+  counterpart, so pricecharting is null. NOTE: resolve is find-or-create
+  -- on a long-lived stack where an admin remap already corrected this
+  product, the stored (matched) record returns instead.
+}

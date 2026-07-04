@@ -1,0 +1,35 @@
+meta {
+  name: resolve game (find-or-create, auto-matched)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{enrichment_url}}/products/resolve
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "type": "game",
+    "igdb_game_id": 1011,
+    "platform_igdb_id": 19
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setEnvVar("product_id", res.body.id);
+  }
+}
+
+docs {
+  Expect 200; on a fresh catalog the fixture game auto-matches its
+  PriceCharting product (pc_product_id 5011, match_confidence >= 0.75,
+  verified false) and stores the product id into the product_id env var.
+}

@@ -1,0 +1,20 @@
+meta {
+  name: admin - trigger refresh walk (role admin)
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{enrichment_url}}/admin/refresh
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  Expect 202 with status started when the caller's JWT carries the admin
+  role (403 without it); a second call while a walk runs answers 409.
+}

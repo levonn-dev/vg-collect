@@ -9,6 +9,10 @@ styles of folder live here:
 - `auth/` and `user/` talk straight to the services (`auth_url` on
   localhost:8082, `user_url` on localhost:8081; both are Tilt
   port-forwards) using Bearer tokens.
+- `enrichment/` talks straight to the enrichment service
+  (`enrichment_url`, localhost:8084, also a Tilt port-forward) using
+  Bearer tokens, the same bootstrap as `auth/` and `user/`: run `auth /
+  dev token` first.
 
 ## Quick start
 
@@ -58,8 +62,41 @@ is a manual, visible step:
 
 Roles land in the JWT at the next login or refresh.
 
+Enrichment's two `admin -` requests need this same grant: run the
+`psql` insert above, then run `auth / dev token` again as `admin` (a
+fresh login is what puts the role in the JWT) before `admin - trigger
+refresh walk` and `admin - correct product mapping` will pass their
+role check. Before the grant, or with `alice`'s or `bob`'s token, both
+answer 403.
+
 This holds for both dev paths: `bff/`'s `dev login` and `auth/`'s `dev
 token` resolve the same fixture handles and never a real account.
+
+## Enrichment flows
+
+The `enrichment/` folder exercises the catalog and pricing surface
+directly against `enrichment_url` (localhost:8084). With the `local`
+environment selected, run `auth / dev token` once, then the folder in
+`seq` order:
+
+1. `search games` and `search hardware` query the fixture catalog and
+   need no product to exist yet.
+2. `resolve game (find-or-create, auto-matched)` and `resolve game
+   (deliberately unmatched fixture)` must run before `get product`,
+   `prices batch (matched + unmatched)`, and `admin - correct product
+   mapping`: the two resolve requests store `product_id` and
+   `unmatched_product_id` into the environment, and those three later
+   requests read them from there.
+3. `resolve hardware (console)` and `recommendations score` round out
+   the surface and have no ordering dependency beyond the initial
+   token.
+4. `admin - trigger refresh walk` and `admin - correct product mapping`
+   need the admin role grant described above.
+
+Every request in this folder works credential-less: stub mode serves
+search, resolve, pricing, and recommendations entirely from the fixture
+IGDB/PriceCharting catalogs baked into the service, so no real provider
+keys are needed to run the folder end to end.
 
 ## Testing as a real user
 

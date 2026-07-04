@@ -1,0 +1,20 @@
+meta {
+  name: search games
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{enrichment_url}}/search?type=game&q=zelda
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  Expect 200 with results for the query; stub mode serves the fixture
+  catalog, degraded=false.
+}

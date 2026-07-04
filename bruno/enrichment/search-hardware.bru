@@ -1,0 +1,19 @@
+meta {
+  name: search hardware
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{enrichment_url}}/search?type=hardware&q=nintendo 64
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  Expect 200 with only hardware entries (consoles/accessories).
+}

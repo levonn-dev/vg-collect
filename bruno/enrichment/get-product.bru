@@ -1,0 +1,19 @@
+meta {
+  name: get product
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{enrichment_url}}/products/{{product_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  Expect 200 with the full product document for the id resolved earlier.
+}

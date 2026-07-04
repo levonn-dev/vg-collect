@@ -1,7 +1,8 @@
 # vg-collect
 
 Video-game collection tracker with granular per-item detail: OIDC login,
-IGDB metadata enrichment, PriceCharting market pricing, full observability.
+IGDB metadata enrichment, PriceCharting market pricing, per-service
+Postgres/MongoDB/Valkey datastores, full observability.
 
 ## Prerequisites
 
@@ -51,6 +52,7 @@ the other services are reachable in dev only via Tilt port-forwards.
 | 8083 | bff, direct (bypasses the gateway; for debugging) |
 | 8082 | auth, direct (Bruno `auth/` Bearer flows) |
 | 8081 | user, direct (Bruno `user/` Bearer flows) |
+| 8084 | enrichment, direct (Bruno `enrichment/` Bearer flows) |
 | 5173 | Vite dev server (the manual `frontend-dev` Tilt resource; proxies `/api` to 8090) |
 
 ## Frontend
@@ -79,10 +81,13 @@ against AWS Secrets Manager in the documented production path.
 
 ## Status
 
-Foundations and the user service are complete. The user service API returns
-401 in-cluster until the auth service is ready (its JWKS endpoint doesn't exist
-yet); integration tests cover the API with a local JWKS. Bruno collections
-arrive with the auth service (they need dev-provider tokens to authenticate).
+Foundations, the user service, the auth service (OIDC + dev-provider login),
+and the bff/edge (APISIX gateway, session cookies) are complete. The
+enrichment service is complete too: catalog search and resolve against
+IGDB/PriceCharting with scored auto-matching, a daily pricing walk plus its
+CronJob, heuristic recommendations scoring, and credential-less stub-mode
+fixtures for local development. Still pending: the collection service and
+the rest of the frontend beyond login.
 
 ## License
 

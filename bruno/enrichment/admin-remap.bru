@@ -1,0 +1,25 @@
+meta {
+  name: admin - correct product mapping (role admin)
+  type: http
+  seq: 10
+}
+
+put {
+  url: {{enrichment_url}}/admin/products/{{unmatched_product_id}}/pricecharting
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "pc_product_id": 5017
+  }
+}
+
+docs {
+  Expect 200 with the remapped pricecharting metadata verified=true.
+}

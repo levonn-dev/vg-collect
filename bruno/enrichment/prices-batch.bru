@@ -1,0 +1,27 @@
+meta {
+  name: prices batch (matched + unmatched)
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{enrichment_url}}/products/prices:batch
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "product_ids": ["{{product_id}}", "{{unmatched_product_id}}"]
+  }
+}
+
+docs {
+  Expect 200 with a prices map: the matched product carries loose/cib/new
+  cents; the unmatched one carries unmatched=true (fresh catalog; see the
+  resolve-unmatched note about long-lived stacks).
+}
