@@ -8,6 +8,7 @@ replicas: 1
 env:
   authServiceUrl: http://auth:8080
   userServiceUrl: http://user:8080
+  enrichmentServiceUrl: http://enrichment:8080
   valkeyUrl: rediss://bff-valkey:6379/0
   # Browser-visible origins allowed to send mutating requests: the
   # gateway port-forward and the Vite dev server.

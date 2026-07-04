@@ -85,6 +85,81 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /api/search:
+    get:
+      operationId: searchCatalog
+      summary: Catalog discovery search (proxied to the enrichment service, uncached)
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema: { type: string, enum: [game, hardware] }
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Search results (possibly degraded)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchResults" }
+        "400":
+          description: Invalid parameters
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/products/resolve:
+    post:
+      operationId: resolveProduct
+      summary: Find-or-create the canonical product for a selection (proxied, uncached)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveRequest" }
+      responses:
+        "200":
+          description: The canonical product
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400":
+          description: Invalid body
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: The provider does not know the requested id
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/products/{productId}:
+    get:
+      operationId: getProduct
+      summary: Fetch a catalog product (proxied, uncached)
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Not found
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
 components:
   responses:
     Unauthenticated:
@@ -126,6 +201,125 @@ components:
         roles:
           type: array
           items: { type: string }
+    # The catalog schemas below mirror the enrichment service contract
+    # verbatim: these routes relay the upstream body without reshaping,
+    # so the browser types must describe exactly what enrichment emits.
+    PlatformRef:
+      type: object
+      required: [igdb_platform_id, name]
+      properties:
+        igdb_platform_id: { type: integer, format: int64 }
+        name: { type: string }
+    SearchResult:
+      description: >
+        Flat result with a type discriminator. Game results carry the
+        igdb_* fields; hardware results carry the pc_* fields plus the
+        PriceCharting category (Systems, Controllers, Accessories).
+      type: object
+      required: [type, name]
+      properties:
+        type: { type: string, enum: [game, hardware] }
+        name: { type: string }
+        igdb_game_id: { type: integer, format: int64 }
+        platforms:
+          type: array
+          items: { $ref: "#/components/schemas/PlatformRef" }
+        first_release_year: { type: integer }
+        cover_url: { type: string }
+        pc_product_id: { type: integer, format: int64 }
+        console_name: { type: string }
+        category: { type: string }
+    SearchResults:
+      type: object
+      required: [degraded, results]
+      properties:
+        degraded:
+          type: boolean
+          description: True when the provider was unreachable and the local catalog answered instead.
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/SearchResult" }
+    IgdbMeta:
+      description: Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
+      type: object
+      required: [game_id, name, genres, themes, franchises, similar_games, companies, fetched_at]
+      properties:
+        game_id: { type: integer, format: int64 }
+        name: { type: string }
+        cover_url: { type: string }
+        genres:
+          type: array
+          items: { type: string }
+        themes:
+          type: array
+          items: { type: string }
+        franchises:
+          type: array
+          items: { type: string }
+        similar_games:
+          type: array
+          items: { type: integer, format: int64 }
+        companies:
+          type: array
+          items: { $ref: "#/components/schemas/CompanyCredit" }
+        first_release_year: { type: integer }
+        fetched_at: { type: string, format: date-time }
+    CompanyCredit:
+      type: object
+      required: [name, developer, publisher]
+      properties:
+        name: { type: string }
+        developer: { type: boolean }
+        publisher: { type: boolean }
+    PricechartingMeta:
+      description: >
+        The PriceCharting mapping and current prices; refreshed daily.
+        Absent from a product when no candidate cleared the match
+        confidence threshold (no guessing) and the mapping has not been
+        corrected by an admin.
+      type: object
+      required: [pc_product_id, pc_name, console_name, match_confidence, verified, as_of]
+      properties:
+        pc_product_id: { type: integer, format: int64 }
+        pc_name: { type: string }
+        console_name: { type: string }
+        match_confidence: { type: number, format: double }
+        verified: { type: boolean }
+        loose_cents: { type: integer, format: int64 }
+        cib_cents: { type: integer, format: int64 }
+        new_cents: { type: integer, format: int64 }
+        as_of: { type: string, format: date-time }
+    Product:
+      type: object
+      required: [id, type, name, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [game, console, accessory] }
+        name: { type: string }
+        platform: { $ref: "#/components/schemas/PlatformRef" }
+        region: { type: string }
+        edition: { type: string }
+        variant: { type: string }
+        igdb: { $ref: "#/components/schemas/IgdbMeta" }
+        pricecharting: { $ref: "#/components/schemas/PricechartingMeta" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ResolveRequest:
+      description: >
+        type game requires igdb_game_id + platform_igdb_id (the
+        platform must be one the game released on); console/accessory
+        require pc_product_id. region/edition/variant distinguish
+        physical variants and are part of the product identity.
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [game, console, accessory] }
+        igdb_game_id: { type: integer, format: int64 }
+        platform_igdb_id: { type: integer, format: int64 }
+        pc_product_id: { type: integer, format: int64 }
+        region: { type: string, maxLength: 32 }
+        edition: { type: string, maxLength: 128 }
+        variant: { type: string, maxLength: 128 }
     Problem:
       type: object
       required: [type, title, status]

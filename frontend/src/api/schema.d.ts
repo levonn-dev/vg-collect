@@ -89,6 +89,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Catalog discovery search (proxied to the enrichment service, uncached) */
+        get: operations["searchCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/products/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Find-or-create the canonical product for a selection (proxied, uncached) */
+        post: operations["resolveProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/products/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch a catalog product (proxied, uncached) */
+        get: operations["getProduct"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -105,6 +156,100 @@ export interface components {
             display_name: string;
             avatar_url?: string;
             roles: string[];
+        };
+        PlatformRef: {
+            /** Format: int64 */
+            igdb_platform_id: number;
+            name: string;
+        };
+        /** @description Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). */
+        SearchResult: {
+            /** @enum {string} */
+            type: "game" | "hardware";
+            name: string;
+            /** Format: int64 */
+            igdb_game_id?: number;
+            platforms?: components["schemas"]["PlatformRef"][];
+            first_release_year?: number;
+            cover_url?: string;
+            /** Format: int64 */
+            pc_product_id?: number;
+            console_name?: string;
+            category?: string;
+        };
+        SearchResults: {
+            /** @description True when the provider was unreachable and the local catalog answered instead. */
+            degraded: boolean;
+            results: components["schemas"]["SearchResult"][];
+        };
+        /** @description Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence. */
+        IgdbMeta: {
+            /** Format: int64 */
+            game_id: number;
+            name: string;
+            cover_url?: string;
+            genres: string[];
+            themes: string[];
+            franchises: string[];
+            similar_games: number[];
+            companies: components["schemas"]["CompanyCredit"][];
+            first_release_year?: number;
+            /** Format: date-time */
+            fetched_at: string;
+        };
+        CompanyCredit: {
+            name: string;
+            developer: boolean;
+            publisher: boolean;
+        };
+        /** @description The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin. */
+        PricechartingMeta: {
+            /** Format: int64 */
+            pc_product_id: number;
+            pc_name: string;
+            console_name: string;
+            /** Format: double */
+            match_confidence: number;
+            verified: boolean;
+            /** Format: int64 */
+            loose_cents?: number;
+            /** Format: int64 */
+            cib_cents?: number;
+            /** Format: int64 */
+            new_cents?: number;
+            /** Format: date-time */
+            as_of: string;
+        };
+        Product: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "game" | "console" | "accessory";
+            name: string;
+            platform?: components["schemas"]["PlatformRef"];
+            region?: string;
+            edition?: string;
+            variant?: string;
+            igdb?: components["schemas"]["IgdbMeta"];
+            pricecharting?: components["schemas"]["PricechartingMeta"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on); console/accessory require pc_product_id. region/edition/variant distinguish physical variants and are part of the product identity. */
+        ResolveRequest: {
+            /** @enum {string} */
+            type: "game" | "console" | "accessory";
+            /** Format: int64 */
+            igdb_game_id?: number;
+            /** Format: int64 */
+            platform_igdb_id?: number;
+            /** Format: int64 */
+            pc_product_id?: number;
+            region?: string;
+            edition?: string;
+            variant?: string;
         };
         Problem: {
             type: string;
@@ -266,6 +411,117 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    searchCatalog: {
+        parameters: {
+            query: {
+                type: "game" | "hardware";
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Search results (possibly degraded) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResults"];
+                };
+            };
+            /** @description Invalid parameters */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    resolveProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description The canonical product */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            /** @description Invalid body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description The provider does not know the requested id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Product */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
         };
     };
 }

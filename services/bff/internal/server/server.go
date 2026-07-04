@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
 )
@@ -46,6 +48,16 @@ type AuthAPI interface {
 // UserAPI is the user service surface (implemented by userclient).
 type UserAPI interface {
 	Get(ctx context.Context, id, bearer string) (userapi.User, error)
+}
+
+// EnrichmentAPI is the enrichment service surface (implemented by
+// enrichmentclient). Answers are verbatim relays: Result carries the
+// upstream status, content type, and body for the statuses the bff
+// serves as-is.
+type EnrichmentAPI interface {
+	Search(ctx context.Context, bearer, typ, q string) (enrichmentclient.Result, error)
+	Resolve(ctx context.Context, bearer string, body []byte) (enrichmentclient.Result, error)
+	Product(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error)
 }
 
 const (
@@ -81,6 +93,7 @@ type Handlers struct {
 	cache         SessionCache
 	auth          AuthAPI
 	users         UserAPI
+	enrichment    EnrichmentAPI
 	logger        *slog.Logger
 	accessTTL     time.Duration
 	refreshWindow time.Duration
@@ -96,7 +109,7 @@ type Handlers struct {
 
 // New builds a Handlers. The OTel meter is best-effort: a counter
 // registration failure is logged but does not prevent startup.
-func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, opts Options) *Handlers {
+func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, enrichment EnrichmentAPI, opts Options) *Handlers {
 	failOpen, err := otel.Meter("github.com/levonn-dev/vg-collect/services/bff").
 		Int64Counter("vg.bff.cache.fail_open",
 			metric.WithDescription("Valkey operations that failed and were failed open"))
@@ -106,7 +119,7 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 		opts.Logger.Error("fail-open counter unavailable", "err", err)
 	}
 	return &Handlers{
-		codec: codec, cache: cache, auth: auth, users: users,
+		codec: codec, cache: cache, auth: auth, users: users, enrichment: enrichment,
 		logger:        opts.Logger,
 		accessTTL:     opts.AccessTokenTTL,
 		refreshWindow: opts.RefreshWindow,

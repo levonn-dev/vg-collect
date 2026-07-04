@@ -8,10 +8,58 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// Defines values for ProductType.
+const (
+	ProductTypeAccessory ProductType = "accessory"
+	ProductTypeConsole   ProductType = "console"
+	ProductTypeGame      ProductType = "game"
+)
+
+// Defines values for ResolveRequestType.
+const (
+	ResolveRequestTypeAccessory ResolveRequestType = "accessory"
+	ResolveRequestTypeConsole   ResolveRequestType = "console"
+	ResolveRequestTypeGame      ResolveRequestType = "game"
+)
+
+// Defines values for SearchResultType.
+const (
+	SearchResultTypeGame     SearchResultType = "game"
+	SearchResultTypeHardware SearchResultType = "hardware"
+)
+
+// Defines values for SearchCatalogParamsType.
+const (
+	SearchCatalogParamsTypeGame     SearchCatalogParamsType = "game"
+	SearchCatalogParamsTypeHardware SearchCatalogParamsType = "hardware"
+)
+
+// CompanyCredit defines model for CompanyCredit.
+type CompanyCredit struct {
+	Developer bool   `json:"developer"`
+	Name      string `json:"name"`
+	Publisher bool   `json:"publisher"`
+}
+
+// IgdbMeta Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
+type IgdbMeta struct {
+	Companies        []CompanyCredit `json:"companies"`
+	CoverUrl         *string         `json:"cover_url,omitempty"`
+	FetchedAt        time.Time       `json:"fetched_at"`
+	FirstReleaseYear *int            `json:"first_release_year,omitempty"`
+	Franchises       []string        `json:"franchises"`
+	GameId           int64           `json:"game_id"`
+	Genres           []string        `json:"genres"`
+	Name             string          `json:"name"`
+	SimilarGames     []int64         `json:"similar_games"`
+	Themes           []string        `json:"themes"`
+}
 
 // Me Browser-facing projection of the user service's User. Timestamps are intentionally omitted; add fields only when the SPA has a concrete use for them.
 type Me struct {
@@ -20,6 +68,25 @@ type Me struct {
 	Email       string             `json:"email"`
 	Id          openapi_types.UUID `json:"id"`
 	Roles       []string           `json:"roles"`
+}
+
+// PlatformRef defines model for PlatformRef.
+type PlatformRef struct {
+	IgdbPlatformId int64  `json:"igdb_platform_id"`
+	Name           string `json:"name"`
+}
+
+// PricechartingMeta The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
+type PricechartingMeta struct {
+	AsOf            time.Time `json:"as_of"`
+	CibCents        *int64    `json:"cib_cents,omitempty"`
+	ConsoleName     string    `json:"console_name"`
+	LooseCents      *int64    `json:"loose_cents,omitempty"`
+	MatchConfidence float64   `json:"match_confidence"`
+	NewCents        *int64    `json:"new_cents,omitempty"`
+	PcName          string    `json:"pc_name"`
+	PcProductId     int64     `json:"pc_product_id"`
+	Verified        bool      `json:"verified"`
 }
 
 // Problem defines model for Problem.
@@ -32,10 +99,69 @@ type Problem struct {
 	Type     string  `json:"type"`
 }
 
+// Product defines model for Product.
+type Product struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Edition   *string            `json:"edition,omitempty"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// Igdb Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
+	Igdb     *IgdbMeta    `json:"igdb,omitempty"`
+	Name     string       `json:"name"`
+	Platform *PlatformRef `json:"platform,omitempty"`
+
+	// Pricecharting The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
+	Pricecharting *PricechartingMeta `json:"pricecharting,omitempty"`
+	Region        *string            `json:"region,omitempty"`
+	Type          ProductType        `json:"type"`
+	UpdatedAt     time.Time          `json:"updated_at"`
+	Variant       *string            `json:"variant,omitempty"`
+}
+
+// ProductType defines model for Product.Type.
+type ProductType string
+
 // Providers defines model for Providers.
 type Providers struct {
 	// Providers Subset of: google, twitch, dev
 	Providers []string `json:"providers"`
+}
+
+// ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on); console/accessory require pc_product_id. region/edition/variant distinguish physical variants and are part of the product identity.
+type ResolveRequest struct {
+	Edition        *string            `json:"edition,omitempty"`
+	IgdbGameId     *int64             `json:"igdb_game_id,omitempty"`
+	PcProductId    *int64             `json:"pc_product_id,omitempty"`
+	PlatformIgdbId *int64             `json:"platform_igdb_id,omitempty"`
+	Region         *string            `json:"region,omitempty"`
+	Type           ResolveRequestType `json:"type"`
+	Variant        *string            `json:"variant,omitempty"`
+}
+
+// ResolveRequestType defines model for ResolveRequest.Type.
+type ResolveRequestType string
+
+// SearchResult Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories).
+type SearchResult struct {
+	Category         *string          `json:"category,omitempty"`
+	ConsoleName      *string          `json:"console_name,omitempty"`
+	CoverUrl         *string          `json:"cover_url,omitempty"`
+	FirstReleaseYear *int             `json:"first_release_year,omitempty"`
+	IgdbGameId       *int64           `json:"igdb_game_id,omitempty"`
+	Name             string           `json:"name"`
+	PcProductId      *int64           `json:"pc_product_id,omitempty"`
+	Platforms        *[]PlatformRef   `json:"platforms,omitempty"`
+	Type             SearchResultType `json:"type"`
+}
+
+// SearchResultType defines model for SearchResult.Type.
+type SearchResultType string
+
+// SearchResults defines model for SearchResults.
+type SearchResults struct {
+	// Degraded True when the provider was unreachable and the local catalog answered instead.
+	Degraded bool           `json:"degraded"`
+	Results  []SearchResult `json:"results"`
 }
 
 // OriginForbidden defines model for OriginForbidden.
@@ -62,6 +188,18 @@ type LoginParams struct {
 	User *string `form:"user,omitempty" json:"user,omitempty"`
 }
 
+// SearchCatalogParams defines parameters for SearchCatalog.
+type SearchCatalogParams struct {
+	Type SearchCatalogParamsType `form:"type" json:"type"`
+	Q    string                  `form:"q" json:"q"`
+}
+
+// SearchCatalogParamsType defines parameters for SearchCatalog.
+type SearchCatalogParamsType string
+
+// ResolveProductJSONRequestBody defines body for ResolveProduct for application/json ContentType.
+type ResolveProductJSONRequestBody = ResolveRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// The provider redirect URI; completes login and seals the session cookie
@@ -79,6 +217,15 @@ type ServerInterface interface {
 	// The signed-in user's profile (composed from the user service; briefly cached)
 	// (GET /api/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
+	// Find-or-create the canonical product for a selection (proxied, uncached)
+	// (POST /api/products/resolve)
+	ResolveProduct(w http.ResponseWriter, r *http.Request)
+	// Fetch a catalog product (proxied, uncached)
+	// (GET /api/products/{productId})
+	GetProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
+	// Catalog discovery search (proxied to the enrichment service, uncached)
+	// (GET /api/search)
+	SearchCatalog(w http.ResponseWriter, r *http.Request, params SearchCatalogParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -200,6 +347,94 @@ func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResolveProduct operation middleware
+func (siw *ServerInterfaceWrapper) ResolveProduct(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResolveProduct(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProduct operation middleware
+func (siw *ServerInterfaceWrapper) GetProduct(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "productId" -------------
+	var productId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "productId", r.PathValue("productId"), &productId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "productId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProduct(w, r, productId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchCatalog operation middleware
+func (siw *ServerInterfaceWrapper) SearchCatalog(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchCatalogParams
+
+	// ------------- Required query parameter "type" -------------
+
+	if paramValue := r.URL.Query().Get("type"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "type", r.URL.Query(), &params.Type)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		return
+	}
+
+	// ------------- Required query parameter "q" -------------
+
+	if paramValue := r.URL.Query().Get("q"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "q", r.URL.Query(), &params.Q)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchCatalog(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -334,6 +569,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/providers", wrapper.ListProviders)
 	m.HandleFunc("GET "+options.BaseURL+"/api/me", wrapper.GetMe)
+	m.HandleFunc("POST "+options.BaseURL+"/api/products/resolve", wrapper.ResolveProduct)
+	m.HandleFunc("GET "+options.BaseURL+"/api/products/{productId}", wrapper.GetProduct)
+	m.HandleFunc("GET "+options.BaseURL+"/api/search", wrapper.SearchCatalog)
 
 	return m
 }

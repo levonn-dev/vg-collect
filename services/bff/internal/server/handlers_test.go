@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/api"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
@@ -79,11 +80,81 @@ func (f *userStub) Get(context.Context, string, string) (userapi.User, error) {
 	return f.user, nil
 }
 
+// stubEnrichment implements server.EnrichmentAPI via function fields.
+type stubEnrichment struct {
+	search  func(ctx context.Context, bearer, typ, q string) (enrichmentclient.Result, error)
+	resolve func(ctx context.Context, bearer string, body []byte) (enrichmentclient.Result, error)
+	product func(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error)
+}
+
+var _ EnrichmentAPI = (*stubEnrichment)(nil)
+
+func (s *stubEnrichment) Search(ctx context.Context, bearer, typ, q string) (enrichmentclient.Result, error) {
+	if s.search == nil {
+		panic("unexpected Search")
+	}
+	return s.search(ctx, bearer, typ, q)
+}
+
+func (s *stubEnrichment) Resolve(ctx context.Context, bearer string, body []byte) (enrichmentclient.Result, error) {
+	if s.resolve == nil {
+		panic("unexpected Resolve")
+	}
+	return s.resolve(ctx, bearer, body)
+}
+
+func (s *stubEnrichment) Product(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error) {
+	if s.product == nil {
+		panic("unexpected Product")
+	}
+	return s.product(ctx, bearer, id)
+}
+
 func testLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
 func newRouterFor(t *testing.T, h *Handlers) http.Handler {
 	t.Helper()
 	return NewRouter(h, nil, testLogger())
+}
+
+// testEnv bundles the session cookie and the raw access token it seals,
+// so a pass-through test can both drive an authenticated request and
+// assert the exact bearer that must ride the proxied call.
+type testEnv struct {
+	cookie             *http.Cookie
+	sessionAccessToken string
+}
+
+// newTestHandlersWithEnrichment builds Handlers wired to enrich with a
+// fresh (never-refreshing) session ready to drive the pass-through
+// routes.
+func newTestHandlersWithEnrichment(t *testing.T, enrich *stubEnrichment) (*Handlers, *testEnv) {
+	t.Helper()
+	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h.enrichment = enrich
+	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
+	return h, &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
+}
+
+// doAuthed drives method/path through h's router carrying env's sealed
+// session cookie.
+func doAuthed(t *testing.T, h *Handlers, env *testEnv, method, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := httptest.NewRequest(method, path, nil)
+	r.AddCookie(env.cookie)
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, r)
+	return rec
+}
+
+// doUnauthed drives method/path through h's router with no session
+// cookie at all: the guard must answer before any handler runs.
+func doUnauthed(t *testing.T, h *Handlers, env *testEnv, method, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	_ = env
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(method, path, nil))
+	return rec
 }
 
 func TestLoginProviderRedirects(t *testing.T) {
@@ -396,6 +467,62 @@ func TestHealthAndStaticPlaceholder(t *testing.T) {
 		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != want {
 			t.Errorf("%s: code = %d, want %d", path, rec.Code, want)
+		}
+	}
+}
+
+func TestUnitSearchPassThrough_RelaysAndForwardsBearer(t *testing.T) {
+	var gotBearer string
+	enrich := &stubEnrichment{search: func(_ context.Context, bearer, typ, q string) (enrichmentclient.Result, error) {
+		gotBearer = bearer
+		if typ != "game" || q != "zelda" {
+			t.Fatalf("params: %s %s", typ, q)
+		}
+		return enrichmentclient.Result{Status: 200, ContentType: "application/json", Body: []byte(`{"degraded":false,"results":[]}`)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/search?type=game&q=zelda")
+	if rec.Code != 200 || rec.Body.String() != `{"degraded":false,"results":[]}` {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer == "" || gotBearer != env.sessionAccessToken {
+		t.Fatalf("the session's access token must ride the proxied call, got %q", gotBearer)
+	}
+}
+
+func TestUnitSearchPassThrough_UpstreamFailureIs502(t *testing.T) {
+	enrich := &stubEnrichment{search: func(context.Context, string, string, string) (enrichmentclient.Result, error) {
+		return enrichmentclient.Result{}, enrichmentclient.ErrUpstream
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/search?type=game&q=zelda")
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("upstream failure: %d", rec.Code)
+	}
+}
+
+func TestUnitProductPassThrough_RelaysProblemBody(t *testing.T) {
+	enrich := &stubEnrichment{product: func(context.Context, string, uuid.UUID) (enrichmentclient.Result, error) {
+		return enrichmentclient.Result{Status: 404, ContentType: "application/problem+json",
+			Body: []byte(`{"type":"about:blank","title":"Not Found","status":404,"code":"product_not_found"}`)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/products/11111111-1111-1111-1111-111111111111")
+	if rec.Code != 404 || rec.Header().Get("Content-Type") != "application/problem+json" {
+		t.Fatalf("problem relay: %d %s", rec.Code, rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestUnitPassThroughs_RequireSession(t *testing.T) {
+	h, env := newTestHandlersWithEnrichment(t, &stubEnrichment{})
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/search?type=game&q=zelda"},
+		{http.MethodPost, "/api/products/resolve"},
+		{http.MethodGet, "/api/products/11111111-1111-1111-1111-111111111111"},
+	} {
+		rec := doUnauthed(t, h, env, tc.method, tc.path)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s without a session: %d", tc.method, tc.path, rec.Code)
 		}
 	}
 }

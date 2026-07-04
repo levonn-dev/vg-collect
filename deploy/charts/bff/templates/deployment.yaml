@@ -36,6 +36,8 @@ spec:
               value: {{ .Values.env.authServiceUrl | quote }}
             - name: USER_SERVICE_URL
               value: {{ .Values.env.userServiceUrl | quote }}
+            - name: ENRICHMENT_SERVICE_URL
+              value: {{ .Values.env.enrichmentServiceUrl | quote }}
             - name: VALKEY_URL
               value: {{ .Values.env.valkeyUrl | quote }}
             {{- if .Values.valkey.enabled }}

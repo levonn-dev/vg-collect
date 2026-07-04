@@ -3,10 +3,14 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
 	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/api"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
@@ -167,6 +171,71 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 		h.failOpenEvent(r.Context(), "me_put", perr)
 	}
 	writeRawJSON(w, body)
+}
+
+// writeRelay serves an upstream answer verbatim (pass-throughs are
+// never cached at the bff: one staleness authority per data type).
+func writeRelay(w http.ResponseWriter, res enrichmentclient.Result) {
+	ct := res.ContentType
+	if ct == "" {
+		ct = "application/json"
+	}
+	w.Header().Set("Content-Type", ct)
+	w.WriteHeader(res.Status)
+	_, _ = w.Write(res.Body)
+}
+
+// SearchCatalog proxies catalog discovery search to the enrichment
+// service with the user's own token.
+func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params api.SearchCatalogParams) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.enrichment.Search(r.Context(), sess.AccessToken, string(params.Type), params.Q)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res)
+}
+
+// ResolveProduct proxies find-or-create; the body passes through
+// untouched (enrichment owns its validation).
+func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadRequest, "invalid_body", "unreadable body")
+		return
+	}
+	res, err := h.enrichment.Resolve(r.Context(), sess.AccessToken, body)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res)
+}
+
+// GetProduct proxies a catalog product read.
+func (h *Handlers) GetProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.enrichment.Product(r.Context(), sess.AccessToken, productId)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

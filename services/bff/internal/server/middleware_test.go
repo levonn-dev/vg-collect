@@ -20,6 +20,7 @@ import (
 	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/cache"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
@@ -171,7 +172,7 @@ func newTestHandlers(t *testing.T, c SessionCache, a AuthAPI) *Handlers {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := New(codec, c, a, stubUsers{}, Options{
+	h := New(codec, c, a, stubUsers{}, &stubEnrichment{}, Options{
 		AccessTokenTTL: 5 * time.Minute,
 		RefreshWindow:  30 * time.Second,
 		MeCacheTTL:     45 * time.Second,
@@ -429,11 +430,49 @@ func (f *stubUserService) get(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+// stubEnrichmentService answers GET /search with a canned SearchResults
+// body, recording every call's Authorization header and a running
+// count: the never-cached-at-the-bff proof needs an exact hit count.
+type stubEnrichmentService struct {
+	srv *httptest.Server
+
+	mu      sync.Mutex
+	calls   int
+	gotAuth []string
+}
+
+func newStubEnrichmentService(t *testing.T) *stubEnrichmentService {
+	t.Helper()
+	f := &stubEnrichmentService{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /search", f.search)
+	f.srv = httptest.NewServer(mux)
+	t.Cleanup(f.srv.Close)
+	return f
+}
+
+func (f *stubEnrichmentService) search(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	f.calls++
+	f.gotAuth = append(f.gotAuth, r.Header.Get("Authorization"))
+	f.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"degraded":false,"results":[{"type":"game","name":"Chrono Trigger"}]}`))
+}
+
+func (f *stubEnrichmentService) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
+}
+
 type stack struct {
 	baseURL string
 	codec   *session.Codec
 	auth    *stubAuthService
 	users   *stubUserService
+	enrich  *stubEnrichmentService
 	client  *http.Client
 }
 
@@ -473,12 +512,17 @@ func newStack(t *testing.T) *stack {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fe := newStubEnrichmentService(t)
+	enrichClient, err := enrichmentclient.New(fe.srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	codec, err := session.NewCodec(testCookieKey, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := New(codec, c, authClient, userClient, Options{
+	h := New(codec, c, authClient, userClient, enrichClient, Options{
 		AccessTokenTTL: 5 * time.Minute,
 		RefreshWindow:  30 * time.Second,
 		MeCacheTTL:     45 * time.Second,
@@ -497,6 +541,7 @@ func newStack(t *testing.T) *stack {
 		codec:   codec,
 		auth:    fa,
 		users:   fu,
+		enrich:  fe,
 		client:  srv.Client(),
 	}
 }
@@ -550,6 +595,33 @@ func clearsCookie(resp *http.Response) bool {
 		}
 	}
 	return false
+}
+
+// searchResult is one /api/search round-trip's observable outcome.
+type searchResult struct {
+	status int
+	body   []byte
+}
+
+// search issues GET /api/search?type=&q= through the real server
+// carrying cookie.
+func (s *stack) search(t *testing.T, cookie *http.Cookie, typ, q string) searchResult {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, s.baseURL+"/api/search?type="+typ+"&q="+q, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(cookie)
+	resp, err := s.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return searchResult{status: resp.StatusCode, body: body}
 }
 
 // ---- tests ----
@@ -1047,5 +1119,35 @@ func TestReuseDenylistsAndRejects(t *testing.T) {
 	}
 	if got := s.auth.refreshCalls.Load() - before; got != 0 {
 		t.Fatalf("step B refreshed %d times; the real-Valkey denylist must reject before any refresh", got)
+	}
+}
+
+// TestSearchPassThroughReachesEnrichmentWithBearerNeverCached drives the
+// cookie-authenticated search route through the real server and the
+// real enrichmentclient (over real HTTP) against a stub enrichment
+// service, proving the session's own bearer rides the proxied call and
+// that the route is never cached at the bff: two identical calls must
+// reach the upstream twice, not once.
+func TestSearchPassThroughReachesEnrichmentWithBearerNeverCached(t *testing.T) {
+	s := newStack(t)
+	const sub = "55555555-5555-5555-5555-555555555555"
+	access := mintAccess(t, sub, "jA", time.Now().Add(5*time.Minute)) // fresh: no refresh
+	cookie := s.cookieFor(t, access, "refresh-1")
+
+	r1 := s.search(t, cookie, "game", "chrono")
+	if r1.status != http.StatusOK || !strings.Contains(string(r1.body), "Chrono Trigger") {
+		t.Fatalf("first call: status=%d body=%s", r1.status, r1.body)
+	}
+
+	r2 := s.search(t, cookie, "game", "chrono")
+	if r2.status != http.StatusOK {
+		t.Fatalf("second call: status = %d body=%s", r2.status, r2.body)
+	}
+
+	if got := s.enrich.callCount(); got != 2 {
+		t.Fatalf("enrichment was hit %d times; two identical calls must never be served from a bff cache (single-source pass-through)", got)
+	}
+	if len(s.enrich.gotAuth) != 2 || s.enrich.gotAuth[0] != "Bearer "+access || s.enrich.gotAuth[1] != "Bearer "+access {
+		t.Fatalf("bearer forwarded to enrichment = %v, want the session's own token on both calls", s.enrich.gotAuth)
 	}
 }

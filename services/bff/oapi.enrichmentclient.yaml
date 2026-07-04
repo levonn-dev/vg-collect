@@ -1,0 +1,5 @@
+package: enrichapi
+generate:
+  models: true
+  client: true
+output: internal/gen/enrichapi/client.gen.go

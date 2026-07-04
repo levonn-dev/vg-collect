@@ -20,6 +20,7 @@ import (
 	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/cache"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/config"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/server"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/static"
@@ -29,9 +30,10 @@ import (
 // The server package defines its dependency surfaces; prove the real
 // implementations satisfy them.
 var (
-	_ server.SessionCache = (*cache.Cache)(nil)
-	_ server.AuthAPI      = (*authclient.Client)(nil)
-	_ server.UserAPI      = (*userclient.Client)(nil)
+	_ server.SessionCache  = (*cache.Cache)(nil)
+	_ server.AuthAPI       = (*authclient.Client)(nil)
+	_ server.UserAPI       = (*userclient.Client)(nil)
+	_ server.EnrichmentAPI = (*enrichmentclient.Client)(nil)
 )
 
 func main() {
@@ -81,8 +83,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	enrichment, err := enrichmentclient.New(cfg.EnrichmentServiceURL)
+	if err != nil {
+		return err
+	}
 
-	h := server.New(codec, cache.New(rdb), auth, users, server.Options{
+	h := server.New(codec, cache.New(rdb), auth, users, enrichment, server.Options{
 		AccessTokenTTL: cfg.AccessTokenTTL,
 		RefreshWindow:  cfg.RefreshWindow,
 		MeCacheTTL:     cfg.MeCacheTTL,

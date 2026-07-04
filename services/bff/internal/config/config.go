@@ -23,8 +23,9 @@ type Config struct {
 	// the Vite dev server origin in dev).
 	PublicOrigins []string `env:"PUBLIC_ORIGINS,required" envSeparator:","`
 
-	AuthServiceURL string `env:"AUTH_SERVICE_URL,required"`
-	UserServiceURL string `env:"USER_SERVICE_URL,required"`
+	AuthServiceURL       string `env:"AUTH_SERVICE_URL,required"`
+	UserServiceURL       string `env:"USER_SERVICE_URL,required"`
+	EnrichmentServiceURL string `env:"ENRICHMENT_SERVICE_URL,required"`
 
 	ValkeyURL string `env:"VALKEY_URL,required"`
 	// CA bundle for rediss:// against the in-cluster CA-issued cert.
