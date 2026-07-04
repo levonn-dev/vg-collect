@@ -1,0 +1,19 @@
+version: "3"
+
+tasks:
+
+  default:
+    desc: List available tasks (run with no args)
+    silent: true
+    cmds:
+      - task --list
+
+  gen:
+    desc: Regenerate server stubs from api/enrichment.yaml
+    cmds:
+      - go tool oapi-codegen -config oapi.server.yaml ../../api/enrichment.yaml
+
+  db:migrate:
+    desc: Run migrations against MONGO_URL/MONGO_DB
+    cmds:
+      - go run ./cmd/enrichment migrate

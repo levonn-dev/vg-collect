@@ -1,0 +1,440 @@
+openapi: 3.0.3
+info:
+  title: vg-collect enrichment service
+  version: 0.1.0
+  description: >
+    Cluster-internal catalog and pricing service. All third-party data
+    (IGDB metadata, PriceCharting prices) is quarantined behind this
+    API; no other service talks to those providers. Every operation
+    requires a Bearer access JWT validated against the auth service's
+    JWKS; /admin/* operations additionally require the admin role.
+    The daily price-refresh trigger used by the in-cluster CronJob is
+    deliberately outside this contract (POST /internal/refresh): the
+    CronJob has no JWT source, so that endpoint authenticates a static
+    internal-caller token (X-Internal-Token header) instead, with the
+    NetworkPolicy as the outer layer.
+security:
+  - bearerAuth: []
+paths:
+  /search:
+    get:
+      operationId: searchCatalog
+      summary: Discovery search (game metadata via IGDB, hardware via PriceCharting)
+      description: >
+        Results come from a 24h per-query Valkey cache in front of the
+        provider, never from the local catalog first (it is incomplete
+        by construction). When the provider is down and the cache is
+        cold, the local catalog answers a name match and the response
+        is flagged degraded.
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema: { type: string, enum: [game, hardware] }
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Search results (possibly degraded)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchResults" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /products/resolve:
+    post:
+      operationId: resolveProduct
+      summary: Find-or-create the canonical product for a search selection
+      description: >
+        Idempotent: an existing product with the same identity (type,
+        provider id, platform, region, edition, variant) is returned
+        as-is. Creating a game product pulls the full IGDB payload into
+        igdb_raw, projects it onto the product, and runs the scored
+        PriceCharting auto-match (below the confidence threshold the
+        product is stored unmatched rather than guessed). Creating a
+        hardware product fetches the PriceCharting product and borrows
+        IGDB platform metadata where a console mapping exists.
+        Errors: 404 code unknown_game (IGDB id not found) or
+        unknown_pc_product; 502 code upstream_unavailable when the
+        needed provider cannot be reached.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveRequest" }
+      responses:
+        "200":
+          description: The canonical product (found or created)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Provider does not know the requested id (code unknown_game or unknown_pc_product)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /products/{productId}:
+    get:
+      operationId: getProduct
+      summary: Fetch a product (read-through with per-type staleness)
+      description: >
+        Valkey (5m) in front of Mongo; an IGDB projection older than 30
+        days is refetched inline best-effort (stale data is served when
+        the provider is down). Prices refresh on the daily cadence
+        only, never per-read.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Not found (code product_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /products/prices:batch:
+    post:
+      operationId: batchPrices
+      summary: Current prices for a set of products (dashboard composition)
+      description: >
+        Reads straight from the catalog (the daily refresh keeps it
+        current). Unknown product ids are absent from the response map;
+        known-but-unmatched products appear with unmatched true and no
+        price fields.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PricesBatchRequest" }
+      responses:
+        "200":
+          description: Prices keyed by product id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PricesBatchResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /recommendations:score:
+    post:
+      operationId: scoreRecommendations
+      summary: Score unowned games against a library summary (user-agnostic)
+      description: >
+        The caller supplies the library summary; this service stores no
+        user data. Candidates come from owned games' similar_games
+        edges (owner weights: dropped 0.5, rating >= 8 doubles to 2.0,
+        otherwise 1.0) plus a genre-overlap bonus, with a genre-profile
+        fallback when edges are sparse. Owned ids are excluded. Unknown
+        candidate metadata is batch-fetched into igdb_raw (respecting
+        the provider rate limiter). degraded is true when provider
+        fetches failed and candidates were skipped.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScoreRequest" }
+      responses:
+        "200":
+          description: Ranked recommendations with display metadata
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScoreResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /admin/refresh:
+    post:
+      operationId: triggerRefresh
+      summary: Trigger an immediate price refresh walk (role admin)
+      description: >
+        Starts the same walk the daily CronJob triggers and returns 202
+        immediately (the walk outlives the HTTP write timeout at polite
+        provider rates); the runner logs its summary. 409 code
+        refresh_in_progress when a walk is already running.
+      responses:
+        "202":
+          description: Walk started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RefreshAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: A walk is already running (code refresh_in_progress)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /admin/products/{productId}/pricecharting:
+    put:
+      operationId: setProductMapping
+      summary: Correct a product's PriceCharting mapping and mark it verified (role admin)
+      description: >
+        Shared-catalog truth is moderated: the new mapping is validated
+        against the provider, current prices are fetched, a snapshot is
+        appended, and the mapping is stored verified with confidence
+        1.0. A null pc_product_id clears the mapping (the product
+        becomes unmatched). Errors: 404 code product_not_found or
+        unknown_pc_product; 502 code upstream_unavailable.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MappingRequest" }
+      responses:
+        "200":
+          description: The product with its corrected mapping
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such product, or the provider does not know the mapping id
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    BadRequest:
+      description: Invalid parameters or body
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: Insufficient role
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    UpstreamError:
+      description: A provider call failed (code upstream_unavailable)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    PlatformRef:
+      type: object
+      required: [igdb_platform_id, name]
+      properties:
+        igdb_platform_id: { type: integer, format: int64 }
+        name: { type: string }
+    SearchResult:
+      description: >
+        Flat result with a type discriminator. Game results carry the
+        igdb_* fields; hardware results carry the pc_* fields plus the
+        PriceCharting category (Systems, Controllers, Accessories).
+      type: object
+      required: [type, name]
+      properties:
+        type: { type: string, enum: [game, hardware] }
+        name: { type: string }
+        igdb_game_id: { type: integer, format: int64 }
+        platforms:
+          type: array
+          items: { $ref: "#/components/schemas/PlatformRef" }
+        first_release_year: { type: integer }
+        cover_url: { type: string }
+        pc_product_id: { type: integer, format: int64 }
+        console_name: { type: string }
+        category: { type: string }
+    SearchResults:
+      type: object
+      required: [degraded, results]
+      properties:
+        degraded:
+          type: boolean
+          description: True when the provider was unreachable and the local catalog answered instead.
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/SearchResult" }
+    IgdbMeta:
+      description: Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
+      type: object
+      required: [game_id, name, genres, themes, franchises, similar_games, companies, fetched_at]
+      properties:
+        game_id: { type: integer, format: int64 }
+        name: { type: string }
+        cover_url: { type: string }
+        genres:
+          type: array
+          items: { type: string }
+        themes:
+          type: array
+          items: { type: string }
+        franchises:
+          type: array
+          items: { type: string }
+        similar_games:
+          type: array
+          items: { type: integer, format: int64 }
+        companies:
+          type: array
+          items: { $ref: "#/components/schemas/CompanyCredit" }
+        first_release_year: { type: integer }
+        fetched_at: { type: string, format: date-time }
+    CompanyCredit:
+      type: object
+      required: [name, developer, publisher]
+      properties:
+        name: { type: string }
+        developer: { type: boolean }
+        publisher: { type: boolean }
+    PricechartingMeta:
+      description: >
+        The PriceCharting mapping and current prices; refreshed daily.
+        Absent from a product when no candidate cleared the match
+        confidence threshold (no guessing) and the mapping has not been
+        corrected by an admin.
+      type: object
+      required: [pc_product_id, pc_name, console_name, match_confidence, verified, as_of]
+      properties:
+        pc_product_id: { type: integer, format: int64 }
+        pc_name: { type: string }
+        console_name: { type: string }
+        match_confidence: { type: number, format: double }
+        verified: { type: boolean }
+        loose_cents: { type: integer, format: int64 }
+        cib_cents: { type: integer, format: int64 }
+        new_cents: { type: integer, format: int64 }
+        as_of: { type: string, format: date-time }
+    Product:
+      type: object
+      required: [id, type, name, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [game, console, accessory] }
+        name: { type: string }
+        platform: { $ref: "#/components/schemas/PlatformRef" }
+        region: { type: string }
+        edition: { type: string }
+        variant: { type: string }
+        igdb: { $ref: "#/components/schemas/IgdbMeta" }
+        pricecharting: { $ref: "#/components/schemas/PricechartingMeta" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ResolveRequest:
+      description: >
+        type game requires igdb_game_id + platform_igdb_id (the
+        platform must be one the game released on); console/accessory
+        require pc_product_id. region/edition/variant distinguish
+        physical variants and are part of the product identity.
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [game, console, accessory] }
+        igdb_game_id: { type: integer, format: int64 }
+        platform_igdb_id: { type: integer, format: int64 }
+        pc_product_id: { type: integer, format: int64 }
+        region: { type: string, maxLength: 32 }
+        edition: { type: string, maxLength: 128 }
+        variant: { type: string, maxLength: 128 }
+    PricesBatchRequest:
+      type: object
+      required: [product_ids]
+      properties:
+        product_ids:
+          type: array
+          maxItems: 500
+          items: { type: string, format: uuid }
+    ProductPrices:
+      type: object
+      required: [unmatched]
+      properties:
+        unmatched: { type: boolean }
+        loose_cents: { type: integer, format: int64 }
+        cib_cents: { type: integer, format: int64 }
+        new_cents: { type: integer, format: int64 }
+        as_of: { type: string, format: date-time }
+    PricesBatchResponse:
+      type: object
+      required: [prices]
+      properties:
+        prices:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/ProductPrices" }
+    LibraryEntry:
+      type: object
+      required: [igdb_game_id]
+      properties:
+        igdb_game_id: { type: integer, format: int64 }
+        rating: { type: integer, minimum: 1, maximum: 10 }
+        status:
+          type: string
+          description: The caller's own status vocabulary; scoring only distinguishes "dropped".
+    ScoreRequest:
+      type: object
+      required: [library]
+      properties:
+        library:
+          type: array
+          items: { $ref: "#/components/schemas/LibraryEntry" }
+        limit: { type: integer, minimum: 1, maximum: 50, default: 20 }
+    Recommendation:
+      type: object
+      required: [igdb_game_id, name, genres, score]
+      properties:
+        igdb_game_id: { type: integer, format: int64 }
+        name: { type: string }
+        cover_url: { type: string }
+        genres:
+          type: array
+          items: { type: string }
+        first_release_year: { type: integer }
+        score: { type: number, format: double }
+    ScoreResponse:
+      type: object
+      required: [degraded, recommendations]
+      properties:
+        degraded:
+          type: boolean
+          description: True when candidate metadata fetches failed and some candidates were skipped.
+        recommendations:
+          type: array
+          items: { $ref: "#/components/schemas/Recommendation" }
+    RefreshAccepted:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [started] }
+    MappingRequest:
+      type: object
+      required: [pc_product_id]
+      properties:
+        pc_product_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Null clears the mapping (the product becomes unmatched).
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        code: { type: string }

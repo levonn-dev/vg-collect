@@ -1,0 +1,88 @@
+// Package config declares the enrichment service's environment
+// contract.
+package config
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	libconfig "github.com/levonn-dev/vg-collect/libs/go/config"
+)
+
+// Config holds all environment-sourced configuration for the
+// enrichment service.
+type Config struct {
+	HTTPAddr string `env:"HTTP_ADDR" envDefault:":8080"`
+
+	// Mongo connection URL (TLS via tls=true&tlsCAFile=... params) and
+	// database name.
+	MongoURL string `env:"MONGO_URL,required"`
+	MongoDB  string `env:"MONGO_DB"  envDefault:"enrichment"`
+
+	ValkeyURL string `env:"VALKEY_URL,required"`
+	// CA bundle for rediss:// against the in-cluster CA-issued cert.
+	ValkeyCAFile string `env:"VALKEY_CA_FILE"`
+
+	JWKSURL     string `env:"JWKS_URL,required"`
+	JWTIssuer   string `env:"JWT_ISSUER"   envDefault:"vg-collect-auth"`
+	JWTAudience string `env:"JWT_AUDIENCE" envDefault:"vg-collect"`
+
+	// Accepted internal-caller tokens for POST /internal/refresh (the
+	// CronJob's trigger, which has no JWT source). One or two entries:
+	// an A/B pair makes rotation zero-downtime.
+	InternalRefreshSecrets []string `env:"INTERNAL_REFRESH_SECRETS,required,notEmpty" envSeparator:","`
+
+	// Provider switches: stub serves embedded fixtures (credential-less
+	// dev/e2e); real needs the credentials below.
+	IGDBMode            string `env:"IGDB_MODE"            envDefault:"stub"`
+	IGDBClientID        string `env:"IGDB_CLIENT_ID"`
+	IGDBClientSecret    string `env:"IGDB_CLIENT_SECRET"`
+	PriceChartingMode   string `env:"PRICECHARTING_MODE"   envDefault:"stub"`
+	PriceChartingAPIKey string `env:"PRICECHARTING_API_KEY"`
+
+	// Read-pattern tunables: search query cache, product read cache,
+	// and the IGDB projection staleness horizon.
+	SearchCacheTTL   time.Duration `env:"SEARCH_CACHE_TTL"   envDefault:"24h"`
+	ProductCacheTTL  time.Duration `env:"PRODUCT_CACHE_TTL"  envDefault:"5m"`
+	IGDBRefreshAfter time.Duration `env:"IGDB_REFRESH_AFTER" envDefault:"720h"`
+
+	Version string `env:"SERVICE_VERSION" envDefault:"dev"`
+}
+
+// Load parses environment variables into a Config and enforces the
+// cross-field rules the tags cannot express.
+func Load() (Config, error) {
+	cfg, err := libconfig.Load[Config]()
+	if err != nil {
+		return Config{}, err
+	}
+	switch cfg.IGDBMode {
+	case "stub":
+	case "real":
+		if cfg.IGDBClientID == "" || cfg.IGDBClientSecret == "" {
+			return Config{}, errors.New("config: IGDB_MODE=real requires IGDB_CLIENT_ID and IGDB_CLIENT_SECRET")
+		}
+	default:
+		return Config{}, fmt.Errorf("config: IGDB_MODE must be stub or real, got %q", cfg.IGDBMode)
+	}
+	switch cfg.PriceChartingMode {
+	case "stub":
+	case "real":
+		if cfg.PriceChartingAPIKey == "" {
+			return Config{}, errors.New("config: PRICECHARTING_MODE=real requires PRICECHARTING_API_KEY")
+		}
+	default:
+		return Config{}, fmt.Errorf("config: PRICECHARTING_MODE must be stub or real, got %q", cfg.PriceChartingMode)
+	}
+	if strings.HasPrefix(cfg.ValkeyURL, "rediss://") && cfg.ValkeyCAFile == "" {
+		return Config{}, errors.New("config: VALKEY_CA_FILE is required for a rediss:// VALKEY_URL")
+	}
+	for _, s := range cfg.InternalRefreshSecrets {
+		if strings.TrimSpace(s) == "" {
+			return Config{}, errors.New("config: INTERNAL_REFRESH_SECRETS must not contain empty entries")
+		}
+	}
+	return cfg, nil
+}

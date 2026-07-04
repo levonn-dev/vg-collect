@@ -1,0 +1,5 @@
+[
+  { "drop": "platforms" },
+  { "drop": "igdb_raw" },
+  { "drop": "products" }
+]

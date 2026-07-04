@@ -1,0 +1,212 @@
+package igdb
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"golang.org/x/time/rate"
+)
+
+const (
+	defaultAPIURL   = "https://api.igdb.com/v4"
+	defaultTokenURL = "https://id.twitch.tv/oauth2/token" //nolint:gosec // G101: public OAuth token endpoint URL, not a credential
+	// Expanded references always include ids, so genres.name yields
+	// {id, name} pairs without asking for genres.id.
+	gameFields     = "name,cover.image_id,genres.name,themes.name,franchises.name,similar_games,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,first_release_date,platforms.name,total_rating"
+	platformFields = "name,abbreviation,generation,platform_logo.image_id"
+)
+
+// Client is the real IGDB v4 client: a cached Twitch client-credentials
+// app token behind a client-side limiter matching the documented
+// 4 req/s budget (429s beyond it).
+type Client struct {
+	httpc    *http.Client
+	limiter  *rate.Limiter
+	clientID string
+	secret   string
+	apiURL   string
+	tokenURL string
+
+	mu       sync.Mutex
+	token    string
+	tokenExp time.Time
+}
+
+// NewClient builds a Client for the given Twitch application.
+func NewClient(clientID, clientSecret string) *Client {
+	return &Client{
+		httpc: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
+		limiter:  rate.NewLimiter(4, 4),
+		clientID: clientID,
+		secret:   clientSecret,
+		apiURL:   defaultAPIURL,
+		tokenURL: defaultTokenURL,
+	}
+}
+
+// appToken returns the cached app token, refetching inside a 60s
+// expiry margin. Signing keys never touch this service; the token is
+// plain client-credentials.
+func (c *Client) appToken(ctx context.Context) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.token != "" && time.Now().Before(c.tokenExp.Add(-60*time.Second)) {
+		return c.token, nil
+	}
+	form := url.Values{
+		"client_id":     {c.clientID},
+		"client_secret": {c.secret},
+		"grant_type":    {"client_credentials"},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.tokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("igdb: token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := c.httpc.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("igdb: token: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("igdb: token: status %d", resp.StatusCode)
+	}
+	var body struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int64  `json:"expires_in"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return "", fmt.Errorf("igdb: token: decode: %w", err)
+	}
+	if body.AccessToken == "" {
+		return "", fmt.Errorf("igdb: token: empty access_token")
+	}
+	c.token = body.AccessToken
+	c.tokenExp = time.Now().Add(time.Duration(body.ExpiresIn) * time.Second)
+	return c.token, nil
+}
+
+// query POSTs one APICalypse body and decodes the array response.
+func (c *Client) query(ctx context.Context, endpoint, body string, out any) error {
+	if err := c.limiter.Wait(ctx); err != nil {
+		return fmt.Errorf("igdb: limiter: %w", err)
+	}
+	tok, err := c.appToken(ctx)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL+"/"+endpoint, strings.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("igdb: request: %w", err)
+	}
+	req.Header.Set("Client-ID", c.clientID)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := c.httpc.Do(req)
+	if err != nil {
+		return fmt.Errorf("igdb: %s: %w", endpoint, err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("igdb: %s: status %d", endpoint, resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("igdb: %s: decode: %w", endpoint, err)
+	}
+	return nil
+}
+
+func intsCSV(ids []int64) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = strconv.FormatInt(id, 10)
+	}
+	return strings.Join(parts, ",")
+}
+
+// SearchGames runs a full-text search.
+func (c *Client) SearchGames(ctx context.Context, q string, limit int) ([]Game, error) {
+	body := fmt.Sprintf("search %q; fields %s; limit %d;", q, gameFields, limit)
+	var out []Game
+	if err := c.query(ctx, "games", body, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GamesByIDs fetches full payloads; unknown ids are silently absent.
+func (c *Client) GamesByIDs(ctx context.Context, ids []int64) ([]Game, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	body := fmt.Sprintf("fields %s; where id = (%s); limit %d;", gameFields, intsCSV(ids), len(ids))
+	var out []Game
+	if err := c.query(ctx, "games", body, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// PopularGames backs the genre-profile fallback: well-rated games in
+// any of the genres. The where-clause exclusion is capped at 100 ids
+// (APICalypse bodies should stay bounded); the rest filters here.
+func (c *Client) PopularGames(ctx context.Context, genreIDs []int64, excludeIDs []int64, limit int) ([]Game, error) {
+	if len(genreIDs) == 0 {
+		return nil, nil
+	}
+	where := fmt.Sprintf("genres = (%s) & total_rating_count >= 20", intsCSV(genreIDs))
+	if len(excludeIDs) > 0 {
+		capped := excludeIDs
+		if len(capped) > 100 {
+			capped = capped[:100]
+		}
+		where += fmt.Sprintf(" & id != (%s)", intsCSV(capped))
+	}
+	body := fmt.Sprintf("fields %s; where %s; sort total_rating desc; limit %d;", gameFields, where, limit+len(excludeIDs))
+	var out []Game
+	if err := c.query(ctx, "games", body, &out); err != nil {
+		return nil, err
+	}
+	excluded := make(map[int64]bool, len(excludeIDs))
+	for _, id := range excludeIDs {
+		excluded[id] = true
+	}
+	filtered := out[:0]
+	for _, g := range out {
+		if !excluded[g.ID] {
+			filtered = append(filtered, g)
+		}
+	}
+	if len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+	return filtered, nil
+}
+
+// Platforms fetches the platform catalog wholesale (it is small and
+// changes rarely; the store caches it for 30 days).
+func (c *Client) Platforms(ctx context.Context) ([]Platform, error) {
+	body := fmt.Sprintf("fields %s; sort id asc; limit 500;", platformFields)
+	var out []Platform
+	if err := c.query(ctx, "platforms", body, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
