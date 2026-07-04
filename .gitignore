@@ -32,3 +32,4 @@ deploy/charts/*/Chart.lock
 # drops the binary next to its source; never committed).
 /services/user/user
 /services/auth/auth
+/services/enrichment/enrichment
