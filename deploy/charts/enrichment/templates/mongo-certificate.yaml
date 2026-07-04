@@ -1,0 +1,18 @@
+{{- if .Values.mongo.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: enrichment-mongo-tls
+  labels: {{- include "enrichment.labels" . | nindent 4 }}
+spec:
+  secretName: enrichment-mongo-tls
+  duration: 2160h
+  dnsNames:
+    - {{ include "enrichment.mongoHost" . }}
+    - {{ include "enrichment.mongoHost" . }}.{{ .Release.Namespace }}.svc
+    - {{ include "enrichment.mongoHost" . }}.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    name: vg-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
+{{- end }}

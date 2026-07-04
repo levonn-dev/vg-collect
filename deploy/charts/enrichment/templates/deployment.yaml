@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: enrichment
+  labels: {{- include "enrichment.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: enrichment
+  template:
+    metadata:
+      labels: {{- include "enrichment.labels" . | nindent 8 }}
+      annotations:
+        # Re-rolls pods when the secret *shape* changes; live value
+        # rotation re-rolls via Tilt re-apply in dev.
+        checksum/externalsecret: {{ include (print $.Template.BasePath "/externalsecret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: enrichment
+      initContainers:
+        # The migrate subcommand loads the full config before branching,
+        # so the init container gets the same env anchor as the app.
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate"]
+          env: &appEnv
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: enrichment-secrets, key: mongo-password }
+            - name: MONGO_URL
+              value: "mongodb://{{ .Values.mongo.username }}:$(MONGO_PASSWORD)@{{ include "enrichment.mongoHost" . }}:27017/{{ .Values.mongo.database }}?tls=true&tlsCAFile=/etc/vg/mongo-ca/ca.crt&authSource=admin"
+            - name: MONGO_DB
+              value: {{ .Values.mongo.database | quote }}
+            # The accepted internal-caller token set: the current one,
+            # plus the previous one mid-rotation (dependent $(VAR)
+            # expansion composes the CSV).
+            - name: INTERNAL_REFRESH_TOKEN
+              valueFrom:
+                secretKeyRef: { name: enrichment-secrets, key: internal-refresh-token }
+            {{- if .Values.refresh.previousTokenEnabled }}
+            - name: INTERNAL_REFRESH_TOKEN_PREVIOUS
+              valueFrom:
+                secretKeyRef: { name: enrichment-secrets, key: internal-refresh-token-previous }
+            - name: INTERNAL_REFRESH_SECRETS
+              value: "$(INTERNAL_REFRESH_TOKEN),$(INTERNAL_REFRESH_TOKEN_PREVIOUS)"
+            {{- else }}
+            - name: INTERNAL_REFRESH_SECRETS
+              value: "$(INTERNAL_REFRESH_TOKEN)"
+            {{- end }}
+            - name: VALKEY_URL
+              value: {{ .Values.env.valkeyUrl | quote }}
+            {{- if .Values.valkey.enabled }}
+            - name: VALKEY_CA_FILE
+              value: /etc/vg/valkey-ca/ca.crt
+            {{- end }}
+            - name: JWKS_URL
+              value: {{ .Values.env.jwksUrl | quote }}
+            - name: JWT_ISSUER
+              value: {{ .Values.env.jwtIssuer | quote }}
+            - name: JWT_AUDIENCE
+              value: {{ .Values.env.jwtAudience | quote }}
+            - name: IGDB_MODE
+              value: {{ .Values.igdb.mode | quote }}
+            {{- if eq .Values.igdb.mode "real" }}
+            - name: IGDB_CLIENT_ID
+              valueFrom:
+                secretKeyRef: { name: enrichment-secrets, key: igdb-client-id }
+            - name: IGDB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: enrichment-secrets, key: igdb-client-secret }
+            {{- end }}
+            - name: PRICECHARTING_MODE
+              value: {{ .Values.pricecharting.mode | quote }}
+            {{- if eq .Values.pricecharting.mode "real" }}
+            - name: PRICECHARTING_API_KEY
+              valueFrom:
+                secretKeyRef: { name: enrichment-secrets, key: pricecharting-api-key }
+            {{- end }}
+            - name: SEARCH_CACHE_TTL
+              value: {{ .Values.env.searchCacheTtl | quote }}
+            - name: PRODUCT_CACHE_TTL
+              value: {{ .Values.env.productCacheTtl | quote }}
+            - name: IGDB_REFRESH_AFTER
+              value: {{ .Values.env.igdbRefreshAfter | quote }}
+            # Stamped onto telemetry as service.version; the image tag
+            # is the truth of what is running ("dev" locally, a release
+            # tag wherever a pipeline sets one).
+            - name: SERVICE_VERSION
+              value: {{ .Values.image.tag | quote }}
+          volumeMounts: &caMounts
+            - name: mongo-ca
+              mountPath: /etc/vg/mongo-ca
+              readOnly: true
+            {{- if .Values.valkey.enabled }}
+            - name: valkey-ca
+              mountPath: /etc/vg/valkey-ca
+              readOnly: true
+            {{- end }}
+      containers:
+        - name: enrichment
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8080 }
+          env: *appEnv
+          volumeMounts: *caMounts
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: mongo-ca
+          secret:
+            secretName: enrichment-mongo-tls
+            items: [{ key: ca.crt, path: ca.crt }]
+        {{- if .Values.valkey.enabled }}
+        - name: valkey-ca
+          secret:
+            secretName: enrichment-valkey-tls
+            items: [{ key: ca.crt, path: ca.crt }]
+        {{- end }}

@@ -1,0 +1,85 @@
+{{- if .Values.mongo.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: enrichment-mongo
+  labels: {{- include "enrichment.labels" . | nindent 4 }}
+spec:
+  serviceName: enrichment-mongo
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: enrichment-mongo
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: enrichment-mongo
+        app.kubernetes.io/part-of: vg-collect
+    spec:
+      initContainers:
+        # mongod wants ONE combined PEM (cert + key), unlike postgres
+        # and valkey; assemble it from the cert-manager secret and hand
+        # it to the mongodb user (uid:gid 999:999 in the official
+        # image). Secret mounts are read-only, hence the copy.
+        - name: tls-perms
+          image: busybox:1.37
+          command: ["sh", "-c", "cat /tls-src/tls.crt /tls-src/tls.key > /tls/mongod.pem && cp /tls-src/ca.crt /tls/ca.crt && chmod 600 /tls/mongod.pem && chown -R 999:999 /tls"]
+          volumeMounts:
+            - { name: tls-src, mountPath: /tls-src, readOnly: true }
+            - { name: tls, mountPath: /tls }
+      containers:
+        - name: mongo
+          image: {{ .Values.mongo.image | quote }}
+          # Dash-prefixed args: the image entrypoint prepends mongod.
+          # The entrypoint's init phase (root user creation) detects
+          # requireTLS and connects with TLS itself.
+          args:
+            - --tlsMode
+            - requireTLS
+            - --tlsCertificateKeyFile
+            - /tls/mongod.pem
+            # Server-side chain of trust mongod now mandates even for a
+            # standalone node (SERVER-72839); the init container copies
+            # the same CA the readiness probe already verifies against.
+            - --tlsCAFile
+            - /tls/ca.crt
+            # Auth is SCRAM (root username/password below), not mutual
+            # TLS: neither the app driver nor the probe ever presents a
+            # client certificate, so the server must accept the
+            # cert-less handshake or reject every caller outright.
+            - --tlsAllowConnectionsWithoutCertificates
+            - --bind_ip_all
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: {{ .Values.mongo.username | quote }}
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: enrichment-secrets, key: mongo-password }
+          ports:
+            - { name: mongo, containerPort: 27017 }
+          readinessProbe:
+            exec:
+              # The probe dials localhost, whose name is not in the
+              # cert SANs: hostname verification is relaxed probe-only,
+              # the chain still verifies against the CA.
+              command: ["mongosh", "--tls", "--tlsCAFile", "/tls/ca.crt", "--tlsAllowInvalidHostnames", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+            periodSeconds: 5
+            timeoutSeconds: 5
+          resources: {{- toYaml .Values.mongo.resources | nindent 12 }}
+          volumeMounts:
+            - { name: tls, mountPath: /tls }
+            - { name: data, mountPath: /data/db }
+      volumes:
+        - name: tls-src
+          secret: { secretName: enrichment-mongo-tls }
+        - name: tls
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: {{ .Values.mongo.storage }}
+{{- end }}

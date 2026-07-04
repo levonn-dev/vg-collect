@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: enrichment-refresh
+  labels: {{- include "enrichment.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.refresh.schedule | quote }}
+  # The service holds its own in-flight guard (409); Forbid keeps k8s
+  # from even starting an overlapping trigger.
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: enrichment-refresh
+            app.kubernetes.io/part-of: vg-collect
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: trigger
+              image: {{ .Values.refresh.image | quote }}
+              env:
+                # Always the CURRENT token; during a rotation the
+                # service additionally accepts the previous one.
+                - name: INTERNAL_REFRESH_TOKEN
+                  valueFrom:
+                    secretKeyRef: { name: enrichment-secrets, key: internal-refresh-token }
+              # -f turns a 401/409 answer into a visible job failure
+              # instead of a silent skip (409 = a walk already runs;
+              # Forbid already guards overlap). The walk itself is
+              # detached: 202 arrives immediately and the summary lands
+              # in the service log.
+              args: ["-fsS", "-X", "POST", "--max-time", "60", "-H", "X-Internal-Token: $(INTERNAL_REFRESH_TOKEN)", "http://enrichment:8080/internal/refresh"]
+              resources:
+                requests: { cpu: 10m, memory: 16Mi }
+                limits: { memory: 32Mi }

@@ -1,0 +1,12 @@
+{{- if .Values.mongo.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: enrichment-mongo
+  labels: {{- include "enrichment.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: enrichment-mongo
+  ports:
+    - { name: mongo, port: 27017, targetPort: mongo }
+{{- end }}

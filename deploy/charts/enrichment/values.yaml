@@ -1,0 +1,71 @@
+image:
+  repository: vg-collect/enrichment
+  tag: dev
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+env:
+  jwksUrl: http://auth:8080/.well-known/jwks.json
+  jwtIssuer: vg-collect-auth
+  jwtAudience: vg-collect
+  valkeyUrl: rediss://enrichment-valkey:6379/0
+  searchCacheTtl: 24h
+  productCacheTtl: 5m
+  igdbRefreshAfter: 720h
+
+# Provider switches. stub serves the embedded fixture catalog
+# (credential-less dev/e2e); real requires the corresponding secret
+# store keys to exist - Tilt flips these only when the credentials are
+# present in .env, mirroring the auth provider flags.
+igdb:
+  mode: stub
+pricecharting:
+  mode: stub
+
+# The daily price walk: a CronJob POSTs the cluster-internal refresh
+# endpoint, authenticating with the static internal-caller token from
+# the secret store (the NetworkPolicy admits only this CronJob and the
+# known service callers, and the gateway never routes there).
+# Token rotation, zero-downtime: publish the NEW value under the
+# internalRefreshToken store key and the OLD one under
+# internalRefreshTokenPrevious, set previousTokenEnabled=true (the
+# service then accepts both while the CronJob already presents the new
+# one), and once a run has gone green, drop the previous key and flip
+# the flag back off.
+refresh:
+  schedule: "0 6 * * *"
+  image: curlimages/curl:8.14.1
+  previousTokenEnabled: false
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { memory: 128Mi }
+
+mongo:
+  enabled: true            # disabling requires a follow-up edit: an env.mongoUrl value and a gated mongo-ca volume do not exist yet
+  image: mongo:8
+  database: enrichment
+  username: enrichment
+  storage: 1Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+
+valkey:
+  enabled: true            # the prod-path seam: disable + point valkeyUrl at a managed cache
+  image: valkey/valkey:8-alpine
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 128Mi }
+
+secretStore:
+  name: vg-fake
+  kind: ClusterSecretStore
+  keys:
+    mongoPassword: enrichment/mongo-password
+    internalRefreshToken: enrichment/internal-refresh-token
+    internalRefreshTokenPrevious: enrichment/internal-refresh-token-previous
+    igdbClientId: enrichment/igdb-client-id
+    igdbClientSecret: enrichment/igdb-client-secret
+    pricechartingApiKey: enrichment/pricecharting-api-key

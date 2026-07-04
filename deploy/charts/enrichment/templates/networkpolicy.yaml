@@ -1,0 +1,65 @@
+{{- if .Values.mongo.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: enrichment-mongo-owner-only
+  labels: {{- include "enrichment.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: enrichment-mongo
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: enrichment
+      ports:
+        - { port: 27017, protocol: TCP }
+---
+{{- end }}
+{{- if .Values.valkey.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: enrichment-valkey-owner-only
+  labels: {{- include "enrichment.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: enrichment-valkey
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: enrichment
+      ports:
+        - { port: 6379, protocol: TCP }
+---
+{{- end }}
+# Enrichment's callers: the bff (search/resolve/product pass-throughs)
+# and the refresh CronJob (its internal trigger authenticates with the
+# X-Internal-Token secret; this admission is the outer layer). The
+# collection service joins this list when it lands (dashboard batch
+# prices).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: enrichment-from-callers-only
+  labels: {{- include "enrichment.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: enrichment
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: bff
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: enrichment-refresh
+      ports:
+        - { port: 8080, protocol: TCP }
