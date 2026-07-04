@@ -50,6 +50,12 @@ SECRET_KEYS = {k: v for k, v in {
     'auth/twitch-client-id': ENV.get('TWITCH_CLIENT_ID', ''),
     'auth/twitch-client-secret': ENV.get('TWITCH_CLIENT_SECRET', ''),
     'bff/cookie-key': ENV.get('BFF_COOKIE_KEY', ''),
+    'enrichment/mongo-password': ENV.get('MONGO_ENRICHMENT_PASSWORD', ''),
+    'enrichment/internal-refresh-token': ENV.get('ENRICHMENT_INTERNAL_REFRESH_TOKEN', ''),
+    'enrichment/internal-refresh-token-previous': ENV.get('ENRICHMENT_INTERNAL_REFRESH_TOKEN_PREVIOUS', ''),
+    'enrichment/igdb-client-id': ENV.get('IGDB_CLIENT_ID', ''),
+    'enrichment/igdb-client-secret': ENV.get('IGDB_CLIENT_SECRET', ''),
+    'enrichment/pricecharting-api-key': ENV.get('PRICECHARTING_API_KEY', ''),
 }.items() if v != ''}
 
 k8s_yaml(encode_yaml({
@@ -121,6 +127,31 @@ k8s_yaml(helm('deploy/charts/bff', name='bff', namespace='vg-collect'))
 k8s_resource('bff', port_forwards=['8083:8080'],
              resource_deps=['secret-store', 'bff-valkey', 'auth'], labels=['services'])
 k8s_resource('bff-valkey', labels=['datastores'])
+
+# ----- enrichment service -----
+docker_build(
+    'vg-collect/enrichment', '.',
+    dockerfile='services/enrichment/Dockerfile',
+    only=['libs/go', 'services/enrichment'],
+)
+# Provider modes flip to real only when the full credential set is in
+# .env (mirrors the auth provider flags): enabling on a partial set
+# would point the ExternalSecret at store keys the empty-value filter
+# above never published, wedging the sync.
+_enrichment_set = []
+if ENV.get('IGDB_CLIENT_ID', '') != '' and ENV.get('IGDB_CLIENT_SECRET', '') != '':
+    _enrichment_set.append('igdb.mode=real')
+if ENV.get('PRICECHARTING_API_KEY', '') != '':
+    _enrichment_set.append('pricecharting.mode=real')
+# Mid-rotation the service accepts the previous internal token too.
+if ENV.get('ENRICHMENT_INTERNAL_REFRESH_TOKEN_PREVIOUS', '') != '':
+    _enrichment_set.append('refresh.previousTokenEnabled=true')
+k8s_yaml(helm('deploy/charts/enrichment', name='enrichment', namespace='vg-collect', set=_enrichment_set))
+k8s_resource('enrichment', port_forwards=['8084:8080'],
+             resource_deps=['secret-store', 'enrichment-mongo', 'enrichment-valkey', 'auth'], labels=['services'])
+k8s_resource('enrichment-mongo', port_forwards=['27018:27017'], labels=['datastores'])
+k8s_resource('enrichment-valkey', labels=['datastores'])
+k8s_resource('enrichment-refresh', resource_deps=['enrichment'], labels=['services'])
 
 # ----- frontend dev loop (manual: trigger when iterating on the SPA;
 # the in-cluster bff serves the built bundle either way) -----
