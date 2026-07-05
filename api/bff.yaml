@@ -224,7 +224,7 @@ components:
         platforms:
           type: array
           items: { $ref: "#/components/schemas/PlatformRef" }
-        first_release_year: { type: integer }
+        first_release_date: { type: string, format: date }
         cover_url: { type: string }
         pc_product_id: { type: integer, format: int64 }
         console_name: { type: string }
@@ -262,7 +262,7 @@ components:
         companies:
           type: array
           items: { $ref: "#/components/schemas/CompanyCredit" }
-        first_release_year: { type: integer }
+        first_release_date: { type: string, format: date }
         fetched_at: { type: string, format: date-time }
     CompanyCredit:
       type: object

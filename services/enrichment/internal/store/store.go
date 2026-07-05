@@ -68,7 +68,7 @@ type IGDBMeta struct {
 	Franchises       []string  `bson:"franchises"`
 	SimilarGames     []int64   `bson:"similar_games"`
 	Companies        []Company `bson:"companies"`
-	FirstReleaseYear int       `bson:"first_release_year,omitempty"`
+	FirstReleaseDate time.Time `bson:"first_release_date,omitempty"`
 	FetchedAt        time.Time `bson:"fetched_at"`
 }
 
@@ -168,7 +168,7 @@ func NewIGDBMeta(g igdb.Game, fetchedAt time.Time) IGDBMeta {
 		Franchises:       make([]string, 0, len(g.Franchises)),
 		SimilarGames:     append([]int64(nil), g.SimilarGames...),
 		Companies:        make([]Company, 0, len(g.InvolvedCompanies)),
-		FirstReleaseYear: g.ReleaseYear(),
+		FirstReleaseDate: g.ReleaseDate(),
 		FetchedAt:        fetchedAt,
 	}
 	if m.SimilarGames == nil {

@@ -254,7 +254,8 @@ func TestNewIGDBMeta_Projection(t *testing.T) {
 	}
 	at := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	m := store.NewIGDBMeta(g, at)
-	if m.GameID != 1011 || m.Name != "Chrono Trigger" || m.FirstReleaseYear != 1995 {
+	wantDate := time.Date(1995, 1, 1, 0, 0, 0, 0, time.UTC)
+	if m.GameID != 1011 || m.Name != "Chrono Trigger" || !m.FirstReleaseDate.Equal(wantDate) {
 		t.Fatalf("core fields: %+v", m)
 	}
 	if m.CoverURL != "https://images.igdb.com/igdb/image/upload/t_cover_big/co_fx1011.jpg" {

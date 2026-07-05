@@ -467,6 +467,10 @@ func TestSearch_GameThroughStubAndCache(t *testing.T) {
 	if string(first.Type) != "game" || first.IgdbGameId == nil || first.Platforms == nil || first.CoverUrl == nil {
 		t.Fatalf("game result shape: %+v", first)
 	}
+	wantOoTDate := time.Date(1998, time.November, 21, 0, 0, 0, 0, time.UTC)
+	if first.FirstReleaseDate == nil || !first.FirstReleaseDate.Equal(wantOoTDate) {
+		t.Fatalf("game result first_release_date: %+v", first.FirstReleaseDate)
+	}
 
 	// Second identical query must come from Valkey: poison the
 	// provider and expect the same non-degraded answer.
@@ -501,11 +505,12 @@ func TestSearch_HardwareFiltersToHardware(t *testing.T) {
 
 func TestUnitSearch_DegradedFallsBackToCatalog(t *testing.T) {
 	env := newAuthEnv(t)
+	releaseDate := time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC)
 	st := &stubStore{searchByName: func(_ context.Context, q string, _ int) ([]store.Product, error) {
 		return []store.Product{{
 			ID: "11111111-1111-1111-1111-111111111111", Type: "game", Name: "Chrono Trigger",
 			Platform: &store.Platform{IGDBID: 19, Name: "Super Nintendo Entertainment System"},
-			IGDB:     &store.IGDBMeta{GameID: 1011, FetchedAt: time.Now()},
+			IGDB:     &store.IGDBMeta{GameID: 1011, FetchedAt: time.Now(), FirstReleaseDate: releaseDate},
 		}}, nil
 	}}
 	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
@@ -523,6 +528,9 @@ func TestUnitSearch_DegradedFallsBackToCatalog(t *testing.T) {
 	}
 	if !res.Degraded || len(res.Results) != 1 || res.Results[0].Name != "Chrono Trigger" {
 		t.Fatalf("degraded result: %+v", res)
+	}
+	if got := res.Results[0].FirstReleaseDate; got == nil || !got.Equal(releaseDate) {
+		t.Fatalf("degraded result first_release_date: %+v", got)
 	}
 }
 
@@ -655,6 +663,10 @@ func TestResolve_GameCreatesMatchedProductIdempotently(t *testing.T) {
 	}
 	if p.Igdb == nil || p.Igdb.GameId != 1011 || len(p.Igdb.SimilarGames) == 0 {
 		t.Fatalf("igdb projection: %+v", p.Igdb)
+	}
+	wantDate := time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC)
+	if p.Igdb.FirstReleaseDate == nil || !p.Igdb.FirstReleaseDate.Equal(wantDate) {
+		t.Fatalf("igdb first_release_date: %+v", p.Igdb.FirstReleaseDate)
 	}
 	if p.Platform == nil || p.Platform.IgdbPlatformId != 19 {
 		t.Fatalf("platform: %+v", p.Platform)
@@ -983,6 +995,7 @@ func TestRecommendations_EndToEndOverFixtures(t *testing.T) {
 		t.Fatal("no recommendations")
 	}
 	seen := map[int64]float64{}
+	var linkToPast *api.Recommendation
 	for i, rec := range out.Recommendations {
 		if rec.IgdbGameId == 1001 || rec.IgdbGameId == 1042 || rec.IgdbGameId == 1012 {
 			t.Fatalf("owned id recommended: %d", rec.IgdbGameId)
@@ -994,12 +1007,19 @@ func TestRecommendations_EndToEndOverFixtures(t *testing.T) {
 			t.Fatal("not sorted by score desc")
 		}
 		seen[rec.IgdbGameId] = rec.Score
+		if rec.IgdbGameId == 1002 {
+			linkToPast = &rec
+		}
 	}
 	// OoT (weight 2.0) links 1002/1003/1004/1035/1037: at least one of
 	// its edges must outrank anything reachable only through the
 	// dropped Chrono Cross (weight 0.5).
 	if _, ok := seen[1002]; !ok {
 		t.Fatalf("expected a strong Zelda edge in %v", seen)
+	}
+	wantDate := time.Date(1991, time.November, 21, 0, 0, 0, 0, time.UTC)
+	if linkToPast == nil || linkToPast.FirstReleaseDate == nil || !linkToPast.FirstReleaseDate.Equal(wantDate) {
+		t.Fatalf("recommendation first_release_date: %+v", linkToPast)
 	}
 	// Candidate metadata was populated backwards into igdb_raw.
 	raws, err := s.store.RawByIDs(context.Background(), []int64{1002})

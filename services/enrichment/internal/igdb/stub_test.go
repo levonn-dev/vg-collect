@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newStub(t *testing.T) *Stub {
@@ -171,14 +172,15 @@ func TestGame_Helpers(t *testing.T) {
 	if got := g.CoverURL(); got != "https://images.igdb.com/igdb/image/upload/t_cover_big/co_fx1001.jpg" {
 		t.Fatalf("CoverURL: %s", got)
 	}
-	if got := g.ReleaseYear(); got != 1998 {
-		t.Fatalf("ReleaseYear: %d", got)
+	want := time.Date(1998, time.November, 21, 0, 0, 0, 0, time.UTC)
+	if got := g.ReleaseDate(); !got.Equal(want) {
+		t.Fatalf("ReleaseDate: %v, want %v", got, want)
 	}
 	if got := (Game{}).CoverURL(); got != "" {
 		t.Fatalf("empty cover should be empty URL, got %q", got)
 	}
-	if got := (Game{}).ReleaseYear(); got != 0 {
-		t.Fatalf("unset release date should be year 0, got %d", got)
+	if got := (Game{}).ReleaseDate(); !got.IsZero() {
+		t.Fatalf("unset release date should be zero time, got %v", got)
 	}
 }
 

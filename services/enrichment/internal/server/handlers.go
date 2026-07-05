@@ -119,8 +119,9 @@ func gameResult(g igdb.Game) api.SearchResult {
 		}
 		res.Platforms = &prs
 	}
-	if y := g.ReleaseYear(); y > 0 {
-		res.FirstReleaseYear = &y
+	if d := g.ReleaseDate(); !d.IsZero() {
+		fd := openapi_types.Date{Time: d}
+		res.FirstReleaseDate = &fd
 	}
 	if cu := g.CoverURL(); cu != "" {
 		res.CoverUrl = &cu
@@ -176,9 +177,9 @@ func localResults(kind string, prods []store.Product) []api.SearchResult {
 					cu := p.IGDB.CoverURL
 					res.CoverUrl = &cu
 				}
-				if p.IGDB.FirstReleaseYear > 0 {
-					y := p.IGDB.FirstReleaseYear
-					res.FirstReleaseYear = &y
+				if !p.IGDB.FirstReleaseDate.IsZero() {
+					fd := openapi_types.Date{Time: p.IGDB.FirstReleaseDate}
+					res.FirstReleaseDate = &fd
 				}
 			}
 			if p.Platform != nil {
@@ -305,9 +306,9 @@ func toAPIProduct(p store.Product) api.Product {
 			cu := p.IGDB.CoverURL
 			m.CoverUrl = &cu
 		}
-		if p.IGDB.FirstReleaseYear > 0 {
-			y := p.IGDB.FirstReleaseYear
-			m.FirstReleaseYear = &y
+		if !p.IGDB.FirstReleaseDate.IsZero() {
+			fd := openapi_types.Date{Time: p.IGDB.FirstReleaseDate}
+			m.FirstReleaseDate = &fd
 		}
 		out.Igdb = &m
 	}
@@ -742,8 +743,9 @@ func (h *Handlers) ScoreRecommendations(w http.ResponseWriter, r *http.Request) 
 		if cu := rg.Game.CoverURL(); cu != "" {
 			rec.CoverUrl = &cu
 		}
-		if y := rg.Game.ReleaseYear(); y > 0 {
-			rec.FirstReleaseYear = &y
+		if d := rg.Game.ReleaseDate(); !d.IsZero() {
+			fd := openapi_types.Date{Time: d}
+			rec.FirstReleaseDate = &fd
 		}
 		out = append(out, rec)
 		if len(out) == limit {

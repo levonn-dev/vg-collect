@@ -61,13 +61,13 @@ func (g Game) CoverURL() string {
 	return imageBase + "t_cover_big/" + g.Cover.ImageID + ".jpg"
 }
 
-// ReleaseYear converts first_release_date (unix seconds) to a UTC
-// year, or 0 when unset.
-func (g Game) ReleaseYear() int {
+// ReleaseDate returns the first release date as a UTC calendar date;
+// the zero time when IGDB lists none.
+func (g Game) ReleaseDate() time.Time {
 	if g.FirstReleaseDate == 0 {
-		return 0
+		return time.Time{}
 	}
-	return time.Unix(g.FirstReleaseDate, 0).UTC().Year()
+	return time.Unix(g.FirstReleaseDate, 0).UTC().Truncate(24 * time.Hour)
 }
 
 // LogoURL builds the t_logo_med image URL, or "" without a logo.

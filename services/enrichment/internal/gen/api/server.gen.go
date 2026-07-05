@@ -59,16 +59,16 @@ type CompanyCredit struct {
 
 // IgdbMeta Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
 type IgdbMeta struct {
-	Companies        []CompanyCredit `json:"companies"`
-	CoverUrl         *string         `json:"cover_url,omitempty"`
-	FetchedAt        time.Time       `json:"fetched_at"`
-	FirstReleaseYear *int            `json:"first_release_year,omitempty"`
-	Franchises       []string        `json:"franchises"`
-	GameId           int64           `json:"game_id"`
-	Genres           []string        `json:"genres"`
-	Name             string          `json:"name"`
-	SimilarGames     []int64         `json:"similar_games"`
-	Themes           []string        `json:"themes"`
+	Companies        []CompanyCredit     `json:"companies"`
+	CoverUrl         *string             `json:"cover_url,omitempty"`
+	FetchedAt        time.Time           `json:"fetched_at"`
+	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
+	Franchises       []string            `json:"franchises"`
+	GameId           int64               `json:"game_id"`
+	Genres           []string            `json:"genres"`
+	Name             string              `json:"name"`
+	SimilarGames     []int64             `json:"similar_games"`
+	Themes           []string            `json:"themes"`
 }
 
 // LibraryEntry defines model for LibraryEntry.
@@ -158,12 +158,12 @@ type ProductPrices struct {
 
 // Recommendation defines model for Recommendation.
 type Recommendation struct {
-	CoverUrl         *string  `json:"cover_url,omitempty"`
-	FirstReleaseYear *int     `json:"first_release_year,omitempty"`
-	Genres           []string `json:"genres"`
-	IgdbGameId       int64    `json:"igdb_game_id"`
-	Name             string   `json:"name"`
-	Score            float64  `json:"score"`
+	CoverUrl         *string             `json:"cover_url,omitempty"`
+	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
+	Genres           []string            `json:"genres"`
+	IgdbGameId       int64               `json:"igdb_game_id"`
+	Name             string              `json:"name"`
+	Score            float64             `json:"score"`
 }
 
 // RefreshAccepted defines model for RefreshAccepted.
@@ -203,15 +203,15 @@ type ScoreResponse struct {
 
 // SearchResult Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories).
 type SearchResult struct {
-	Category         *string          `json:"category,omitempty"`
-	ConsoleName      *string          `json:"console_name,omitempty"`
-	CoverUrl         *string          `json:"cover_url,omitempty"`
-	FirstReleaseYear *int             `json:"first_release_year,omitempty"`
-	IgdbGameId       *int64           `json:"igdb_game_id,omitempty"`
-	Name             string           `json:"name"`
-	PcProductId      *int64           `json:"pc_product_id,omitempty"`
-	Platforms        *[]PlatformRef   `json:"platforms,omitempty"`
-	Type             SearchResultType `json:"type"`
+	Category         *string             `json:"category,omitempty"`
+	ConsoleName      *string             `json:"console_name,omitempty"`
+	CoverUrl         *string             `json:"cover_url,omitempty"`
+	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
+	IgdbGameId       *int64              `json:"igdb_game_id,omitempty"`
+	Name             string              `json:"name"`
+	PcProductId      *int64              `json:"pc_product_id,omitempty"`
+	Platforms        *[]PlatformRef      `json:"platforms,omitempty"`
+	Type             SearchResultType    `json:"type"`
 }
 
 // SearchResultType defines model for SearchResult.Type.

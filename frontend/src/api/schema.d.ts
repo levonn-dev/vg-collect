@@ -170,7 +170,8 @@ export interface components {
             /** Format: int64 */
             igdb_game_id?: number;
             platforms?: components["schemas"]["PlatformRef"][];
-            first_release_year?: number;
+            /** Format: date */
+            first_release_date?: string;
             cover_url?: string;
             /** Format: int64 */
             pc_product_id?: number;
@@ -193,7 +194,8 @@ export interface components {
             franchises: string[];
             similar_games: number[];
             companies: components["schemas"]["CompanyCredit"][];
-            first_release_year?: number;
+            /** Format: date */
+            first_release_date?: string;
             /** Format: date-time */
             fetched_at: string;
         };
