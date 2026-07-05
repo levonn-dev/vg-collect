@@ -1,0 +1,59 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: collection-pg-owner-only
+  labels: {{- include "collection.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: collection-pg
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: collection
+      ports:
+        - { port: 5432, protocol: TCP }
+---
+{{- end }}
+{{- if .Values.valkey.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: collection-valkey-owner-only
+  labels: {{- include "collection.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: collection-valkey
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: collection
+      ports:
+        - { port: 6379, protocol: TCP }
+---
+{{- end }}
+# Collection's caller: the bff (the whole collection surface is
+# browser-driven; no service or cron calls in).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: collection-from-callers-only
+  labels: {{- include "collection.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: collection
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: bff
+      ports:
+        - { port: 8080, protocol: TCP }

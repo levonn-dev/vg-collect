@@ -1,0 +1,40 @@
+image:
+  repository: vg-collect/collection
+  tag: dev
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+env:
+  jwksUrl: http://auth:8080/.well-known/jwks.json
+  jwtIssuer: vg-collect-auth
+  jwtAudience: vg-collect
+  enrichmentServiceUrl: http://enrichment:8080
+  valkeyUrl: rediss://collection-valkey:6379/0
+  dashboardCacheTtl: 5m
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { memory: 128Mi }
+
+postgres:
+  enabled: true            # the prod-path seam: disable + set externalUrl for RDS/CNPG
+  image: postgres:17-alpine
+  database: collection
+  username: collection
+  storage: 1Gi
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 256Mi }
+
+valkey:
+  enabled: true            # the prod-path seam: disable + point valkeyUrl at a managed cache
+  image: valkey/valkey:8-alpine
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 128Mi }
+
+secretStore:
+  name: vg-fake
+  kind: ClusterSecretStore
+  passwordKey: collection/pg-password

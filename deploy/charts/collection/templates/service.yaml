@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: collection
+  labels: {{- include "collection.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: collection
+  ports:
+    - { name: http, port: 8080, targetPort: http }

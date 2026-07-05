@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collection
+  labels: {{- include "collection.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: collection
+  template:
+    metadata:
+      labels: {{- include "collection.labels" . | nindent 8 }}
+      annotations:
+        # Re-rolls pods when the secret *shape* changes; live value
+        # rotation re-rolls via Tilt re-apply in dev.
+        checksum/externalsecret: {{ include (print $.Template.BasePath "/externalsecret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: collection
+      initContainers:
+        # The migrate subcommand loads the full config before branching,
+        # so the init container gets the same env anchor as the app.
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate"]
+          env: &appEnv
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: collection-pg-credentials, key: password }
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.postgres.username }}:$(PG_PASSWORD)@{{ include "collection.pgHost" . }}:5432/{{ .Values.postgres.database }}?sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt"
+            - name: VALKEY_URL
+              value: {{ .Values.env.valkeyUrl | quote }}
+            {{- if .Values.valkey.enabled }}
+            - name: VALKEY_CA_FILE
+              value: /etc/vg/valkey-ca/ca.crt
+            {{- end }}
+            - name: JWKS_URL
+              value: {{ .Values.env.jwksUrl | quote }}
+            - name: JWT_ISSUER
+              value: {{ .Values.env.jwtIssuer | quote }}
+            - name: JWT_AUDIENCE
+              value: {{ .Values.env.jwtAudience | quote }}
+            - name: ENRICHMENT_SERVICE_URL
+              value: {{ .Values.env.enrichmentServiceUrl | quote }}
+            - name: DASHBOARD_CACHE_TTL
+              value: {{ .Values.env.dashboardCacheTtl | quote }}
+            # Stamped onto telemetry as service.version; the image tag
+            # is the truth of what is running ("dev" locally, a release
+            # tag wherever a pipeline sets one).
+            - name: SERVICE_VERSION
+              value: {{ .Values.image.tag | quote }}
+          volumeMounts: &caMounts
+            - name: pg-ca
+              mountPath: /etc/vg/pg-ca
+              readOnly: true
+            {{- if .Values.valkey.enabled }}
+            - name: valkey-ca
+              mountPath: /etc/vg/valkey-ca
+              readOnly: true
+            {{- end }}
+      containers:
+        - name: collection
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8080 }
+          env: *appEnv
+          volumeMounts: *caMounts
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: pg-ca
+          secret:
+            secretName: collection-pg-tls
+            items: [{ key: ca.crt, path: ca.crt }]
+        {{- if .Values.valkey.enabled }}
+        - name: valkey-ca
+          secret:
+            secretName: collection-valkey-tls
+            items: [{ key: ca.crt, path: ca.crt }]
+        {{- end }}

@@ -1,0 +1,12 @@
+{{- if .Values.valkey.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: collection-valkey
+  labels: {{- include "collection.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: collection-valkey
+  ports:
+    - { name: valkey, port: 6379, targetPort: valkey }
+{{- end }}

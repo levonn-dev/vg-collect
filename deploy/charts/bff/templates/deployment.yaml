@@ -38,6 +38,8 @@ spec:
               value: {{ .Values.env.userServiceUrl | quote }}
             - name: ENRICHMENT_SERVICE_URL
               value: {{ .Values.env.enrichmentServiceUrl | quote }}
+            - name: COLLECTION_SERVICE_URL
+              value: {{ .Values.env.collectionServiceUrl | quote }}
             - name: VALKEY_URL
               value: {{ .Values.env.valkeyUrl | quote }}
             {{- if .Values.valkey.enabled }}
@@ -50,6 +52,8 @@ spec:
               value: {{ .Values.env.refreshWindow | quote }}
             - name: ME_CACHE_TTL
               value: {{ .Values.env.meCacheTtl | quote }}
+            - name: RECS_CACHE_TTL
+              value: {{ .Values.env.recsCacheTtl | quote }}
             - name: SERVE_STATIC
               value: {{ .Values.env.serveStatic | quote }}
             # Stamped onto telemetry as service.version; the image tag

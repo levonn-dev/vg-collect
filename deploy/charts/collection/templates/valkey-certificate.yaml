@@ -1,0 +1,18 @@
+{{- if .Values.valkey.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: collection-valkey-tls
+  labels: {{- include "collection.labels" . | nindent 4 }}
+spec:
+  secretName: collection-valkey-tls
+  duration: 2160h
+  dnsNames:
+    - {{ include "collection.valkeyHost" . }}
+    - {{ include "collection.valkeyHost" . }}.{{ .Release.Namespace }}.svc
+    - {{ include "collection.valkeyHost" . }}.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    name: vg-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
+{{- end }}

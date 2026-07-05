@@ -1,0 +1,6 @@
+apiVersion: v2
+name: collection
+description: vg-collect collection service (entries, tags, views, dashboard) with its Postgres and Valkey
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

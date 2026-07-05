@@ -38,11 +38,11 @@ spec:
         - { port: 6379, protocol: TCP }
 ---
 {{- end }}
-# Enrichment's callers: the bff (search/resolve/product pass-throughs)
-# and the refresh CronJob (its internal trigger authenticates with the
-# X-Internal-Token secret; this admission is the outer layer). The
-# collection service joins this list when it lands (dashboard batch
-# prices).
+# Enrichment's callers: the bff (search/resolve/product pass-throughs),
+# the collection service (product snapshots at entry creation, batch
+# prices for values and the dashboard), and the refresh CronJob (its
+# internal trigger authenticates with the X-Internal-Token secret;
+# this admission is the outer layer).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -61,5 +61,8 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: enrichment-refresh
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: collection
       ports:
         - { port: 8080, protocol: TCP }
