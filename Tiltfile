@@ -56,6 +56,7 @@ SECRET_KEYS = {k: v for k, v in {
     'enrichment/igdb-client-id': ENV.get('IGDB_CLIENT_ID', ''),
     'enrichment/igdb-client-secret': ENV.get('IGDB_CLIENT_SECRET', ''),
     'enrichment/pricecharting-api-key': ENV.get('PRICECHARTING_API_KEY', ''),
+    'collection/pg-password': ENV.get('PG_COLLECTION_PASSWORD', ''),
 }.items() if v != ''}
 
 k8s_yaml(encode_yaml({
@@ -125,7 +126,7 @@ docker_build(
 )
 k8s_yaml(helm('deploy/charts/bff', name='bff', namespace='vg-collect'))
 k8s_resource('bff', port_forwards=['8083:8080'],
-             resource_deps=['secret-store', 'bff-valkey', 'auth'], labels=['services'])
+             resource_deps=['secret-store', 'bff-valkey', 'auth', 'collection'], labels=['services'])
 k8s_resource('bff-valkey', labels=['datastores'])
 
 # ----- enrichment service -----
@@ -152,6 +153,19 @@ k8s_resource('enrichment', port_forwards=['8084:8080'],
 k8s_resource('enrichment-mongo', port_forwards=['27018:27017'], labels=['datastores'])
 k8s_resource('enrichment-valkey', labels=['datastores'])
 k8s_resource('enrichment-refresh', resource_deps=['enrichment'], labels=['services'])
+
+# ----- collection service -----
+docker_build(
+    'vg-collect/collection', '.',
+    dockerfile='services/collection/Dockerfile',
+    only=['libs/go', 'services/collection'],
+)
+k8s_yaml(helm('deploy/charts/collection', name='collection', namespace='vg-collect'))
+k8s_resource('collection', port_forwards=['8085:8080'],
+             resource_deps=['secret-store', 'collection-pg', 'collection-valkey', 'auth', 'enrichment'],
+             labels=['services'])
+k8s_resource('collection-pg', port_forwards=['5435:5432'], labels=['datastores'])
+k8s_resource('collection-valkey', labels=['datastores'])
 
 # ----- frontend dev loop (manual: trigger when iterating on the SPA;
 # the in-cluster bff serves the built bundle either way) -----
