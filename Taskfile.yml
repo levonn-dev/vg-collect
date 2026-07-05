@@ -118,6 +118,7 @@ tasks:
       - task: auth:gen
       - task: bff:gen
       - task: enrichment:gen
+      - task: collection:gen
       - task: frontend:gen
 
   # -------------------------------- test ---------------------------------
@@ -205,6 +206,10 @@ includes:
   enrichment:
     taskfile: services/enrichment/Taskfile.yml
     dir: services/enrichment
+    optional: true
+  collection:
+    taskfile: services/collection/Taskfile.yml
+    dir: services/collection
     optional: true
   frontend:
     taskfile: frontend/Taskfile.yml

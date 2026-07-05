@@ -1,0 +1,20 @@
+version: "3"
+
+tasks:
+
+  default:
+    desc: List available tasks (run with no args)
+    silent: true
+    cmds:
+      - task --list
+
+  gen:
+    desc: Regenerate server stubs from api/collection.yaml and the enrichment typed client
+    cmds:
+      - go tool oapi-codegen -config oapi.server.yaml ../../api/collection.yaml
+      - go tool oapi-codegen -config oapi.enrichmentclient.yaml ../../api/enrichment.yaml
+
+  db:migrate:
+    desc: Run migrations against DATABASE_URL
+    cmds:
+      - go run ./cmd/collection migrate

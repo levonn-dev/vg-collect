@@ -1,0 +1,863 @@
+openapi: 3.0.3
+info:
+  title: vg-collect collection service
+  version: 0.1.0
+  description: >
+    Cluster-internal collection domain: granular physical entries
+    against the enrichment catalog, user-scoped tags, saved views, a
+    fractional-index backlog ordering, and a dashboard composing SQL
+    aggregates with batched enrichment prices. Every operation requires
+    a Bearer access JWT validated against the auth service's JWKS and
+    is scoped to the token's subject; there are no admin operations
+    here. Catalog facts (item type, display name, platform, release
+    date) are snapshotted onto an entry at creation from the enrichment
+    product; current prices are composed at read time and never stored.
+security:
+  - bearerAuth: []
+paths:
+  /entries:
+    get:
+      operationId: listEntries
+      summary: List the caller's entries (filter x sort x group matrix)
+      description: >
+        Filters combine AND across dimensions and OR within one, except
+        tag_id which requires ALL listed tags. pinned entries always
+        sort first (within each group when grouped), except under
+        sort=backlog_rank, the drag-order read, which is pure rank
+        order. Nullable sort dimensions place nulls last in both
+        directions; ties break on created_at (newest first) then id.
+        sort=value composes current prices from enrichment before
+        ordering; sort=backlog_rank is meaningful with status=backlog.
+        group_by partitions the sorted list: groups order by label
+        ascending with the catch-all group (Unknown/Unassigned/
+        Untagged) last, and group_by=tag repeats a multi-tagged entry
+        in each of its tag groups. Responses are paginated: limit
+        (default 200, max 500) and offset slice the sorted flat
+        sequence and total_count reports the full filtered count;
+        when grouped, the groups partition the requested page, so a
+        group may continue on the next page. pricing_available=false
+        flags that enrichment could not be reached and every
+        value_cents is null.
+      parameters:
+        - name: item_type
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [game, console, accessory] }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
+        - name: packaging
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [sealed, cib, loose] }
+        - name: region
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        - name: item_condition
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        - name: platform_id
+          in: query
+          required: false
+          description: IGDB platform ids (matches the creation-time snapshot).
+          schema:
+            type: array
+            items: { type: integer, format: int64 }
+        - name: tag_id
+          in: query
+          required: false
+          description: Entries carrying ALL listed tags.
+          schema:
+            type: array
+            items: { type: string, format: uuid }
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [name, release_date, purchased_at, created_at, value, paid, rating, backlog_rank]
+            default: created_at
+        - name: order
+          in: query
+          required: false
+          schema: { type: string, enum: [asc, desc], default: desc }
+        - name: group_by
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [platform, status, item_type, location, tag]
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: The filtered entries, flat or grouped (exactly one of entries/groups is present)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntryList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createEntry
+      summary: Add an entry (catalog-backed, or custom for off-catalog items)
+      description: >
+        With a product_id, fetches the product from enrichment to
+        snapshot item_type, display_name, platform, first_release_date,
+        and igdb_game_id (games) onto the row; the client never
+        supplies catalog facts for those. WITHOUT a product_id the
+        entry is CUSTOM (an item the providers do not list): the
+        client supplies display_name and item_type, optionally a
+        free-text platform_name and first_release_date; pricing_mode
+        defaults to disabled and auto is invalid (no own product) -
+        pick a catalog product as the price source via pricing_mode
+        proxy + pricing_product_id. A backlog entry receives a
+        backlog_rank at the end of the backlog. Errors: 404 code
+        unknown_product (product_id) or unknown_pricing_product
+        (pricing_product_id) or tag_not_found; 502 code
+        enrichment_unavailable when the catalog cannot be reached
+        (product-backed creation's one hard dependency; a custom
+        create needs enrichment only to validate a proxy reference).
+        value_cents in the response is composed best-effort like every
+        entry read.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EntryCreate" }
+      responses:
+        "201":
+          description: The created entry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Entry" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: A referenced product or tag does not exist (code unknown_product, unknown_pricing_product, or tag_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /entries/{entryId}:
+    get:
+      operationId: getEntry
+      summary: Fetch one entry with its composed current value
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Entry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Entry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Not found (code entry_not_found; foreign entries answer identically)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+    put:
+      operationId: updateEntry
+      summary: Replace an entry's mutable state (the edit form submits everything)
+      description: >
+        Full replacement of the mutable fields; an absent optional
+        field is cleared. product_id, media_type, and the entry's
+        custom-ness are immutable (a different product is a different
+        item - delete and re-add). On CUSTOM entries the user-owned
+        display fields are part of the mutable state: display_name is
+        required and platform_name/first_release_date replace like any
+        optional field; on product-backed entries those fields are
+        rejected (400) - the catalog snapshot is immutable. Status
+        transitions manage backlog_rank: entering backlog appends at
+        the end, leaving clears, staying keeps the position. A changed
+        pricing_product_id is validated against enrichment; auto stays
+        invalid for custom entries. Pin toggles ride this operation.
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EntryUpdate" }
+      responses:
+        "200":
+          description: The updated entry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Entry" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No such entry, or a referenced pricing product or tag does not exist
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+    delete:
+      operationId: deleteEntry
+      summary: Delete an entry (tag links cascade)
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Not found (code entry_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /entries/{entryId}/reorder:
+    post:
+      operationId: reorderEntry
+      summary: Move a backlog entry between two neighbors (single-row fractional-index write)
+      description: >
+        after_id is the entry that precedes the drop slot, before_id
+        the one that follows; null marks a list edge (both null is
+        invalid). The neighbors' ranks must straddle or the reorder
+        answers 409 code conflicting_order (a stale drag against a
+        list that moved); the entry and both neighbors must be the
+        caller's backlog entries or it answers 409 code
+        not_in_backlog. Ranks are server-generated; clients never
+        send one.
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReorderRequest" }
+      responses:
+        "200":
+          description: The entry at its new position
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Entry" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Not found (code entry_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: The entry or a neighbor is not in the backlog, or the neighbors do not straddle (code not_in_backlog or conflicting_order)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /tags:
+    get:
+      operationId: listTags
+      summary: List the caller's tags with usage counts
+      responses:
+        "200":
+          description: Tags ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tags]
+                properties:
+                  tags:
+                    type: array
+                    items: { $ref: "#/components/schemas/Tag" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createTag
+      summary: Create a tag (names are unique per user, case-insensitively)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TagCreate" }
+      responses:
+        "201":
+          description: The created tag
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tag" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: Name already taken (code tag_exists)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /tags/{tagId}:
+    put:
+      operationId: renameTag
+      summary: Rename a tag
+      parameters:
+        - name: tagId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TagCreate" }
+      responses:
+        "200":
+          description: The renamed tag
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tag" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Not found (code tag_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Name already taken (code tag_exists)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+    delete:
+      operationId: deleteTag
+      summary: Delete a tag (entry links cascade; entries survive)
+      parameters:
+        - name: tagId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Not found (code tag_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /views:
+    get:
+      operationId: listViews
+      summary: List the caller's saved views
+      responses:
+        "200":
+          description: Views ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [views]
+                properties:
+                  views:
+                    type: array
+                    items: { $ref: "#/components/schemas/SavedView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createView
+      summary: Save a view (an opaque frontend params document; names unique per user)
+      description: >
+        params is the frontend's serialized view state (filters, sort,
+        group_by, view mode). The server validates only that it is a
+        JSON object of at most 8192 marshaled bytes; its vocabulary
+        belongs to the frontend.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ViewCreate" }
+      responses:
+        "201":
+          description: The saved view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: Name already taken (code view_exists)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /views/{viewId}:
+    put:
+      operationId: updateView
+      summary: Replace a saved view's name and params
+      parameters:
+        - name: viewId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ViewCreate" }
+      responses:
+        "200":
+          description: The updated view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Not found (code view_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Name already taken (code view_exists)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+    delete:
+      operationId: deleteView
+      summary: Delete a saved view
+      parameters:
+        - name: viewId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Not found (code view_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /dashboard:
+    get:
+      operationId: getDashboard
+      summary: Collection dashboard (SQL aggregates + one batched enrichment price call)
+      description: >
+        Counts and spend come from SQL; total value composes each
+        entry's effective pricing product (auto uses the entry's own
+        product, proxy the override, disabled is excluded) with the
+        packaging-appropriate price field. The composed result is
+        cached about five minutes and invalidated by the caller's own
+        entry mutations. When enrichment is unreachable the dashboard
+        still answers with pricing.available=false (and the degraded
+        result is not cached).
+      responses:
+        "200":
+          description: The dashboard
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Dashboard" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /library/summary:
+    get:
+      operationId: getLibrarySummary
+      summary: Deduplicated game-library summary (recommendation scoring input)
+      description: >
+        Games with an igdb_game_id snapshot, deduplicated across
+        copies: highest rating wins and status reports dropped only
+        when every copy is dropped. Shaped exactly like the enrichment
+        scoring contract's library array so a caller pipes it through
+        without reshaping.
+      responses:
+        "200":
+          description: The library summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LibrarySummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    BadRequest:
+      description: Invalid parameters or body
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    UpstreamError:
+      description: The enrichment service could not be reached (code enrichment_unavailable)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    EntryPlatform:
+      description: >
+        The entry's platform: a creation-time snapshot of the product's
+        platform (both fields) on product-backed entries, or a
+        user-supplied free-text name (no igdb id) on custom entries.
+        Absent when neither exists.
+      type: object
+      required: [name]
+      properties:
+        igdb_platform_id:
+          type: integer
+          format: int64
+          description: Absent on custom entries.
+        name: { type: string }
+    Entry:
+      description: >
+        One physical copy. On product-backed entries the catalog
+        fields (item_type, display_name, platform, first_release_date,
+        igdb_game_id) are immutable creation-time snapshots from the
+        enrichment product and product_id remains the live join key
+        for prices. A CUSTOM entry has no product_id: its display
+        fields are user-owned and editable, platform carries a name
+        without an igdb id when supplied, and igdb_game_id is always
+        absent. value_cents is composed at read time from the
+        effective pricing product and the packaging-matched price
+        field; it is null when pricing_mode is disabled, the product
+        is unmatched, no price exists for the packaging, or enrichment
+        is temporarily unreachable.
+      type: object
+      required: [id, item_type, media_type, display_name, region,
+                 packaging, has_box, has_manual, currency, pricing_mode, status,
+                 pinned, source, tags, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        product_id:
+          type: string
+          format: uuid
+          description: Absent on custom entries.
+        item_type: { type: string, enum: [game, console, accessory] }
+        media_type: { type: string, enum: [physical, digital] }
+        display_name: { type: string }
+        platform: { $ref: "#/components/schemas/EntryPlatform" }
+        first_release_date: { type: string, format: date }
+        igdb_game_id:
+          type: integer
+          format: int64
+          description: >
+            The recommendation identity: snapshotted from the entry's
+            own product, or from the proxy target on custom game
+            entries (owning a reproduction of X means playing X).
+        region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        edition:
+          type: string
+          description: >
+            Per-copy variant note ("first print (glitched rev)",
+            "black edition"): the idiom for variants of cataloged
+            items is an entry on the base product with the variant
+            recorded here.
+        packaging: { type: string, enum: [sealed, cib, loose] }
+        has_box: { type: boolean }
+        has_manual: { type: boolean }
+        box_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        manual_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        item_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        price_paid_cents: { type: integer, format: int64 }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        purchased_at: { type: string, format: date }
+        purchased_from: { type: string }
+        pricing_mode: { type: string, enum: [auto, proxy, disabled] }
+        pricing_product_id: { type: string, format: uuid }
+        status: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
+        rating: { type: integer, minimum: 1, maximum: 10 }
+        notes: { type: string }
+        storage_location: { type: string }
+        pinned: { type: boolean }
+        backlog_rank:
+          type: string
+          description: Present exactly while status is backlog; server-generated.
+        source: { type: string, enum: [manual, steam, psn, epic] }
+        external_ref: { type: string }
+        tags:
+          type: array
+          items: { $ref: "#/components/schemas/TagRef" }
+        value_cents: { type: integer, format: int64 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    EntryCreate:
+      description: >
+        Product-backed: product_id comes from a prior enrichment
+        resolve and the catalog fields are snapshotted server-side
+        (display_name/item_type/platform_name/first_release_date must
+        NOT be sent). Custom (no product_id): display_name and
+        item_type are required, platform_name and first_release_date
+        optional; pricing_mode defaults to disabled and must not be
+        auto. media_type accepts only physical (the column already
+        allows digital: the API widens when platform sync arrives).
+        source is server-set manual. pricing_product_id is required
+        when pricing_mode is proxy; box_condition requires has_box and
+        manual_condition requires has_manual.
+      type: object
+      required: [region, packaging]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          description: Omit for a custom (off-catalog) entry.
+        display_name:
+          type: string
+          maxLength: 200
+          description: Custom entries only (required there).
+        item_type:
+          type: string
+          enum: [game, console, accessory]
+          description: Custom entries only (required there).
+        platform_name:
+          type: string
+          maxLength: 100
+          description: Custom entries only.
+        first_release_date:
+          type: string
+          format: date
+          description: Custom entries only.
+        media_type: { type: string, enum: [physical], default: physical }
+        region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        edition:
+          type: string
+          maxLength: 200
+          description: Per-copy variant note; the idiom for variants of cataloged items.
+        packaging: { type: string, enum: [sealed, cib, loose] }
+        has_box: { type: boolean, default: false }
+        has_manual: { type: boolean, default: false }
+        box_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        manual_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        item_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        price_paid_cents: { type: integer, format: int64, minimum: 0 }
+        currency: { type: string, pattern: "^[A-Z]{3}$", default: USD }
+        purchased_at: { type: string, format: date }
+        purchased_from: { type: string, maxLength: 200 }
+        pricing_mode: { type: string, enum: [auto, proxy, disabled], default: auto }
+        pricing_product_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [backlog, playing, beaten, completed, dropped, shelved]
+          default: backlog
+        rating: { type: integer, minimum: 1, maximum: 10 }
+        notes: { type: string, maxLength: 10000 }
+        storage_location: { type: string, maxLength: 200 }
+        pinned: { type: boolean, default: false }
+        tag_ids:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+    EntryUpdate:
+      description: >
+        Full replacement of the mutable state; an absent optional field
+        is cleared (the edit form holds the whole entry). product_id,
+        media_type, and custom-ness are immutable. On custom entries
+        display_name is required and platform_name/first_release_date
+        replace like any optional field; on product-backed entries all
+        three are rejected. tag_ids replaces the tag set; absent means
+        no tags.
+      type: object
+      required: [region, packaging, pricing_mode, status, pinned]
+      properties:
+        display_name:
+          type: string
+          maxLength: 200
+          description: Custom entries only (required there).
+        platform_name:
+          type: string
+          maxLength: 100
+          description: Custom entries only.
+        first_release_date:
+          type: string
+          format: date
+          description: Custom entries only.
+        region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        edition:
+          type: string
+          maxLength: 200
+          description: Per-copy variant note; the idiom for variants of cataloged items.
+        packaging: { type: string, enum: [sealed, cib, loose] }
+        has_box: { type: boolean, default: false }
+        has_manual: { type: boolean, default: false }
+        box_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        manual_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        item_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        price_paid_cents: { type: integer, format: int64, minimum: 0 }
+        currency: { type: string, pattern: "^[A-Z]{3}$", default: USD }
+        purchased_at: { type: string, format: date }
+        purchased_from: { type: string, maxLength: 200 }
+        pricing_mode: { type: string, enum: [auto, proxy, disabled] }
+        pricing_product_id: { type: string, format: uuid }
+        status: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
+        rating: { type: integer, minimum: 1, maximum: 10 }
+        notes: { type: string, maxLength: 10000 }
+        storage_location: { type: string, maxLength: 200 }
+        pinned: { type: boolean }
+        tag_ids:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+    EntryList:
+      description: >
+        One page of the sorted, filtered sequence. Exactly one of
+        entries/groups is present (groups when group_by was requested,
+        partitioning this page only).
+      type: object
+      required: [pricing_available, total_count]
+      properties:
+        pricing_available:
+          type: boolean
+          description: False when enrichment was unreachable; every value_cents is null.
+        total_count:
+          type: integer
+          description: Size of the full filtered set, before pagination.
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/Entry" }
+        groups:
+          type: array
+          items: { $ref: "#/components/schemas/EntryGroup" }
+    EntryGroup:
+      type: object
+      required: [key, label, entries]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/Entry" }
+    ReorderRequest:
+      description: Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid.
+      type: object
+      properties:
+        after_id: { type: string, format: uuid, nullable: true }
+        before_id: { type: string, format: uuid, nullable: true }
+    TagRef:
+      description: A tag as embedded on an entry (no usage count).
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+    Tag:
+      type: object
+      required: [id, name, entry_count]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        entry_count: { type: integer }
+    TagCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 50 }
+    SavedView:
+      type: object
+      required: [id, name, params, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        params:
+          type: object
+          additionalProperties: true
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ViewCreate:
+      type: object
+      required: [name, params]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        params:
+          type: object
+          additionalProperties: true
+          description: Opaque frontend view state; at most 8192 marshaled bytes.
+    PlatformCount:
+      type: object
+      required: [name, count]
+      properties:
+        name: { type: string }
+        count: { type: integer }
+    CurrencySpend:
+      type: object
+      required: [currency, total_cents]
+      properties:
+        currency: { type: string }
+        total_cents: { type: integer, format: int64 }
+    DashboardPricing:
+      type: object
+      required: [available, priced_entries, unpriced_entries, excluded_entries]
+      properties:
+        available:
+          type: boolean
+          description: False when enrichment was unreachable; total_value_cents is then absent.
+        total_value_cents: { type: integer, format: int64 }
+        priced_entries: { type: integer }
+        unpriced_entries:
+          type: integer
+          description: Entries whose effective product is unmatched or lacks a price for their packaging.
+        excluded_entries:
+          type: integer
+          description: Entries with pricing_mode disabled.
+    Dashboard:
+      type: object
+      required: [total_entries, by_status, by_item_type, by_platform, spend, pricing]
+      properties:
+        total_entries: { type: integer }
+        by_status:
+          type: object
+          additionalProperties: { type: integer }
+        by_item_type:
+          type: object
+          additionalProperties: { type: integer }
+        by_platform:
+          type: array
+          items: { $ref: "#/components/schemas/PlatformCount" }
+        spend:
+          type: array
+          description: Sum of price_paid_cents per currency, over entries that record a price.
+          items: { $ref: "#/components/schemas/CurrencySpend" }
+        pricing: { $ref: "#/components/schemas/DashboardPricing" }
+    LibraryGame:
+      description: Field-compatible with the enrichment scoring contract's LibraryEntry.
+      type: object
+      required: [igdb_game_id]
+      properties:
+        igdb_game_id: { type: integer, format: int64 }
+        rating: { type: integer, minimum: 1, maximum: 10 }
+        status:
+          type: string
+          description: Reported as dropped only when every copy is dropped; otherwise absent.
+    LibrarySummary:
+      type: object
+      required: [library]
+      properties:
+        library:
+          type: array
+          items: { $ref: "#/components/schemas/LibraryGame" }
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        code: { type: string }
