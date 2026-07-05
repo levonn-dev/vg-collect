@@ -16,7 +16,10 @@ import (
 
 	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/collectionapi"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/enrichapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
 )
@@ -33,6 +36,9 @@ type SessionCache interface {
 	GetRefreshResult(ctx context.Context, key string) (string, error)
 	GetMe(ctx context.Context, sub string) ([]byte, error)
 	PutMe(ctx context.Context, sub string, body []byte, ttl time.Duration) error
+	GetRecs(ctx context.Context, sub string) ([]byte, error)
+	PutRecs(ctx context.Context, sub string, body []byte, ttl time.Duration) error
+	InvalidateRecs(ctx context.Context, sub string) error
 }
 
 // AuthAPI is the auth service surface (implemented by authclient).
@@ -58,6 +64,29 @@ type EnrichmentAPI interface {
 	Search(ctx context.Context, bearer, typ, q string) (enrichmentclient.Result, error)
 	Resolve(ctx context.Context, bearer string, body []byte) (enrichmentclient.Result, error)
 	Product(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error)
+	Score(ctx context.Context, bearer string, req enrichapi.ScoreRequest) ([]byte, bool, error)
+}
+
+// CollectionAPI is the collection service surface (implemented by
+// collectionclient). Answers are verbatim relays except
+// LibrarySummary, which the bff consumes itself.
+type CollectionAPI interface {
+	ListEntries(ctx context.Context, bearer string, params *collectionapi.ListEntriesParams) (collectionclient.Result, error)
+	CreateEntry(ctx context.Context, bearer string, body []byte) (collectionclient.Result, error)
+	GetEntry(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	UpdateEntry(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
+	DeleteEntry(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	ReorderEntry(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
+	ListTags(ctx context.Context, bearer string) (collectionclient.Result, error)
+	CreateTag(ctx context.Context, bearer string, body []byte) (collectionclient.Result, error)
+	RenameTag(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
+	DeleteTag(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	ListViews(ctx context.Context, bearer string) (collectionclient.Result, error)
+	CreateView(ctx context.Context, bearer string, body []byte) (collectionclient.Result, error)
+	UpdateView(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
+	DeleteView(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	GetDashboard(ctx context.Context, bearer string) (collectionclient.Result, error)
+	LibrarySummary(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error)
 }
 
 const (
@@ -81,6 +110,10 @@ type Options struct {
 	// access token.
 	RefreshWindow time.Duration
 	MeCacheTTL    time.Duration
+	// RecsCacheTTL bounds how long a composed /api/recommendations
+	// answer stays valid before the next request recomposes it (the
+	// caller's own entry mutations invalidate it sooner).
+	RecsCacheTTL time.Duration
 	// PublicOrigins are the origins allowed to send mutating requests.
 	PublicOrigins []string
 	Logger        *slog.Logger
@@ -94,10 +127,12 @@ type Handlers struct {
 	auth          AuthAPI
 	users         UserAPI
 	enrichment    EnrichmentAPI
+	collection    CollectionAPI
 	logger        *slog.Logger
 	accessTTL     time.Duration
 	refreshWindow time.Duration
 	meTTL         time.Duration
+	recsTTL       time.Duration
 	publicOrigins []string
 	failOpen      metric.Int64Counter
 
@@ -109,7 +144,7 @@ type Handlers struct {
 
 // New builds a Handlers. The OTel meter is best-effort: a counter
 // registration failure is logged but does not prevent startup.
-func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, enrichment EnrichmentAPI, opts Options) *Handlers {
+func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, enrichment EnrichmentAPI, collection CollectionAPI, opts Options) *Handlers {
 	failOpen, err := otel.Meter("github.com/levonn-dev/vg-collect/services/bff").
 		Int64Counter("vg.bff.cache.fail_open",
 			metric.WithDescription("Valkey operations that failed and were failed open"))
@@ -119,11 +154,12 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 		opts.Logger.Error("fail-open counter unavailable", "err", err)
 	}
 	return &Handlers{
-		codec: codec, cache: cache, auth: auth, users: users, enrichment: enrichment,
+		codec: codec, cache: cache, auth: auth, users: users, enrichment: enrichment, collection: collection,
 		logger:        opts.Logger,
 		accessTTL:     opts.AccessTokenTTL,
 		refreshWindow: opts.RefreshWindow,
 		meTTL:         opts.MeCacheTTL,
+		recsTTL:       opts.RecsCacheTTL,
 		publicOrigins: opts.PublicOrigins,
 		failOpen:      failOpen,
 		now:           time.Now,

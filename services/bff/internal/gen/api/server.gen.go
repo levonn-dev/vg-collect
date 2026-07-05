@@ -14,6 +14,225 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for EntryBoxCondition.
+const (
+	EntryBoxConditionAcceptable EntryBoxCondition = "acceptable"
+	EntryBoxConditionGood       EntryBoxCondition = "good"
+	EntryBoxConditionMint       EntryBoxCondition = "mint"
+	EntryBoxConditionNearMint   EntryBoxCondition = "near_mint"
+	EntryBoxConditionPoor       EntryBoxCondition = "poor"
+	EntryBoxConditionVeryGood   EntryBoxCondition = "very_good"
+)
+
+// Defines values for EntryItemCondition.
+const (
+	EntryItemConditionAcceptable EntryItemCondition = "acceptable"
+	EntryItemConditionGood       EntryItemCondition = "good"
+	EntryItemConditionMint       EntryItemCondition = "mint"
+	EntryItemConditionNearMint   EntryItemCondition = "near_mint"
+	EntryItemConditionPoor       EntryItemCondition = "poor"
+	EntryItemConditionVeryGood   EntryItemCondition = "very_good"
+)
+
+// Defines values for EntryItemType.
+const (
+	EntryItemTypeAccessory EntryItemType = "accessory"
+	EntryItemTypeConsole   EntryItemType = "console"
+	EntryItemTypeGame      EntryItemType = "game"
+)
+
+// Defines values for EntryManualCondition.
+const (
+	EntryManualConditionAcceptable EntryManualCondition = "acceptable"
+	EntryManualConditionGood       EntryManualCondition = "good"
+	EntryManualConditionMint       EntryManualCondition = "mint"
+	EntryManualConditionNearMint   EntryManualCondition = "near_mint"
+	EntryManualConditionPoor       EntryManualCondition = "poor"
+	EntryManualConditionVeryGood   EntryManualCondition = "very_good"
+)
+
+// Defines values for EntryMediaType.
+const (
+	EntryMediaTypeDigital  EntryMediaType = "digital"
+	EntryMediaTypePhysical EntryMediaType = "physical"
+)
+
+// Defines values for EntryPackaging.
+const (
+	EntryPackagingCib    EntryPackaging = "cib"
+	EntryPackagingLoose  EntryPackaging = "loose"
+	EntryPackagingSealed EntryPackaging = "sealed"
+)
+
+// Defines values for EntryPricingMode.
+const (
+	EntryPricingModeAuto     EntryPricingMode = "auto"
+	EntryPricingModeDisabled EntryPricingMode = "disabled"
+	EntryPricingModeProxy    EntryPricingMode = "proxy"
+)
+
+// Defines values for EntryRegion.
+const (
+	EntryRegionNtscJ      EntryRegion = "ntsc_j"
+	EntryRegionNtscU      EntryRegion = "ntsc_u"
+	EntryRegionPal        EntryRegion = "pal"
+	EntryRegionRegionFree EntryRegion = "region_free"
+)
+
+// Defines values for EntrySource.
+const (
+	Epic   EntrySource = "epic"
+	Manual EntrySource = "manual"
+	Psn    EntrySource = "psn"
+	Steam  EntrySource = "steam"
+)
+
+// Defines values for EntryStatus.
+const (
+	EntryStatusBacklog   EntryStatus = "backlog"
+	EntryStatusBeaten    EntryStatus = "beaten"
+	EntryStatusCompleted EntryStatus = "completed"
+	EntryStatusDropped   EntryStatus = "dropped"
+	EntryStatusPlaying   EntryStatus = "playing"
+	EntryStatusShelved   EntryStatus = "shelved"
+)
+
+// Defines values for EntryCreateBoxCondition.
+const (
+	EntryCreateBoxConditionAcceptable EntryCreateBoxCondition = "acceptable"
+	EntryCreateBoxConditionGood       EntryCreateBoxCondition = "good"
+	EntryCreateBoxConditionMint       EntryCreateBoxCondition = "mint"
+	EntryCreateBoxConditionNearMint   EntryCreateBoxCondition = "near_mint"
+	EntryCreateBoxConditionPoor       EntryCreateBoxCondition = "poor"
+	EntryCreateBoxConditionVeryGood   EntryCreateBoxCondition = "very_good"
+)
+
+// Defines values for EntryCreateItemCondition.
+const (
+	EntryCreateItemConditionAcceptable EntryCreateItemCondition = "acceptable"
+	EntryCreateItemConditionGood       EntryCreateItemCondition = "good"
+	EntryCreateItemConditionMint       EntryCreateItemCondition = "mint"
+	EntryCreateItemConditionNearMint   EntryCreateItemCondition = "near_mint"
+	EntryCreateItemConditionPoor       EntryCreateItemCondition = "poor"
+	EntryCreateItemConditionVeryGood   EntryCreateItemCondition = "very_good"
+)
+
+// Defines values for EntryCreateItemType.
+const (
+	EntryCreateItemTypeAccessory EntryCreateItemType = "accessory"
+	EntryCreateItemTypeConsole   EntryCreateItemType = "console"
+	EntryCreateItemTypeGame      EntryCreateItemType = "game"
+)
+
+// Defines values for EntryCreateManualCondition.
+const (
+	EntryCreateManualConditionAcceptable EntryCreateManualCondition = "acceptable"
+	EntryCreateManualConditionGood       EntryCreateManualCondition = "good"
+	EntryCreateManualConditionMint       EntryCreateManualCondition = "mint"
+	EntryCreateManualConditionNearMint   EntryCreateManualCondition = "near_mint"
+	EntryCreateManualConditionPoor       EntryCreateManualCondition = "poor"
+	EntryCreateManualConditionVeryGood   EntryCreateManualCondition = "very_good"
+)
+
+// Defines values for EntryCreateMediaType.
+const (
+	EntryCreateMediaTypePhysical EntryCreateMediaType = "physical"
+)
+
+// Defines values for EntryCreatePackaging.
+const (
+	EntryCreatePackagingCib    EntryCreatePackaging = "cib"
+	EntryCreatePackagingLoose  EntryCreatePackaging = "loose"
+	EntryCreatePackagingSealed EntryCreatePackaging = "sealed"
+)
+
+// Defines values for EntryCreatePricingMode.
+const (
+	EntryCreatePricingModeAuto     EntryCreatePricingMode = "auto"
+	EntryCreatePricingModeDisabled EntryCreatePricingMode = "disabled"
+	EntryCreatePricingModeProxy    EntryCreatePricingMode = "proxy"
+)
+
+// Defines values for EntryCreateRegion.
+const (
+	EntryCreateRegionNtscJ      EntryCreateRegion = "ntsc_j"
+	EntryCreateRegionNtscU      EntryCreateRegion = "ntsc_u"
+	EntryCreateRegionPal        EntryCreateRegion = "pal"
+	EntryCreateRegionRegionFree EntryCreateRegion = "region_free"
+)
+
+// Defines values for EntryCreateStatus.
+const (
+	EntryCreateStatusBacklog   EntryCreateStatus = "backlog"
+	EntryCreateStatusBeaten    EntryCreateStatus = "beaten"
+	EntryCreateStatusCompleted EntryCreateStatus = "completed"
+	EntryCreateStatusDropped   EntryCreateStatus = "dropped"
+	EntryCreateStatusPlaying   EntryCreateStatus = "playing"
+	EntryCreateStatusShelved   EntryCreateStatus = "shelved"
+)
+
+// Defines values for EntryUpdateBoxCondition.
+const (
+	EntryUpdateBoxConditionAcceptable EntryUpdateBoxCondition = "acceptable"
+	EntryUpdateBoxConditionGood       EntryUpdateBoxCondition = "good"
+	EntryUpdateBoxConditionMint       EntryUpdateBoxCondition = "mint"
+	EntryUpdateBoxConditionNearMint   EntryUpdateBoxCondition = "near_mint"
+	EntryUpdateBoxConditionPoor       EntryUpdateBoxCondition = "poor"
+	EntryUpdateBoxConditionVeryGood   EntryUpdateBoxCondition = "very_good"
+)
+
+// Defines values for EntryUpdateItemCondition.
+const (
+	EntryUpdateItemConditionAcceptable EntryUpdateItemCondition = "acceptable"
+	EntryUpdateItemConditionGood       EntryUpdateItemCondition = "good"
+	EntryUpdateItemConditionMint       EntryUpdateItemCondition = "mint"
+	EntryUpdateItemConditionNearMint   EntryUpdateItemCondition = "near_mint"
+	EntryUpdateItemConditionPoor       EntryUpdateItemCondition = "poor"
+	EntryUpdateItemConditionVeryGood   EntryUpdateItemCondition = "very_good"
+)
+
+// Defines values for EntryUpdateManualCondition.
+const (
+	EntryUpdateManualConditionAcceptable EntryUpdateManualCondition = "acceptable"
+	EntryUpdateManualConditionGood       EntryUpdateManualCondition = "good"
+	EntryUpdateManualConditionMint       EntryUpdateManualCondition = "mint"
+	EntryUpdateManualConditionNearMint   EntryUpdateManualCondition = "near_mint"
+	EntryUpdateManualConditionPoor       EntryUpdateManualCondition = "poor"
+	EntryUpdateManualConditionVeryGood   EntryUpdateManualCondition = "very_good"
+)
+
+// Defines values for EntryUpdatePackaging.
+const (
+	EntryUpdatePackagingCib    EntryUpdatePackaging = "cib"
+	EntryUpdatePackagingLoose  EntryUpdatePackaging = "loose"
+	EntryUpdatePackagingSealed EntryUpdatePackaging = "sealed"
+)
+
+// Defines values for EntryUpdatePricingMode.
+const (
+	Auto     EntryUpdatePricingMode = "auto"
+	Disabled EntryUpdatePricingMode = "disabled"
+	Proxy    EntryUpdatePricingMode = "proxy"
+)
+
+// Defines values for EntryUpdateRegion.
+const (
+	EntryUpdateRegionNtscJ      EntryUpdateRegion = "ntsc_j"
+	EntryUpdateRegionNtscU      EntryUpdateRegion = "ntsc_u"
+	EntryUpdateRegionPal        EntryUpdateRegion = "pal"
+	EntryUpdateRegionRegionFree EntryUpdateRegion = "region_free"
+)
+
+// Defines values for EntryUpdateStatus.
+const (
+	EntryUpdateStatusBacklog   EntryUpdateStatus = "backlog"
+	EntryUpdateStatusBeaten    EntryUpdateStatus = "beaten"
+	EntryUpdateStatusCompleted EntryUpdateStatus = "completed"
+	EntryUpdateStatusDropped   EntryUpdateStatus = "dropped"
+	EntryUpdateStatusPlaying   EntryUpdateStatus = "playing"
+	EntryUpdateStatusShelved   EntryUpdateStatus = "shelved"
+)
+
 // Defines values for ProductType.
 const (
 	ProductTypeAccessory ProductType = "accessory"
@@ -34,10 +253,79 @@ const (
 	SearchResultTypeHardware SearchResultType = "hardware"
 )
 
+// Defines values for ListEntriesParamsItemType.
+const (
+	ListEntriesParamsItemTypeAccessory ListEntriesParamsItemType = "accessory"
+	ListEntriesParamsItemTypeConsole   ListEntriesParamsItemType = "console"
+	ListEntriesParamsItemTypeGame      ListEntriesParamsItemType = "game"
+)
+
+// Defines values for ListEntriesParamsStatus.
+const (
+	ListEntriesParamsStatusBacklog   ListEntriesParamsStatus = "backlog"
+	ListEntriesParamsStatusBeaten    ListEntriesParamsStatus = "beaten"
+	ListEntriesParamsStatusCompleted ListEntriesParamsStatus = "completed"
+	ListEntriesParamsStatusDropped   ListEntriesParamsStatus = "dropped"
+	ListEntriesParamsStatusPlaying   ListEntriesParamsStatus = "playing"
+	ListEntriesParamsStatusShelved   ListEntriesParamsStatus = "shelved"
+)
+
+// Defines values for ListEntriesParamsPackaging.
+const (
+	ListEntriesParamsPackagingCib    ListEntriesParamsPackaging = "cib"
+	ListEntriesParamsPackagingLoose  ListEntriesParamsPackaging = "loose"
+	ListEntriesParamsPackagingSealed ListEntriesParamsPackaging = "sealed"
+)
+
+// Defines values for ListEntriesParamsRegion.
+const (
+	ListEntriesParamsRegionNtscJ      ListEntriesParamsRegion = "ntsc_j"
+	ListEntriesParamsRegionNtscU      ListEntriesParamsRegion = "ntsc_u"
+	ListEntriesParamsRegionPal        ListEntriesParamsRegion = "pal"
+	ListEntriesParamsRegionRegionFree ListEntriesParamsRegion = "region_free"
+)
+
+// Defines values for ListEntriesParamsItemCondition.
+const (
+	ListEntriesParamsItemConditionAcceptable ListEntriesParamsItemCondition = "acceptable"
+	ListEntriesParamsItemConditionGood       ListEntriesParamsItemCondition = "good"
+	ListEntriesParamsItemConditionMint       ListEntriesParamsItemCondition = "mint"
+	ListEntriesParamsItemConditionNearMint   ListEntriesParamsItemCondition = "near_mint"
+	ListEntriesParamsItemConditionPoor       ListEntriesParamsItemCondition = "poor"
+	ListEntriesParamsItemConditionVeryGood   ListEntriesParamsItemCondition = "very_good"
+)
+
+// Defines values for ListEntriesParamsSort.
+const (
+	BacklogRank ListEntriesParamsSort = "backlog_rank"
+	CreatedAt   ListEntriesParamsSort = "created_at"
+	Name        ListEntriesParamsSort = "name"
+	Paid        ListEntriesParamsSort = "paid"
+	PurchasedAt ListEntriesParamsSort = "purchased_at"
+	Rating      ListEntriesParamsSort = "rating"
+	ReleaseDate ListEntriesParamsSort = "release_date"
+	Value       ListEntriesParamsSort = "value"
+)
+
+// Defines values for ListEntriesParamsOrder.
+const (
+	Asc  ListEntriesParamsOrder = "asc"
+	Desc ListEntriesParamsOrder = "desc"
+)
+
+// Defines values for ListEntriesParamsGroupBy.
+const (
+	ListEntriesParamsGroupByItemType ListEntriesParamsGroupBy = "item_type"
+	ListEntriesParamsGroupByLocation ListEntriesParamsGroupBy = "location"
+	ListEntriesParamsGroupByPlatform ListEntriesParamsGroupBy = "platform"
+	ListEntriesParamsGroupByStatus   ListEntriesParamsGroupBy = "status"
+	ListEntriesParamsGroupByTag      ListEntriesParamsGroupBy = "tag"
+)
+
 // Defines values for SearchCatalogParamsType.
 const (
-	SearchCatalogParamsTypeGame     SearchCatalogParamsType = "game"
-	SearchCatalogParamsTypeHardware SearchCatalogParamsType = "hardware"
+	Game     SearchCatalogParamsType = "game"
+	Hardware SearchCatalogParamsType = "hardware"
 )
 
 // CompanyCredit defines model for CompanyCredit.
@@ -47,18 +335,278 @@ type CompanyCredit struct {
 	Publisher bool   `json:"publisher"`
 }
 
+// CurrencySpend defines model for CurrencySpend.
+type CurrencySpend struct {
+	Currency   string `json:"currency"`
+	TotalCents int64  `json:"total_cents"`
+}
+
+// Dashboard defines model for Dashboard.
+type Dashboard struct {
+	ByItemType map[string]int   `json:"by_item_type"`
+	ByPlatform []PlatformCount  `json:"by_platform"`
+	ByStatus   map[string]int   `json:"by_status"`
+	Pricing    DashboardPricing `json:"pricing"`
+
+	// Spend Sum of price_paid_cents per currency, over entries that record a price.
+	Spend        []CurrencySpend `json:"spend"`
+	TotalEntries int             `json:"total_entries"`
+}
+
+// DashboardPricing defines model for DashboardPricing.
+type DashboardPricing struct {
+	// Available False when enrichment was unreachable; total_value_cents is then absent.
+	Available bool `json:"available"`
+
+	// ExcludedEntries Entries with pricing_mode disabled.
+	ExcludedEntries int    `json:"excluded_entries"`
+	PricedEntries   int    `json:"priced_entries"`
+	TotalValueCents *int64 `json:"total_value_cents,omitempty"`
+
+	// UnpricedEntries Entries whose effective product is unmatched or lacks a price for their packaging.
+	UnpricedEntries int `json:"unpriced_entries"`
+}
+
+// Entry One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries a name without an igdb id when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable.
+type Entry struct {
+	// BacklogRank Present exactly while status is backlog; server-generated.
+	BacklogRank  *string            `json:"backlog_rank,omitempty"`
+	BoxCondition *EntryBoxCondition `json:"box_condition,omitempty"`
+	CreatedAt    time.Time          `json:"created_at"`
+	Currency     string             `json:"currency"`
+	DisplayName  string             `json:"display_name"`
+
+	// Edition Per-copy variant note ("first print (glitched rev)", "black edition"): the idiom for variants of cataloged items is an entry on the base product with the variant recorded here.
+	Edition          *string             `json:"edition,omitempty"`
+	ExternalRef      *string             `json:"external_ref,omitempty"`
+	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
+	HasBox           bool                `json:"has_box"`
+	HasManual        bool                `json:"has_manual"`
+	Id               openapi_types.UUID  `json:"id"`
+
+	// IgdbGameId The recommendation identity: snapshotted from the entry's own product, or from the proxy target on custom game entries (owning a reproduction of X means playing X).
+	IgdbGameId      *int64                `json:"igdb_game_id,omitempty"`
+	ItemCondition   *EntryItemCondition   `json:"item_condition,omitempty"`
+	ItemType        EntryItemType         `json:"item_type"`
+	ManualCondition *EntryManualCondition `json:"manual_condition,omitempty"`
+	MediaType       EntryMediaType        `json:"media_type"`
+	Notes           *string               `json:"notes,omitempty"`
+	Packaging       EntryPackaging        `json:"packaging"`
+	Pinned          bool                  `json:"pinned"`
+
+	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied free-text name (no igdb id) on custom entries. Absent when neither exists.
+	Platform         *EntryPlatform      `json:"platform,omitempty"`
+	PricePaidCents   *int64              `json:"price_paid_cents,omitempty"`
+	PricingMode      EntryPricingMode    `json:"pricing_mode"`
+	PricingProductId *openapi_types.UUID `json:"pricing_product_id,omitempty"`
+
+	// ProductId Absent on custom entries.
+	ProductId       *openapi_types.UUID `json:"product_id,omitempty"`
+	PurchasedAt     *openapi_types.Date `json:"purchased_at,omitempty"`
+	PurchasedFrom   *string             `json:"purchased_from,omitempty"`
+	Rating          *int                `json:"rating,omitempty"`
+	Region          EntryRegion         `json:"region"`
+	Source          EntrySource         `json:"source"`
+	Status          EntryStatus         `json:"status"`
+	StorageLocation *string             `json:"storage_location,omitempty"`
+	Tags            []TagRef            `json:"tags"`
+	UpdatedAt       time.Time           `json:"updated_at"`
+	ValueCents      *int64              `json:"value_cents,omitempty"`
+}
+
+// EntryBoxCondition defines model for Entry.BoxCondition.
+type EntryBoxCondition string
+
+// EntryItemCondition defines model for Entry.ItemCondition.
+type EntryItemCondition string
+
+// EntryItemType defines model for Entry.ItemType.
+type EntryItemType string
+
+// EntryManualCondition defines model for Entry.ManualCondition.
+type EntryManualCondition string
+
+// EntryMediaType defines model for Entry.MediaType.
+type EntryMediaType string
+
+// EntryPackaging defines model for Entry.Packaging.
+type EntryPackaging string
+
+// EntryPricingMode defines model for Entry.PricingMode.
+type EntryPricingMode string
+
+// EntryRegion defines model for Entry.Region.
+type EntryRegion string
+
+// EntrySource defines model for Entry.Source.
+type EntrySource string
+
+// EntryStatus defines model for Entry.Status.
+type EntryStatus string
+
+// EntryCreate Product-backed: product_id comes from a prior enrichment resolve and the catalog fields are snapshotted server-side (display_name/item_type/platform_name/first_release_date must NOT be sent). Custom (no product_id): display_name and item_type are required, platform_name and first_release_date optional; pricing_mode defaults to disabled and must not be auto. media_type accepts only physical (the column already allows digital: the API widens when platform sync arrives). source is server-set manual. pricing_product_id is required when pricing_mode is proxy; box_condition requires has_box and manual_condition requires has_manual.
+type EntryCreate struct {
+	BoxCondition *EntryCreateBoxCondition `json:"box_condition,omitempty"`
+	Currency     *string                  `json:"currency,omitempty"`
+
+	// DisplayName Custom entries only (required there).
+	DisplayName *string `json:"display_name,omitempty"`
+
+	// Edition Per-copy variant note; the idiom for variants of cataloged items.
+	Edition *string `json:"edition,omitempty"`
+
+	// FirstReleaseDate Custom entries only.
+	FirstReleaseDate *openapi_types.Date       `json:"first_release_date,omitempty"`
+	HasBox           *bool                     `json:"has_box,omitempty"`
+	HasManual        *bool                     `json:"has_manual,omitempty"`
+	ItemCondition    *EntryCreateItemCondition `json:"item_condition,omitempty"`
+
+	// ItemType Custom entries only (required there).
+	ItemType        *EntryCreateItemType        `json:"item_type,omitempty"`
+	ManualCondition *EntryCreateManualCondition `json:"manual_condition,omitempty"`
+	MediaType       *EntryCreateMediaType       `json:"media_type,omitempty"`
+	Notes           *string                     `json:"notes,omitempty"`
+	Packaging       EntryCreatePackaging        `json:"packaging"`
+	Pinned          *bool                       `json:"pinned,omitempty"`
+
+	// PlatformName Custom entries only.
+	PlatformName     *string                 `json:"platform_name,omitempty"`
+	PricePaidCents   *int64                  `json:"price_paid_cents,omitempty"`
+	PricingMode      *EntryCreatePricingMode `json:"pricing_mode,omitempty"`
+	PricingProductId *openapi_types.UUID     `json:"pricing_product_id,omitempty"`
+
+	// ProductId Omit for a custom (off-catalog) entry.
+	ProductId       *openapi_types.UUID   `json:"product_id,omitempty"`
+	PurchasedAt     *openapi_types.Date   `json:"purchased_at,omitempty"`
+	PurchasedFrom   *string               `json:"purchased_from,omitempty"`
+	Rating          *int                  `json:"rating,omitempty"`
+	Region          EntryCreateRegion     `json:"region"`
+	Status          *EntryCreateStatus    `json:"status,omitempty"`
+	StorageLocation *string               `json:"storage_location,omitempty"`
+	TagIds          *[]openapi_types.UUID `json:"tag_ids,omitempty"`
+}
+
+// EntryCreateBoxCondition defines model for EntryCreate.BoxCondition.
+type EntryCreateBoxCondition string
+
+// EntryCreateItemCondition defines model for EntryCreate.ItemCondition.
+type EntryCreateItemCondition string
+
+// EntryCreateItemType Custom entries only (required there).
+type EntryCreateItemType string
+
+// EntryCreateManualCondition defines model for EntryCreate.ManualCondition.
+type EntryCreateManualCondition string
+
+// EntryCreateMediaType defines model for EntryCreate.MediaType.
+type EntryCreateMediaType string
+
+// EntryCreatePackaging defines model for EntryCreate.Packaging.
+type EntryCreatePackaging string
+
+// EntryCreatePricingMode defines model for EntryCreate.PricingMode.
+type EntryCreatePricingMode string
+
+// EntryCreateRegion defines model for EntryCreate.Region.
+type EntryCreateRegion string
+
+// EntryCreateStatus defines model for EntryCreate.Status.
+type EntryCreateStatus string
+
+// EntryGroup defines model for EntryGroup.
+type EntryGroup struct {
+	Entries []Entry `json:"entries"`
+	Key     string  `json:"key"`
+	Label   string  `json:"label"`
+}
+
+// EntryList One page of the sorted, filtered sequence. Exactly one of entries/groups is present (groups when group_by was requested, partitioning this page only).
+type EntryList struct {
+	Entries *[]Entry      `json:"entries,omitempty"`
+	Groups  *[]EntryGroup `json:"groups,omitempty"`
+
+	// PricingAvailable False when enrichment was unreachable; every value_cents is null.
+	PricingAvailable bool `json:"pricing_available"`
+
+	// TotalCount Size of the full filtered set, before pagination.
+	TotalCount int `json:"total_count"`
+}
+
+// EntryPlatform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied free-text name (no igdb id) on custom entries. Absent when neither exists.
+type EntryPlatform struct {
+	// IgdbPlatformId Absent on custom entries.
+	IgdbPlatformId *int64 `json:"igdb_platform_id,omitempty"`
+	Name           string `json:"name"`
+}
+
+// EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). product_id, media_type, and custom-ness are immutable. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags.
+type EntryUpdate struct {
+	BoxCondition *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
+	Currency     *string                  `json:"currency,omitempty"`
+
+	// DisplayName Custom entries only (required there).
+	DisplayName *string `json:"display_name,omitempty"`
+
+	// Edition Per-copy variant note; the idiom for variants of cataloged items.
+	Edition *string `json:"edition,omitempty"`
+
+	// FirstReleaseDate Custom entries only.
+	FirstReleaseDate *openapi_types.Date         `json:"first_release_date,omitempty"`
+	HasBox           *bool                       `json:"has_box,omitempty"`
+	HasManual        *bool                       `json:"has_manual,omitempty"`
+	ItemCondition    *EntryUpdateItemCondition   `json:"item_condition,omitempty"`
+	ManualCondition  *EntryUpdateManualCondition `json:"manual_condition,omitempty"`
+	Notes            *string                     `json:"notes,omitempty"`
+	Packaging        EntryUpdatePackaging        `json:"packaging"`
+	Pinned           bool                        `json:"pinned"`
+
+	// PlatformName Custom entries only.
+	PlatformName     *string                `json:"platform_name,omitempty"`
+	PricePaidCents   *int64                 `json:"price_paid_cents,omitempty"`
+	PricingMode      EntryUpdatePricingMode `json:"pricing_mode"`
+	PricingProductId *openapi_types.UUID    `json:"pricing_product_id,omitempty"`
+	PurchasedAt      *openapi_types.Date    `json:"purchased_at,omitempty"`
+	PurchasedFrom    *string                `json:"purchased_from,omitempty"`
+	Rating           *int                   `json:"rating,omitempty"`
+	Region           EntryUpdateRegion      `json:"region"`
+	Status           EntryUpdateStatus      `json:"status"`
+	StorageLocation  *string                `json:"storage_location,omitempty"`
+	TagIds           *[]openapi_types.UUID  `json:"tag_ids,omitempty"`
+}
+
+// EntryUpdateBoxCondition defines model for EntryUpdate.BoxCondition.
+type EntryUpdateBoxCondition string
+
+// EntryUpdateItemCondition defines model for EntryUpdate.ItemCondition.
+type EntryUpdateItemCondition string
+
+// EntryUpdateManualCondition defines model for EntryUpdate.ManualCondition.
+type EntryUpdateManualCondition string
+
+// EntryUpdatePackaging defines model for EntryUpdate.Packaging.
+type EntryUpdatePackaging string
+
+// EntryUpdatePricingMode defines model for EntryUpdate.PricingMode.
+type EntryUpdatePricingMode string
+
+// EntryUpdateRegion defines model for EntryUpdate.Region.
+type EntryUpdateRegion string
+
+// EntryUpdateStatus defines model for EntryUpdate.Status.
+type EntryUpdateStatus string
+
 // IgdbMeta Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
 type IgdbMeta struct {
-	Companies        []CompanyCredit `json:"companies"`
-	CoverUrl         *string         `json:"cover_url,omitempty"`
-	FetchedAt        time.Time       `json:"fetched_at"`
-	FirstReleaseYear *int            `json:"first_release_year,omitempty"`
-	Franchises       []string        `json:"franchises"`
-	GameId           int64           `json:"game_id"`
-	Genres           []string        `json:"genres"`
-	Name             string          `json:"name"`
-	SimilarGames     []int64         `json:"similar_games"`
-	Themes           []string        `json:"themes"`
+	Companies        []CompanyCredit     `json:"companies"`
+	CoverUrl         *string             `json:"cover_url,omitempty"`
+	FetchedAt        time.Time           `json:"fetched_at"`
+	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
+	Franchises       []string            `json:"franchises"`
+	GameId           int64               `json:"game_id"`
+	Genres           []string            `json:"genres"`
+	Name             string              `json:"name"`
+	SimilarGames     []int64             `json:"similar_games"`
+	Themes           []string            `json:"themes"`
 }
 
 // Me Browser-facing projection of the user service's User. Timestamps are intentionally omitted; add fields only when the SPA has a concrete use for them.
@@ -68,6 +616,12 @@ type Me struct {
 	Email       string             `json:"email"`
 	Id          openapi_types.UUID `json:"id"`
 	Roles       []string           `json:"roles"`
+}
+
+// PlatformCount defines model for PlatformCount.
+type PlatformCount struct {
+	Count int    `json:"count"`
+	Name  string `json:"name"`
 }
 
 // PlatformRef defines model for PlatformRef.
@@ -127,6 +681,22 @@ type Providers struct {
 	Providers []string `json:"providers"`
 }
 
+// Recommendation defines model for Recommendation.
+type Recommendation struct {
+	CoverUrl         *string             `json:"cover_url,omitempty"`
+	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
+	Genres           []string            `json:"genres"`
+	IgdbGameId       int64               `json:"igdb_game_id"`
+	Name             string              `json:"name"`
+	Score            float64             `json:"score"`
+}
+
+// ReorderRequest Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid.
+type ReorderRequest struct {
+	AfterId  *openapi_types.UUID `json:"after_id"`
+	BeforeId *openapi_types.UUID `json:"before_id"`
+}
+
 // ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on); console/accessory require pc_product_id. region/edition/variant distinguish physical variants and are part of the product identity.
 type ResolveRequest struct {
 	Edition        *string            `json:"edition,omitempty"`
@@ -141,17 +711,33 @@ type ResolveRequest struct {
 // ResolveRequestType defines model for ResolveRequest.Type.
 type ResolveRequestType string
 
+// SavedView defines model for SavedView.
+type SavedView struct {
+	CreatedAt time.Time              `json:"created_at"`
+	Id        openapi_types.UUID     `json:"id"`
+	Name      string                 `json:"name"`
+	Params    map[string]interface{} `json:"params"`
+	UpdatedAt time.Time              `json:"updated_at"`
+}
+
+// ScoreResponse defines model for ScoreResponse.
+type ScoreResponse struct {
+	// Degraded True when candidate metadata fetches failed and some candidates were skipped.
+	Degraded        bool             `json:"degraded"`
+	Recommendations []Recommendation `json:"recommendations"`
+}
+
 // SearchResult Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories).
 type SearchResult struct {
-	Category         *string          `json:"category,omitempty"`
-	ConsoleName      *string          `json:"console_name,omitempty"`
-	CoverUrl         *string          `json:"cover_url,omitempty"`
-	FirstReleaseYear *int             `json:"first_release_year,omitempty"`
-	IgdbGameId       *int64           `json:"igdb_game_id,omitempty"`
-	Name             string           `json:"name"`
-	PcProductId      *int64           `json:"pc_product_id,omitempty"`
-	Platforms        *[]PlatformRef   `json:"platforms,omitempty"`
-	Type             SearchResultType `json:"type"`
+	Category         *string             `json:"category,omitempty"`
+	ConsoleName      *string             `json:"console_name,omitempty"`
+	CoverUrl         *string             `json:"cover_url,omitempty"`
+	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
+	IgdbGameId       *int64              `json:"igdb_game_id,omitempty"`
+	Name             string              `json:"name"`
+	PcProductId      *int64              `json:"pc_product_id,omitempty"`
+	Platforms        *[]PlatformRef      `json:"platforms,omitempty"`
+	Type             SearchResultType    `json:"type"`
 }
 
 // SearchResultType defines model for SearchResult.Type.
@@ -162,6 +748,32 @@ type SearchResults struct {
 	// Degraded True when the provider was unreachable and the local catalog answered instead.
 	Degraded bool           `json:"degraded"`
 	Results  []SearchResult `json:"results"`
+}
+
+// Tag defines model for Tag.
+type Tag struct {
+	EntryCount int                `json:"entry_count"`
+	Id         openapi_types.UUID `json:"id"`
+	Name       string             `json:"name"`
+}
+
+// TagCreate defines model for TagCreate.
+type TagCreate struct {
+	Name string `json:"name"`
+}
+
+// TagRef A tag as embedded on an entry (no usage count).
+type TagRef struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+}
+
+// ViewCreate defines model for ViewCreate.
+type ViewCreate struct {
+	Name string `json:"name"`
+
+	// Params Opaque frontend view state; at most 8192 marshaled bytes.
+	Params map[string]interface{} `json:"params"`
 }
 
 // OriginForbidden defines model for OriginForbidden.
@@ -188,6 +800,50 @@ type LoginParams struct {
 	User *string `form:"user,omitempty" json:"user,omitempty"`
 }
 
+// ListEntriesParams defines parameters for ListEntries.
+type ListEntriesParams struct {
+	ItemType      *[]ListEntriesParamsItemType      `form:"item_type,omitempty" json:"item_type,omitempty"`
+	Status        *[]ListEntriesParamsStatus        `form:"status,omitempty" json:"status,omitempty"`
+	Packaging     *[]ListEntriesParamsPackaging     `form:"packaging,omitempty" json:"packaging,omitempty"`
+	Region        *[]ListEntriesParamsRegion        `form:"region,omitempty" json:"region,omitempty"`
+	ItemCondition *[]ListEntriesParamsItemCondition `form:"item_condition,omitempty" json:"item_condition,omitempty"`
+
+	// PlatformId IGDB platform ids (matches the creation-time snapshot).
+	PlatformId *[]int64 `form:"platform_id,omitempty" json:"platform_id,omitempty"`
+
+	// TagId Entries carrying ALL listed tags.
+	TagId   *[]openapi_types.UUID     `form:"tag_id,omitempty" json:"tag_id,omitempty"`
+	Sort    *ListEntriesParamsSort    `form:"sort,omitempty" json:"sort,omitempty"`
+	Order   *ListEntriesParamsOrder   `form:"order,omitempty" json:"order,omitempty"`
+	GroupBy *ListEntriesParamsGroupBy `form:"group_by,omitempty" json:"group_by,omitempty"`
+	Limit   *int                      `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset  *int                      `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListEntriesParamsItemType defines parameters for ListEntries.
+type ListEntriesParamsItemType string
+
+// ListEntriesParamsStatus defines parameters for ListEntries.
+type ListEntriesParamsStatus string
+
+// ListEntriesParamsPackaging defines parameters for ListEntries.
+type ListEntriesParamsPackaging string
+
+// ListEntriesParamsRegion defines parameters for ListEntries.
+type ListEntriesParamsRegion string
+
+// ListEntriesParamsItemCondition defines parameters for ListEntries.
+type ListEntriesParamsItemCondition string
+
+// ListEntriesParamsSort defines parameters for ListEntries.
+type ListEntriesParamsSort string
+
+// ListEntriesParamsOrder defines parameters for ListEntries.
+type ListEntriesParamsOrder string
+
+// ListEntriesParamsGroupBy defines parameters for ListEntries.
+type ListEntriesParamsGroupBy string
+
 // SearchCatalogParams defines parameters for SearchCatalog.
 type SearchCatalogParams struct {
 	Type SearchCatalogParamsType `form:"type" json:"type"`
@@ -197,8 +853,29 @@ type SearchCatalogParams struct {
 // SearchCatalogParamsType defines parameters for SearchCatalog.
 type SearchCatalogParamsType string
 
+// CreateEntryJSONRequestBody defines body for CreateEntry for application/json ContentType.
+type CreateEntryJSONRequestBody = EntryCreate
+
+// UpdateEntryJSONRequestBody defines body for UpdateEntry for application/json ContentType.
+type UpdateEntryJSONRequestBody = EntryUpdate
+
+// ReorderEntryJSONRequestBody defines body for ReorderEntry for application/json ContentType.
+type ReorderEntryJSONRequestBody = ReorderRequest
+
 // ResolveProductJSONRequestBody defines body for ResolveProduct for application/json ContentType.
 type ResolveProductJSONRequestBody = ResolveRequest
+
+// CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
+type CreateTagJSONRequestBody = TagCreate
+
+// RenameTagJSONRequestBody defines body for RenameTag for application/json ContentType.
+type RenameTagJSONRequestBody = TagCreate
+
+// CreateViewJSONRequestBody defines body for CreateView for application/json ContentType.
+type CreateViewJSONRequestBody = ViewCreate
+
+// UpdateViewJSONRequestBody defines body for UpdateView for application/json ContentType.
+type UpdateViewJSONRequestBody = ViewCreate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -214,6 +891,27 @@ type ServerInterface interface {
 	// Login provider names currently enabled (drives the login page buttons)
 	// (GET /api/auth/providers)
 	ListProviders(w http.ResponseWriter, r *http.Request)
+	// Collection dashboard (proxied; cached by the collection service, never here)
+	// (GET /api/dashboard)
+	GetDashboard(w http.ResponseWriter, r *http.Request)
+	// List collection entries (proxied to the collection service, uncached)
+	// (GET /api/entries)
+	ListEntries(w http.ResponseWriter, r *http.Request, params ListEntriesParams)
+	// Add an entry (proxied, uncached)
+	// (POST /api/entries)
+	CreateEntry(w http.ResponseWriter, r *http.Request)
+	// Delete an entry (proxied)
+	// (DELETE /api/entries/{entryId})
+	DeleteEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
+	// Fetch one entry (proxied, uncached)
+	// (GET /api/entries/{entryId})
+	GetEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
+	// Replace an entry's mutable state (proxied, uncached)
+	// (PUT /api/entries/{entryId})
+	UpdateEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
+	// Move a backlog entry between two neighbors (proxied)
+	// (POST /api/entries/{entryId}/reorder)
+	ReorderEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
 	// The signed-in user's profile (composed from the user service; briefly cached)
 	// (GET /api/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -223,9 +921,36 @@ type ServerInterface interface {
 	// Fetch a catalog product (proxied, uncached)
 	// (GET /api/products/{productId})
 	GetProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
+	// Heuristic game recommendations for the signed-in user's library
+	// (GET /api/recommendations)
+	GetRecommendations(w http.ResponseWriter, r *http.Request)
 	// Catalog discovery search (proxied to the enrichment service, uncached)
 	// (GET /api/search)
 	SearchCatalog(w http.ResponseWriter, r *http.Request, params SearchCatalogParams)
+	// List tags with usage counts (proxied, uncached)
+	// (GET /api/tags)
+	ListTags(w http.ResponseWriter, r *http.Request)
+	// Create a tag (proxied)
+	// (POST /api/tags)
+	CreateTag(w http.ResponseWriter, r *http.Request)
+	// Delete a tag (proxied)
+	// (DELETE /api/tags/{tagId})
+	DeleteTag(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID)
+	// Rename a tag (proxied)
+	// (PUT /api/tags/{tagId})
+	RenameTag(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID)
+	// List saved views (proxied, uncached)
+	// (GET /api/views)
+	ListViews(w http.ResponseWriter, r *http.Request)
+	// Save a view (proxied)
+	// (POST /api/views)
+	CreateView(w http.ResponseWriter, r *http.Request)
+	// Delete a saved view (proxied)
+	// (DELETE /api/views/{viewId})
+	DeleteView(w http.ResponseWriter, r *http.Request, viewId openapi_types.UUID)
+	// Replace a saved view (proxied)
+	// (PUT /api/views/{viewId})
+	UpdateView(w http.ResponseWriter, r *http.Request, viewId openapi_types.UUID)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -342,6 +1067,249 @@ func (siw *ServerInterfaceWrapper) ListProviders(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetDashboard operation middleware
+func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDashboard(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListEntries operation middleware
+func (siw *ServerInterfaceWrapper) ListEntries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListEntriesParams
+
+	// ------------- Optional query parameter "item_type" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "item_type", r.URL.Query(), &params.ItemType)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "item_type", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", r.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "packaging" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "packaging", r.URL.Query(), &params.Packaging)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "packaging", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "region" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "region", r.URL.Query(), &params.Region)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "region", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "item_condition" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "item_condition", r.URL.Query(), &params.ItemCondition)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "item_condition", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "platform_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "platform_id", r.URL.Query(), &params.PlatformId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "platform_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "tag_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "tag_id", r.URL.Query(), &params.TagId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sort", r.URL.Query(), &params.Sort)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "order" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "order", r.URL.Query(), &params.Order)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "order", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "group_by" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "group_by", r.URL.Query(), &params.GroupBy)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "group_by", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListEntries(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateEntry operation middleware
+func (siw *ServerInterfaceWrapper) CreateEntry(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateEntry(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteEntry operation middleware
+func (siw *ServerInterfaceWrapper) DeleteEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteEntry(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEntry operation middleware
+func (siw *ServerInterfaceWrapper) GetEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEntry(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateEntry operation middleware
+func (siw *ServerInterfaceWrapper) UpdateEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateEntry(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReorderEntry operation middleware
+func (siw *ServerInterfaceWrapper) ReorderEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReorderEntry(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMe operation middleware
 func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
 
@@ -395,6 +1363,20 @@ func (siw *ServerInterfaceWrapper) GetProduct(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// GetRecommendations operation middleware
+func (siw *ServerInterfaceWrapper) GetRecommendations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRecommendations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SearchCatalog operation middleware
 func (siw *ServerInterfaceWrapper) SearchCatalog(w http.ResponseWriter, r *http.Request) {
 
@@ -435,6 +1417,162 @@ func (siw *ServerInterfaceWrapper) SearchCatalog(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SearchCatalog(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTags operation middleware
+func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTag operation middleware
+func (siw *ServerInterfaceWrapper) CreateTag(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTag(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTag operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "tagId" -------------
+	var tagId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", r.PathValue("tagId"), &tagId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTag(w, r, tagId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameTag operation middleware
+func (siw *ServerInterfaceWrapper) RenameTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "tagId" -------------
+	var tagId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", r.PathValue("tagId"), &tagId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameTag(w, r, tagId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListViews operation middleware
+func (siw *ServerInterfaceWrapper) ListViews(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListViews(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateView operation middleware
+func (siw *ServerInterfaceWrapper) CreateView(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateView(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteView operation middleware
+func (siw *ServerInterfaceWrapper) DeleteView(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "viewId" -------------
+	var viewId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "viewId", r.PathValue("viewId"), &viewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "viewId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteView(w, r, viewId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateView operation middleware
+func (siw *ServerInterfaceWrapper) UpdateView(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "viewId" -------------
+	var viewId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "viewId", r.PathValue("viewId"), &viewId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "viewId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateView(w, r, viewId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -568,10 +1706,26 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/login", wrapper.Login)
 	m.HandleFunc("POST "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/providers", wrapper.ListProviders)
+	m.HandleFunc("GET "+options.BaseURL+"/api/dashboard", wrapper.GetDashboard)
+	m.HandleFunc("GET "+options.BaseURL+"/api/entries", wrapper.ListEntries)
+	m.HandleFunc("POST "+options.BaseURL+"/api/entries", wrapper.CreateEntry)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/entries/{entryId}", wrapper.DeleteEntry)
+	m.HandleFunc("GET "+options.BaseURL+"/api/entries/{entryId}", wrapper.GetEntry)
+	m.HandleFunc("PUT "+options.BaseURL+"/api/entries/{entryId}", wrapper.UpdateEntry)
+	m.HandleFunc("POST "+options.BaseURL+"/api/entries/{entryId}/reorder", wrapper.ReorderEntry)
 	m.HandleFunc("GET "+options.BaseURL+"/api/me", wrapper.GetMe)
 	m.HandleFunc("POST "+options.BaseURL+"/api/products/resolve", wrapper.ResolveProduct)
 	m.HandleFunc("GET "+options.BaseURL+"/api/products/{productId}", wrapper.GetProduct)
+	m.HandleFunc("GET "+options.BaseURL+"/api/recommendations", wrapper.GetRecommendations)
 	m.HandleFunc("GET "+options.BaseURL+"/api/search", wrapper.SearchCatalog)
+	m.HandleFunc("GET "+options.BaseURL+"/api/tags", wrapper.ListTags)
+	m.HandleFunc("POST "+options.BaseURL+"/api/tags", wrapper.CreateTag)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/tags/{tagId}", wrapper.DeleteTag)
+	m.HandleFunc("PUT "+options.BaseURL+"/api/tags/{tagId}", wrapper.RenameTag)
+	m.HandleFunc("GET "+options.BaseURL+"/api/views", wrapper.ListViews)
+	m.HandleFunc("POST "+options.BaseURL+"/api/views", wrapper.CreateView)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/views/{viewId}", wrapper.DeleteView)
+	m.HandleFunc("PUT "+options.BaseURL+"/api/views/{viewId}", wrapper.UpdateView)
 
 	return m
 }

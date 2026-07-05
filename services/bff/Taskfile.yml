@@ -15,3 +15,4 @@ tasks:
       - go tool oapi-codegen -config oapi.authclient.yaml ../../api/auth.yaml
       - go tool oapi-codegen -config oapi.userclient.yaml ../../api/user.yaml
       - go tool oapi-codegen -config oapi.enrichmentclient.yaml ../../api/enrichment.yaml
+      - go tool oapi-codegen -config oapi.collectionclient.yaml ../../api/collection.yaml

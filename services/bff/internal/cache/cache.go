@@ -118,3 +118,32 @@ func (c *Cache) PutMe(ctx context.Context, sub string, body []byte, ttl time.Dur
 	}
 	return nil
 }
+
+// GetRecs returns the cached recommendations body for sub, or nil.
+func (c *Cache) GetRecs(ctx context.Context, sub string) ([]byte, error) {
+	v, err := c.rdb.Get(ctx, "recs:"+sub).Result()
+	if errors.Is(err, redis.Nil) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("cache: get recs: %w", err)
+	}
+	return []byte(v), nil
+}
+
+// PutRecs caches a composed recommendations body.
+func (c *Cache) PutRecs(ctx context.Context, sub string, body []byte, ttl time.Duration) error {
+	if err := c.rdb.Set(ctx, "recs:"+sub, body, ttl).Err(); err != nil {
+		return fmt.Errorf("cache: put recs: %w", err)
+	}
+	return nil
+}
+
+// InvalidateRecs drops a user's recommendations after one of their
+// entry mutations (the library that feeds scoring changed).
+func (c *Cache) InvalidateRecs(ctx context.Context, sub string) error {
+	if err := c.rdb.Del(ctx, "recs:"+sub).Err(); err != nil {
+		return fmt.Errorf("cache: invalidate recs: %w", err)
+	}
+	return nil
+}

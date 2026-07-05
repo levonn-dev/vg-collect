@@ -100,3 +100,18 @@ func (c *Client) Product(ctx context.Context, bearer string, id uuid.UUID) (Resu
 	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
 		http.StatusOK, http.StatusNotFound)
 }
+
+// Score calls the recommendation scorer with the user's own token,
+// returning the raw 200 body plus its decoded degraded flag (the
+// caller caches only non-degraded results). Any other answer is an
+// infrastructure fault.
+func (c *Client) Score(ctx context.Context, bearer string, req enrichapi.ScoreRequest) ([]byte, bool, error) {
+	resp, err := c.api.ScoreRecommendationsWithResponse(ctx, req, bearerEditor(bearer))
+	if err != nil {
+		return nil, false, fmt.Errorf("enrichmentclient: score: %w", err)
+	}
+	if resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
+		return nil, false, fmt.Errorf("%w: status %d", ErrUpstream, resp.StatusCode())
+	}
+	return resp.Body, resp.JSON200.Degraded, nil
+}

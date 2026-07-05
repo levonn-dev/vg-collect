@@ -20,6 +20,7 @@ import (
 	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/cache"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
@@ -34,13 +35,14 @@ type stubCache struct {
 	locks    map[string]string
 	results  map[string]string
 	me       map[string][]byte
+	recs     map[string][]byte
 	denyAdds [][]string
 	err      error // returned by every method when set
 }
 
 func newStubCache() *stubCache {
 	return &stubCache{deny: map[string]bool{}, locks: map[string]string{},
-		results: map[string]string{}, me: map[string][]byte{}}
+		results: map[string]string{}, me: map[string][]byte{}, recs: map[string][]byte{}}
 }
 
 func (f *stubCache) DenylistAdd(_ context.Context, jtis []string, _ time.Duration) error {
@@ -125,6 +127,35 @@ func (f *stubCache) PutMe(_ context.Context, sub string, body []byte, _ time.Dur
 	return nil
 }
 
+func (f *stubCache) GetRecs(_ context.Context, sub string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.recs[sub], nil
+}
+
+func (f *stubCache) PutRecs(_ context.Context, sub string, body []byte, _ time.Duration) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.recs[sub] = body
+	return nil
+}
+
+func (f *stubCache) InvalidateRecs(_ context.Context, sub string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	delete(f.recs, sub)
+	return nil
+}
+
 // stubAuth panics on everything; tests override what they use.
 type stubAuth struct {
 	refresh func(ctx context.Context, refreshToken string) (authclient.TokenPair, error)
@@ -172,7 +203,7 @@ func newTestHandlers(t *testing.T, c SessionCache, a AuthAPI) *Handlers {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := New(codec, c, a, stubUsers{}, &stubEnrichment{}, Options{
+	h := New(codec, c, a, stubUsers{}, &stubEnrichment{}, &stubCollection{}, Options{
 		AccessTokenTTL: 5 * time.Minute,
 		RefreshWindow:  30 * time.Second,
 		MeCacheTTL:     45 * time.Second,
@@ -436,9 +467,10 @@ func (f *stubUserService) get(w http.ResponseWriter, _ *http.Request) {
 type stubEnrichmentService struct {
 	srv *httptest.Server
 
-	mu      sync.Mutex
-	calls   int
-	gotAuth []string
+	mu         sync.Mutex
+	calls      int
+	gotAuth    []string
+	scoreCalls int
 }
 
 func newStubEnrichmentService(t *testing.T) *stubEnrichmentService {
@@ -446,6 +478,7 @@ func newStubEnrichmentService(t *testing.T) *stubEnrichmentService {
 	f := &stubEnrichmentService{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /search", f.search)
+	mux.HandleFunc("POST /recommendations:score", f.score)
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
 	return f
@@ -467,13 +500,96 @@ func (f *stubEnrichmentService) callCount() int {
 	return f.calls
 }
 
+// score answers the recommendation scorer the composed route calls;
+// scoreCalls is the cache-lifecycle proof's hit counter.
+func (f *stubEnrichmentService) score(w http.ResponseWriter, _ *http.Request) {
+	f.mu.Lock()
+	f.scoreCalls++
+	f.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"degraded":false,"recommendations":[{"igdb_game_id":9,"name":"Alundra","genres":["RPG"],"score":4.2}]}`))
+}
+
+func (f *stubEnrichmentService) scoreCallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.scoreCalls
+}
+
+// stubCollectionService answers GET /entries with a canned EntryList
+// body, recording every call's Authorization header and a running
+// count: the never-cached-at-the-bff proof needs an exact hit count.
+type stubCollectionService struct {
+	srv *httptest.Server
+
+	mu          sync.Mutex
+	calls       int
+	gotAuth     []string
+	createCalls int
+}
+
+func newStubCollectionService(t *testing.T) *stubCollectionService {
+	t.Helper()
+	f := &stubCollectionService{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /entries", f.entries)
+	mux.HandleFunc("GET /library/summary", f.librarySummary)
+	mux.HandleFunc("POST /entries", f.createEntry)
+	f.srv = httptest.NewServer(mux)
+	t.Cleanup(f.srv.Close)
+	return f
+}
+
+func (f *stubCollectionService) entries(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	f.calls++
+	f.gotAuth = append(f.gotAuth, r.Header.Get("Authorization"))
+	f.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"pricing_available":true,"total_count":0,"entries":[]}`))
+}
+
+func (f *stubCollectionService) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
+}
+
+// librarySummary answers the recommendations composition's library
+// read with a fixed one-game library.
+func (f *stubCollectionService) librarySummary(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"library":[{"igdb_game_id":9,"rating":8}]}`))
+}
+
+// createEntry answers the entry-creation mutation the invalidation
+// test drives; createCalls records how many times it ran.
+func (f *stubCollectionService) createEntry(w http.ResponseWriter, _ *http.Request) {
+	f.mu.Lock()
+	f.createCalls++
+	f.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write([]byte(`{}`))
+}
+
+func (f *stubCollectionService) createCallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.createCalls
+}
+
 type stack struct {
-	baseURL string
-	codec   *session.Codec
-	auth    *stubAuthService
-	users   *stubUserService
-	enrich  *stubEnrichmentService
-	client  *http.Client
+	baseURL    string
+	codec      *session.Codec
+	auth       *stubAuthService
+	users      *stubUserService
+	enrich     *stubEnrichmentService
+	collection *stubCollectionService
+	client     *http.Client
 }
 
 // newStack wires the whole bff vertical: a Valkey container behind
@@ -517,12 +633,17 @@ func newStack(t *testing.T) *stack {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fcol := newStubCollectionService(t)
+	collClient, err := collectionclient.New(fcol.srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	codec, err := session.NewCodec(testCookieKey, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := New(codec, c, authClient, userClient, enrichClient, Options{
+	h := New(codec, c, authClient, userClient, enrichClient, collClient, Options{
 		AccessTokenTTL: 5 * time.Minute,
 		RefreshWindow:  30 * time.Second,
 		MeCacheTTL:     45 * time.Second,
@@ -537,12 +658,13 @@ func newStack(t *testing.T) *stack {
 	t.Cleanup(srv.Close)
 
 	return &stack{
-		baseURL: srv.URL,
-		codec:   codec,
-		auth:    fa,
-		users:   fu,
-		enrich:  fe,
-		client:  srv.Client(),
+		baseURL:    srv.URL,
+		codec:      codec,
+		auth:       fa,
+		users:      fu,
+		enrich:     fe,
+		collection: fcol,
+		client:     srv.Client(),
 	}
 }
 
@@ -622,6 +744,81 @@ func (s *stack) search(t *testing.T, cookie *http.Cookie, typ, q string) searchR
 		t.Fatal(err)
 	}
 	return searchResult{status: resp.StatusCode, body: body}
+}
+
+// entriesResult is one /api/entries round-trip's observable outcome.
+type entriesResult struct {
+	status int
+	body   []byte
+}
+
+// entries issues GET /api/entries through the real server carrying
+// cookie.
+func (s *stack) entries(t *testing.T, cookie *http.Cookie) entriesResult {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, s.baseURL+"/api/entries", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(cookie)
+	resp, err := s.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return entriesResult{status: resp.StatusCode, body: body}
+}
+
+// recommendationsResult is one /api/recommendations round-trip's
+// observable outcome.
+type recommendationsResult struct {
+	status int
+	body   []byte
+}
+
+// recommendations issues GET /api/recommendations through the real
+// server carrying cookie.
+func (s *stack) recommendations(t *testing.T, cookie *http.Cookie) recommendationsResult {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, s.baseURL+"/api/recommendations", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(cookie)
+	resp, err := s.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return recommendationsResult{status: resp.StatusCode, body: body}
+}
+
+// createEntry issues POST /api/entries (with the Origin header the
+// CheckOrigin middleware requires of a mutating request) through the
+// real server carrying cookie.
+func (s *stack) createEntry(t *testing.T, cookie *http.Cookie) int {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, s.baseURL+"/api/entries", strings.NewReader(`{"product_id":"x"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(cookie)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://localhost:8090")
+	resp, err := s.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return resp.StatusCode
 }
 
 // ---- tests ----
@@ -1149,5 +1346,75 @@ func TestSearchPassThroughReachesEnrichmentWithBearerNeverCached(t *testing.T) {
 	}
 	if len(s.enrich.gotAuth) != 2 || s.enrich.gotAuth[0] != "Bearer "+access || s.enrich.gotAuth[1] != "Bearer "+access {
 		t.Fatalf("bearer forwarded to enrichment = %v, want the session's own token on both calls", s.enrich.gotAuth)
+	}
+}
+
+// TestEntriesPassThroughHitsCollectionTwiceNeverCached drives the
+// cookie-authenticated entries route through the real server and the
+// real collectionclient (over real HTTP) against a stub collection
+// service, proving the session's own bearer rides the proxied call and
+// that the route is never cached at the bff: two identical calls must
+// reach the upstream twice, not once.
+func TestEntriesPassThroughHitsCollectionTwiceNeverCached(t *testing.T) {
+	s := newStack(t)
+	const sub = "66666666-6666-6666-6666-666666666666"
+	access := mintAccess(t, sub, "jA", time.Now().Add(5*time.Minute)) // fresh: no refresh
+	cookie := s.cookieFor(t, access, "refresh-1")
+
+	r1 := s.entries(t, cookie)
+	if r1.status != http.StatusOK {
+		t.Fatalf("first call: status=%d body=%s", r1.status, r1.body)
+	}
+
+	r2 := s.entries(t, cookie)
+	if r2.status != http.StatusOK {
+		t.Fatalf("second call: status = %d body=%s", r2.status, r2.body)
+	}
+
+	if got := s.collection.callCount(); got != 2 {
+		t.Fatalf("collection was hit %d times; two identical calls must never be served from a bff cache (single-source pass-through)", got)
+	}
+	if len(s.collection.gotAuth) != 2 || s.collection.gotAuth[0] != "Bearer "+access || s.collection.gotAuth[1] != "Bearer "+access {
+		t.Fatalf("bearer forwarded to collection = %v, want the session's own token on both calls", s.collection.gotAuth)
+	}
+}
+
+// TestRecommendationsCacheLifecycle drives the composed
+// /api/recommendations route against real Valkey: two reads must cost
+// exactly one upstream score call (the second is a real-Valkey cache
+// hit), and a subsequent entry mutation must invalidate that cache so
+// the next read recomposes - the genuine guard against real SETNX/DEL
+// semantics that a stub cache could fake.
+func TestRecommendationsCacheLifecycle(t *testing.T) {
+	s := newStack(t)
+	const sub = "77777777-7777-7777-7777-777777777777"
+	access := mintAccess(t, sub, "jA", time.Now().Add(5*time.Minute)) // fresh: no refresh
+	cookie := s.cookieFor(t, access, "refresh-1")
+
+	r1 := s.recommendations(t, cookie)
+	if r1.status != http.StatusOK {
+		t.Fatalf("first call: status=%d body=%s", r1.status, r1.body)
+	}
+	r2 := s.recommendations(t, cookie)
+	if r2.status != http.StatusOK {
+		t.Fatalf("second call: status=%d body=%s", r2.status, r2.body)
+	}
+	if got := s.enrich.scoreCallCount(); got != 1 {
+		t.Fatalf("score was hit %d times over two reads; want 1 (real-Valkey cache hit on the second)", got)
+	}
+
+	if code := s.createEntry(t, cookie); code != http.StatusCreated {
+		t.Fatalf("entry creation: status = %d", code)
+	}
+
+	r3 := s.recommendations(t, cookie)
+	if r3.status != http.StatusOK {
+		t.Fatalf("third call: status=%d body=%s", r3.status, r3.body)
+	}
+	if got := s.enrich.scoreCallCount(); got != 2 {
+		t.Fatalf("score was hit %d times after the mutation; want 2 (real-Valkey DEL must invalidate the cache)", got)
+	}
+	if got := s.collection.createCallCount(); got != 1 {
+		t.Fatalf("collection create-entry was hit %d times; want 1", got)
 	}
 }

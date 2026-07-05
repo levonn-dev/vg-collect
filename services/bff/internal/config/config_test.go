@@ -14,6 +14,7 @@ func setRequired(t *testing.T) {
 	t.Setenv("AUTH_SERVICE_URL", "http://auth:8080")
 	t.Setenv("USER_SERVICE_URL", "http://user:8080")
 	t.Setenv("ENRICHMENT_SERVICE_URL", "http://enrichment:8080")
+	t.Setenv("COLLECTION_SERVICE_URL", "http://collection:8080")
 	t.Setenv("VALKEY_URL", "redis://localhost:6379/0")
 }
 
@@ -41,7 +42,7 @@ func TestLoadMissingRequired(t *testing.T) {
 	// caarlos0/env "required" only fires when the var is absent, not when
 	// set to empty. t.Setenv registers cleanup before os.Unsetenv so the
 	// env is restored correctly at test end.
-	for _, name := range []string{"COOKIE_KEY", "PUBLIC_ORIGINS", "AUTH_SERVICE_URL", "USER_SERVICE_URL", "ENRICHMENT_SERVICE_URL", "VALKEY_URL"} {
+	for _, name := range []string{"COOKIE_KEY", "PUBLIC_ORIGINS", "AUTH_SERVICE_URL", "USER_SERVICE_URL", "ENRICHMENT_SERVICE_URL", "COLLECTION_SERVICE_URL", "VALKEY_URL"} {
 		t.Run(name, func(t *testing.T) {
 			setRequired(t)
 			t.Setenv(name, "")

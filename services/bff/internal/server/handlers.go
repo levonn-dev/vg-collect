@@ -10,8 +10,10 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/api"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/collectionapi"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/enrichapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
 )
@@ -175,14 +177,13 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 
 // writeRelay serves an upstream answer verbatim (pass-throughs are
 // never cached at the bff: one staleness authority per data type).
-func writeRelay(w http.ResponseWriter, res enrichmentclient.Result) {
-	ct := res.ContentType
-	if ct == "" {
-		ct = "application/json"
+func writeRelay(w http.ResponseWriter, status int, contentType string, body []byte) {
+	if contentType == "" {
+		contentType = "application/json"
 	}
-	w.Header().Set("Content-Type", ct)
-	w.WriteHeader(res.Status)
-	_, _ = w.Write(res.Body)
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
 }
 
 // SearchCatalog proxies catalog discovery search to the enrichment
@@ -198,7 +199,7 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
 		return
 	}
-	writeRelay(w, res)
+	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
 
 // ResolveProduct proxies find-or-create; the body passes through
@@ -220,7 +221,7 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
 		return
 	}
-	writeRelay(w, res)
+	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
 
 // GetProduct proxies a catalog product read.
@@ -235,7 +236,308 @@ func (h *Handlers) GetProduct(w http.ResponseWriter, r *http.Request, productId 
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
 		return
 	}
-	writeRelay(w, res)
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// readCapped reads a pass-through body under the standard cap; a
+// false return means the 400 was already written.
+func readCapped(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadRequest, "invalid_body", "unreadable body")
+		return nil, false
+	}
+	return body, true
+}
+
+func castSlice[T ~string, U ~string](in *[]T) *[]U {
+	if in == nil {
+		return nil
+	}
+	out := make([]U, len(*in))
+	for i, v := range *in {
+		out[i] = U(v)
+	}
+	return &out
+}
+
+func castVal[T ~string, U ~string](in *T) *U {
+	if in == nil {
+		return nil
+	}
+	u := U(*in)
+	return &u
+}
+
+// collectionListParams re-types the mirrored query params for the
+// generated collection client (the two contracts are byte-identical;
+// only the Go package differs).
+func collectionListParams(p api.ListEntriesParams) *collectionapi.ListEntriesParams {
+	return &collectionapi.ListEntriesParams{
+		ItemType:      castSlice[api.ListEntriesParamsItemType, collectionapi.ListEntriesParamsItemType](p.ItemType),
+		Status:        castSlice[api.ListEntriesParamsStatus, collectionapi.ListEntriesParamsStatus](p.Status),
+		Packaging:     castSlice[api.ListEntriesParamsPackaging, collectionapi.ListEntriesParamsPackaging](p.Packaging),
+		Region:        castSlice[api.ListEntriesParamsRegion, collectionapi.ListEntriesParamsRegion](p.Region),
+		ItemCondition: castSlice[api.ListEntriesParamsItemCondition, collectionapi.ListEntriesParamsItemCondition](p.ItemCondition),
+		PlatformId:    p.PlatformId,
+		TagId:         p.TagId,
+		Sort:          castVal[api.ListEntriesParamsSort, collectionapi.ListEntriesParamsSort](p.Sort),
+		Order:         castVal[api.ListEntriesParamsOrder, collectionapi.ListEntriesParamsOrder](p.Order),
+		GroupBy:       castVal[api.ListEntriesParamsGroupBy, collectionapi.ListEntriesParamsGroupBy](p.GroupBy),
+		Limit:         p.Limit,
+		Offset:        p.Offset,
+	}
+}
+
+// relayCollection funnels every collection pass-through: session
+// check happened at the caller; any client error is an infrastructure
+// fault answered 502.
+func (h *Handlers) relayCollection(w http.ResponseWriter, r *http.Request, res collectionclient.Result, err error) {
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// relayCollectionMutation relays a mutating collection answer and, on
+// success, invalidates the caller's recommendations (their library
+// changed under the composition).
+func (h *Handlers) relayCollectionMutation(w http.ResponseWriter, r *http.Request, sub string, res collectionclient.Result, err error) {
+	if err == nil && res.Status < http.StatusMultipleChoices {
+		if cerr := h.cache.InvalidateRecs(r.Context(), sub); cerr != nil {
+			h.failOpenEvent(r.Context(), "recs_invalidate", cerr)
+		}
+	}
+	h.relayCollection(w, r, res, err)
+}
+
+// GetRecommendations composes the collection library summary with
+// enrichment scoring, cached per user for about an hour. The bff owns
+// this cache because it owns the composition; the user's own entry
+// mutations invalidate it, and a degraded score is never cached (it
+// would pin a bad answer for the whole TTL).
+func (h *Handlers) GetRecommendations(w http.ResponseWriter, r *http.Request) {
+	sess, claims, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	if body, err := h.cache.GetRecs(r.Context(), claims.Sub); err != nil {
+		h.failOpenEvent(r.Context(), "recs_get", err)
+	} else if body != nil {
+		writeRawJSON(w, body)
+		return
+	}
+	lib, err := h.collection.LibrarySummary(r.Context(), sess.AccessToken)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection service unavailable")
+		return
+	}
+	req := enrichapi.ScoreRequest{Library: make([]enrichapi.LibraryEntry, len(lib.Library))}
+	for i, g := range lib.Library {
+		req.Library[i] = enrichapi.LibraryEntry{IgdbGameId: g.IgdbGameId, Rating: g.Rating, Status: g.Status}
+	}
+	body, degraded, err := h.enrichment.Score(r.Context(), sess.AccessToken, req)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	if !degraded {
+		if perr := h.cache.PutRecs(r.Context(), claims.Sub, body, h.recsTTL); perr != nil {
+			h.failOpenEvent(r.Context(), "recs_put", perr)
+		}
+	}
+	writeRawJSON(w, body)
+}
+
+// ListEntries proxies the collection list matrix.
+func (h *Handlers) ListEntries(w http.ResponseWriter, r *http.Request, params api.ListEntriesParams) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.ListEntries(r.Context(), sess.AccessToken, collectionListParams(params))
+	h.relayCollection(w, r, res, err)
+}
+
+// CreateEntry proxies entry creation.
+func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
+	sess, claims, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.collection.CreateEntry(r.Context(), sess.AccessToken, body)
+	h.relayCollectionMutation(w, r, claims.Sub, res, err)
+}
+
+// GetEntry proxies a single entry read.
+func (h *Handlers) GetEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.GetEntry(r.Context(), sess.AccessToken, entryId)
+	h.relayCollection(w, r, res, err)
+}
+
+// UpdateEntry proxies the full-state replace.
+func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	sess, claims, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.collection.UpdateEntry(r.Context(), sess.AccessToken, entryId, body)
+	h.relayCollectionMutation(w, r, claims.Sub, res, err)
+}
+
+// DeleteEntry proxies entry deletion.
+func (h *Handlers) DeleteEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	sess, claims, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.DeleteEntry(r.Context(), sess.AccessToken, entryId)
+	h.relayCollectionMutation(w, r, claims.Sub, res, err)
+}
+
+// ReorderEntry proxies the backlog drag.
+func (h *Handlers) ReorderEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	sess, claims, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.collection.ReorderEntry(r.Context(), sess.AccessToken, entryId, body)
+	h.relayCollectionMutation(w, r, claims.Sub, res, err)
+}
+
+// ListTags / CreateTag / RenameTag / DeleteTag proxy the tag surface.
+func (h *Handlers) ListTags(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.ListTags(r.Context(), sess.AccessToken)
+	h.relayCollection(w, r, res, err)
+}
+
+func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.collection.CreateTag(r.Context(), sess.AccessToken, body)
+	h.relayCollection(w, r, res, err)
+}
+
+func (h *Handlers) RenameTag(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.collection.RenameTag(r.Context(), sess.AccessToken, tagId, body)
+	h.relayCollection(w, r, res, err)
+}
+
+func (h *Handlers) DeleteTag(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.DeleteTag(r.Context(), sess.AccessToken, tagId)
+	h.relayCollection(w, r, res, err)
+}
+
+// ListViews / CreateView / UpdateView / DeleteView proxy saved views.
+func (h *Handlers) ListViews(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.ListViews(r.Context(), sess.AccessToken)
+	h.relayCollection(w, r, res, err)
+}
+
+func (h *Handlers) CreateView(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.collection.CreateView(r.Context(), sess.AccessToken, body)
+	h.relayCollection(w, r, res, err)
+}
+
+func (h *Handlers) UpdateView(w http.ResponseWriter, r *http.Request, viewId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.collection.UpdateView(r.Context(), sess.AccessToken, viewId, body)
+	h.relayCollection(w, r, res, err)
+}
+
+func (h *Handlers) DeleteView(w http.ResponseWriter, r *http.Request, viewId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.DeleteView(r.Context(), sess.AccessToken, viewId)
+	h.relayCollection(w, r, res, err)
+}
+
+// GetDashboard proxies the collection-composed dashboard (cached by
+// its owner, never here - one staleness authority per data type).
+func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.GetDashboard(r.Context(), sess.AccessToken)
+	h.relayCollection(w, r, res, err)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

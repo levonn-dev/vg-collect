@@ -2,19 +2,26 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/api"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/collectionapi"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/enrichapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
@@ -85,6 +92,7 @@ type stubEnrichment struct {
 	search  func(ctx context.Context, bearer, typ, q string) (enrichmentclient.Result, error)
 	resolve func(ctx context.Context, bearer string, body []byte) (enrichmentclient.Result, error)
 	product func(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error)
+	score   func(ctx context.Context, bearer string, req enrichapi.ScoreRequest) ([]byte, bool, error)
 }
 
 var _ EnrichmentAPI = (*stubEnrichment)(nil)
@@ -108,6 +116,13 @@ func (s *stubEnrichment) Product(ctx context.Context, bearer string, id uuid.UUI
 		panic("unexpected Product")
 	}
 	return s.product(ctx, bearer, id)
+}
+
+func (s *stubEnrichment) Score(ctx context.Context, bearer string, req enrichapi.ScoreRequest) ([]byte, bool, error) {
+	if s.score == nil {
+		panic("unexpected Score")
+	}
+	return s.score(ctx, bearer, req)
 }
 
 func testLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
@@ -525,4 +540,331 @@ func TestUnitPassThroughs_RequireSession(t *testing.T) {
 			t.Fatalf("%s %s without a session: %d", tc.method, tc.path, rec.Code)
 		}
 	}
+}
+
+// stubCollection implements server.CollectionAPI via function fields;
+// the route-matrix test only needs the generic answer field.
+type stubCollection struct {
+	answer  func(op string) (collectionclient.Result, error)
+	library func(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error)
+
+	mu        sync.Mutex
+	gotBearer []string
+	gotOps    []string
+}
+
+func (s *stubCollection) call(op, bearer string) (collectionclient.Result, error) {
+	s.mu.Lock()
+	s.gotOps = append(s.gotOps, op)
+	s.gotBearer = append(s.gotBearer, bearer)
+	s.mu.Unlock()
+	if s.answer == nil {
+		panic("unexpected collection call: " + op)
+	}
+	return s.answer(op)
+}
+
+func (s *stubCollection) ListEntries(_ context.Context, bearer string, _ *collectionapi.ListEntriesParams) (collectionclient.Result, error) {
+	return s.call("list_entries", bearer)
+}
+func (s *stubCollection) CreateEntry(_ context.Context, bearer string, _ []byte) (collectionclient.Result, error) {
+	return s.call("create_entry", bearer)
+}
+func (s *stubCollection) GetEntry(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
+	return s.call("get_entry", bearer)
+}
+func (s *stubCollection) UpdateEntry(_ context.Context, bearer string, _ uuid.UUID, _ []byte) (collectionclient.Result, error) {
+	return s.call("update_entry", bearer)
+}
+func (s *stubCollection) DeleteEntry(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
+	return s.call("delete_entry", bearer)
+}
+func (s *stubCollection) ReorderEntry(_ context.Context, bearer string, _ uuid.UUID, _ []byte) (collectionclient.Result, error) {
+	return s.call("reorder_entry", bearer)
+}
+func (s *stubCollection) ListTags(_ context.Context, bearer string) (collectionclient.Result, error) {
+	return s.call("list_tags", bearer)
+}
+func (s *stubCollection) CreateTag(_ context.Context, bearer string, _ []byte) (collectionclient.Result, error) {
+	return s.call("create_tag", bearer)
+}
+func (s *stubCollection) RenameTag(_ context.Context, bearer string, _ uuid.UUID, _ []byte) (collectionclient.Result, error) {
+	return s.call("rename_tag", bearer)
+}
+func (s *stubCollection) DeleteTag(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
+	return s.call("delete_tag", bearer)
+}
+func (s *stubCollection) ListViews(_ context.Context, bearer string) (collectionclient.Result, error) {
+	return s.call("list_views", bearer)
+}
+func (s *stubCollection) CreateView(_ context.Context, bearer string, _ []byte) (collectionclient.Result, error) {
+	return s.call("create_view", bearer)
+}
+func (s *stubCollection) UpdateView(_ context.Context, bearer string, _ uuid.UUID, _ []byte) (collectionclient.Result, error) {
+	return s.call("update_view", bearer)
+}
+func (s *stubCollection) DeleteView(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
+	return s.call("delete_view", bearer)
+}
+func (s *stubCollection) GetDashboard(_ context.Context, bearer string) (collectionclient.Result, error) {
+	return s.call("dashboard", bearer)
+}
+func (s *stubCollection) LibrarySummary(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error) {
+	if s.library == nil {
+		panic("unexpected LibrarySummary")
+	}
+	return s.library(ctx, bearer)
+}
+
+var _ CollectionAPI = (*stubCollection)(nil)
+
+// newTestHandlersWithCollection wires a session-ready Handlers around
+// the collection stub.
+func newTestHandlersWithCollection(t *testing.T, col *stubCollection) (*Handlers, *testEnv) {
+	t.Helper()
+	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h.collection = col
+	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
+	return h, &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
+}
+
+func TestUnitCollectionPassThroughs_RouteMatrix(t *testing.T) {
+	id := uuid.NewString()
+	routes := []struct {
+		method, path, op string
+		body             string
+		status           int
+	}{
+		{http.MethodGet, "/api/entries?status=backlog", "list_entries", "", 200},
+		{http.MethodPost, "/api/entries", "create_entry", `{"product_id":"x"}`, 201},
+		{http.MethodGet, "/api/entries/" + id, "get_entry", "", 200},
+		{http.MethodPut, "/api/entries/" + id, "update_entry", `{}`, 200},
+		{http.MethodDelete, "/api/entries/" + id, "delete_entry", "", 204},
+		{http.MethodPost, "/api/entries/" + id + "/reorder", "reorder_entry", `{"after_id":null}`, 200},
+		{http.MethodGet, "/api/tags", "list_tags", "", 200},
+		{http.MethodPost, "/api/tags", "create_tag", `{"name":"x"}`, 201},
+		{http.MethodPut, "/api/tags/" + id, "rename_tag", `{"name":"y"}`, 200},
+		{http.MethodDelete, "/api/tags/" + id, "delete_tag", "", 204},
+		{http.MethodGet, "/api/views", "list_views", "", 200},
+		{http.MethodPost, "/api/views", "create_view", `{"name":"v","params":{}}`, 201},
+		{http.MethodPut, "/api/views/" + id, "update_view", `{"name":"v","params":{}}`, 200},
+		{http.MethodDelete, "/api/views/" + id, "delete_view", "", 204},
+		{http.MethodGet, "/api/dashboard", "dashboard", "", 200},
+	}
+	for _, rt := range routes {
+		t.Run(rt.op, func(t *testing.T) {
+			col := &stubCollection{answer: func(op string) (collectionclient.Result, error) {
+				if op != rt.op {
+					t.Fatalf("routed to %q, want %q", op, rt.op)
+				}
+				return collectionclient.Result{Status: rt.status, ContentType: "application/json", Body: []byte(`{"ok":true}`)}, nil
+			}}
+			h, env := newTestHandlersWithCollection(t, col)
+			var body io.Reader
+			if rt.body != "" {
+				body = strings.NewReader(rt.body)
+			}
+			req := httptest.NewRequest(rt.method, rt.path, body)
+			req.AddCookie(env.cookie)
+			if rt.body != "" {
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Origin", "http://localhost:8090")
+			}
+			rec := httptest.NewRecorder()
+			newRouterFor(t, h).ServeHTTP(rec, req)
+			if rec.Code != rt.status {
+				t.Fatalf("relay status: %d, want %d (%s)", rec.Code, rt.status, rec.Body.String())
+			}
+			if got := col.gotBearer[len(col.gotBearer)-1]; got != env.sessionAccessToken {
+				t.Fatalf("the session token must ride the hop, got %q", got)
+			}
+		})
+	}
+}
+
+func TestUnitCollectionPassThroughs_UpstreamFailureIs502(t *testing.T) {
+	col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+		return collectionclient.Result{}, collectionclient.ErrUpstream
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/dashboard")
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status %d", rec.Code)
+	}
+}
+
+// TestUnitCollectionReorderPassThrough_RelaysProblemBody mirrors
+// TestUnitProductPassThrough_RelaysProblemBody for a collection route:
+// a conflict from the collection service (two backlog items racing for
+// the same rank) must relay verbatim - status, content type, and body -
+// exactly like every other pass-through, never rewritten by the bff.
+func TestUnitCollectionReorderPassThrough_RelaysProblemBody(t *testing.T) {
+	const problemBody = `{"type":"about:blank","title":"Conflict","status":409,"code":"conflicting_order"}`
+	col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+		return collectionclient.Result{Status: 409, ContentType: "application/problem+json",
+			Body: []byte(problemBody)}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+	id := uuid.NewString()
+	req := httptest.NewRequest(http.MethodPost, "/api/entries/"+id+"/reorder", strings.NewReader(`{"after_id":null}`))
+	req.AddCookie(env.cookie)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://localhost:8090")
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, req)
+	if rec.Code != 409 || rec.Header().Get("Content-Type") != "application/problem+json" {
+		t.Fatalf("problem relay: %d %s", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	if rec.Body.String() != problemBody {
+		t.Fatalf("body must relay verbatim, got %s", rec.Body.String())
+	}
+}
+
+// captureCollection embeds the stub so every method forwards, while
+// ListEntries additionally exposes its converted params.
+type captureCollection struct {
+	*stubCollection
+	onList func(*collectionapi.ListEntriesParams)
+}
+
+func (c *captureCollection) ListEntries(ctx context.Context, bearer string, p *collectionapi.ListEntriesParams) (collectionclient.Result, error) {
+	c.onList(p)
+	return c.stubCollection.ListEntries(ctx, bearer, p)
+}
+
+func TestUnitCollectionListParams_Conversion(t *testing.T) {
+	var got *collectionapi.ListEntriesParams
+	col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+		return collectionclient.Result{Status: 200, ContentType: "application/json", Body: []byte(`{}`)}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+	h.collection = &captureCollection{stubCollection: col, onList: func(p *collectionapi.ListEntriesParams) { got = p }}
+	rec := doAuthed(t, h, env, http.MethodGet,
+		"/api/entries?status=backlog&status=playing&sort=value&order=desc&group_by=platform&platform_id=6")
+	if rec.Code != 200 {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if got == nil || got.Status == nil || len(*got.Status) != 2 ||
+		string((*got.Status)[0]) != "backlog" || string(*got.Sort) != "value" ||
+		string(*got.Order) != "desc" || string(*got.GroupBy) != "platform" ||
+		(*got.PlatformId)[0] != 6 {
+		t.Fatalf("converted params: %+v", got)
+	}
+}
+
+func TestUnitRecommendations_ComposesAndCaches(t *testing.T) {
+	scoreBody := []byte(`{"degraded":false,"recommendations":[{"igdb_game_id":9,"name":"Alundra","genres":["RPG"],"score":4.2}]}`)
+	rating := 8
+	var scoreCalls int
+	var gotReq enrichapi.ScoreRequest
+	col := &stubCollection{library: func(_ context.Context, bearer string) (collectionapi.LibrarySummary, error) {
+		dropped := "dropped"
+		return collectionapi.LibrarySummary{Library: []collectionapi.LibraryGame{
+			{IgdbGameId: 1000, Rating: &rating},
+			{IgdbGameId: 1001, Status: &dropped},
+		}}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+	h.enrichment = &stubEnrichment{score: func(_ context.Context, _ string, req enrichapi.ScoreRequest) ([]byte, bool, error) {
+		scoreCalls++
+		gotReq = req
+		return scoreBody, false, nil
+	}}
+
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/recommendations")
+	if rec.Code != 200 || rec.Body.String() != string(scoreBody) {
+		t.Fatalf("compose: %d %s", rec.Code, rec.Body.String())
+	}
+	// The library piped through unshaped.
+	if len(gotReq.Library) != 2 || gotReq.Library[0].IgdbGameId != 1000 ||
+		*gotReq.Library[0].Rating != 8 || *gotReq.Library[1].Status != "dropped" {
+		t.Fatalf("score request: %+v", gotReq.Library)
+	}
+	// The second read is a cache hit: no second score call.
+	rec = doAuthed(t, h, env, http.MethodGet, "/api/recommendations")
+	if rec.Code != 200 || scoreCalls != 1 {
+		t.Fatalf("cache hit: %d calls=%d", rec.Code, scoreCalls)
+	}
+}
+
+func TestUnitRecommendations_DegradedIsNotCached(t *testing.T) {
+	col := &stubCollection{library: func(context.Context, string) (collectionapi.LibrarySummary, error) {
+		return collectionapi.LibrarySummary{Library: []collectionapi.LibraryGame{}}, nil
+	}}
+	var scoreCalls int
+	h, env := newTestHandlersWithCollection(t, col)
+	h.enrichment = &stubEnrichment{score: func(context.Context, string, enrichapi.ScoreRequest) ([]byte, bool, error) {
+		scoreCalls++
+		return []byte(`{"degraded":true,"recommendations":[]}`), true, nil
+	}}
+	doAuthed(t, h, env, http.MethodGet, "/api/recommendations")
+	doAuthed(t, h, env, http.MethodGet, "/api/recommendations")
+	if scoreCalls != 2 {
+		t.Fatalf("a degraded score must not be cached (calls=%d)", scoreCalls)
+	}
+}
+
+func TestUnitRecommendations_UpstreamFailures(t *testing.T) {
+	t.Run("collection down", func(t *testing.T) {
+		col := &stubCollection{library: func(context.Context, string) (collectionapi.LibrarySummary, error) {
+			return collectionapi.LibrarySummary{}, collectionclient.ErrUpstream
+		}}
+		h, env := newTestHandlersWithCollection(t, col)
+		if rec := doAuthed(t, h, env, http.MethodGet, "/api/recommendations"); rec.Code != http.StatusBadGateway {
+			t.Fatalf("status %d", rec.Code)
+		}
+	})
+	t.Run("enrichment down", func(t *testing.T) {
+		col := &stubCollection{library: func(context.Context, string) (collectionapi.LibrarySummary, error) {
+			return collectionapi.LibrarySummary{Library: []collectionapi.LibraryGame{}}, nil
+		}}
+		h, env := newTestHandlersWithCollection(t, col)
+		h.enrichment = &stubEnrichment{score: func(context.Context, string, enrichapi.ScoreRequest) ([]byte, bool, error) {
+			return nil, false, enrichmentclient.ErrUpstream
+		}}
+		if rec := doAuthed(t, h, env, http.MethodGet, "/api/recommendations"); rec.Code != http.StatusBadGateway {
+			t.Fatalf("status %d", rec.Code)
+		}
+	})
+}
+
+func TestUnitEntryMutationInvalidatesRecs(t *testing.T) {
+	col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+		return collectionclient.Result{Status: 201, ContentType: "application/json", Body: []byte(`{}`)}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+	sc := h.cache.(*stubCache)
+	// Pre-seed a cached recommendation body for this session's subject.
+	sub := subjectOf(t, env.sessionAccessToken)
+	sc.recs[sub] = []byte(`{"degraded":false,"recommendations":[]}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/entries", strings.NewReader(`{"product_id":"x"}`))
+	req.AddCookie(env.cookie)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://localhost:8090")
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, req)
+	if rec.Code != 201 {
+		t.Fatalf("mutation: %d", rec.Code)
+	}
+	if sc.recs[sub] != nil {
+		t.Fatal("a successful entry mutation must invalidate the recommendations cache")
+	}
+}
+
+// subjectOf decodes the sub claim from an unverified test token.
+func subjectOf(t *testing.T, token string) string {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claims struct {
+		Sub string `json:"sub"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		t.Fatal(err)
+	}
+	return claims.Sub
 }

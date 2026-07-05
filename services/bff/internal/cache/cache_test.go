@@ -119,6 +119,30 @@ func TestMeCache(t *testing.T) {
 	}
 }
 
+func TestRecsCache(t *testing.T) {
+	c := newTestCache(t)
+	ctx := context.Background()
+
+	body, err := c.GetRecs(ctx, "user-1")
+	if err != nil || body != nil {
+		t.Fatalf("absent recs: body=%q err=%v", body, err)
+	}
+	if err := c.PutRecs(ctx, "user-1", []byte(`{"degraded":false,"recommendations":[]}`), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	body, err = c.GetRecs(ctx, "user-1")
+	if err != nil || string(body) != `{"degraded":false,"recommendations":[]}` {
+		t.Fatalf("body=%q err=%v", body, err)
+	}
+	if err := c.InvalidateRecs(ctx, "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	body, err = c.GetRecs(ctx, "user-1")
+	if err != nil || body != nil {
+		t.Fatalf("invalidated recs should be gone: body=%q err=%v", body, err)
+	}
+}
+
 func TestDenylistEntriesExpire(t *testing.T) {
 	c := newTestCache(t)
 	ctx := context.Background()

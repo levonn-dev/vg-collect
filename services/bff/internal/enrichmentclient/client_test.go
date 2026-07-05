@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/enrichapi"
 )
 
 func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
@@ -65,6 +67,41 @@ func TestRelay_DeclaredProblemPassesUndeclaredFails(t *testing.T) {
 	// An upstream 401 is NOT relayed: the bff owns authentication.
 	if _, err := c.Product(context.Background(), "tok", uuid.New()); !errors.Is(err, ErrUpstream) {
 		t.Fatalf("undeclared status must be ErrUpstream, got %v", err)
+	}
+}
+
+func TestScore_RelaysBodyAndDegradedFlag(t *testing.T) {
+	var gotAuth string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"degraded":true,"recommendations":[]}`))
+	})
+	body, degraded, err := c.Score(context.Background(), "tok-123", enrichapi.ScoreRequest{})
+	if err != nil || !degraded || string(body) != `{"degraded":true,"recommendations":[]}` {
+		t.Fatalf("body=%s degraded=%v err=%v", body, degraded, err)
+	}
+	if gotAuth != "Bearer tok-123" {
+		t.Fatalf("bearer: %q", gotAuth)
+	}
+}
+
+func TestScore_UndeclaredStatusIsErrUpstream(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	if _, _, err := c.Score(context.Background(), "tok", enrichapi.ScoreRequest{}); !errors.Is(err, ErrUpstream) {
+		t.Fatalf("want ErrUpstream, got %v", err)
+	}
+}
+
+func TestScore_TransportErrorSurfaces(t *testing.T) {
+	c, err := New("http://127.0.0.1:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := c.Score(context.Background(), "tok", enrichapi.ScoreRequest{}); err == nil {
+		t.Fatal("want transport error")
 	}
 }
 

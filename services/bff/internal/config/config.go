@@ -26,6 +26,7 @@ type Config struct {
 	AuthServiceURL       string `env:"AUTH_SERVICE_URL,required"`
 	UserServiceURL       string `env:"USER_SERVICE_URL,required"`
 	EnrichmentServiceURL string `env:"ENRICHMENT_SERVICE_URL,required"`
+	CollectionServiceURL string `env:"COLLECTION_SERVICE_URL,required"`
 
 	ValkeyURL string `env:"VALKEY_URL,required"`
 	// CA bundle for rediss:// against the in-cluster CA-issued cert.
@@ -37,6 +38,7 @@ type Config struct {
 	// Refresh starts when the access token has less than this left.
 	RefreshWindow time.Duration `env:"REFRESH_WINDOW" envDefault:"30s"`
 	MeCacheTTL    time.Duration `env:"ME_CACHE_TTL" envDefault:"45s"`
+	RecsCacheTTL  time.Duration `env:"RECS_CACHE_TTL" envDefault:"1h"`
 
 	// Serve the embedded SPA bundle (on in-cluster; off when the Vite
 	// dev server owns the frontend).

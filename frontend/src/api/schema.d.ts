@@ -140,6 +140,169 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List collection entries (proxied to the collection service, uncached) */
+        get: operations["listEntries"];
+        put?: never;
+        /** Add an entry (proxied, uncached) */
+        post: operations["createEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entries/{entryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch one entry (proxied, uncached) */
+        get: operations["getEntry"];
+        /** Replace an entry's mutable state (proxied, uncached) */
+        put: operations["updateEntry"];
+        post?: never;
+        /** Delete an entry (proxied) */
+        delete: operations["deleteEntry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entries/{entryId}/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move a backlog entry between two neighbors (proxied) */
+        post: operations["reorderEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List tags with usage counts (proxied, uncached) */
+        get: operations["listTags"];
+        put?: never;
+        /** Create a tag (proxied) */
+        post: operations["createTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags/{tagId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename a tag (proxied) */
+        put: operations["renameTag"];
+        post?: never;
+        /** Delete a tag (proxied) */
+        delete: operations["deleteTag"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List saved views (proxied, uncached) */
+        get: operations["listViews"];
+        put?: never;
+        /** Save a view (proxied) */
+        post: operations["createView"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/views/{viewId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a saved view (proxied) */
+        put: operations["updateView"];
+        post?: never;
+        /** Delete a saved view (proxied) */
+        delete: operations["deleteView"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Collection dashboard (proxied; cached by the collection service, never here) */
+        get: operations["getDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recommendations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Heuristic game recommendations for the signed-in user's library
+         * @description Composed here (the bff caches only what it composes): the collection service's library summary is scored by the enrichment service, and the result is cached per user for about an hour. The caller's own entry mutations invalidate it immediately; degraded results (provider fetches skipped) are served but never cached.
+         */
+        get: operations["getRecommendations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -253,6 +416,22 @@ export interface components {
             edition?: string;
             variant?: string;
         };
+        Recommendation: {
+            /** Format: int64 */
+            igdb_game_id: number;
+            name: string;
+            cover_url?: string;
+            genres: string[];
+            /** Format: date */
+            first_release_date?: string;
+            /** Format: double */
+            score: number;
+        };
+        ScoreResponse: {
+            /** @description True when candidate metadata fetches failed and some candidates were skipped. */
+            degraded: boolean;
+            recommendations: components["schemas"]["Recommendation"][];
+        };
         Problem: {
             type: string;
             title: string;
@@ -260,6 +439,282 @@ export interface components {
             detail?: string;
             instance?: string;
             code?: string;
+        };
+        /** @description The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied free-text name (no igdb id) on custom entries. Absent when neither exists. */
+        EntryPlatform: {
+            /**
+             * Format: int64
+             * @description Absent on custom entries.
+             */
+            igdb_platform_id?: number;
+            name: string;
+        };
+        /** @description One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries a name without an igdb id when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable. */
+        Entry: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Absent on custom entries.
+             */
+            product_id?: string;
+            /** @enum {string} */
+            item_type: "game" | "console" | "accessory";
+            /** @enum {string} */
+            media_type: "physical" | "digital";
+            display_name: string;
+            platform?: components["schemas"]["EntryPlatform"];
+            /** Format: date */
+            first_release_date?: string;
+            /**
+             * Format: int64
+             * @description The recommendation identity: snapshotted from the entry's own product, or from the proxy target on custom game entries (owning a reproduction of X means playing X).
+             */
+            igdb_game_id?: number;
+            /** @enum {string} */
+            region: "ntsc_u" | "ntsc_j" | "pal" | "region_free";
+            /** @description Per-copy variant note ("first print (glitched rev)", "black edition"): the idiom for variants of cataloged items is an entry on the base product with the variant recorded here. */
+            edition?: string;
+            /** @enum {string} */
+            packaging: "sealed" | "cib" | "loose";
+            has_box: boolean;
+            has_manual: boolean;
+            /** @enum {string} */
+            box_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            /** @enum {string} */
+            manual_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            /** @enum {string} */
+            item_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            /** Format: int64 */
+            price_paid_cents?: number;
+            currency: string;
+            /** Format: date */
+            purchased_at?: string;
+            purchased_from?: string;
+            /** @enum {string} */
+            pricing_mode: "auto" | "proxy" | "disabled";
+            /** Format: uuid */
+            pricing_product_id?: string;
+            /** @enum {string} */
+            status: "backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved";
+            rating?: number;
+            notes?: string;
+            storage_location?: string;
+            pinned: boolean;
+            /** @description Present exactly while status is backlog; server-generated. */
+            backlog_rank?: string;
+            /** @enum {string} */
+            source: "manual" | "steam" | "psn" | "epic";
+            external_ref?: string;
+            tags: components["schemas"]["TagRef"][];
+            /** Format: int64 */
+            value_cents?: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description Product-backed: product_id comes from a prior enrichment resolve and the catalog fields are snapshotted server-side (display_name/item_type/platform_name/first_release_date must NOT be sent). Custom (no product_id): display_name and item_type are required, platform_name and first_release_date optional; pricing_mode defaults to disabled and must not be auto. media_type accepts only physical (the column already allows digital: the API widens when platform sync arrives). source is server-set manual. pricing_product_id is required when pricing_mode is proxy; box_condition requires has_box and manual_condition requires has_manual. */
+        EntryCreate: {
+            /**
+             * Format: uuid
+             * @description Omit for a custom (off-catalog) entry.
+             */
+            product_id?: string;
+            /** @description Custom entries only (required there). */
+            display_name?: string;
+            /**
+             * @description Custom entries only (required there).
+             * @enum {string}
+             */
+            item_type?: "game" | "console" | "accessory";
+            /** @description Custom entries only. */
+            platform_name?: string;
+            /**
+             * Format: date
+             * @description Custom entries only.
+             */
+            first_release_date?: string;
+            /**
+             * @default physical
+             * @enum {string}
+             */
+            media_type: "physical";
+            /** @enum {string} */
+            region: "ntsc_u" | "ntsc_j" | "pal" | "region_free";
+            /** @description Per-copy variant note; the idiom for variants of cataloged items. */
+            edition?: string;
+            /** @enum {string} */
+            packaging: "sealed" | "cib" | "loose";
+            /** @default false */
+            has_box: boolean;
+            /** @default false */
+            has_manual: boolean;
+            /** @enum {string} */
+            box_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            /** @enum {string} */
+            manual_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            /** @enum {string} */
+            item_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            /** Format: int64 */
+            price_paid_cents?: number;
+            /** @default USD */
+            currency: string;
+            /** Format: date */
+            purchased_at?: string;
+            purchased_from?: string;
+            /**
+             * @default auto
+             * @enum {string}
+             */
+            pricing_mode: "auto" | "proxy" | "disabled";
+            /** Format: uuid */
+            pricing_product_id?: string;
+            /**
+             * @default backlog
+             * @enum {string}
+             */
+            status: "backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved";
+            rating?: number;
+            notes?: string;
+            storage_location?: string;
+            /** @default false */
+            pinned: boolean;
+            tag_ids?: string[];
+        };
+        /** @description Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). product_id, media_type, and custom-ness are immutable. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. */
+        EntryUpdate: {
+            /** @description Custom entries only (required there). */
+            display_name?: string;
+            /** @description Custom entries only. */
+            platform_name?: string;
+            /**
+             * Format: date
+             * @description Custom entries only.
+             */
+            first_release_date?: string;
+            /** @enum {string} */
+            region: "ntsc_u" | "ntsc_j" | "pal" | "region_free";
+            /** @description Per-copy variant note; the idiom for variants of cataloged items. */
+            edition?: string;
+            /** @enum {string} */
+            packaging: "sealed" | "cib" | "loose";
+            /** @default false */
+            has_box: boolean;
+            /** @default false */
+            has_manual: boolean;
+            /** @enum {string} */
+            box_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            /** @enum {string} */
+            manual_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            /** @enum {string} */
+            item_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            /** Format: int64 */
+            price_paid_cents?: number;
+            /** @default USD */
+            currency: string;
+            /** Format: date */
+            purchased_at?: string;
+            purchased_from?: string;
+            /** @enum {string} */
+            pricing_mode: "auto" | "proxy" | "disabled";
+            /** Format: uuid */
+            pricing_product_id?: string;
+            /** @enum {string} */
+            status: "backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved";
+            rating?: number;
+            notes?: string;
+            storage_location?: string;
+            pinned: boolean;
+            tag_ids?: string[];
+        };
+        /** @description One page of the sorted, filtered sequence. Exactly one of entries/groups is present (groups when group_by was requested, partitioning this page only). */
+        EntryList: {
+            /** @description False when enrichment was unreachable; every value_cents is null. */
+            pricing_available: boolean;
+            /** @description Size of the full filtered set, before pagination. */
+            total_count: number;
+            entries?: components["schemas"]["Entry"][];
+            groups?: components["schemas"]["EntryGroup"][];
+        };
+        EntryGroup: {
+            key: string;
+            label: string;
+            entries: components["schemas"]["Entry"][];
+        };
+        /** @description Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid. */
+        ReorderRequest: {
+            /** Format: uuid */
+            after_id?: string | null;
+            /** Format: uuid */
+            before_id?: string | null;
+        };
+        /** @description A tag as embedded on an entry (no usage count). */
+        TagRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        Tag: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            entry_count: number;
+        };
+        TagCreate: {
+            name: string;
+        };
+        SavedView: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            params: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ViewCreate: {
+            name: string;
+            /** @description Opaque frontend view state; at most 8192 marshaled bytes. */
+            params: {
+                [key: string]: unknown;
+            };
+        };
+        PlatformCount: {
+            name: string;
+            count: number;
+        };
+        CurrencySpend: {
+            currency: string;
+            /** Format: int64 */
+            total_cents: number;
+        };
+        DashboardPricing: {
+            /** @description False when enrichment was unreachable; total_value_cents is then absent. */
+            available: boolean;
+            /** Format: int64 */
+            total_value_cents?: number;
+            priced_entries: number;
+            /** @description Entries whose effective product is unmatched or lacks a price for their packaging. */
+            unpriced_entries: number;
+            /** @description Entries with pricing_mode disabled. */
+            excluded_entries: number;
+        };
+        Dashboard: {
+            total_entries: number;
+            by_status: {
+                [key: string]: number;
+            };
+            by_item_type: {
+                [key: string]: number;
+            };
+            by_platform: components["schemas"]["PlatformCount"][];
+            /** @description Sum of price_paid_cents per currency, over entries that record a price. */
+            spend: components["schemas"]["CurrencySpend"][];
+            pricing: components["schemas"]["DashboardPricing"];
         };
     };
     responses: {
@@ -523,6 +978,613 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    listEntries: {
+        parameters: {
+            query?: {
+                item_type?: ("game" | "console" | "accessory")[];
+                status?: ("backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved")[];
+                packaging?: ("sealed" | "cib" | "loose")[];
+                region?: ("ntsc_u" | "ntsc_j" | "pal" | "region_free")[];
+                item_condition?: ("mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor")[];
+                /** @description IGDB platform ids (matches the creation-time snapshot). */
+                platform_id?: number[];
+                /** @description Entries carrying ALL listed tags. */
+                tag_id?: string[];
+                sort?: "name" | "release_date" | "purchased_at" | "created_at" | "value" | "paid" | "rating" | "backlog_rank";
+                order?: "asc" | "desc";
+                group_by?: "platform" | "status" | "item_type" | "location" | "tag";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the filtered entries, flat or grouped */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryList"];
+                };
+            };
+            /** @description Invalid parameters */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    createEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntryCreate"];
+            };
+        };
+        responses: {
+            /** @description The created entry */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Entry"];
+                };
+            };
+            /** @description Invalid body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description A referenced product or tag does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Entry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Entry"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    updateEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntryUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated entry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Entry"];
+                };
+            };
+            /** @description Invalid body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description No such entry, pricing product, or tag */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    deleteEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    reorderEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderRequest"];
+            };
+        };
+        responses: {
+            /** @description The entry at its new position */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Entry"];
+                };
+            };
+            /** @description Invalid body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not in the backlog, or the neighbors do not straddle */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    listTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tags */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tags: components["schemas"]["Tag"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    createTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagCreate"];
+            };
+        };
+        responses: {
+            /** @description The created tag */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            /** @description Invalid body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Name already taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    renameTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tagId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagCreate"];
+            };
+        };
+        responses: {
+            /** @description The renamed tag */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            /** @description Invalid body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Name already taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    deleteTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tagId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    listViews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Views */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        views: components["schemas"]["SavedView"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    createView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ViewCreate"];
+            };
+        };
+        responses: {
+            /** @description The saved view */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedView"];
+                };
+            };
+            /** @description Invalid body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Name already taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    updateView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                viewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ViewCreate"];
+            };
+        };
+        responses: {
+            /** @description The updated view */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedView"];
+                };
+            };
+            /** @description Invalid body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Name already taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    deleteView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                viewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getDashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dashboard */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getRecommendations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ranked recommendations with display metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreResponse"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
         };
     };

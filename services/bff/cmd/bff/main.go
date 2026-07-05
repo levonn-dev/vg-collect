@@ -19,6 +19,7 @@ import (
 	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/cache"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/config"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/server"
@@ -34,6 +35,7 @@ var (
 	_ server.AuthAPI       = (*authclient.Client)(nil)
 	_ server.UserAPI       = (*userclient.Client)(nil)
 	_ server.EnrichmentAPI = (*enrichmentclient.Client)(nil)
+	_ server.CollectionAPI = (*collectionclient.Client)(nil)
 )
 
 func main() {
@@ -87,11 +89,16 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	collection, err := collectionclient.New(cfg.CollectionServiceURL)
+	if err != nil {
+		return err
+	}
 
-	h := server.New(codec, cache.New(rdb), auth, users, enrichment, server.Options{
+	h := server.New(codec, cache.New(rdb), auth, users, enrichment, collection, server.Options{
 		AccessTokenTTL: cfg.AccessTokenTTL,
 		RefreshWindow:  cfg.RefreshWindow,
 		MeCacheTTL:     cfg.MeCacheTTL,
+		RecsCacheTTL:   cfg.RecsCacheTTL,
 		PublicOrigins:  cfg.PublicOrigins,
 		Logger:         slog.Default(),
 	})
