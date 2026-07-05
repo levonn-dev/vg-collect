@@ -1,0 +1,41 @@
+meta {
+  name: create entry
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{collection_url}}/entries
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "product_id": "{{product_id}}",
+    "region": "ntsc_u",
+    "packaging": "cib",
+    "edition": "first print",
+    "price_paid_cents": 4500,
+    "purchased_from": "local game store"
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("entry_id", res.body.id);
+  }
+}
+
+docs {
+  Bootstrap: run auth/dev-token, then enrichment/resolve-game (sets
+  product_id). Expect 201 with the catalog snapshot (display_name,
+  platform) taken from enrichment, a backlog_rank, and a composed
+  value_cents from the stub prices. The edition field is the per-copy
+  variant note: a rare print of a cataloged item is THIS idiom (base
+  product + edition), not a custom entry.
+}

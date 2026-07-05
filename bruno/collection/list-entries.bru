@@ -1,0 +1,21 @@
+meta {
+  name: list entries by value
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{collection_url}}/entries?sort=value&order=desc
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  Expect pricing_available true and both copies with value_cents:
+  the cib copy prices above the loose one (same product, different
+  packaging field).
+}

@@ -1,0 +1,23 @@
+meta {
+  name: library summary (scoring input)
+  type: http
+  seq: 12
+}
+
+get {
+  url: {{collection_url}}/library/summary
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  The deduplicated game library that feeds recommendation scoring:
+  two copies of the same game collapse to one row with the best
+  rating. Entries with an IGDB game identity are included; custom
+  games gain identity from their pricing proxy target, product-backed
+  games from their product.
+}

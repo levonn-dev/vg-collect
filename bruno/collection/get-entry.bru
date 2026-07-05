@@ -1,0 +1,19 @@
+meta {
+  name: get entry
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{collection_url}}/entries/{{entry_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  Expect 200 with tags and the composed value_cents.
+}

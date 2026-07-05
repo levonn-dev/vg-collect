@@ -1,0 +1,19 @@
+meta {
+  name: list tags
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{collection_url}}/tags
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  Expect entry_count 1 after update-entry-pin attached the tag.
+}

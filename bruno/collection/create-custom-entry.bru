@@ -1,0 +1,35 @@
+meta {
+  name: create custom entry (off-catalog, proxy priced)
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{collection_url}}/entries
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "display_name": "Chrono Trigger (fan translation cart)",
+    "item_type": "game",
+    "platform_name": "SNES",
+    "region": "ntsc_u",
+    "packaging": "loose",
+    "pricing_mode": "proxy",
+    "pricing_product_id": "{{product_id}}"
+  }
+}
+
+docs {
+  An item the providers do not list: no product_id, the display
+  fields are yours (and stay editable via PUT). Pricing proxies the
+  resolved catalog product, so expect 201 with product_id null and a
+  loose-condition value_cents. Omit the pricing fields to create it
+  unpriced (pricing_mode defaults to disabled).
+}

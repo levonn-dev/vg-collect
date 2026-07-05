@@ -1,0 +1,17 @@
+meta {
+  name: collection entries (via gateway)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{bff_url}}/api/entries?sort=created_at&order=desc
+  body: none
+  auth: none
+}
+
+docs {
+  Run bff/dev-login first (cookie jar). The bff relays to the
+  collection service with the session's own token; bodies arrive
+  verbatim.
+}

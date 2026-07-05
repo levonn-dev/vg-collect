@@ -1,0 +1,21 @@
+meta {
+  name: dashboard
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{collection_url}}/dashboard
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  Counts, spend, and priced totals; cached about five minutes and
+  invalidated by your own entry mutations, so a create followed by a
+  dashboard read is always fresh.
+}

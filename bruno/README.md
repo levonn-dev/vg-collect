@@ -13,6 +13,9 @@ styles of folder live here:
   (`enrichment_url`, localhost:8084, also a Tilt port-forward) using
   Bearer tokens, the same bootstrap as `auth/` and `user/`: run `auth /
   dev token` first.
+- `collection/` talks straight to the collection service
+  (`collection_url`, localhost:8085, a Tilt port-forward) using
+  Bearer tokens.
 
 ## Quick start
 
@@ -97,6 +100,22 @@ Every request in this folder works credential-less: stub mode serves
 search, resolve, pricing, and recommendations entirely from the fixture
 IGDB/PriceCharting catalogs baked into the service, so no real provider
 keys are needed to run the folder end to end.
+
+## Collection flows
+
+`collection/` talks straight to the collection service
+(`collection_url`, localhost:8085, a Tilt port-forward) with Bearer
+tokens. Bootstrap chain: `auth / dev token` (token), then
+`enrichment / resolve game` (product_id), then `collection / create
+entry`. The flows are numbered in a happy-path order: two entries,
+list + backlog order, a reorder, a tag, a pin/rate update, a saved
+view, the dashboard, the library summary, and a custom off-catalog
+entry priced by proxy. Reruns are mostly idempotent; tag and view
+creations answer 409 on the second run (names are unique per user).
+
+Through the gateway, `bff/collection entries` and
+`bff/recommendations` exercise the same domain with the session
+cookie instead of a Bearer header.
 
 ## Testing as a real user
 

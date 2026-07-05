@@ -1,0 +1,27 @@
+meta {
+  name: reorder (drag the second entry first)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{collection_url}}/entries/{{entry_id_2}}/reorder
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "before_id": "{{entry_id}}"
+  }
+}
+
+docs {
+  Drops the second entry before the first (after_id absent = list
+  start). Expect 200 with a new backlog_rank; rerun backlog-order to
+  see the flip. A stale drag answers 409 conflicting_order.
+}

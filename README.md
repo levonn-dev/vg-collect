@@ -70,6 +70,7 @@ the other services are reachable in dev only via Tilt port-forwards.
 | 8082 | auth, direct (Bruno `auth/` Bearer flows) |
 | 8081 | user, direct (Bruno `user/` Bearer flows) |
 | 8084 | enrichment, direct (Bruno `enrichment/` Bearer flows) |
+| 8085 | collection, direct (Bruno `collection/` Bearer flows) |
 | 5173 | Vite dev server (the manual `frontend-dev` Tilt resource; proxies `/api` to 8090) |
 
 ## Frontend
@@ -103,8 +104,10 @@ and the bff/edge (APISIX gateway, session cookies) are complete. The
 enrichment service is complete too: catalog search and resolve against
 IGDB/PriceCharting with scored auto-matching, a daily pricing walk plus its
 CronJob, heuristic recommendations scoring, and credential-less stub-mode
-fixtures for local development. Still pending: the collection service and
-the rest of the frontend beyond login.
+fixtures for local development. The collection service is complete: granular
+entries, tags, saved views, and dashboard composition with live enrichment
+pricing. Still pending: the frontend beyond login (collection pages, add
+wizard, dashboard UI) and the observability platform.
 
 ## License
 

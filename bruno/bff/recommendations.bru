@@ -1,0 +1,18 @@
+meta {
+  name: recommendations (composed, cached)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{bff_url}}/api/recommendations
+  body: none
+  auth: none
+}
+
+docs {
+  Composed by the bff: collection library summary scored by
+  enrichment, cached about an hour per user and invalidated by your
+  own entry mutations. With an empty library expect an empty (or
+  genre-fallback) list; add rated games to see edges kick in.
+}

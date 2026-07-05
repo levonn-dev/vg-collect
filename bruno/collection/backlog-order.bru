@@ -1,0 +1,20 @@
+meta {
+  name: backlog order (drag list)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{collection_url}}/entries?status=backlog&sort=backlog_rank
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  Pure rank order (no pinned prefix here): creation order until a
+  reorder moves something.
+}

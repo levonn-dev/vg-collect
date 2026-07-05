@@ -1,0 +1,32 @@
+meta {
+  name: create tag
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{collection_url}}/tags
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "name": "rpg"
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("tag_id", res.body.id);
+  }
+}
+
+docs {
+  Names are unique per user, case-insensitively: a second run (or
+  "RPG") answers 409 tag_exists.
+}

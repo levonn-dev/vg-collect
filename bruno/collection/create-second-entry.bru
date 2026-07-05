@@ -1,0 +1,34 @@
+meta {
+  name: create second entry (loose copy)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{collection_url}}/entries
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "product_id": "{{product_id}}",
+    "region": "ntsc_u",
+    "packaging": "loose"
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("entry_id_2", res.body.id);
+  }
+}
+
+docs {
+  A second copy of the same product is legitimate (two physical
+  copies). It appends to the end of the backlog.
+}

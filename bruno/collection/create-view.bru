@@ -1,0 +1,32 @@
+meta {
+  name: save a view
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{collection_url}}/views
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "name": "Backlog by value",
+    "params": {
+      "filters": { "status": ["backlog"] },
+      "sort": "value",
+      "order": "desc",
+      "view_mode": "grid"
+    }
+  }
+}
+
+docs {
+  params is the frontend's opaque view state; the server only bounds
+  its size. Duplicate names answer 409 view_exists.
+}
