@@ -33,3 +33,4 @@ deploy/charts/*/Chart.lock
 /services/user/user
 /services/auth/auth
 /services/enrichment/enrichment
+/services/collection/collection
