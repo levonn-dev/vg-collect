@@ -160,8 +160,9 @@ func (s *stubStore) PricingRows(ctx context.Context, userID uuid.UUID) ([]store.
 
 // stubEnrichment implements server.Enrichment via function fields.
 type stubEnrichment struct {
-	getProduct  func(ctx context.Context, bearer string, id uuid.UUID) (enrichapi.Product, error)
-	batchPrices func(ctx context.Context, bearer string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error)
+	getProduct   func(ctx context.Context, bearer string, id uuid.UUID) (enrichapi.Product, error)
+	batchPrices  func(ctx context.Context, bearer string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error)
+	priceHistory func(ctx context.Context, bearer string, ids []uuid.UUID, days int) (map[string][]enrichapi.PricePoint, error)
 }
 
 var _ server.Enrichment = (*stubEnrichment)(nil)
@@ -178,18 +179,27 @@ func (s *stubEnrichment) BatchPrices(ctx context.Context, bearer string, ids []u
 	}
 	return s.batchPrices(ctx, bearer, ids)
 }
+func (s *stubEnrichment) PriceHistory(ctx context.Context, bearer string, ids []uuid.UUID, days int) (map[string][]enrichapi.PricePoint, error) {
+	if s.priceHistory == nil {
+		panic("unexpected PriceHistory")
+	}
+	return s.priceHistory(ctx, bearer, ids, days)
+}
 
 // stubCache implements server.Cache in memory, recording invalidations.
 type stubCache struct {
 	mu          sync.Mutex
 	bodies      map[string][]byte
+	vhBodies    map[string][]byte
 	invalidated []string
 	err         error // returned by every method when set
 }
 
 var _ server.Cache = (*stubCache)(nil)
 
-func newStubCache() *stubCache { return &stubCache{bodies: map[string][]byte{}} }
+func newStubCache() *stubCache {
+	return &stubCache{bodies: map[string][]byte{}, vhBodies: map[string][]byte{}}
+}
 
 func (s *stubCache) GetDashboard(_ context.Context, sub string) ([]byte, error) {
 	s.mu.Lock()
@@ -208,6 +218,23 @@ func (s *stubCache) PutDashboard(_ context.Context, sub string, body []byte, _ t
 	s.bodies[sub] = body
 	return nil
 }
+func (s *stubCache) GetValueHistory(_ context.Context, sub string) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.vhBodies[sub], nil
+}
+func (s *stubCache) PutValueHistory(_ context.Context, sub string, body []byte, _ time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return s.err
+	}
+	s.vhBodies[sub] = body
+	return nil
+}
 func (s *stubCache) InvalidateDashboard(_ context.Context, sub string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -216,6 +243,7 @@ func (s *stubCache) InvalidateDashboard(_ context.Context, sub string) error {
 		return s.err
 	}
 	delete(s.bodies, sub)
+	delete(s.vhBodies, sub)
 	return nil
 }
 
@@ -340,6 +368,48 @@ func TestUnitCreateEntry_SnapshotsCatalogFacts(t *testing.T) {
 	// The dashboard cache was invalidated for exactly this user.
 	if len(c.invalidated) != 1 || c.invalidated[0] != sub.String() {
 		t.Fatalf("invalidations: %v", c.invalidated)
+	}
+}
+
+func TestUnitCreateEntry_SnapshotsCoverURL(t *testing.T) {
+	productID := uuid.New()
+	cover := "https://images.igdb.example/chrono-cover.jpg"
+	var stored store.Entry
+	st := &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+		stored = e
+		e.ID = uuid.New()
+		r := "n"
+		e.BacklogRank = &r
+		e.Tags = []store.TagRef{}
+		return e, nil
+	}}
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			p := gameProduct(id)
+			p.Igdb.CoverUrl = &cover
+			return p, nil
+		},
+		batchPrices: pricedAs(1500, 4200, 9900),
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+
+	resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()), createBody(productID, nil))
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	// The store received the snapshot from the product, not the client.
+	if stored.CoverURL == nil || *stored.CoverURL != cover {
+		t.Fatalf("stored entry must carry the cover snapshot: %v", stored.CoverURL)
+	}
+	// The response serializes it too.
+	var got struct {
+		CoverURL *string `json:"cover_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.CoverURL == nil || *got.CoverURL != cover {
+		t.Fatalf("created entry must carry the cover snapshot: %v", got.CoverURL)
 	}
 }
 
@@ -683,6 +753,32 @@ func newStubEnrichmentService(t *testing.T) *stubEnrichmentService {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"prices": prices})
+	})
+	mux.HandleFunc("POST /products/price-history:batch", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.down {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		var req struct {
+			ProductIDs []uuid.UUID `json:"product_ids"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		series := map[string]any{}
+		for _, id := range req.ProductIDs {
+			if p, ok := f.prices[id]; ok {
+				series[id.String()] = []map[string]any{{
+					"captured_at": "2026-07-01T06:00:00Z",
+					"loose_cents": p.LooseCents, "cib_cents": p.CibCents, "new_cents": p.NewCents,
+				}}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"series": series})
 	})
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
@@ -2358,5 +2454,178 @@ func TestDashboardInvalidationThroughTheStack(t *testing.T) {
 	s.enrich.mu.Unlock()
 	if _, available := dashboard(); !available {
 		t.Fatal("recovery must be immediate (degraded results are not cached)")
+	}
+}
+
+// The pricing rows seed entries the same way the dashboard unit tests
+// do; the enrichment stub answers per-product snapshot series.
+func TestUnitValueHistoryComposesCarriesForwardAndCaches(t *testing.T) {
+	userID := uuid.New()
+	own := uuid.New()
+	proxyTarget := uuid.New()
+	day := func(d int) time.Time { return time.Date(2026, time.July, d, 6, 0, 0, 0, time.UTC) }
+	cents := func(v int64) *int64 { return &v }
+
+	pricingCalls := 0
+	st := &stubStore{
+		pricingRows: func(context.Context, uuid.UUID) ([]store.PricingRow, error) {
+			pricingCalls++
+			return []store.PricingRow{
+				// auto + cib: follows cib_cents
+				{EntryID: uuid.New(), Packaging: "cib", PricingMode: "auto", ProductID: &own},
+				// custom + proxy + loose: follows the target's loose_cents
+				{EntryID: uuid.New(), Packaging: "loose", PricingMode: "proxy", PricingProductID: &proxyTarget},
+				// disabled: excluded entirely
+				{EntryID: uuid.New(), Packaging: "sealed", PricingMode: "disabled", ProductID: &own},
+			}, nil
+		},
+	}
+	var gotDays, gotIDs int
+	enrich := &stubEnrichment{
+		priceHistory: func(_ context.Context, _ string, ids []uuid.UUID, days int) (map[string][]enrichapi.PricePoint, error) {
+			gotDays, gotIDs = days, len(ids)
+			return map[string][]enrichapi.PricePoint{
+				// own: points on day 1 and day 3
+				own.String(): {
+					{CapturedAt: day(1), CibCents: cents(4200)},
+					{CapturedAt: day(3), CibCents: cents(4400)},
+				},
+				// proxy target: first point on day 2 (contributes 0 on day 1)
+				proxyTarget.String(): {
+					{CapturedAt: day(2), LooseCents: cents(1500)},
+				},
+			}, nil
+		},
+	}
+	c := newStubCache()
+	srv, a := newUnitServer(t, st, enrich, c)
+	tok := a.token(t, userID.String())
+
+	resp := do(t, http.MethodGet, srv.URL+"/dashboard/value-history", tok, nil)
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	if gotDays != 90 {
+		t.Fatalf("window: got %d days, want 90", gotDays)
+	}
+	if gotIDs != 2 {
+		t.Fatalf("effective ids: got %d, want 2 (disabled row excluded)", gotIDs)
+	}
+	var got struct {
+		Available bool `json:"available"`
+		Points    []struct {
+			Date       string `json:"date"`
+			ValueCents int64  `json:"value_cents"`
+		} `json:"points"`
+	}
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Available || len(got.Points) != 3 {
+		t.Fatalf("want available with 3 daily points, got %s", body)
+	}
+	// day1: own cib 4200 (proxy has no point yet) = 4200
+	// day2: own carries 4200 forward + proxy loose 1500 = 5700
+	// day3: own 4400 + proxy carried 1500 = 5900
+	wants := []struct {
+		date  string
+		cents int64
+	}{{"2026-07-01", 4200}, {"2026-07-02", 5700}, {"2026-07-03", 5900}}
+	for i, w := range wants {
+		if got.Points[i].Date != w.date || got.Points[i].ValueCents != w.cents {
+			t.Fatalf("point %d: got %s=%d, want %s=%d",
+				i, got.Points[i].Date, got.Points[i].ValueCents, w.date, w.cents)
+		}
+	}
+	// The composed body was cached under the value-history key...
+	if c.vhBodies[userID.String()] == nil {
+		t.Fatal("available result must be cached")
+	}
+	// ...and a second read serves the cache without recomposing.
+	pricingCalls = 0
+	resp2 := do(t, http.MethodGet, srv.URL+"/dashboard/value-history", tok, nil)
+	body2, _ := io.ReadAll(resp2.Body)
+	if resp2.StatusCode != http.StatusOK || string(body2) != string(body) {
+		t.Fatalf("cache hit must serve the identical body")
+	}
+	if pricingCalls != 0 {
+		t.Fatal("cache hit must not recompose")
+	}
+}
+
+func TestUnitValueHistoryDegradedIsServedNotCached(t *testing.T) {
+	userID := uuid.New()
+	own := uuid.New()
+	st := &stubStore{
+		pricingRows: func(context.Context, uuid.UUID) ([]store.PricingRow, error) {
+			return []store.PricingRow{{EntryID: uuid.New(), Packaging: "cib", PricingMode: "auto", ProductID: &own}}, nil
+		},
+	}
+	enrich := &stubEnrichment{
+		priceHistory: func(context.Context, string, []uuid.UUID, int) (map[string][]enrichapi.PricePoint, error) {
+			return nil, errors.New("enrichment down")
+		},
+	}
+	c := newStubCache()
+	srv, a := newUnitServer(t, st, enrich, c)
+
+	resp := do(t, http.MethodGet, srv.URL+"/dashboard/value-history", a.token(t, userID.String()), nil)
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), `"available":false`) {
+		t.Fatalf("degraded answer must say available=false: %s", body)
+	}
+	if len(c.vhBodies) != 0 {
+		t.Fatal("degraded answers are never cached")
+	}
+}
+
+func TestUnitValueHistoryEmptyCollection(t *testing.T) {
+	userID := uuid.New()
+	st := &stubStore{
+		pricingRows: func(context.Context, uuid.UUID) ([]store.PricingRow, error) {
+			return []store.PricingRow{}, nil
+		},
+	}
+	// priceHistory deliberately nil: a call would panic the stub.
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodGet, srv.URL+"/dashboard/value-history", a.token(t, userID.String()), nil)
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), `"points":[]`) || !strings.Contains(string(body), `"available":true`) {
+		t.Fatalf("empty collection: want available with empty points, got %s", body)
+	}
+}
+
+func TestValueHistoryInvalidationThroughTheStack(t *testing.T) {
+	s := newStack(t)
+	productID := s.enrich.addGame("Chrono Trigger", 1500, 4200, 9900)
+	sub := uuid.New()
+	tok := s.auth.token(t, sub.String())
+
+	// Cold read: empty collection composes an available, empty series
+	// and caches it in the real Valkey.
+	resp := do(t, http.MethodGet, s.baseURL+"/dashboard/value-history", tok, nil)
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"points":[]`) {
+		t.Fatalf("cold read: %d %s", resp.StatusCode, body)
+	}
+
+	// A create must invalidate it in Valkey, so the next read sees the
+	// new entry's point (cib packaging -> 4200).
+	resp = do(t, http.MethodPost, s.baseURL+"/entries", tok, createBody(productID, nil))
+	if resp.StatusCode != http.StatusCreated {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("create: %d %s", resp.StatusCode, b)
+	}
+	resp = do(t, http.MethodGet, s.baseURL+"/dashboard/value-history", tok, nil)
+	body, _ = io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), `"value_cents":4200`) {
+		t.Fatalf("post-create read must recompose with the new entry: %s", body)
 	}
 }

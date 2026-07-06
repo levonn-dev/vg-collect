@@ -347,9 +347,12 @@ type Entry struct {
 	// BacklogRank Present exactly while status is backlog; server-generated.
 	BacklogRank  *string            `json:"backlog_rank,omitempty"`
 	BoxCondition *EntryBoxCondition `json:"box_condition,omitempty"`
-	CreatedAt    time.Time          `json:"created_at"`
-	Currency     string             `json:"currency"`
-	DisplayName  string             `json:"display_name"`
+
+	// CoverUrl Cover art URL snapshotted from the product at creation. Absent on custom entries, hardware, and products without art (render a placeholder).
+	CoverUrl    *string   `json:"cover_url,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	Currency    string    `json:"currency"`
+	DisplayName string    `json:"display_name"`
 
 	// Edition Per-copy variant note ("first print (glitched rev)", "black edition"): the idiom for variants of cataloged items is an entry on the base product with the variant recorded here.
 	Edition          *string             `json:"edition,omitempty"`
@@ -633,6 +636,19 @@ type TagRef struct {
 	Name string             `json:"name"`
 }
 
+// ValueHistory defines model for ValueHistory.
+type ValueHistory struct {
+	// Available False when enrichment was unreachable; points is then empty.
+	Available bool         `json:"available"`
+	Points    []ValuePoint `json:"points"`
+}
+
+// ValuePoint defines model for ValuePoint.
+type ValuePoint struct {
+	Date       openapi_types.Date `json:"date"`
+	ValueCents int64              `json:"value_cents"`
+}
+
 // ViewCreate defines model for ViewCreate.
 type ViewCreate struct {
 	Name string `json:"name"`
@@ -791,6 +807,9 @@ type ClientInterface interface {
 	// GetDashboard request
 	GetDashboard(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetValueHistory request
+	GetValueHistory(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListEntries request
 	ListEntries(ctx context.Context, params *ListEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -853,6 +872,18 @@ type ClientInterface interface {
 
 func (c *Client) GetDashboard(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetDashboardRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetValueHistory(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetValueHistoryRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -1137,6 +1168,33 @@ func NewGetDashboardRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/dashboard")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetValueHistoryRequest generates requests for GetValueHistory
+func NewGetValueHistoryRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/dashboard/value-history")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1950,6 +2008,9 @@ type ClientWithResponsesInterface interface {
 	// GetDashboardWithResponse request
 	GetDashboardWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDashboardResponse, error)
 
+	// GetValueHistoryWithResponse request
+	GetValueHistoryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetValueHistoryResponse, error)
+
 	// ListEntriesWithResponse request
 	ListEntriesWithResponse(ctx context.Context, params *ListEntriesParams, reqEditors ...RequestEditorFn) (*ListEntriesResponse, error)
 
@@ -2027,6 +2088,29 @@ func (r GetDashboardResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetDashboardResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetValueHistoryResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *ValueHistory
+	ApplicationproblemJSON401 *Unauthorized
+}
+
+// Status returns HTTPResponse.Status
+func (r GetValueHistoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetValueHistoryResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2412,6 +2496,15 @@ func (c *ClientWithResponses) GetDashboardWithResponse(ctx context.Context, reqE
 	return ParseGetDashboardResponse(rsp)
 }
 
+// GetValueHistoryWithResponse request returning *GetValueHistoryResponse
+func (c *ClientWithResponses) GetValueHistoryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetValueHistoryResponse, error) {
+	rsp, err := c.GetValueHistory(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetValueHistoryResponse(rsp)
+}
+
 // ListEntriesWithResponse request returning *ListEntriesResponse
 func (c *ClientWithResponses) ListEntriesWithResponse(ctx context.Context, params *ListEntriesParams, reqEditors ...RequestEditorFn) (*ListEntriesResponse, error) {
 	rsp, err := c.ListEntries(ctx, params, reqEditors...)
@@ -2619,6 +2712,39 @@ func ParseGetDashboardResponse(rsp *http.Response) (*GetDashboardResponse, error
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Dashboard
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetValueHistoryResponse parses an HTTP response from a GetValueHistoryWithResponse call
+func ParseGetValueHistoryResponse(rsp *http.Response) (*GetValueHistoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetValueHistoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ValueHistory
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

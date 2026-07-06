@@ -344,9 +344,12 @@ type Entry struct {
 	// BacklogRank Present exactly while status is backlog; server-generated.
 	BacklogRank  *string            `json:"backlog_rank,omitempty"`
 	BoxCondition *EntryBoxCondition `json:"box_condition,omitempty"`
-	CreatedAt    time.Time          `json:"created_at"`
-	Currency     string             `json:"currency"`
-	DisplayName  string             `json:"display_name"`
+
+	// CoverUrl Cover art URL snapshotted from the product at creation. Absent on custom entries, hardware, and products without art (render a placeholder).
+	CoverUrl    *string   `json:"cover_url,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	Currency    string    `json:"currency"`
+	DisplayName string    `json:"display_name"`
 
 	// Edition Per-copy variant note ("first print (glitched rev)", "black edition"): the idiom for variants of cataloged items is an entry on the base product with the variant recorded here.
 	Edition          *string             `json:"edition,omitempty"`
@@ -630,6 +633,19 @@ type TagRef struct {
 	Name string             `json:"name"`
 }
 
+// ValueHistory defines model for ValueHistory.
+type ValueHistory struct {
+	// Available False when enrichment was unreachable; points is then empty.
+	Available bool         `json:"available"`
+	Points    []ValuePoint `json:"points"`
+}
+
+// ValuePoint defines model for ValuePoint.
+type ValuePoint struct {
+	Date       openapi_types.Date `json:"date"`
+	ValueCents int64              `json:"value_cents"`
+}
+
 // ViewCreate defines model for ViewCreate.
 type ViewCreate struct {
 	Name string `json:"name"`
@@ -717,6 +733,9 @@ type ServerInterface interface {
 	// Collection dashboard (SQL aggregates + one batched enrichment price call)
 	// (GET /dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request)
+	// Collection value over time (composed from enrichment price snapshots)
+	// (GET /dashboard/value-history)
+	GetValueHistory(w http.ResponseWriter, r *http.Request)
 	// List the caller's entries (filter x sort x group matrix)
 	// (GET /entries)
 	ListEntries(w http.ResponseWriter, r *http.Request, params ListEntriesParams)
@@ -784,6 +803,26 @@ func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetDashboard(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetValueHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetValueHistory(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetValueHistory(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1403,6 +1442,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc("GET "+options.BaseURL+"/dashboard", wrapper.GetDashboard)
+	m.HandleFunc("GET "+options.BaseURL+"/dashboard/value-history", wrapper.GetValueHistory)
 	m.HandleFunc("GET "+options.BaseURL+"/entries", wrapper.ListEntries)
 	m.HandleFunc("POST "+options.BaseURL+"/entries", wrapper.CreateEntry)
 	m.HandleFunc("DELETE "+options.BaseURL+"/entries/{entryId}", wrapper.DeleteEntry)

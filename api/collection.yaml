@@ -475,6 +475,28 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Dashboard" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /dashboard/value-history:
+    get:
+      operationId: getValueHistory
+      summary: Collection value over time (composed from enrichment price snapshots)
+      description: >
+        One point per day over the last ninety days - each day in the
+        union of snapshot days across the caller's effective pricing
+        products. An entry contributes its packaging-appropriate price
+        from its effective product's latest snapshot on or before the
+        day; entries whose product has no snapshot yet contribute
+        nothing that day. The series values the CURRENT collection at
+        historical prices; it does not reconstruct past collection
+        composition. Cached and invalidated exactly like the
+        dashboard. When enrichment is unreachable the endpoint answers
+        available=false with no points, and that answer is not cached.
+      responses:
+        "200":
+          description: The value series, oldest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValueHistory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /library/summary:
     get:
       operationId: getLibrarySummary
@@ -555,6 +577,12 @@ components:
         display_name: { type: string }
         platform: { $ref: "#/components/schemas/EntryPlatform" }
         first_release_date: { type: string, format: date }
+        cover_url:
+          type: string
+          description: >
+            Cover art URL snapshotted from the product at creation.
+            Absent on custom entries, hardware, and products without
+            art (render a placeholder).
         igdb_game_id:
           type: integer
           format: int64
@@ -834,6 +862,22 @@ components:
           description: Sum of price_paid_cents per currency, over entries that record a price.
           items: { $ref: "#/components/schemas/CurrencySpend" }
         pricing: { $ref: "#/components/schemas/DashboardPricing" }
+    ValuePoint:
+      type: object
+      required: [date, value_cents]
+      properties:
+        date: { type: string, format: date }
+        value_cents: { type: integer, format: int64 }
+    ValueHistory:
+      type: object
+      required: [available, points]
+      properties:
+        available:
+          type: boolean
+          description: False when enrichment was unreachable; points is then empty.
+        points:
+          type: array
+          items: { $ref: "#/components/schemas/ValuePoint" }
     LibraryGame:
       description: Field-compatible with the enrichment scoring contract's LibraryEntry.
       type: object

@@ -261,6 +261,7 @@ func toAPIEntry(e store.Entry, valueCents *int64) api.Entry {
 		ItemType:         api.EntryItemType(e.ItemType),
 		MediaType:        api.EntryMediaType(e.MediaType),
 		DisplayName:      e.DisplayName,
+		CoverUrl:         e.CoverURL,
 		IgdbGameId:       e.IGDBGameID,
 		Region:           api.EntryRegion(e.Region),
 		Edition:          e.Edition,
@@ -421,6 +422,7 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		if product.Igdb != nil {
 			e.IGDBGameID = &product.Igdb.GameId
 			e.FirstReleaseDate = dateToTime(product.Igdb.FirstReleaseDate)
+			e.CoverURL = product.Igdb.CoverUrl
 		}
 	}
 	// A NEW proxy reference must exist in the catalog (the entry's own
@@ -1236,6 +1238,122 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request) {
 	if pricing.Available {
 		if err := h.cache.PutDashboard(r.Context(), sub, body, h.dashboardTTL); err != nil {
 			h.failOpen(r.Context(), "dashboard_put", err)
+		}
+	}
+	writeRawJSON(w, body)
+}
+
+// valueHistoryDays fixes the composition window; a window parameter
+// can be added later without breaking the contract.
+const valueHistoryDays = 90
+
+// pointForPackaging picks the packaging-matched price field from one
+// snapshot; nil when the snapshot lists none for that condition.
+func pointForPackaging(packaging string, p enrichapi.PricePoint) *int64 {
+	switch packaging {
+	case "sealed":
+		return p.NewCents
+	case "cib":
+		return p.CibCents
+	default:
+		return p.LooseCents
+	}
+}
+
+// composeValueSeries builds one point per day - the union of snapshot
+// days across the given series. Each entry contributes its
+// packaging-matched price from its effective product's latest snapshot
+// on or before the day (prices carry forward between snapshots);
+// entries whose product has no snapshot yet contribute nothing that
+// day. Series arrive oldest-first from the client.
+func composeValueSeries(rows []store.PricingRow, series map[string][]enrichapi.PricePoint) []api.ValuePoint {
+	daySet := map[time.Time]bool{}
+	for _, points := range series {
+		for _, p := range points {
+			daySet[p.CapturedAt.UTC().Truncate(24*time.Hour)] = true
+		}
+	}
+	days := make([]time.Time, 0, len(daySet))
+	for d := range daySet {
+		days = append(days, d)
+	}
+	sort.Slice(days, func(i, j int) bool { return days[i].Before(days[j]) })
+
+	out := make([]api.ValuePoint, 0, len(days))
+	for _, day := range days {
+		var total int64
+		for _, row := range rows {
+			id := effectiveProductID(row.PricingMode, row.ProductID, row.PricingProductID)
+			if id == nil {
+				continue
+			}
+			points := series[id.String()]
+			var latest *enrichapi.PricePoint
+			for i := range points {
+				if points[i].CapturedAt.UTC().Truncate(24 * time.Hour).After(day) {
+					break
+				}
+				latest = &points[i]
+			}
+			if latest == nil {
+				continue
+			}
+			if v := pointForPackaging(row.Packaging, *latest); v != nil {
+				total += *v
+			}
+		}
+		out = append(out, api.ValuePoint{Date: openapi_types.Date{Time: day}, ValueCents: total})
+	}
+	return out
+}
+
+// GetValueHistory answers the caller's collection value over the last
+// ninety days: the CURRENT entry set valued at historical snapshot
+// prices (the composition does not reconstruct past collection
+// contents). Cached and invalidated exactly like the dashboard; a
+// degraded answer is served but never cached.
+func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
+	userID, bearer, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
+	sub := userID.String()
+	if body, err := h.cache.GetValueHistory(r.Context(), sub); err != nil {
+		h.failOpen(r.Context(), "value_history_get", err)
+	} else if body != nil {
+		writeRawJSON(w, body)
+		return
+	}
+
+	rows, err := h.store.PricingRows(r.Context(), userID)
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "aggregation failed")
+		return
+	}
+	var ids []uuid.UUID
+	for _, row := range rows {
+		if id := effectiveProductID(row.PricingMode, row.ProductID, row.PricingProductID); id != nil {
+			ids = append(ids, *id)
+		}
+	}
+	vh := api.ValueHistory{Available: true, Points: []api.ValuePoint{}}
+	if len(ids) > 0 {
+		series, err := h.enrichment.PriceHistory(r.Context(), bearer, ids, valueHistoryDays)
+		if err != nil {
+			vh.Available = false
+			h.logger.WarnContext(r.Context(), "value history unavailable", "err", err)
+		} else {
+			vh.Points = composeValueSeries(rows, series)
+		}
+	}
+	body, err := json.Marshal(vh)
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "encoding failed")
+		return
+	}
+	if vh.Available {
+		if err := h.cache.PutValueHistory(r.Context(), sub, body, h.dashboardTTL); err != nil {
+			h.failOpen(r.Context(), "value_history_put", err)
 		}
 	}
 	writeRawJSON(w, body)

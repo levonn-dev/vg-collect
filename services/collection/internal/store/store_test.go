@@ -185,6 +185,33 @@ func TestGetIsOwnerScoped(t *testing.T) {
 	}
 }
 
+func TestEntryCoverURLPersistsThroughCreateAndList(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	userID := uuid.New()
+	cover := "https://images.igdb.example/chrono.jpg"
+
+	e := baseEntry(userID)
+	e.CoverURL = &cover
+	created := mustCreate(t, s, e, nil)
+	if created.CoverURL == nil || *created.CoverURL != cover {
+		t.Fatalf("create must return the cover snapshot, got %v", created.CoverURL)
+	}
+	got, err := s.GetEntry(ctx, userID, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.CoverURL == nil || *got.CoverURL != cover {
+		t.Fatalf("read back: %v", got.CoverURL)
+	}
+
+	// Null stays null (customs and hardware never set one).
+	bare := mustCreate(t, s, baseEntry(userID), nil)
+	if bare.CoverURL != nil {
+		t.Fatalf("no snapshot means null, got %v", *bare.CoverURL)
+	}
+}
+
 func TestUpdateRankLifecycle(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

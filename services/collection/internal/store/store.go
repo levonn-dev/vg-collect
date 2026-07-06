@@ -91,6 +91,7 @@ type Entry struct {
 
 	Source      string
 	ExternalRef *string
+	CoverURL    *string
 
 	Tags []TagRef
 
@@ -114,7 +115,7 @@ const entryCols = `id, user_id, product_id, item_type, media_type,
 	price_paid_cents, currency, purchased_at, purchased_from,
 	pricing_mode, pricing_product_id,
 	status, rating, notes, storage_location, pinned, backlog_rank,
-	source, external_ref, created_at, updated_at`
+	source, external_ref, created_at, updated_at, cover_url`
 
 func scanEntry(row pgx.Row) (Entry, error) {
 	var e Entry
@@ -126,7 +127,7 @@ func scanEntry(row pgx.Row) (Entry, error) {
 		&e.PricePaidCents, &e.Currency, &e.PurchasedAt, &e.PurchasedFrom,
 		&e.PricingMode, &e.PricingProductID,
 		&e.Status, &e.Rating, &e.Notes, &e.StorageLocation, &e.Pinned, &e.BacklogRank,
-		&e.Source, &e.ExternalRef, &e.CreatedAt, &e.UpdatedAt,
+		&e.Source, &e.ExternalRef, &e.CreatedAt, &e.UpdatedAt, &e.CoverURL,
 	)
 	return e, err
 }
@@ -228,9 +229,9 @@ func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			 price_paid_cents, currency, purchased_at, purchased_from,
 			 pricing_mode, pricing_product_id,
 			 status, rating, notes, storage_location, pinned, backlog_rank,
-			 source, external_ref)
+			 source, external_ref, cover_url)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
-			        $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
+			        $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
 			RETURNING `+entryCols,
 			e.UserID, e.ProductID, e.ItemType, e.MediaType,
 			e.DisplayName, e.PlatformIGDBID, e.PlatformName, e.FirstReleaseDate, e.IGDBGameID,
@@ -239,7 +240,7 @@ func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			e.PricePaidCents, e.Currency, e.PurchasedAt, e.PurchasedFrom,
 			e.PricingMode, e.PricingProductID,
 			e.Status, e.Rating, e.Notes, e.StorageLocation, e.Pinned, e.BacklogRank,
-			e.Source, e.ExternalRef)
+			e.Source, e.ExternalRef, e.CoverURL)
 		created, err := scanEntry(row)
 		if err != nil {
 			return fmt.Errorf("store: create entry: %w", err)
