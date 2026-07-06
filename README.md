@@ -106,8 +106,13 @@ IGDB/PriceCharting with scored auto-matching, a daily pricing walk plus its
 CronJob, heuristic recommendations scoring, and credential-less stub-mode
 fixtures for local development. The collection service is complete: granular
 entries, tags, saved views, and dashboard composition with live enrichment
-pricing. Still pending: the frontend beyond login (collection pages, add
-wizard, dashboard UI) and the observability platform.
+pricing. The frontend is feature-complete: collection views (table,
+cover grid, compact list) over the full filter/sort/group matrix, saved
+views, a drag-orderable backlog, an add wizard with match confirmation
+and a custom off-catalog path, entry editing with pricing affordances,
+and a dashboard with value-over-time and recommendations - covered end
+to end by the Playwright journey. Still pending: the observability
+platform.
 
 ## License
 

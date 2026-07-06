@@ -96,6 +96,11 @@ environment selected, run `auth / dev token` once, then the folder in
 4. `admin - trigger refresh walk` and `admin - correct product mapping`
    need the admin role grant described above.
 
+`price history batch` returns a product's snapshot series (default 90
+days, oldest first) and, like `get product` and `prices batch`, needs a
+resolved `product_id` first; a just-resolved product already answers
+with its resolve-time point.
+
 Every request in this folder works credential-less: stub mode serves
 search, resolve, pricing, and recommendations entirely from the fixture
 IGDB/PriceCharting catalogs baked into the service, so no real provider
@@ -113,9 +118,14 @@ view, the dashboard, the library summary, and a custom off-catalog
 entry priced by proxy. Reruns are mostly idempotent; tag and view
 creations answer 409 on the second run (names are unique per user).
 
-Through the gateway, `bff/collection entries` and
-`bff/recommendations` exercise the same domain with the session
-cookie instead of a Bearer header.
+`value history` plots the collection's worth over the last ninety days,
+one point per snapshot day; it is cached about five minutes and
+invalidated by your own entry mutations.
+
+Through the gateway, `bff/collection entries`, `bff/collection value
+history`, and `bff/recommendations` exercise the same domain with the
+session cookie instead of a Bearer header; the value-history relay is
+uncached (the collection service owns the composition and its cache).
 
 ## Testing as a real user
 
