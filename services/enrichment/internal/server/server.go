@@ -38,6 +38,7 @@ type Store interface {
 	ListPlatforms(ctx context.Context) ([]igdb.Platform, error)
 	PlatformsFetchedAt(ctx context.Context) (time.Time, error)
 	AppendSnapshot(ctx context.Context, s store.Snapshot) error
+	SnapshotsSince(ctx context.Context, ids []string, since time.Time) (map[string][]store.Snapshot, error)
 }
 
 // GameProvider is the IGDB surface (real or stub, selected by

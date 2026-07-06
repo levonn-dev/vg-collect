@@ -92,6 +92,26 @@ type PlatformRef struct {
 	Name           string `json:"name"`
 }
 
+// PriceHistoryRequest defines model for PriceHistoryRequest.
+type PriceHistoryRequest struct {
+	// Days Window size ending now.
+	Days       *int                 `json:"days,omitempty"`
+	ProductIds []openapi_types.UUID `json:"product_ids"`
+}
+
+// PriceHistoryResponse defines model for PriceHistoryResponse.
+type PriceHistoryResponse struct {
+	Series map[string][]PricePoint `json:"series"`
+}
+
+// PricePoint defines model for PricePoint.
+type PricePoint struct {
+	CapturedAt time.Time `json:"captured_at"`
+	CibCents   *int64    `json:"cib_cents,omitempty"`
+	LooseCents *int64    `json:"loose_cents,omitempty"`
+	NewCents   *int64    `json:"new_cents,omitempty"`
+}
+
 // PricechartingMeta The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
 type PricechartingMeta struct {
 	AsOf            time.Time `json:"as_of"`
@@ -248,6 +268,9 @@ type SearchCatalogParamsType string
 // SetProductMappingJSONRequestBody defines body for SetProductMapping for application/json ContentType.
 type SetProductMappingJSONRequestBody = MappingRequest
 
+// BatchPriceHistoryJSONRequestBody defines body for BatchPriceHistory for application/json ContentType.
+type BatchPriceHistoryJSONRequestBody = PriceHistoryRequest
+
 // BatchPricesJSONRequestBody defines body for BatchPrices for application/json ContentType.
 type BatchPricesJSONRequestBody = PricesBatchRequest
 
@@ -265,6 +288,9 @@ type ServerInterface interface {
 	// Trigger an immediate price refresh walk (role admin)
 	// (POST /admin/refresh)
 	TriggerRefresh(w http.ResponseWriter, r *http.Request)
+	// Price snapshot series for a set of products (value-over-time composition)
+	// (POST /products/price-history:batch)
+	BatchPriceHistory(w http.ResponseWriter, r *http.Request)
 	// Current prices for a set of products (dashboard composition)
 	// (POST /products/prices:batch)
 	BatchPrices(w http.ResponseWriter, r *http.Request)
@@ -333,6 +359,26 @@ func (siw *ServerInterfaceWrapper) TriggerRefresh(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.TriggerRefresh(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BatchPriceHistory operation middleware
+func (siw *ServerInterfaceWrapper) BatchPriceHistory(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BatchPriceHistory(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -610,6 +656,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc("PUT "+options.BaseURL+"/admin/products/{productId}/pricecharting", wrapper.SetProductMapping)
 	m.HandleFunc("POST "+options.BaseURL+"/admin/refresh", wrapper.TriggerRefresh)
+	m.HandleFunc("POST "+options.BaseURL+"/products/price-history:batch", wrapper.BatchPriceHistory)
 	m.HandleFunc("POST "+options.BaseURL+"/products/prices:batch", wrapper.BatchPrices)
 	m.HandleFunc("POST "+options.BaseURL+"/products/resolve", wrapper.ResolveProduct)
 	m.HandleFunc("GET "+options.BaseURL+"/products/{productId}", wrapper.GetProduct)

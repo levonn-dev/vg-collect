@@ -1,0 +1,30 @@
+meta {
+  name: price history batch
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{enrichment_url}}/products/price-history:batch
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "product_ids": ["{{product_id}}"],
+    "days": 90
+  }
+}
+
+docs {
+  Snapshot series per product, oldest first, over the requested
+  window (default 90 days). Points accumulate from the daily refresh
+  walk plus one initial point at resolve/remap time, so a
+  just-resolved product already answers with one point. Run
+  resolve-game first to populate {{product_id}}.
+}

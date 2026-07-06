@@ -240,6 +240,59 @@ func TestProduct_ByIDsAndSearch(t *testing.T) {
 	}
 }
 
+func TestSnapshotsSinceWindowsAndOrders(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
+	cents := func(v int64) *int64 { return &v }
+
+	// Two products; product A has an old point outside the window, two
+	// inside (inserted newest-first to prove the read sorts), product B
+	// one point. A third id is never written.
+	for _, snap := range []store.Snapshot{
+		{ProductID: "prod-a", CapturedAt: base.AddDate(0, 0, -40), LooseCents: cents(1000)},
+		{ProductID: "prod-a", CapturedAt: base.AddDate(0, 0, -1), LooseCents: cents(1300)},
+		{ProductID: "prod-a", CapturedAt: base.AddDate(0, 0, -10), LooseCents: cents(1200)},
+		{ProductID: "prod-b", CapturedAt: base.AddDate(0, 0, -5), CIBCents: cents(4200)},
+	} {
+		if err := s.AppendSnapshot(ctx, snap); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.SnapshotsSince(ctx, []string{"prod-a", "prod-b", "prod-missing"}, base.AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want series for 2 products, got %d", len(got))
+	}
+	a := got["prod-a"]
+	if len(a) != 2 {
+		t.Fatalf("prod-a: want 2 in-window points, got %d", len(a))
+	}
+	if !a[0].CapturedAt.Before(a[1].CapturedAt) {
+		t.Fatalf("prod-a points not oldest-first: %v then %v", a[0].CapturedAt, a[1].CapturedAt)
+	}
+	if *a[0].LooseCents != 1200 || *a[1].LooseCents != 1300 {
+		t.Fatalf("prod-a values wrong: %d, %d", *a[0].LooseCents, *a[1].LooseCents)
+	}
+	if len(got["prod-b"]) != 1 || *got["prod-b"][0].CIBCents != 4200 {
+		t.Fatalf("prod-b series wrong: %+v", got["prod-b"])
+	}
+	if _, ok := got["prod-missing"]; ok {
+		t.Fatal("id with no snapshots must be absent, not empty")
+	}
+
+	empty, err := s.SnapshotsSince(ctx, nil, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("empty id set: want empty map, got %+v", empty)
+	}
+}
+
 func TestNewIGDBMeta_Projection(t *testing.T) {
 	g := igdb.Game{
 		ID: 1011, Name: "Chrono Trigger",

@@ -95,6 +95,26 @@ type PlatformRef struct {
 	Name           string `json:"name"`
 }
 
+// PriceHistoryRequest defines model for PriceHistoryRequest.
+type PriceHistoryRequest struct {
+	// Days Window size ending now.
+	Days       *int                 `json:"days,omitempty"`
+	ProductIds []openapi_types.UUID `json:"product_ids"`
+}
+
+// PriceHistoryResponse defines model for PriceHistoryResponse.
+type PriceHistoryResponse struct {
+	Series map[string][]PricePoint `json:"series"`
+}
+
+// PricePoint defines model for PricePoint.
+type PricePoint struct {
+	CapturedAt time.Time `json:"captured_at"`
+	CibCents   *int64    `json:"cib_cents,omitempty"`
+	LooseCents *int64    `json:"loose_cents,omitempty"`
+	NewCents   *int64    `json:"new_cents,omitempty"`
+}
+
 // PricechartingMeta The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
 type PricechartingMeta struct {
 	AsOf            time.Time `json:"as_of"`
@@ -251,6 +271,9 @@ type SearchCatalogParamsType string
 // SetProductMappingJSONRequestBody defines body for SetProductMapping for application/json ContentType.
 type SetProductMappingJSONRequestBody = MappingRequest
 
+// BatchPriceHistoryJSONRequestBody defines body for BatchPriceHistory for application/json ContentType.
+type BatchPriceHistoryJSONRequestBody = PriceHistoryRequest
+
 // BatchPricesJSONRequestBody defines body for BatchPrices for application/json ContentType.
 type BatchPricesJSONRequestBody = PricesBatchRequest
 
@@ -341,6 +364,11 @@ type ClientInterface interface {
 	// TriggerRefresh request
 	TriggerRefresh(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// BatchPriceHistoryWithBody request with any body
+	BatchPriceHistoryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	BatchPriceHistory(ctx context.Context, body BatchPriceHistoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// BatchPricesWithBody request with any body
 	BatchPricesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -389,6 +417,30 @@ func (c *Client) SetProductMapping(ctx context.Context, productId openapi_types.
 
 func (c *Client) TriggerRefresh(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTriggerRefreshRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) BatchPriceHistoryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBatchPriceHistoryRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) BatchPriceHistory(ctx context.Context, body BatchPriceHistoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBatchPriceHistoryRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -565,6 +617,46 @@ func NewTriggerRefreshRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewBatchPriceHistoryRequest calls the generic BatchPriceHistory builder with application/json body
+func NewBatchPriceHistoryRequest(server string, body BatchPriceHistoryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBatchPriceHistoryRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewBatchPriceHistoryRequestWithBody generates requests for BatchPriceHistory with any type of body
+func NewBatchPriceHistoryRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/products/price-history:batch")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -831,6 +923,11 @@ type ClientWithResponsesInterface interface {
 	// TriggerRefreshWithResponse request
 	TriggerRefreshWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*TriggerRefreshResponse, error)
 
+	// BatchPriceHistoryWithBodyWithResponse request with any body
+	BatchPriceHistoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchPriceHistoryResponse, error)
+
+	BatchPriceHistoryWithResponse(ctx context.Context, body BatchPriceHistoryJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchPriceHistoryResponse, error)
+
 	// BatchPricesWithBodyWithResponse request with any body
 	BatchPricesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchPricesResponse, error)
 
@@ -899,6 +996,30 @@ func (r TriggerRefreshResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r TriggerRefreshResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type BatchPriceHistoryResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *PriceHistoryResponse
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+}
+
+// Status returns HTTPResponse.Status
+func (r BatchPriceHistoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BatchPriceHistoryResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1051,6 +1172,23 @@ func (c *ClientWithResponses) TriggerRefreshWithResponse(ctx context.Context, re
 		return nil, err
 	}
 	return ParseTriggerRefreshResponse(rsp)
+}
+
+// BatchPriceHistoryWithBodyWithResponse request with arbitrary body returning *BatchPriceHistoryResponse
+func (c *ClientWithResponses) BatchPriceHistoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchPriceHistoryResponse, error) {
+	rsp, err := c.BatchPriceHistoryWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBatchPriceHistoryResponse(rsp)
+}
+
+func (c *ClientWithResponses) BatchPriceHistoryWithResponse(ctx context.Context, body BatchPriceHistoryJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchPriceHistoryResponse, error) {
+	rsp, err := c.BatchPriceHistory(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBatchPriceHistoryResponse(rsp)
 }
 
 // BatchPricesWithBodyWithResponse request with arbitrary body returning *BatchPricesResponse
@@ -1224,6 +1362,46 @@ func ParseTriggerRefreshResponse(rsp *http.Response) (*TriggerRefreshResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseBatchPriceHistoryResponse parses an HTTP response from a BatchPriceHistoryWithResponse call
+func ParseBatchPriceHistoryResponse(rsp *http.Response) (*BatchPriceHistoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BatchPriceHistoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PriceHistoryResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	}
 

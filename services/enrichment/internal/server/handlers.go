@@ -638,6 +638,57 @@ func (h *Handlers) BatchPrices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, api.PricesBatchResponse{Prices: prices})
 }
 
+// BatchPriceHistory returns each requested product's snapshot series
+// inside the window, oldest first (the collection dashboard's
+// value-over-time composition reads it). Unknown ids and products with
+// no in-window points are absent from the map.
+func (h *Handlers) BatchPriceHistory(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var req api.PriceHistoryRequest
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+		return
+	}
+	// The schema's maxItems is documentation; the generated models do
+	// not validate, so the cap is enforced here.
+	if len(req.ProductIds) > 500 {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "at most 500 product_ids per call")
+		return
+	}
+	days := 90
+	if req.Days != nil {
+		days = *req.Days
+	}
+	if days < 1 || days > 365 {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "days must be between 1 and 365")
+		return
+	}
+	ids := make([]string, len(req.ProductIds))
+	for i, id := range req.ProductIds {
+		ids[i] = id.String()
+	}
+	snaps, err := h.store.SnapshotsSince(ctx, ids, h.now().UTC().AddDate(0, 0, -days))
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "history lookup failed")
+		return
+	}
+	series := make(map[string][]api.PricePoint, len(snaps))
+	for id, points := range snaps {
+		out := make([]api.PricePoint, len(points))
+		for i, p := range points {
+			out[i] = api.PricePoint{
+				CapturedAt: p.CapturedAt,
+				LooseCents: p.LooseCents,
+				CibCents:   p.CIBCents,
+				NewCents:   p.NewCents,
+			}
+		}
+		series[id] = out
+	}
+	writeJSON(w, http.StatusOK, api.PriceHistoryResponse{Series: series})
+}
+
 const (
 	recsDefaultLimit = 20
 	recsMaxLimit     = 50

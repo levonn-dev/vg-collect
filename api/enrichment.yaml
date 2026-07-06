@@ -126,6 +126,29 @@ paths:
               schema: { $ref: "#/components/schemas/PricesBatchResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /products/price-history:batch:
+    post:
+      operationId: batchPriceHistory
+      summary: Price snapshot series for a set of products (value-over-time composition)
+      description: >
+        Each requested product's snapshots inside the window, oldest
+        first. Snapshots accumulate from the daily refresh walk plus
+        one initial point when a product is created or its mapping is
+        corrected. Unknown ids and products with no points in the
+        window are absent from the response map.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PriceHistoryRequest" }
+      responses:
+        "200":
+          description: Snapshot series keyed by product id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PriceHistoryResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /recommendations:score:
     post:
       operationId: scoreRecommendations
@@ -375,6 +398,37 @@ components:
         prices:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ProductPrices" }
+    PriceHistoryRequest:
+      type: object
+      required: [product_ids]
+      properties:
+        product_ids:
+          type: array
+          maxItems: 500
+          items: { type: string, format: uuid }
+        days:
+          type: integer
+          minimum: 1
+          maximum: 365
+          default: 90
+          description: Window size ending now.
+    PricePoint:
+      type: object
+      required: [captured_at]
+      properties:
+        captured_at: { type: string, format: date-time }
+        loose_cents: { type: integer, format: int64 }
+        cib_cents: { type: integer, format: int64 }
+        new_cents: { type: integer, format: int64 }
+    PriceHistoryResponse:
+      type: object
+      required: [series]
+      properties:
+        series:
+          type: object
+          additionalProperties:
+            type: array
+            items: { $ref: "#/components/schemas/PricePoint" }
     LibraryEntry:
       type: object
       required: [igdb_game_id]
