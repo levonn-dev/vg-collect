@@ -7,7 +7,7 @@ test('dev fixture login round-trip through the gateway', async ({ page }) => {
   await page.getByRole('link', { name: 'alice', exact: true }).click()
   await expect(page).toHaveURL(/\/$/)
   await expect(page.getByText(/alice/i).first()).toBeVisible()
-  await expect(page.getByText(/roles:/)).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
 
   // The session cookie is HttpOnly: invisible to script.
   expect(await page.evaluate(() => document.cookie)).not.toContain('vg_session')
