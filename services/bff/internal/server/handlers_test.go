@@ -609,6 +609,9 @@ func (s *stubCollection) DeleteView(_ context.Context, bearer string, _ uuid.UUI
 func (s *stubCollection) GetDashboard(_ context.Context, bearer string) (collectionclient.Result, error) {
 	return s.call("dashboard", bearer)
 }
+func (s *stubCollection) GetValueHistory(_ context.Context, bearer string) (collectionclient.Result, error) {
+	return s.call("value_history", bearer)
+}
 func (s *stubCollection) LibrarySummary(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error) {
 	if s.library == nil {
 		panic("unexpected LibrarySummary")
@@ -717,6 +720,27 @@ func TestUnitCollectionReorderPassThrough_RelaysProblemBody(t *testing.T) {
 	}
 	if rec.Body.String() != problemBody {
 		t.Fatalf("body must relay verbatim, got %s", rec.Body.String())
+	}
+}
+
+// TestUnitValueHistoryPassThrough proves the value-history route relays
+// the collection service's body verbatim and forwards the session's
+// own bearer, exactly like the other collection pass-throughs.
+func TestUnitValueHistoryPassThrough(t *testing.T) {
+	relayed := []byte(`{"available":true,"points":[{"date":"2026-07-01","value_cents":4200}]}`)
+	col := &stubCollection{answer: func(op string) (collectionclient.Result, error) {
+		if op != "value_history" {
+			t.Fatalf("routed to %q, want value_history", op)
+		}
+		return collectionclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: relayed}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/dashboard/value-history")
+	if rec.Code != http.StatusOK || rec.Body.String() != string(relayed) {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := col.gotBearer[len(col.gotBearer)-1]; got != env.sessionAccessToken {
+		t.Fatalf("the session token must ride the hop, got %q", got)
 	}
 }
 

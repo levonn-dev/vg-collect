@@ -283,6 +283,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dashboard/value-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Collection value over time (proxied; cached by the collection service, never here) */
+        get: operations["getValueHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recommendations": {
         parameters: {
             query?: never;
@@ -466,6 +483,8 @@ export interface components {
             platform?: components["schemas"]["EntryPlatform"];
             /** Format: date */
             first_release_date?: string;
+            /** @description Cover art URL snapshotted from the product at creation. Absent on custom entries, hardware, and products without art (render a placeholder). */
+            cover_url?: string;
             /**
              * Format: int64
              * @description The recommendation identity: snapshotted from the entry's own product, or from the proxy target on custom game entries (owning a reproduction of X means playing X).
@@ -715,6 +734,17 @@ export interface components {
             /** @description Sum of price_paid_cents per currency, over entries that record a price. */
             spend: components["schemas"]["CurrencySpend"][];
             pricing: components["schemas"]["DashboardPricing"];
+        };
+        ValuePoint: {
+            /** Format: date */
+            date: string;
+            /** Format: int64 */
+            value_cents: number;
+        };
+        ValueHistory: {
+            /** @description False when enrichment was unreachable; points is then empty. */
+            available: boolean;
+            points: components["schemas"]["ValuePoint"][];
         };
     };
     responses: {
@@ -1560,6 +1590,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getValueHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The value series, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValueHistory"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

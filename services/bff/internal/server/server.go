@@ -86,6 +86,7 @@ type CollectionAPI interface {
 	UpdateView(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
 	DeleteView(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
 	GetDashboard(ctx context.Context, bearer string) (collectionclient.Result, error)
+	GetValueHistory(ctx context.Context, bearer string) (collectionclient.Result, error)
 	LibrarySummary(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error)
 }
 

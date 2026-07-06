@@ -216,6 +216,16 @@ func (c *Client) GetDashboard(ctx context.Context, bearer string) (Result, error
 	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body, http.StatusOK)
 }
 
+// GetValueHistory relays GET /dashboard/value-history (cached by the
+// collection service, never here).
+func (c *Client) GetValueHistory(ctx context.Context, bearer string) (Result, error) {
+	resp, err := c.api.GetValueHistoryWithResponse(ctx, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: value history: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body, http.StatusOK)
+}
+
 // LibrarySummary is the typed read backing the recommendations
 // composition; it is not relayed to browsers.
 func (c *Client) LibrarySummary(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error) {

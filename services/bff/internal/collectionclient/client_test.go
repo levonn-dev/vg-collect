@@ -92,6 +92,9 @@ func TestRelayMethods_RouteBearerStatusAndBody(t *testing.T) {
 		{"GetDashboard", func() (Result, error) {
 			return c.GetDashboard(context.Background(), "tok")
 		}, "GET", "/dashboard", http.StatusOK},
+		{"GetValueHistory", func() (Result, error) {
+			return c.GetValueHistory(context.Background(), "tok")
+		}, "GET", "/dashboard/value-history", http.StatusOK},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -179,21 +182,22 @@ func TestTransportErrorSurfaces(t *testing.T) {
 			_, err := c.ListEntries(context.Background(), "tok", &collectionapi.ListEntriesParams{})
 			return err
 		},
-		"CreateEntry":    func() error { _, err := c.CreateEntry(context.Background(), "tok", nil); return err },
-		"GetEntry":       func() error { _, err := c.GetEntry(context.Background(), "tok", id); return err },
-		"UpdateEntry":    func() error { _, err := c.UpdateEntry(context.Background(), "tok", id, nil); return err },
-		"DeleteEntry":    func() error { _, err := c.DeleteEntry(context.Background(), "tok", id); return err },
-		"ReorderEntry":   func() error { _, err := c.ReorderEntry(context.Background(), "tok", id, nil); return err },
-		"ListTags":       func() error { _, err := c.ListTags(context.Background(), "tok"); return err },
-		"CreateTag":      func() error { _, err := c.CreateTag(context.Background(), "tok", nil); return err },
-		"RenameTag":      func() error { _, err := c.RenameTag(context.Background(), "tok", id, nil); return err },
-		"DeleteTag":      func() error { _, err := c.DeleteTag(context.Background(), "tok", id); return err },
-		"ListViews":      func() error { _, err := c.ListViews(context.Background(), "tok"); return err },
-		"CreateView":     func() error { _, err := c.CreateView(context.Background(), "tok", nil); return err },
-		"UpdateView":     func() error { _, err := c.UpdateView(context.Background(), "tok", id, nil); return err },
-		"DeleteView":     func() error { _, err := c.DeleteView(context.Background(), "tok", id); return err },
-		"GetDashboard":   func() error { _, err := c.GetDashboard(context.Background(), "tok"); return err },
-		"LibrarySummary": func() error { _, err := c.LibrarySummary(context.Background(), "tok"); return err },
+		"CreateEntry":     func() error { _, err := c.CreateEntry(context.Background(), "tok", nil); return err },
+		"GetEntry":        func() error { _, err := c.GetEntry(context.Background(), "tok", id); return err },
+		"UpdateEntry":     func() error { _, err := c.UpdateEntry(context.Background(), "tok", id, nil); return err },
+		"DeleteEntry":     func() error { _, err := c.DeleteEntry(context.Background(), "tok", id); return err },
+		"ReorderEntry":    func() error { _, err := c.ReorderEntry(context.Background(), "tok", id, nil); return err },
+		"ListTags":        func() error { _, err := c.ListTags(context.Background(), "tok"); return err },
+		"CreateTag":       func() error { _, err := c.CreateTag(context.Background(), "tok", nil); return err },
+		"RenameTag":       func() error { _, err := c.RenameTag(context.Background(), "tok", id, nil); return err },
+		"DeleteTag":       func() error { _, err := c.DeleteTag(context.Background(), "tok", id); return err },
+		"ListViews":       func() error { _, err := c.ListViews(context.Background(), "tok"); return err },
+		"CreateView":      func() error { _, err := c.CreateView(context.Background(), "tok", nil); return err },
+		"UpdateView":      func() error { _, err := c.UpdateView(context.Background(), "tok", id, nil); return err },
+		"DeleteView":      func() error { _, err := c.DeleteView(context.Background(), "tok", id); return err },
+		"GetDashboard":    func() error { _, err := c.GetDashboard(context.Background(), "tok"); return err },
+		"GetValueHistory": func() error { _, err := c.GetValueHistory(context.Background(), "tok"); return err },
+		"LibrarySummary":  func() error { _, err := c.LibrarySummary(context.Background(), "tok"); return err },
 	}
 	for name, call := range cases {
 		t.Run(name, func(t *testing.T) {

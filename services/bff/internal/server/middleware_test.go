@@ -523,10 +523,11 @@ func (f *stubEnrichmentService) scoreCallCount() int {
 type stubCollectionService struct {
 	srv *httptest.Server
 
-	mu          sync.Mutex
-	calls       int
-	gotAuth     []string
-	createCalls int
+	mu               sync.Mutex
+	calls            int
+	gotAuth          []string
+	createCalls      int
+	valueHistoryHits int
 }
 
 func newStubCollectionService(t *testing.T) *stubCollectionService {
@@ -536,6 +537,7 @@ func newStubCollectionService(t *testing.T) *stubCollectionService {
 	mux.HandleFunc("GET /entries", f.entries)
 	mux.HandleFunc("GET /library/summary", f.librarySummary)
 	mux.HandleFunc("POST /entries", f.createEntry)
+	mux.HandleFunc("GET /dashboard/value-history", f.valueHistory)
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
 	return f
@@ -555,6 +557,24 @@ func (f *stubCollectionService) callCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.calls
+}
+
+// valueHistory answers the value-history pass-through the
+// never-cached-at-the-bff proof drives; valueHistoryHits records how
+// many times the collection service was actually reached.
+func (f *stubCollectionService) valueHistory(w http.ResponseWriter, _ *http.Request) {
+	f.mu.Lock()
+	f.valueHistoryHits++
+	f.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"available":true,"points":[]}`))
+}
+
+func (f *stubCollectionService) valueHistoryHitCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.valueHistoryHits
 }
 
 // librarySummary answers the recommendations composition's library
@@ -771,6 +791,34 @@ func (s *stack) entries(t *testing.T, cookie *http.Cookie) entriesResult {
 		t.Fatal(err)
 	}
 	return entriesResult{status: resp.StatusCode, body: body}
+}
+
+// valueHistoryResult is one /api/dashboard/value-history round-trip's
+// observable outcome.
+type valueHistoryResult struct {
+	status int
+	body   []byte
+}
+
+// valueHistory issues GET /api/dashboard/value-history through the
+// real server carrying cookie.
+func (s *stack) valueHistory(t *testing.T, cookie *http.Cookie) valueHistoryResult {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, s.baseURL+"/api/dashboard/value-history", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(cookie)
+	resp, err := s.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return valueHistoryResult{status: resp.StatusCode, body: body}
 }
 
 // recommendationsResult is one /api/recommendations round-trip's
@@ -1376,6 +1424,35 @@ func TestEntriesPassThroughHitsCollectionTwiceNeverCached(t *testing.T) {
 	}
 	if len(s.collection.gotAuth) != 2 || s.collection.gotAuth[0] != "Bearer "+access || s.collection.gotAuth[1] != "Bearer "+access {
 		t.Fatalf("bearer forwarded to collection = %v, want the session's own token on both calls", s.collection.gotAuth)
+	}
+}
+
+// TestValueHistoryPassThroughHitsCollectionTwiceNeverCached drives the
+// cookie-authenticated value-history route through the real server and
+// the real collectionclient (over real HTTP) against a stub collection
+// service, proving that the route is never cached at the bff: two
+// identical calls must reach the upstream twice, not once. This pins
+// the single-source rule for the new route (the collection service
+// owns the cache; the bff must never shadow it).
+func TestValueHistoryPassThroughHitsCollectionTwiceNeverCached(t *testing.T) {
+	s := newStack(t)
+	const sub = "88888888-8888-8888-8888-888888888888"
+	access := mintAccess(t, sub, "jA", time.Now().Add(5*time.Minute)) // fresh: no refresh
+	cookie := s.cookieFor(t, access, "refresh-1")
+	const wantBody = `{"available":true,"points":[]}`
+
+	r1 := s.valueHistory(t, cookie)
+	if r1.status != http.StatusOK || string(r1.body) != wantBody {
+		t.Fatalf("first call: status=%d body=%s", r1.status, r1.body)
+	}
+
+	r2 := s.valueHistory(t, cookie)
+	if r2.status != http.StatusOK || string(r2.body) != wantBody {
+		t.Fatalf("second call: status = %d body=%s", r2.status, r2.body)
+	}
+
+	if got := s.collection.valueHistoryHitCount(); got != 2 {
+		t.Fatalf("collection was hit %d times; two identical calls must never be served from a bff cache (single-source pass-through)", got)
 	}
 }
 

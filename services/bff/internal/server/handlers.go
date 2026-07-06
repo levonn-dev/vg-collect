@@ -540,6 +540,19 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request) {
 	h.relayCollection(w, r, res, err)
 }
 
+// GetValueHistory proxies the collection value-over-time series
+// (single-source: the collection service owns its cache and
+// invalidation; the bff never caches pass-throughs).
+func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.GetValueHistory(r.Context(), sess.AccessToken)
+	h.relayCollection(w, r, res, err)
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

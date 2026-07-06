@@ -1,0 +1,18 @@
+meta {
+  name: collection value history (via gateway)
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{bff_url}}/api/dashboard/value-history
+  body: none
+  auth: none
+}
+
+docs {
+  Run bff/dev-login first (cookie jar). Relayed verbatim from the
+  collection service, which owns the composition and its cache; the
+  bff never caches pass-throughs. points is empty until the catalog
+  has snapshot days for your effective pricing products.
+}

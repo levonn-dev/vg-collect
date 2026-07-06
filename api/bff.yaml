@@ -591,6 +591,18 @@ paths:
               schema: { $ref: "#/components/schemas/Dashboard" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/dashboard/value-history:
+    get:
+      operationId: getValueHistory
+      summary: Collection value over time (proxied; cached by the collection service, never here)
+      responses:
+        "200":
+          description: The value series, oldest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValueHistory" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
   /api/recommendations:
     get:
       operationId: getRecommendations
@@ -849,6 +861,12 @@ components:
         display_name: { type: string }
         platform: { $ref: "#/components/schemas/EntryPlatform" }
         first_release_date: { type: string, format: date }
+        cover_url:
+          type: string
+          description: >
+            Cover art URL snapshotted from the product at creation.
+            Absent on custom entries, hardware, and products without
+            art (render a placeholder).
         igdb_game_id:
           type: integer
           format: int64
@@ -1128,3 +1146,19 @@ components:
           description: Sum of price_paid_cents per currency, over entries that record a price.
           items: { $ref: "#/components/schemas/CurrencySpend" }
         pricing: { $ref: "#/components/schemas/DashboardPricing" }
+    ValuePoint:
+      type: object
+      required: [date, value_cents]
+      properties:
+        date: { type: string, format: date }
+        value_cents: { type: integer, format: int64 }
+    ValueHistory:
+      type: object
+      required: [available, points]
+      properties:
+        available:
+          type: boolean
+          description: False when enrichment was unreachable; points is then empty.
+        points:
+          type: array
+          items: { $ref: "#/components/schemas/ValuePoint" }
