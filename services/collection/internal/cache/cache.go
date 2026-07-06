@@ -28,6 +28,8 @@ func New(rdb *redis.Client) *Cache {
 
 func dashboardKey(sub string) string { return "dashboard:v1:" + sub }
 
+func valueHistoryKey(sub string) string { return "dashboard:value_history:v1:" + sub }
+
 // GetDashboard returns the cached dashboard body for sub, or nil.
 func (c *Cache) GetDashboard(ctx context.Context, sub string) ([]byte, error) {
 	v, err := c.rdb.Get(ctx, dashboardKey(sub)).Result()
@@ -49,10 +51,31 @@ func (c *Cache) PutDashboard(ctx context.Context, sub string, body []byte, ttl t
 	return nil
 }
 
-// InvalidateDashboard drops the user's dashboard entry (their own
-// mutations must be visible immediately, not after the TTL).
+// GetValueHistory returns the cached value-history body for sub, or nil.
+func (c *Cache) GetValueHistory(ctx context.Context, sub string) ([]byte, error) {
+	v, err := c.rdb.Get(ctx, valueHistoryKey(sub)).Result()
+	if errors.Is(err, redis.Nil) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("cache: get value history: %w", err)
+	}
+	return []byte(v), nil
+}
+
+// PutValueHistory caches a composed value-history body.
+func (c *Cache) PutValueHistory(ctx context.Context, sub string, body []byte, ttl time.Duration) error {
+	if err := c.rdb.Set(ctx, valueHistoryKey(sub), body, ttl).Err(); err != nil {
+		return fmt.Errorf("cache: put value history: %w", err)
+	}
+	return nil
+}
+
+// InvalidateDashboard drops the user's dashboard-derived entries (the
+// dashboard body and the value-history body): their own mutations must
+// be visible immediately, not after the TTL.
 func (c *Cache) InvalidateDashboard(ctx context.Context, sub string) error {
-	if err := c.rdb.Del(ctx, dashboardKey(sub)).Err(); err != nil {
+	if err := c.rdb.Del(ctx, dashboardKey(sub), valueHistoryKey(sub)).Err(); err != nil {
 		return fmt.Errorf("cache: invalidate dashboard: %w", err)
 	}
 	return nil

@@ -103,3 +103,34 @@ func (c *Client) BatchPrices(ctx context.Context, bearer string, ids []uuid.UUID
 	}
 	return out, nil
 }
+
+// PriceHistory fetches snapshot series for a set of product ids in one
+// or more contract-sized chunks (ids are deduplicated first) and
+// merges the maps. An empty id set makes no call.
+func (c *Client) PriceHistory(ctx context.Context, bearer string, ids []uuid.UUID, days int) (map[string][]enrichapi.PricePoint, error) {
+	uniq := make([]uuid.UUID, 0, len(ids))
+	seen := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			uniq = append(uniq, id)
+		}
+	}
+	out := make(map[string][]enrichapi.PricePoint, len(uniq))
+	for start := 0; start < len(uniq); start += batchLimit {
+		end := min(start+batchLimit, len(uniq))
+		resp, err := c.api.BatchPriceHistoryWithResponse(ctx,
+			enrichapi.BatchPriceHistoryJSONRequestBody{ProductIds: uniq[start:end], Days: &days},
+			bearerEditor(bearer))
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		}
+		if resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
+			return nil, fmt.Errorf("%w: status %d", ErrUnavailable, resp.StatusCode())
+		}
+		for k, v := range resp.JSON200.Series {
+			out[k] = v
+		}
+	}
+	return out, nil
+}

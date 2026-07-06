@@ -1,0 +1,24 @@
+meta {
+  name: value history
+  type: http
+  seq: 14
+}
+
+get {
+  url: {{collection_url}}/dashboard/value-history
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  Collection value over the last ninety days: one point per snapshot
+  day, each entry valued at its effective product's latest snapshot on
+  or before that day. Cached about five minutes and invalidated by
+  your own entry mutations. A fresh catalog answers a single point per
+  product (the resolve-time snapshot); the series grows with the daily
+  refresh walk.
+}

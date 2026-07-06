@@ -1,6 +1,7 @@
 package enrichmentclient
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,6 +32,7 @@ func newStubEnrichment(t *testing.T) *stubEnrichment {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /products/{id}", f.product)
 	mux.HandleFunc("POST /products/prices:batch", f.batch)
+	mux.HandleFunc("POST /products/price-history:batch", f.history)
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
 	return f
@@ -87,6 +89,33 @@ func (f *stubEnrichment) batch(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"prices": prices})
+}
+
+func (f *stubEnrichment) history(w http.ResponseWriter, r *http.Request) {
+	f.record(r)
+	if f.failWith != 0 {
+		w.WriteHeader(f.failWith)
+		return
+	}
+	var req struct {
+		ProductIDs []uuid.UUID `json:"product_ids"`
+		Days       *int        `json:"days"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	f.mu.Lock()
+	f.batchSizes = append(f.batchSizes, len(req.ProductIDs))
+	f.mu.Unlock()
+	series := map[string]any{}
+	for _, id := range req.ProductIDs {
+		series[id.String()] = []map[string]any{
+			{"captured_at": "2026-07-01T06:00:00Z", "loose_cents": 1500},
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"series": series})
 }
 
 func newClient(t *testing.T, f *stubEnrichment) *Client {
@@ -191,5 +220,60 @@ func TestBatchPricesFailureIsUnavailable(t *testing.T) {
 	}
 	if f.gotAuth[0] != "Bearer tok" {
 		t.Fatalf("auth on batch failure: got %q", f.gotAuth[0])
+	}
+}
+
+func TestPriceHistoryChunksMergesAndForwardsBearer(t *testing.T) {
+	f := newStubEnrichment(t)
+	c := newClient(t, f)
+
+	// 501 unique ids + one duplicate: dedup to 501, chunked 500 + 1.
+	ids := make([]uuid.UUID, 0, 502)
+	for range 501 {
+		ids = append(ids, uuid.New())
+	}
+	ids = append(ids, ids[0])
+
+	series, err := c.PriceHistory(context.Background(), "tok-history", ids, 90)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(series) != 501 {
+		t.Fatalf("merged series size %d, want 501", len(series))
+	}
+	if pts := series[ids[0].String()]; len(pts) != 1 || *pts[0].LooseCents != 1500 {
+		t.Fatalf("points not parsed: %+v", pts)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.batchSizes) != 2 || f.batchSizes[0] != 500 || f.batchSizes[1] != 1 {
+		t.Fatalf("chunking wrong: %v", f.batchSizes)
+	}
+	for _, a := range f.gotAuth {
+		if a != "Bearer tok-history" {
+			t.Fatalf("bearer not relayed: %q", a)
+		}
+	}
+}
+
+func TestPriceHistoryEmptyMakesNoCall(t *testing.T) {
+	f := newStubEnrichment(t)
+	c := newClient(t, f)
+	series, err := c.PriceHistory(context.Background(), "tok", nil, 90)
+	if err != nil || len(series) != 0 {
+		t.Fatalf("want empty no-call success, got %v %v", series, err)
+	}
+	if len(f.gotAuth) != 0 {
+		t.Fatal("no request may leave the client for an empty id set")
+	}
+}
+
+func TestPriceHistoryFailureIsUnavailable(t *testing.T) {
+	f := newStubEnrichment(t)
+	f.failWith = http.StatusInternalServerError
+	c := newClient(t, f)
+	_, err := c.PriceHistory(context.Background(), "tok", []uuid.UUID{uuid.New()}, 90)
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("want ErrUnavailable, got %v", err)
 	}
 }

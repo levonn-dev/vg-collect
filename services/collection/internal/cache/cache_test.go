@@ -74,3 +74,32 @@ func TestDashboardTTLExpires(t *testing.T) {
 		t.Fatalf("entry must expire with its TTL: %v %v", body, err)
 	}
 }
+
+func TestValueHistoryRoundTripAndSharedInvalidation(t *testing.T) {
+	c := newTestCache(t)
+	ctx := context.Background()
+
+	if body, err := c.GetValueHistory(ctx, "alice"); err != nil || body != nil {
+		t.Fatalf("cold read must be a nil miss: %v %v", body, err)
+	}
+	if err := c.PutValueHistory(ctx, "alice", []byte(`{"available":true}`), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.PutDashboard(ctx, "alice", []byte(`{"total_entries":5}`), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if body, _ := c.GetValueHistory(ctx, "bob"); body != nil {
+		t.Fatal("keys are per-subject")
+	}
+	// One mutation invalidates BOTH composed bodies: they derive from
+	// the same entry set.
+	if err := c.InvalidateDashboard(ctx, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if body, _ := c.GetDashboard(ctx, "alice"); body != nil {
+		t.Fatal("dashboard must be evicted")
+	}
+	if body, _ := c.GetValueHistory(ctx, "alice"); body != nil {
+		t.Fatal("value history must be evicted by the same invalidation")
+	}
+}

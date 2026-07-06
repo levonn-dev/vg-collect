@@ -51,6 +51,7 @@ type Store interface {
 type Enrichment interface {
 	GetProduct(ctx context.Context, bearer string, id uuid.UUID) (enrichapi.Product, error)
 	BatchPrices(ctx context.Context, bearer string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error)
+	PriceHistory(ctx context.Context, bearer string, ids []uuid.UUID, days int) (map[string][]enrichapi.PricePoint, error)
 }
 
 // Cache is the Valkey surface. Errors mean "Valkey is having a
@@ -59,6 +60,8 @@ type Cache interface {
 	GetDashboard(ctx context.Context, sub string) ([]byte, error)
 	PutDashboard(ctx context.Context, sub string, body []byte, ttl time.Duration) error
 	InvalidateDashboard(ctx context.Context, sub string) error
+	GetValueHistory(ctx context.Context, sub string) ([]byte, error)
+	PutValueHistory(ctx context.Context, sub string, body []byte, ttl time.Duration) error
 }
 
 // The concrete types must satisfy the interfaces above; main.go wires
