@@ -1,4 +1,4 @@
-import { ApiError, fetchMe, fetchProviders, logout } from './client'
+import { ApiError, fetchMe, fetchProviders, logout, sendJSON } from './client'
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -42,4 +42,32 @@ it('logout posts and tolerates 204', async () => {
   vi.stubGlobal('fetch', fetchMock)
   await logout()
   expect(fetchMock).toHaveBeenCalledWith('/api/auth/logout', { method: 'POST' })
+})
+
+it('sendJSON posts a JSON body and parses the answer', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { id: 'e1' }))
+  vi.stubGlobal('fetch', fetchMock)
+  const created = await sendJSON<{ id: string }>('POST', '/api/entries', { region: 'ntsc_u' })
+  expect(created.id).toBe('e1')
+  expect(fetchMock).toHaveBeenCalledWith('/api/entries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ region: 'ntsc_u' }),
+  })
+})
+
+it('sendJSON resolves undefined on 204 and omits the body when absent', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+  vi.stubGlobal('fetch', fetchMock)
+  await expect(sendJSON<void>('DELETE', '/api/entries/e1')).resolves.toBeUndefined()
+  expect(fetchMock).toHaveBeenCalledWith('/api/entries/e1', { method: 'DELETE' })
+})
+
+it('sendJSON maps problem bodies onto ApiError', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(409, {
+    type: 'about:blank', title: 'Conflict', status: 409, code: 'conflicting_order',
+  })))
+  const err = await sendJSON('POST', '/api/entries/e1/reorder', {}).catch((e: unknown) => e)
+  expect(err).toBeInstanceOf(ApiError)
+  expect((err as ApiError).code).toBe('conflicting_order')
 })

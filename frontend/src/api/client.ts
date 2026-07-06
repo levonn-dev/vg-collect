@@ -27,9 +27,27 @@ async function toApiError(res: Response): Promise<ApiError> {
   }
 }
 
-async function getJSON<T>(path: string): Promise<T> {
+export async function getJSON<T>(path: string): Promise<T> {
   const res = await fetch(path)
   if (!res.ok) throw await toApiError(res)
+  return (await res.json()) as T
+}
+
+// sendJSON issues a mutating call. 204 answers resolve to undefined;
+// callers with a body type parameterize T accordingly.
+export async function sendJSON<T>(
+  method: 'POST' | 'PUT' | 'DELETE',
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  const res = await fetch(path, {
+    method,
+    ...(body === undefined
+      ? {}
+      : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  })
+  if (!res.ok) throw await toApiError(res)
+  if (res.status === 204) return undefined as T
   return (await res.json()) as T
 }
 
