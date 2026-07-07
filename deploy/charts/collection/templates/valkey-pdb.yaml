@@ -1,0 +1,14 @@
+{{- if .Values.valkey.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: collection-valkey
+  labels: {{- include "collection.labels" . | nindent 4 }}
+spec:
+  # Single replica: a voluntary drain blocks rather than silently
+  # dropping the only copy. Inert on one node, correct shape on many.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: collection-valkey
+{{- end }}
