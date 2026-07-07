@@ -23,6 +23,10 @@ spec:
             key: remote_addr
             rejected_code: 429
             policy: local
+        - name: prometheus
+          enable: true
+          config:
+            prefer_name: true
     - name: api
       priority: 5
       match:
@@ -40,6 +44,10 @@ spec:
             key: remote_addr
             rejected_code: 429
             policy: local
+        - name: prometheus
+          enable: true
+          config:
+            prefer_name: true
     - name: app
       priority: 1
       match:
@@ -47,3 +55,8 @@ spec:
       backends:
         - serviceName: bff
           servicePort: 8080
+      plugins:
+        - name: prometheus
+          enable: true
+          config:
+            prefer_name: true
