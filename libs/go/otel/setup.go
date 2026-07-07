@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -39,12 +40,7 @@ func Setup(ctx context.Context, cfg Config) (func(context.Context) error, error)
 		return noop, nil
 	}
 
-	res, err := resource.New(ctx,
-		resource.WithAttributes(
-			semconv.ServiceName(cfg.ServiceName),
-			semconv.ServiceVersion(cfg.Version),
-		),
-	)
+	res, err := buildResource(ctx, cfg)
 	if err != nil {
 		return noop, err
 	}
@@ -87,4 +83,19 @@ func Setup(ctx context.Context, cfg Config) (func(context.Context) error, error)
 	return func(ctx context.Context) error {
 		return errors.Join(tp.Shutdown(ctx), mp.Shutdown(ctx), lp.Shutdown(ctx))
 	}, nil
+}
+
+// buildResource identifies this process on every exported signal.
+// service.instance.id comes from HOSTNAME, which Kubernetes sets to
+// the pod name; outside a pod (unit tests, bare go run) it is omitted
+// rather than invented.
+func buildResource(ctx context.Context, cfg Config) (*resource.Resource, error) {
+	attrs := []attribute.KeyValue{
+		semconv.ServiceName(cfg.ServiceName),
+		semconv.ServiceVersion(cfg.Version),
+	}
+	if host := os.Getenv("HOSTNAME"); host != "" {
+		attrs = append(attrs, semconv.ServiceInstanceID(host))
+	}
+	return resource.New(ctx, resource.WithAttributes(attrs...))
 }

@@ -16,7 +16,8 @@ import (
 // Limitation: stamping happens at Handle time, so if the logger has an
 // open WithGroup group the IDs land inside that group instead of top
 // level. vg-collect services therefore do not call WithGroup on the
-// root logger.
+// root logger. The OTLP log leg is unaffected: the SDK stamps trace
+// context onto the record itself from ctx, independent of groups.
 type traceContextHandler struct{ inner slog.Handler }
 
 func NewTraceContextHandler(inner slog.Handler) slog.Handler {

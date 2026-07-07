@@ -3,6 +3,7 @@ package otel_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"strings"
 	"testing"
@@ -107,5 +108,36 @@ func TestTraceHandler_WithGroup_TracePropagates(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, `"trace_id":"`) {
 		t.Fatalf("WithGroup derived handler lost trace injection: %s", out)
+	}
+}
+
+// Pins the documented limitation: at Handle time an open WithGroup
+// group swallows the stamped IDs, so they land nested rather than top
+// level. The stdout leg lives with this (services never group the root
+// logger); the OTLP leg is unaffected because the SDK stamps trace
+// context onto the record itself from ctx.
+func TestTraceHandler_WithGroup_IDsLandInsideGroup(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(vgotel.NewTraceContextHandler(slog.NewJSONHandler(&buf, nil))).WithGroup("ns")
+
+	tp := sdktrace.NewTracerProvider()
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	ctx, span := tp.Tracer("test").Start(context.Background(), "op")
+	logger.InfoContext(ctx, "grouped")
+	span.End()
+
+	var line map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
+		t.Fatalf("output not JSON: %v", err)
+	}
+	if _, top := line["trace_id"]; top {
+		t.Fatal("trace_id is top-level; the WithGroup limitation no longer holds - update the handler docs and this test")
+	}
+	ns, ok := line["ns"].(map[string]any)
+	if !ok {
+		t.Fatalf("no ns group object in %s", buf.String())
+	}
+	if _, nested := ns["trace_id"]; !nested {
+		t.Fatalf("trace_id neither top-level nor in group: %s", buf.String())
 	}
 }
