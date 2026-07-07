@@ -36,6 +36,7 @@ postgres:
   database: auth
   username: auth
   storage: 1Gi
+  exporterImage: quay.io/prometheuscommunity/postgres-exporter:v0.20.0
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 256Mi }
@@ -50,6 +51,11 @@ providers:
     enabled: false
   twitch:
     enabled: false
+
+otel:
+  # OTLP gRPC endpoint for traces, metrics and logs. Empty string
+  # disables export entirely (the service logs JSON to stdout only).
+  exporterEndpoint: http://otel-agent.vg-platform.svc.cluster.local:4317
 
 secretStore:
   name: vg-fake

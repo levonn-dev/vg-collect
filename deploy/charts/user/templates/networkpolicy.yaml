@@ -16,6 +16,16 @@ spec:
               app.kubernetes.io/name: user
       ports:
         - { port: 5432, protocol: TCP }
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vg-platform
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9187
 {{- end }}
 ---
 # User's callers: auth (profile upsert + role reads at mint/refresh)

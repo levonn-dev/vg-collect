@@ -53,6 +53,17 @@ spec:
           volumeMounts:
             - { name: tls, mountPath: /tls }
             - { name: data, mountPath: /var/lib/postgresql/data }
+        - name: metrics
+          image: {{ .Values.postgres.exporterImage | quote }}
+          env:
+            # Pod-local loopback: the stock image's pg_hba trusts local
+            # connections, so no password crosses this hop; TLS guards
+            # cross-pod traffic, and this traffic never leaves the pod.
+            - name: DATA_SOURCE_NAME
+              value: "postgresql://{{ .Values.postgres.username }}@localhost:5432/{{ .Values.postgres.database }}?sslmode=disable"
+          ports:
+            - name: metrics
+              containerPort: 9187
       volumes:
         - name: tls-src
           secret: { secretName: collection-pg-tls }
