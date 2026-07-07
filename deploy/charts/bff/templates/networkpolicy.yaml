@@ -16,6 +16,16 @@ spec:
               app.kubernetes.io/name: bff
       ports:
         - { port: 6379, protocol: TCP }
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vg-platform
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9121
 ---
 {{- end }}
 apiVersion: networking.k8s.io/v1

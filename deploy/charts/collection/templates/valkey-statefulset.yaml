@@ -60,6 +60,20 @@ spec:
           volumeMounts:
             - { name: tls, mountPath: /tls }
             - { name: data, mountPath: /data }
+        - name: metrics
+          image: {{ .Values.valkey.exporterImage | quote }}
+          env:
+            - name: REDIS_ADDR
+              value: rediss://localhost:6379
+            - name: REDIS_EXPORTER_TLS_CA_CERT_FILE
+              value: /metrics-ca/ca.crt
+          ports:
+            - name: metrics
+              containerPort: 9121
+          volumeMounts:
+            - name: metrics-ca
+              mountPath: /metrics-ca
+              readOnly: true
       volumes:
         - name: tls-src
           secret: { secretName: collection-valkey-tls }
@@ -67,4 +81,10 @@ spec:
           emptyDir: {}
         - name: data
           emptyDir: {}
+        - name: metrics-ca
+          secret:
+            secretName: collection-valkey-tls
+            items:
+              - key: ca.crt
+                path: ca.crt
 {{- end }}

@@ -69,11 +69,37 @@ spec:
           volumeMounts:
             - { name: tls, mountPath: /tls }
             - { name: data, mountPath: /data/db }
+        - name: metrics
+          image: {{ .Values.mongo.exporterImage | quote }}
+          args:
+            - --collect-all
+            - --mongodb.direct-connect
+          env:
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: enrichment-secrets
+                  key: mongo-password
+            - name: MONGODB_URI
+              value: "mongodb://enrichment:$(MONGO_PASSWORD)@localhost:27017/?tls=true&tlsCaFile=/metrics-ca/ca.crt"
+          ports:
+            - name: metrics
+              containerPort: 9216
+          volumeMounts:
+            - name: metrics-ca
+              mountPath: /metrics-ca
+              readOnly: true
       volumes:
         - name: tls-src
           secret: { secretName: enrichment-mongo-tls }
         - name: tls
           emptyDir: {}
+        - name: metrics-ca
+          secret:
+            secretName: enrichment-mongo-tls
+            items:
+              - key: ca.crt
+                path: ca.crt
   volumeClaimTemplates:
     - metadata:
         name: data

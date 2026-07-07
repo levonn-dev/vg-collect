@@ -16,6 +16,16 @@ spec:
               app.kubernetes.io/name: collection
       ports:
         - { port: 5432, protocol: TCP }
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vg-platform
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9187
 ---
 {{- end }}
 {{- if .Values.valkey.enabled }}
@@ -36,6 +46,16 @@ spec:
               app.kubernetes.io/name: collection
       ports:
         - { port: 6379, protocol: TCP }
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vg-platform
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9121
 ---
 {{- end }}
 # Collection's caller: the bff (the whole collection surface is

@@ -3,10 +3,15 @@ apiVersion: v1
 kind: Service
 metadata:
   name: enrichment-valkey
-  labels: {{- include "enrichment.labels" . | nindent 4 }}
+  labels:
+    app.kubernetes.io/name: enrichment-valkey
+    app.kubernetes.io/part-of: vg-collect
 spec:
   selector:
     app.kubernetes.io/name: enrichment-valkey
   ports:
     - { name: valkey, port: 6379, targetPort: valkey }
+    - name: metrics
+      port: 9121
+      targetPort: metrics
 {{- end }}

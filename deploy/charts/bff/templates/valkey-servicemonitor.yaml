@@ -1,0 +1,14 @@
+{{- if .Values.valkey.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: bff-valkey
+  labels: {{- include "bff.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: bff-valkey
+  endpoints:
+    - port: metrics
+      interval: 30s
+{{- end }}

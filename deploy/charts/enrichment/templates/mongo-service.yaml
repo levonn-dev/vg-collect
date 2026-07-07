@@ -3,10 +3,15 @@ apiVersion: v1
 kind: Service
 metadata:
   name: enrichment-mongo
-  labels: {{- include "enrichment.labels" . | nindent 4 }}
+  labels:
+    app.kubernetes.io/name: enrichment-mongo
+    app.kubernetes.io/part-of: vg-collect
 spec:
   selector:
     app.kubernetes.io/name: enrichment-mongo
   ports:
     - { name: mongo, port: 27017, targetPort: mongo }
+    - name: metrics
+      port: 9216
+      targetPort: metrics
 {{- end }}

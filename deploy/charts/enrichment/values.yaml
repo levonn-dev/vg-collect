@@ -48,6 +48,7 @@ mongo:
   database: enrichment
   username: enrichment
   storage: 1Gi
+  exporterImage: percona/mongodb_exporter:0.51.0
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { memory: 512Mi }
@@ -55,9 +56,15 @@ mongo:
 valkey:
   enabled: true            # the prod-path seam: disable + point valkeyUrl at a managed cache
   image: valkey/valkey:8-alpine
+  exporterImage: oliver006/redis_exporter:v1.86.0
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 128Mi }
+
+otel:
+  # OTLP gRPC endpoint for traces, metrics and logs. Empty string
+  # disables export entirely (the service logs JSON to stdout only).
+  exporterEndpoint: http://otel-agent.vg-platform.svc.cluster.local:4317
 
 secretStore:
   name: vg-fake

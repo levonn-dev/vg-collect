@@ -11,6 +11,9 @@ spec:
     - {{ include "enrichment.valkeyHost" . }}
     - {{ include "enrichment.valkeyHost" . }}.{{ .Release.Namespace }}.svc
     - {{ include "enrichment.valkeyHost" . }}.{{ .Release.Namespace }}.svc.cluster.local
+    # The metrics sidecar dials over pod-local loopback with full
+    # verification; the serving cert must therefore name localhost.
+    - localhost
   issuerRef:
     name: vg-ca
     kind: ClusterIssuer

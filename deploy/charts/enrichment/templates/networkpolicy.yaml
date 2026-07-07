@@ -16,6 +16,16 @@ spec:
               app.kubernetes.io/name: enrichment
       ports:
         - { port: 27017, protocol: TCP }
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vg-platform
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9216
 ---
 {{- end }}
 {{- if .Values.valkey.enabled }}
@@ -36,6 +46,16 @@ spec:
               app.kubernetes.io/name: enrichment
       ports:
         - { port: 6379, protocol: TCP }
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vg-platform
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9121
 ---
 {{- end }}
 # Enrichment's callers: the bff (search/resolve/product pass-throughs),

@@ -1,0 +1,14 @@
+{{- if .Values.valkey.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: collection-valkey
+  labels: {{- include "collection.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: collection-valkey
+  endpoints:
+    - port: metrics
+      interval: 30s
+{{- end }}
