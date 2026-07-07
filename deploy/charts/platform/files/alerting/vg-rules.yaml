@@ -1,0 +1,287 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: vg-collect
+    folder: vg-collect
+    interval: 1m
+    rules:
+      - uid: vg-service-5xx
+        title: Service 5xx ratio above 5 percent
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) / sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.05] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "{{ $labels.service_name }} is answering more than 5 percent 5xx"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/service-5xx-ratio.md
+        labels:
+          severity: page
+      - uid: vg-service-p99
+        title: Service p99 latency above 500ms
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: histogram_quantile(0.99, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m])))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.5] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "{{ $labels.service_name }} p99 is above the 500ms objective"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/service-p99-latency.md
+        labels:
+          severity: warn
+      - uid: vg-pod-churn
+        title: Pod restart churn or OOM kill
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~"vg-collect|vg-platform"}[15m])) > 3 or sum by (namespace, pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace=~"vg-collect|vg-platform"}) > 0
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.pod }} is restart-churning or was OOM-killed"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/pod-restart-churn.md
+        labels:
+          severity: warn
+      - uid: vg-node-pressure
+        title: Node under memory, disk or PID pressure
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: kube_node_status_condition{condition=~"MemoryPressure|DiskPressure|PIDPressure", status="true"} > 0 or (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.10
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "node pressure condition active or memory nearly exhausted"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/node-pressure.md
+        labels:
+          severity: page
+      - uid: vg-pg-saturation
+        title: Postgres connections above 80 percent of max
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum by (service) (pg_stat_activity_count) / max by (service) (pg_settings_max_connections)
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.8] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "{{ $labels.service }} is using more than 80 percent of max_connections"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/pg-connection-saturation.md
+        labels:
+          severity: warn
+      - uid: vg-valkey-pressure
+        title: Valkey evicting keys or memory unusually high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: rate(redis_evicted_keys_total[5m]) > 0 or redis_memory_used_bytes > 209715200
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "{{ $labels.service }} is evicting keys or holding over 200MiB"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/valkey-memory-evictions.md
+        labels:
+          severity: warn
+      - uid: vg-mongo-down
+        title: MongoDB unreachable
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: mongodb_up
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "enrichment-mongo is down or its exporter cannot reach it"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/mongo-down.md
+        labels:
+          severity: page
+      - uid: vg-collector-drops
+        title: OTel collector dropping telemetry
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(rate({__name__=~"otelcol_exporter_(send|enqueue)_failed_.*"}[5m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "the otel pipeline is failing to deliver spans, metrics or logs"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/collector-queue-drops.md
+        labels:
+          severity: warn
+      - uid: vg-denylist-failopen
+        title: BFF denylist failing open
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(increase(vg_bff_cache_fail_open_total{op=~"denylist_.*"}[10m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "revoked-token checks are being skipped because Valkey is unreachable"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/denylist-fail-open.md
+        labels:
+          severity: page
+      - uid: vg-loki-errors
+        title: Error log spike
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              instant: true
+              expr: sum by (service_name) (count_over_time({service_name=~".+"} | severity_text="ERROR" [5m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [20] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "{{ $labels.service_name }} logged more than 20 errors in 5 minutes"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/loki-error-spike.md
+        labels:
+          severity: warn

@@ -51,3 +51,334 @@ apisix:
     # APISIX 3.17 or later; this release runs 3.16.
     webhook:
       enabled: false
+  # metrics: is the chart's own top-level key (sibling of service/etcd/
+  # ingress-controller above, not nested under the inner apisix: config
+  # block below); it controls the ServiceMonitor CR the platform
+  # Prometheus discovers.
+  metrics:
+    serviceMonitor:
+      enabled: true
+  # The chart's inner apisix: config block (the data-plane runtime
+  # settings). prometheus.enabled turns on the plugin and the 9091
+  # metrics containerPort/Service that the ServiceMonitor above targets.
+  apisix:
+    prometheus:
+      enabled: true
+kube-prometheus-stack:
+  fullnameOverride: kps
+  # Drops the redundant operator-name infix from operator-managed
+  # object names (kps-prometheus, not kps-kube-prometheus-st-prometheus).
+  cleanPrometheusOperatorObjectNames: true
+  # Alerting is Grafana unified alerting (file-provisioned, sharing the
+  # dashboard queries); the stock Prometheus rule pack and Alertmanager
+  # stay off so there is exactly one alerting authority.
+  defaultRules:
+    create: false
+  alertmanager:
+    enabled: false
+  # Grafana ships as its own pinned chart dependency with full file
+  # provisioning; the bundled one stays off.
+  grafana:
+    enabled: false
+  # Control-plane scrape targets do not exist on managed/dev clusters
+  # (Docker Desktop); leaving them on creates permanently-down targets.
+  kubeControllerManager:
+    enabled: false
+  kubeScheduler:
+    enabled: false
+  kubeEtcd:
+    enabled: false
+  kubeProxy:
+    enabled: false
+  prometheus:
+    prometheusSpec:
+      # The OTel gateway pushes metrics here (prometheusremotewrite).
+      enableRemoteWriteReceiver: true
+      # Exemplars ride the remote-write stream and back the Grafana
+      # metrics-to-traces links.
+      enableFeatures:
+        - exemplar-storage
+      retention: 24h
+      # Discover ServiceMonitors/PodMonitors everywhere, regardless of
+      # release labels: the service charts own their monitors.
+      serviceMonitorSelectorNilUsesHelmValues: false
+      podMonitorSelectorNilUsesHelmValues: false
+      probeSelectorNilUsesHelmValues: false
+      ruleSelectorNilUsesHelmValues: false
+      serviceMonitorNamespaceSelector: {}
+      podMonitorNamespaceSelector: {}
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          memory: 1Gi
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: 2Gi
+loki:
+  fullnameOverride: loki
+  deploymentMode: SingleBinary
+  loki:
+    auth_enabled: false
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+    schemaConfig:
+      configs:
+        - from: "2026-01-01"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+    limits_config:
+      # OTLP ingestion stores log attributes (trace_id, span_id,
+      # severity_text) as structured metadata.
+      allow_structured_metadata: true
+  singleBinary:
+    replicas: 1
+    persistence:
+      enabled: true
+      size: 2Gi
+  # Zero out the scalable-mode targets; SingleBinary owns everything.
+  read:
+    replicas: 0
+  write:
+    replicas: 0
+  backend:
+    replicas: 0
+  gateway:
+    enabled: false
+  lokiCanary:
+    enabled: false
+  test:
+    enabled: false
+  chunksCache:
+    enabled: false
+  resultsCache:
+    enabled: false
+  monitoring:
+    selfMonitoring:
+      enabled: false
+      grafanaAgent:
+        installOperator: false
+    serviceMonitor:
+      enabled: false
+jaeger:
+  fullnameOverride: jaeger
+  # Chart defaults already run the v2 all-in-one (single deployment,
+  # OTLP 4317/4318 + query 16686 on one service) with in-memory
+  # storage: traces do not survive a pod restart, accepted for dev.
+  # The chart's own values schema names the all-in-one component
+  # "jaeger" too, so from here (already inside the jaeger dependency
+  # block) resources are set one level deeper at jaeger.jaeger.resources.
+  jaeger:
+    resources:
+      limits:
+        memory: 512Mi
+grafana:
+  fullnameOverride: grafana
+  # Dev tier runs credential-less end to end; anonymous gets Admin so
+  # demos, alert inspection and Explore all work with zero login. The
+  # production values file must disable anonymous auth and set a real
+  # admin password (documented in docs/production-paths.md).
+  adminPassword: admin
+  grafana.ini:
+    auth.anonymous:
+      enabled: true
+      org_role: Admin
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+  # Provisioning is the single source of truth; nothing in the UI needs
+  # to survive a restart.
+  persistence:
+    enabled: false
+  testFramework:
+    enabled: false
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          uid: prometheus
+          type: prometheus
+          access: proxy
+          url: http://kps-prometheus:9090
+          isDefault: true
+          jsonData:
+            # Exemplar dots on histogram panels deep-link to Jaeger.
+            exemplarTraceIdDestinations:
+              - name: trace_id
+                datasourceUid: jaeger
+        - name: Loki
+          uid: loki
+          type: loki
+          access: proxy
+          url: http://loki:3100
+          jsonData:
+            # Every OTLP log line carries trace_id as structured
+            # metadata; surface it as a one-click Jaeger link.
+            derivedFields:
+              - name: trace
+                matcherType: label
+                matcherRegex: trace_id
+                url: "${__value.raw}"
+                datasourceUid: jaeger
+        - name: Jaeger
+          uid: jaeger
+          type: jaeger
+          access: proxy
+          url: http://jaeger:16686
+          jsonData:
+            tracesToLogsV2:
+              datasourceUid: loki
+              spanStartTimeShift: "-5m"
+              spanEndTimeShift: "5m"
+              filterByTraceID: true
+              tags:
+                - key: service.name
+                  value: service_name
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: vg
+          orgId: 1
+          folder: vg-collect
+          type: file
+          disableDeletion: false
+          options:
+            path: /var/lib/grafana/dashboards/vg
+  dashboardsConfigMaps:
+    vg: vg-dashboards
+  extraConfigmapMounts:
+    - name: vg-alerting
+      configMap: vg-alerting
+      mountPath: /etc/grafana/provisioning/alerting
+      readOnly: true
+otel-agent:
+  fullnameOverride: otel-agent
+  mode: daemonset
+  image:
+    repository: otel/opentelemetry-collector-contrib
+  # Adds the k8sattributes processor plus the RBAC it needs, stamping
+  # k8s.pod.name / k8s.namespace.name onto everything that passes.
+  presets:
+    kubernetesAttributes:
+      enabled: true
+  config:
+    exporters:
+      otlp:
+        endpoint: otel-gateway:4317
+        tls:
+          insecure: true
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [k8sattributes, batch]
+          exporters: [otlp]
+        metrics:
+          receivers: [otlp]
+          processors: [k8sattributes, batch]
+          exporters: [otlp]
+        logs:
+          receivers: [otlp]
+          processors: [k8sattributes, batch]
+          exporters: [otlp]
+  ports:
+    jaeger-compact:
+      enabled: false
+    jaeger-thrift:
+      enabled: false
+    jaeger-grpc:
+      enabled: false
+    zipkin:
+      enabled: false
+    # The metrics port is disabled by default in this chart; it must be
+    # enabled explicitly for the serviceMonitor below to have a real port
+    # to scrape (chart values.yaml: "The metrics port needs to be enabled
+    # as well" for serviceMonitor.enabled to work).
+    metrics:
+      enabled: true
+  # The daemonset-mode Service is not created by default (chart values.yaml:
+  # "to enable it on mode = daemonset, its creation must be explicitly
+  # enabled"). Enabling it here is what makes internalTrafficPolicy: Local
+  # apply (the chart default for mode = daemonset once the Service exists)
+  # and is required for the otel-agent DNS name every other chart targets.
+  service:
+    enabled: true
+  serviceMonitor:
+    enabled: true
+  resources:
+    limits:
+      memory: 256Mi
+
+otel-gateway:
+  fullnameOverride: otel-gateway
+  mode: deployment
+  replicaCount: 1
+  image:
+    repository: otel/opentelemetry-collector-contrib
+  config:
+    processors:
+      # memory_limiter must run first in every pipeline.
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+    exporters:
+      prometheusremotewrite:
+        endpoint: http://kps-prometheus:9090/api/v1/write
+        # Flattens service.name/version/instance.id onto metric labels
+        # so dashboard queries never need target_info joins.
+        resource_to_telemetry_conversion:
+          enabled: true
+      otlphttp/loki:
+        endpoint: http://loki:3100/otlp
+      otlp/jaeger:
+        endpoint: jaeger:4317
+        tls:
+          insecure: true
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/jaeger]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [prometheusremotewrite]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlphttp/loki]
+  ports:
+    jaeger-compact:
+      enabled: false
+    jaeger-thrift:
+      enabled: false
+    jaeger-grpc:
+      enabled: false
+    zipkin:
+      enabled: false
+    # The metrics port is disabled by default in this chart; it must be
+    # enabled explicitly for the serviceMonitor below to have a real port
+    # to scrape (chart values.yaml: "The metrics port needs to be enabled
+    # as well" for serviceMonitor.enabled to work).
+    metrics:
+      enabled: true
+  serviceMonitor:
+    enabled: true
+  resources:
+    limits:
+      memory: 512Mi

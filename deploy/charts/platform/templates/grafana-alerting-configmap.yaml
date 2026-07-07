@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vg-alerting
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: vg-collect
+data:
+{{- range $path, $_ := .Files.Glob "files/alerting/*.yaml" }}
+  {{ base $path }}: |-
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
