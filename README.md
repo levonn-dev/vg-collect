@@ -6,13 +6,13 @@ Postgres/MongoDB/Valkey datastores, full observability.
 
 ## Prerequisites
 
-- go ≥1.26
+- go >=1.26
 - docker
 - kubectl
-- helm ≥3.14
-- tilt ≥0.33
-- task ≥3.38
-- golangci-lint ≥2.1
+- helm >=3.14
+- tilt >=0.33
+- task >=3.38
+- golangci-lint >=2.1
 - node 22+ (with npm); for the browser smoke, `npx playwright install chromium`
 
 ## Quickstart
@@ -34,6 +34,7 @@ add yours to `allow_k8s_contexts` in the Tiltfile if it's not listed.
 | `task test` | go test every module (testcontainers need Docker) + frontend vitest |
 | `task test:cover` | tests + the 80% coverage gate (generated code and cmd/ wiring excluded) |
 | `task gen` | regenerate OpenAPI server stubs/types + the frontend's typed API client |
+| `task tidy` | go mod tidy every module |
 | `task build` | compile every module + the frontend bundle |
 | `task e2e` | Playwright login smoke against the running stack |
 | `task run` / `task down` | tilt up / down |
@@ -55,6 +56,11 @@ prefer `task nuke && task bootstrap:cluster:down`, which drops those secrets
 (and the datastore PVCs) with the vg-collect namespace; 
 `task bootstrap:cluster && task run` then brings everything back from scratch.
 
+Platform teardown removes the monitoring stack's owning helm release, but
+the kps CRDs applied by hand in `task bootstrap:cluster` are not
+helm-managed and remain until deleted by hand; this is harmless, and the
+next `task bootstrap:cluster` re-adopts them.
+
 ## Edge and ports
 
 The bff is the only public service. It is published through the APISIX
@@ -72,6 +78,9 @@ the other services are reachable in dev only via Tilt port-forwards.
 | 8084 | enrichment, direct (Bruno `enrichment/` Bearer flows) |
 | 8085 | collection, direct (Bruno `collection/` Bearer flows) |
 | 5173 | Vite dev server (the manual `frontend-dev` Tilt resource; proxies `/api` to 8090) |
+| 3000 | Grafana (anonymous admin in dev) |
+| 9090 | Prometheus |
+| 16686 | Jaeger |
 
 ## Frontend
 
@@ -82,9 +91,38 @@ trigger the `frontend-dev` Tilt resource (or run `npm run dev` in
 to the gateway on 8090, so login and cookie flows run against the real
 edge. See `frontend/README.md` for the frontend task list.
 
+## Observability
+
+Every service pushes OTLP straight to a node-local otel-agent collector;
+it forwards to a central otel-gateway, which fans out to Prometheus
+(metrics, with exemplars linking histogram buckets to trace IDs), Loki
+(logs), and Jaeger (traces). Browser telemetry rides the same pipe
+through a session-gated relay on the bff, so one trace stitches the
+browser through the bff and into whichever service and database
+answered the call.
+
+Five dashboards are provisioned into the `vg-collect` Grafana folder
+(localhost:3000, anonymous admin in dev):
+
+- `vg-service-red` - per-service rate/errors/duration
+- `vg-apisix-edge` - gateway traffic and status codes
+- `vg-datastores` - Postgres/MongoDB/Valkey health
+- `vg-pod-details` - per-pod CPU/memory/restarts
+- `vg-node-details` - node-level pressure and capacity
+
+Ten alert rules are provisioned alongside them in the same `vg-collect`
+folder; each links a runbook under `docs/runbooks/` via its
+`runbook_url` annotation.
+
+See one stitched trace:
+
+1. Log in at localhost:8090 and click around the app for a minute.
+2. Open Jaeger at localhost:16686.
+3. Look up service `frontend` and open its most recent trace.
+
 ## Secrets (dev)
 
-`.env` (gitignored) → Tilt renders an external-secrets `fake` ClusterSecretStore →
+`.env` (gitignored) -> Tilt renders an external-secrets `fake` ClusterSecretStore ->
 per-service `ExternalSecret`s materialize k8s Secrets. The same ExternalSecrets run
 against AWS Secrets Manager in the documented production path.
 
@@ -95,24 +133,27 @@ against AWS Secrets Manager in the documented production path.
 - `services/` one Go module per service
 - `frontend/` React SPA (typed against `api/bff.yaml`, served by the bff)
 - `deploy/charts/` Helm (per-service + platform)
-- `docs/` diagrams & runbooks.
+- `docs/` diagrams, runbooks, production paths.
 
 ## Status
 
-Foundations, the user service, the auth service (OIDC + dev-provider login),
-and the bff/edge (APISIX gateway, session cookies) are complete. The
-enrichment service is complete too: catalog search and resolve against
-IGDB/PriceCharting with scored auto-matching, a daily pricing walk plus its
-CronJob, heuristic recommendations scoring, and credential-less stub-mode
-fixtures for local development. The collection service is complete: granular
-entries, tags, saved views, and dashboard composition with live enrichment
-pricing. The frontend is feature-complete: collection views (table,
-cover grid, compact list) over the full filter/sort/group matrix, saved
-views, a drag-orderable backlog, an add wizard with match confirmation
-and a custom off-catalog path, entry editing with pricing affordances,
-and a dashboard with value-over-time and recommendations - covered end
-to end by the Playwright journey. Still pending: the observability
-platform.
+Everything is complete and verified: auth (OIDC + dev-provider login),
+user, the edge and SPA shell (APISIX gateway, session cookies, the bff
+serving the built bundle), enrichment (catalog search and resolve
+against IGDB/PriceCharting with scored auto-matching, a daily pricing
+walk plus its CronJob, heuristic recommendations scoring, and
+credential-less stub-mode fixtures), collection (granular entries,
+tags, saved views, and dashboard composition with live enrichment
+pricing), the frontend (collection views in table, cover grid, and
+compact list over the full filter/sort/group matrix, saved views, a
+drag-orderable backlog, an add wizard with match confirmation and a
+custom off-catalog path, entry editing with pricing affordances, and a
+dashboard with value-over-time and recommendations, all covered end to
+end by the Playwright journey), and observability plus docs (five
+Grafana dashboards, ten alert rules with runbooks, and traces stitched
+from browser to database). Real IGDB and PriceCharting keys remain the
+only unexercised path; stub mode is the shipped default. Frontend still
+needs a lot of style work and cleaning user flows.
 
 ## License
 
