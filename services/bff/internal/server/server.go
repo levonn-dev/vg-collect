@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -117,7 +118,11 @@ type Options struct {
 	RecsCacheTTL time.Duration
 	// PublicOrigins are the origins allowed to send mutating requests.
 	PublicOrigins []string
-	Logger        *slog.Logger
+	// OTLPProxyURL is the collector agent's OTLP/HTTP base URL for the
+	// browser telemetry relay. Empty disables the relay (payloads are
+	// accepted and dropped).
+	OTLPProxyURL string
+	Logger       *slog.Logger
 }
 
 // Handlers owns the codec, backing services, and tunable knobs for
@@ -135,6 +140,8 @@ type Handlers struct {
 	meTTL         time.Duration
 	recsTTL       time.Duration
 	publicOrigins []string
+	otlpProxyURL  string
+	otlpHTTP      *http.Client
 	failOpen      metric.Int64Counter
 
 	// Test seams: clock and result-adoption pacing.
@@ -162,9 +169,14 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 		meTTL:         opts.MeCacheTTL,
 		recsTTL:       opts.RecsCacheTTL,
 		publicOrigins: opts.PublicOrigins,
-		failOpen:      failOpen,
-		now:           time.Now,
-		pollInterval:  100 * time.Millisecond,
+		otlpProxyURL:  opts.OTLPProxyURL,
+		otlpHTTP: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
+		failOpen:     failOpen,
+		now:          time.Now,
+		pollInterval: 100 * time.Millisecond,
 		// pollBudget is deliberately shorter than the auth refresh timeout:
 		// a waiter returns 401 promptly and the browser's retry adopts the late result.
 		pollBudget: 3 * time.Second,

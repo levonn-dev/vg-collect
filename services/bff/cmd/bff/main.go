@@ -100,6 +100,7 @@ func run() error {
 		MeCacheTTL:     cfg.MeCacheTTL,
 		RecsCacheTTL:   cfg.RecsCacheTTL,
 		PublicOrigins:  cfg.PublicOrigins,
+		OTLPProxyURL:   cfg.OTLPProxyURL,
 		Logger:         slog.Default(),
 	})
 

@@ -60,6 +60,14 @@ spec:
             # is the truth of what is running.
             - name: SERVICE_VERSION
               value: {{ .Values.image.tag | quote }}
+            {{- if .Values.otel.exporterEndpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.exporterEndpoint | quote }}
+            {{- end }}
+            {{- if .Values.otel.proxyUrl }}
+            - name: OTLP_PROXY_URL
+              value: {{ .Values.otel.proxyUrl | quote }}
+            {{- end }}
           {{- if .Values.valkey.enabled }}
           volumeMounts:
             - name: valkey-ca

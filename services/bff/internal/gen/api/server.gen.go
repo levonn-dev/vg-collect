@@ -860,6 +860,9 @@ type ListEntriesParamsOrder string
 // ListEntriesParamsGroupBy defines parameters for ListEntries.
 type ListEntriesParamsGroupBy string
 
+// ProxyTracesJSONBody defines parameters for ProxyTraces.
+type ProxyTracesJSONBody = openapi_types.File
+
 // SearchCatalogParams defines parameters for SearchCatalog.
 type SearchCatalogParams struct {
 	Type SearchCatalogParamsType `form:"type" json:"type"`
@@ -877,6 +880,9 @@ type UpdateEntryJSONRequestBody = EntryUpdate
 
 // ReorderEntryJSONRequestBody defines body for ReorderEntry for application/json ContentType.
 type ReorderEntryJSONRequestBody = ReorderRequest
+
+// ProxyTracesJSONRequestBody defines body for ProxyTraces for application/json ContentType.
+type ProxyTracesJSONRequestBody = ProxyTracesJSONBody
 
 // ResolveProductJSONRequestBody defines body for ResolveProduct for application/json ContentType.
 type ResolveProductJSONRequestBody = ResolveRequest
@@ -934,6 +940,9 @@ type ServerInterface interface {
 	// The signed-in user's profile (composed from the user service; briefly cached)
 	// (GET /api/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
+	// Relay browser OTLP trace batches to the in-cluster collector
+	// (POST /api/otlp/v1/traces)
+	ProxyTraces(w http.ResponseWriter, r *http.Request)
 	// Find-or-create the canonical product for a selection (proxied, uncached)
 	// (POST /api/products/resolve)
 	ResolveProduct(w http.ResponseWriter, r *http.Request)
@@ -1357,6 +1366,20 @@ func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request)
 	handler.ServeHTTP(w, r)
 }
 
+// ProxyTraces operation middleware
+func (siw *ServerInterfaceWrapper) ProxyTraces(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ProxyTraces(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ResolveProduct operation middleware
 func (siw *ServerInterfaceWrapper) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 
@@ -1748,6 +1771,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("PUT "+options.BaseURL+"/api/entries/{entryId}", wrapper.UpdateEntry)
 	m.HandleFunc("POST "+options.BaseURL+"/api/entries/{entryId}/reorder", wrapper.ReorderEntry)
 	m.HandleFunc("GET "+options.BaseURL+"/api/me", wrapper.GetMe)
+	m.HandleFunc("POST "+options.BaseURL+"/api/otlp/v1/traces", wrapper.ProxyTraces)
 	m.HandleFunc("POST "+options.BaseURL+"/api/products/resolve", wrapper.ResolveProduct)
 	m.HandleFunc("GET "+options.BaseURL+"/api/products/{productId}", wrapper.GetProduct)
 	m.HandleFunc("GET "+options.BaseURL+"/api/recommendations", wrapper.GetRecommendations)

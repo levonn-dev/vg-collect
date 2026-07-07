@@ -30,6 +30,7 @@ resources:
 valkey:
   enabled: true            # the prod-path seam: disable + point valkeyUrl at a managed cache
   image: valkey/valkey:8-alpine
+  exporterImage: oliver006/redis_exporter:v1.86.0
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 128Mi }
@@ -44,6 +45,14 @@ rateLimit:
 gateway:
   # Where APISIX runs; the NetworkPolicy admits ingress from there.
   namespace: vg-platform
+
+otel:
+  # OTLP gRPC endpoint for traces, metrics and logs. Empty string
+  # disables export entirely (the service logs JSON to stdout only).
+  exporterEndpoint: http://otel-agent.vg-platform.svc.cluster.local:4317
+  # OTLP/HTTP base URL the bff relays browser telemetry to. Empty
+  # disables the relay (payloads accepted and dropped).
+  proxyUrl: http://otel-agent.vg-platform.svc.cluster.local:4318
 
 secretStore:
   name: vg-fake

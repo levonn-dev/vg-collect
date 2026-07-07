@@ -28,6 +28,11 @@ type Config struct {
 	EnrichmentServiceURL string `env:"ENRICHMENT_SERVICE_URL,required"`
 	CollectionServiceURL string `env:"COLLECTION_SERVICE_URL,required"`
 
+	// OTLP/HTTP base URL of the collector agent for relayed browser
+	// telemetry. Empty disables the relay (payloads are accepted and
+	// dropped): telemetry must never break the app.
+	OTLPProxyURL string `env:"OTLP_PROXY_URL"`
+
 	ValkeyURL string `env:"VALKEY_URL,required"`
 	// CA bundle for rediss:// against the in-cluster CA-issued cert.
 	ValkeyCAFile string `env:"VALKEY_CA_FILE"`

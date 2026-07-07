@@ -602,6 +602,41 @@ func (f *stubCollectionService) createCallCount() int {
 	return f.createCalls
 }
 
+// stubOtlpCollector answers POST /v1/traces with a canned 200, recording
+// a running hit count: the never-cached-at-the-bff proof needs an exact
+// hit count, just like the other pass-throughs.
+type stubOtlpCollector struct {
+	srv *httptest.Server
+
+	mu   sync.Mutex
+	hits int
+}
+
+func newStubOtlpCollector(t *testing.T) *stubOtlpCollector {
+	t.Helper()
+	f := &stubOtlpCollector{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/traces", f.traces)
+	f.srv = httptest.NewServer(mux)
+	t.Cleanup(f.srv.Close)
+	return f
+}
+
+func (f *stubOtlpCollector) traces(w http.ResponseWriter, _ *http.Request) {
+	f.mu.Lock()
+	f.hits++
+	f.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{}`))
+}
+
+func (f *stubOtlpCollector) hitCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.hits
+}
+
 type stack struct {
 	baseURL    string
 	codec      *session.Codec
@@ -609,6 +644,7 @@ type stack struct {
 	users      *stubUserService
 	enrich     *stubEnrichmentService
 	collection *stubCollectionService
+	otlp       *stubOtlpCollector
 	client     *http.Client
 }
 
@@ -658,6 +694,7 @@ func newStack(t *testing.T) *stack {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fo := newStubOtlpCollector(t)
 
 	codec, err := session.NewCodec(testCookieKey, true)
 	if err != nil {
@@ -668,6 +705,7 @@ func newStack(t *testing.T) *stack {
 		RefreshWindow:  30 * time.Second,
 		MeCacheTTL:     45 * time.Second,
 		PublicOrigins:  []string{"http://localhost:8090", "http://localhost:5173"},
+		OTLPProxyURL:   fo.srv.URL,
 		Logger:         slog.New(slog.DiscardHandler),
 	})
 	// Keep adopt-polls fast, as the unit tests do.
@@ -684,6 +722,7 @@ func newStack(t *testing.T) *stack {
 		users:      fu,
 		enrich:     fe,
 		collection: fcol,
+		otlp:       fo,
 		client:     srv.Client(),
 	}
 }
@@ -861,6 +900,27 @@ func (s *stack) createEntry(t *testing.T, cookie *http.Cookie) int {
 	req.AddCookie(cookie)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", "http://localhost:8090")
+	resp, err := s.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return resp.StatusCode
+}
+
+// otlpTraces issues POST /api/otlp/v1/traces with a JSON OTLP payload
+// through the real server; cookie nil drives the cookieless case.
+func (s *stack) otlpTraces(t *testing.T, cookie *http.Cookie) int {
+	t.Helper()
+	const body = `{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"test"}}]}}]}`
+	req, err := http.NewRequest(http.MethodPost, s.baseURL+"/api/otlp/v1/traces", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
 	resp, err := s.client.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -1493,5 +1553,35 @@ func TestRecommendationsCacheLifecycle(t *testing.T) {
 	}
 	if got := s.collection.createCallCount(); got != 1 {
 		t.Fatalf("collection create-entry was hit %d times; want 1", got)
+	}
+}
+
+// TestOtlpProxyRelaysWithSessionAndNeverCaches drives the cookie-
+// authenticated otlp relay route through the real server against a stub
+// collector, proving two identical calls both reach the collector (a
+// pass-through is never cached at the bff, exactly like every other
+// relay route) and that a cookieless POST is rejected before the
+// collector is ever dialed.
+func TestOtlpProxyRelaysWithSessionAndNeverCaches(t *testing.T) {
+	s := newStack(t)
+	const sub = "99999999-9999-9999-9999-999999999999"
+	access := mintAccess(t, sub, "jA", time.Now().Add(5*time.Minute)) // fresh: no refresh
+	cookie := s.cookieFor(t, access, "refresh-1")
+
+	if code := s.otlpTraces(t, cookie); code != http.StatusOK {
+		t.Fatalf("first call: status = %d", code)
+	}
+	if code := s.otlpTraces(t, cookie); code != http.StatusOK {
+		t.Fatalf("second call: status = %d", code)
+	}
+	if got := s.otlp.hitCount(); got != 2 {
+		t.Fatalf("collector was hit %d times; two identical calls must never be served from a bff cache (single-source pass-through)", got)
+	}
+
+	if code := s.otlpTraces(t, nil); code != http.StatusUnauthorized {
+		t.Fatalf("cookieless call: status = %d, want 401", code)
+	}
+	if got := s.otlp.hitCount(); got != 2 {
+		t.Fatalf("cookieless call must not reach the collector; hits = %d, want 2", got)
 	}
 }

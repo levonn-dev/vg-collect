@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -551,6 +552,49 @@ func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := h.collection.GetValueHistory(r.Context(), sess.AccessToken)
 	h.relayCollection(w, r, res, err)
+}
+
+// ProxyTraces relays browser OTLP trace batches to the collector
+// agent verbatim. Session-gated like every /api route; the body is
+// capped; the collector's response status and body pass through so
+// the web SDK sees real OTLP semantics. Never cached.
+func (h *Handlers) ProxyTraces(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := session.FromContext(r.Context()); !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadRequest, "invalid_body", "request body unreadable or over 1MiB")
+		return
+	}
+	if h.otlpProxyURL == "" {
+		// Accept and drop: telemetry must never break the app.
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, h.otlpProxyURL+"/v1/traces", bytes.NewReader(body))
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collector request could not be built")
+		return
+	}
+	req.Header.Set("Content-Type", r.Header.Get("Content-Type"))
+	if enc := r.Header.Get("Content-Encoding"); enc != "" {
+		req.Header.Set("Content-Encoding", enc)
+	}
+	res, err := h.otlpHTTP.Do(req)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collector unavailable")
+		return
+	}
+	defer func() { _ = res.Body.Close() }()
+	out, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collector response unreadable")
+		return
+	}
+	writeRelay(w, res.StatusCode, res.Header.Get("Content-Type"), out)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
