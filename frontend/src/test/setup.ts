@@ -9,3 +9,16 @@ class ResizeObserverStub {
   disconnect() {}
 }
 globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver
+
+// The OTel fetch instrumentation watches resource timings; jsdom has
+// no PerformanceObserver.
+class PerformanceObserverStub {
+  observe() {}
+  disconnect() {}
+  takeRecords() {
+    return []
+  }
+  static supportedEntryTypes: string[] = []
+}
+globalThis.PerformanceObserver ??=
+  PerformanceObserverStub as unknown as typeof PerformanceObserver
