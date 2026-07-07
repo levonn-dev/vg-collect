@@ -39,6 +39,10 @@ spec:
             # tag wherever a pipeline sets one).
             - name: SERVICE_VERSION
               value: {{ .Values.image.tag | quote }}
+            {{- if .Values.otel.exporterEndpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.exporterEndpoint | quote }}
+            {{- end }}
           volumeMounts: &caMount
             - name: pg-ca
               mountPath: /etc/vg/pg-ca
