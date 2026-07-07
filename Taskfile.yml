@@ -40,14 +40,23 @@ tasks:
       - echo "bootstrap OK"
 
   bootstrap:cluster:
-    desc: 'One-shot platform install (cert-manager + ESO + APISIX, then issuers). Idempotent.'
+    desc: 'One-shot platform install (cert-manager + ESO + APISIX + observability stack, then issuers). Idempotent.'
     cmds:
       - helm repo add jetstack https://charts.jetstack.io --force-update >/dev/null
       - helm repo add external-secrets https://charts.external-secrets.io --force-update >/dev/null
       - helm repo add apiseven https://charts.apiseven.com --force-update >/dev/null
+      - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update >/dev/null
+      - helm repo add grafana https://grafana.github.io/helm-charts --force-update >/dev/null
+      - helm repo add jaegertracing https://jaegertracing.github.io/helm-charts --force-update >/dev/null
+      - helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update >/dev/null
       - helm dependency update deploy/charts/platform
+      # helm applies a chart's crds/ only on install, never upgrade;
+      # vg-platform already exists, so the monitoring CRDs go in by hand
+      # (idempotent; also the upgrade path when the chart version bumps).
+      - helm show crds prometheus-community/kube-prometheus-stack --version 87.10.1
+          | kubectl apply --server-side --force-conflicts -f -
       - helm upgrade --install vg-platform deploy/charts/platform
-          -n vg-platform --create-namespace --wait --timeout 10m
+          -n vg-platform --create-namespace --wait --timeout 15m
       - helm upgrade --install vg-platform-config deploy/charts/platform-config
           -n vg-platform --wait --timeout 2m
       - kubectl get clusterissuer vg-ca -o name
@@ -99,6 +108,10 @@ tasks:
       - test ! -d deploy/charts/platform || (helm repo add jetstack https://charts.jetstack.io --force-update >/dev/null &&
           helm repo add external-secrets https://charts.external-secrets.io --force-update >/dev/null &&
           helm repo add apiseven https://charts.apiseven.com --force-update >/dev/null &&
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update >/dev/null &&
+          helm repo add grafana https://grafana.github.io/helm-charts --force-update >/dev/null &&
+          helm repo add jaegertracing https://jaegertracing.github.io/helm-charts --force-update >/dev/null &&
+          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update >/dev/null &&
           helm dependency build deploy/charts/platform >/dev/null)
       - test ! -d deploy/charts || for charts in deploy/charts/*/; do helm lint "$charts" || exit 1; done
 
@@ -120,6 +133,12 @@ tasks:
       - task: enrichment:gen
       - task: collection:gen
       - task: frontend:gen
+
+  tidy:
+    desc: 'go mod tidy every module (plain tidy; the repo carries no known dependency skew)'
+    cmds:
+      - for: { var: GO_MODULES, as: MOD }
+        cmd: cd {{.MOD}} && go mod tidy
 
   # -------------------------------- test ---------------------------------
 
