@@ -28,8 +28,9 @@ func NewRouter(h *Handlers, staticHandler http.Handler, logger *slog.Logger) htt
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
+	apiMux := http.NewServeMux()
 	apiRoutes := api.HandlerWithOptions(h, api.StdHTTPServerOptions{
-		BaseRouter: http.NewServeMux(),
+		BaseRouter: apiMux,
 		// Binding failures answer problem+json like everything else.
 		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			writeProblem(w, r, http.StatusBadRequest, "invalid_param", err.Error())
@@ -50,6 +51,6 @@ func NewRouter(h *Handlers, staticHandler http.Handler, logger *slog.Logger) htt
 	handler = h.CheckOrigin(handler)
 	handler = SecurityHeaders(handler)
 	handler = httpkit.RequestLogger(logger)(handler)
-	handler = otelhttp.NewHandler(handler, "bff")
+	handler = otelhttp.NewHandler(httpkit.RouteLabel(handler, apiMux, mux), "bff")
 	return httpkit.Recover(logger)(handler)
 }

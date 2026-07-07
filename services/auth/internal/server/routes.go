@@ -29,8 +29,9 @@ func NewRouter(h *Handlers, logger *slog.Logger, ready func(context.Context) err
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
+	apiMux := http.NewServeMux()
 	apiRoutes := api.HandlerWithOptions(h, api.StdHTTPServerOptions{
-		BaseRouter: http.NewServeMux(),
+		BaseRouter: apiMux,
 		// Without this, the generated binding 400s are text/plain;
 		// problem+json is the repo-wide error contract.
 		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -40,6 +41,6 @@ func NewRouter(h *Handlers, logger *slog.Logger, ready func(context.Context) err
 	mux.Handle("/", apiRoutes)
 
 	handler := httpkit.RequestLogger(logger)(mux)
-	handler = otelhttp.NewHandler(handler, "auth")
+	handler = otelhttp.NewHandler(httpkit.RouteLabel(handler, apiMux, mux), "auth")
 	return httpkit.Recover(logger)(handler)
 }

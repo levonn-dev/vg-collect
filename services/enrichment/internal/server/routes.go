@@ -38,8 +38,9 @@ func NewRouter(h *Handlers, v *jwtauth.Validator, logger *slog.Logger, ready fun
 	})
 	mux.HandleFunc("POST /internal/refresh", h.InternalRefresh)
 
+	apiMux := http.NewServeMux()
 	apiRoutes := api.HandlerWithOptions(h, api.StdHTTPServerOptions{
-		BaseRouter: http.NewServeMux(),
+		BaseRouter: apiMux,
 		// Without this, the generated param-binding 400s are text/plain;
 		// problem+json is the repo-wide error contract.
 		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -49,7 +50,7 @@ func NewRouter(h *Handlers, v *jwtauth.Validator, logger *slog.Logger, ready fun
 	mux.Handle("/", jwtauth.Middleware(v, problemEW)(apiRoutes))
 
 	handler := httpkit.RequestLogger(logger)(mux)
-	handler = otelhttp.NewHandler(handler, "enrichment")
+	handler = otelhttp.NewHandler(httpkit.RouteLabel(handler, apiMux, mux), "enrichment")
 	return httpkit.Recover(logger)(handler)
 }
 
