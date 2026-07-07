@@ -117,6 +117,23 @@ local_resource(
     labels=['platform'],
 )
 
+# ----- observability UIs (platform-owned; installed by bootstrap:cluster) -----
+local_resource(
+    'grafana',
+    serve_cmd='kubectl port-forward -n vg-platform svc/grafana 3000:80',
+    resource_deps=['preflight-platform'], labels=['platform'],
+)
+local_resource(
+    'prometheus',
+    serve_cmd='kubectl port-forward -n vg-platform svc/kps-prometheus 9090:9090',
+    resource_deps=['preflight-platform'], labels=['platform'],
+)
+local_resource(
+    'jaeger',
+    serve_cmd='kubectl port-forward -n vg-platform svc/jaeger 16686:16686',
+    resource_deps=['preflight-platform'], labels=['platform'],
+)
+
 # ----- bff service -----
 docker_build(
     'vg-collect/bff', '.',
