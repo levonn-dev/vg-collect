@@ -143,13 +143,15 @@ serving the built bundle), enrichment (catalog search and resolve
 against IGDB/PriceCharting with scored auto-matching, a daily pricing
 walk plus its CronJob, heuristic recommendations scoring, and
 credential-less stub-mode fixtures), collection (granular entries,
-tags, saved views, and dashboard composition with live enrichment
-pricing), the frontend (collection views in table, cover grid, and
-compact list over the full filter/sort/group matrix, saved views, a
-drag-orderable backlog, an add wizard with match confirmation and a
-custom off-catalog path, entry editing with pricing affordances, and a
-dashboard with value-over-time and recommendations, all covered end to
-end by the Playwright journey), and observability plus docs (five
+tags, saved views, and filter-aware dashboard composition with live
+enrichment pricing), the frontend (collection views in table, cover
+grid, and compact list over the full filter/sort/group matrix, saved
+views, a drag-orderable backlog, an add wizard with match confirmation
+and a custom-item path, entry editing with pricing affordances, an
+insights strip on the homepage whose stats follow the active filters
+(with expandable breakdowns, value-over-time, and recommendations),
+and a dark-default theme with a light toggle, all covered end to end
+by the Playwright journey), and observability plus docs (five
 Grafana dashboards, ten alert rules with runbooks, and traces stitched
 from browser to database). Real IGDB and PriceCharting keys remain the
 only unexercised path; stub mode is the shipped default. Frontend still
