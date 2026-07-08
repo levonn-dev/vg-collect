@@ -42,8 +42,8 @@ type Store interface {
 	CreateView(ctx context.Context, userID uuid.UUID, name string, params []byte) (store.View, error)
 	UpdateView(ctx context.Context, userID, id uuid.UUID, name string, params []byte) (store.View, error)
 	DeleteView(ctx context.Context, userID, id uuid.UUID) error
-	DashboardCounts(ctx context.Context, userID uuid.UUID) (store.DashboardCounts, error)
-	PricingRows(ctx context.Context, userID uuid.UUID) ([]store.PricingRow, error)
+	DashboardCounts(ctx context.Context, userID uuid.UUID, f store.Filters) (store.DashboardCounts, error)
+	PricingRows(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.PricingRow, error)
 }
 
 // Enrichment is the catalog surface (typed reads with the caller's

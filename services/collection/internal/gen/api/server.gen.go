@@ -238,46 +238,88 @@ const (
 	EntryUpdateStatusShelved   EntryUpdateStatus = "shelved"
 )
 
+// Defines values for GetDashboardParamsItemType.
+const (
+	GetDashboardParamsItemTypeAccessory GetDashboardParamsItemType = "accessory"
+	GetDashboardParamsItemTypeConsole   GetDashboardParamsItemType = "console"
+	GetDashboardParamsItemTypeGame      GetDashboardParamsItemType = "game"
+)
+
+// Defines values for GetDashboardParamsStatus.
+const (
+	GetDashboardParamsStatusBacklog   GetDashboardParamsStatus = "backlog"
+	GetDashboardParamsStatusBeaten    GetDashboardParamsStatus = "beaten"
+	GetDashboardParamsStatusCompleted GetDashboardParamsStatus = "completed"
+	GetDashboardParamsStatusDropped   GetDashboardParamsStatus = "dropped"
+	GetDashboardParamsStatusPlaying   GetDashboardParamsStatus = "playing"
+	GetDashboardParamsStatusShelved   GetDashboardParamsStatus = "shelved"
+)
+
+// Defines values for GetDashboardParamsPackaging.
+const (
+	GetDashboardParamsPackagingCib    GetDashboardParamsPackaging = "cib"
+	GetDashboardParamsPackagingLoose  GetDashboardParamsPackaging = "loose"
+	GetDashboardParamsPackagingSealed GetDashboardParamsPackaging = "sealed"
+)
+
+// Defines values for GetDashboardParamsRegion.
+const (
+	GetDashboardParamsRegionNtscJ      GetDashboardParamsRegion = "ntsc_j"
+	GetDashboardParamsRegionNtscU      GetDashboardParamsRegion = "ntsc_u"
+	GetDashboardParamsRegionPal        GetDashboardParamsRegion = "pal"
+	GetDashboardParamsRegionRegionFree GetDashboardParamsRegion = "region_free"
+)
+
+// Defines values for GetDashboardParamsItemCondition.
+const (
+	GetDashboardParamsItemConditionAcceptable GetDashboardParamsItemCondition = "acceptable"
+	GetDashboardParamsItemConditionGood       GetDashboardParamsItemCondition = "good"
+	GetDashboardParamsItemConditionMint       GetDashboardParamsItemCondition = "mint"
+	GetDashboardParamsItemConditionNearMint   GetDashboardParamsItemCondition = "near_mint"
+	GetDashboardParamsItemConditionPoor       GetDashboardParamsItemCondition = "poor"
+	GetDashboardParamsItemConditionVeryGood   GetDashboardParamsItemCondition = "very_good"
+)
+
 // Defines values for ListEntriesParamsItemType.
 const (
-	Accessory ListEntriesParamsItemType = "accessory"
-	Console   ListEntriesParamsItemType = "console"
-	Game      ListEntriesParamsItemType = "game"
+	ListEntriesParamsItemTypeAccessory ListEntriesParamsItemType = "accessory"
+	ListEntriesParamsItemTypeConsole   ListEntriesParamsItemType = "console"
+	ListEntriesParamsItemTypeGame      ListEntriesParamsItemType = "game"
 )
 
 // Defines values for ListEntriesParamsStatus.
 const (
-	ListEntriesParamsStatusBacklog   ListEntriesParamsStatus = "backlog"
-	ListEntriesParamsStatusBeaten    ListEntriesParamsStatus = "beaten"
-	ListEntriesParamsStatusCompleted ListEntriesParamsStatus = "completed"
-	ListEntriesParamsStatusDropped   ListEntriesParamsStatus = "dropped"
-	ListEntriesParamsStatusPlaying   ListEntriesParamsStatus = "playing"
-	ListEntriesParamsStatusShelved   ListEntriesParamsStatus = "shelved"
+	Backlog   ListEntriesParamsStatus = "backlog"
+	Beaten    ListEntriesParamsStatus = "beaten"
+	Completed ListEntriesParamsStatus = "completed"
+	Dropped   ListEntriesParamsStatus = "dropped"
+	Playing   ListEntriesParamsStatus = "playing"
+	Shelved   ListEntriesParamsStatus = "shelved"
 )
 
 // Defines values for ListEntriesParamsPackaging.
 const (
-	ListEntriesParamsPackagingCib    ListEntriesParamsPackaging = "cib"
-	ListEntriesParamsPackagingLoose  ListEntriesParamsPackaging = "loose"
-	ListEntriesParamsPackagingSealed ListEntriesParamsPackaging = "sealed"
+	Cib    ListEntriesParamsPackaging = "cib"
+	Loose  ListEntriesParamsPackaging = "loose"
+	Sealed ListEntriesParamsPackaging = "sealed"
 )
 
 // Defines values for ListEntriesParamsRegion.
 const (
-	ListEntriesParamsRegionNtscJ      ListEntriesParamsRegion = "ntsc_j"
-	ListEntriesParamsRegionNtscU      ListEntriesParamsRegion = "ntsc_u"
-	ListEntriesParamsRegionPal        ListEntriesParamsRegion = "pal"
-	ListEntriesParamsRegionRegionFree ListEntriesParamsRegion = "region_free"
+	NtscJ      ListEntriesParamsRegion = "ntsc_j"
+	NtscU      ListEntriesParamsRegion = "ntsc_u"
+	Pal        ListEntriesParamsRegion = "pal"
+	RegionFree ListEntriesParamsRegion = "region_free"
 )
 
 // Defines values for ListEntriesParamsItemCondition.
 const (
-	ListEntriesParamsItemConditionAcceptable ListEntriesParamsItemCondition = "acceptable"
-	ListEntriesParamsItemConditionGood       ListEntriesParamsItemCondition = "good"
-	ListEntriesParamsItemConditionMint       ListEntriesParamsItemCondition = "mint"
-	ListEntriesParamsItemConditionNearMint   ListEntriesParamsItemCondition = "near_mint"
-	ListEntriesParamsItemConditionPoor       ListEntriesParamsItemCondition = "poor"
-	ListEntriesParamsItemConditionVeryGood   ListEntriesParamsItemCondition = "very_good"
+	Acceptable ListEntriesParamsItemCondition = "acceptable"
+	Good       ListEntriesParamsItemCondition = "good"
+	Mint       ListEntriesParamsItemCondition = "mint"
+	NearMint   ListEntriesParamsItemCondition = "near_mint"
+	Poor       ListEntriesParamsItemCondition = "poor"
+	VeryGood   ListEntriesParamsItemCondition = "very_good"
 )
 
 // Defines values for ListEntriesParamsSort.
@@ -663,6 +705,36 @@ type Unauthorized = Problem
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
 
+// GetDashboardParams defines parameters for GetDashboard.
+type GetDashboardParams struct {
+	ItemType      *[]GetDashboardParamsItemType      `form:"item_type,omitempty" json:"item_type,omitempty"`
+	Status        *[]GetDashboardParamsStatus        `form:"status,omitempty" json:"status,omitempty"`
+	Packaging     *[]GetDashboardParamsPackaging     `form:"packaging,omitempty" json:"packaging,omitempty"`
+	Region        *[]GetDashboardParamsRegion        `form:"region,omitempty" json:"region,omitempty"`
+	ItemCondition *[]GetDashboardParamsItemCondition `form:"item_condition,omitempty" json:"item_condition,omitempty"`
+
+	// PlatformId IGDB platform ids (matches the creation-time snapshot).
+	PlatformId *[]int64 `form:"platform_id,omitempty" json:"platform_id,omitempty"`
+
+	// TagId Entries carrying ALL listed tags.
+	TagId *[]openapi_types.UUID `form:"tag_id,omitempty" json:"tag_id,omitempty"`
+}
+
+// GetDashboardParamsItemType defines parameters for GetDashboard.
+type GetDashboardParamsItemType string
+
+// GetDashboardParamsStatus defines parameters for GetDashboard.
+type GetDashboardParamsStatus string
+
+// GetDashboardParamsPackaging defines parameters for GetDashboard.
+type GetDashboardParamsPackaging string
+
+// GetDashboardParamsRegion defines parameters for GetDashboard.
+type GetDashboardParamsRegion string
+
+// GetDashboardParamsItemCondition defines parameters for GetDashboard.
+type GetDashboardParamsItemCondition string
+
 // ListEntriesParams defines parameters for ListEntries.
 type ListEntriesParams struct {
 	ItemType      *[]ListEntriesParamsItemType      `form:"item_type,omitempty" json:"item_type,omitempty"`
@@ -732,7 +804,7 @@ type UpdateViewJSONRequestBody = ViewCreate
 type ServerInterface interface {
 	// Collection dashboard (SQL aggregates + one batched enrichment price call)
 	// (GET /dashboard)
-	GetDashboard(w http.ResponseWriter, r *http.Request)
+	GetDashboard(w http.ResponseWriter, r *http.Request, params GetDashboardParams)
 	// Collection value over time (composed from enrichment price snapshots)
 	// (GET /dashboard/value-history)
 	GetValueHistory(w http.ResponseWriter, r *http.Request)
@@ -795,14 +867,75 @@ type MiddlewareFunc func(http.Handler) http.Handler
 // GetDashboard operation middleware
 func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+
 	ctx := r.Context()
 
 	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDashboardParams
+
+	// ------------- Optional query parameter "item_type" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "item_type", r.URL.Query(), &params.ItemType)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "item_type", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", r.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "packaging" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "packaging", r.URL.Query(), &params.Packaging)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "packaging", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "region" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "region", r.URL.Query(), &params.Region)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "region", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "item_condition" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "item_condition", r.URL.Query(), &params.ItemCondition)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "item_condition", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "platform_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "platform_id", r.URL.Query(), &params.PlatformId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "platform_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "tag_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "tag_id", r.URL.Query(), &params.TagId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag_id", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetDashboard(w, r)
+		siw.Handler.GetDashboard(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {

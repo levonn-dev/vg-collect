@@ -463,17 +463,67 @@ paths:
         Counts and spend come from SQL; total value composes each
         entry's effective pricing product (auto uses the entry's own
         product, proxy the override, disabled is excluded) with the
-        packaging-appropriate price field. The composed result is
-        cached about five minutes and invalidated by the caller's own
-        entry mutations. When enrichment is unreachable the dashboard
-        still answers with pricing.available=false (and the degraded
-        result is not cached).
+        packaging-appropriate price field. The entries-list filter
+        dimensions narrow every aggregate exactly as they narrow the
+        list (AND across dimensions, OR within one, tag_id requiring
+        ALL listed tags). Only the unfiltered dashboard is cached
+        (about five minutes, invalidated by the caller's own entry
+        mutations); filtered requests are computed live. When
+        enrichment is unreachable the dashboard still answers with
+        pricing.available=false (and the degraded result is not
+        cached).
+      parameters:
+        - name: item_type
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [game, console, accessory] }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
+        - name: packaging
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [sealed, cib, loose] }
+        - name: region
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        - name: item_condition
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        - name: platform_id
+          in: query
+          required: false
+          description: IGDB platform ids (matches the creation-time snapshot).
+          schema:
+            type: array
+            items: { type: integer, format: int64 }
+        - name: tag_id
+          in: query
+          required: false
+          description: Entries carrying ALL listed tags.
+          schema:
+            type: array
+            items: { type: string, format: uuid }
       responses:
         "200":
           description: The dashboard
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Dashboard" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /dashboard/value-history:
     get:

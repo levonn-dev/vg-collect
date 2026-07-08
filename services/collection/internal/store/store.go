@@ -499,40 +499,16 @@ type Filters struct {
 	Order          string
 }
 
-// orderClause maps a validated sort dimension onto SQL. The switch is
-// the whitelist: nothing user-supplied is ever concatenated.
-func orderClause(sort, order string) string {
-	dir := "ASC"
-	if order == "desc" {
-		dir = "DESC"
-	}
-	switch sort {
-	case "name":
-		return "pinned DESC, lower(display_name) " + dir + ", created_at DESC, id"
-	case "release_date":
-		return "pinned DESC, first_release_date " + dir + " NULLS LAST, created_at DESC, id"
-	case "purchased_at":
-		return "pinned DESC, purchased_at " + dir + " NULLS LAST, created_at DESC, id"
-	case "paid":
-		return "pinned DESC, price_paid_cents " + dir + " NULLS LAST, created_at DESC, id"
-	case "rating":
-		return "pinned DESC, rating " + dir + " NULLS LAST, created_at DESC, id"
-	case "created_at":
-		return "pinned DESC, created_at " + dir + ", id"
-	case "backlog_rank":
-		// The drag-order read: pure rank order, no pinned prefix, or
-		// the frontend's drop-slot neighbors would disagree with rank
-		// adjacency.
-		return "backlog_rank " + dir + " NULLS LAST, created_at DESC, id"
-	default:
-		// "value" sorts in the handler after price composition; this is
-		// the stable base order it starts from.
-		return "pinned DESC, created_at DESC, id"
-	}
+// Filtered reports whether any dimension narrows the entry set.
+func (f Filters) Filtered() bool {
+	return len(f.ItemTypes)+len(f.Statuses)+len(f.Packagings)+len(f.Regions)+
+		len(f.ItemConditions)+len(f.PlatformIDs)+len(f.TagIDs) > 0
 }
 
-// ListEntries runs the filter matrix in SQL and bulk-loads tags.
-func (s *Store) ListEntries(ctx context.Context, userID uuid.UUID, f Filters) ([]Entry, error) {
+// filterWhere builds the WHERE clauses and args every entries query
+// shares: the list and the dashboard aggregates narrow by the same
+// filter matrix.
+func filterWhere(userID uuid.UUID, f Filters) ([]string, []any) {
 	where := []string{"user_id = $1"}
 	args := []any{userID}
 	add := func(cond string, val any) {
@@ -572,7 +548,44 @@ func (s *Store) ListEntries(ctx context.Context, userID uuid.UUID, f Filters) ([
 			        GROUP BY entry_id HAVING count(*) = $%d)`,
 			len(args)-1, len(args)))
 	}
+	return where, args
+}
 
+// orderClause maps a validated sort dimension onto SQL. The switch is
+// the whitelist: nothing user-supplied is ever concatenated.
+func orderClause(sort, order string) string {
+	dir := "ASC"
+	if order == "desc" {
+		dir = "DESC"
+	}
+	switch sort {
+	case "name":
+		return "pinned DESC, lower(display_name) " + dir + ", created_at DESC, id"
+	case "release_date":
+		return "pinned DESC, first_release_date " + dir + " NULLS LAST, created_at DESC, id"
+	case "purchased_at":
+		return "pinned DESC, purchased_at " + dir + " NULLS LAST, created_at DESC, id"
+	case "paid":
+		return "pinned DESC, price_paid_cents " + dir + " NULLS LAST, created_at DESC, id"
+	case "rating":
+		return "pinned DESC, rating " + dir + " NULLS LAST, created_at DESC, id"
+	case "created_at":
+		return "pinned DESC, created_at " + dir + ", id"
+	case "backlog_rank":
+		// The drag-order read: pure rank order, no pinned prefix, or
+		// the frontend's drop-slot neighbors would disagree with rank
+		// adjacency.
+		return "backlog_rank " + dir + " NULLS LAST, created_at DESC, id"
+	default:
+		// "value" sorts in the handler after price composition; this is
+		// the stable base order it starts from.
+		return "pinned DESC, created_at DESC, id"
+	}
+}
+
+// ListEntries runs the filter matrix in SQL and bulk-loads tags.
+func (s *Store) ListEntries(ctx context.Context, userID uuid.UUID, f Filters) ([]Entry, error) {
+	where, args := filterWhere(userID, f)
 	query := `SELECT ` + entryCols + ` FROM entries WHERE ` +
 		strings.Join(where, " AND ") + ` ORDER BY ` + orderClause(f.Sort, f.Order)
 	rows, err := s.pool.Query(ctx, query, args...)
@@ -827,15 +840,18 @@ type DashboardCounts struct {
 	Spend      []CurrencySpend
 }
 
-// DashboardCounts aggregates the user's collection.
-func (s *Store) DashboardCounts(ctx context.Context, userID uuid.UUID) (DashboardCounts, error) {
+// DashboardCounts aggregates the user's collection, narrowed by the
+// same filter matrix as ListEntries (zero-value Filters = everything).
+func (s *Store) DashboardCounts(ctx context.Context, userID uuid.UUID, f Filters) (DashboardCounts, error) {
+	where, args := filterWhere(userID, f)
+	cond := strings.Join(where, " AND ")
 	out := DashboardCounts{ByStatus: map[string]int{}, ByItemType: map[string]int{}}
 	if err := s.pool.QueryRow(ctx,
-		`SELECT count(*) FROM entries WHERE user_id = $1`, userID).Scan(&out.Total); err != nil {
+		`SELECT count(*) FROM entries WHERE `+cond, args...).Scan(&out.Total); err != nil {
 		return DashboardCounts{}, fmt.Errorf("store: dashboard total: %w", err)
 	}
 	groupInto := func(query string, m map[string]int) error {
-		rows, err := s.pool.Query(ctx, query, userID)
+		rows, err := s.pool.Query(ctx, query, args...)
 		if err != nil {
 			return err
 		}
@@ -851,18 +867,18 @@ func (s *Store) DashboardCounts(ctx context.Context, userID uuid.UUID) (Dashboar
 		return rows.Err()
 	}
 	if err := groupInto(
-		`SELECT status, count(*) FROM entries WHERE user_id = $1 GROUP BY status`,
+		`SELECT status, count(*) FROM entries WHERE `+cond+` GROUP BY status`,
 		out.ByStatus); err != nil {
 		return DashboardCounts{}, fmt.Errorf("store: dashboard status: %w", err)
 	}
 	if err := groupInto(
-		`SELECT item_type, count(*) FROM entries WHERE user_id = $1 GROUP BY item_type`,
+		`SELECT item_type, count(*) FROM entries WHERE `+cond+` GROUP BY item_type`,
 		out.ByItemType); err != nil {
 		return DashboardCounts{}, fmt.Errorf("store: dashboard item type: %w", err)
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT coalesce(platform_name, ''), count(*) FROM entries
-		WHERE user_id = $1 GROUP BY 1 ORDER BY count(*) DESC, 1`, userID)
+		WHERE `+cond+` GROUP BY 1 ORDER BY count(*) DESC, 1`, args...)
 	if err != nil {
 		return DashboardCounts{}, fmt.Errorf("store: dashboard platforms: %w", err)
 	}
@@ -880,8 +896,8 @@ func (s *Store) DashboardCounts(ctx context.Context, userID uuid.UUID) (Dashboar
 	}
 	srows, err := s.pool.Query(ctx, `
 		SELECT currency, sum(price_paid_cents) FROM entries
-		WHERE user_id = $1 AND price_paid_cents IS NOT NULL
-		GROUP BY currency ORDER BY currency`, userID)
+		WHERE `+cond+` AND price_paid_cents IS NOT NULL
+		GROUP BY currency ORDER BY currency`, args...)
 	if err != nil {
 		return DashboardCounts{}, fmt.Errorf("store: dashboard spend: %w", err)
 	}
@@ -908,11 +924,13 @@ type PricingRow struct {
 	PricingProductID *uuid.UUID
 }
 
-// PricingRows lists every entry's pricing coordinates.
-func (s *Store) PricingRows(ctx context.Context, userID uuid.UUID) ([]PricingRow, error) {
+// PricingRows lists the pricing coordinates of every entry matching
+// the filter matrix (zero-value Filters = everything).
+func (s *Store) PricingRows(ctx context.Context, userID uuid.UUID, f Filters) ([]PricingRow, error) {
+	where, args := filterWhere(userID, f)
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, packaging, pricing_mode, product_id, pricing_product_id
-		FROM entries WHERE user_id = $1`, userID)
+		FROM entries WHERE `+strings.Join(where, " AND "), args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: pricing rows: %w", err)
 	}

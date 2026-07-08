@@ -49,8 +49,8 @@ type stubStore struct {
 	createView      func(ctx context.Context, userID uuid.UUID, name string, params []byte) (store.View, error)
 	updateView      func(ctx context.Context, userID, id uuid.UUID, name string, params []byte) (store.View, error)
 	deleteView      func(ctx context.Context, userID, id uuid.UUID) error
-	dashboardCounts func(ctx context.Context, userID uuid.UUID) (store.DashboardCounts, error)
-	pricingRows     func(ctx context.Context, userID uuid.UUID) ([]store.PricingRow, error)
+	dashboardCounts func(ctx context.Context, userID uuid.UUID, f store.Filters) (store.DashboardCounts, error)
+	pricingRows     func(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.PricingRow, error)
 }
 
 var _ server.Store = (*stubStore)(nil)
@@ -145,17 +145,17 @@ func (s *stubStore) DeleteView(ctx context.Context, userID, id uuid.UUID) error 
 	}
 	return s.deleteView(ctx, userID, id)
 }
-func (s *stubStore) DashboardCounts(ctx context.Context, userID uuid.UUID) (store.DashboardCounts, error) {
+func (s *stubStore) DashboardCounts(ctx context.Context, userID uuid.UUID, f store.Filters) (store.DashboardCounts, error) {
 	if s.dashboardCounts == nil {
 		panic("unexpected DashboardCounts")
 	}
-	return s.dashboardCounts(ctx, userID)
+	return s.dashboardCounts(ctx, userID, f)
 }
-func (s *stubStore) PricingRows(ctx context.Context, userID uuid.UUID) ([]store.PricingRow, error) {
+func (s *stubStore) PricingRows(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.PricingRow, error) {
 	if s.pricingRows == nil {
 		panic("unexpected PricingRows")
 	}
-	return s.pricingRows(ctx, userID)
+	return s.pricingRows(ctx, userID, f)
 }
 
 // stubEnrichment implements server.Enrichment via function fields.
@@ -2300,7 +2300,7 @@ func TestTagsAndViewsThroughTheStack(t *testing.T) {
 
 func dashboardStore(user uuid.UUID, rows []store.PricingRow) *stubStore {
 	return &stubStore{
-		dashboardCounts: func(context.Context, uuid.UUID) (store.DashboardCounts, error) {
+		dashboardCounts: func(context.Context, uuid.UUID, store.Filters) (store.DashboardCounts, error) {
 			return store.DashboardCounts{
 				Total:      len(rows),
 				ByStatus:   map[string]int{"backlog": len(rows)},
@@ -2309,7 +2309,7 @@ func dashboardStore(user uuid.UUID, rows []store.PricingRow) *stubStore {
 				Spend:      []store.CurrencySpend{{Currency: "USD", TotalCents: 5000}},
 			}, nil
 		},
-		pricingRows: func(context.Context, uuid.UUID) ([]store.PricingRow, error) { return rows, nil },
+		pricingRows: func(context.Context, uuid.UUID, store.Filters) ([]store.PricingRow, error) { return rows, nil },
 	}
 }
 
@@ -2415,6 +2415,66 @@ func TestUnitDashboard_CacheErrorsFailOpen(t *testing.T) {
 	resp := do(t, http.MethodGet, srv.URL+"/dashboard", a.token(t, user.String()), nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("cache failure must not fail the dashboard: %d", resp.StatusCode)
+	}
+}
+
+func TestUnitDashboard_FilteredComputesLiveAndSkipsCache(t *testing.T) {
+	user := uuid.New()
+	var gotCounts, gotRows *store.Filters
+	st := &stubStore{
+		dashboardCounts: func(_ context.Context, _ uuid.UUID, f store.Filters) (store.DashboardCounts, error) {
+			gotCounts = &f
+			return store.DashboardCounts{
+				Total:      2,
+				ByStatus:   map[string]int{"backlog": 2},
+				ByItemType: map[string]int{"game": 2},
+				ByPlatform: []store.PlatformCount{{Name: "SNES", Count: 2}},
+				Spend:      []store.CurrencySpend{},
+			}, nil
+		},
+		pricingRows: func(_ context.Context, _ uuid.UUID, f store.Filters) ([]store.PricingRow, error) {
+			gotRows = &f
+			return []store.PricingRow{}, nil
+		},
+	}
+	c := newStubCache()
+	// A cached unfiltered dashboard must never answer a filtered
+	// request (and the filtered result must not replace it).
+	sentinel := []byte(`{"total_entries":999}`)
+	c.bodies[user.String()] = sentinel
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, c)
+
+	resp := do(t, http.MethodGet, srv.URL+"/dashboard?status=backlog&platform_id=19", a.token(t, user.String()), nil)
+	var got struct {
+		TotalEntries int `json:"total_entries"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK || got.TotalEntries != 2 {
+		t.Fatalf("filtered dashboard: %d %+v", resp.StatusCode, got)
+	}
+	if gotCounts == nil || gotRows == nil {
+		t.Fatal("both aggregates must run for a filtered request")
+	}
+	for _, f := range []*store.Filters{gotCounts, gotRows} {
+		if len(f.Statuses) != 1 || f.Statuses[0] != "backlog" ||
+			len(f.PlatformIDs) != 1 || f.PlatformIDs[0] != 19 {
+			t.Fatalf("filters did not reach the store: %+v", f)
+		}
+	}
+	if string(c.bodies[user.String()]) != string(sentinel) {
+		t.Fatal("a filtered result must not overwrite the unfiltered cache")
+	}
+}
+
+func TestUnitDashboard_BadFilterRejected(t *testing.T) {
+	// Zero-field stubs prove the 400 answers before any store, cache,
+	// or enrichment work.
+	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, &stubCache{})
+	for _, q := range []string{"status=queued", "item_type=chair", "region=jp"} {
+		resp := do(t, http.MethodGet, srv.URL+"/dashboard?"+q, a.token(t, uuid.NewString()), nil)
+		wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 	}
 }
 
@@ -2527,7 +2587,7 @@ func TestUnitValueHistoryComposesCarriesForwardAndCaches(t *testing.T) {
 
 	pricingCalls := 0
 	st := &stubStore{
-		pricingRows: func(context.Context, uuid.UUID) ([]store.PricingRow, error) {
+		pricingRows: func(context.Context, uuid.UUID, store.Filters) ([]store.PricingRow, error) {
 			pricingCalls++
 			return []store.PricingRow{
 				// auto + cib: follows cib_cents
@@ -2617,7 +2677,7 @@ func TestUnitValueHistoryDegradedIsServedNotCached(t *testing.T) {
 	userID := uuid.New()
 	own := uuid.New()
 	st := &stubStore{
-		pricingRows: func(context.Context, uuid.UUID) ([]store.PricingRow, error) {
+		pricingRows: func(context.Context, uuid.UUID, store.Filters) ([]store.PricingRow, error) {
 			return []store.PricingRow{{EntryID: uuid.New(), Packaging: "cib", PricingMode: "auto", ProductID: &own}}, nil
 		},
 	}
@@ -2645,7 +2705,7 @@ func TestUnitValueHistoryDegradedIsServedNotCached(t *testing.T) {
 func TestUnitValueHistoryEmptyCollection(t *testing.T) {
 	userID := uuid.New()
 	st := &stubStore{
-		pricingRows: func(context.Context, uuid.UUID) ([]store.PricingRow, error) {
+		pricingRows: func(context.Context, uuid.UUID, store.Filters) ([]store.PricingRow, error) {
 			return []store.PricingRow{}, nil
 		},
 	}

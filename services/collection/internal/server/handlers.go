@@ -740,6 +740,37 @@ func listParams(params api.ListEntriesParams) (store.Filters, string, int, int, 
 	return f, groupBy, limit, offset, ""
 }
 
+// castSlice re-types a generated enum slice onto its mirror from
+// another operation; the dashboard params repeat the entries-list
+// contract, only the generated Go types differ.
+func castSlice[Dst ~string, Src ~string](src *[]Src) *[]Dst {
+	if src == nil {
+		return nil
+	}
+	out := make([]Dst, len(*src))
+	for i, v := range *src {
+		out[i] = Dst(v)
+	}
+	return &out
+}
+
+// dashboardFilters funnels the dashboard's filter params through the
+// entries-list validator (same dimensions, same 400 details); sort,
+// order, grouping, and paging ride the validator's defaults and are
+// ignored by the aggregates.
+func dashboardFilters(p api.GetDashboardParams) (store.Filters, string) {
+	f, _, _, _, detail := listParams(api.ListEntriesParams{
+		ItemType:      castSlice[api.ListEntriesParamsItemType](p.ItemType),
+		Status:        castSlice[api.ListEntriesParamsStatus](p.Status),
+		Packaging:     castSlice[api.ListEntriesParamsPackaging](p.Packaging),
+		Region:        castSlice[api.ListEntriesParamsRegion](p.Region),
+		ItemCondition: castSlice[api.ListEntriesParamsItemCondition](p.ItemCondition),
+		PlatformId:    p.PlatformId,
+		TagId:         p.TagId,
+	})
+	return f, detail
+}
+
 // sortEntriesByValue re-sorts in memory after price composition:
 // pinned first, then value with nulls last, then the standard
 // tiebreak. Stable, so equal keys keep the SQL base order.
@@ -1150,26 +1181,35 @@ func (h *Handlers) DeleteView(w http.ResponseWriter, r *http.Request, viewId ope
 // GetDashboard composes SQL aggregates with one batched enrichment
 // price call, cached briefly per user. Enrichment being down degrades
 // pricing (available=false) and skips the cache write so recovery is
-// visible immediately.
-func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request) {
+// visible immediately. Filtered requests skip the cache both ways:
+// the unfiltered dashboard is the hot default view, while filter
+// combinations are unbounded and cheap to compute live.
+func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params api.GetDashboardParams) {
 	userID, bearer, ok := h.caller(w, r)
 	if !ok {
 		return
 	}
-	sub := userID.String()
-	if body, err := h.cache.GetDashboard(r.Context(), sub); err != nil {
-		h.failOpen(r.Context(), "dashboard_get", err)
-	} else if body != nil {
-		writeRawJSON(w, body)
+	f, detail := dashboardFilters(params)
+	if detail != "" {
+		problem(w, r, http.StatusBadRequest, "invalid_param", detail)
 		return
 	}
+	sub := userID.String()
+	if !f.Filtered() {
+		if body, err := h.cache.GetDashboard(r.Context(), sub); err != nil {
+			h.failOpen(r.Context(), "dashboard_get", err)
+		} else if body != nil {
+			writeRawJSON(w, body)
+			return
+		}
+	}
 
-	counts, err := h.store.DashboardCounts(r.Context(), userID)
+	counts, err := h.store.DashboardCounts(r.Context(), userID, f)
 	if err != nil {
 		problem(w, r, http.StatusInternalServerError, "internal", "aggregation failed")
 		return
 	}
-	rows, err := h.store.PricingRows(r.Context(), userID)
+	rows, err := h.store.PricingRows(r.Context(), userID, f)
 	if err != nil {
 		problem(w, r, http.StatusInternalServerError, "internal", "aggregation failed")
 		return
@@ -1240,7 +1280,7 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request) {
 		problem(w, r, http.StatusInternalServerError, "internal", "encoding failed")
 		return
 	}
-	if pricing.Available {
+	if pricing.Available && !f.Filtered() {
 		if err := h.cache.PutDashboard(r.Context(), sub, body, h.dashboardTTL); err != nil {
 			h.failOpen(r.Context(), "dashboard_put", err)
 		}
@@ -1330,7 +1370,9 @@ func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := h.store.PricingRows(r.Context(), userID)
+	// Value history is always whole-collection: snapshots record
+	// aggregate history, so no filter narrows this composition.
+	rows, err := h.store.PricingRows(r.Context(), userID, store.Filters{})
 	if err != nil {
 		problem(w, r, http.StatusInternalServerError, "internal", "aggregation failed")
 		return

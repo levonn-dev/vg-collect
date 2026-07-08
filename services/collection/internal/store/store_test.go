@@ -742,7 +742,7 @@ func TestDashboardAggregates(t *testing.T) {
 	mustCreate(t, s, strangerEntry, nil)
 	mustCreate(t, s, baseEntry(stranger), nil)
 
-	counts, err := s.DashboardCounts(ctx, user)
+	counts, err := s.DashboardCounts(ctx, user, store.Filters{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -766,8 +766,52 @@ func TestDashboardAggregates(t *testing.T) {
 		t.Fatalf("spend: %+v", counts.Spend)
 	}
 
-	prows, err := s.PricingRows(ctx, user)
+	prows, err := s.PricingRows(ctx, user, store.Filters{})
 	if err != nil || len(prows) != 5 {
 		t.Fatalf("pricing rows: %+v %v", prows, err)
+	}
+}
+
+func TestDashboardAggregatesFiltered(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	user, _, tagIDs := seedMatrix(t, s)
+
+	// Games only: chrono + alundra + terra; the platformless accessory
+	// and the console drop out of every aggregate.
+	games, err := s.DashboardCounts(ctx, user, store.Filters{ItemTypes: []string{"game"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if games.Total != 3 || games.ByStatus["backlog"] != 2 || games.ByStatus["playing"] != 1 {
+		t.Fatalf("games: %+v", games)
+	}
+	if len(games.ByPlatform) != 2 || games.ByPlatform[0].Name != "SNES" || games.ByPlatform[0].Count != 2 {
+		t.Fatalf("games by platform: %+v", games.ByPlatform)
+	}
+	// Only chrono records a price among the games.
+	if len(games.Spend) != 1 || games.Spend[0].Currency != "USD" || games.Spend[0].TotalCents != 5000 {
+		t.Fatalf("games spend: %+v", games.Spend)
+	}
+
+	// Dimensions AND together: backlog on SNES = chrono + terra.
+	both, err := s.DashboardCounts(ctx, user, store.Filters{
+		Statuses: []string{"backlog"}, PlatformIDs: []int64{6},
+	})
+	if err != nil || both.Total != 2 {
+		t.Fatalf("backlog on SNES: %+v %v", both, err)
+	}
+
+	// tag_id requires ALL listed tags: rpg+fav = chrono alone.
+	tagged, err := s.DashboardCounts(ctx, user, store.Filters{
+		TagIDs: []uuid.UUID{tagIDs["rpg"], tagIDs["fav"]},
+	})
+	if err != nil || tagged.Total != 1 {
+		t.Fatalf("rpg+fav: %+v %v", tagged, err)
+	}
+
+	prows, err := s.PricingRows(ctx, user, store.Filters{ItemTypes: []string{"game"}})
+	if err != nil || len(prows) != 3 {
+		t.Fatalf("filtered pricing rows: %+v %v", prows, err)
 	}
 }
