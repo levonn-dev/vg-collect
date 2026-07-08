@@ -293,7 +293,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Collection dashboard (proxied; cached by the collection service, never here) */
+        /**
+         * Collection dashboard (proxied; cached by the collection service, never here)
+         * @description Accepts the entries-list filter dimensions and forwards them; the aggregates then cover exactly the filtered slice. Only the unfiltered dashboard is cached upstream.
+         */
         get: operations["getDashboard"];
         put?: never;
         post?: never;
@@ -1634,7 +1637,17 @@ export interface operations {
     };
     getDashboard: {
         parameters: {
-            query?: never;
+            query?: {
+                item_type?: ("game" | "console" | "accessory")[];
+                status?: ("backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved")[];
+                packaging?: ("sealed" | "cib" | "loose")[];
+                region?: ("ntsc_u" | "ntsc_j" | "pal" | "region_free")[];
+                item_condition?: ("mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor")[];
+                /** @description IGDB platform ids (matches the creation-time snapshot). */
+                platform_id?: number[];
+                /** @description Entries carrying ALL listed tags. */
+                tag_id?: string[];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1648,6 +1661,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            /** @description Invalid parameters */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

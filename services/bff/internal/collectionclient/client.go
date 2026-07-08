@@ -206,14 +206,14 @@ func (c *Client) DeleteView(ctx context.Context, bearer string, id uuid.UUID) (R
 	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body, http.StatusNoContent, http.StatusNotFound)
 }
 
-// GetDashboard relays GET /dashboard (cached by the collection
-// service, never here).
-func (c *Client) GetDashboard(ctx context.Context, bearer string) (Result, error) {
-	resp, err := c.api.GetDashboardWithResponse(ctx, bearerEditor(bearer))
+// GetDashboard relays GET /dashboard with the already-converted
+// filter params (cached by the collection service, never here).
+func (c *Client) GetDashboard(ctx context.Context, bearer string, params *collectionapi.GetDashboardParams) (Result, error) {
+	resp, err := c.api.GetDashboardWithResponse(ctx, params, bearerEditor(bearer))
 	if err != nil {
 		return Result{}, fmt.Errorf("collectionclient: dashboard: %w", err)
 	}
-	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body, http.StatusOK)
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body, http.StatusOK, http.StatusBadRequest)
 }
 
 // GetValueHistory relays GET /dashboard/value-history (cached by the

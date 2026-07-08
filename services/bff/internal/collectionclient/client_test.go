@@ -90,7 +90,7 @@ func TestRelayMethods_RouteBearerStatusAndBody(t *testing.T) {
 			return c.DeleteView(context.Background(), "tok", id)
 		}, "DELETE", "/views/" + id.String(), http.StatusNoContent},
 		{"GetDashboard", func() (Result, error) {
-			return c.GetDashboard(context.Background(), "tok")
+			return c.GetDashboard(context.Background(), "tok", nil)
 		}, "GET", "/dashboard", http.StatusOK},
 		{"GetValueHistory", func() (Result, error) {
 			return c.GetValueHistory(context.Background(), "tok")
@@ -195,7 +195,7 @@ func TestTransportErrorSurfaces(t *testing.T) {
 		"CreateView":      func() error { _, err := c.CreateView(context.Background(), "tok", nil); return err },
 		"UpdateView":      func() error { _, err := c.UpdateView(context.Background(), "tok", id, nil); return err },
 		"DeleteView":      func() error { _, err := c.DeleteView(context.Background(), "tok", id); return err },
-		"GetDashboard":    func() error { _, err := c.GetDashboard(context.Background(), "tok"); return err },
+		"GetDashboard":    func() error { _, err := c.GetDashboard(context.Background(), "tok", nil); return err },
 		"GetValueHistory": func() error { _, err := c.GetValueHistory(context.Background(), "tok"); return err },
 		"LibrarySummary":  func() error { _, err := c.LibrarySummary(context.Background(), "tok"); return err },
 	}

@@ -529,15 +529,31 @@ func (h *Handlers) DeleteView(w http.ResponseWriter, r *http.Request, viewId ope
 	h.relayCollection(w, r, res, err)
 }
 
+// collectionDashboardParams re-types the mirrored dashboard filter
+// params for the generated collection client (byte-identical
+// contracts; only the Go package differs).
+func collectionDashboardParams(p api.GetDashboardParams) *collectionapi.GetDashboardParams {
+	return &collectionapi.GetDashboardParams{
+		ItemType:      castSlice[api.GetDashboardParamsItemType, collectionapi.GetDashboardParamsItemType](p.ItemType),
+		Status:        castSlice[api.GetDashboardParamsStatus, collectionapi.GetDashboardParamsStatus](p.Status),
+		Packaging:     castSlice[api.GetDashboardParamsPackaging, collectionapi.GetDashboardParamsPackaging](p.Packaging),
+		Region:        castSlice[api.GetDashboardParamsRegion, collectionapi.GetDashboardParamsRegion](p.Region),
+		ItemCondition: castSlice[api.GetDashboardParamsItemCondition, collectionapi.GetDashboardParamsItemCondition](p.ItemCondition),
+		PlatformId:    p.PlatformId,
+		TagId:         p.TagId,
+	}
+}
+
 // GetDashboard proxies the collection-composed dashboard (cached by
-// its owner, never here - one staleness authority per data type).
-func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request) {
+// its owner, never here - one staleness authority per data type),
+// forwarding the filter dimensions.
+func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params api.GetDashboardParams) {
 	sess, _, ok := session.FromContext(r.Context())
 	if !ok {
 		h.unauthorized(w, r)
 		return
 	}
-	res, err := h.collection.GetDashboard(r.Context(), sess.AccessToken)
+	res, err := h.collection.GetDashboard(r.Context(), sess.AccessToken, collectionDashboardParams(params))
 	h.relayCollection(w, r, res, err)
 }
 

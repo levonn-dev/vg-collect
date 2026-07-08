@@ -241,46 +241,88 @@ const (
 	EntryUpdateStatusShelved   EntryUpdateStatus = "shelved"
 )
 
+// Defines values for GetDashboardParamsItemType.
+const (
+	GetDashboardParamsItemTypeAccessory GetDashboardParamsItemType = "accessory"
+	GetDashboardParamsItemTypeConsole   GetDashboardParamsItemType = "console"
+	GetDashboardParamsItemTypeGame      GetDashboardParamsItemType = "game"
+)
+
+// Defines values for GetDashboardParamsStatus.
+const (
+	GetDashboardParamsStatusBacklog   GetDashboardParamsStatus = "backlog"
+	GetDashboardParamsStatusBeaten    GetDashboardParamsStatus = "beaten"
+	GetDashboardParamsStatusCompleted GetDashboardParamsStatus = "completed"
+	GetDashboardParamsStatusDropped   GetDashboardParamsStatus = "dropped"
+	GetDashboardParamsStatusPlaying   GetDashboardParamsStatus = "playing"
+	GetDashboardParamsStatusShelved   GetDashboardParamsStatus = "shelved"
+)
+
+// Defines values for GetDashboardParamsPackaging.
+const (
+	GetDashboardParamsPackagingCib    GetDashboardParamsPackaging = "cib"
+	GetDashboardParamsPackagingLoose  GetDashboardParamsPackaging = "loose"
+	GetDashboardParamsPackagingSealed GetDashboardParamsPackaging = "sealed"
+)
+
+// Defines values for GetDashboardParamsRegion.
+const (
+	GetDashboardParamsRegionNtscJ      GetDashboardParamsRegion = "ntsc_j"
+	GetDashboardParamsRegionNtscU      GetDashboardParamsRegion = "ntsc_u"
+	GetDashboardParamsRegionPal        GetDashboardParamsRegion = "pal"
+	GetDashboardParamsRegionRegionFree GetDashboardParamsRegion = "region_free"
+)
+
+// Defines values for GetDashboardParamsItemCondition.
+const (
+	GetDashboardParamsItemConditionAcceptable GetDashboardParamsItemCondition = "acceptable"
+	GetDashboardParamsItemConditionGood       GetDashboardParamsItemCondition = "good"
+	GetDashboardParamsItemConditionMint       GetDashboardParamsItemCondition = "mint"
+	GetDashboardParamsItemConditionNearMint   GetDashboardParamsItemCondition = "near_mint"
+	GetDashboardParamsItemConditionPoor       GetDashboardParamsItemCondition = "poor"
+	GetDashboardParamsItemConditionVeryGood   GetDashboardParamsItemCondition = "very_good"
+)
+
 // Defines values for ListEntriesParamsItemType.
 const (
-	Accessory ListEntriesParamsItemType = "accessory"
-	Console   ListEntriesParamsItemType = "console"
-	Game      ListEntriesParamsItemType = "game"
+	ListEntriesParamsItemTypeAccessory ListEntriesParamsItemType = "accessory"
+	ListEntriesParamsItemTypeConsole   ListEntriesParamsItemType = "console"
+	ListEntriesParamsItemTypeGame      ListEntriesParamsItemType = "game"
 )
 
 // Defines values for ListEntriesParamsStatus.
 const (
-	ListEntriesParamsStatusBacklog   ListEntriesParamsStatus = "backlog"
-	ListEntriesParamsStatusBeaten    ListEntriesParamsStatus = "beaten"
-	ListEntriesParamsStatusCompleted ListEntriesParamsStatus = "completed"
-	ListEntriesParamsStatusDropped   ListEntriesParamsStatus = "dropped"
-	ListEntriesParamsStatusPlaying   ListEntriesParamsStatus = "playing"
-	ListEntriesParamsStatusShelved   ListEntriesParamsStatus = "shelved"
+	Backlog   ListEntriesParamsStatus = "backlog"
+	Beaten    ListEntriesParamsStatus = "beaten"
+	Completed ListEntriesParamsStatus = "completed"
+	Dropped   ListEntriesParamsStatus = "dropped"
+	Playing   ListEntriesParamsStatus = "playing"
+	Shelved   ListEntriesParamsStatus = "shelved"
 )
 
 // Defines values for ListEntriesParamsPackaging.
 const (
-	ListEntriesParamsPackagingCib    ListEntriesParamsPackaging = "cib"
-	ListEntriesParamsPackagingLoose  ListEntriesParamsPackaging = "loose"
-	ListEntriesParamsPackagingSealed ListEntriesParamsPackaging = "sealed"
+	Cib    ListEntriesParamsPackaging = "cib"
+	Loose  ListEntriesParamsPackaging = "loose"
+	Sealed ListEntriesParamsPackaging = "sealed"
 )
 
 // Defines values for ListEntriesParamsRegion.
 const (
-	ListEntriesParamsRegionNtscJ      ListEntriesParamsRegion = "ntsc_j"
-	ListEntriesParamsRegionNtscU      ListEntriesParamsRegion = "ntsc_u"
-	ListEntriesParamsRegionPal        ListEntriesParamsRegion = "pal"
-	ListEntriesParamsRegionRegionFree ListEntriesParamsRegion = "region_free"
+	NtscJ      ListEntriesParamsRegion = "ntsc_j"
+	NtscU      ListEntriesParamsRegion = "ntsc_u"
+	Pal        ListEntriesParamsRegion = "pal"
+	RegionFree ListEntriesParamsRegion = "region_free"
 )
 
 // Defines values for ListEntriesParamsItemCondition.
 const (
-	ListEntriesParamsItemConditionAcceptable ListEntriesParamsItemCondition = "acceptable"
-	ListEntriesParamsItemConditionGood       ListEntriesParamsItemCondition = "good"
-	ListEntriesParamsItemConditionMint       ListEntriesParamsItemCondition = "mint"
-	ListEntriesParamsItemConditionNearMint   ListEntriesParamsItemCondition = "near_mint"
-	ListEntriesParamsItemConditionPoor       ListEntriesParamsItemCondition = "poor"
-	ListEntriesParamsItemConditionVeryGood   ListEntriesParamsItemCondition = "very_good"
+	Acceptable ListEntriesParamsItemCondition = "acceptable"
+	Good       ListEntriesParamsItemCondition = "good"
+	Mint       ListEntriesParamsItemCondition = "mint"
+	NearMint   ListEntriesParamsItemCondition = "near_mint"
+	Poor       ListEntriesParamsItemCondition = "poor"
+	VeryGood   ListEntriesParamsItemCondition = "very_good"
 )
 
 // Defines values for ListEntriesParamsSort.
@@ -666,6 +708,36 @@ type Unauthorized = Problem
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
 
+// GetDashboardParams defines parameters for GetDashboard.
+type GetDashboardParams struct {
+	ItemType      *[]GetDashboardParamsItemType      `form:"item_type,omitempty" json:"item_type,omitempty"`
+	Status        *[]GetDashboardParamsStatus        `form:"status,omitempty" json:"status,omitempty"`
+	Packaging     *[]GetDashboardParamsPackaging     `form:"packaging,omitempty" json:"packaging,omitempty"`
+	Region        *[]GetDashboardParamsRegion        `form:"region,omitempty" json:"region,omitempty"`
+	ItemCondition *[]GetDashboardParamsItemCondition `form:"item_condition,omitempty" json:"item_condition,omitempty"`
+
+	// PlatformId IGDB platform ids (matches the creation-time snapshot).
+	PlatformId *[]int64 `form:"platform_id,omitempty" json:"platform_id,omitempty"`
+
+	// TagId Entries carrying ALL listed tags.
+	TagId *[]openapi_types.UUID `form:"tag_id,omitempty" json:"tag_id,omitempty"`
+}
+
+// GetDashboardParamsItemType defines parameters for GetDashboard.
+type GetDashboardParamsItemType string
+
+// GetDashboardParamsStatus defines parameters for GetDashboard.
+type GetDashboardParamsStatus string
+
+// GetDashboardParamsPackaging defines parameters for GetDashboard.
+type GetDashboardParamsPackaging string
+
+// GetDashboardParamsRegion defines parameters for GetDashboard.
+type GetDashboardParamsRegion string
+
+// GetDashboardParamsItemCondition defines parameters for GetDashboard.
+type GetDashboardParamsItemCondition string
+
 // ListEntriesParams defines parameters for ListEntries.
 type ListEntriesParams struct {
 	ItemType      *[]ListEntriesParamsItemType      `form:"item_type,omitempty" json:"item_type,omitempty"`
@@ -805,7 +877,7 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 	// GetDashboard request
-	GetDashboard(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetDashboard(ctx context.Context, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetValueHistory request
 	GetValueHistory(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -870,8 +942,8 @@ type ClientInterface interface {
 	UpdateView(ctx context.Context, viewId openapi_types.UUID, body UpdateViewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-func (c *Client) GetDashboard(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetDashboardRequest(c.Server)
+func (c *Client) GetDashboard(ctx context.Context, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDashboardRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1159,7 +1231,7 @@ func (c *Client) UpdateView(ctx context.Context, viewId openapi_types.UUID, body
 }
 
 // NewGetDashboardRequest generates requests for GetDashboard
-func NewGetDashboardRequest(server string) (*http.Request, error) {
+func NewGetDashboardRequest(server string, params *GetDashboardParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -1175,6 +1247,124 @@ func NewGetDashboardRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.ItemType != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "item_type", runtime.ParamLocationQuery, *params.ItemType); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "status", runtime.ParamLocationQuery, *params.Status); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Packaging != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "packaging", runtime.ParamLocationQuery, *params.Packaging); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Region != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "region", runtime.ParamLocationQuery, *params.Region); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ItemCondition != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "item_condition", runtime.ParamLocationQuery, *params.ItemCondition); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.PlatformId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "platform_id", runtime.ParamLocationQuery, *params.PlatformId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.TagId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "tag_id", runtime.ParamLocationQuery, *params.TagId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -2006,7 +2196,7 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 	// GetDashboardWithResponse request
-	GetDashboardWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDashboardResponse, error)
+	GetDashboardWithResponse(ctx context.Context, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*GetDashboardResponse, error)
 
 	// GetValueHistoryWithResponse request
 	GetValueHistoryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetValueHistoryResponse, error)
@@ -2075,6 +2265,7 @@ type GetDashboardResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
 	JSON200                   *Dashboard
+	ApplicationproblemJSON400 *BadRequest
 	ApplicationproblemJSON401 *Unauthorized
 }
 
@@ -2488,8 +2679,8 @@ func (r UpdateViewResponse) StatusCode() int {
 }
 
 // GetDashboardWithResponse request returning *GetDashboardResponse
-func (c *ClientWithResponses) GetDashboardWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDashboardResponse, error) {
-	rsp, err := c.GetDashboard(ctx, reqEditors...)
+func (c *ClientWithResponses) GetDashboardWithResponse(ctx context.Context, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*GetDashboardResponse, error) {
+	rsp, err := c.GetDashboard(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -2716,6 +2907,13 @@ func ParseGetDashboardResponse(rsp *http.Response) (*GetDashboardResponse, error
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized

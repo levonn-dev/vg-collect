@@ -619,12 +619,66 @@ paths:
     get:
       operationId: getDashboard
       summary: Collection dashboard (proxied; cached by the collection service, never here)
+      description: >
+        Accepts the entries-list filter dimensions and forwards them;
+        the aggregates then cover exactly the filtered slice. Only the
+        unfiltered dashboard is cached upstream.
+      parameters:
+        - name: item_type
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [game, console, accessory] }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
+        - name: packaging
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [sealed, cib, loose] }
+        - name: region
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        - name: item_condition
+          in: query
+          required: false
+          schema:
+            type: array
+            items: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        - name: platform_id
+          in: query
+          required: false
+          description: IGDB platform ids (matches the creation-time snapshot).
+          schema:
+            type: array
+            items: { type: integer, format: int64 }
+        - name: tag_id
+          in: query
+          required: false
+          description: Entries carrying ALL listed tags.
+          schema:
+            type: array
+            items: { type: string, format: uuid }
       responses:
         "200":
           description: The dashboard
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Dashboard" }
+        "400":
+          description: Invalid parameters
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /api/dashboard/value-history:

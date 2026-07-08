@@ -606,7 +606,7 @@ func (s *stubCollection) UpdateView(_ context.Context, bearer string, _ uuid.UUI
 func (s *stubCollection) DeleteView(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
 	return s.call("delete_view", bearer)
 }
-func (s *stubCollection) GetDashboard(_ context.Context, bearer string) (collectionclient.Result, error) {
+func (s *stubCollection) GetDashboard(_ context.Context, bearer string, _ *collectionapi.GetDashboardParams) (collectionclient.Result, error) {
 	return s.call("dashboard", bearer)
 }
 func (s *stubCollection) GetValueHistory(_ context.Context, bearer string) (collectionclient.Result, error) {
@@ -745,15 +745,22 @@ func TestUnitValueHistoryPassThrough(t *testing.T) {
 }
 
 // captureCollection embeds the stub so every method forwards, while
-// ListEntries additionally exposes its converted params.
+// ListEntries and GetDashboard additionally expose their converted
+// params.
 type captureCollection struct {
 	*stubCollection
-	onList func(*collectionapi.ListEntriesParams)
+	onList      func(*collectionapi.ListEntriesParams)
+	onDashboard func(*collectionapi.GetDashboardParams)
 }
 
 func (c *captureCollection) ListEntries(ctx context.Context, bearer string, p *collectionapi.ListEntriesParams) (collectionclient.Result, error) {
 	c.onList(p)
 	return c.stubCollection.ListEntries(ctx, bearer, p)
+}
+
+func (c *captureCollection) GetDashboard(ctx context.Context, bearer string, p *collectionapi.GetDashboardParams) (collectionclient.Result, error) {
+	c.onDashboard(p)
+	return c.stubCollection.GetDashboard(ctx, bearer, p)
 }
 
 func TestUnitCollectionListParams_Conversion(t *testing.T) {
@@ -773,6 +780,26 @@ func TestUnitCollectionListParams_Conversion(t *testing.T) {
 		string(*got.Order) != "desc" || string(*got.GroupBy) != "platform" ||
 		(*got.PlatformId)[0] != 6 {
 		t.Fatalf("converted params: %+v", got)
+	}
+}
+
+func TestUnitDashboardParams_Forwarded(t *testing.T) {
+	var got *collectionapi.GetDashboardParams
+	col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+		return collectionclient.Result{Status: 200, ContentType: "application/json", Body: []byte(`{}`)}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+	h.collection = &captureCollection{stubCollection: col, onDashboard: func(p *collectionapi.GetDashboardParams) { got = p }}
+	rec := doAuthed(t, h, env, http.MethodGet,
+		"/api/dashboard?status=backlog&item_type=game&platform_id=6")
+	if rec.Code != 200 {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if got == nil || got.Status == nil || len(*got.Status) != 1 ||
+		string((*got.Status)[0]) != "backlog" ||
+		got.ItemType == nil || string((*got.ItemType)[0]) != "game" ||
+		got.PlatformId == nil || (*got.PlatformId)[0] != 6 {
+		t.Fatalf("forwarded params: %+v", got)
 	}
 }
 
