@@ -4,6 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>vg-collect</title>
+    <!-- Theme bootstrap: external and blocking, never inline. The bff
+         serves this bundle under a CSP with script-src 'self', so an
+         inline script would be silently blocked and the page would
+         always start light. -->
+    <script src="/theme.js"></script>
   </head>
   <body>
     <div id="root"></div>

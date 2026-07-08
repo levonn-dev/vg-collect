@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Navigate, NavLink, Outlet, useNavigate } from 'react-router'
 import { ApiError, fetchMe, logout } from '../api/client'
+import ThemeToggle from './ThemeToggle'
 
 function navClass({ isActive }: { isActive: boolean }): string {
   return isActive
@@ -84,15 +85,13 @@ export default function Layout() {
             <NavLink to="/add" className={navClass}>
               Add
             </NavLink>
-            <NavLink to="/dashboard" className={navClass}>
-              Dashboard
-            </NavLink>
             <NavLink to="/recommendations" className={navClass}>
               Recommendations
             </NavLink>
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           <Avatar key={me.data.avatar_url} url={me.data.avatar_url} name={me.data.display_name} />
           <span className="text-sm text-gray-700">{me.data.display_name}</span>
           <button

@@ -1,1 +1,57 @@
 @import "tailwindcss";
+
+/* Enable dark: utilities against the html-level class (applied before
+   first paint by the script in index.html). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* The palette is semantic: gray-900 is always the strongest ink,
+   gray-50 the subtlest panel, white the page surface. Utilities
+   compile to var(--color-*) references, so the dark theme is exactly
+   these overrides - no per-component dark: classes. New UI that
+   sticks to the grays and the status tints below is dark-ready by
+   default. */
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+
+  --color-white: #030712;
+  --color-gray-50: #111827;
+  --color-gray-100: #1f2937;
+  --color-gray-200: #374151;
+  --color-gray-300: #4b5563;
+  --color-gray-400: #6b7280;
+  --color-gray-500: #9ca3af;
+  --color-gray-600: #d1d5db;
+  --color-gray-700: #e5e7eb;
+  --color-gray-800: #f3f4f6;
+  --color-gray-900: #f9fafb;
+
+  /* Status tints: deep backgrounds, bright text, muted borders. */
+  --color-amber-50: #451a03;
+  --color-amber-800: #fde68a;
+  --color-red-50: #450a0a;
+  --color-red-300: #7f1d1d;
+  --color-red-700: #fca5a5;
+  --color-green-50: #052e16;
+  --color-green-800: #86efac;
+}
+
+/* The page surface and default ink come from the theme, so text
+   without an explicit color class flips too. */
+body {
+  background-color: var(--color-white);
+  color: var(--color-gray-900);
+}
+
+/* Tailwind v4 preflight leaves buttons on cursor:default; every
+   enabled control here is clickable and must say so. */
+button:not(:disabled),
+select:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled),
+label:has(> input[type="checkbox"]:not(:disabled)),
+label:has(> input[type="radio"]:not(:disabled)) {
+  cursor: pointer;
+}

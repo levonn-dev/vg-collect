@@ -10,6 +10,20 @@ class ResizeObserverStub {
 }
 globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver
 
+// jsdom has no matchMedia; the theme code queries and subscribes to
+// it. Plain assignment (not vi.stubGlobal) so vi.unstubAllGlobals()
+// in test files cannot remove it mid-file.
+window.matchMedia ??= ((query: string) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  addListener: () => {},
+  removeListener: () => {},
+  dispatchEvent: () => false,
+})) as unknown as typeof window.matchMedia
+
 // The OTel fetch instrumentation watches resource timings; jsdom has
 // no PerformanceObserver.
 class PerformanceObserverStub {
