@@ -151,15 +151,25 @@ func (c *Client) SearchGames(ctx context.Context, q string, limit int) ([]Game, 
 	return out, nil
 }
 
-// GamesByIDs fetches full payloads; unknown ids are silently absent.
+// maxIDsPerQuery caps one where-id query; the API rejects any larger
+// limit outright ("your maximum is 500").
+const maxIDsPerQuery = 500
+
+// GamesByIDs fetches full payloads, chunking past the per-query limit;
+// unknown ids are silently absent.
 func (c *Client) GamesByIDs(ctx context.Context, ids []int64) ([]Game, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	body := fmt.Sprintf("fields %s; where id = (%s); limit %d;", gameFields, intsCSV(ids), len(ids))
-	var out []Game
-	if err := c.query(ctx, "games", body, &out); err != nil {
-		return nil, err
+	out := make([]Game, 0, len(ids))
+	for start := 0; start < len(ids); start += maxIDsPerQuery {
+		chunk := ids[start:min(start+maxIDsPerQuery, len(ids))]
+		body := fmt.Sprintf("fields %s; where id = (%s); limit %d;", gameFields, intsCSV(chunk), len(chunk))
+		var got []Game
+		if err := c.query(ctx, "games", body, &got); err != nil {
+			return nil, err
+		}
+		out = append(out, got...)
 	}
 	return out, nil
 }

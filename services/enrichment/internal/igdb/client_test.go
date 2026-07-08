@@ -2,6 +2,7 @@ package igdb
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,6 +63,79 @@ func TestClient_QueryShapeAndTokenReuse(t *testing.T) {
 	}
 	if tokenCalls.Load() != 1 {
 		t.Fatalf("token must be fetched once and reused, got %d fetches", tokenCalls.Load())
+	}
+}
+
+func TestClient_GamesByIDsChunksAt500(t *testing.T) {
+	var bodies []string
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		_, _ = w.Write([]byte(`[{"id":1,"name":"A"}]`))
+	})
+	ids := make([]int64, 1100)
+	for i := range ids {
+		ids[i] = int64(i + 1)
+	}
+	got, err := c.GamesByIDs(context.Background(), ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("want the chunk results concatenated (one per query), got %d", len(got))
+	}
+	if len(bodies) != 3 {
+		t.Fatalf("want 3 queries for 1100 ids, got %d", len(bodies))
+	}
+	for i, want := range []struct{ first, last, limit string }{
+		{"(1,", ",500);", "limit 500;"},
+		{"(501,", ",1000);", "limit 500;"},
+		{"(1001,", ",1100);", "limit 100;"},
+	} {
+		if !strings.Contains(bodies[i], "where id = "+want.first) ||
+			!strings.Contains(bodies[i], want.last) ||
+			!strings.Contains(bodies[i], want.limit) {
+			t.Fatalf("chunk %d body wrong: %.80s...%s", i, bodies[i], bodies[i][max(0, len(bodies[i])-40):])
+		}
+	}
+}
+
+func TestClient_GamesByIDsChunkErrorPropagates(t *testing.T) {
+	var calls atomic.Int64
+	c, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 2 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte(`[]`))
+	})
+	ids := make([]int64, 501)
+	for i := range ids {
+		ids[i] = int64(i + 1)
+	}
+	if _, err := c.GamesByIDs(context.Background(), ids); err == nil || !strings.Contains(err.Error(), "status 400") {
+		t.Fatalf("second-chunk failure must surface, got %v", err)
+	}
+}
+
+func TestClient_PlatformsQueryShape(t *testing.T) {
+	var body string
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		_, _ = w.Write([]byte(`[{"id":4,"name":"Nintendo 64","abbreviation":"N64","generation":5,"platform_logo":{"image_id":"pl78"}}]`))
+	})
+	got, err := c.Platforms(context.Background())
+	if err != nil || len(got) != 1 {
+		t.Fatalf("platforms: %+v, %v", got, err)
+	}
+	p := got[0]
+	if p.ID != 4 || p.Name != "Nintendo 64" || p.Abbreviation != "N64" || p.Generation != 5 ||
+		p.PlatformLogo == nil || p.PlatformLogo.ImageID != "pl78" {
+		t.Fatalf("projection decode: %+v", p)
+	}
+	if body != "fields name,abbreviation,generation,platform_logo.image_id; sort id asc; limit 500;" {
+		t.Fatalf("bad platforms body: %s", body)
 	}
 }
 
