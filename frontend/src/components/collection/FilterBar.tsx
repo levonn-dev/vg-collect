@@ -126,7 +126,7 @@ export default function FilterBar({ state, platforms, tags, onChange }: FilterBa
         <button
           type="button"
           onClick={() => onChange({ ...state, order: state.order === 'asc' ? 'desc' : 'asc' })}
-          className="rounded border border-gray-300 px-2 py-1 text-sm"
+          className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
         >
           Order: {(state.order ?? 'desc') === 'desc' ? 'descending' : 'ascending'}
         </button>
@@ -150,7 +150,7 @@ export default function FilterBar({ state, platforms, tags, onChange }: FilterBa
         <button
           type="button"
           onClick={() => onChange({ ...defaultListState(), mode: state.mode })}
-          className="ml-auto rounded border border-gray-300 px-2 py-1 text-sm text-gray-600"
+          className="ml-auto rounded border border-gray-300 px-2 py-1 text-sm text-gray-600 hover:bg-gray-50"
         >
           Clear filters
         </button>

@@ -34,9 +34,9 @@ export default function AddWizard() {
               <button
                 type="button"
                 onClick={() => setState({ step: 'custom' })}
-                className="underline"
+                className="underline hover:text-gray-600"
               >
-                Can not find it? Add an off-catalog item.
+                Can not find it? Add it as a custom item.
               </button>
             </p>
           }
@@ -103,7 +103,7 @@ function CustomConfirm({
       void queryClient.invalidateQueries({ queryKey: ['entries'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       void queryClient.invalidateQueries({ queryKey: ['recommendations'] })
-      void navigate(`/entries/${entry.id}`)
+      void navigate(`/entries/${entry.id}`, { state: { justAdded: true } })
     },
   })
   return (
@@ -113,8 +113,8 @@ function CustomConfirm({
         {[custom.platformName || null, custom.itemType, 'custom item'].filter(Boolean).join(' - ')}
       </p>
       <p className="rounded bg-gray-50 p-3 text-sm text-gray-600">
-        Pricing starts disabled for off-catalog items. To track a market value, open the entry
-        afterwards and point its pricing at a comparable catalog listing.
+        Custom items start without market pricing. To track a value, open the entry afterwards
+        and choose a similar listed item as its price source.
       </p>
       {create.isError && (
         <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">
@@ -122,13 +122,13 @@ function CustomConfirm({
         </p>
       )}
       <div className="flex gap-2">
-        <button onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm">
+        <button onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
           Back
         </button>
         <button
           onClick={() => create.mutate()}
           disabled={create.isPending}
-          className="rounded bg-gray-900 px-4 py-1 text-sm text-white disabled:opacity-50"
+          className="rounded bg-gray-900 px-4 py-1 text-sm text-white enabled:hover:bg-gray-700 disabled:opacity-50"
         >
           Add to collection
         </button>

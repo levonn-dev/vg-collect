@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { Entry } from '../../api/collection'
 import { entryFixture, jsonResponse } from '../../test/fixtures'
+import type { PricingValue } from './PricingPanel'
 import PricingPanel from './PricingPanel'
 
 const matchedProduct = {
@@ -14,11 +16,8 @@ const matchedProduct = {
   created_at: 'x', updated_at: 'x',
 }
 
-function stubFetch(handlers: Record<string, unknown>, onPut?: (body: unknown) => Response) {
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    if (init?.method === 'PUT' && onPut) {
-      return Promise.resolve(onPut(JSON.parse(init.body as string)))
-    }
+function stubFetch(handlers: Record<string, unknown>) {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
     const u = String(url)
     for (const [prefix, body] of Object.entries(handlers)) {
       if (u.startsWith(prefix)) return Promise.resolve(jsonResponse(200, body))
@@ -32,13 +31,17 @@ function stubFetch(handlers: Record<string, unknown>, onPut?: (body: unknown) =>
   return fetchMock
 }
 
-function renderPanel(entry = entryFixture(), qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+// The panel is a controlled editor of the form's pricing draft; by
+// default the draft mirrors the entry, like the form initializes it.
+function renderPanel(entry: Entry = entryFixture(), value: PricingValue = { mode: entry.pricing_mode, productId: entry.pricing_product_id }) {
+  const onChange = vi.fn()
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={qc}>
-      <PricingPanel entry={entry} />
+      <PricingPanel entry={entry} value={value} onChange={onChange} />
     </QueryClientProvider>,
   )
-  return qc
+  return onChange
 }
 
 afterEach(() => vi.unstubAllGlobals())
@@ -47,6 +50,12 @@ it('renders the absent value neutrally, without guessing a cause', () => {
   stubFetch({ '/api/products/': matchedProduct })
   renderPanel(entryFixture({ value_cents: undefined }))
   expect(screen.getByText('No market value available.')).toBeInTheDocument()
+})
+
+it('labels market values as USD', () => {
+  stubFetch({ '/api/products/': matchedProduct })
+  renderPanel(entryFixture({ value_cents: 4200 }))
+  expect(screen.getByText('Market values are in USD.')).toBeInTheDocument()
 })
 
 it('shows the match card in auto mode', async () => {
@@ -63,86 +72,64 @@ it('shows match-pending when the product is unmatched', async () => {
   expect(await screen.findByText(/no confirmed price listing yet/i)).toBeInTheDocument()
 })
 
-it('switching to disabled keeps the parked proxy id (memory, not erasure)', async () => {
-  let putBody: Record<string, unknown> = {}
-  const e = entryFixture({ pricing_mode: 'proxy', pricing_product_id: 'p9' })
-  stubFetch({ '/api/products/': matchedProduct }, (body) => {
-    putBody = body as Record<string, unknown>
-    return jsonResponse(200, { ...e, pricing_mode: 'disabled' })
-  })
-  renderPanel(e)
+it('reports a mode change as draft state and never saves on its own', async () => {
+  const fetchMock = stubFetch({ '/api/products/': matchedProduct })
+  const onChange = renderPanel(entryFixture({ pricing_mode: 'proxy', pricing_product_id: 'p9' }))
   await userEvent.click(screen.getByRole('radio', { name: /disabled/i }))
-  expect(putBody.pricing_mode).toBe('disabled')
-  expect(putBody.pricing_product_id).toBe('p9')
-})
-
-it('invalidates the recommendations cache after a pricing change', async () => {
-  // On custom entries the server re-snapshots or clears the entry's
-  // recommendation identity when the pricing proxy changes, so a
-  // pricing mutation alters the library summary feeding recommendations.
-  const e = entryFixture({ pricing_mode: 'proxy', pricing_product_id: 'p9' })
-  stubFetch({ '/api/products/': matchedProduct }, () =>
-    jsonResponse(200, { ...e, pricing_mode: 'disabled' }))
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  qc.setQueryData(['recommendations'], { stale: true })
-  renderPanel(e, qc)
-  await userEvent.click(screen.getByRole('radio', { name: /disabled/i }))
-  await waitFor(() => expect(qc.getQueryState(['recommendations'])?.isInvalidated).toBe(true))
+  // The parked proxy id survives the mode change (memory, not erasure).
+  expect(onChange).toHaveBeenCalledWith({ mode: 'disabled', productId: 'p9' })
+  const puts = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === 'PUT')
+  expect(puts).toHaveLength(0)
 })
 
 it('presents a parked target as memory with a reactivate affordance', async () => {
-  const e = entryFixture({ pricing_mode: 'disabled', pricing_product_id: 'p9', product_id: undefined })
-  let putBody: Record<string, unknown> = {}
-  stubFetch({ '/api/products/': matchedProduct }, (body) => {
-    putBody = body as Record<string, unknown>
-    return jsonResponse(200, { ...e, pricing_mode: 'proxy' })
-  })
-  renderPanel(e)
+  stubFetch({ '/api/products/': matchedProduct })
+  const onChange = renderPanel(
+    entryFixture({ pricing_mode: 'disabled', pricing_product_id: 'p9', product_id: undefined }),
+  )
   expect(await screen.findByText(/last price proxy/i)).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: /reactivate/i }))
-  expect(putBody.pricing_mode).toBe('proxy')
-  expect(putBody.pricing_product_id).toBe('p9')
-})
-
-it('surfaces a 404 when a reactivated target no longer exists', async () => {
-  const e = entryFixture({ pricing_mode: 'disabled', pricing_product_id: 'p9' })
-  stubFetch({ '/api/products/': matchedProduct }, () =>
-    jsonResponse(404, {
-      type: 'about:blank', title: 'Not Found', status: 404,
-      code: 'unknown_pricing_product', detail: 'no such pricing product in the catalog',
-    }))
-  renderPanel(e)
-  await userEvent.click(await screen.findByRole('button', { name: /reactivate/i }))
-  expect(await screen.findByRole('alert')).toHaveTextContent(/no such pricing product/i)
+  expect(onChange).toHaveBeenCalledWith({ mode: 'proxy', productId: 'p9' })
 })
 
 it('offers auto only to product-backed entries and opens the picker for a first proxy', async () => {
   stubFetch({ '/api/products/': matchedProduct })
-  renderPanel(entryFixture({ product_id: undefined, pricing_mode: 'disabled', pricing_product_id: undefined }))
+  const onChange = renderPanel(
+    entryFixture({ product_id: undefined, pricing_mode: 'disabled', pricing_product_id: undefined }),
+  )
   expect(screen.queryByRole('radio', { name: /^auto/i })).not.toBeInTheDocument()
   await userEvent.click(screen.getByRole('radio', { name: /proxy/i }))
   expect(await screen.findByRole('dialog', { name: /choose a price source/i })).toBeInTheDocument()
+  expect(onChange).toHaveBeenCalledWith({ mode: 'proxy', productId: undefined })
 })
 
-it('drives a fresh proxy pick through resolve and PUTs the resolved target', async () => {
+it('guides an unchosen proxy source and reopens the picker on demand', async () => {
+  stubFetch({ '/api/products/': matchedProduct })
+  renderPanel(
+    entryFixture({ product_id: undefined, pricing_mode: 'disabled', pricing_product_id: undefined }),
+    { mode: 'proxy', productId: undefined },
+  )
+  expect(screen.getByText('No price source chosen yet.')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: /choose price source/i }))
+  expect(await screen.findByRole('dialog', { name: /choose a price source/i })).toBeInTheDocument()
+})
+
+it('drives a fresh proxy pick through resolve and reports the resolved target', async () => {
   const resolved = { id: 'p7', type: 'game', name: 'Chrono Trigger', created_at: 'x', updated_at: 'x' }
-  const e = entryFixture({ pricing_mode: 'disabled', pricing_product_id: undefined })
-  let putBody: Record<string, unknown> = {}
   stubFetch({
     '/api/search': {
       degraded: false,
       results: [{ type: 'game', name: 'Chrono Trigger', igdb_game_id: 1000, platforms: [{ igdb_platform_id: 6, name: 'SNES' }] }],
     },
     '/api/products/resolve': resolved,
-  }, (body) => {
-    putBody = body as Record<string, unknown>
-    return jsonResponse(200, { ...e, pricing_mode: 'proxy', pricing_product_id: resolved.id })
   })
-  renderPanel(e)
-  await userEvent.click(screen.getByRole('radio', { name: /proxy/i }))
-  await userEvent.type(await screen.findByRole('searchbox', { name: /search/i }), 'chrono')
+  const onChange = renderPanel(
+    entryFixture({ pricing_mode: 'disabled', pricing_product_id: undefined }),
+    { mode: 'proxy', productId: undefined },
+  )
+  await userEvent.click(screen.getByRole('button', { name: /choose price source/i }))
+  await userEvent.type(await screen.findByRole('searchbox', { name: /search for games and hardware/i }), 'chrono')
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
-  await waitFor(() => expect(putBody.pricing_mode).toBe('proxy'))
-  expect(putBody.pricing_product_id).toBe('p7')
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith({ mode: 'proxy', productId: 'p7' }))
 })

@@ -48,6 +48,30 @@ it('saves through the form and shows the refreshed entry', async () => {
   await userEvent.click(await screen.findByRole('button', { name: /save/i }))
   const put = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'PUT')
   expect(put?.[0]).toBe(`/api/entries/${e.id}`)
+  // Success must be visible, and drifting from the saved state must
+  // retract it.
+  expect(await screen.findByText('Saved.')).toBeInTheDocument()
+  await userEvent.type(screen.getByRole('textbox', { name: 'Notes' }), '!')
+  expect(screen.queryByText('Saved.')).not.toBeInTheDocument()
+})
+
+it('shows the just-added banner when arriving from the wizard', async () => {
+  const e = entryFixture()
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
+    Promise.resolve(String(url).startsWith('/api/tags')
+      ? jsonResponse(200, { tags: [] })
+      : jsonResponse(200, e))))
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[{ pathname: `/entries/${e.id}`, state: { justAdded: true } }]}>
+        <Routes>
+          <Route path="/entries/:id" element={<EntryDetail />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByRole('status')).toHaveTextContent(/added to your collection/i)
 })
 
 it('invalidates the dashboard and recommendations caches after a save', async () => {

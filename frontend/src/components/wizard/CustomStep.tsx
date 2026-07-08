@@ -31,11 +31,11 @@ export default function CustomStep({ onBack, onNext }: CustomStepProps) {
       aria-label="Custom item"
       className="flex flex-col gap-3"
     >
-      <h3 className="text-lg font-semibold">Off-catalog item</h3>
+      <h3 className="text-lg font-semibold">Custom item</h3>
       <p className="max-w-prose text-sm text-gray-600">
-        For items no provider lists: reproductions, fan translations, homebrew, self-built hardware.
-        A variant of a cataloged item (a first print, a color variant) belongs on the cataloged
-        entry instead - pick it from search and note the variant in the edition field.
+        For items search cannot find: reproductions, fan translations, homebrew, self-built
+        hardware. A variant of a searchable item (a first print, a color variant) belongs on
+        that item instead - pick it from search and note the variant in the edition field.
       </p>
       <label className={labelClass}>
         Name
@@ -62,10 +62,10 @@ export default function CustomStep({ onBack, onNext }: CustomStepProps) {
         <input type="date" value={v.firstReleaseDate} onChange={(e) => setV({ ...v, firstReleaseDate: e.target.value })} className={inputClass} />
       </label>
       <div className="flex gap-2">
-        <button type="button" onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm">
+        <button type="button" onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
           Back
         </button>
-        <button type="submit" className="rounded bg-gray-900 px-4 py-1 text-sm text-white">
+        <button type="submit" className="rounded bg-gray-900 px-4 py-1 text-sm text-white hover:bg-gray-700">
           Continue
         </button>
       </div>

@@ -74,7 +74,7 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
           if (name?.trim()) save.mutate(name.trim())
         }}
         disabled={save.isPending}
-        className="rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
+        className="rounded border border-gray-300 px-2 py-1 text-sm enabled:hover:bg-gray-50 disabled:opacity-50"
       >
         Save view...
       </button>
@@ -84,7 +84,7 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
             type="button"
             onClick={() => update.mutate()}
             disabled={update.isPending}
-            className="rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
+            className="rounded border border-gray-300 px-2 py-1 text-sm enabled:hover:bg-gray-50 disabled:opacity-50"
           >
             Update view
           </button>
@@ -94,7 +94,7 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
               if (window.confirm('Delete this saved view?')) remove.mutate()
             }}
             disabled={remove.isPending}
-            className="rounded border border-gray-300 px-2 py-1 text-sm text-red-700 disabled:opacity-50"
+            className="rounded border border-gray-300 px-2 py-1 text-sm text-red-700 enabled:hover:bg-red-50 disabled:opacity-50"
           >
             Delete view
           </button>

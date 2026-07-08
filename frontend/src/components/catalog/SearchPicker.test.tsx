@@ -65,7 +65,7 @@ it('flags a degraded answer', async () => {
   renderPicker()
   await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'zzz')
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent(/catalog search is degraded/i)
+  expect(await screen.findByRole('alert')).toHaveTextContent(/missing some results/i)
 })
 
 it('auto-runs an initial query', async () => {

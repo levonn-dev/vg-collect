@@ -56,7 +56,7 @@ export default function TagPicker({ value, onChange }: TagPickerProps) {
           type="button"
           onClick={() => name.trim() && create.mutate(name.trim())}
           disabled={create.isPending || name.trim() === ''}
-          className="rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
+          className="rounded border border-gray-300 px-2 py-1 text-sm enabled:hover:bg-gray-50 disabled:opacity-50"
         >
           Add tag
         </button>

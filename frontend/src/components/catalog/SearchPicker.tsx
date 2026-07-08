@@ -44,7 +44,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer }: Sear
   })
 
   return (
-    <section aria-label="Catalog search" className="flex flex-col gap-3">
+    <section aria-label="Search" className="flex flex-col gap-3">
       <form
         role="search"
         onSubmit={(e) => {
@@ -63,7 +63,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer }: Sear
         </fieldset>
         <input
           type="search"
-          aria-label="Search the catalog"
+          aria-label="Search for games and hardware"
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={kind === 'game' ? 'Game title...' : 'Console or accessory...'}
@@ -72,7 +72,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer }: Sear
         <button
           type="submit"
           disabled={text.trim() === ''}
-          className="rounded bg-gray-900 px-3 py-1 text-sm text-white disabled:opacity-50"
+          className="rounded bg-gray-900 px-3 py-1 text-sm text-white enabled:hover:bg-gray-700 disabled:opacity-50"
         >
           Search
         </button>
@@ -80,12 +80,12 @@ export default function SearchPicker({ initialQuery = '', onPick, footer }: Sear
 
       {search.data?.degraded && (
         <p role="alert" className="rounded bg-amber-50 p-3 text-sm text-amber-800">
-          Catalog search is degraded right now (results come from the local catalog and may be incomplete).
+          Search may be missing some results right now; try again in a moment for the full set.
         </p>
       )}
       {search.isError && (
         <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">
-          The catalog cannot be searched right now. Please try again.
+          Search is not working right now. Please try again.
         </p>
       )}
       {search.isSuccess && search.data.results.length === 0 && (
@@ -115,7 +115,9 @@ export default function SearchPicker({ initialQuery = '', onPick, footer }: Sear
                 {r.category && <span className="ml-2 text-xs text-gray-400">{r.category}</span>}
               </p>
               {r.type === 'game' && r.igdb_game_id !== undefined ? (
-                <p className="mt-1 flex flex-wrap gap-1">
+                <p className="mt-1 flex flex-wrap items-center gap-1">
+                  {/* The chips are the pick targets, not the row; say so. */}
+                  <span className="text-xs text-gray-500">Add on:</span>
                   {r.platforms?.map((p) => (
                     <button
                       key={p.igdb_platform_id}
@@ -130,7 +132,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer }: Sear
                         })
                       }
                       aria-label={`${r.name} on ${p.name}`}
-                      className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
+                      className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
                     >
                       {p.name}
                     </button>
@@ -147,7 +149,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer }: Sear
                       category: r.category ?? '',
                     })
                   }
-                  className="mt-1 rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
+                  className="mt-1 rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
                 >
                   Add {r.name}
                 </button>

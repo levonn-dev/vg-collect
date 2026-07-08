@@ -4,8 +4,8 @@ import { fetchProviders } from '../api/client'
 
 const errorMessages: Record<string, string> = {
   login_failed: 'Login failed. Please try again.',
-  email_unverified: 'Your provider account has no verified email address.',
-  provider_error: 'The login provider is unavailable. Please try again shortly.',
+  email_unverified: 'That account has no verified email address; verify it there and sign in again.',
+  provider_error: 'That sign-in service is unavailable. Please try again shortly.',
 }
 
 const providerLabels: Record<string, string> = {

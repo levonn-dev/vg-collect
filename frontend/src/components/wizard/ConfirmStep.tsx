@@ -47,21 +47,21 @@ export default function ConfirmStep({ pick, details, onBack }: ConfirmStepProps)
       void queryClient.invalidateQueries({ queryKey: ['platform-facets'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       void queryClient.invalidateQueries({ queryKey: ['recommendations'] })
-      void navigate(`/entries/${entry.id}`)
+      void navigate(`/entries/${entry.id}`, { state: { justAdded: true } })
     },
   })
 
-  if (product.isPending) return <p className="py-4">Checking the catalog...</p>
+  if (product.isPending) return <p className="py-4">Looking it up...</p>
   if (product.isError) {
     const notFound = product.error instanceof ApiError && product.error.status === 404
     return (
       <div className="py-4">
         <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">
           {notFound
-            ? 'The provider does not know this item anymore; try searching again.'
-            : 'The catalog cannot be reached right now; your details are kept - try again in a moment.'}
+            ? 'This item is no longer available; try searching again.'
+            : 'The lookup failed; your details are kept - try again in a moment.'}
         </p>
-        <button onClick={onBack} className="mt-3 rounded border border-gray-300 px-3 py-1 text-sm">
+        <button onClick={onBack} className="mt-3 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
           Back
         </button>
       </div>
@@ -92,13 +92,13 @@ export default function ConfirmStep({ pick, details, onBack }: ConfirmStepProps)
         </p>
       )}
       <div className="flex gap-2">
-        <button onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm">
+        <button onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
           Back
         </button>
         <button
           onClick={() => create.mutate()}
           disabled={create.isPending}
-          className="rounded bg-gray-900 px-4 py-1 text-sm text-white disabled:opacity-50"
+          className="rounded bg-gray-900 px-4 py-1 text-sm text-white enabled:hover:bg-gray-700 disabled:opacity-50"
         >
           Add to collection
         </button>

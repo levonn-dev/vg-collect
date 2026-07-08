@@ -21,10 +21,24 @@ function acceptNext(page: Page, promptText?: string) {
   page.once('dialog', (d) => void d.accept(promptText))
 }
 
-test('collection journey: add, edit, price, pin, reorder, views, dashboard, recommendations', async ({ page }) => {
+// The browser reports a dark system preference so the journey can
+// assert the dark default (Playwright's own default is light).
+test.use({ colorScheme: 'dark' })
+
+test('collection journey: add, edit, price, pin, reorder, views, insights, recommendations', async ({ page }) => {
   test.setTimeout(180_000)
   const createdEntryURLs: string[] = []
   await login(page)
+
+  // --- Theme: dark by default under a dark system preference, and an
+  // explicit choice survives a reload. This runs against the bff's CSP,
+  // which blocks inline scripts - exactly what a unit test cannot see.
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await page.getByRole('button', { name: 'Switch to light mode' }).click()
+  await page.reload()
+  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  await page.getByRole('button', { name: 'Switch to dark mode' }).click()
+  await expect(page.locator('html')).toHaveClass(/dark/)
 
   // --- Add a game through search -> details -> match confirmation.
   // Picks are platform-exact so the journey is deterministic against
@@ -32,7 +46,7 @@ test('collection journey: add, edit, price, pin, reorder, views, dashboard, reco
   // but real search returns many editions in provider order (the first
   // Chrono Trigger hit live is a PC port that prices nothing).
   await page.getByRole('link', { name: 'Add', exact: true }).click()
-  await page.getByRole('searchbox', { name: /search the catalog/i }).fill('chrono trigger')
+  await page.getByRole('searchbox', { name: /search for games and hardware/i }).fill('chrono trigger')
   await page.getByRole('button', { name: 'Search', exact: true }).click()
   await page.getByRole('button', { name: /Chrono Trigger on Super Nintendo Entertainment System/ }).first().click()
 
@@ -55,7 +69,7 @@ test('collection journey: add, edit, price, pin, reorder, views, dashboard, reco
   // --- Add a console through hardware search.
   await page.getByRole('link', { name: 'Add', exact: true }).click()
   await page.getByRole('radio', { name: /hardware/i }).check()
-  await page.getByRole('searchbox', { name: /search the catalog/i }).fill('gamecube system')
+  await page.getByRole('searchbox', { name: /search for games and hardware/i }).fill('gamecube system')
   await page.getByRole('button', { name: 'Search', exact: true }).click()
   // first(): real hardware search also returns regional listings.
   await page.getByRole('button', { name: /Add Gamecube System/ }).first().click()
@@ -79,12 +93,12 @@ test('collection journey: add, edit, price, pin, reorder, views, dashboard, reco
   // one as the reorder partner.
   for (const name of [customA, customB]) {
     await page.getByRole('link', { name: 'Add', exact: true }).click()
-    await page.getByRole('button', { name: /add an off-catalog item/i }).click()
+    await page.getByRole('button', { name: /add it as a custom item/i }).click()
     await page.getByLabel('Name', { exact: true }).fill(name)
     await page.getByLabel('Platform', { exact: true }).fill('SNES')
     await page.getByRole('button', { name: 'Continue' }).click()
     await page.getByRole('button', { name: 'Continue' }).click() // details defaults: backlog
-    await expect(page.getByText(/pricing starts disabled/i)).toBeVisible()
+    await expect(page.getByText(/start without market pricing/i)).toBeVisible()
     await page.getByRole('button', { name: 'Add to collection' }).click()
     await expect(page.getByRole('heading', { name })).toBeVisible()
     await expect(page).toHaveURL(/\/entries\//)
@@ -94,16 +108,18 @@ test('collection journey: add, edit, price, pin, reorder, views, dashboard, reco
   // --- Proxy pricing on the custom entry (the page is customB's; go
   // back to customA via its captured URL).
   await page.goto(createdEntryURLs[2])
-  // Selecting proxy without a saved target opens the picker rather than
-  // flipping the radio (the mode PUT waits for a chosen source), so this
-  // is a plain click, not a check that asserts the control toggles.
+  // Selecting proxy flips the radio at once and opens the source
+  // picker; nothing reaches the server until the form is saved.
   await page.getByRole('radio', { name: /proxy/i }).click()
+  await expect(page.getByRole('radio', { name: /proxy/i })).toBeChecked()
   const picker = page.getByRole('dialog', { name: /choose a price source/i })
   await expect(picker).toBeVisible()
-  await picker.getByRole('searchbox', { name: /search the catalog/i }).fill('chrono trigger')
+  await picker.getByRole('searchbox', { name: /search for games and hardware/i }).fill('chrono trigger')
   await picker.getByRole('button', { name: 'Search', exact: true }).click()
   await picker.getByRole('button', { name: /Chrono Trigger on Super Nintendo Entertainment System/ }).first().click()
   await expect(page.getByText('Price source:')).toBeVisible()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.')).toBeVisible()
   // The proxied listing prices the copy: a dollar value appears
   // (the copy's value and the match breakdown both show one, so take
   // the first rather than assert a single match).
@@ -156,9 +172,11 @@ test('collection journey: add, edit, price, pin, reorder, views, dashboard, reco
   await expect(page.getByRole('checkbox', { name: 'Backlog' })).toBeChecked()
   await expect(page.getByRole('region', { name: 'Backlog order' })).toBeVisible()
 
-  // --- Dashboard renders every panel.
-  await page.getByRole('link', { name: 'Dashboard', exact: true }).click()
+  // --- Insights ride the collection page: the stats strip follows the
+  // active view (backlog only right now) and the panels expand in
+  // place.
   await expect(page.getByRole('region', { name: 'Totals' })).toBeVisible()
+  await page.getByRole('button', { name: 'Show insights' }).click()
   await expect(page.getByRole('region', { name: 'By platform' })).toBeVisible()
   // Fresh products got resolve-time snapshots, so the series exists.
   await expect(page.getByRole('region', { name: 'Collection value over time' })).toBeVisible()

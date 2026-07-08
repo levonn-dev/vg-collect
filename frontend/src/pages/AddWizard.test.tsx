@@ -138,7 +138,7 @@ it('creates a custom entry with pricing disabled', async () => {
   vi.stubGlobal('fetch', fetchMock)
   renderWizard()
 
-  await userEvent.click(screen.getByRole('button', { name: /add an off-catalog item/i }))
+  await userEvent.click(screen.getByRole('button', { name: /add it as a custom item/i }))
   await userEvent.type(screen.getByLabelText(/^name$/i), 'Chrono Trigger Repro')
   await userEvent.selectOptions(screen.getByLabelText(/item type/i), 'game')
   await userEvent.type(screen.getByLabelText(/platform/i), 'SNES')
@@ -146,7 +146,7 @@ it('creates a custom entry with pricing disabled', async () => {
 
   await userEvent.click(await screen.findByRole('button', { name: 'Continue' })) // details step, defaults
 
-  expect(await screen.findByText(/pricing starts disabled/i)).toBeInTheDocument()
+  expect(await screen.findByText(/start without market pricing/i)).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
   expect(await screen.findByText('entry-detail')).toBeInTheDocument()
 
@@ -173,7 +173,7 @@ it('invalidates the dashboard and recommendations caches on a custom create', as
   qc.setQueryData(['recommendations'], { stale: true })
   renderWizard('/add', qc)
 
-  await userEvent.click(screen.getByRole('button', { name: /add an off-catalog item/i }))
+  await userEvent.click(screen.getByRole('button', { name: /add it as a custom item/i }))
   await userEvent.type(screen.getByLabelText(/^name$/i), 'Chrono Trigger Repro')
   await userEvent.selectOptions(screen.getByLabelText(/item type/i), 'game')
   await userEvent.type(screen.getByLabelText(/platform/i), 'SNES')
@@ -189,6 +189,6 @@ it('invalidates the dashboard and recommendations caches on a custom create', as
 it('steers variants away from the custom path', async () => {
   vi.stubGlobal('fetch', vi.fn())
   renderWizard()
-  await userEvent.click(screen.getByRole('button', { name: /add an off-catalog item/i }))
-  expect(screen.getByText(/variant of a cataloged item/i)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: /add it as a custom item/i }))
+  expect(screen.getByText(/variant of a searchable item/i)).toBeInTheDocument()
 })

@@ -18,7 +18,7 @@ export default function Pager({ page, totalCount, onPage }: PagerProps) {
       <button
         onClick={() => onPage(page - 1)}
         disabled={page === 0}
-        className="rounded border border-gray-300 px-2 py-1 disabled:opacity-40"
+        className="rounded border border-gray-300 px-2 py-1 enabled:hover:bg-gray-50 disabled:opacity-40"
       >
         Previous
       </button>
@@ -28,7 +28,7 @@ export default function Pager({ page, totalCount, onPage }: PagerProps) {
       <button
         onClick={() => onPage(page + 1)}
         disabled={page >= lastPage}
-        className="rounded border border-gray-300 px-2 py-1 disabled:opacity-40"
+        className="rounded border border-gray-300 px-2 py-1 enabled:hover:bg-gray-50 disabled:opacity-40"
       >
         Next
       </button>

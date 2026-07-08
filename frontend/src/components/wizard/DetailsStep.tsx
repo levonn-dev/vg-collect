@@ -73,6 +73,15 @@ export default function DetailsStep({ heading, onBack, onNext }: DetailsStepProp
   const [v, setV] = useState<DetailsValues>(defaultDetails)
   const set = <K extends keyof DetailsValues>(key: K, value: DetailsValues[K]) =>
     setV((prev) => ({ ...prev, [key]: value }))
+  // Packaging implies the flags: loose is by definition unboxed, while
+  // cib and sealed come boxed with a manual. The gated condition
+  // selects follow the flags; either can still be corrected by hand.
+  const setPackaging = (packaging: DetailsValues['packaging']) =>
+    setV((prev) =>
+      packaging === 'loose'
+        ? { ...prev, packaging, hasBox: false, hasManual: false }
+        : { ...prev, packaging, hasBox: true, hasManual: true },
+    )
 
   const inputClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
   const labelClass = 'flex flex-col gap-1 text-sm font-medium'
@@ -117,7 +126,7 @@ export default function DetailsStep({ heading, onBack, onNext }: DetailsStepProp
         </label>
         <label className={labelClass}>
           Packaging
-          <select value={v.packaging} onChange={(e) => set('packaging', e.target.value as DetailsValues['packaging'])} className={inputClass}>
+          <select value={v.packaging} onChange={(e) => setPackaging(e.target.value as DetailsValues['packaging'])} className={inputClass}>
             {PACKAGINGS.map((p) => (
               <option key={p} value={p}>
                 {p}
@@ -191,10 +200,10 @@ export default function DetailsStep({ heading, onBack, onNext }: DetailsStepProp
         <textarea value={v.notes} onChange={(e) => set('notes', e.target.value)} rows={2} className={inputClass} />
       </label>
       <div className="flex gap-2">
-        <button type="button" onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm">
+        <button type="button" onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
           Back
         </button>
-        <button type="submit" className="rounded bg-gray-900 px-4 py-1 text-sm text-white">
+        <button type="submit" className="rounded bg-gray-900 px-4 py-1 text-sm text-white hover:bg-gray-700">
           Continue
         </button>
       </div>

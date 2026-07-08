@@ -54,7 +54,7 @@ export default function Recommendations() {
               <Link
                 to={`/add?q=${encodeURIComponent(r.name)}`}
                 aria-label={`Add ${r.name} to collection`}
-                className="mt-2 rounded bg-gray-900 px-2 py-1 text-center text-xs text-white"
+                className="mt-2 rounded bg-gray-900 px-2 py-1 text-center text-xs text-white hover:bg-gray-700"
               >
                 Add to collection
               </Link>

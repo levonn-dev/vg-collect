@@ -3,6 +3,8 @@ import type { Entry, EntryUpdate } from '../../api/collection'
 import { centsToDollars, dollarsToCents } from '../../lib/format'
 import { entryToUpdate } from '../../lib/entryUpdate'
 import { CONDITIONS, PACKAGINGS, REGIONS, STATUSES } from '../../lib/listParams'
+import type { PricingValue } from './PricingPanel'
+import PricingPanel from './PricingPanel'
 import TagPicker from './TagPicker'
 
 type Condition = NonNullable<Entry['item_condition']>
@@ -29,6 +31,7 @@ interface FormValues {
   storageLocation: string
   pinned: boolean
   tagIds: string[]
+  pricing: PricingValue
 }
 
 function valuesFrom(e: Entry): FormValues {
@@ -54,13 +57,14 @@ function valuesFrom(e: Entry): FormValues {
     storageLocation: e.storage_location ?? '',
     pinned: e.pinned,
     tagIds: e.tags.map((t) => t.id),
+    pricing: { mode: e.pricing_mode, productId: e.pricing_product_id },
   }
 }
 
 // toUpdate lays the form values over the faithful PUT baseline. The
-// update is a full replacement (absent optional = cleared), so fields
-// this form does not render (the pricing pair) ride the baseline
-// unchanged, and cleared inputs become absent fields on purpose.
+// update is a full replacement (absent optional = cleared), so
+// cleared inputs become absent fields on purpose, and the pricing
+// pair comes from the panel-edited draft like every other field.
 function toUpdate(e: Entry, v: FormValues): EntryUpdate {
   const u: EntryUpdate = {
     ...entryToUpdate(e),
@@ -76,6 +80,8 @@ function toUpdate(e: Entry, v: FormValues): EntryUpdate {
     currency: v.currency.trim() === '' ? 'USD' : v.currency.trim().toUpperCase(),
     purchased_at: v.purchasedAt === '' ? undefined : v.purchasedAt,
     purchased_from: v.purchasedFrom.trim() === '' ? undefined : v.purchasedFrom.trim(),
+    pricing_mode: v.pricing.mode,
+    pricing_product_id: v.pricing.productId,
     status: v.status,
     rating: v.rating === '' ? undefined : Number(v.rating),
     notes: v.notes.trim() === '' ? undefined : v.notes,
@@ -111,13 +117,35 @@ interface EntryFormProps {
   entry: Entry
   onSave: (update: EntryUpdate) => void
   saving: boolean
+  saved: boolean
   error: string | null
 }
 
-export default function EntryForm({ entry, onSave, saving, error }: EntryFormProps) {
+export default function EntryForm({ entry, onSave, saving, saved, error }: EntryFormProps) {
   const [v, setV] = useState<FormValues>(() => valuesFrom(entry))
-  const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) =>
+  // The saved confirmation must disappear the moment the form drifts
+  // from what was saved, so every field change flips this.
+  const [editedSinceSave, setEditedSinceSave] = useState(false)
+  // Client-side save blocker (a proxy needs a chosen source); any
+  // further edit retracts it.
+  const [pricingError, setPricingError] = useState<string | null>(null)
+  const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
+    setEditedSinceSave(true)
+    setPricingError(null)
     setV((prev) => ({ ...prev, [key]: value }))
+  }
+  // Packaging implies the flags: loose is by definition unboxed, while
+  // cib and sealed come boxed with a manual. The gated condition
+  // selects follow the flags; either can still be corrected by hand.
+  const setPackaging = (packaging: Entry['packaging']) => {
+    setEditedSinceSave(true)
+    setPricingError(null)
+    setV((prev) =>
+      packaging === 'loose'
+        ? { ...prev, packaging, hasBox: false, hasManual: false }
+        : { ...prev, packaging, hasBox: true, hasManual: true },
+    )
+  }
   const custom = !entry.product_id
 
   const selectClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
@@ -142,9 +170,20 @@ export default function EntryForm({ entry, onSave, saving, error }: EntryFormPro
   )
 
   return (
+    <>
+      {/* Above the form element, not inside it: the proxy picker
+          embeds the catalog search form, and forms cannot nest. The
+          draft still lives here, so pricing edits save with the same
+          button as everything else. */}
+      <PricingPanel entry={entry} value={v.pricing} onChange={(p) => set('pricing', p)} />
     <form
       onSubmit={(e) => {
         e.preventDefault()
+        if (v.pricing.mode === 'proxy' && !v.pricing.productId) {
+          setPricingError('Choose a price source before saving.')
+          return
+        }
+        setEditedSinceSave(false)
         onSave(toUpdate(entry, v))
       }}
       className="flex flex-col gap-4"
@@ -186,7 +225,7 @@ export default function EntryForm({ entry, onSave, saving, error }: EntryFormPro
         </label>
         <label className={labelClass}>
           Packaging
-          <select value={v.packaging} onChange={(e) => set('packaging', e.target.value as Entry['packaging'])} className={selectClass}>
+          <select value={v.packaging} onChange={(e) => setPackaging(e.target.value as Entry['packaging'])} className={selectClass}>
             {PACKAGINGS.map((p) => (
               <option key={p} value={p}>
                 {p}
@@ -265,16 +304,20 @@ export default function EntryForm({ entry, onSave, saving, error }: EntryFormPro
 
       <TagPicker value={v.tagIds} onChange={(ids) => set('tagIds', ids)} />
 
-      {error && (
+      {(pricingError ?? error) && (
         <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">
-          {error}
+          {pricingError ?? error}
         </p>
       )}
-      <div>
-        <button type="submit" disabled={saving} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">
+      <div className="flex items-center gap-3">
+        <button type="submit" disabled={saving} className="rounded bg-gray-900 px-4 py-2 text-sm text-white enabled:hover:bg-gray-700 disabled:opacity-50">
           Save changes
         </button>
+        <span aria-live="polite" className="text-sm text-green-800">
+          {saved && !editedSinceSave && !saving ? 'Saved.' : ''}
+        </span>
       </div>
     </form>
+    </>
   )
 }

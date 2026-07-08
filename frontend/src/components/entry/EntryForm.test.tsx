@@ -10,7 +10,7 @@ function renderForm(entry = entryFixture(), onSave = vi.fn()) {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { tags: [] })))
   const view = render(
     <QueryClientProvider client={qc}>
-      <EntryForm entry={entry} onSave={onSave} saving={false} error={null} />
+      <EntryForm entry={entry} onSave={onSave} saving={false} saved={false} error={null} />
     </QueryClientProvider>,
   )
   return { onSave, unmount: view.unmount }
@@ -47,8 +47,8 @@ it('submits a faithful full-replacement payload with the edits applied', async (
   expect(onSave).toHaveBeenCalledTimes(1)
   const sent = onSave.mock.calls[0][0] as EntryUpdate
   expect(sent.notes).toBe('replayed in 2026')
-  // Untouched fields ride the baseline: pricing survives even though
-  // the form renders no pricing controls, and tags survive.
+  // Untouched fields survive: the pricing draft initializes from the
+  // entry and rides the payload unchanged, and tags survive.
   expect(sent.pricing_mode).toBe('proxy')
   expect(sent.pricing_product_id).toBe('p9')
   expect(sent.tag_ids).toEqual(['t1'])
@@ -64,12 +64,78 @@ it('clearing an optional input drops the field from the payload', async () => {
   expect(sent.notes).toBeUndefined()
 })
 
+it('drafts pricing edits for the save button: the radio moves, Saved. retracts, the payload carries them', async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { tags: [] })))
+  const onSave = vi.fn()
+  render(
+    <QueryClientProvider client={qc}>
+      <EntryForm
+        entry={entryFixture({ pricing_mode: 'proxy', pricing_product_id: 'p9' })}
+        onSave={onSave} saving={false} saved={true} error={null}
+      />
+    </QueryClientProvider>,
+  )
+  expect(screen.getByText('Saved.')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('radio', { name: /disabled/i }))
+  expect(screen.getByRole('radio', { name: /disabled/i })).toBeChecked()
+  expect(screen.queryByText('Saved.')).not.toBeInTheDocument()
+  expect(onSave).not.toHaveBeenCalled()
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+  const sent = onSave.mock.calls[0][0] as EntryUpdate
+  expect(sent.pricing_mode).toBe('disabled')
+  expect(sent.pricing_product_id).toBe('p9')
+})
+
+it('blocks saving a proxy that has no price source yet', async () => {
+  const { onSave } = renderForm(
+    entryFixture({ product_id: undefined, display_name: 'Repro Cart', pricing_mode: 'disabled', pricing_product_id: undefined }),
+  )
+  await userEvent.click(screen.getByRole('radio', { name: /proxy/i }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Close' }))
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+  expect(onSave).not.toHaveBeenCalled()
+  expect(screen.getByRole('alert')).toHaveTextContent('Choose a price source before saving.')
+})
+
+it('clears box and manual when packaging goes loose', async () => {
+  const { onSave } = renderForm(
+    entryFixture({ has_box: true, has_manual: true, box_condition: 'good', manual_condition: 'good' }),
+  )
+  await userEvent.selectOptions(screen.getByLabelText(/^packaging/i), 'loose')
+  expect(screen.getByRole('checkbox', { name: /has box/i })).not.toBeChecked()
+  expect(screen.getByRole('checkbox', { name: /has manual/i })).not.toBeChecked()
+  expect(screen.queryByLabelText(/box condition/i)).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+  const sent = onSave.mock.calls[0][0] as EntryUpdate
+  expect(sent.packaging).toBe('loose')
+  expect(sent.has_box).toBe(false)
+  expect(sent.has_manual).toBe(false)
+  expect(sent.box_condition).toBeUndefined()
+  expect(sent.manual_condition).toBeUndefined()
+})
+
+it('checks box and manual when packaging goes cib or sealed', async () => {
+  const { onSave } = renderForm(
+    entryFixture({ packaging: 'loose', has_box: false, has_manual: false, box_condition: undefined, manual_condition: undefined }),
+  )
+  await userEvent.selectOptions(screen.getByLabelText(/^packaging/i), 'cib')
+  expect(screen.getByRole('checkbox', { name: /has box/i })).toBeChecked()
+  expect(screen.getByRole('checkbox', { name: /has manual/i })).toBeChecked()
+  expect(screen.getByLabelText(/box condition/i)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+  const sent = onSave.mock.calls[0][0] as EntryUpdate
+  expect(sent.packaging).toBe('cib')
+  expect(sent.has_box).toBe(true)
+  expect(sent.has_manual).toBe(true)
+})
+
 it('renders the save error', () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { tags: [] })))
   render(
     <QueryClientProvider client={qc}>
-      <EntryForm entry={entryFixture()} onSave={vi.fn()} saving={false} error="no such pricing product" />
+      <EntryForm entry={entryFixture()} onSave={vi.fn()} saving={false} saved={false} error="no such pricing product" />
     </QueryClientProvider>,
   )
   expect(screen.getByRole('alert')).toHaveTextContent('no such pricing product')
@@ -87,7 +153,7 @@ it('carries edits from every remaining field control into the payload', async ()
   const entry = entryFixture({ product_id: undefined, display_name: 'Repro Cart' })
   render(
     <QueryClientProvider client={qc}>
-      <EntryForm entry={entry} onSave={onSave} saving={false} error={null} />
+      <EntryForm entry={entry} onSave={onSave} saving={false} saved={false} error={null} />
     </QueryClientProvider>,
   )
   await userEvent.click(await screen.findByRole('checkbox', { name: /rpg/i }))
@@ -122,7 +188,10 @@ it('carries edits from every remaining field control into the payload', async ()
   expect(sent.edition).toBe('black label')
   expect(sent.packaging).toBe('loose')
   expect(sent.item_condition).toBe('poor')
-  expect(sent.has_manual).toBe(false)
+  // Going loose cleared both flags; the manual click above re-checked
+  // manual only.
+  expect(sent.has_box).toBe(false)
+  expect(sent.has_manual).toBe(true)
   expect(sent.price_paid_cents).toBe(999)
   expect(sent.currency).toBe('EUR')
   expect(sent.purchased_at).toBe('2020-05-01')

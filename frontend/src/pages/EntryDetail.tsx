@@ -1,18 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router'
+import { useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import type { EntryUpdate } from '../api/collection'
 import { deleteEntry, fetchEntry, updateEntry } from '../api/collection'
 import ItemTypeIcon from '../components/ItemTypeIcon'
 import EntryForm from '../components/entry/EntryForm'
-import PricingPanel from '../components/entry/PricingPanel'
 import { releaseYear } from '../lib/format'
 
 export default function EntryDetail() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const entry = useQuery({ queryKey: ['entry', id], queryFn: () => fetchEntry(id) })
+  // The wizard lands here with navigation state after a create; the
+  // banner confirms the add without a layout jump elsewhere.
+  const justAdded = Boolean((location.state as { justAdded?: boolean } | null)?.justAdded)
 
   const save = useMutation({
     mutationFn: (update: EntryUpdate) => updateEntry(id, update),
@@ -53,6 +56,11 @@ export default function EntryDetail() {
   const e = entry.data
   return (
     <main className="py-6" aria-label="Entry detail">
+      {justAdded && (
+        <p role="status" className="mb-4 rounded bg-green-50 p-3 text-sm text-green-800">
+          Added to your collection.
+        </p>
+      )}
       <header className="mb-6 flex items-start gap-4">
         {e.cover_url ? (
           <img
@@ -83,11 +91,11 @@ export default function EntryDetail() {
           Delete entry
         </button>
       </header>
-      <PricingPanel entry={e} />
       <EntryForm
         entry={e}
         onSave={(u) => save.mutate(u)}
         saving={save.isPending}
+        saved={save.isSuccess}
         error={save.isError ? save.error.message : null}
       />
     </main>
