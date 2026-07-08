@@ -183,7 +183,12 @@ func localResults(kind string, prods []store.Product) []api.SearchResult {
 				}
 			}
 			if p.Platform != nil {
-				prs := []api.PlatformRef{{IgdbPlatformId: p.Platform.IGDBID, Name: p.Platform.Name}}
+				pr := api.PlatformRef{IgdbPlatformId: p.Platform.IGDBID, Name: p.Platform.Name}
+				if p.Platform.LogoURL != "" {
+					lu := p.Platform.LogoURL
+					pr.LogoUrl = &lu
+				}
+				prs := []api.PlatformRef{pr}
 				res.Platforms = &prs
 			}
 			out = append(out, res)
@@ -284,6 +289,10 @@ func toAPIProduct(p store.Product) api.Product {
 	}
 	if p.Platform != nil {
 		out.Platform = &api.PlatformRef{IgdbPlatformId: p.Platform.IGDBID, Name: p.Platform.Name}
+		if p.Platform.LogoURL != "" {
+			lu := p.Platform.LogoURL
+			out.Platform.LogoUrl = &lu
+		}
 	}
 	if p.IGDB != nil {
 		m := api.IgdbMeta{
@@ -483,6 +492,9 @@ func (h *Handlers) buildGameProduct(ctx context.Context, key store.ProductKey) (
 	if platform == nil {
 		return store.Product{}, &resolveErr{http.StatusBadRequest, "invalid_body", "the game did not release on that platform"}
 	}
+	// The game payload's platform list carries names only; the logo
+	// lives in the platform catalog.
+	platform.LogoURL = h.platformLogoFor(ctx, platform.IGDBID)
 	now := h.now()
 	if err := h.store.UpsertRaw(ctx, games, now); err != nil {
 		return store.Product{}, fmt.Errorf("raw upsert: %w", err)
@@ -559,7 +571,7 @@ func (h *Handlers) buildHardwareProduct(ctx context.Context, typ string, key sto
 // ensurePlatforms serves the cached IGDB platform catalog, fetching it
 // wholesale on first need or after the staleness horizon (stale serves
 // when the provider is down).
-func (h *Handlers) ensurePlatforms(ctx context.Context) ([]igdb.Platform, error) {
+func (h *Handlers) ensurePlatforms(ctx context.Context) ([]store.CatalogPlatform, error) {
 	at, err := h.store.PlatformsFetchedAt(ctx)
 	if err != nil {
 		return nil, err
@@ -578,7 +590,14 @@ func (h *Handlers) ensurePlatforms(ctx context.Context) ([]igdb.Platform, error)
 	if err := h.store.UpsertPlatforms(ctx, ps, h.now()); err != nil {
 		h.logger.WarnContext(ctx, "platform upsert failed", "err", err)
 	}
-	return ps, nil
+	rows := make([]store.CatalogPlatform, 0, len(ps))
+	for _, p := range ps {
+		rows = append(rows, store.CatalogPlatform{
+			ID: p.ID, Name: p.Name, Abbreviation: p.Abbreviation,
+			Generation: p.Generation, LogoURL: p.LogoURL(),
+		})
+	}
+	return rows, nil
 }
 
 // platformFor reverse-maps a PriceCharting console-name onto the IGDB
@@ -591,10 +610,26 @@ func (h *Handlers) platformFor(ctx context.Context, consoleName string) *store.P
 	}
 	for _, p := range ps {
 		if match.ConsoleMatches(p.Name, consoleName) {
-			return &store.Platform{IGDBID: p.ID, Name: p.Name}
+			return &store.Platform{IGDBID: p.ID, Name: p.Name, LogoURL: p.LogoURL}
 		}
 	}
 	return nil
+}
+
+// platformLogoFor reads the catalog logo for a platform id ("" when
+// the catalog is unavailable or the platform ships no logo).
+func (h *Handlers) platformLogoFor(ctx context.Context, igdbID int64) string {
+	ps, err := h.ensurePlatforms(ctx)
+	if err != nil {
+		h.logger.WarnContext(ctx, "platform catalog unavailable; product keeps no platform logo", "err", err)
+		return ""
+	}
+	for _, p := range ps {
+		if p.ID == igdbID {
+			return p.LogoURL
+		}
+	}
+	return ""
 }
 
 // BatchPrices reads current prices straight from the catalog (the
@@ -695,6 +730,9 @@ const (
 	// recsCandidateCap bounds the metadata-fetch budget per request.
 	recsCandidateCap = 200
 	recsTopGenres    = 3
+	// maxLibraryEntries mirrors the contract's maxItems on the score
+	// request; past it the request is rejected, not truncated.
+	maxLibraryEntries = 2500
 )
 
 // ScoreRecommendations scores unowned games against the caller's
@@ -706,6 +744,10 @@ func (h *Handlers) ScoreRecommendations(w http.ResponseWriter, r *http.Request) 
 	r.Body = http.MaxBytesReader(w, r.Body, 256*1024)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+		return
+	}
+	if len(req.Library) > maxLibraryEntries {
+		problem(w, r, http.StatusBadRequest, "library_too_large", fmt.Sprintf("library exceeds %d entries", maxLibraryEntries))
 		return
 	}
 	limit := recsDefaultLimit

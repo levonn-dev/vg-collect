@@ -61,9 +61,9 @@ func (s *Store) RawByIDs(ctx context.Context, ids []int64) ([]RawGame, error) {
 
 // UpsertPlatforms replaces the IGDB platform catalog (fetched
 // wholesale; consoles borrow names from it where matchable).
-// `logo_url` is persisted as a precomputed display string for
-// future readers and is not rehydrated by ListPlatforms.
-// fetched_at rides on each doc for the staleness check.
+// `logo_url` is persisted as a precomputed display string; the raw
+// image id is not kept. fetched_at rides on each doc for the
+// staleness check.
 func (s *Store) UpsertPlatforms(ctx context.Context, ps []igdb.Platform, fetchedAt time.Time) error {
 	if len(ps) == 0 {
 		return nil
@@ -90,26 +90,15 @@ func (s *Store) UpsertPlatforms(ctx context.Context, ps []igdb.Platform, fetched
 }
 
 // ListPlatforms returns the cached platform catalog (empty = never
-// fetched). Returned platforms carry no logo data; LogoURL() on
-// them returns the empty string and the stored logo_url field is
-// intentionally not read back.
-func (s *Store) ListPlatforms(ctx context.Context) ([]igdb.Platform, error) {
+// fetched), logo_url included as stored.
+func (s *Store) ListPlatforms(ctx context.Context) ([]CatalogPlatform, error) {
 	cur, err := s.db.Collection(colPlatforms).Find(ctx, bson.D{}, options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}))
 	if err != nil {
 		return nil, fmt.Errorf("store: list platforms: %w", err)
 	}
-	var docs []struct {
-		ID           int64  `bson:"_id"`
-		Name         string `bson:"name"`
-		Abbreviation string `bson:"abbreviation"`
-		Generation   int    `bson:"generation"`
-	}
-	if err := cur.All(ctx, &docs); err != nil {
+	var out []CatalogPlatform
+	if err := cur.All(ctx, &out); err != nil {
 		return nil, fmt.Errorf("store: list platforms: %w", err)
-	}
-	out := make([]igdb.Platform, 0, len(docs))
-	for _, d := range docs {
-		out = append(out, igdb.Platform{ID: d.ID, Name: d.Name, Abbreviation: d.Abbreviation, Generation: d.Generation})
 	}
 	return out, nil
 }

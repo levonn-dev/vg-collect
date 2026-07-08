@@ -35,7 +35,7 @@ type Store interface {
 	UpsertRaw(ctx context.Context, games []igdb.Game, fetchedAt time.Time) error
 	RawByIDs(ctx context.Context, ids []int64) ([]store.RawGame, error)
 	UpsertPlatforms(ctx context.Context, ps []igdb.Platform, fetchedAt time.Time) error
-	ListPlatforms(ctx context.Context) ([]igdb.Platform, error)
+	ListPlatforms(ctx context.Context) ([]store.CatalogPlatform, error)
 	PlatformsFetchedAt(ctx context.Context) (time.Time, error)
 	AppendSnapshot(ctx context.Context, s store.Snapshot) error
 	SnapshotsSince(ctx context.Context, ids []string, since time.Time) (map[string][]store.Snapshot, error)

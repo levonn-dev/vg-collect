@@ -47,7 +47,7 @@ type stubStore struct {
 	upsertRaw          func(ctx context.Context, games []igdb.Game, fetchedAt time.Time) error
 	rawByIDs           func(ctx context.Context, ids []int64) ([]store.RawGame, error)
 	upsertPlatforms    func(ctx context.Context, ps []igdb.Platform, fetchedAt time.Time) error
-	listPlatforms      func(ctx context.Context) ([]igdb.Platform, error)
+	listPlatforms      func(ctx context.Context) ([]store.CatalogPlatform, error)
 	platformsFetchedAt func(ctx context.Context) (time.Time, error)
 	appendSnapshot     func(ctx context.Context, s store.Snapshot) error
 	snapshotsSince     func(ctx context.Context, ids []string, since time.Time) (map[string][]store.Snapshot, error)
@@ -139,7 +139,7 @@ func (s *stubStore) UpsertPlatforms(ctx context.Context, ps []igdb.Platform, fet
 	return s.upsertPlatforms(ctx, ps, fetchedAt)
 }
 
-func (s *stubStore) ListPlatforms(ctx context.Context) ([]igdb.Platform, error) {
+func (s *stubStore) ListPlatforms(ctx context.Context) ([]store.CatalogPlatform, error) {
 	if s.listPlatforms == nil {
 		panic("unexpected ListPlatforms")
 	}
@@ -824,6 +824,10 @@ func TestUnitResolve_PriceProviderDownStillCreatesUnmatched(t *testing.T) {
 			created = p
 			return p, nil
 		},
+		platformsFetchedAt: func(context.Context) (time.Time, error) { return time.Now(), nil },
+		listPlatforms: func(context.Context) ([]store.CatalogPlatform, error) {
+			return []store.CatalogPlatform{{ID: 19, Name: "Super Nintendo Entertainment System", LogoURL: "https://images.igdb.com/igdb/image/upload/t_logo_med/pl4k.jpg"}}, nil
+		},
 	}
 	games := &stubGames{gamesByIDs: func(context.Context, []int64) ([]igdb.Game, error) {
 		return []igdb.Game{{ID: 1011, Name: "Chrono Trigger", Platforms: []igdb.Named{{ID: 19, Name: "Super Nintendo Entertainment System"}}}}, nil
@@ -839,6 +843,10 @@ func TestUnitResolve_PriceProviderDownStillCreatesUnmatched(t *testing.T) {
 	}
 	if created.PriceCharting != nil {
 		t.Fatal("pricing outage must store unmatched, not guess")
+	}
+	// The platform ref picks up the catalog logo at create.
+	if created.Platform == nil || created.Platform.LogoURL != "https://images.igdb.com/igdb/image/upload/t_logo_med/pl4k.jpg" {
+		t.Fatalf("platform logo must ride the created product: %+v", created.Platform)
 	}
 }
 
@@ -867,6 +875,10 @@ func TestUnitResolve_LostRaceDoesNotDoubleSnapshot(t *testing.T) {
 	// FindProduct-on-duplicate-key fallback produces.
 	var passedID string
 	var snapshotCalls int
+	catalogStub := func(context.Context) ([]store.CatalogPlatform, error) {
+		return []store.CatalogPlatform{{ID: 19, Name: "Super Nintendo Entertainment System"}}, nil
+	}
+	fetchedAtStub := func(context.Context) (time.Time, error) { return time.Now(), nil }
 	st := &stubStore{
 		findProduct: func(context.Context, store.ProductKey) (store.Product, error) {
 			return store.Product{}, store.ErrNotFound
@@ -881,6 +893,8 @@ func TestUnitResolve_LostRaceDoesNotDoubleSnapshot(t *testing.T) {
 			snapshotCalls++
 			return nil
 		},
+		platformsFetchedAt: fetchedAtStub,
+		listPlatforms:      catalogStub,
 	}
 	h := newUnitHandlers(st, games, prices, newStubCache())
 	rec := serveUnit(t, h, env, http.MethodPost, "/products/resolve", tok, body)
@@ -914,6 +928,8 @@ func TestUnitResolve_LostRaceDoesNotDoubleSnapshot(t *testing.T) {
 			snapshotCalls++
 			return nil
 		},
+		platformsFetchedAt: fetchedAtStub,
+		listPlatforms:      catalogStub,
 	}
 	h2 := newUnitHandlers(st2, games, prices, newStubCache())
 	rec2 := serveUnit(t, h2, env, http.MethodPost, "/products/resolve", tok, body)
@@ -1169,6 +1185,27 @@ func TestRecommendations_SparseLibraryUsesGenreFallback(t *testing.T) {
 		if rec.IgdbGameId == 1020 {
 			t.Fatal("owned id recommended by fallback")
 		}
+	}
+}
+
+// TestUnitRecommendations_LibraryTooLargeRejected pins the contract's
+// maxItems bound: one entry past it answers 400 before any store or
+// provider call (the zero-field stubs would panic if reached).
+func TestUnitRecommendations_LibraryTooLargeRejected(t *testing.T) {
+	env := newAuthEnv(t)
+	tok := env.token(t, "u1", []string{"user"})
+	h := newUnitHandlers(&stubStore{}, &stubGames{}, nil, newStubCache())
+	library := make([]map[string]any, 2501)
+	for i := range library {
+		library[i] = map[string]any{"igdb_game_id": i + 1}
+	}
+	rec := serveUnit(t, h, env, http.MethodPost, "/recommendations:score", tok,
+		map[string]any{"library": library})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "library_too_large") {
+		t.Fatalf("want library_too_large problem, got %s", rec.Body.String())
 	}
 }
 

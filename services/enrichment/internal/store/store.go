@@ -39,8 +39,20 @@ func New(db *mongo.Database) *Store { return &Store{db: db} }
 // Platform is the product's platform reference (a projection of the
 // IGDB platform, denormalized for display and identity).
 type Platform struct {
-	IGDBID int64  `bson:"igdb_id"`
-	Name   string `bson:"name"`
+	IGDBID  int64  `bson:"igdb_id"`
+	Name    string `bson:"name"`
+	LogoURL string `bson:"logo_url,omitempty"`
+}
+
+// CatalogPlatform is one cached platform-catalog row. LogoURL is the
+// ready display string precomputed at upsert (the raw IGDB image id
+// is not kept).
+type CatalogPlatform struct {
+	ID           int64  `bson:"_id"`
+	Name         string `bson:"name"`
+	Abbreviation string `bson:"abbreviation"`
+	Generation   int    `bson:"generation"`
+	LogoURL      string `bson:"logo_url"`
 }
 
 // Genre keeps both the IGDB id (recommendation queries) and the

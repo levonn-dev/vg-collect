@@ -62,7 +62,7 @@ func TestPlatforms_UpsertListFetchedAt(t *testing.T) {
 	at := time.Date(2026, 7, 1, 6, 0, 0, 0, time.UTC)
 	ps := []igdb.Platform{
 		{ID: 19, Name: "Super Nintendo Entertainment System", Abbreviation: "SNES", Generation: 4},
-		{ID: 4, Name: "Nintendo 64", Abbreviation: "N64", Generation: 5},
+		{ID: 4, Name: "Nintendo 64", Abbreviation: "N64", Generation: 5, PlatformLogo: &igdb.Cover{ImageID: "pl78"}},
 	}
 	if err := s.UpsertPlatforms(ctx, ps, at); err != nil {
 		t.Fatal(err)
@@ -73,6 +73,11 @@ func TestPlatforms_UpsertListFetchedAt(t *testing.T) {
 	}
 	if got[0].ID != 4 || got[1].Abbreviation != "SNES" {
 		t.Fatalf("unexpected platforms: %+v", got)
+	}
+	// The precomputed logo_url round-trips; a logo-less platform reads
+	// back empty.
+	if got[0].LogoURL != "https://images.igdb.com/igdb/image/upload/t_logo_med/pl78.jpg" || got[1].LogoURL != "" {
+		t.Fatalf("logo_url round-trip: %+v", got)
 	}
 	when, err := s.PlatformsFetchedAt(ctx)
 	if err != nil || !when.Equal(at) {
