@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { jsonResponse } from '../test/fixtures'
@@ -34,6 +34,30 @@ it('renders the chrome and the routed page for a signed-in user', async () => {
   expect(screen.getByText('alice')).toBeInTheDocument()
   expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Collection' })).toBeInTheDocument()
+})
+
+it('renders the avatar without a referrer and falls back to an initial on load failure', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
+    ...me, avatar_url: 'https://lh3.example/avatar=s96-c',
+  })))
+  renderLayout()
+  await screen.findByText('page-content')
+  const img = document.querySelector('img')
+  expect(img).toHaveAttribute('src', 'https://lh3.example/avatar=s96-c')
+  expect(img).toHaveAttribute('referrerpolicy', 'no-referrer')
+  // Avatar hosts flake; a failed load must degrade to the initial
+  // instead of a stuck blank image.
+  fireEvent.error(img!)
+  expect(document.querySelector('img')).toBeNull()
+  expect(screen.getByText('a', { selector: 'span' })).toBeInTheDocument()
+})
+
+it('shows the initial when the profile has no avatar', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, me)))
+  renderLayout()
+  await screen.findByText('page-content')
+  expect(document.querySelector('img')).toBeNull()
+  expect(screen.getByText('a', { selector: 'span' })).toBeInTheDocument()
 })
 
 it('bounces to login on 401', async () => {

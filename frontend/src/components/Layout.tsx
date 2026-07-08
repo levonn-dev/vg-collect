@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Navigate, NavLink, Outlet, useNavigate } from 'react-router'
 import { ApiError, fetchMe, logout } from '../api/client'
 
@@ -6,6 +7,36 @@ function navClass({ isActive }: { isActive: boolean }): string {
   return isActive
     ? 'text-sm font-semibold text-gray-900'
     : 'text-sm text-gray-500 hover:text-gray-900'
+}
+
+// Avatar renders the provider profile image with a same-size initial
+// fallback: third-party avatar hosts flake (aborted first loads,
+// referrer-sensitive throttling), and a failed <img> never retries on
+// its own, so a failure must degrade to something stable instead of a
+// stuck blank. no-referrer sidesteps googleusercontent's
+// referrer-based rejections. Callers key the element by the URL so a
+// changed avatar remounts with a fresh attempt.
+function Avatar({ url, name }: { url?: string; name: string }) {
+  const [failed, setFailed] = useState(false)
+  if (!url || failed) {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-sm font-bold text-gray-500"
+      >
+        {name.charAt(0)}
+      </span>
+    )
+  }
+  return (
+    <img
+      src={url}
+      alt=""
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="h-8 w-8 rounded-full"
+    />
+  )
 }
 
 // Layout is the authenticated shell: it gates on /api/me (401 bounces
@@ -62,9 +93,7 @@ export default function Layout() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
-          {me.data.avatar_url && (
-            <img src={me.data.avatar_url} alt="" className="h-8 w-8 rounded-full" />
-          )}
+          <Avatar key={me.data.avatar_url} url={me.data.avatar_url} name={me.data.display_name} />
           <span className="text-sm text-gray-700">{me.data.display_name}</span>
           <button
             onClick={() => signOut.mutate()}
