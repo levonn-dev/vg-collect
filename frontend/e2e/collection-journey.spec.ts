@@ -27,10 +27,14 @@ test('collection journey: add, edit, price, pin, reorder, views, dashboard, reco
   await login(page)
 
   // --- Add a game through search -> details -> match confirmation.
+  // Picks are platform-exact so the journey is deterministic against
+  // either provider mode: the stub catalog mirrors the real listings,
+  // but real search returns many editions in provider order (the first
+  // Chrono Trigger hit live is a PC port that prices nothing).
   await page.getByRole('link', { name: 'Add', exact: true }).click()
-  await page.getByRole('searchbox', { name: /search the catalog/i }).fill('chrono')
+  await page.getByRole('searchbox', { name: /search the catalog/i }).fill('chrono trigger')
   await page.getByRole('button', { name: 'Search', exact: true }).click()
-  await page.getByRole('button', { name: /Chrono Trigger on/ }).first().click()
+  await page.getByRole('button', { name: /Chrono Trigger on Super Nintendo Entertainment System/ }).first().click()
 
   await expect(page.getByRole('heading', { name: /your copy of chrono trigger/i })).toBeVisible()
   await page.getByLabel('Edition or variant').fill(stamp)
@@ -38,8 +42,9 @@ test('collection journey: add, edit, price, pin, reorder, views, dashboard, reco
   await page.getByLabel('Rating').selectOption('9')
   await page.getByRole('button', { name: 'Continue' }).click()
 
-  // The stub catalog auto-matches Chrono Trigger, so the confirmation
-  // states a match; a fixture change would surface here.
+  // Chrono Trigger on SNES auto-matches in both provider modes (the
+  // stub fixture mirrors the real listing), so the confirmation states
+  // a match; a catalog change would surface here.
   await expect(page.getByText(/match \d+%/i)).toBeVisible()
   await page.getByRole('button', { name: 'Add to collection' }).click()
   await expect(page.getByRole('heading', { name: 'Chrono Trigger' })).toBeVisible()
@@ -50,9 +55,10 @@ test('collection journey: add, edit, price, pin, reorder, views, dashboard, reco
   // --- Add a console through hardware search.
   await page.getByRole('link', { name: 'Add', exact: true }).click()
   await page.getByRole('radio', { name: /hardware/i }).check()
-  await page.getByRole('searchbox', { name: /search the catalog/i }).fill('gamecube')
+  await page.getByRole('searchbox', { name: /search the catalog/i }).fill('gamecube system')
   await page.getByRole('button', { name: 'Search', exact: true }).click()
-  await page.getByRole('button', { name: /Add Gamecube System/ }).click()
+  // first(): real hardware search also returns regional listings.
+  await page.getByRole('button', { name: /Add Gamecube System/ }).first().click()
   await page.getByLabel('Edition or variant').fill(stamp)
   await page.getByLabel('Status').selectOption('shelved')
   await page.getByRole('button', { name: 'Continue' }).click()
@@ -94,11 +100,11 @@ test('collection journey: add, edit, price, pin, reorder, views, dashboard, reco
   await page.getByRole('radio', { name: /proxy/i }).click()
   const picker = page.getByRole('dialog', { name: /choose a price source/i })
   await expect(picker).toBeVisible()
-  await picker.getByRole('searchbox', { name: /search the catalog/i }).fill('chrono')
+  await picker.getByRole('searchbox', { name: /search the catalog/i }).fill('chrono trigger')
   await picker.getByRole('button', { name: 'Search', exact: true }).click()
-  await picker.getByRole('button', { name: /Chrono Trigger on/ }).first().click()
+  await picker.getByRole('button', { name: /Chrono Trigger on Super Nintendo Entertainment System/ }).first().click()
   await expect(page.getByText('Price source:')).toBeVisible()
-  // The proxied stub listing prices the copy: a dollar value appears
+  // The proxied listing prices the copy: a dollar value appears
   // (the copy's value and the match breakdown both show one, so take
   // the first rather than assert a single match).
   await expect(page.getByRole('region', { name: 'Pricing' }).getByText(/\$\d/).first()).toBeVisible()
@@ -159,7 +165,7 @@ test('collection journey: add, edit, price, pin, reorder, views, dashboard, reco
   await expect(page.getByRole('region', { name: 'Recommendations' })).toBeVisible()
 
   // --- Recommendations: the beaten-and-rated game seeds similar-game
-  // candidates from the stub catalog.
+  // candidates from the catalog.
   await page.getByRole('link', { name: 'Recommendations', exact: true }).click()
   await expect(page.getByRole('main', { name: 'Recommendations' })).toBeVisible()
   await expect(page.getByRole('link', { name: /to collection/ }).first()).toBeVisible()
