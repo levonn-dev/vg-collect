@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
-import { entryFixture, jsonResponse, listFixture } from '../test/fixtures'
+import { dashboardFixture, entryFixture, jsonResponse, listFixture } from '../test/fixtures'
 import { defaultListState, toViewParams } from '../lib/listParams'
 import Collection from './Collection'
 
@@ -22,6 +22,7 @@ function stubApi(list: unknown) {
     const u = String(url)
     if (u.startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
     if (u.startsWith('/api/views')) return Promise.resolve(jsonResponse(200, { views: [] }))
+    if (u.startsWith('/api/dashboard')) return Promise.resolve(jsonResponse(200, dashboardFixture()))
     return Promise.resolve(jsonResponse(200, list))
   }))
 }
@@ -77,6 +78,17 @@ it('drives filters into the URL and the request', async () => {
   const fetchMock = vi.mocked(fetch)
   const urls = fetchMock.mock.calls.map((c) => String(c[0] as string))
   expect(urls.some((u) => u.includes('/api/entries?') && u.includes('status=backlog'))).toBe(true)
+})
+
+it('shows the stats strip and re-requests it for the active filters', async () => {
+  stubApi(listFixture([entryFixture()]))
+  renderCollection('/?status=playing')
+  // The merged homepage carries the dashboard numbers...
+  expect(await screen.findByRole('region', { name: 'Totals' })).toBeInTheDocument()
+  expect(screen.getByText('$3,842.00')).toBeInTheDocument()
+  // ...scoped to the same filters as the list.
+  const urls = vi.mocked(fetch).mock.calls.map((c) => String(c[0] as string))
+  expect(urls.some((u) => u.startsWith('/api/dashboard?') && u.includes('status=playing'))).toBe(true)
 })
 
 it('renders grouped sections in server order', async () => {
@@ -158,6 +170,7 @@ it('applying a saved view rewrites the URL state', async () => {
       return Promise.resolve(jsonResponse(200, { views: [{ id: 'v1', name: 'Wall', params: savedParams, created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' }] }))
     }
     if (u.startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (u.startsWith('/api/dashboard')) return Promise.resolve(jsonResponse(200, dashboardFixture()))
     return Promise.resolve(jsonResponse(200, listFixture([entryFixture()])))
   }))
   renderCollection()

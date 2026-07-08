@@ -86,6 +86,15 @@ export function toQuery(s: ListState): URLSearchParams {
   return q
 }
 
+// toFilterQuery serializes only the filter dimensions - the slice the
+// dashboard aggregates accept. Sort, grouping, paging, and view mode
+// change how the list reads, not which entries are counted.
+export function toFilterQuery(s: ListState): URLSearchParams {
+  const q = new URLSearchParams()
+  appendFilters(q, s)
+  return q
+}
+
 function pick<T extends string>(all: readonly T[], values: string[]): T[] {
   return values.filter((v): v is T => (all as readonly string[]).includes(v))
 }

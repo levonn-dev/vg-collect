@@ -32,8 +32,16 @@ export default function BreakdownCharts({ dashboard }: { dashboard: Dashboard })
             <BarChart data={platforms} layout="vertical" margin={{ left: 24 }}>
               <XAxis type="number" allowDecimals={false} />
               <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Bar dataKey="count" fill="#111827" />
+              {/* Recharts' default hover band and tooltip box are
+                  hardcoded light; theme variables keep the mouse-over
+                  readable in dark mode. */}
+              <Tooltip
+                cursor={{ fill: 'var(--color-gray-100)' }}
+                contentStyle={{ backgroundColor: 'var(--color-white)', border: '1px solid var(--color-gray-300)' }}
+                labelStyle={{ color: 'var(--color-gray-900)' }}
+              />
+              {/* Theme variable, not a hex: the bar follows light/dark. */}
+              <Bar dataKey="count" fill="var(--color-gray-900)" />
             </BarChart>
           </ResponsiveContainer>
         </div>

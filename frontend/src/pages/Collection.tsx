@@ -10,6 +10,7 @@ import FilterBar from '../components/collection/FilterBar'
 import Pager from '../components/collection/Pager'
 import PinStar from '../components/collection/PinStar'
 import ViewPicker from '../components/collection/ViewPicker'
+import InsightsPanel from '../components/insights/InsightsPanel'
 import type { ListState } from '../lib/listParams'
 import { fromSearchParams, toQuery, toSearchParams } from '../lib/listParams'
 
@@ -54,7 +55,7 @@ export default function Collection() {
             className={
               state.mode === m
                 ? 'rounded bg-gray-900 px-2 py-1 text-xs text-white'
-                : 'rounded border border-gray-300 px-2 py-1 text-xs text-gray-600'
+                : 'rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50'
             }
           >
             {m === 'table' ? 'Table' : m === 'grid' ? 'Covers' : 'Compact'}
@@ -67,6 +68,7 @@ export default function Collection() {
         tags={tags.data ?? []}
         onChange={(next) => apply({ ...next, page: 0 })}
       />
+      <InsightsPanel state={state} />
       {!pricing_available && (
         <p role="alert" className="mb-4 rounded bg-amber-50 p-3 text-sm text-amber-800">
           Market pricing is temporarily unavailable; values are hidden.

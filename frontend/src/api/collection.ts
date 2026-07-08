@@ -64,8 +64,9 @@ export function deleteView(id: string): Promise<void> {
   return sendJSON<void>('DELETE', `/api/views/${id}`)
 }
 
-export function fetchDashboard(): Promise<Dashboard> {
-  return getJSON<Dashboard>('/api/dashboard')
+export function fetchDashboard(query?: URLSearchParams): Promise<Dashboard> {
+  const qs = query?.toString() ?? ''
+  return getJSON<Dashboard>(qs ? `/api/dashboard?${qs}` : '/api/dashboard')
 }
 
 export function fetchValueHistory(): Promise<ValueHistory> {

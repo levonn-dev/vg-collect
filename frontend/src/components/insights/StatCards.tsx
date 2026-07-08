@@ -10,7 +10,7 @@ export default function StatCards({ dashboard }: { dashboard: Dashboard }) {
         <p className="mt-1 text-3xl font-bold">{dashboard.total_entries}</p>
       </div>
       <div className="rounded border border-gray-200 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Collection value</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Collection value (USD)</p>
         {p.available ? (
           <>
             <p className="mt-1 text-3xl font-bold">{formatCents(p.total_value_cents) ?? '$0.00'}</p>
@@ -20,7 +20,7 @@ export default function StatCards({ dashboard }: { dashboard: Dashboard }) {
           </>
         ) : (
           <p role="alert" className="mt-1 text-sm text-amber-800">
-            Value unavailable right now (pricing service unreachable).
+            Value unavailable right now; try again shortly.
           </p>
         )}
       </div>

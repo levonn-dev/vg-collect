@@ -3,7 +3,7 @@ import ValueOverTime from './ValueOverTime'
 
 it('explains an empty series', () => {
   render(<ValueOverTime history={{ available: true, points: [] }} />)
-  expect(screen.getByText(/appears once price snapshots accumulate/i)).toBeInTheDocument()
+  expect(screen.getByText(/appears when price snapshots accumulate/i)).toBeInTheDocument()
 })
 
 it('flags a degraded read', () => {
@@ -11,7 +11,7 @@ it('flags a degraded read', () => {
   expect(screen.getByRole('alert')).toHaveTextContent(/temporarily unavailable/i)
 })
 
-it('renders the chart region when points exist', () => {
+it('renders the chart region with the whole-collection caption', () => {
   render(
     <ValueOverTime
       history={{
@@ -24,4 +24,7 @@ it('renders the chart region when points exist', () => {
     />,
   )
   expect(screen.getByRole('region', { name: 'Collection value over time' })).toBeInTheDocument()
+  // The series never follows filters (snapshots are aggregate
+  // history); the caption must say so.
+  expect(screen.getByText(/covers your whole collection/i)).toBeInTheDocument()
 })

@@ -1,4 +1,4 @@
-import type { Entry, EntryList } from '../api/collection'
+import type { Dashboard, Entry, EntryList } from '../api/collection'
 
 let seq = 0
 
@@ -32,6 +32,24 @@ export function entryFixture(overrides: Partial<Entry> = {}): Entry {
 
 export function listFixture(entries: Entry[], overrides: Partial<EntryList> = {}): EntryList {
   return { pricing_available: true, total_count: entries.length, entries, ...overrides }
+}
+
+export function dashboardFixture(overrides: Partial<Dashboard> = {}): Dashboard {
+  return {
+    total_entries: 42,
+    by_status: { backlog: 12, beaten: 20, playing: 3 },
+    by_item_type: { game: 38, console: 3, accessory: 1 },
+    by_platform: [
+      { name: 'SNES', count: 21 },
+      { name: 'PlayStation', count: 14 },
+    ],
+    spend: [{ currency: 'USD', total_cents: 210000 }],
+    pricing: {
+      available: true, total_value_cents: 384200,
+      priced_entries: 35, unpriced_entries: 4, excluded_entries: 3,
+    },
+    ...overrides,
+  }
 }
 
 export const jsonResponse = (status: number, body: unknown) =>
