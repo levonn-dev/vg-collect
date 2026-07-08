@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { searchCatalog } from '../../api/catalog'
 import { releaseYear } from '../../lib/format'
+import ItemTypeIcon from '../ItemTypeIcon'
 
 export interface GamePick {
   kind: 'game'
@@ -94,7 +95,16 @@ export default function SearchPicker({ initialQuery = '', onPick, footer }: Sear
       <ul className="flex flex-col gap-2">
         {search.data?.results.map((r, i) => (
           <li key={i} className="flex items-start gap-3 rounded border border-gray-200 p-2">
-            {r.cover_url && <img src={r.cover_url} alt="" className="h-16 w-auto rounded" />}
+            {r.cover_url ? (
+              <img src={r.cover_url} alt="" className="h-16 w-auto rounded" />
+            ) : (
+              <div aria-hidden="true" className="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-gray-100 text-gray-400">
+                <ItemTypeIcon
+                  type={r.type === 'game' ? 'game' : r.category === 'Systems' ? 'console' : 'accessory'}
+                  className="h-7 w-7"
+                />
+              </div>
+            )}
             <div>
               <p className="text-sm font-medium">
                 {r.name}

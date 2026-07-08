@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { fetchRecommendations } from '../api/catalog'
+import ItemTypeIcon from '../components/ItemTypeIcon'
 import { releaseYear } from '../lib/format'
 
 export default function Recommendations() {
@@ -40,9 +41,9 @@ export default function Recommendations() {
               ) : (
                 <div
                   aria-hidden="true"
-                  className="mb-2 flex aspect-[3/4] w-full items-center justify-center rounded bg-gray-200 text-3xl font-bold text-gray-500"
+                  className="mb-2 flex aspect-[3/4] w-full items-center justify-center rounded bg-gray-100 text-gray-400"
                 >
-                  {r.name.charAt(0)}
+                  <ItemTypeIcon type="game" className="h-10 w-10" />
                 </div>
               )}
               <p className="text-sm font-medium">{r.name}</p>

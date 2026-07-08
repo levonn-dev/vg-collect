@@ -56,6 +56,8 @@ it('searches hardware and picks a listing', async () => {
   expect(onPick).toHaveBeenCalledWith({
     kind: 'hardware', pcProductId: 900, name: 'Gamecube System', category: 'Systems',
   })
+  // Hardware listings ship no artwork; the row shows the type icon.
+  expect(document.querySelector('svg[data-icon="console"]')).toBeInTheDocument()
 })
 
 it('flags a degraded answer', async () => {

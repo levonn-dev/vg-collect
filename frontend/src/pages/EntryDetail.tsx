@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import type { EntryUpdate } from '../api/collection'
 import { deleteEntry, fetchEntry, updateEntry } from '../api/collection'
+import ItemTypeIcon from '../components/ItemTypeIcon'
 import EntryForm from '../components/entry/EntryForm'
 import PricingPanel from '../components/entry/PricingPanel'
 import { releaseYear } from '../lib/format'
@@ -54,10 +55,15 @@ export default function EntryDetail() {
     <main className="py-6" aria-label="Entry detail">
       <header className="mb-6 flex items-start gap-4">
         {e.cover_url ? (
-          <img src={e.cover_url} alt="" className="h-24 w-auto rounded shadow" />
+          <img
+            src={e.cover_url}
+            alt=""
+            // Hardware images are platform logos: contain, never crop.
+            className={e.item_type === 'game' ? 'h-24 w-auto rounded shadow' : 'h-24 w-24 rounded bg-gray-50 object-contain p-1'}
+          />
         ) : (
-          <div aria-hidden="true" className="flex h-24 w-16 items-center justify-center rounded bg-gray-200 text-2xl font-bold text-gray-500">
-            {e.display_name.charAt(0)}
+          <div aria-hidden="true" className="flex h-24 w-16 items-center justify-center rounded bg-gray-100 text-gray-400">
+            <ItemTypeIcon type={e.item_type} className="h-8 w-8" />
           </div>
         )}
         <div>

@@ -18,10 +18,17 @@ it('renders cover art when the snapshot exists', () => {
   expect(screen.getByRole('link', { name: /Chrono Trigger/ })).toBeInTheDocument()
 })
 
-it('falls back to an initial-letter tile', () => {
-  renderGrid([entryFixture({ display_name: 'Repro Cart', cover_url: undefined })])
+it('falls back to a type icon without cover art', () => {
+  renderGrid([entryFixture({ display_name: 'Repro Cart', item_type: 'accessory', cover_url: undefined })])
   expect(document.querySelector('img')).toBeNull()
-  expect(screen.getByText('R')).toBeInTheDocument()
+  expect(document.querySelector('svg[data-icon="accessory"]')).toBeInTheDocument()
+})
+
+it('contains hardware images instead of cropping them', () => {
+  renderGrid([
+    entryFixture({ display_name: 'Gamecube System', item_type: 'console', cover_url: 'https://img.example/logo.jpg' }),
+  ])
+  expect(document.querySelector('img')).toHaveClass('object-contain')
 })
 
 it('shows value and pin state', () => {
