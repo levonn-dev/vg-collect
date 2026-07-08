@@ -361,6 +361,8 @@ export interface components {
             /** Format: int64 */
             igdb_platform_id: number;
             name: string;
+            /** @description IGDB platform logo; the display fallback for products without cover art. */
+            logo_url?: string;
         };
         /** @description Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). */
         SearchResult: {

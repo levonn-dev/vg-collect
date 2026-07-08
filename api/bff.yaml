@@ -708,6 +708,9 @@ components:
       properties:
         igdb_platform_id: { type: integer, format: int64 }
         name: { type: string }
+        logo_url:
+          type: string
+          description: IGDB platform logo; the display fallback for products without cover art.
     SearchResult:
       description: >
         Flat result with a type discriminator. Game results carry the

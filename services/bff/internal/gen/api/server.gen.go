@@ -629,8 +629,11 @@ type PlatformCount struct {
 
 // PlatformRef defines model for PlatformRef.
 type PlatformRef struct {
-	IgdbPlatformId int64  `json:"igdb_platform_id"`
-	Name           string `json:"name"`
+	IgdbPlatformId int64 `json:"igdb_platform_id"`
+
+	// LogoUrl IGDB platform logo; the display fallback for products without cover art.
+	LogoUrl *string `json:"logo_url,omitempty"`
+	Name    string  `json:"name"`
 }
 
 // PricechartingMeta The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.

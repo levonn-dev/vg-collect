@@ -424,6 +424,11 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 			e.FirstReleaseDate = dateToTime(product.Igdb.FirstReleaseDate)
 			e.CoverURL = product.Igdb.CoverUrl
 		}
+		// Hardware has no igdb block and some games ship no cover;
+		// the platform logo is the next-best entry image.
+		if (e.CoverURL == nil || *e.CoverURL == "") && product.Platform != nil {
+			e.CoverURL = product.Platform.LogoUrl
+		}
 	}
 	// A NEW proxy reference must exist in the catalog (the entry's own
 	// product was just fetched, so proxying to itself needs no check).

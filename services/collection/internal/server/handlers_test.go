@@ -413,6 +413,65 @@ func TestUnitCreateEntry_SnapshotsCoverURL(t *testing.T) {
 	}
 }
 
+// TestUnitCreateEntry_CoverFallsBackToPlatformLogo pins the entry
+// image chain: hardware (no igdb block) snapshots the platform logo,
+// while a game with real cover art keeps the cover even when a logo
+// is also present.
+func TestUnitCreateEntry_CoverFallsBackToPlatformLogo(t *testing.T) {
+	productID := uuid.New()
+	logo := "https://images.igdb.example/t_logo_med/pl7m.jpg"
+	cover := "https://images.igdb.example/chrono-cover.jpg"
+
+	var stored store.Entry
+	captureStore := func() *stubStore {
+		return &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			stored = e
+			e.ID = uuid.New()
+			r := "n"
+			e.BacklogRank = &r
+			e.Tags = []store.TagRef{}
+			return e, nil
+		}}
+	}
+
+	hardware := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			return enrichapi.Product{
+				Id: id, Type: enrichapi.ProductType("console"), Name: "Gamecube System",
+				Platform: &enrichapi.PlatformRef{IgdbPlatformId: 21, Name: "Nintendo GameCube", LogoUrl: &logo},
+			}, nil
+		},
+		batchPrices: pricedAs(1500, 4200, 9900),
+	}
+	srv, a := newUnitServer(t, captureStore(), hardware, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()), createBody(productID, nil))
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if stored.CoverURL == nil || *stored.CoverURL != logo {
+		t.Fatalf("hardware entry must snapshot the platform logo: %v", stored.CoverURL)
+	}
+
+	// A game with cover art keeps it; the logo never overrides.
+	game := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			p := gameProduct(id)
+			p.Igdb.CoverUrl = &cover
+			p.Platform.LogoUrl = &logo
+			return p, nil
+		},
+		batchPrices: pricedAs(1500, 4200, 9900),
+	}
+	srv2, a2 := newUnitServer(t, captureStore(), game, newStubCache())
+	resp2 := do(t, http.MethodPost, srv2.URL+"/entries", a2.token(t, uuid.NewString()), createBody(productID, nil))
+	if resp2.StatusCode != http.StatusCreated {
+		t.Fatalf("status %d", resp2.StatusCode)
+	}
+	if stored.CoverURL == nil || *stored.CoverURL != cover {
+		t.Fatalf("cover art must win over the platform logo: %v", stored.CoverURL)
+	}
+}
+
 func TestUnitCreateEntry_ValidationMatrix(t *testing.T) {
 	productID := uuid.New()
 	cases := []struct {
