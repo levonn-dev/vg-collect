@@ -19,8 +19,8 @@ func newStubAt(t *testing.T, at time.Time) *Stub {
 
 func TestStub_FixtureShape(t *testing.T) {
 	s := newStubAt(t, time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC))
-	if len(s.products) != 57 {
-		t.Fatalf("want 57 fixture products (50 game slots minus the unmatched one, plus 8 hardware), got %d", len(s.products))
+	if len(s.products) != 60 {
+		t.Fatalf("want 60 fixture products (50 game slots minus the unmatched one, plus 3 alias-corpus fillers, plus 8 hardware), got %d", len(s.products))
 	}
 	if _, ok := s.byID[5018]; ok {
 		t.Fatal("5018 must not exist: Terranigma is the designated unmatched fixture")
