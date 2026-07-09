@@ -35,6 +35,12 @@ type Problem struct {
 	Type     string  `json:"type"`
 }
 
+// UpdateUserRequest Absent fields keep their value; an empty avatar_url clears it.
+type UpdateUserRequest struct {
+	AvatarUrl   *string `json:"avatar_url,omitempty"`
+	DisplayName *string `json:"display_name,omitempty"`
+}
+
 // UpsertUserRequest defines model for UpsertUserRequest.
 type UpsertUserRequest struct {
 	AvatarUrl   *string `json:"avatar_url,omitempty"`
@@ -65,14 +71,23 @@ type Unauthorized = Problem
 // UpsertUserJSONRequestBody defines body for UpsertUser for application/json ContentType.
 type UpsertUserJSONRequestBody = UpsertUserRequest
 
+// UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
+type UpdateUserJSONRequestBody = UpdateUserRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Create-or-update a user at login time (auth service only; role `service`)
 	// (POST /internal/users/upsert)
 	UpsertUser(w http.ResponseWriter, r *http.Request)
+	// Delete a user account (self only); idempotent
+	// (DELETE /users/{userId})
+	DeleteUser(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
 	// Fetch a user (self, or role `service`/`admin`)
 	// (GET /users/{userId})
 	GetUser(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
+	// Self-service profile update (display name, avatar URL)
+	// (PATCH /users/{userId})
+	UpdateUser(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -104,6 +119,37 @@ func (siw *ServerInterfaceWrapper) UpsertUser(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteUser operation middleware
+func (siw *ServerInterfaceWrapper) DeleteUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteUser(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetUser operation middleware
 func (siw *ServerInterfaceWrapper) GetUser(w http.ResponseWriter, r *http.Request) {
 
@@ -126,6 +172,37 @@ func (siw *ServerInterfaceWrapper) GetUser(w http.ResponseWriter, r *http.Reques
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetUser(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateUser operation middleware
+func (siw *ServerInterfaceWrapper) UpdateUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateUser(w, r, userId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -256,7 +333,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc("POST "+options.BaseURL+"/internal/users/upsert", wrapper.UpsertUser)
+	m.HandleFunc("DELETE "+options.BaseURL+"/users/{userId}", wrapper.DeleteUser)
 	m.HandleFunc("GET "+options.BaseURL+"/users/{userId}", wrapper.GetUser)
+	m.HandleFunc("PATCH "+options.BaseURL+"/users/{userId}", wrapper.UpdateUser)
 
 	return m
 }

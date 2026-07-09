@@ -52,8 +52,9 @@ func New(baseURL string, minter *token.Minter) (*Client, error) {
 	return &Client{api: api}, nil
 }
 
-// Upsert creates or refreshes the user's profile at login and returns
-// the canonical id + roles to mint claims from.
+// Upsert finds-or-creates the user at login (an existing profile is
+// returned untouched; the profile belongs to the user once created)
+// and returns the canonical id + roles to mint claims from.
 func (c *Client) Upsert(ctx context.Context, email, displayName string, avatarURL *string) (User, error) {
 	resp, err := c.api.UpsertUserWithResponse(ctx, userapi.UpsertUserJSONRequestBody{
 		Email: email, DisplayName: displayName, AvatarUrl: avatarURL,

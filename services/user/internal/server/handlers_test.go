@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -265,6 +266,133 @@ func TestGetUser_AdminCanReadAnyUser(t *testing.T) {
 	}
 }
 
+func TestUpdateUser_SelfOnlyAndValidation(t *testing.T) {
+	srv, a := newTestServer(t)
+	body := map[string]string{
+		"email": "neo@example.com", "display_name": "Thomas Anderson",
+		"avatar_url": "https://img.example/neo.png",
+	}
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc:auth", "service"), body)
+	if resp.StatusCode != 200 {
+		t.Fatalf("upsert: %d", resp.StatusCode)
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("other user's token forbidden", func(t *testing.T) {
+		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, "someone-else", "user"),
+			map[string]string{"display_name": "Hacker"})
+		wantUnitProblem(t, resp, http.StatusForbidden, "forbidden")
+	})
+
+	t.Run("service token forbidden, self only", func(t *testing.T) {
+		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, "svc:auth", "service"),
+			map[string]string{"display_name": "Hacker"})
+		wantUnitProblem(t, resp, http.StatusForbidden, "forbidden")
+	})
+
+	t.Run("empty display_name invalid", func(t *testing.T) {
+		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"),
+			map[string]string{"display_name": ""})
+		wantUnitProblemDetail(t, resp, http.StatusBadRequest, "invalid_body", "display_name")
+	})
+
+	t.Run("display_name over 100 chars invalid", func(t *testing.T) {
+		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"),
+			map[string]string{"display_name": strings.Repeat("a", 101)})
+		wantUnitProblemDetail(t, resp, http.StatusBadRequest, "invalid_body", "display_name")
+	})
+
+	t.Run("avatar_url bad scheme invalid", func(t *testing.T) {
+		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"),
+			map[string]string{"avatar_url": "ftp://x"})
+		wantUnitProblemDetail(t, resp, http.StatusBadRequest, "invalid_body", "avatar_url")
+	})
+
+	t.Run("avatar_url over 2048 chars invalid", func(t *testing.T) {
+		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"),
+			map[string]string{"avatar_url": strings.Repeat("a", 2049)})
+		wantUnitProblemDetail(t, resp, http.StatusBadRequest, "invalid_body", "avatar_url")
+	})
+
+	t.Run("trims display_name, keeps avatar", func(t *testing.T) {
+		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"),
+			map[string]string{"display_name": " Neo  "})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+		var got struct {
+			DisplayName string  `json:"display_name"`
+			AvatarURL   *string `json:"avatar_url"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got.DisplayName != "Neo" {
+			t.Fatalf("display_name = %q, want %q", got.DisplayName, "Neo")
+		}
+		if got.AvatarURL == nil || *got.AvatarURL != "https://img.example/neo.png" {
+			t.Fatalf("avatar_url = %v, want kept", got.AvatarURL)
+		}
+	})
+
+	t.Run("empty avatar_url clears it", func(t *testing.T) {
+		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"),
+			map[string]string{"avatar_url": ""})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+		var got struct {
+			AvatarURL *string `json:"avatar_url"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got.AvatarURL != nil {
+			t.Fatalf("avatar_url = %v, want cleared", *got.AvatarURL)
+		}
+	})
+
+	t.Run("unknown userId with matching sub 404", func(t *testing.T) {
+		unknown := uuid.New().String()
+		resp := do(t, "PATCH", srv.URL+"/users/"+unknown, a.token(t, unknown, "user"),
+			map[string]string{"display_name": "Ghost"})
+		wantUnitProblem(t, resp, http.StatusNotFound, "user_not_found")
+	})
+}
+
+func TestDeleteUser_SelfOnlyIdempotent(t *testing.T) {
+	srv, a := newTestServer(t)
+	body := map[string]string{"email": "dave@example.com", "display_name": "Dave"}
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc:auth", "service"), body)
+	if resp.StatusCode != 200 {
+		t.Fatalf("upsert: %d", resp.StatusCode)
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp := do(t, "DELETE", srv.URL+"/users/"+created.ID, a.token(t, "someone-else", "user"), nil); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("other's token: %d, want 403", resp.StatusCode)
+	}
+	if resp := do(t, "DELETE", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"), nil); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("own token: %d, want 204", resp.StatusCode)
+	}
+	if resp := do(t, "GET", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"), nil); resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("get after delete: %d, want 404", resp.StatusCode)
+	}
+	if resp := do(t, "DELETE", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"), nil); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("second delete: %d, want 204", resp.StatusCode)
+	}
+}
+
 // ============================================================================
 // Fast unit layer (no Docker, runs under -short)
 //
@@ -289,6 +417,8 @@ func TestGetUser_AdminCanReadAnyUser(t *testing.T) {
 type stubStore struct {
 	upsert func(ctx context.Context, email, displayName string, avatarURL *string) (store.User, error)
 	get    func(ctx context.Context, id uuid.UUID) (store.User, error)
+	update func(ctx context.Context, id uuid.UUID, displayName, avatarURL *string) (store.User, error)
+	delete func(ctx context.Context, id uuid.UUID) error
 }
 
 var _ server.Store = (*stubStore)(nil)
@@ -305,6 +435,20 @@ func (s *stubStore) Get(ctx context.Context, id uuid.UUID) (store.User, error) {
 		panic("unexpected Get")
 	}
 	return s.get(ctx, id)
+}
+
+func (s *stubStore) Update(ctx context.Context, id uuid.UUID, displayName, avatarURL *string) (store.User, error) {
+	if s.update == nil {
+		panic("unexpected Update")
+	}
+	return s.update(ctx, id, displayName, avatarURL)
+}
+
+func (s *stubStore) Delete(ctx context.Context, id uuid.UUID) error {
+	if s.delete == nil {
+		panic("unexpected Delete")
+	}
+	return s.delete(ctx, id)
 }
 
 // newUnitServer builds a test HTTP server wired to the given stub store.
@@ -324,6 +468,7 @@ func newUnitServer(t *testing.T, st server.Store) (*httptest.Server, authEnv) {
 type problemResponse struct {
 	Status int    `json:"status"`
 	Code   string `json:"code"`
+	Detail string `json:"detail"`
 }
 
 func wantUnitProblem(t *testing.T, resp *http.Response, wantStatus int, wantCode string) {
@@ -340,6 +485,28 @@ func wantUnitProblem(t *testing.T, resp *http.Response, wantStatus int, wantCode
 	}
 	if p.Code != wantCode {
 		t.Fatalf("problem code = %q, want %q", p.Code, wantCode)
+	}
+}
+
+// wantUnitProblemDetail is wantUnitProblem plus a substring check on the
+// detail message, for validation branches where the field name matters.
+func wantUnitProblemDetail(t *testing.T, resp *http.Response, wantStatus int, wantCode, detailSubstr string) {
+	t.Helper()
+	if resp.StatusCode != wantStatus {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, wantStatus)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/problem+json" {
+		t.Fatalf("content-type = %q, want application/problem+json", ct)
+	}
+	var p problemResponse
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+		t.Fatalf("decode problem body: %v", err)
+	}
+	if p.Code != wantCode {
+		t.Fatalf("problem code = %q, want %q", p.Code, wantCode)
+	}
+	if !strings.Contains(p.Detail, detailSubstr) {
+		t.Fatalf("problem detail = %q, want substring %q", p.Detail, detailSubstr)
 	}
 }
 
@@ -547,4 +714,54 @@ func TestUnitGetUser_AdminRole_CanReadAny(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("admin read: status = %d, want 200", resp.StatusCode)
 	}
+}
+
+// --- UpdateUser unit branch matrix ---
+//
+// The self-only guard, the validation branches, the trim/clear semantics
+// and the not-found branch are all exercised end-to-end (real store, real
+// persistence) by TestUpdateUser_SelfOnlyAndValidation above. The two
+// tests below cover what that docker-backed test cannot reach: the
+// malformed-JSON decode error and a generic store failure.
+
+func TestUnitUpdateUser_MalformedJSON_BadRequest(t *testing.T) {
+	// A self token with a syntactically invalid body must get 400, and the
+	// empty stubStore proves the store is never reached.
+	userID := uuid.New()
+	srv, a := newUnitServer(t, &stubStore{})
+	resp := do(t, "PATCH", srv.URL+"/users/"+userID.String(),
+		a.token(t, userID.String(), "user"), "{not json}")
+	wantUnitProblem(t, resp, http.StatusBadRequest, "invalid_body")
+}
+
+func TestUnitUpdateUser_StoreError_InternalServerError(t *testing.T) {
+	// A generic (non-sentinel) store error must surface as 500 internal.
+	userID := uuid.New()
+	st := &stubStore{
+		update: func(context.Context, uuid.UUID, *string, *string) (store.User, error) {
+			return store.User{}, errStubUser
+		},
+	}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "PATCH", srv.URL+"/users/"+userID.String(),
+		a.token(t, userID.String(), "user"), map[string]string{"display_name": "Neo"})
+	wantUnitProblem(t, resp, http.StatusInternalServerError, "internal")
+}
+
+// --- DeleteUser unit branch matrix ---
+//
+// The self-only guard and idempotent success are exercised end-to-end by
+// TestDeleteUser_SelfOnlyIdempotent above. The test below covers the one
+// branch that requires a store failure: the generic 500.
+
+func TestUnitDeleteUser_StoreError_InternalServerError(t *testing.T) {
+	// A generic (non-sentinel) store error must surface as 500 internal.
+	userID := uuid.New()
+	st := &stubStore{
+		delete: func(context.Context, uuid.UUID) error { return errStubUser },
+	}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "DELETE", srv.URL+"/users/"+userID.String(),
+		a.token(t, userID.String(), "user"), nil)
+	wantUnitProblem(t, resp, http.StatusInternalServerError, "internal")
 }
