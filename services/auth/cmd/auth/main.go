@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
+	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
 	vgotel "github.com/levonn-dev/vg-collect/libs/go/otel"
 	"github.com/levonn-dev/vg-collect/libs/go/pgkit"
 	"github.com/levonn-dev/vg-collect/services/auth/internal/config"
@@ -68,6 +69,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	verifier := jwtauth.NewValidator(cfg.JWKSURL, cfg.JWTIssuer, cfg.JWTAudience)
 
 	providers := map[string]oidc.Provider{}
 	if cfg.GoogleEnabled() {
@@ -84,7 +86,7 @@ func run() error {
 	}
 	slog.Info("auth providers", "real", names, "dev", cfg.DevProviderEnabled, "kid", minter.Kid())
 
-	h := server.New(st, minter, users, providers, cfg.DevProviderEnabled, cfg.RefreshTokenTTL)
+	h := server.New(st, minter, users, providers, verifier, cfg.DevProviderEnabled, cfg.RefreshTokenTTL)
 	router := server.NewRouter(h, slog.Default(),
 		func(c context.Context) error { return pgkit.Health(c, pool) })
 

@@ -23,6 +23,12 @@ type Config struct {
 
 	UserServiceURL string `env:"USER_SERVICE_URL,required"`
 
+	// JWKSURL feeds the bearer validator on the self-service endpoints
+	// (identity list/unlink, link start, account wipe). The service
+	// verifies its own tokens against its own JWKS; the default matches
+	// HTTP_ADDR's default port inside the pod.
+	JWKSURL string `env:"JWKS_URL" envDefault:"http://localhost:8080/.well-known/jwks.json"`
+
 	// The public callback URL registered with real providers (the BFF
 	// route once the edge exists). Required only when a real provider
 	// is configured.

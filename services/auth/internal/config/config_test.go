@@ -35,6 +35,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.HTTPAddr != ":8080" || cfg.JWTIssuer != "vg-collect-auth" || cfg.JWTAudience != "vg-collect" {
 		t.Fatalf("defaults wrong: %+v", cfg)
 	}
+	if cfg.JWKSURL != "http://localhost:8080/.well-known/jwks.json" {
+		t.Fatalf("jwks url default wrong: %+v", cfg)
+	}
 	if cfg.AccessTokenTTL != 5*time.Minute || cfg.RefreshTokenTTL != 720*time.Hour {
 		t.Fatalf("ttl defaults wrong: %+v", cfg)
 	}
