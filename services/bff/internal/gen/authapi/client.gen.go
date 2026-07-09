@@ -12,12 +12,26 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+)
+
+const (
+	BearerAuthScopes = "bearerAuth.Scopes"
+)
+
+// Defines values for LinkStartRequestProvider.
+const (
+	LinkStartRequestProviderGoogle LinkStartRequestProvider = "google"
+	LinkStartRequestProviderTwitch LinkStartRequestProvider = "twitch"
 )
 
 // Defines values for StartRequestProvider.
 const (
-	Google StartRequestProvider = "google"
-	Twitch StartRequestProvider = "twitch"
+	StartRequestProviderGoogle StartRequestProvider = "google"
+	StartRequestProviderTwitch StartRequestProvider = "twitch"
 )
 
 // CallbackRequest defines model for CallbackRequest.
@@ -26,10 +40,52 @@ type CallbackRequest struct {
 	State string `json:"state"`
 }
 
+// CallbackResponse defines model for CallbackResponse.
+type CallbackResponse struct {
+	// AccessToken Ed25519 JWT, ~5 min TTL
+	AccessToken string `json:"access_token"`
+
+	// ExpiresIn Access token lifetime, seconds
+	ExpiresIn int64 `json:"expires_in"`
+
+	// LinkedProvider Present only when the flow was an account link; names the linked provider.
+	LinkedProvider *string `json:"linked_provider,omitempty"`
+
+	// RefreshExpiresIn Seconds until the session's absolute expiry
+	RefreshExpiresIn int64 `json:"refresh_expires_in"`
+
+	// RefreshToken Opaque, single-use; rotated on every refresh
+	RefreshToken string `json:"refresh_token"`
+
+	// TokenType Always Bearer
+	TokenType string `json:"token_type"`
+}
+
+// DevLinkRequest defines model for DevLinkRequest.
+type DevLinkRequest struct {
+	// User Fixture handle (alice, bob, admin); never a real account
+	User string `json:"user"`
+}
+
 // DevTokenRequest defines model for DevTokenRequest.
 type DevTokenRequest struct {
 	// User Fixture handle (alice, bob, admin); never a real account
 	User string `json:"user"`
+}
+
+// Identities defines model for Identities.
+type Identities struct {
+	Identities []Identity `json:"identities"`
+}
+
+// Identity defines model for Identity.
+type Identity struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Email Informational; the email the provider asserted when this identity last signed in.
+	Email    *string            `json:"email,omitempty"`
+	Id       openapi_types.UUID `json:"id"`
+	Provider string             `json:"provider"`
 }
 
 // Jwk OKP key (RFC 8037). use and alg are omitted; every key here is an Ed25519 signing key.
@@ -46,6 +102,14 @@ type Jwk struct {
 type Jwks struct {
 	Keys []Jwk `json:"keys"`
 }
+
+// LinkStartRequest defines model for LinkStartRequest.
+type LinkStartRequest struct {
+	Provider LinkStartRequestProvider `json:"provider"`
+}
+
+// LinkStartRequestProvider defines model for LinkStartRequest.Provider.
+type LinkStartRequestProvider string
 
 // Problem defines model for Problem.
 type Problem struct {
@@ -120,14 +184,23 @@ type TokenPair struct {
 // BadRequest defines model for BadRequest.
 type BadRequest = Problem
 
+// Unauthorized defines model for Unauthorized.
+type Unauthorized = Problem
+
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
 
 // OauthCallbackJSONRequestBody defines body for OauthCallback for application/json ContentType.
 type OauthCallbackJSONRequestBody = CallbackRequest
 
+// DevLinkJSONRequestBody defines body for DevLink for application/json ContentType.
+type DevLinkJSONRequestBody = DevLinkRequest
+
 // DevTokenJSONRequestBody defines body for DevToken for application/json ContentType.
 type DevTokenJSONRequestBody = DevTokenRequest
+
+// OauthLinkStartJSONRequestBody defines body for OauthLinkStart for application/json ContentType.
+type OauthLinkStartJSONRequestBody = LinkStartRequest
 
 // OauthStartJSONRequestBody defines body for OauthStart for application/json ContentType.
 type OauthStartJSONRequestBody = StartRequest
@@ -214,15 +287,28 @@ type ClientInterface interface {
 	// GetJwks request
 	GetJwks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeleteIdentity request
+	DeleteIdentity(ctx context.Context, identityId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// OauthCallbackWithBody request with any body
 	OauthCallbackWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	OauthCallback(ctx context.Context, body OauthCallbackJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DevLinkWithBody request with any body
+	DevLinkWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	DevLink(ctx context.Context, body DevLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DevTokenWithBody request with any body
 	DevTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	DevToken(ctx context.Context, body DevTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OauthLinkStartWithBody request with any body
+	OauthLinkStartWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	OauthLinkStart(ctx context.Context, body OauthLinkStartJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// OauthStartWithBody request with any body
 	OauthStartWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -241,10 +327,28 @@ type ClientInterface interface {
 	RevokeTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	RevokeToken(ctx context.Context, body RevokeTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteUserAuth request
+	DeleteUserAuth(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListIdentities request
+	ListIdentities(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) GetJwks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetJwksRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteIdentity(ctx context.Context, identityId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteIdentityRequest(c.Server, identityId)
 	if err != nil {
 		return nil, err
 	}
@@ -279,6 +383,30 @@ func (c *Client) OauthCallback(ctx context.Context, body OauthCallbackJSONReques
 	return c.Client.Do(req)
 }
 
+func (c *Client) DevLinkWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDevLinkRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DevLink(ctx context.Context, body DevLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDevLinkRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) DevTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDevTokenRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -293,6 +421,30 @@ func (c *Client) DevTokenWithBody(ctx context.Context, contentType string, body 
 
 func (c *Client) DevToken(ctx context.Context, body DevTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDevTokenRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) OauthLinkStartWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOauthLinkStartRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) OauthLinkStart(ctx context.Context, body OauthLinkStartJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOauthLinkStartRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -387,6 +539,30 @@ func (c *Client) RevokeToken(ctx context.Context, body RevokeTokenJSONRequestBod
 	return c.Client.Do(req)
 }
 
+func (c *Client) DeleteUserAuth(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteUserAuthRequest(c.Server, userId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListIdentities(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIdentitiesRequest(c.Server, userId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // NewGetJwksRequest generates requests for GetJwks
 func NewGetJwksRequest(server string) (*http.Request, error) {
 	var err error
@@ -407,6 +583,40 @@ func NewGetJwksRequest(server string) (*http.Request, error) {
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteIdentityRequest generates requests for DeleteIdentity
+func NewDeleteIdentityRequest(server string, identityId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "identityId", runtime.ParamLocationPath, identityId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/identities/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -454,6 +664,46 @@ func NewOauthCallbackRequestWithBody(server string, contentType string, body io.
 	return req, nil
 }
 
+// NewDevLinkRequest calls the generic DevLink builder with application/json body
+func NewDevLinkRequest(server string, body DevLinkJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDevLinkRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewDevLinkRequestWithBody generates requests for DevLink with any type of body
+func NewDevLinkRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/oauth/dev/link")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewDevTokenRequest calls the generic DevToken builder with application/json body
 func NewDevTokenRequest(server string, body DevTokenJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -475,6 +725,46 @@ func NewDevTokenRequestWithBody(server string, contentType string, body io.Reade
 	}
 
 	operationPath := fmt.Sprintf("/oauth/dev/token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewOauthLinkStartRequest calls the generic OauthLinkStart builder with application/json body
+func NewOauthLinkStartRequest(server string, body OauthLinkStartJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewOauthLinkStartRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewOauthLinkStartRequestWithBody generates requests for OauthLinkStart with any type of body
+func NewOauthLinkStartRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/oauth/link/start")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -641,6 +931,74 @@ func NewRevokeTokenRequestWithBody(server string, contentType string, body io.Re
 	return req, nil
 }
 
+// NewDeleteUserAuthRequest generates requests for DeleteUserAuth
+func NewDeleteUserAuthRequest(server string, userId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "userId", runtime.ParamLocationPath, userId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/users/%s/auth", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListIdentitiesRequest generates requests for ListIdentities
+func NewListIdentitiesRequest(server string, userId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "userId", runtime.ParamLocationPath, userId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/users/%s/identities", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -687,15 +1045,28 @@ type ClientWithResponsesInterface interface {
 	// GetJwksWithResponse request
 	GetJwksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetJwksResponse, error)
 
+	// DeleteIdentityWithResponse request
+	DeleteIdentityWithResponse(ctx context.Context, identityId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteIdentityResponse, error)
+
 	// OauthCallbackWithBodyWithResponse request with any body
 	OauthCallbackWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OauthCallbackResponse, error)
 
 	OauthCallbackWithResponse(ctx context.Context, body OauthCallbackJSONRequestBody, reqEditors ...RequestEditorFn) (*OauthCallbackResponse, error)
 
+	// DevLinkWithBodyWithResponse request with any body
+	DevLinkWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DevLinkResponse, error)
+
+	DevLinkWithResponse(ctx context.Context, body DevLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*DevLinkResponse, error)
+
 	// DevTokenWithBodyWithResponse request with any body
 	DevTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DevTokenResponse, error)
 
 	DevTokenWithResponse(ctx context.Context, body DevTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*DevTokenResponse, error)
+
+	// OauthLinkStartWithBodyWithResponse request with any body
+	OauthLinkStartWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OauthLinkStartResponse, error)
+
+	OauthLinkStartWithResponse(ctx context.Context, body OauthLinkStartJSONRequestBody, reqEditors ...RequestEditorFn) (*OauthLinkStartResponse, error)
 
 	// OauthStartWithBodyWithResponse request with any body
 	OauthStartWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OauthStartResponse, error)
@@ -714,6 +1085,12 @@ type ClientWithResponsesInterface interface {
 	RevokeTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevokeTokenResponse, error)
 
 	RevokeTokenWithResponse(ctx context.Context, body RevokeTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeTokenResponse, error)
+
+	// DeleteUserAuthWithResponse request
+	DeleteUserAuthWithResponse(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteUserAuthResponse, error)
+
+	// ListIdentitiesWithResponse request
+	ListIdentitiesWithResponse(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListIdentitiesResponse, error)
 }
 
 type GetJwksResponse struct {
@@ -738,12 +1115,37 @@ func (r GetJwksResponse) StatusCode() int {
 	return 0
 }
 
+type DeleteIdentityResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON404 *Problem
+	ApplicationproblemJSON409 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteIdentityResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteIdentityResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type OauthCallbackResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
-	JSON200                   *TokenPair
+	JSON200                   *CallbackResponse
 	ApplicationproblemJSON400 *BadRequest
 	ApplicationproblemJSON403 *Problem
+	ApplicationproblemJSON409 *Problem
 	ApplicationproblemJSON502 *UpstreamError
 }
 
@@ -757,6 +1159,32 @@ func (r OauthCallbackResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r OauthCallbackResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DevLinkResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *CallbackResponse
+	ApplicationproblemJSON400 *Problem
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON404 *Problem
+	ApplicationproblemJSON409 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r DevLinkResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DevLinkResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -781,6 +1209,31 @@ func (r DevTokenResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r DevTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type OauthLinkStartResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *StartResponse
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON502 *UpstreamError
+}
+
+// Status returns HTTPResponse.Status
+func (r OauthLinkStartResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OauthLinkStartResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -878,6 +1331,53 @@ func (r RevokeTokenResponse) StatusCode() int {
 	return 0
 }
 
+type DeleteUserAuthResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteUserAuthResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteUserAuthResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListIdentitiesResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *Identities
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIdentitiesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIdentitiesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 // GetJwksWithResponse request returning *GetJwksResponse
 func (c *ClientWithResponses) GetJwksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetJwksResponse, error) {
 	rsp, err := c.GetJwks(ctx, reqEditors...)
@@ -885,6 +1385,15 @@ func (c *ClientWithResponses) GetJwksWithResponse(ctx context.Context, reqEditor
 		return nil, err
 	}
 	return ParseGetJwksResponse(rsp)
+}
+
+// DeleteIdentityWithResponse request returning *DeleteIdentityResponse
+func (c *ClientWithResponses) DeleteIdentityWithResponse(ctx context.Context, identityId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteIdentityResponse, error) {
+	rsp, err := c.DeleteIdentity(ctx, identityId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteIdentityResponse(rsp)
 }
 
 // OauthCallbackWithBodyWithResponse request with arbitrary body returning *OauthCallbackResponse
@@ -904,6 +1413,23 @@ func (c *ClientWithResponses) OauthCallbackWithResponse(ctx context.Context, bod
 	return ParseOauthCallbackResponse(rsp)
 }
 
+// DevLinkWithBodyWithResponse request with arbitrary body returning *DevLinkResponse
+func (c *ClientWithResponses) DevLinkWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DevLinkResponse, error) {
+	rsp, err := c.DevLinkWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDevLinkResponse(rsp)
+}
+
+func (c *ClientWithResponses) DevLinkWithResponse(ctx context.Context, body DevLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*DevLinkResponse, error) {
+	rsp, err := c.DevLink(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDevLinkResponse(rsp)
+}
+
 // DevTokenWithBodyWithResponse request with arbitrary body returning *DevTokenResponse
 func (c *ClientWithResponses) DevTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DevTokenResponse, error) {
 	rsp, err := c.DevTokenWithBody(ctx, contentType, body, reqEditors...)
@@ -919,6 +1445,23 @@ func (c *ClientWithResponses) DevTokenWithResponse(ctx context.Context, body Dev
 		return nil, err
 	}
 	return ParseDevTokenResponse(rsp)
+}
+
+// OauthLinkStartWithBodyWithResponse request with arbitrary body returning *OauthLinkStartResponse
+func (c *ClientWithResponses) OauthLinkStartWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OauthLinkStartResponse, error) {
+	rsp, err := c.OauthLinkStartWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOauthLinkStartResponse(rsp)
+}
+
+func (c *ClientWithResponses) OauthLinkStartWithResponse(ctx context.Context, body OauthLinkStartJSONRequestBody, reqEditors ...RequestEditorFn) (*OauthLinkStartResponse, error) {
+	rsp, err := c.OauthLinkStart(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOauthLinkStartResponse(rsp)
 }
 
 // OauthStartWithBodyWithResponse request with arbitrary body returning *OauthStartResponse
@@ -981,6 +1524,24 @@ func (c *ClientWithResponses) RevokeTokenWithResponse(ctx context.Context, body 
 	return ParseRevokeTokenResponse(rsp)
 }
 
+// DeleteUserAuthWithResponse request returning *DeleteUserAuthResponse
+func (c *ClientWithResponses) DeleteUserAuthWithResponse(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteUserAuthResponse, error) {
+	rsp, err := c.DeleteUserAuth(ctx, userId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteUserAuthResponse(rsp)
+}
+
+// ListIdentitiesWithResponse request returning *ListIdentitiesResponse
+func (c *ClientWithResponses) ListIdentitiesWithResponse(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListIdentitiesResponse, error) {
+	rsp, err := c.ListIdentities(ctx, userId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIdentitiesResponse(rsp)
+}
+
 // ParseGetJwksResponse parses an HTTP response from a GetJwksWithResponse call
 func ParseGetJwksResponse(rsp *http.Response) (*GetJwksResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -1007,6 +1568,46 @@ func ParseGetJwksResponse(rsp *http.Response) (*GetJwksResponse, error) {
 	return response, nil
 }
 
+// ParseDeleteIdentityResponse parses an HTTP response from a DeleteIdentityWithResponse call
+func ParseDeleteIdentityResponse(rsp *http.Response) (*DeleteIdentityResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteIdentityResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseOauthCallbackResponse parses an HTTP response from a OauthCallbackWithResponse call
 func ParseOauthCallbackResponse(rsp *http.Response) (*OauthCallbackResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -1022,7 +1623,7 @@ func ParseOauthCallbackResponse(rsp *http.Response) (*OauthCallbackResponse, err
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest TokenPair
+		var dest CallbackResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -1042,12 +1643,73 @@ func ParseOauthCallbackResponse(rsp *http.Response) (*OauthCallbackResponse, err
 		}
 		response.ApplicationproblemJSON403 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
 		var dest UpstreamError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.ApplicationproblemJSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDevLinkResponse parses an HTTP response from a DevLinkWithResponse call
+func ParseDevLinkResponse(rsp *http.Response) (*DevLinkResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DevLinkResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CallbackResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	}
 
@@ -1088,6 +1750,53 @@ func ParseDevTokenResponse(rsp *http.Response) (*DevTokenResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseOauthLinkStartResponse parses an HTTP response from a OauthLinkStartWithResponse call
+func ParseOauthLinkStartResponse(rsp *http.Response) (*OauthLinkStartResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OauthLinkStartResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StartResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest UpstreamError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
 
 	}
 
@@ -1211,6 +1920,79 @@ func ParseRevokeTokenResponse(rsp *http.Response) (*RevokeTokenResponse, error) 
 	response := &RevokeTokenResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseDeleteUserAuthResponse parses an HTTP response from a DeleteUserAuthWithResponse call
+func ParseDeleteUserAuthResponse(rsp *http.Response) (*DeleteUserAuthResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteUserAuthResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListIdentitiesResponse parses an HTTP response from a ListIdentitiesWithResponse call
+func ParseListIdentitiesResponse(rsp *http.Response) (*ListIdentitiesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIdentitiesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Identities
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
 	}
 
 	return response, nil

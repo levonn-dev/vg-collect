@@ -925,6 +925,9 @@ type ClientInterface interface {
 
 	RenameTag(ctx context.Context, tagId openapi_types.UUID, body RenameTagJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PurgeUserData request
+	PurgeUserData(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListViews request
 	ListViews(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1148,6 +1151,18 @@ func (c *Client) RenameTagWithBody(ctx context.Context, tagId openapi_types.UUID
 
 func (c *Client) RenameTag(ctx context.Context, tagId openapi_types.UUID, body RenameTagJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRenameTagRequest(c.Server, tagId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PurgeUserData(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPurgeUserDataRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -2004,6 +2019,33 @@ func NewRenameTagRequestWithBody(server string, tagId openapi_types.UUID, conten
 	return req, nil
 }
 
+// NewPurgeUserDataRequest generates requests for PurgeUserData
+func NewPurgeUserDataRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/user-data")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListViewsRequest generates requests for ListViews
 func NewListViewsRequest(server string) (*http.Request, error) {
 	var err error
@@ -2243,6 +2285,9 @@ type ClientWithResponsesInterface interface {
 	RenameTagWithBodyWithResponse(ctx context.Context, tagId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RenameTagResponse, error)
 
 	RenameTagWithResponse(ctx context.Context, tagId openapi_types.UUID, body RenameTagJSONRequestBody, reqEditors ...RequestEditorFn) (*RenameTagResponse, error)
+
+	// PurgeUserDataWithResponse request
+	PurgeUserDataWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PurgeUserDataResponse, error)
 
 	// ListViewsWithResponse request
 	ListViewsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListViewsResponse, error)
@@ -2579,6 +2624,28 @@ func (r RenameTagResponse) StatusCode() int {
 	return 0
 }
 
+type PurgeUserDataResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON401 *Unauthorized
+}
+
+// Status returns HTTPResponse.Status
+func (r PurgeUserDataResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PurgeUserDataResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListViewsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2833,6 +2900,15 @@ func (c *ClientWithResponses) RenameTagWithResponse(ctx context.Context, tagId o
 		return nil, err
 	}
 	return ParseRenameTagResponse(rsp)
+}
+
+// PurgeUserDataWithResponse request returning *PurgeUserDataResponse
+func (c *ClientWithResponses) PurgeUserDataWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PurgeUserDataResponse, error) {
+	rsp, err := c.PurgeUserData(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePurgeUserDataResponse(rsp)
 }
 
 // ListViewsWithResponse request returning *ListViewsResponse
@@ -3431,6 +3507,32 @@ func ParseRenameTagResponse(rsp *http.Response) (*RenameTagResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePurgeUserDataResponse parses an HTTP response from a PurgeUserDataWithResponse call
+func ParsePurgeUserDataResponse(rsp *http.Response) (*PurgeUserDataResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PurgeUserDataResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	}
 

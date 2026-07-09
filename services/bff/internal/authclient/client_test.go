@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
 )
 
@@ -133,6 +135,8 @@ func TestCallbackErrorMapping(t *testing.T) {
 	}{
 		{http.StatusBadRequest, "invalid_state", authclient.ErrLoginFailed},
 		{http.StatusForbidden, "email_unverified", authclient.ErrEmailUnverified},
+		{http.StatusForbidden, "link_email_unverified", authclient.ErrLinkEmailUnverified},
+		{http.StatusConflict, "identity_already_linked", authclient.ErrLinkConflict},
 		{http.StatusBadGateway, "provider_error", authclient.ErrProviderError},
 	}
 	for _, tc := range cases {
@@ -193,5 +197,210 @@ func TestProvidersAndRevoke(t *testing.T) {
 	}
 	if err := c.Revoke(context.Background(), "ref"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCallbackLinkedProvider(t *testing.T) {
+	google := "google"
+	cases := []struct {
+		name   string
+		linked *string
+	}{
+		{"plain_login_has_no_linked_provider", nil},
+		{"link_flow_names_the_provider", &google},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := stubAuth(t, func(w http.ResponseWriter, r *http.Request) {
+				body := pairJSON()
+				if tc.linked != nil {
+					body["linked_provider"] = *tc.linked
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(body)
+			})
+			pair, err := c.Callback(context.Background(), "c", "s")
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch {
+			case tc.linked == nil && pair.LinkedProvider != nil:
+				t.Fatalf("want nil LinkedProvider, got %q", *pair.LinkedProvider)
+			case tc.linked != nil && (pair.LinkedProvider == nil || *pair.LinkedProvider != *tc.linked):
+				t.Fatalf("LinkedProvider = %v, want %q", pair.LinkedProvider, *tc.linked)
+			}
+		})
+	}
+}
+
+func TestLinkStart(t *testing.T) {
+	var gotAuth, gotPath, gotProvider string
+	c := stubAuth(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuth, gotPath = r.Header.Get("Authorization"), r.URL.Path
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotProvider = body["provider"]
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"authorize_url": "https://idp/link?x=1"})
+	})
+	url, err := c.LinkStart(context.Background(), "twitch", "users-token")
+	if err != nil || url != "https://idp/link?x=1" {
+		t.Fatalf("url=%q err=%v", url, err)
+	}
+	if gotPath != "/oauth/link/start" {
+		t.Fatalf("path = %s", gotPath)
+	}
+	if gotAuth != "Bearer users-token" {
+		t.Fatalf("bearer = %q", gotAuth)
+	}
+	if gotProvider != "twitch" {
+		t.Fatalf("provider = %q", gotProvider)
+	}
+}
+
+func TestLinkStartFailure(t *testing.T) {
+	c := stubAuth(t, func(w http.ResponseWriter, r *http.Request) {
+		writeProblem(w, http.StatusBadRequest, "unknown_provider", nil)
+	})
+	if _, err := c.LinkStart(context.Background(), "nope", "tok"); !errors.Is(err, authclient.ErrLoginFailed) {
+		t.Fatalf("want ErrLoginFailed, got %v", err)
+	}
+}
+
+func TestDevLink(t *testing.T) {
+	var gotAuth, gotPath string
+	c := stubAuth(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuth, gotPath = r.Header.Get("Authorization"), r.URL.Path
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["user"] != "alice" {
+			t.Errorf("user = %q", body["user"])
+		}
+		resp := pairJSON()
+		resp["linked_provider"] = "dev"
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+	pair, err := c.DevLink(context.Background(), "alice", "users-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pair.LinkedProvider == nil || *pair.LinkedProvider != "dev" {
+		t.Fatalf("LinkedProvider = %v", pair.LinkedProvider)
+	}
+	if gotPath != "/oauth/dev/link" {
+		t.Fatalf("path = %s", gotPath)
+	}
+	if gotAuth != "Bearer users-token" {
+		t.Fatalf("bearer = %q", gotAuth)
+	}
+}
+
+func TestDevLinkConflict(t *testing.T) {
+	c := stubAuth(t, func(w http.ResponseWriter, r *http.Request) {
+		writeProblem(w, http.StatusConflict, "identity_already_linked", nil)
+	})
+	if _, err := c.DevLink(context.Background(), "alice", "tok"); !errors.Is(err, authclient.ErrLinkConflict) {
+		t.Fatalf("want ErrLinkConflict, got %v", err)
+	}
+}
+
+func TestListIdentities(t *testing.T) {
+	const uid = "2b1f9c5e-3f47-4d10-9f3e-111111111111"
+	var gotAuth, gotPath string
+	c := stubAuth(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuth, gotPath = r.Header.Get("Authorization"), r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"identities": []map[string]any{
+				{"id": "11111111-1111-1111-1111-111111111111", "provider": "google", "created_at": "2026-01-01T00:00:00Z"},
+			},
+		})
+	})
+	ids, err := c.ListIdentities(context.Background(), uid, "users-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/users/"+uid+"/identities" {
+		t.Fatalf("path = %s", gotPath)
+	}
+	if gotAuth != "Bearer users-token" {
+		t.Fatalf("bearer = %q", gotAuth)
+	}
+	if len(ids) != 1 || ids[0].Provider != "google" {
+		t.Fatalf("identities = %+v", ids)
+	}
+}
+
+func TestListIdentitiesBadUUID(t *testing.T) {
+	c, err := authclient.New("http://unused")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ListIdentities(context.Background(), "not-a-uuid", "tok"); err == nil {
+		t.Fatal("want error for malformed user id")
+	}
+}
+
+func TestDeleteIdentity(t *testing.T) {
+	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	cases := []struct {
+		name   string
+		status int
+		want   error
+	}{
+		{"unlinked", http.StatusNoContent, nil},
+		{"not_found", http.StatusNotFound, authclient.ErrIdentityNotFound},
+		{"last_identity", http.StatusConflict, authclient.ErrLastIdentity},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotAuth, gotPath, gotMethod string
+			c := stubAuth(t, func(w http.ResponseWriter, r *http.Request) {
+				gotAuth, gotPath, gotMethod = r.Header.Get("Authorization"), r.URL.Path, r.Method
+				w.WriteHeader(tc.status)
+			})
+			err := c.DeleteIdentity(context.Background(), id, "users-token")
+			if tc.want == nil {
+				if err != nil {
+					t.Fatalf("want nil, got %v", err)
+				}
+			} else if !errors.Is(err, tc.want) {
+				t.Fatalf("want %v, got %v", tc.want, err)
+			}
+			if gotMethod != http.MethodDelete || gotPath != "/identities/"+id.String() {
+				t.Fatalf("method=%s path=%s", gotMethod, gotPath)
+			}
+			if gotAuth != "Bearer users-token" {
+				t.Fatalf("bearer = %q", gotAuth)
+			}
+		})
+	}
+}
+
+func TestDeleteUserAuth(t *testing.T) {
+	const uid = "2b1f9c5e-3f47-4d10-9f3e-111111111111"
+	var gotAuth, gotPath string
+	c := stubAuth(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuth, gotPath = r.Header.Get("Authorization"), r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	})
+	if err := c.DeleteUserAuth(context.Background(), uid, "users-token"); err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/users/"+uid+"/auth" {
+		t.Fatalf("path = %s", gotPath)
+	}
+	if gotAuth != "Bearer users-token" {
+		t.Fatalf("bearer = %q", gotAuth)
+	}
+}
+
+func TestDeleteUserAuthForbidden(t *testing.T) {
+	c := stubAuth(t, func(w http.ResponseWriter, r *http.Request) {
+		writeProblem(w, http.StatusForbidden, "not_your_account", nil)
+	})
+	if err := c.DeleteUserAuth(context.Background(), "2b1f9c5e-3f47-4d10-9f3e-111111111111", "tok"); err == nil {
+		t.Fatal("want an error for a 403")
 	}
 }

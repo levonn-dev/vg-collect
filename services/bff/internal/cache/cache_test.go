@@ -117,6 +117,13 @@ func TestMeCache(t *testing.T) {
 	if err != nil || string(body) != `{"id":"user-1"}` {
 		t.Fatalf("body=%q err=%v", body, err)
 	}
+	if err := c.InvalidateMe(ctx, "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	body, err = c.GetMe(ctx, "user-1")
+	if err != nil || body != nil {
+		t.Fatalf("invalidated me should be gone: body=%q err=%v", body, err)
+	}
 }
 
 func TestRecsCache(t *testing.T) {

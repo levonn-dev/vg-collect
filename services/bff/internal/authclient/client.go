@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/authapi"
@@ -31,6 +32,15 @@ var (
 	// ErrUserUnavailable means refresh could not consult the role
 	// source; the token was NOT consumed and the same one retries.
 	ErrUserUnavailable = errors.New("authclient: role source unavailable")
+	// ErrLinkConflict: the identity being linked already belongs to
+	// another account (auth answers 409 identity_already_linked).
+	ErrLinkConflict = errors.New("authclient: identity already linked to another account")
+	// ErrLinkEmailUnverified is the verified-email policy refusing a link.
+	ErrLinkEmailUnverified = errors.New("authclient: provider did not assert a verified email for link")
+	// ErrLastIdentity: refusing to unlink an account's only login.
+	ErrLastIdentity = errors.New("authclient: cannot unlink the last login")
+	// ErrIdentityNotFound: no such identity on this account.
+	ErrIdentityNotFound = errors.New("authclient: identity not found")
 )
 
 // ReusedError is refresh-token reuse: the chain is revoked and any
@@ -42,12 +52,15 @@ type ReusedError struct {
 
 func (e *ReusedError) Error() string { return "authclient: refresh token reuse detected" }
 
-// TokenPair mirrors the auth service's token response.
+// TokenPair mirrors the auth service's token response. LinkedProvider
+// is set only by Callback/DevLink, when the completed flow was an
+// account link rather than a login.
 type TokenPair struct {
 	AccessToken      string
 	RefreshToken     string
 	ExpiresIn        int64
 	RefreshExpiresIn int64
+	LinkedProvider   *string
 }
 
 // Client wraps the generated authapi typed client.
@@ -89,7 +102,8 @@ func (c *Client) Start(ctx context.Context, provider string) (string, error) {
 	}
 }
 
-// Callback completes a real-provider login.
+// Callback completes a real-provider login, or an account link when the
+// consumed state was a link flow (linked_provider comes back set).
 func (c *Client) Callback(ctx context.Context, code, state string) (TokenPair, error) {
 	resp, err := c.api.OauthCallbackWithResponse(ctx, authapi.CallbackRequest{Code: code, State: state})
 	if err != nil {
@@ -97,11 +111,23 @@ func (c *Client) Callback(ctx context.Context, code, state string) (TokenPair, e
 	}
 	switch {
 	case resp.JSON200 != nil:
-		return toPair(*resp.JSON200), nil
+		p := *resp.JSON200
+		return TokenPair{
+			AccessToken:      p.AccessToken,
+			RefreshToken:     p.RefreshToken,
+			ExpiresIn:        p.ExpiresIn,
+			RefreshExpiresIn: p.RefreshExpiresIn,
+			LinkedProvider:   p.LinkedProvider,
+		}, nil
 	case resp.ApplicationproblemJSON400 != nil:
 		return TokenPair{}, ErrLoginFailed
 	case resp.ApplicationproblemJSON403 != nil:
+		if p := resp.ApplicationproblemJSON403; p.Code != nil && *p.Code == "link_email_unverified" {
+			return TokenPair{}, ErrLinkEmailUnverified
+		}
 		return TokenPair{}, ErrEmailUnverified
+	case resp.ApplicationproblemJSON409 != nil:
+		return TokenPair{}, ErrLinkConflict
 	case resp.ApplicationproblemJSON502 != nil:
 		return TokenPair{}, ErrProviderError
 	default:
@@ -185,4 +211,104 @@ func toPair(p authapi.TokenPair) TokenPair {
 		ExpiresIn:        p.ExpiresIn,
 		RefreshExpiresIn: p.RefreshExpiresIn,
 	}
+}
+
+// bearerEditor attaches the session's own access token to a self-service
+// call (link, identity, and account-deletion endpoints all act on "my
+// account" and require it).
+func bearerEditor(bearer string) authapi.RequestEditorFn {
+	return func(_ context.Context, req *http.Request) error {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		return nil
+	}
+}
+
+// LinkStart begins linking a real provider to the session's account.
+func (c *Client) LinkStart(ctx context.Context, provider, bearer string) (string, error) {
+	resp, err := c.api.OauthLinkStartWithResponse(ctx, authapi.LinkStartRequest{
+		Provider: authapi.LinkStartRequestProvider(provider),
+	}, bearerEditor(bearer))
+	if err != nil {
+		return "", fmt.Errorf("authclient: link start: %w", err)
+	}
+	if resp.JSON200 == nil {
+		return "", ErrLoginFailed
+	}
+	return resp.JSON200.AuthorizeUrl, nil
+}
+
+// DevLink links a dev fixture identity to the session's account in one
+// hop (no external IdP round trip).
+func (c *Client) DevLink(ctx context.Context, user, bearer string) (TokenPair, error) {
+	resp, err := c.api.DevLinkWithResponse(ctx, authapi.DevLinkRequest{User: user}, bearerEditor(bearer))
+	if err != nil {
+		return TokenPair{}, fmt.Errorf("authclient: dev link: %w", err)
+	}
+	switch {
+	case resp.JSON200 != nil:
+		p := *resp.JSON200
+		return TokenPair{
+			AccessToken:      p.AccessToken,
+			RefreshToken:     p.RefreshToken,
+			ExpiresIn:        p.ExpiresIn,
+			RefreshExpiresIn: p.RefreshExpiresIn,
+			LinkedProvider:   p.LinkedProvider,
+		}, nil
+	case resp.ApplicationproblemJSON409 != nil:
+		return TokenPair{}, ErrLinkConflict
+	default:
+		return TokenPair{}, ErrLoginFailed
+	}
+}
+
+// ListIdentities fetches the linked logins for the account page.
+func (c *Client) ListIdentities(ctx context.Context, userID, bearer string) ([]authapi.Identity, error) {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, fmt.Errorf("authclient: bad user id: %w", err)
+	}
+	resp, err := c.api.ListIdentitiesWithResponse(ctx, uid, bearerEditor(bearer))
+	if err != nil {
+		return nil, fmt.Errorf("authclient: list identities: %w", err)
+	}
+	if resp.JSON200 == nil {
+		return nil, fmt.Errorf("authclient: list identities: status %d", resp.StatusCode())
+	}
+	return resp.JSON200.Identities, nil
+}
+
+// DeleteIdentity unlinks a login; sentinel errors carry the two
+// user-meaningful refusals (not found, or the account's last login).
+func (c *Client) DeleteIdentity(ctx context.Context, identityID uuid.UUID, bearer string) error {
+	resp, err := c.api.DeleteIdentityWithResponse(ctx, identityID, bearerEditor(bearer))
+	if err != nil {
+		return fmt.Errorf("authclient: delete identity: %w", err)
+	}
+	switch resp.StatusCode() {
+	case http.StatusNoContent:
+		return nil
+	case http.StatusNotFound:
+		return ErrIdentityNotFound
+	case http.StatusConflict:
+		return ErrLastIdentity
+	default:
+		return fmt.Errorf("authclient: delete identity: status %d", resp.StatusCode())
+	}
+}
+
+// DeleteUserAuth erases the account's identities and refresh families
+// (one leg of account deletion).
+func (c *Client) DeleteUserAuth(ctx context.Context, userID, bearer string) error {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return fmt.Errorf("authclient: bad user id: %w", err)
+	}
+	resp, err := c.api.DeleteUserAuthWithResponse(ctx, uid, bearerEditor(bearer))
+	if err != nil {
+		return fmt.Errorf("authclient: delete user auth: %w", err)
+	}
+	if resp.StatusCode() != http.StatusNoContent {
+		return fmt.Errorf("authclient: delete user auth: status %d", resp.StatusCode())
+	}
+	return nil
 }

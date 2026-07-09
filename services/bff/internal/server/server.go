@@ -19,10 +19,12 @@ import (
 	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/authapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/collectionapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/enrichapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
 )
 
 // SessionCache is the Valkey surface the server needs (implemented by
@@ -40,6 +42,7 @@ type SessionCache interface {
 	GetRecs(ctx context.Context, sub string) ([]byte, error)
 	PutRecs(ctx context.Context, sub string, body []byte, ttl time.Duration) error
 	InvalidateRecs(ctx context.Context, sub string) error
+	InvalidateMe(ctx context.Context, sub string) error
 }
 
 // AuthAPI is the auth service surface (implemented by authclient).
@@ -50,11 +53,18 @@ type AuthAPI interface {
 	Refresh(ctx context.Context, refreshToken string) (authclient.TokenPair, error)
 	Revoke(ctx context.Context, refreshToken string) error
 	Providers(ctx context.Context) ([]string, error)
+	LinkStart(ctx context.Context, provider, bearer string) (string, error)
+	DevLink(ctx context.Context, user, bearer string) (authclient.TokenPair, error)
+	ListIdentities(ctx context.Context, userID, bearer string) ([]authapi.Identity, error)
+	DeleteIdentity(ctx context.Context, identityID uuid.UUID, bearer string) error
+	DeleteUserAuth(ctx context.Context, userID, bearer string) error
 }
 
 // UserAPI is the user service surface (implemented by userclient).
 type UserAPI interface {
 	Get(ctx context.Context, id, bearer string) (userapi.User, error)
+	Update(ctx context.Context, id, bearer string, body []byte) (userclient.Result, error)
+	Delete(ctx context.Context, id, bearer string) error
 }
 
 // EnrichmentAPI is the enrichment service surface (implemented by
@@ -89,6 +99,7 @@ type CollectionAPI interface {
 	GetDashboard(ctx context.Context, bearer string, params *collectionapi.GetDashboardParams) (collectionclient.Result, error)
 	GetValueHistory(ctx context.Context, bearer string) (collectionclient.Result, error)
 	LibrarySummary(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error)
+	PurgeUserData(ctx context.Context, bearer string) (collectionclient.Result, error)
 }
 
 const (

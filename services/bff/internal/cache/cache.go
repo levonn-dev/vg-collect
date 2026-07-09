@@ -119,6 +119,15 @@ func (c *Cache) PutMe(ctx context.Context, sub string, body []byte, ttl time.Dur
 	return nil
 }
 
+// InvalidateMe drops a user's cached /api/me after a profile edit so
+// the header reflects the change immediately, not at TTL expiry.
+func (c *Cache) InvalidateMe(ctx context.Context, sub string) error {
+	if err := c.rdb.Del(ctx, "me:"+sub).Err(); err != nil {
+		return fmt.Errorf("cache: invalidate me: %w", err)
+	}
+	return nil
+}
+
 // GetRecs returns the cached recommendations body for sub, or nil.
 func (c *Cache) GetRecs(ctx context.Context, sub string) ([]byte, error) {
 	v, err := c.rdb.Get(ctx, "recs:"+sub).Result()

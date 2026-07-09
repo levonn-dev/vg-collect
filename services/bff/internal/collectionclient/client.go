@@ -226,6 +226,16 @@ func (c *Client) GetValueHistory(ctx context.Context, bearer string) (Result, er
 	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body, http.StatusOK)
 }
 
+// PurgeUserData relays DELETE /user-data (account deletion leg: wipes
+// the caller's entries, tags, and saved views).
+func (c *Client) PurgeUserData(ctx context.Context, bearer string) (Result, error) {
+	resp, err := c.api.PurgeUserDataWithResponse(ctx, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: purge user data: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body, http.StatusNoContent)
+}
+
 // LibrarySummary is the typed read backing the recommendations
 // composition; it is not relayed to browsers.
 func (c *Client) LibrarySummary(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error) {
