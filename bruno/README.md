@@ -27,6 +27,31 @@ styles of folder live here:
 4. Run `user / get self`, then the refresh/reuse/revoke flows in order
    to watch rotation and reuse detection happen.
 
+## Account linking flows (auth/ + user/)
+
+Logins resolve identity-first: a `(provider, subject)` pair that is
+linked to an account signs into that account even when its email
+differs, and identities never silently move between accounts. The
+`auth/` folder walks the surface with Bearer tokens (run `dev token`
+first):
+
+1. `dev link (bob joins this account)` binds the dev-bob identity to
+   the current token's account (idempotent 200; 409
+   `identity_already_linked` when dev-bob already belongs elsewhere).
+2. `identities (linked logins)` lists the account's logins and stores
+   the bob row's id.
+3. `unlink identity (bob leaves)` removes it (second run 404; the last
+   remaining login answers 409 `last_identity`).
+4. `delete user auth (wipe logins + sessions)` is the auth leg of
+   account deletion: 204, idempotent, SESSION-ENDING (refresh dies;
+   log in again with `dev token`). The user row and collection data
+   survive, and the next login re-binds via the verified email.
+
+`user / update self` edits the profile (self only; validation answers
+400 naming the field). There is deliberately no direct delete-user
+flow: deleting the row alone would orphan collection data, so the
+orchestrated deletion lives in `bff / delete me`.
+
 ## BFF cookie flows
 
 The `bff/` folder exercises the same edge the SPA uses: the public
@@ -43,9 +68,25 @@ sequence with the `local` environment selected:
 3. `me (cookie-authenticated)` returns the alice fixture's profile. No
    token wiring is needed: the jar replays the session cookie
    automatically.
-4. `logout (clears the cookie, revokes the chain)` ends the session and
+4. The collection relays (`collection entries`, `recommendations`,
+   `collection value history`) exercise the domain surface through the
+   same cookie.
+5. The account-management flows mirror the SPA's account page:
+   `me update` edits the profile (edits survive later logins - provider
+   claims fill the profile only at creation); `link dev bob` is the
+   linking navigation (302 to `/account?linked=dev`, or
+   `?link_error=conflict` when dev-bob already belongs to another
+   account); `me identities` lists the linked logins and stores the bob
+   row's id; `unlink bob` removes it (409 `last_identity` guards the
+   only remaining login); `delete me` deletes the whole account in
+   self-healing order (collection purge, auth wipe, user row, session
+   teardown) - fixture accounts are disposable, the next dev login
+   recreates one fresh.
+6. `logout (clears the cookie, revokes the chain)` ends the session and
    revokes its refresh chain server-side; the jar drops the cleared
-   cookie. After this, `me` returns 401 until you log in again.
+   cookie. After this, `me` returns 401 until you log in again. It is
+   idempotent, so it is also safe to run right after `delete me`
+   already ended the session.
 
 ## Fixture users only
 
@@ -121,6 +162,12 @@ creations answer 409 on the second run (names are unique per user).
 `value history` plots the collection's worth over the last ninety days,
 one point per snapshot day; it is cached about five minutes and
 invalidated by your own entry mutations.
+
+`purge user data` (last in the folder) deletes everything the token's
+user owns - entries, tags, saved views - in one idempotent 204 and
+drops the cached dashboard. It is the collection leg of account
+deletion and doubles as cleanup: run it to wipe the debris this folder
+created before a fresh run.
 
 Through the gateway, `bff/collection entries`, `bff/collection value
 history`, and `bff/recommendations` exercise the same domain with the

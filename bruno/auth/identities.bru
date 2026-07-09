@@ -1,0 +1,32 @@
+meta {
+  name: identities (linked logins)
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{auth_url}}/users/{{user_id}}/identities
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const bob = res.body.identities.find((i) => i.email === "bob@example.com");
+    if (bob) {
+      bru.setEnvVar("bob_identity_id", bob.id);
+    }
+  }
+}
+
+docs {
+  Lists the account's linked logins, oldest first: id, provider, the
+  email each login last asserted, and when it was linked. After
+  "dev link" expect two dev rows (alice@ and bob@example.com); the bob
+  row's id is stored as bob_identity_id for the unlink flow. Reading
+  another user's id answers 403 (self or role service only).
+}

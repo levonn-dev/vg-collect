@@ -1,0 +1,29 @@
+meta {
+  name: delete user auth (wipe logins + sessions)
+  type: http
+  seq: 9
+}
+
+delete {
+  url: {{auth_url}}/users/{{user_id}}/auth
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  The auth leg of account deletion: deletes every identity on the
+  account and revokes every refresh-token family, in one transaction.
+  Expect 204, idempotently (a second run is also 204). Self only; even
+  admins cannot wipe someone else's logins here.
+
+  SESSION-ENDING: the stored refresh_token is dead afterwards (refresh
+  answers 401) and the access token only survives its remaining ~5m
+  TTL. The user row and collection data are untouched; the next
+  "dev token" login re-creates the identity binding via the verified
+  email and everything works again. The full account deletion
+  (collection purge + user row) is the bff flow "delete me".
+}

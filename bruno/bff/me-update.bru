@@ -1,0 +1,26 @@
+meta {
+  name: me update (edit the profile)
+  type: http
+  seq: 7
+}
+
+patch {
+  url: {{bff_url}}/api/me
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "display_name": "Alice Prime"
+  }
+}
+
+docs {
+  Cookie-authenticated profile edit through the gateway: expect 200
+  with the refreshed Me projection, and the bff drops its brief
+  /api/me cache so the next "me" shows the change immediately. The
+  user service's validation problems relay verbatim (400 invalid_body
+  naming the field). Logins never overwrite this: provider claims fill
+  the profile only when the account is first created.
+}

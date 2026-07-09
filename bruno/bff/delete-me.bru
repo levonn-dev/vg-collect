@@ -1,0 +1,24 @@
+meta {
+  name: delete me (whole account)
+  type: http
+  seq: 11
+}
+
+delete {
+  url: {{bff_url}}/api/me
+  body: none
+  auth: none
+}
+
+docs {
+  Full account deletion, orchestrated in self-healing order:
+  collection purge, then auth wipe (identities + refresh families),
+  then the user row, then session teardown (jti denylisted, cookie
+  cleared). Expect 204 and a dead session: "me" answers 401 until the
+  next "dev login". A mid-sequence failure answers 502 with the
+  session intact so the request can simply be retried.
+
+  Fixture accounts are disposable by design: the next dev login as
+  alice recreates a fresh, empty account. Do not point this at an
+  account whose collection you care about.
+}

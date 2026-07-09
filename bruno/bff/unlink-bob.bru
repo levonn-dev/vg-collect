@@ -1,0 +1,19 @@
+meta {
+  name: unlink bob
+  type: http
+  seq: 10
+}
+
+delete {
+  url: {{bff_url}}/api/me/identities/{{bff_bob_identity_id}}
+  body: none
+  auth: none
+}
+
+docs {
+  Run "me identities" first to capture bff_bob_identity_id. Expect
+  204; bob's next login then lands in bob's own account again. A
+  second run answers 404 identity_not_found, and removing the
+  account's only remaining login answers 409 last_identity - the
+  account page disables that button for the same reason.
+}

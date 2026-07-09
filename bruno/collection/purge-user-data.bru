@@ -1,0 +1,28 @@
+meta {
+  name: purge user data (wipe the fixture's collection)
+  type: http
+  seq: 15
+}
+
+delete {
+  url: {{collection_url}}/user-data
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  Deletes every collection row the token's user owns - entries (their
+  tag links cascade), tags, and saved views - in one transaction, and
+  drops the user's cached dashboard/value-history. Expect 204,
+  idempotently (purging an empty collection is also 204).
+
+  This is the collection leg of account deletion (bff "delete me"
+  calls it first), and doubles as cleanup here: run it last to wipe
+  the debris this folder created, or before a re-run for a clean
+  slate. Entry/tag/view ids stored in the environment are dangling
+  afterwards; start again from "create entry".
+}

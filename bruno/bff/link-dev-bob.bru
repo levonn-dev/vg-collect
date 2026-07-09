@@ -1,0 +1,24 @@
+meta {
+  name: link dev bob (navigation)
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{bff_url}}/api/auth/link?provider=dev&user=bob
+  body: none
+  auth: none
+}
+
+docs {
+  The account page's "link another login" navigation, session-guarded
+  (unlike /api/auth/login: with no cookie in the jar it answers 401).
+  The dev provider links in one hop: the gateway answers 302 to
+  /account?linked=dev with a re-sealed session cookie, and Bruno
+  follows to the SPA shell (200). Outcomes travel as query params on
+  the redirect: ?linked=dev on success, ?link_error=conflict when
+  dev-bob already belongs to another account (linking never moves a
+  login), ?link_error=link_failed otherwise. Real providers redirect
+  to the provider's authorize URL instead and come back through
+  /api/auth/callback.
+}

@@ -1,0 +1,28 @@
+meta {
+  name: me identities (linked logins)
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{bff_url}}/api/me/identities
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const bob = res.body.identities.find((i) => i.email === "bob@example.com");
+    if (bob) {
+      bru.setEnvVar("bff_bob_identity_id", bob.id);
+    }
+  }
+}
+
+docs {
+  The account page's linked-logins list, oldest first (id, provider,
+  the email each login last asserted, linked date). Uncached: it
+  changes exactly when the user links or unlinks. After "link dev bob"
+  expect two dev rows; the bob row's id is stored as
+  bff_bob_identity_id for the unlink flow.
+}

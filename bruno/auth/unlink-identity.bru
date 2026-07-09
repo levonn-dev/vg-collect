@@ -1,0 +1,25 @@
+meta {
+  name: unlink identity (bob leaves)
+  type: http
+  seq: 8
+}
+
+delete {
+  url: {{auth_url}}/identities/{{bob_identity_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  Run "identities" first to capture bob_identity_id. Unlinks the
+  dev-bob login from this account: expect 204; bob's next login then
+  creates (or rejoins) bob's own account via the email fallback.
+
+  A second run answers 404 identity_not_found (the row is gone), and
+  unlinking the account's ONLY remaining login answers 409
+  last_identity: an account can never lose its last way in.
+}

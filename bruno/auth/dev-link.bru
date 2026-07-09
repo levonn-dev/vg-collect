@@ -1,0 +1,34 @@
+meta {
+  name: dev link (bob joins this account)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{auth_url}}/oauth/dev/link
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "user": "bob"
+  }
+}
+
+docs {
+  Run "dev token" first. Links the dev-bob identity to the CURRENT
+  token's account: expect 200 with linked_provider "dev" and a fresh
+  token pair for the same user (the env keeps the original pair; both
+  stay valid). After this, logging in as bob lands in this account.
+
+  Re-running is an idempotent 200 (same account). If dev-bob already
+  belongs to a DIFFERENT account (someone logged in as bob before ever
+  linking), expect 409 identity_already_linked instead: linking never
+  moves a login between accounts. Run "unlink identity (bob leaves)"
+  to restore the single-login state.
+}

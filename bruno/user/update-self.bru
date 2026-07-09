@@ -1,0 +1,37 @@
+meta {
+  name: update self (display name)
+  type: http
+  seq: 2
+}
+
+patch {
+  url: {{user_url}}/users/{{user_id}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "display_name": "Alice Prime"
+  }
+}
+
+docs {
+  Self-service profile edit: expect 200 with the updated user. Absent
+  fields keep their value; an empty avatar_url string clears the
+  avatar. Because logins fill the profile only at account creation,
+  this edit survives every later login.
+
+  Validation answers 400 invalid_body naming the field: a blank or
+  >100-char display_name, or an avatar_url that is not http(s) or is
+  over 2048 chars. Editing anyone else (or with a service/admin token)
+  answers 403: profiles are self-service only.
+
+  The direct DELETE /users/{id} endpoint deliberately has no flow
+  here: deleting the row alone would orphan the account's collection
+  data. The orchestrated deletion lives in bff "delete me".
+}
