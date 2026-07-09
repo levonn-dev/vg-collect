@@ -3,10 +3,14 @@ info:
   title: vg-collect auth service
   version: 0.1.0
   description: >
-    OIDC relying party and first-party token issuer. These endpoints carry
-    no bearerAuth security scheme on purpose: they are where tokens come
-    from, and the JWKS must be readable by every service. The service is
-    cluster-internal; network reachability is the access control.
+    OIDC relying party and first-party token issuer. The login, refresh,
+    revoke, and JWKS endpoints carry no bearerAuth security scheme on
+    purpose: they are where tokens come from, or must stay readable by
+    every service, and the service is cluster-internal, so network
+    reachability is the access control. The self-service endpoints below
+    (link start, dev link) do require bearerAuth: they act on "my
+    account", which only a token this same service already issued can
+    name.
 paths:
   /oauth/start:
     post:
@@ -30,7 +34,7 @@ paths:
   /oauth/callback:
     post:
       operationId: oauthCallback
-      summary: Complete a provider login (code exchange, ID-token verification, session mint)
+      summary: Complete a provider login or account link (code exchange, ID-token verification)
       requestBody:
         required: true
         content:
@@ -39,17 +43,49 @@ paths:
               $ref: "#/components/schemas/CallbackRequest"
       responses:
         "200":
-          description: First-party session tokens
+          description: >
+            First-party session tokens. linked_provider is present when
+            the consumed state was an account link (the tokens then
+            belong to the linking user).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TokenPair"
+                $ref: "#/components/schemas/CallbackResponse"
         "400": { $ref: "#/components/responses/BadRequest" }
         "403":
-          description: Provider did not assert a verified email (code email_unverified)
+          description: >
+            Provider did not assert a verified email: code
+            email_unverified on a login, link_email_unverified on a link.
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Link flows only; the identity already belongs to another account (code identity_already_linked)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /oauth/link/start:
+    post:
+      operationId: oauthLinkStart
+      summary: Begin linking another provider login to the caller's account
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkStartRequest"
+      responses:
+        "200":
+          description: Authorize URL; the pending state is bound server-side to the caller's user id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /providers:
     get:
@@ -88,6 +124,110 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "404":
           description: Dev provider disabled
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /oauth/dev/link:
+    post:
+      operationId: devLink
+      summary: Link a dev fixture identity to the caller's account (dev provider only; 404 unless enabled)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevLinkRequest"
+      responses:
+        "200":
+          description: Fresh session tokens for the caller, with linked_provider set to dev
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallbackResponse"
+        "400":
+          description: Malformed body, or unknown fixture handle (code unknown_fixture)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Dev provider disabled
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: The fixture identity already belongs to another account (code identity_already_linked)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /users/{userId}/identities:
+    get:
+      operationId: listIdentities
+      summary: Provider logins linked to a user (self, or role service)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Linked identities, oldest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Identities"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Not your account
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /identities/{identityId}:
+    delete:
+      operationId: deleteIdentity
+      summary: Unlink a provider login from the caller's account
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: identityId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Unlinked
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No such identity on the caller's account (code identity_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Refusing to remove the account's last login (code last_identity)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /users/{userId}/auth:
+    delete:
+      operationId: deleteUserAuth
+      summary: Delete all identities and revoke every refresh family for a user (self only; account deletion)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Auth footprint erased (idempotent)
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Not your account
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -147,6 +287,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Jwks"
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
   responses:
     BadRequest:
       description: Malformed request
@@ -158,8 +300,18 @@ components:
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
   schemas:
     StartRequest:
+      type: object
+      required: [provider]
+      properties:
+        provider: { type: string, enum: [google, twitch] }
+    LinkStartRequest:
       type: object
       required: [provider]
       properties:
@@ -176,6 +328,11 @@ components:
         code: { type: string }
         state: { type: string }
     DevTokenRequest:
+      type: object
+      required: [user]
+      properties:
+        user: { type: string, description: "Fixture handle (alice, bob, admin); never a real account" }
+    DevLinkRequest:
       type: object
       required: [user]
       properties:
@@ -199,6 +356,14 @@ components:
         expires_in: { type: integer, format: int64, description: "Access token lifetime, seconds" }
         refresh_token: { type: string, description: "Opaque, single-use; rotated on every refresh" }
         refresh_expires_in: { type: integer, format: int64, description: "Seconds until the session's absolute expiry" }
+    CallbackResponse:
+      allOf:
+        - $ref: "#/components/schemas/TokenPair"
+        - type: object
+          properties:
+            linked_provider:
+              type: string
+              description: Present only when the flow was an account link; names the linked provider.
     Jwks:
       type: object
       required: [keys]
@@ -223,6 +388,23 @@ components:
           type: array
           description: "Subset of: google, twitch, dev"
           items: { type: string }
+    Identity:
+      type: object
+      required: [id, provider, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        provider: { type: string }
+        email:
+          type: string
+          description: Informational; the email the provider asserted when this identity last signed in.
+        created_at: { type: string, format: date-time }
+    Identities:
+      type: object
+      required: [identities]
+      properties:
+        identities:
+          type: array
+          items: { $ref: "#/components/schemas/Identity" }
     Problem:
       type: object
       required: [type, title, status]

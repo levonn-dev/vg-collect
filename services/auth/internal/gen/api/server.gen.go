@@ -6,14 +6,29 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+)
+
+const (
+	BearerAuthScopes = "bearerAuth.Scopes"
+)
+
+// Defines values for LinkStartRequestProvider.
+const (
+	LinkStartRequestProviderGoogle LinkStartRequestProvider = "google"
+	LinkStartRequestProviderTwitch LinkStartRequestProvider = "twitch"
 )
 
 // Defines values for StartRequestProvider.
 const (
-	Google StartRequestProvider = "google"
-	Twitch StartRequestProvider = "twitch"
+	StartRequestProviderGoogle StartRequestProvider = "google"
+	StartRequestProviderTwitch StartRequestProvider = "twitch"
 )
 
 // CallbackRequest defines model for CallbackRequest.
@@ -22,10 +37,52 @@ type CallbackRequest struct {
 	State string `json:"state"`
 }
 
+// CallbackResponse defines model for CallbackResponse.
+type CallbackResponse struct {
+	// AccessToken Ed25519 JWT, ~5 min TTL
+	AccessToken string `json:"access_token"`
+
+	// ExpiresIn Access token lifetime, seconds
+	ExpiresIn int64 `json:"expires_in"`
+
+	// LinkedProvider Present only when the flow was an account link; names the linked provider.
+	LinkedProvider *string `json:"linked_provider,omitempty"`
+
+	// RefreshExpiresIn Seconds until the session's absolute expiry
+	RefreshExpiresIn int64 `json:"refresh_expires_in"`
+
+	// RefreshToken Opaque, single-use; rotated on every refresh
+	RefreshToken string `json:"refresh_token"`
+
+	// TokenType Always Bearer
+	TokenType string `json:"token_type"`
+}
+
+// DevLinkRequest defines model for DevLinkRequest.
+type DevLinkRequest struct {
+	// User Fixture handle (alice, bob, admin); never a real account
+	User string `json:"user"`
+}
+
 // DevTokenRequest defines model for DevTokenRequest.
 type DevTokenRequest struct {
 	// User Fixture handle (alice, bob, admin); never a real account
 	User string `json:"user"`
+}
+
+// Identities defines model for Identities.
+type Identities struct {
+	Identities []Identity `json:"identities"`
+}
+
+// Identity defines model for Identity.
+type Identity struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Email Informational; the email the provider asserted when this identity last signed in.
+	Email    *string            `json:"email,omitempty"`
+	Id       openapi_types.UUID `json:"id"`
+	Provider string             `json:"provider"`
 }
 
 // Jwk OKP key (RFC 8037). use and alg are omitted; every key here is an Ed25519 signing key.
@@ -42,6 +99,14 @@ type Jwk struct {
 type Jwks struct {
 	Keys []Jwk `json:"keys"`
 }
+
+// LinkStartRequest defines model for LinkStartRequest.
+type LinkStartRequest struct {
+	Provider LinkStartRequestProvider `json:"provider"`
+}
+
+// LinkStartRequestProvider defines model for LinkStartRequest.Provider.
+type LinkStartRequestProvider string
 
 // Problem defines model for Problem.
 type Problem struct {
@@ -116,14 +181,23 @@ type TokenPair struct {
 // BadRequest defines model for BadRequest.
 type BadRequest = Problem
 
+// Unauthorized defines model for Unauthorized.
+type Unauthorized = Problem
+
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
 
 // OauthCallbackJSONRequestBody defines body for OauthCallback for application/json ContentType.
 type OauthCallbackJSONRequestBody = CallbackRequest
 
+// DevLinkJSONRequestBody defines body for DevLink for application/json ContentType.
+type DevLinkJSONRequestBody = DevLinkRequest
+
 // DevTokenJSONRequestBody defines body for DevToken for application/json ContentType.
 type DevTokenJSONRequestBody = DevTokenRequest
+
+// OauthLinkStartJSONRequestBody defines body for OauthLinkStart for application/json ContentType.
+type OauthLinkStartJSONRequestBody = LinkStartRequest
 
 // OauthStartJSONRequestBody defines body for OauthStart for application/json ContentType.
 type OauthStartJSONRequestBody = StartRequest
@@ -139,12 +213,21 @@ type ServerInterface interface {
 	// Public signing keys (Ed25519) for access-JWT verification
 	// (GET /.well-known/jwks.json)
 	GetJwks(w http.ResponseWriter, r *http.Request)
-	// Complete a provider login (code exchange, ID-token verification, session mint)
+	// Unlink a provider login from the caller's account
+	// (DELETE /identities/{identityId})
+	DeleteIdentity(w http.ResponseWriter, r *http.Request, identityId openapi_types.UUID)
+	// Complete a provider login or account link (code exchange, ID-token verification)
 	// (POST /oauth/callback)
 	OauthCallback(w http.ResponseWriter, r *http.Request)
+	// Link a dev fixture identity to the caller's account (dev provider only; 404 unless enabled)
+	// (POST /oauth/dev/link)
+	DevLink(w http.ResponseWriter, r *http.Request)
 	// Mint a session for a dev fixture user (dev provider only; 404 unless enabled)
 	// (POST /oauth/dev/token)
 	DevToken(w http.ResponseWriter, r *http.Request)
+	// Begin linking another provider login to the caller's account
+	// (POST /oauth/link/start)
+	OauthLinkStart(w http.ResponseWriter, r *http.Request)
 	// Begin a provider login; returns the URL to redirect the browser to
 	// (POST /oauth/start)
 	OauthStart(w http.ResponseWriter, r *http.Request)
@@ -157,6 +240,12 @@ type ServerInterface interface {
 	// Revoke a refresh token's whole chain (logout); idempotent
 	// (POST /token/revoke)
 	RevokeToken(w http.ResponseWriter, r *http.Request)
+	// Delete all identities and revoke every refresh family for a user (self only; account deletion)
+	// (DELETE /users/{userId}/auth)
+	DeleteUserAuth(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
+	// Provider logins linked to a user (self, or role service)
+	// (GET /users/{userId}/identities)
+	ListIdentities(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -182,6 +271,37 @@ func (siw *ServerInterfaceWrapper) GetJwks(w http.ResponseWriter, r *http.Reques
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteIdentity operation middleware
+func (siw *ServerInterfaceWrapper) DeleteIdentity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "identityId" -------------
+	var identityId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "identityId", r.PathValue("identityId"), &identityId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "identityId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteIdentity(w, r, identityId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // OauthCallback operation middleware
 func (siw *ServerInterfaceWrapper) OauthCallback(w http.ResponseWriter, r *http.Request) {
 
@@ -196,11 +316,51 @@ func (siw *ServerInterfaceWrapper) OauthCallback(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// DevLink operation middleware
+func (siw *ServerInterfaceWrapper) DevLink(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DevLink(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DevToken operation middleware
 func (siw *ServerInterfaceWrapper) DevToken(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DevToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OauthLinkStart operation middleware
+func (siw *ServerInterfaceWrapper) OauthLinkStart(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OauthLinkStart(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -257,6 +417,68 @@ func (siw *ServerInterfaceWrapper) RevokeToken(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RevokeToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteUserAuth operation middleware
+func (siw *ServerInterfaceWrapper) DeleteUserAuth(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteUserAuth(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListIdentities operation middleware
+func (siw *ServerInterfaceWrapper) ListIdentities(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListIdentities(w, r, userId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -387,12 +609,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc("GET "+options.BaseURL+"/.well-known/jwks.json", wrapper.GetJwks)
+	m.HandleFunc("DELETE "+options.BaseURL+"/identities/{identityId}", wrapper.DeleteIdentity)
 	m.HandleFunc("POST "+options.BaseURL+"/oauth/callback", wrapper.OauthCallback)
+	m.HandleFunc("POST "+options.BaseURL+"/oauth/dev/link", wrapper.DevLink)
 	m.HandleFunc("POST "+options.BaseURL+"/oauth/dev/token", wrapper.DevToken)
+	m.HandleFunc("POST "+options.BaseURL+"/oauth/link/start", wrapper.OauthLinkStart)
 	m.HandleFunc("POST "+options.BaseURL+"/oauth/start", wrapper.OauthStart)
 	m.HandleFunc("GET "+options.BaseURL+"/providers", wrapper.ListProviders)
 	m.HandleFunc("POST "+options.BaseURL+"/token/refresh", wrapper.RefreshToken)
 	m.HandleFunc("POST "+options.BaseURL+"/token/revoke", wrapper.RevokeToken)
+	m.HandleFunc("DELETE "+options.BaseURL+"/users/{userId}/auth", wrapper.DeleteUserAuth)
+	m.HandleFunc("GET "+options.BaseURL+"/users/{userId}/identities", wrapper.ListIdentities)
 
 	return m
 }
