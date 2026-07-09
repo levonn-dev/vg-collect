@@ -148,6 +148,9 @@ enrichment pricing), the frontend (collection views in table, cover
 grid, and compact list over the full filter/sort/group matrix, saved
 views, a drag-orderable backlog, an add wizard with match confirmation
 and a custom-item path, entry editing with pricing affordances, an
+account page (profile editing, linking multiple provider logins to
+one account with conflict-safe identity-first sign-in, unlinking, and
+full account deletion), an
 insights strip on the homepage whose stats follow the active filters
 (with expandable breakdowns, value-over-time, and recommendations),
 and a dark-default theme with a light toggle, all covered end to end
