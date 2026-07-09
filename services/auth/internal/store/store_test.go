@@ -160,30 +160,6 @@ func TestAuthStates_ExpiredUnusableAndCleanedOnInsert(t *testing.T) {
 	}
 }
 
-func TestBindIdentity_InsertAndRebind(t *testing.T) {
-	s, pool := newTestStore(t)
-	ctx := context.Background()
-
-	u1, u2 := uuid.New(), uuid.New()
-	if err := s.BindIdentity(ctx, "google", "sub-1", u1); err != nil {
-		t.Fatal(err)
-	}
-	// The provider account follows its current verified email: a later
-	// login that upserts to a different user rebinds the identity.
-	if err := s.BindIdentity(ctx, "google", "sub-1", u2); err != nil {
-		t.Fatal(err)
-	}
-	var got uuid.UUID
-	if err := pool.QueryRow(ctx,
-		`SELECT user_id FROM identities WHERE provider = 'google' AND provider_subject = 'sub-1'`).
-		Scan(&got); err != nil {
-		t.Fatal(err)
-	}
-	if got != u2 {
-		t.Fatalf("user_id = %s, want %s", got, u2)
-	}
-}
-
 // --- refresh sessions ---
 
 const window = 6 * time.Minute // access TTL + leeway margin, as the handler passes it
@@ -510,5 +486,188 @@ func TestRevokeFamily_RacingLiveRotation_NoSurvivors(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatalf("%d rows survived logout (phantom child)", n)
+	}
+}
+
+// --- identity linking ---
+
+func TestResolveIdentity_FoundRefreshesEmailAndNotFound(t *testing.T) {
+	s := store.New(newTestPool(t))
+	ctx := context.Background()
+	userID := uuid.New()
+
+	if _, err := s.ResolveIdentity(ctx, "google", "sub-1", "a@example.com"); !errors.Is(err, store.ErrIdentityNotFound) {
+		t.Fatalf("want ErrIdentityNotFound, got %v", err)
+	}
+
+	if err := s.BindIdentity(ctx, "google", "sub-1", "a@example.com", userID); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+	got, err := s.ResolveIdentity(ctx, "google", "sub-1", "a2@example.com")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if got.UserID != userID || got.Email == nil || *got.Email != "a2@example.com" {
+		t.Fatalf("resolve = %+v", got)
+	}
+	if got.ID == uuid.Nil || got.Provider != "google" || got.Subject != "sub-1" {
+		t.Fatalf("identity fields = %+v", got)
+	}
+}
+
+func TestBindIdentity_InsertOnlySemantics(t *testing.T) {
+	s := store.New(newTestPool(t))
+	ctx := context.Background()
+	owner, other := uuid.New(), uuid.New()
+
+	if err := s.BindIdentity(ctx, "dev", "dev-x", "x@example.com", owner); err != nil {
+		t.Fatalf("first bind: %v", err)
+	}
+	// Same user again: idempotent, refreshes email.
+	if err := s.BindIdentity(ctx, "dev", "dev-x", "x2@example.com", owner); err != nil {
+		t.Fatalf("rebind same user: %v", err)
+	}
+	got, err := s.ResolveIdentity(ctx, "dev", "dev-x", "x2@example.com")
+	if err != nil || got.UserID != owner {
+		t.Fatalf("resolve after idempotent bind: %+v %v", got, err)
+	}
+	// Different user: rejected, mapping unchanged.
+	if err := s.BindIdentity(ctx, "dev", "dev-x", "x@example.com", other); !errors.Is(err, store.ErrIdentityTaken) {
+		t.Fatalf("want ErrIdentityTaken, got %v", err)
+	}
+}
+
+func TestRebindIdentity_MovesOwnershipAndInsertsWhenAbsent(t *testing.T) {
+	s := store.New(newTestPool(t))
+	ctx := context.Background()
+	dead, next := uuid.New(), uuid.New()
+
+	if err := s.RebindIdentity(ctx, "google", "sub-r", "r@example.com", dead); err != nil {
+		t.Fatalf("rebind-as-insert: %v", err)
+	}
+	if err := s.RebindIdentity(ctx, "google", "sub-r", "r@example.com", next); err != nil {
+		t.Fatalf("rebind-as-move: %v", err)
+	}
+	got, err := s.ResolveIdentity(ctx, "google", "sub-r", "r@example.com")
+	if err != nil || got.UserID != next {
+		t.Fatalf("after rebind: %+v %v", got, err)
+	}
+}
+
+func TestListIdentities_ScopedAndOrdered(t *testing.T) {
+	s := store.New(newTestPool(t))
+	ctx := context.Background()
+	u1, u2 := uuid.New(), uuid.New()
+	if err := s.BindIdentity(ctx, "dev", "dev-a", "a@example.com", u1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.BindIdentity(ctx, "google", "g-a", "a@gmail.example", u1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.BindIdentity(ctx, "dev", "dev-b", "b@example.com", u2); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := s.ListIdentities(ctx, u1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(ids) != 2 || ids[0].Provider != "dev" || ids[1].Provider != "google" {
+		t.Fatalf("list = %+v", ids)
+	}
+	empty, err := s.ListIdentities(ctx, uuid.New())
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("unknown user list = %+v %v", empty, err)
+	}
+}
+
+func TestDeleteIdentity_GuardsLastAndOwnership(t *testing.T) {
+	s := store.New(newTestPool(t))
+	ctx := context.Background()
+	u1, u2 := uuid.New(), uuid.New()
+	if err := s.BindIdentity(ctx, "dev", "dev-1", "1@example.com", u1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.BindIdentity(ctx, "google", "g-1", "1@gmail.example", u1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.BindIdentity(ctx, "dev", "dev-2", "2@example.com", u2); err != nil {
+		t.Fatal(err)
+	}
+	mine, _ := s.ListIdentities(ctx, u1)
+	theirs, _ := s.ListIdentities(ctx, u2)
+
+	// Someone else's identity id: not found (no oracle about existence).
+	if err := s.DeleteIdentity(ctx, u1, theirs[0].ID); !errors.Is(err, store.ErrIdentityNotFound) {
+		t.Fatalf("cross-user delete: want ErrIdentityNotFound, got %v", err)
+	}
+	if err := s.DeleteIdentity(ctx, u1, mine[0].ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	left, _ := s.ListIdentities(ctx, u1)
+	if len(left) != 1 {
+		t.Fatalf("left = %+v", left)
+	}
+	if err := s.DeleteIdentity(ctx, u1, left[0].ID); !errors.Is(err, store.ErrLastIdentity) {
+		t.Fatalf("want ErrLastIdentity, got %v", err)
+	}
+}
+
+func TestDeleteUserAuth_WipesIdentitiesAndRevokesFamilies(t *testing.T) {
+	s := store.New(newTestPool(t))
+	ctx := context.Background()
+	u := uuid.New()
+	if err := s.BindIdentity(ctx, "dev", "dev-w", "w@example.com", u); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.BindIdentity(ctx, "google", "g-w", "w@gmail.example", u); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateSession(ctx, "hash-w1", u, "jti-w1", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteUserAuth(ctx, u); err != nil {
+		t.Fatalf("wipe: %v", err)
+	}
+	ids, _ := s.ListIdentities(ctx, u)
+	if len(ids) != 0 {
+		t.Fatalf("identities survived: %+v", ids)
+	}
+	if _, err := s.PeekSession(ctx, "hash-w1"); !errors.Is(err, store.ErrRefreshRevoked) {
+		t.Fatalf("want ErrRefreshRevoked, got %v", err)
+	}
+	// Idempotent.
+	if err := s.DeleteUserAuth(ctx, u); err != nil {
+		t.Fatalf("second wipe: %v", err)
+	}
+}
+
+func TestState_CarriesLinkUserID(t *testing.T) {
+	s := store.New(newTestPool(t))
+	ctx := context.Background()
+	link := uuid.New()
+
+	if err := s.CreateState(ctx, store.AuthState{
+		State: "st-link", PKCEVerifier: "v", Nonce: "n", Provider: "google",
+		ExpiresAt: time.Now().Add(time.Minute), LinkUserID: &link,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ConsumeState(ctx, "st-link")
+	if err != nil {
+		t.Fatalf("consume: %v", err)
+	}
+	if got.LinkUserID == nil || *got.LinkUserID != link {
+		t.Fatalf("LinkUserID = %v", got.LinkUserID)
+	}
+
+	if err := s.CreateState(ctx, store.AuthState{
+		State: "st-login", PKCEVerifier: "v", Nonce: "n", Provider: "google",
+		ExpiresAt: time.Now().Add(time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.ConsumeState(ctx, "st-login")
+	if err != nil || got.LinkUserID != nil {
+		t.Fatalf("login state LinkUserID = %v (err %v)", got.LinkUserID, err)
 	}
 }

@@ -1,12 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
 	"github.com/levonn-dev/vg-collect/services/auth/internal/gen/api"
@@ -90,32 +92,260 @@ func (h *Handlers) OauthCallback(w http.ResponseWriter, r *http.Request) {
 		problem(w, r, http.StatusBadRequest, "invalid_callback", "ID token verification failed")
 		return
 	}
+	if st.LinkUserID != nil {
+		h.completeLink(w, r, st.Provider, claims, *st.LinkUserID)
+		return
+	}
 	h.completeLogin(w, r, st.Provider, claims)
 }
 
+// OauthLinkStart begins a provider dance that will attach the
+// resulting identity to the caller's account instead of logging in.
+// The link target comes from the verified token, never the body, so a
+// link flow cannot be aimed at another user.
+func (h *Handlers) OauthLinkStart(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := h.requireUser(w, r)
+	if !ok {
+		return
+	}
+	var req api.LinkStartRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	p, ok := h.providers[string(req.Provider)]
+	if !ok {
+		problem(w, r, http.StatusBadRequest, "unknown_provider", "provider not enabled")
+		return
+	}
+	state := oidc.RandomToken()
+	nonce := oidc.RandomToken()
+	verifier, challenge := oidc.NewPKCE()
+	if err := h.store.CreateState(r.Context(), store.AuthState{
+		State: state, PKCEVerifier: verifier, Nonce: nonce,
+		Provider: p.Name(), ExpiresAt: time.Now().Add(stateTTL), LinkUserID: &userID,
+	}); err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "could not persist link state")
+		return
+	}
+	authorizeURL, err := p.AuthorizeURL(r.Context(), state, nonce, challenge)
+	if err != nil {
+		problem(w, r, http.StatusBadGateway, "provider_error", "identity provider unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, api.StartResponse{AuthorizeUrl: authorizeURL})
+}
+
+// DevLink is the dev provider's one-hop link (no external IdP, so
+// start and callback collapse). 404 when disabled, like DevToken.
+func (h *Handlers) DevLink(w http.ResponseWriter, r *http.Request) {
+	if !h.devEnabled {
+		problem(w, r, http.StatusNotFound, "not_found", "not found")
+		return
+	}
+	userID, _, ok := h.requireUser(w, r)
+	if !ok {
+		return
+	}
+	var req api.DevLinkRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	claims, ok := oidc.DevClaims(req.User)
+	if !ok {
+		problem(w, r, http.StatusBadRequest, "unknown_fixture", "no such fixture user")
+		return
+	}
+	h.completeLink(w, r, "dev", claims, userID)
+}
+
+// ListIdentities reports a user's linked logins: the account page's
+// data source (self), also readable by services composing on behalf
+// of users.
+func (h *Handlers) ListIdentities(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID) {
+	callerID, claims, ok := h.requireUserOrService(w, r)
+	if !ok {
+		return
+	}
+	if callerID != userId && !claims.HasRole("service") {
+		problem(w, r, http.StatusForbidden, "forbidden", "may only read your own identities")
+		return
+	}
+	ids, err := h.store.ListIdentities(r.Context(), userId)
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "identity list failed")
+		return
+	}
+	out := api.Identities{Identities: make([]api.Identity, len(ids))}
+	for i, id := range ids {
+		out.Identities[i] = api.Identity{Id: id.ID, Provider: id.Provider, Email: id.Email, CreatedAt: id.CreatedAt}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// DeleteIdentity unlinks one of the caller's logins; the store guards
+// the last one so an account cannot strand itself.
+func (h *Handlers) DeleteIdentity(w http.ResponseWriter, r *http.Request, identityId openapi_types.UUID) {
+	userID, _, ok := h.requireUser(w, r)
+	if !ok {
+		return
+	}
+	err := h.store.DeleteIdentity(r.Context(), userID, identityId)
+	switch {
+	case errors.Is(err, store.ErrIdentityNotFound):
+		problem(w, r, http.StatusNotFound, "identity_not_found", "no such linked login on your account")
+	case errors.Is(err, store.ErrLastIdentity):
+		problem(w, r, http.StatusConflict, "last_identity", "an account must keep at least one login")
+	case err != nil:
+		problem(w, r, http.StatusInternalServerError, "internal", "unlink failed")
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// DeleteUserAuth erases the caller's auth footprint (identities +
+// refresh families) as one step of account deletion. Self only: even
+// admins do not delete other people's logins here.
+func (h *Handlers) DeleteUserAuth(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID) {
+	userID, _, ok := h.requireUser(w, r)
+	if !ok {
+		return
+	}
+	if userID != userId {
+		problem(w, r, http.StatusForbidden, "forbidden", "may only erase your own account")
+		return
+	}
+	if err := h.store.DeleteUserAuth(r.Context(), userID); err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "account auth erase failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// completeLink is the link-mode tail of a provider dance: bind the
+// presented identity to the linking user (insert-only; conflicts are
+// rejected, never merged) and answer a fresh session for that user.
+func (h *Handlers) completeLink(w http.ResponseWriter, r *http.Request, provider string, claims oidc.IDClaims, linkUserID uuid.UUID) {
+	if claims.Email == "" || !claims.EmailVerified {
+		problem(w, r, http.StatusForbidden, "link_email_unverified", "provider did not assert a verified email")
+		return
+	}
+	u, err := h.users.Get(r.Context(), linkUserID)
+	if errors.Is(err, userclient.ErrUserNotFound) {
+		problem(w, r, http.StatusBadRequest, "link_failed", "linking account no longer exists")
+		return
+	}
+	if err != nil {
+		problem(w, r, http.StatusBadGateway, "user_service_error", "user lookup failed")
+		return
+	}
+	err = h.store.BindIdentity(r.Context(), provider, claims.Subject, claims.Email, linkUserID)
+	if errors.Is(err, store.ErrIdentityTaken) {
+		problem(w, r, http.StatusConflict, "identity_already_linked", "that login already belongs to another account")
+		return
+	}
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "identity binding failed")
+		return
+	}
+	pair, ok := h.newSession(w, r, u)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, api.CallbackResponse{
+		AccessToken:      pair.AccessToken,
+		TokenType:        pair.TokenType,
+		ExpiresIn:        pair.ExpiresIn,
+		RefreshToken:     pair.RefreshToken,
+		RefreshExpiresIn: pair.RefreshExpiresIn,
+		LinkedProvider:   &provider,
+	})
+}
+
 // completeLogin is the shared tail of every login path (real providers
-// and the dev provider): verified-email policy, profile upsert,
-// identity binding, then a fresh session.
+// and the dev provider). Resolution is identity-first: a login that
+// was linked to an account stays on that account even when its email
+// would match a different one. The email path serves first-time
+// identities and heals identities whose user has vanished.
 func (h *Handlers) completeLogin(w http.ResponseWriter, r *http.Request, provider string, claims oidc.IDClaims) {
-	// The user service keys accounts by email; accepting an unverified
-	// email would let an attacker claim someone else's future account.
+	// Accepting an unverified email would let an attacker claim
+	// someone else's future account through the fallback path.
 	if claims.Email == "" || !claims.EmailVerified {
 		problem(w, r, http.StatusForbidden, "email_unverified", "provider did not assert a verified email")
 		return
 	}
-	var avatar *string
-	if claims.AvatarURL != "" {
-		avatar = &claims.AvatarURL
+
+	ident, err := h.store.ResolveIdentity(r.Context(), provider, claims.Subject, claims.Email)
+	switch {
+	case err == nil:
+		u, gerr := h.users.Get(r.Context(), ident.UserID)
+		if gerr == nil {
+			h.mintLoginSession(w, r, u)
+			return
+		}
+		if !errors.Is(gerr, userclient.ErrUserNotFound) {
+			problem(w, r, http.StatusBadGateway, "user_service_error", "user lookup failed")
+			return
+		}
+		// The bound user is gone (an interrupted account deletion):
+		// re-anchor by email and move the identity to the survivor.
+		u, uerr := h.upsertByEmail(r.Context(), claims)
+		if uerr != nil {
+			problem(w, r, http.StatusBadGateway, "user_service_error", "profile upsert failed")
+			return
+		}
+		if err := h.store.RebindIdentity(r.Context(), provider, claims.Subject, claims.Email, u.ID); err != nil {
+			problem(w, r, http.StatusInternalServerError, "internal", "identity binding failed")
+			return
+		}
+		h.mintLoginSession(w, r, u)
+		return
+	case !errors.Is(err, store.ErrIdentityNotFound):
+		problem(w, r, http.StatusInternalServerError, "internal", "identity lookup failed")
+		return
 	}
-	u, err := h.users.Upsert(r.Context(), claims.Email, claims.DisplayName, avatar)
+
+	// First-time identity: find-or-create the account by verified email.
+	u, err := h.upsertByEmail(r.Context(), claims)
 	if err != nil {
 		problem(w, r, http.StatusBadGateway, "user_service_error", "profile upsert failed")
 		return
 	}
-	if err := h.store.BindIdentity(r.Context(), provider, claims.Subject, u.ID); err != nil {
+	err = h.store.BindIdentity(r.Context(), provider, claims.Subject, claims.Email, u.ID)
+	if errors.Is(err, store.ErrIdentityTaken) {
+		// Lost a race with a concurrent link of this same identity:
+		// whoever owns it now is who this login is.
+		ident, rerr := h.store.ResolveIdentity(r.Context(), provider, claims.Subject, claims.Email)
+		if rerr != nil {
+			problem(w, r, http.StatusInternalServerError, "internal", "identity binding failed")
+			return
+		}
+		owner, gerr := h.users.Get(r.Context(), ident.UserID)
+		if gerr != nil {
+			problem(w, r, http.StatusBadGateway, "user_service_error", "user lookup failed")
+			return
+		}
+		h.mintLoginSession(w, r, owner)
+		return
+	}
+	if err != nil {
 		problem(w, r, http.StatusInternalServerError, "internal", "identity binding failed")
 		return
 	}
+	h.mintLoginSession(w, r, u)
+}
+
+// upsertByEmail funnels the two email-fallback call sites through one
+// claim mapping.
+func (h *Handlers) upsertByEmail(ctx context.Context, claims oidc.IDClaims) (userclient.User, error) {
+	var avatar *string
+	if claims.AvatarURL != "" {
+		avatar = &claims.AvatarURL
+	}
+	return h.users.Upsert(ctx, claims.Email, claims.DisplayName, avatar)
+}
+
+// mintLoginSession writes the token response for a resolved login.
+func (h *Handlers) mintLoginSession(w http.ResponseWriter, r *http.Request, u userclient.User) {
 	pair, ok := h.newSession(w, r, u)
 	if !ok {
 		return

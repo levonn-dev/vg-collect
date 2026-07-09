@@ -17,10 +17,13 @@ import (
 )
 
 var (
-	ErrStateNotFound   = errors.New("auth state not found or expired")
-	ErrRefreshNotFound = errors.New("refresh token not found")
-	ErrRefreshExpired  = errors.New("refresh token expired")
-	ErrRefreshRevoked  = errors.New("refresh token family already revoked")
+	ErrStateNotFound    = errors.New("auth state not found or expired")
+	ErrRefreshNotFound  = errors.New("refresh token not found")
+	ErrRefreshExpired   = errors.New("refresh token expired")
+	ErrRefreshRevoked   = errors.New("refresh token family already revoked")
+	ErrIdentityNotFound = errors.New("identity not found")
+	ErrIdentityTaken    = errors.New("identity bound to another user")
+	ErrLastIdentity     = errors.New("cannot remove the last identity")
 )
 
 // ReuseError reports that a consumed or revoked refresh token was
@@ -84,6 +87,9 @@ type AuthState struct {
 	Nonce        string
 	Provider     string
 	ExpiresAt    time.Time
+	// LinkUserID marks the pending flow as an account-link for that
+	// user instead of a login; nil is a normal login.
+	LinkUserID *uuid.UUID
 }
 
 // CreateState stores a pending OAuth round-trip and opportunistically
@@ -94,9 +100,9 @@ func (s *Store) CreateState(ctx context.Context, st AuthState) error {
 		return fmt.Errorf("store: sweep states: %w", err)
 	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO auth_states (state, pkce_verifier, nonce, provider, expires_at)
-		VALUES ($1, $2, $3, $4, $5)`,
-		st.State, st.PKCEVerifier, st.Nonce, st.Provider, st.ExpiresAt)
+		INSERT INTO auth_states (state, pkce_verifier, nonce, provider, expires_at, link_user_id)
+		VALUES ($1, $2, $3, $4, $5, $6)`,
+		st.State, st.PKCEVerifier, st.Nonce, st.Provider, st.ExpiresAt, st.LinkUserID)
 	if err != nil {
 		return fmt.Errorf("store: create state: %w", err)
 	}
@@ -111,8 +117,8 @@ func (s *Store) ConsumeState(ctx context.Context, state string) (AuthState, erro
 	err := s.pool.QueryRow(ctx, `
 		DELETE FROM auth_states
 		WHERE state = $1 AND expires_at > now()
-		RETURNING pkce_verifier, nonce, provider, expires_at`, state,
-	).Scan(&st.PKCEVerifier, &st.Nonce, &st.Provider, &st.ExpiresAt)
+		RETURNING pkce_verifier, nonce, provider, expires_at, link_user_id`, state,
+	).Scan(&st.PKCEVerifier, &st.Nonce, &st.Provider, &st.ExpiresAt, &st.LinkUserID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return AuthState{}, ErrStateNotFound
 	}
@@ -122,19 +128,167 @@ func (s *Store) ConsumeState(ctx context.Context, state string) (AuthState, erro
 	return st, nil
 }
 
-// BindIdentity maps (provider, subject) to a user. On conflict the
-// mapping moves to the new user: a provider account always logs in as
-// whoever currently owns its verified email.
-func (s *Store) BindIdentity(ctx context.Context, provider, subject string, userID uuid.UUID) error {
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO identities (provider, provider_subject, user_id)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (provider, provider_subject) DO UPDATE SET user_id = EXCLUDED.user_id`,
-		provider, subject, userID)
+type Identity struct {
+	ID        uuid.UUID
+	Provider  string
+	Subject   string
+	Email     *string
+	UserID    uuid.UUID
+	CreatedAt time.Time
+}
+
+// ResolveIdentity answers "whose login is this" for a presented
+// (provider, subject), refreshing the stored informational email in the
+// same statement. ErrIdentityNotFound means a first-time identity.
+func (s *Store) ResolveIdentity(ctx context.Context, provider, subject, email string) (Identity, error) {
+	id := Identity{Provider: provider, Subject: subject}
+	err := s.pool.QueryRow(ctx, `
+		UPDATE identities SET email = $3
+		WHERE provider = $1 AND provider_subject = $2
+		RETURNING id, user_id, email, created_at`,
+		provider, subject, email,
+	).Scan(&id.ID, &id.UserID, &id.Email, &id.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Identity{}, ErrIdentityNotFound
+	}
 	if err != nil {
-		return fmt.Errorf("store: bind identity: %w", err)
+		return Identity{}, fmt.Errorf("store: resolve identity: %w", err)
+	}
+	return id, nil
+}
+
+// BindIdentity maps (provider, subject) to a user, insert-only: an
+// identity never silently moves between accounts. Binding the same
+// user again is an idempotent email refresh; another user's identity
+// answers ErrIdentityTaken.
+func (s *Store) BindIdentity(ctx context.Context, provider, subject, email string, userID uuid.UUID) error {
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `
+			INSERT INTO identities (provider, provider_subject, email, user_id)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (provider, provider_subject) DO NOTHING`,
+			provider, subject, email, userID)
+		if err != nil {
+			return fmt.Errorf("store: bind identity: %w", err)
+		}
+		if tag.RowsAffected() == 1 {
+			return nil
+		}
+		var owner uuid.UUID
+		if err := tx.QueryRow(ctx,
+			`SELECT user_id FROM identities WHERE provider = $1 AND provider_subject = $2`,
+			provider, subject).Scan(&owner); err != nil {
+			return fmt.Errorf("store: bind identity owner: %w", err)
+		}
+		if owner != userID {
+			return ErrIdentityTaken
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE identities SET email = $3 WHERE provider = $1 AND provider_subject = $2`,
+			provider, subject, email); err != nil {
+			return fmt.Errorf("store: bind identity email: %w", err)
+		}
+		return nil
+	})
+	return err
+}
+
+// RebindIdentity moves an identity to a new user unconditionally,
+// inserting when absent. Reserved for the heal path, where the caller
+// has verified the previous owner no longer exists at the user service.
+func (s *Store) RebindIdentity(ctx context.Context, provider, subject, email string, userID uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO identities (provider, provider_subject, email, user_id)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (provider, provider_subject)
+		DO UPDATE SET user_id = EXCLUDED.user_id, email = EXCLUDED.email`,
+		provider, subject, email, userID)
+	if err != nil {
+		return fmt.Errorf("store: rebind identity: %w", err)
 	}
 	return nil
+}
+
+// ListIdentities returns a user's linked logins, oldest first.
+func (s *Store) ListIdentities(ctx context.Context, userID uuid.UUID) ([]Identity, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, provider, provider_subject, email, user_id, created_at
+		FROM identities WHERE user_id = $1 ORDER BY created_at, provider`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("store: list identities: %w", err)
+	}
+	defer rows.Close()
+	var ids []Identity
+	for rows.Next() {
+		var id Identity
+		if err := rows.Scan(&id.ID, &id.Provider, &id.Subject, &id.Email, &id.UserID, &id.CreatedAt); err != nil {
+			return nil, fmt.Errorf("store: scan identity: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// DeleteIdentity unlinks one login. The row lock on the user's
+// identities serializes concurrent unlinks so the last-identity guard
+// cannot be raced into a locked-out account. A foreign or unknown id
+// answers ErrIdentityNotFound (no oracle about other users' rows).
+func (s *Store) DeleteIdentity(ctx context.Context, userID, identityID uuid.UUID) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT id FROM identities WHERE user_id = $1 FOR UPDATE`, userID)
+		if err != nil {
+			return fmt.Errorf("store: lock identities: %w", err)
+		}
+		defer rows.Close()
+		var ids []uuid.UUID
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				return fmt.Errorf("store: scan identity id: %w", err)
+			}
+			ids = append(ids, id)
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		found := false
+		for _, id := range ids {
+			if id == identityID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return ErrIdentityNotFound
+		}
+		if len(ids) == 1 {
+			return ErrLastIdentity
+		}
+		if _, err := tx.Exec(ctx,
+			`DELETE FROM identities WHERE id = $1 AND user_id = $2`, identityID, userID); err != nil {
+			return fmt.Errorf("store: delete identity: %w", err)
+		}
+		return nil
+	})
+}
+
+// DeleteUserAuth erases a user's auth footprint for account deletion:
+// every identity plus a revocation of every live refresh family, in
+// one transaction. Idempotent.
+func (s *Store) DeleteUserAuth(ctx context.Context, userID uuid.UUID) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx,
+			`DELETE FROM identities WHERE user_id = $1`, userID); err != nil {
+			return fmt.Errorf("store: delete identities: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE refresh_tokens SET revoked_at = now()
+			WHERE user_id = $1 AND revoked_at IS NULL`, userID); err != nil {
+			return fmt.Errorf("store: revoke user families: %w", err)
+		}
+		return nil
+	})
 }
 
 // CreateSession starts a new refresh family at login. accessJTI is the

@@ -89,7 +89,11 @@ type stubUsersServer struct {
 	fail    bool
 }
 
-func newStubUsersServer(t *testing.T, m *token.Minter) *stubUsersServer {
+// newJWKSValidator builds a jwtauth.Validator against a JWKS httptest
+// server mirroring m's public key -- the same verification path every
+// real service uses to check a vg-collect access token, including the
+// auth service validating its own tokens on the self-service endpoints.
+func newJWKSValidator(t *testing.T, m *token.Minter) *jwtauth.Validator {
 	t.Helper()
 	jwks, _ := json.Marshal(map[string]any{"keys": []map[string]string{{
 		"kty": "OKP", "crv": "Ed25519", "kid": m.Kid(),
@@ -99,9 +103,13 @@ func newStubUsersServer(t *testing.T, m *token.Minter) *stubUsersServer {
 		_, _ = w.Write(jwks)
 	}))
 	t.Cleanup(jwksSrv.Close)
+	return jwtauth.NewValidator(jwksSrv.URL, "vg-collect-auth", "vg-collect")
+}
 
+func newStubUsersServer(t *testing.T, m *token.Minter) *stubUsersServer {
+	t.Helper()
 	f := &stubUsersServer{
-		t: t, v: jwtauth.NewValidator(jwksSrv.URL, "vg-collect-auth", "vg-collect"),
+		t: t, v: newJWKSValidator(t, m),
 		byEmail: map[string]*userRec{}, byID: map[uuid.UUID]*userRec{},
 	}
 	mux := http.NewServeMux()
@@ -310,7 +318,12 @@ func newEnv(t *testing.T, devEnabled bool) *env {
 	providers := map[string]oidc.Provider{
 		"google": oidc.NewGoogle("client-1", "secret-1", "https://app.example/cb", idp.srv.URL),
 	}
-	h := server.New(st, m, uc, providers, devEnabled, 30*24*time.Hour)
+	// The router under test validates Bearer tokens on its own
+	// self-service endpoints exactly as production does: against its
+	// own JWKS, mirrored here from the same minter that signs the
+	// sessions these tests log in with.
+	verifier := newJWKSValidator(t, m)
+	h := server.New(st, m, uc, providers, verifier, devEnabled, 30*24*time.Hour)
 	router := server.NewRouter(h, slog.Default(), func(context.Context) error { return nil })
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
@@ -324,6 +337,51 @@ func post(t *testing.T, url string, body any) *http.Response {
 		t.Fatal(err)
 	}
 	resp, err := http.Post(url, "application/json", &buf) //nolint:gosec // test helper; url is always from httptest.NewServer
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	return resp
+}
+
+// postAuth posts body carrying an Authorization header (raw is the
+// bearer token; an empty raw omits the header entirely, for the
+// missing-Authorization cases).
+func postAuth(t *testing.T, url, raw string, body any) *http.Response {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(body); err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodPost, url, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if raw != "" {
+		req.Header.Set("Authorization", "Bearer "+raw)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	return resp
+}
+
+// authReq is postAuth for the body-less identity-management endpoints
+// (GET/DELETE): raw is the bearer token, empty omits the header
+// entirely, for the missing-Authorization cases.
+func authReq(t *testing.T, method, url, raw string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw != "" {
+		req.Header.Set("Authorization", "Bearer "+raw)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,10 +406,29 @@ type tokenPair struct {
 	RefreshExpiresIn int64  `json:"refresh_expires_in"`
 }
 
+// linkedTokenPair decodes a CallbackResponse: a tokenPair plus the
+// linked_provider a link-mode completion carries.
+type linkedTokenPair struct {
+	tokenPair
+	LinkedProvider string `json:"linked_provider"`
+}
+
 type problemBody struct {
 	Status     int      `json:"status"`
 	Code       string   `json:"code"`
 	RevokeJTIs []string `json:"revoke_jtis"`
+}
+
+// identityDTO decodes one entry of an Identities response.
+type identityDTO struct {
+	ID        string  `json:"id"`
+	Provider  string  `json:"provider"`
+	Email     *string `json:"email,omitempty"`
+	CreatedAt string  `json:"created_at"`
+}
+
+type identitiesDTO struct {
+	Identities []identityDTO `json:"identities"`
 }
 
 func wantProblem(t *testing.T, resp *http.Response, status int, code string) problemBody {
@@ -449,6 +526,46 @@ func TestOauthFlow_EndToEnd(t *testing.T) {
 	wantProblem(t, resp, 400, "invalid_state")
 }
 
+// Two dev logins with the same subject stay one user even after the
+// user's email-owning row changes hands: bind once as alice, then a
+// second login resolves by identity without consulting upsert-by-email.
+func TestOauthFlow_IdentityFirstResolution(t *testing.T) {
+	e := newEnv(t, true)
+
+	first := devLogin(t, e, "alice")
+	firstClaims := accessClaims(t, e, first.AccessToken)
+	aliceID, _ := firstClaims["sub"].(string)
+	if aliceID == "" {
+		t.Fatalf("first login sub missing: %v", firstClaims)
+	}
+
+	// Drop alice's email-indexed row but keep the id-indexed one: an
+	// email upsert would now mint a brand new user, but the identity
+	// bound on the first login must still resolve straight to alice.
+	e.users.mu.Lock()
+	delete(e.users.byEmail, "alice@example.com")
+	e.users.mu.Unlock()
+
+	second := devLogin(t, e, "alice")
+	secondClaims := accessClaims(t, e, second.AccessToken)
+	if secondClaims["sub"] != aliceID {
+		t.Fatalf("second login sub = %v, want the original user %q", secondClaims["sub"], aliceID)
+	}
+	// The email path never ran a second time: no new byEmail row exists.
+	if e.users.count() != 0 {
+		t.Fatalf("users indexed by email = %d, want 0 (email upsert must not run)", e.users.count())
+	}
+	var boundUser uuid.UUID
+	if err := e.pool.QueryRow(context.Background(),
+		`SELECT user_id FROM identities WHERE provider = 'dev' AND provider_subject = 'dev-alice'`).
+		Scan(&boundUser); err != nil {
+		t.Fatal(err)
+	}
+	if boundUser.String() != aliceID {
+		t.Fatalf("identity bound to %s, want the original user %s", boundUser, aliceID)
+	}
+}
+
 func TestOauthStart_UnknownProvider(t *testing.T) {
 	e := newEnv(t, false)
 	resp := post(t, e.srv.URL+"/oauth/start", map[string]string{"provider": "twitch"})
@@ -542,6 +659,90 @@ func TestOauthCallback_VerificationFailureIs400(t *testing.T) {
 	}
 }
 
+// --- account link (link/start plus the shared callback, real provider) ---
+
+func TestOauthLink_StartAndCallbackBindsToCaller(t *testing.T) {
+	e := newEnv(t, true)
+	alice := devLogin(t, e, "alice")
+	aliceSub, _ := accessClaims(t, e, alice.AccessToken)["sub"].(string)
+
+	resp := postAuth(t, e.srv.URL+"/oauth/link/start", alice.AccessToken,
+		map[string]string{"provider": "google"})
+	if resp.StatusCode != 200 {
+		t.Fatalf("link start: %d", resp.StatusCode)
+	}
+	start := decode[struct {
+		AuthorizeURL string `json:"authorize_url"`
+	}](t, resp)
+	u, err := url.Parse(start.AuthorizeURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+
+	// The fake provider asserts a verified email DIFFERENT from alice's;
+	// identity-first binding must still land on alice's account.
+	e.idp.registerCode("link-code-1", q.Get("nonce"), jwt.MapClaims{
+		"sub": "g-sub-1", "email": "other@example.com", "email_verified": true,
+	})
+	resp = post(t, e.srv.URL+"/oauth/callback",
+		map[string]string{"code": "link-code-1", "state": q.Get("state")})
+	if resp.StatusCode != 200 {
+		t.Fatalf("callback: %d", resp.StatusCode)
+	}
+	linked := decode[linkedTokenPair](t, resp)
+	if linked.LinkedProvider != "google" {
+		t.Fatalf("linked_provider = %q, want google", linked.LinkedProvider)
+	}
+	linkedSub, _ := accessClaims(t, e, linked.AccessToken)["sub"].(string)
+	if linkedSub != aliceSub {
+		t.Fatalf("linked session sub = %s, want alice's own user %s (even though the email differs)",
+			linkedSub, aliceSub)
+	}
+
+	// A fresh login through google with the SAME subject resolves straight
+	// to alice's user: identity-first, proven through a real provider path.
+	resp = post(t, e.srv.URL+"/oauth/start", map[string]string{"provider": "google"})
+	start2 := decode[struct {
+		AuthorizeURL string `json:"authorize_url"`
+	}](t, resp)
+	u2, err := url.Parse(start2.AuthorizeURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q2 := u2.Query()
+	e.idp.registerCode("login-code-1", q2.Get("nonce"), jwt.MapClaims{
+		"sub": "g-sub-1", "email": "other@example.com", "email_verified": true,
+	})
+	resp = post(t, e.srv.URL+"/oauth/callback",
+		map[string]string{"code": "login-code-1", "state": q2.Get("state")})
+	if resp.StatusCode != 200 {
+		t.Fatalf("relogin callback: %d", resp.StatusCode)
+	}
+	relogin := decode[tokenPair](t, resp)
+	reloginSub, _ := accessClaims(t, e, relogin.AccessToken)["sub"].(string)
+	if reloginSub != aliceSub {
+		t.Fatalf("relogin sub = %s, want alice's user %s", reloginSub, aliceSub)
+	}
+}
+
+func TestOauthLinkStart_UnknownProviderAndMissingBearer(t *testing.T) {
+	e := newEnv(t, true)
+	alice := devLogin(t, e, "alice")
+
+	// The schema enum is not runtime-enforced (this router does its own
+	// manual body decoding); an unrecognised provider name reaches the
+	// handler and answers 400 the same way OauthStart's does.
+	resp := postAuth(t, e.srv.URL+"/oauth/link/start", alice.AccessToken,
+		map[string]string{"provider": "nope"})
+	if resp.StatusCode != 400 {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+
+	resp = postAuth(t, e.srv.URL+"/oauth/link/start", "", map[string]string{"provider": "google"})
+	wantProblem(t, resp, 401, "missing_token")
+}
+
 // --- token lifecycle ---
 
 func devLogin(t *testing.T, e *env, user string) tokenPair {
@@ -587,6 +788,85 @@ func TestDevToken_MintsSessionValidatedByJwtauth(t *testing.T) {
 	}
 	if !claims.HasRole("user") || claims.JTI == "" {
 		t.Fatalf("claims = %+v", claims)
+	}
+}
+
+// --- dev-link (account link via the dev provider; start and callback
+// collapse into one hop, so these test the whole round trip directly) ---
+
+func TestDevLink_LinksFixtureToCaller(t *testing.T) {
+	e := newEnv(t, true)
+	alice := devLogin(t, e, "alice")
+	aliceSub, _ := accessClaims(t, e, alice.AccessToken)["sub"].(string)
+
+	resp := postAuth(t, e.srv.URL+"/oauth/dev/link", alice.AccessToken, map[string]string{"user": "bob"})
+	if resp.StatusCode != 200 {
+		t.Fatalf("link: %d", resp.StatusCode)
+	}
+	linked := decode[linkedTokenPair](t, resp)
+	if linked.LinkedProvider != "dev" {
+		t.Fatalf("linked_provider = %q, want dev", linked.LinkedProvider)
+	}
+	linkedSub, _ := accessClaims(t, e, linked.AccessToken)["sub"].(string)
+	if linkedSub != aliceSub {
+		t.Fatalf("linked session sub = %s, want the caller's own user %s", linkedSub, aliceSub)
+	}
+
+	// bob now signs in as alice's user: the fixture identity moved.
+	bobLogin := devLogin(t, e, "bob")
+	bobSub, _ := accessClaims(t, e, bobLogin.AccessToken)["sub"].(string)
+	if bobSub != aliceSub {
+		t.Fatalf("bob login sub = %s, want alice's user %s", bobSub, aliceSub)
+	}
+}
+
+func TestDevLink_ConflictWhenBoundElsewhere(t *testing.T) {
+	e := newEnv(t, true)
+	alice := devLogin(t, e, "alice") // binds dev-alice to U1
+	bob := devLogin(t, e, "bob")     // binds dev-bob to U2 FIRST
+	bobSub, _ := accessClaims(t, e, bob.AccessToken)["sub"].(string)
+
+	resp := postAuth(t, e.srv.URL+"/oauth/dev/link", alice.AccessToken, map[string]string{"user": "bob"})
+	wantProblem(t, resp, 409, "identity_already_linked")
+
+	// bob still logs into U2: the failed link attempt moved nothing.
+	bobAgain := devLogin(t, e, "bob")
+	bobAgainSub, _ := accessClaims(t, e, bobAgain.AccessToken)["sub"].(string)
+	if bobAgainSub != bobSub {
+		t.Fatalf("bob's user changed after a failed link attempt: %s -> %s", bobSub, bobAgainSub)
+	}
+}
+
+func TestDevLink_RequiresBearerAndEnabledProvider(t *testing.T) {
+	e := newEnv(t, true)
+	resp := postAuth(t, e.srv.URL+"/oauth/dev/link", "", map[string]string{"user": "bob"})
+	wantProblem(t, resp, 401, "missing_token")
+
+	// A malformed/garbage token is a distinct rejection from a missing
+	// one: it reaches the verifier and fails there.
+	resp = postAuth(t, e.srv.URL+"/oauth/dev/link", "not-a-real-jwt", map[string]string{"user": "bob"})
+	wantProblem(t, resp, 401, "invalid_token")
+
+	svcTok, err := e.minter.ServiceToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp = postAuth(t, e.srv.URL+"/oauth/dev/link", svcTok, map[string]string{"user": "bob"})
+	wantProblem(t, resp, 403, "forbidden")
+
+	disabled := newEnv(t, false)
+	resp = postAuth(t, disabled.srv.URL+"/oauth/dev/link", "", map[string]string{"user": "bob"})
+	wantProblem(t, resp, 404, "not_found")
+}
+
+func TestDevLink_SameUserIsIdempotent(t *testing.T) {
+	e := newEnv(t, true)
+	alice := devLogin(t, e, "alice")
+	for i := 0; i < 2; i++ {
+		resp := postAuth(t, e.srv.URL+"/oauth/dev/link", alice.AccessToken, map[string]string{"user": "bob"})
+		if resp.StatusCode != 200 {
+			t.Fatalf("link attempt %d: %d", i+1, resp.StatusCode)
+		}
 	}
 }
 
@@ -715,6 +995,115 @@ func TestRevoke_LogoutKillsFamilyAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// --- identity management (list/unlink) and account auth wipe ---
+
+func TestIdentities_ListUnlinkGuardsAndWipe(t *testing.T) {
+	e := newEnv(t, true)
+	alice := devLogin(t, e, "alice")
+	aliceID, _ := accessClaims(t, e, alice.AccessToken)["sub"].(string)
+
+	linkResp := postAuth(t, e.srv.URL+"/oauth/dev/link", alice.AccessToken, map[string]string{"user": "bob"})
+	if linkResp.StatusCode != 200 {
+		t.Fatalf("dev/link bob: %d", linkResp.StatusCode)
+	}
+
+	resp := authReq(t, http.MethodGet, e.srv.URL+"/users/"+aliceID+"/identities", alice.AccessToken)
+	if resp.StatusCode != 200 {
+		t.Fatalf("list: %d", resp.StatusCode)
+	}
+	list := decode[identitiesDTO](t, resp)
+	if len(list.Identities) != 2 {
+		t.Fatalf("identities = %+v, want 2", list.Identities)
+	}
+	var bobRowID, aliceRowID string
+	emails := map[string]bool{}
+	for _, id := range list.Identities {
+		if id.Provider != "dev" {
+			t.Fatalf("provider = %q, want dev", id.Provider)
+		}
+		if _, err := uuid.Parse(id.ID); err != nil {
+			t.Fatalf("id = %q, not a uuid", id.ID)
+		}
+		if id.Email == nil {
+			t.Fatalf("email missing on identity %+v", id)
+		}
+		emails[*id.Email] = true
+		switch *id.Email {
+		case "bob@example.com":
+			bobRowID = id.ID
+		case "alice@example.com":
+			aliceRowID = id.ID
+		}
+	}
+	if !emails["alice@example.com"] || !emails["bob@example.com"] {
+		t.Fatalf("emails = %v, want alice@example.com and bob@example.com", emails)
+	}
+
+	// Reading another account's identities is refused even for the
+	// account's own owner token.
+	resp = authReq(t, http.MethodGet, e.srv.URL+"/users/"+uuid.NewString()+"/identities", alice.AccessToken)
+	wantProblem(t, resp, http.StatusForbidden, "forbidden")
+
+	// A service token may read any user's identities.
+	svcTok, err := e.minter.ServiceToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp = authReq(t, http.MethodGet, e.srv.URL+"/users/"+aliceID+"/identities", svcTok)
+	if resp.StatusCode != 200 {
+		t.Fatalf("service-token list: %d", resp.StatusCode)
+	}
+
+	// Unlinking bob's identity drops the list to one row.
+	resp = authReq(t, http.MethodDelete, e.srv.URL+"/identities/"+bobRowID, alice.AccessToken)
+	if resp.StatusCode != 204 {
+		t.Fatalf("delete bob identity: %d", resp.StatusCode)
+	}
+	resp = authReq(t, http.MethodGet, e.srv.URL+"/users/"+aliceID+"/identities", alice.AccessToken)
+	list = decode[identitiesDTO](t, resp)
+	if len(list.Identities) != 1 {
+		t.Fatalf("identities after unlink = %+v, want 1", list.Identities)
+	}
+
+	// The account's last login cannot be removed.
+	resp = authReq(t, http.MethodDelete, e.srv.URL+"/identities/"+aliceRowID, alice.AccessToken)
+	wantProblem(t, resp, http.StatusConflict, "last_identity")
+
+	// An identity id that does not exist on the caller's account is not found.
+	resp = authReq(t, http.MethodDelete, e.srv.URL+"/identities/"+uuid.NewString(), alice.AccessToken)
+	wantProblem(t, resp, http.StatusNotFound, "identity_not_found")
+
+	// Wiping the account's auth footprint empties the identity list and
+	// kills the outstanding refresh family.
+	resp = authReq(t, http.MethodDelete, e.srv.URL+"/users/"+aliceID+"/auth", alice.AccessToken)
+	if resp.StatusCode != 204 {
+		t.Fatalf("delete user auth: %d", resp.StatusCode)
+	}
+	resp = authReq(t, http.MethodGet, e.srv.URL+"/users/"+aliceID+"/identities", alice.AccessToken)
+	list = decode[identitiesDTO](t, resp)
+	if resp.StatusCode != 200 || len(list.Identities) != 0 {
+		t.Fatalf("identities after wipe: status=%d list=%+v, want 200 empty", resp.StatusCode, list.Identities)
+	}
+	wantProblem(t, refresh(t, e, alice.RefreshToken), http.StatusUnauthorized, "refresh_reused")
+
+	// The wipe is self-only too.
+	resp = authReq(t, http.MethodDelete, e.srv.URL+"/users/"+uuid.NewString()+"/auth", alice.AccessToken)
+	wantProblem(t, resp, http.StatusForbidden, "forbidden")
+}
+
+func TestIdentities_RequireBearer(t *testing.T) {
+	e := newEnv(t, false)
+	u := uuid.NewString()
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/users/" + u + "/identities"},
+		{http.MethodDelete, "/identities/" + uuid.NewString()},
+		{http.MethodDelete, "/users/" + u + "/auth"},
+	} {
+		resp := authReq(t, tc.method, e.srv.URL+tc.path, "")
+		wantProblem(t, resp, http.StatusUnauthorized, "missing_token")
+	}
+}
+
 func TestHealthEndpoints(t *testing.T) {
 	e := newEnv(t, false)
 	for _, path := range []string{"/healthz", "/readyz"} {
@@ -745,7 +1134,7 @@ func TestListProviders(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := server.New(nil, nil, nil, tc.providers, tc.devEnabled, 0)
+			h := server.New(nil, nil, nil, tc.providers, &stubVerifier{}, tc.devEnabled, 0)
 			rec := httptest.NewRecorder()
 			h.ListProviders(rec, httptest.NewRequest(http.MethodGet, "/providers", nil))
 			if rec.Code != http.StatusOK {
@@ -797,7 +1186,12 @@ func TestListProviders(t *testing.T) {
 type stubStore struct {
 	createState         func(ctx context.Context, st store.AuthState) error
 	consumeState        func(ctx context.Context, state string) (store.AuthState, error)
-	bindIdentity        func(ctx context.Context, provider, subject string, userID uuid.UUID) error
+	resolveIdentity     func(ctx context.Context, provider, subject, email string) (store.Identity, error)
+	bindIdentity        func(ctx context.Context, provider, subject, email string, userID uuid.UUID) error
+	rebindIdentity      func(ctx context.Context, provider, subject, email string, userID uuid.UUID) error
+	listIdentities      func(ctx context.Context, userID uuid.UUID) ([]store.Identity, error)
+	deleteIdentity      func(ctx context.Context, userID, identityID uuid.UUID) error
+	deleteUserAuth      func(ctx context.Context, userID uuid.UUID) error
 	createSession       func(ctx context.Context, tokenHash string, userID uuid.UUID, accessJTI string, expiresAt time.Time) error
 	peekSession         func(ctx context.Context, tokenHash string) (store.Session, error)
 	rotate              func(ctx context.Context, presentedHash, newHash, newAccessJTI string, jtiWindow time.Duration) (store.RotateResult, error)
@@ -826,11 +1220,46 @@ func (s *stubStore) ConsumeState(ctx context.Context, state string) (store.AuthS
 	return s.consumeState(ctx, state)
 }
 
-func (s *stubStore) BindIdentity(ctx context.Context, provider, subject string, userID uuid.UUID) error {
+func (s *stubStore) ResolveIdentity(ctx context.Context, provider, subject, email string) (store.Identity, error) {
+	if s.resolveIdentity == nil {
+		panic("unexpected ResolveIdentity")
+	}
+	return s.resolveIdentity(ctx, provider, subject, email)
+}
+
+func (s *stubStore) BindIdentity(ctx context.Context, provider, subject, email string, userID uuid.UUID) error {
 	if s.bindIdentity == nil {
 		panic("unexpected BindIdentity")
 	}
-	return s.bindIdentity(ctx, provider, subject, userID)
+	return s.bindIdentity(ctx, provider, subject, email, userID)
+}
+
+func (s *stubStore) RebindIdentity(ctx context.Context, provider, subject, email string, userID uuid.UUID) error {
+	if s.rebindIdentity == nil {
+		panic("unexpected RebindIdentity")
+	}
+	return s.rebindIdentity(ctx, provider, subject, email, userID)
+}
+
+func (s *stubStore) ListIdentities(ctx context.Context, userID uuid.UUID) ([]store.Identity, error) {
+	if s.listIdentities == nil {
+		panic("unexpected ListIdentities")
+	}
+	return s.listIdentities(ctx, userID)
+}
+
+func (s *stubStore) DeleteIdentity(ctx context.Context, userID, identityID uuid.UUID) error {
+	if s.deleteIdentity == nil {
+		panic("unexpected DeleteIdentity")
+	}
+	return s.deleteIdentity(ctx, userID, identityID)
+}
+
+func (s *stubStore) DeleteUserAuth(ctx context.Context, userID uuid.UUID) error {
+	if s.deleteUserAuth == nil {
+		panic("unexpected DeleteUserAuth")
+	}
+	return s.deleteUserAuth(ctx, userID)
 }
 
 func (s *stubStore) CreateSession(ctx context.Context, tokenHash string, userID uuid.UUID, accessJTI string, expiresAt time.Time) error {
@@ -960,8 +1389,25 @@ const stubAccessJWT = "stub.access.jwt"
 
 // newUnit builds Handlers wired to the given stubs for a single test.
 func newUnit(st server.Store, m server.Minter, users server.UserService,
-	providers map[string]oidc.Provider, devEnabled bool) *server.Handlers {
-	return server.New(st, m, users, providers, devEnabled, unitRefreshTTL)
+	providers map[string]oidc.Provider, verifier server.Verifier, devEnabled bool) *server.Handlers {
+	return server.New(st, m, users, providers, verifier, devEnabled, unitRefreshTTL)
+}
+
+// stubVerifier implements server.Verifier. validate is nil by default,
+// so a test that reaches Validate without wiring it panics -- every
+// unit test above drives handlers that never call requireUser, so
+// &stubVerifier{} is wired and never invoked.
+type stubVerifier struct {
+	validate func(ctx context.Context, raw string) (jwtauth.Claims, error)
+}
+
+var _ server.Verifier = (*stubVerifier)(nil)
+
+func (v *stubVerifier) Validate(ctx context.Context, raw string) (jwtauth.Claims, error) {
+	if v.validate == nil {
+		panic("unexpected Validate")
+	}
+	return v.validate(ctx, raw)
 }
 
 // jsonReq builds a request whose body is the JSON encoding of v (or a raw
@@ -1043,7 +1489,7 @@ func providerMap(p *stubProvider) map[string]oidc.Provider {
 // --- OauthStart ---
 
 func TestUnitOauthStart_InvalidBody(t *testing.T) {
-	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.OauthStart(rec, jsonReq(t, http.MethodPost, "/oauth/start", "{not json"))
 	wantProblemRec(t, rec, http.StatusBadRequest, "invalid_body")
@@ -1052,7 +1498,7 @@ func TestUnitOauthStart_InvalidBody(t *testing.T) {
 func TestUnitOauthStart_UnknownProvider(t *testing.T) {
 	// Valid JSON, but the provider is not in the enabled map.
 	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{},
-		map[string]oidc.Provider{}, false)
+		map[string]oidc.Provider{}, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.OauthStart(rec, jsonReq(t, http.MethodPost, "/oauth/start",
 		api.StartRequest{Provider: "twitch"}))
@@ -1062,7 +1508,7 @@ func TestUnitOauthStart_UnknownProvider(t *testing.T) {
 func TestUnitOauthStart_CreateStateError(t *testing.T) {
 	st := &stubStore{createState: func(context.Context, store.AuthState) error { return errStub }}
 	p := &stubProvider{name: "google"}
-	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), false)
+	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.OauthStart(rec, jsonReq(t, http.MethodPost, "/oauth/start",
 		api.StartRequest{Provider: "google"}))
@@ -1077,7 +1523,7 @@ func TestUnitOauthStart_AuthorizeProviderError(t *testing.T) {
 			return "", &oidc.ProviderError{Op: "discovery", Status: 503}
 		},
 	}
-	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), false)
+	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.OauthStart(rec, jsonReq(t, http.MethodPost, "/oauth/start",
 		api.StartRequest{Provider: "google"}))
@@ -1103,7 +1549,7 @@ func TestUnitOauthStart_Success(t *testing.T) {
 			return "https://idp.example/authorize?state=" + state, nil
 		},
 	}
-	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), false)
+	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.OauthStart(rec, jsonReq(t, http.MethodPost, "/oauth/start",
 		api.StartRequest{Provider: "google"}))
@@ -1125,7 +1571,7 @@ func TestUnitOauthStart_Success(t *testing.T) {
 // --- OauthCallback ---
 
 func TestUnitOauthCallback_InvalidBody(t *testing.T) {
-	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.OauthCallback(rec, jsonReq(t, http.MethodPost, "/oauth/callback", "{not json"))
 	wantProblemRec(t, rec, http.StatusBadRequest, "invalid_body")
@@ -1138,7 +1584,7 @@ func TestUnitOauthCallback_MissingCodeOrState(t *testing.T) {
 		{Code: "", State: ""},
 	}
 	for _, body := range cases {
-		h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, false)
+		h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 		rec := httptest.NewRecorder()
 		h.OauthCallback(rec, jsonReq(t, http.MethodPost, "/oauth/callback", body))
 		// Missing params never reach the store: ConsumeState would panic.
@@ -1150,7 +1596,7 @@ func TestUnitOauthCallback_StateNotFound(t *testing.T) {
 	st := &stubStore{consumeState: func(context.Context, string) (store.AuthState, error) {
 		return store.AuthState{}, store.ErrStateNotFound
 	}}
-	h := newUnit(st, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.OauthCallback(rec, jsonReq(t, http.MethodPost, "/oauth/callback",
 		api.CallbackRequest{Code: "c", State: "bogus"}))
@@ -1161,7 +1607,7 @@ func TestUnitOauthCallback_ConsumeStateError(t *testing.T) {
 	st := &stubStore{consumeState: func(context.Context, string) (store.AuthState, error) {
 		return store.AuthState{}, errStub
 	}}
-	h := newUnit(st, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.OauthCallback(rec, jsonReq(t, http.MethodPost, "/oauth/callback",
 		api.CallbackRequest{Code: "c", State: "s"}))
@@ -1174,7 +1620,7 @@ func TestUnitOauthCallback_ProviderNoLongerEnabled(t *testing.T) {
 		return store.AuthState{Provider: "google"}, nil
 	}}
 	h := newUnit(st, unitMinter(), &stubUserService{},
-		map[string]oidc.Provider{}, false)
+		map[string]oidc.Provider{}, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.OauthCallback(rec, jsonReq(t, http.MethodPost, "/oauth/callback",
 		api.CallbackRequest{Code: "c", State: "s"}))
@@ -1191,7 +1637,7 @@ func TestUnitOauthCallback_ExchangeProviderError(t *testing.T) {
 			return oidc.IDClaims{}, &oidc.ProviderError{Op: "token exchange", Status: 500}
 		},
 	}
-	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), false)
+	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.OauthCallback(rec, jsonReq(t, http.MethodPost, "/oauth/callback",
 		api.CallbackRequest{Code: "c", State: "s"}))
@@ -1210,7 +1656,7 @@ func TestUnitOauthCallback_ExchangeVerificationError(t *testing.T) {
 			return oidc.IDClaims{}, errors.New("nonce mismatch")
 		},
 	}
-	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), false)
+	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.OauthCallback(rec, jsonReq(t, http.MethodPost, "/oauth/callback",
 		api.CallbackRequest{Code: "c", State: "s"}))
@@ -1233,7 +1679,7 @@ func callbackInto(t *testing.T, st server.Store, m server.Minter, users server.U
 		name:     "google",
 		exchange: func(context.Context, string, string, string) (oidc.IDClaims, error) { return claims, nil },
 	}
-	h := newUnit(st, m, users, providerMap(p), false)
+	h := newUnit(st, m, users, providerMap(p), &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.OauthCallback(rec, jsonReq(t, http.MethodPost, "/oauth/callback",
 		api.CallbackRequest{Code: "c", State: "s"}))
@@ -1241,11 +1687,18 @@ func callbackInto(t *testing.T, st server.Store, m server.Minter, users server.U
 }
 
 // consumeGoogle is the stubStore wiring shared by the completeLogin tests
-// reached through the callback: a one-shot state for provider "google".
+// reached through the callback: a one-shot state for provider "google",
+// with resolveIdentity defaulted to "first-time identity" so these tests
+// keep exercising the email fallback path unchanged.
 func consumeGoogle() *stubStore {
-	return &stubStore{consumeState: func(context.Context, string) (store.AuthState, error) {
-		return store.AuthState{Provider: "google"}, nil
-	}}
+	return &stubStore{
+		consumeState: func(context.Context, string) (store.AuthState, error) {
+			return store.AuthState{Provider: "google"}, nil
+		},
+		resolveIdentity: func(context.Context, string, string, string) (store.Identity, error) {
+			return store.Identity{}, store.ErrIdentityNotFound
+		},
+	}
 }
 
 func TestUnitCompleteLogin_EmailUnverified(t *testing.T) {
@@ -1278,7 +1731,7 @@ func TestUnitCompleteLogin_UpsertError(t *testing.T) {
 
 func TestUnitCompleteLogin_BindIdentityError(t *testing.T) {
 	st := consumeGoogle()
-	st.bindIdentity = func(context.Context, string, string, uuid.UUID) error { return errStub }
+	st.bindIdentity = func(context.Context, string, string, string, uuid.UUID) error { return errStub }
 	users := &stubUserService{
 		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
 			return upsertedUser(), nil
@@ -1290,7 +1743,7 @@ func TestUnitCompleteLogin_BindIdentityError(t *testing.T) {
 
 func TestUnitCompleteLogin_MintError(t *testing.T) {
 	st := consumeGoogle()
-	st.bindIdentity = func(context.Context, string, string, uuid.UUID) error { return nil }
+	st.bindIdentity = func(context.Context, string, string, string, uuid.UUID) error { return nil }
 	users := &stubUserService{
 		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
 			return upsertedUser(), nil
@@ -1303,7 +1756,7 @@ func TestUnitCompleteLogin_MintError(t *testing.T) {
 
 func TestUnitCompleteLogin_CreateSessionError(t *testing.T) {
 	st := consumeGoogle()
-	st.bindIdentity = func(context.Context, string, string, uuid.UUID) error { return nil }
+	st.bindIdentity = func(context.Context, string, string, string, uuid.UUID) error { return nil }
 	st.createSession = func(context.Context, string, uuid.UUID, string, time.Time) error { return errStub }
 	users := &stubUserService{
 		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
@@ -1319,7 +1772,7 @@ func TestUnitCompleteLogin_SuccessViaCallback(t *testing.T) {
 	st := consumeGoogle()
 	var boundProvider, boundSubject string
 	var boundUser uuid.UUID
-	st.bindIdentity = func(_ context.Context, provider, subject string, userID uuid.UUID) error {
+	st.bindIdentity = func(_ context.Context, provider, subject, _ string, userID uuid.UUID) error {
 		boundProvider, boundSubject, boundUser = provider, subject, userID
 		return nil
 	}
@@ -1352,6 +1805,326 @@ func TestUnitCompleteLogin_SuccessViaCallback(t *testing.T) {
 	}
 }
 
+// --- completeLogin identity-first resolution ---
+
+// A known identity signs in as its bound user even though the email
+// upsert would have answered a different account.
+func TestUnitCompleteLogin_KnownIdentityWinsOverEmail(t *testing.T) {
+	boundUser := uuid.New()
+	var upsertCalled bool
+	var sessUser uuid.UUID
+	st := &stubStore{
+		resolveIdentity: func(_ context.Context, provider, subject, email string) (store.Identity, error) {
+			if provider != "dev" || subject != "dev-alice" || email != "alice@example.com" {
+				t.Fatalf("resolve args = %s %s %s", provider, subject, email)
+			}
+			return store.Identity{ID: uuid.New(), UserID: boundUser}, nil
+		},
+		createSession: func(_ context.Context, _ string, userID uuid.UUID, _ string, _ time.Time) error {
+			sessUser = userID
+			return nil
+		},
+	}
+	users := &stubUserService{
+		get: func(_ context.Context, id uuid.UUID) (userclient.User, error) {
+			if id != boundUser {
+				t.Fatalf("get id = %s, want the bound user %s", id, boundUser)
+			}
+			return userclient.User{ID: boundUser, Roles: []string{"user"}}, nil
+		},
+		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+			upsertCalled = true
+			return userclient.User{}, nil
+		},
+	}
+	// Drive via the dev-token route, like TestUnitDevToken_SuccessDelegatesToCompleteLogin.
+	h := newUnit(st, unitMinter(), users, nil, &stubVerifier{}, true)
+	rec := httptest.NewRecorder()
+	h.DevToken(rec, jsonReq(t, http.MethodPost, "/oauth/dev/token", api.DevTokenRequest{User: "alice"}))
+	wantPairRec(t, rec, stubAccessJWT)
+	if sessUser != boundUser {
+		t.Fatalf("session user = %v, want the identity's bound user %v", sessUser, boundUser)
+	}
+	if upsertCalled {
+		t.Fatal("email upsert must not run once the identity resolves")
+	}
+}
+
+// A known identity whose user lookup fails for a reason other than
+// "not found" is an upstream fault, not a healing opportunity.
+func TestUnitCompleteLogin_KnownIdentityUserLookupError(t *testing.T) {
+	st := consumeGoogle()
+	st.resolveIdentity = func(context.Context, string, string, string) (store.Identity, error) {
+		return store.Identity{ID: uuid.New(), UserID: uuid.New()}, nil
+	}
+	users := &stubUserService{
+		get: func(context.Context, uuid.UUID) (userclient.User, error) {
+			return userclient.User{}, errStub
+		},
+	}
+	rec := callbackInto(t, st, unitMinter(), users, verifiedClaims())
+	wantProblemRec(t, rec, http.StatusBadGateway, "user_service_error")
+}
+
+// First-time identity: the email fallback creates/finds the user and
+// the identity is bound insert-only.
+func TestUnitCompleteLogin_NewIdentityFallsBackToEmail(t *testing.T) {
+	u := upsertedUser()
+	st := consumeGoogle() // resolveIdentity defaults to ErrIdentityNotFound
+	var boundProvider, boundSubject, boundEmail string
+	var boundUser uuid.UUID
+	st.bindIdentity = func(_ context.Context, provider, subject, email string, userID uuid.UUID) error {
+		boundProvider, boundSubject, boundEmail, boundUser = provider, subject, email, userID
+		return nil
+	}
+	var sessUser uuid.UUID
+	st.createSession = func(_ context.Context, _ string, userID uuid.UUID, _ string, _ time.Time) error {
+		sessUser = userID
+		return nil
+	}
+	users := &stubUserService{
+		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+			return u, nil
+		},
+	}
+	rec := callbackInto(t, st, unitMinter(), users, verifiedClaims())
+	wantPairRec(t, rec, stubAccessJWT)
+	if boundProvider != "google" || boundSubject != "google-sub-1" ||
+		boundEmail != "alice@example.com" || boundUser != u.ID {
+		t.Fatalf("bind(%q, %q, %q, %v), want (google, google-sub-1, alice@example.com, %v)",
+			boundProvider, boundSubject, boundEmail, boundUser, u.ID)
+	}
+	if sessUser != u.ID {
+		t.Fatalf("session user = %v, want the upserted user %v", sessUser, u.ID)
+	}
+}
+
+// Identity points at a vanished user: heal through the email path and
+// rebind explicitly (never through the insert-only BindIdentity).
+func TestUnitCompleteLogin_DeadUserHealsViaEmail(t *testing.T) {
+	dead := uuid.New()
+	fresh := upsertedUser()
+	st := consumeGoogle()
+	st.resolveIdentity = func(context.Context, string, string, string) (store.Identity, error) {
+		return store.Identity{ID: uuid.New(), UserID: dead}, nil
+	}
+	var rebindProvider, rebindSubject, rebindEmail string
+	var rebindUser uuid.UUID
+	st.rebindIdentity = func(_ context.Context, provider, subject, email string, userID uuid.UUID) error {
+		rebindProvider, rebindSubject, rebindEmail, rebindUser = provider, subject, email, userID
+		return nil
+	}
+	var sessUser uuid.UUID
+	st.createSession = func(_ context.Context, _ string, userID uuid.UUID, _ string, _ time.Time) error {
+		sessUser = userID
+		return nil
+	}
+	users := &stubUserService{
+		get: func(_ context.Context, id uuid.UUID) (userclient.User, error) {
+			if id != dead {
+				t.Fatalf("get id = %s, want the dead user %s", id, dead)
+			}
+			return userclient.User{}, userclient.ErrUserNotFound
+		},
+		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+			return fresh, nil
+		},
+	}
+	rec := callbackInto(t, st, unitMinter(), users, verifiedClaims())
+	wantPairRec(t, rec, stubAccessJWT)
+	if rebindProvider != "google" || rebindSubject != "google-sub-1" ||
+		rebindEmail != "alice@example.com" || rebindUser != fresh.ID {
+		t.Fatalf("rebind(%q, %q, %q, %v), want (google, google-sub-1, alice@example.com, %v)",
+			rebindProvider, rebindSubject, rebindEmail, rebindUser, fresh.ID)
+	}
+	if sessUser != fresh.ID {
+		t.Fatalf("session user = %v, want the healed user %v", sessUser, fresh.ID)
+	}
+}
+
+// Healing a dead identity whose email upsert itself fails surfaces the
+// same gateway error as the first-time-identity upsert failure.
+func TestUnitCompleteLogin_HealUpsertError(t *testing.T) {
+	st := consumeGoogle()
+	st.resolveIdentity = func(context.Context, string, string, string) (store.Identity, error) {
+		return store.Identity{ID: uuid.New(), UserID: uuid.New()}, nil
+	}
+	users := &stubUserService{
+		get: func(context.Context, uuid.UUID) (userclient.User, error) {
+			return userclient.User{}, userclient.ErrUserNotFound
+		},
+		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+			return userclient.User{}, errStub
+		},
+	}
+	rec := callbackInto(t, st, unitMinter(), users, verifiedClaims())
+	wantProblemRec(t, rec, http.StatusBadGateway, "user_service_error")
+}
+
+// Healing a dead identity whose RebindIdentity call fails is an
+// internal error: the survivor was found but the move did not stick.
+func TestUnitCompleteLogin_HealRebindError(t *testing.T) {
+	st := consumeGoogle()
+	st.resolveIdentity = func(context.Context, string, string, string) (store.Identity, error) {
+		return store.Identity{ID: uuid.New(), UserID: uuid.New()}, nil
+	}
+	st.rebindIdentity = func(context.Context, string, string, string, uuid.UUID) error {
+		return errStub
+	}
+	users := &stubUserService{
+		get: func(context.Context, uuid.UUID) (userclient.User, error) {
+			return userclient.User{}, userclient.ErrUserNotFound
+		},
+		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+			return upsertedUser(), nil
+		},
+	}
+	rec := callbackInto(t, st, unitMinter(), users, verifiedClaims())
+	wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
+}
+
+// A bind that loses a race to a concurrent link resolves once more and
+// signs in as the new owner, instead of failing the login.
+func TestUnitCompleteLogin_BindRaceResolvesOnce(t *testing.T) {
+	winner := uuid.New()
+	st := consumeGoogle()
+	var resolveCalls int
+	st.resolveIdentity = func(context.Context, string, string, string) (store.Identity, error) {
+		resolveCalls++
+		if resolveCalls == 1 {
+			return store.Identity{}, store.ErrIdentityNotFound
+		}
+		return store.Identity{ID: uuid.New(), UserID: winner}, nil
+	}
+	st.bindIdentity = func(context.Context, string, string, string, uuid.UUID) error {
+		return store.ErrIdentityTaken
+	}
+	var sessUser uuid.UUID
+	st.createSession = func(_ context.Context, _ string, userID uuid.UUID, _ string, _ time.Time) error {
+		sessUser = userID
+		return nil
+	}
+	users := &stubUserService{
+		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+			return upsertedUser(), nil
+		},
+		get: func(_ context.Context, id uuid.UUID) (userclient.User, error) {
+			if id != winner {
+				t.Fatalf("get id = %s, want the race winner %s", id, winner)
+			}
+			return userclient.User{ID: winner, Roles: []string{"user"}}, nil
+		},
+	}
+	rec := callbackInto(t, st, unitMinter(), users, verifiedClaims())
+	wantPairRec(t, rec, stubAccessJWT)
+	if resolveCalls != 2 {
+		t.Fatalf("ResolveIdentity called %d times, want 2 (initial miss + post-race resolve)", resolveCalls)
+	}
+	if sessUser != winner {
+		t.Fatalf("session user = %v, want the race winner %v", sessUser, winner)
+	}
+}
+
+// A bind race whose post-race resolve itself fails is an internal
+// error: the login cannot tell who won.
+func TestUnitCompleteLogin_BindRaceResolveError(t *testing.T) {
+	st := consumeGoogle()
+	var resolveCalls int
+	st.resolveIdentity = func(context.Context, string, string, string) (store.Identity, error) {
+		resolveCalls++
+		if resolveCalls == 1 {
+			return store.Identity{}, store.ErrIdentityNotFound
+		}
+		return store.Identity{}, errStub
+	}
+	st.bindIdentity = func(context.Context, string, string, string, uuid.UUID) error {
+		return store.ErrIdentityTaken
+	}
+	users := &stubUserService{
+		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+			return upsertedUser(), nil
+		},
+	}
+	rec := callbackInto(t, st, unitMinter(), users, verifiedClaims())
+	wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
+}
+
+// A bind race whose winner resolves but whose user lookup fails is a
+// gateway error, not an internal one: the user service is the fault.
+func TestUnitCompleteLogin_BindRaceUserLookupError(t *testing.T) {
+	st := consumeGoogle()
+	var resolveCalls int
+	st.resolveIdentity = func(context.Context, string, string, string) (store.Identity, error) {
+		resolveCalls++
+		if resolveCalls == 1 {
+			return store.Identity{}, store.ErrIdentityNotFound
+		}
+		return store.Identity{ID: uuid.New(), UserID: uuid.New()}, nil
+	}
+	st.bindIdentity = func(context.Context, string, string, string, uuid.UUID) error {
+		return store.ErrIdentityTaken
+	}
+	users := &stubUserService{
+		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+			return upsertedUser(), nil
+		},
+		get: func(context.Context, uuid.UUID) (userclient.User, error) {
+			return userclient.User{}, errStub
+		},
+	}
+	rec := callbackInto(t, st, unitMinter(), users, verifiedClaims())
+	wantProblemRec(t, rec, http.StatusBadGateway, "user_service_error")
+}
+
+// Store failures on the resolve path stay internal errors.
+func TestUnitCompleteLogin_ResolveStoreError(t *testing.T) {
+	st := consumeGoogle()
+	st.resolveIdentity = func(context.Context, string, string, string) (store.Identity, error) {
+		return store.Identity{}, errStub
+	}
+	rec := callbackInto(t, st, unitMinter(), &stubUserService{}, verifiedClaims())
+	wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
+}
+
+// --- completeLink (the shared tail of a link-mode OauthCallback and DevLink) ---
+
+func TestUnitCompleteLink_EmailUnverified(t *testing.T) {
+	linkUser := uuid.New()
+	st := &stubStore{consumeState: func(context.Context, string) (store.AuthState, error) {
+		return store.AuthState{Provider: "google", LinkUserID: &linkUser}, nil
+	}}
+	p := &stubProvider{
+		name: "google",
+		exchange: func(context.Context, string, string, string) (oidc.IDClaims, error) {
+			return oidc.IDClaims{Subject: "s", Email: "a@example.com", EmailVerified: false}, nil
+		},
+	}
+	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), &stubVerifier{}, false)
+	rec := httptest.NewRecorder()
+	h.OauthCallback(rec, jsonReq(t, http.MethodPost, "/oauth/callback",
+		api.CallbackRequest{Code: "c", State: "s"}))
+	wantProblemRec(t, rec, http.StatusForbidden, "link_email_unverified")
+}
+
+func TestUnitCompleteLink_UserGone(t *testing.T) {
+	linkUser := uuid.New()
+	st := &stubStore{consumeState: func(context.Context, string) (store.AuthState, error) {
+		return store.AuthState{Provider: "google", LinkUserID: &linkUser}, nil
+	}}
+	p := &stubProvider{
+		name:     "google",
+		exchange: func(context.Context, string, string, string) (oidc.IDClaims, error) { return verifiedClaims(), nil },
+	}
+	users := &stubUserService{get: func(context.Context, uuid.UUID) (userclient.User, error) {
+		return userclient.User{}, userclient.ErrUserNotFound
+	}}
+	h := newUnit(st, unitMinter(), users, providerMap(p), &stubVerifier{}, false)
+	rec := httptest.NewRecorder()
+	h.OauthCallback(rec, jsonReq(t, http.MethodPost, "/oauth/callback",
+		api.CallbackRequest{Code: "c", State: "s"}))
+	wantProblemRec(t, rec, http.StatusBadRequest, "link_failed")
+}
+
 // --- RefreshToken ---
 
 // peekOK is a stubStore whose PeekSession resolves to a fixed user, the
@@ -1375,14 +2148,14 @@ func refreshReq(t *testing.T, body any) *http.Request {
 }
 
 func TestUnitRefresh_InvalidBody(t *testing.T) {
-	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, "{not json"))
 	wantProblemRec(t, rec, http.StatusBadRequest, "invalid_body")
 }
 
 func TestUnitRefresh_MissingToken(t *testing.T) {
-	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: ""}))
 	wantProblemRec(t, rec, http.StatusBadRequest, "invalid_body")
@@ -1392,7 +2165,7 @@ func TestUnitRefresh_TokenNotFound(t *testing.T) {
 	st := &stubStore{peekSession: func(context.Context, string) (store.Session, error) {
 		return store.Session{}, store.ErrRefreshNotFound
 	}}
-	h := newUnit(st, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: "nope"}))
 	wantProblemRec(t, rec, http.StatusUnauthorized, "invalid_refresh")
@@ -1406,7 +2179,7 @@ func TestUnitRefresh_FamilyAlreadyRevoked(t *testing.T) {
 	st := &stubStore{peekSession: func(context.Context, string) (store.Session, error) {
 		return store.Session{}, store.ErrRefreshRevoked
 	}}
-	h := newUnit(st, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: "dead"}))
 	p := wantProblemRec(t, rec, http.StatusUnauthorized, "refresh_reused")
@@ -1422,7 +2195,7 @@ func TestUnitRefresh_PeekOtherError(t *testing.T) {
 	st := &stubStore{peekSession: func(context.Context, string) (store.Session, error) {
 		return store.Session{}, errStub
 	}}
-	h := newUnit(st, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: "x"}))
 	wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
@@ -1435,7 +2208,7 @@ func TestUnitRefresh_UserNotFoundRevokesFamily(t *testing.T) {
 	users := &stubUserService{get: func(context.Context, uuid.UUID) (userclient.User, error) {
 		return userclient.User{}, userclient.ErrUserNotFound
 	}}
-	h := newUnit(st, unitMinter(), users, nil, false)
+	h := newUnit(st, unitMinter(), users, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: "x"}))
 	wantProblemRec(t, rec, http.StatusUnauthorized, "invalid_refresh")
@@ -1455,7 +2228,7 @@ func TestUnitRefresh_UserServiceDownLeavesTokenUnconsumed(t *testing.T) {
 	users := &stubUserService{get: func(context.Context, uuid.UUID) (userclient.User, error) {
 		return userclient.User{}, errStub // transient, not ErrUserNotFound
 	}}
-	h := newUnit(st, unitMinter(), users, nil, false)
+	h := newUnit(st, unitMinter(), users, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: "x"}))
 	wantProblemRec(t, rec, http.StatusServiceUnavailable, "user_unavailable")
@@ -1474,7 +2247,7 @@ func TestUnitRefresh_MintError(t *testing.T) {
 	uid := uuid.New()
 	st := peekOK(uid)
 	m := &stubMinter{mintErr: errStub, ttl: 5 * time.Minute}
-	h := newUnit(st, m, getOK(uid), nil, false)
+	h := newUnit(st, m, getOK(uid), nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: "x"}))
 	wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
@@ -1489,7 +2262,7 @@ func TestUnitRefresh_RotateReuseReportsJTIs(t *testing.T) {
 	st.rotate = func(context.Context, string, string, string, time.Duration) (store.RotateResult, error) {
 		return store.RotateResult{}, &store.ReuseError{RevokedJTIs: []string{"jA", "jB"}}
 	}
-	h := newUnit(st, unitMinter(), getOK(uid), nil, false)
+	h := newUnit(st, unitMinter(), getOK(uid), nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: "x"}))
 	p := wantProblemRec(t, rec, http.StatusUnauthorized, "refresh_reused")
@@ -1515,7 +2288,7 @@ func TestUnitRefresh_RotateExpiredOrUnknown(t *testing.T) {
 			st.rotate = func(context.Context, string, string, string, time.Duration) (store.RotateResult, error) {
 				return store.RotateResult{}, tc.err
 			}
-			h := newUnit(st, unitMinter(), getOK(uid), nil, false)
+			h := newUnit(st, unitMinter(), getOK(uid), nil, &stubVerifier{}, false)
 			rec := httptest.NewRecorder()
 			h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: "x"}))
 			wantProblemRec(t, rec, http.StatusUnauthorized, "invalid_refresh")
@@ -1529,7 +2302,7 @@ func TestUnitRefresh_RotateOtherError(t *testing.T) {
 	st.rotate = func(context.Context, string, string, string, time.Duration) (store.RotateResult, error) {
 		return store.RotateResult{}, errStub
 	}
-	h := newUnit(st, unitMinter(), getOK(uid), nil, false)
+	h := newUnit(st, unitMinter(), getOK(uid), nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: "x"}))
 	wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
@@ -1547,7 +2320,7 @@ func TestUnitRefresh_Success(t *testing.T) {
 		rotPresented, rotNew = presentedHash, newHash
 		return store.RotateResult{UserID: uid, ExpiresAt: expiry}, nil
 	}
-	h := newUnit(st, unitMinter(), getOK(uid), nil, false)
+	h := newUnit(st, unitMinter(), getOK(uid), nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: "old-raw"}))
 	pair := wantPairRec(t, rec, stubAccessJWT)
@@ -1566,7 +2339,7 @@ func TestUnitRefresh_Success(t *testing.T) {
 // --- RevokeToken ---
 
 func TestUnitRevoke_InvalidBody(t *testing.T) {
-	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RevokeToken(rec, jsonReq(t, http.MethodPost, "/token/revoke", "{not json"))
 	wantProblemRec(t, rec, http.StatusBadRequest, "invalid_body")
@@ -1574,7 +2347,7 @@ func TestUnitRevoke_InvalidBody(t *testing.T) {
 
 func TestUnitRevoke_StoreError(t *testing.T) {
 	st := &stubStore{revokeFamilyByToken: func(context.Context, string) error { return errStub }}
-	h := newUnit(st, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RevokeToken(rec, jsonReq(t, http.MethodPost, "/token/revoke",
 		api.RevokeRequest{RefreshToken: "x"}))
@@ -1588,7 +2361,7 @@ func TestUnitRevoke_UnknownTokenIsIdempotent(t *testing.T) {
 	for _, name := range []string{"unknown token", "known token"} {
 		t.Run(name, func(t *testing.T) {
 			st := &stubStore{revokeFamilyByToken: func(context.Context, string) error { return nil }}
-			h := newUnit(st, unitMinter(), &stubUserService{}, nil, false)
+			h := newUnit(st, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 			rec := httptest.NewRecorder()
 			h.RevokeToken(rec, jsonReq(t, http.MethodPost, "/token/revoke",
 				api.RevokeRequest{RefreshToken: "some-token"}))
@@ -1611,7 +2384,7 @@ func TestUnitGetJwks_StoreError(t *testing.T) {
 	st := &stubStore{activeSigningKeys: func(context.Context) ([]store.SigningKey, error) {
 		return nil, errStub
 	}}
-	h := newUnit(st, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.GetJwks(rec, httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil))
 	wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
@@ -1624,7 +2397,7 @@ func TestUnitGetJwks_Success(t *testing.T) {
 			{Kid: "kid-new", PublicKeyB64: "AAAAnewkey"},
 		}, nil
 	}}
-	h := newUnit(st, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.GetJwks(rec, httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil))
 	if rec.Code != http.StatusOK {
@@ -1655,7 +2428,7 @@ func TestUnitDevToken_DisabledIs404(t *testing.T) {
 	// dev disabled: the response is a plain 404, indistinguishable from an
 	// unmounted route. The body is never decoded (DevToken short-circuits),
 	// so the unwired stubs would panic if reached.
-	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, false)
+	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.DevToken(rec, jsonReq(t, http.MethodPost, "/oauth/dev/token",
 		api.DevTokenRequest{User: "alice"}))
@@ -1663,14 +2436,14 @@ func TestUnitDevToken_DisabledIs404(t *testing.T) {
 }
 
 func TestUnitDevToken_InvalidBody(t *testing.T) {
-	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, true)
+	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, true)
 	rec := httptest.NewRecorder()
 	h.DevToken(rec, jsonReq(t, http.MethodPost, "/oauth/dev/token", "{not json"))
 	wantProblemRec(t, rec, http.StatusBadRequest, "invalid_body")
 }
 
 func TestUnitDevToken_UnknownFixture(t *testing.T) {
-	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, true)
+	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, true)
 	rec := httptest.NewRecorder()
 	h.DevToken(rec, jsonReq(t, http.MethodPost, "/oauth/dev/token",
 		api.DevTokenRequest{User: "someone-real"}))
@@ -1681,10 +2454,13 @@ func TestUnitDevToken_SuccessDelegatesToCompleteLogin(t *testing.T) {
 	// A known fixture delegates to completeLogin with provider "dev" and
 	// the fixture's verified claims, producing a real TokenPair.
 	st := &stubStore{
+		resolveIdentity: func(context.Context, string, string, string) (store.Identity, error) {
+			return store.Identity{}, store.ErrIdentityNotFound
+		},
 		createSession: func(context.Context, string, uuid.UUID, string, time.Time) error { return nil },
 	}
 	var boundProvider, boundSubject string
-	st.bindIdentity = func(_ context.Context, provider, subject string, _ uuid.UUID) error {
+	st.bindIdentity = func(_ context.Context, provider, subject, _ string, _ uuid.UUID) error {
 		boundProvider, boundSubject = provider, subject
 		return nil
 	}
@@ -1697,7 +2473,7 @@ func TestUnitDevToken_SuccessDelegatesToCompleteLogin(t *testing.T) {
 			return u, nil
 		},
 	}
-	h := newUnit(st, unitMinter(), users, nil, true)
+	h := newUnit(st, unitMinter(), users, nil, &stubVerifier{}, true)
 	rec := httptest.NewRecorder()
 	h.DevToken(rec, jsonReq(t, http.MethodPost, "/oauth/dev/token",
 		api.DevTokenRequest{User: "alice"}))
@@ -1706,5 +2482,172 @@ func TestUnitDevToken_SuccessDelegatesToCompleteLogin(t *testing.T) {
 	// tail ran from the dev entry point too.
 	if boundProvider != "dev" || boundSubject != "dev-alice" {
 		t.Fatalf("bind(%q, %q), want (dev, dev-alice)", boundProvider, boundSubject)
+	}
+}
+
+// --- ListIdentities / DeleteIdentity / DeleteUserAuth ---
+
+// claimsVerifier is a stubVerifier that answers every Validate call with
+// a fixed Claims regardless of the raw token presented: these tests
+// drive the ownership/role branches downstream of authentication, not
+// token parsing itself.
+func claimsVerifier(sub string, roles ...string) *stubVerifier {
+	return &stubVerifier{validate: func(context.Context, string) (jwtauth.Claims, error) {
+		return jwtauth.Claims{Subject: sub, Roles: roles}, nil
+	}}
+}
+
+// bearerReq builds a body-less request carrying some Bearer value;
+// claimsVerifier decides what it validates to, so the raw value itself
+// is never inspected.
+func bearerReq(method, target string) *http.Request {
+	req := httptest.NewRequest(method, target, nil)
+	req.Header.Set("Authorization", "Bearer whatever")
+	return req
+}
+
+func TestUnitListIdentities_Forbidden(t *testing.T) {
+	target := uuid.New()
+	caller := uuid.New() // a different account, no service role
+	// stubStore is unwired: ListIdentities must never reach the store
+	// once the ownership check rejects the caller.
+	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, claimsVerifier(caller.String(), "user"), false)
+	rec := httptest.NewRecorder()
+	h.ListIdentities(rec, bearerReq(http.MethodGet, "/users/"+target.String()+"/identities"), target)
+	wantProblemRec(t, rec, http.StatusForbidden, "forbidden")
+}
+
+func TestUnitListIdentities_ServiceRoleReadsAnyUser(t *testing.T) {
+	target := uuid.New()
+	var queried uuid.UUID
+	st := &stubStore{listIdentities: func(_ context.Context, userID uuid.UUID) ([]store.Identity, error) {
+		queried = userID
+		return nil, nil
+	}}
+	// The service token's subject ("svc:auth") does not parse as a uuid,
+	// so requireUserOrService hands back uuid.Nil for the caller; the
+	// role check is what must let the request through to the target user.
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, claimsVerifier("svc:auth", "service"), false)
+	rec := httptest.NewRecorder()
+	h.ListIdentities(rec, bearerReq(http.MethodGet, "/users/"+target.String()+"/identities"), target)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d (body %s)", rec.Code, rec.Body.String())
+	}
+	if queried != target {
+		t.Fatalf("ListIdentities queried %v, want the path user %v", queried, target)
+	}
+}
+
+func TestUnitListIdentities_StoreError(t *testing.T) {
+	target := uuid.New()
+	st := &stubStore{listIdentities: func(context.Context, uuid.UUID) ([]store.Identity, error) {
+		return nil, errStub
+	}}
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, claimsVerifier(target.String(), "user"), false)
+	rec := httptest.NewRecorder()
+	h.ListIdentities(rec, bearerReq(http.MethodGet, "/users/"+target.String()+"/identities"), target)
+	wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
+}
+
+func TestUnitListIdentities_Success(t *testing.T) {
+	target := uuid.New()
+	rowID := uuid.New()
+	created := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
+	email := "alice@example.com"
+	st := &stubStore{listIdentities: func(context.Context, uuid.UUID) ([]store.Identity, error) {
+		return []store.Identity{{ID: rowID, Provider: "dev", Email: &email, UserID: target, CreatedAt: created}}, nil
+	}}
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, claimsVerifier(target.String(), "user"), false)
+	rec := httptest.NewRecorder()
+	h.ListIdentities(rec, bearerReq(http.MethodGet, "/users/"+target.String()+"/identities"), target)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d (body %s)", rec.Code, rec.Body.String())
+	}
+	var body api.Identities
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Identities) != 1 {
+		t.Fatalf("identities = %+v, want 1", body.Identities)
+	}
+	got := body.Identities[0]
+	if got.Id != rowID || got.Provider != "dev" || got.Email == nil || *got.Email != email || !got.CreatedAt.Equal(created) {
+		t.Fatalf("identity = %+v", got)
+	}
+}
+
+func TestUnitDeleteIdentity_Outcomes(t *testing.T) {
+	cases := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantCode   string // empty marks the 204 success case
+	}{
+		{"not found", store.ErrIdentityNotFound, http.StatusNotFound, "identity_not_found"},
+		{"last identity", store.ErrLastIdentity, http.StatusConflict, "last_identity"},
+		{"other error", errStub, http.StatusInternalServerError, "internal"},
+		{"success", nil, http.StatusNoContent, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			caller := uuid.New()
+			identityID := uuid.New()
+			var gotUser, gotIdentity uuid.UUID
+			st := &stubStore{deleteIdentity: func(_ context.Context, userID, idArg uuid.UUID) error {
+				gotUser, gotIdentity = userID, idArg
+				return tc.err
+			}}
+			h := newUnit(st, unitMinter(), &stubUserService{}, nil, claimsVerifier(caller.String(), "user"), false)
+			rec := httptest.NewRecorder()
+			h.DeleteIdentity(rec, bearerReq(http.MethodDelete, "/identities/"+identityID.String()), identityID)
+			if tc.wantCode == "" {
+				if rec.Code != tc.wantStatus {
+					t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.wantStatus, rec.Body.String())
+				}
+			} else {
+				wantProblemRec(t, rec, tc.wantStatus, tc.wantCode)
+			}
+			if gotUser != caller || gotIdentity != identityID {
+				t.Fatalf("DeleteIdentity(%v, %v), want (%v, %v)", gotUser, gotIdentity, caller, identityID)
+			}
+		})
+	}
+}
+
+func TestUnitDeleteUserAuth_Forbidden(t *testing.T) {
+	target := uuid.New()
+	caller := uuid.New()
+	// stubStore is unwired: DeleteUserAuth must never reach the store
+	// once the self-only check rejects the caller.
+	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, claimsVerifier(caller.String(), "user"), false)
+	rec := httptest.NewRecorder()
+	h.DeleteUserAuth(rec, bearerReq(http.MethodDelete, "/users/"+target.String()+"/auth"), target)
+	wantProblemRec(t, rec, http.StatusForbidden, "forbidden")
+}
+
+func TestUnitDeleteUserAuth_StoreError(t *testing.T) {
+	target := uuid.New()
+	st := &stubStore{deleteUserAuth: func(context.Context, uuid.UUID) error { return errStub }}
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, claimsVerifier(target.String(), "user"), false)
+	rec := httptest.NewRecorder()
+	h.DeleteUserAuth(rec, bearerReq(http.MethodDelete, "/users/"+target.String()+"/auth"), target)
+	wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
+}
+
+func TestUnitDeleteUserAuth_Success(t *testing.T) {
+	target := uuid.New()
+	var erased uuid.UUID
+	st := &stubStore{deleteUserAuth: func(_ context.Context, userID uuid.UUID) error {
+		erased = userID
+		return nil
+	}}
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, claimsVerifier(target.String(), "user"), false)
+	rec := httptest.NewRecorder()
+	h.DeleteUserAuth(rec, bearerReq(http.MethodDelete, "/users/"+target.String()+"/auth"), target)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204 (body %s)", rec.Code, rec.Body.String())
+	}
+	if erased != target {
+		t.Fatalf("DeleteUserAuth erased %v, want %v", erased, target)
 	}
 }
