@@ -168,6 +168,7 @@ func TestUnitAPIRoutesRequireJWT(t *testing.T) {
 		{http.MethodGet, "/views"},
 		{http.MethodGet, "/dashboard"},
 		{http.MethodGet, "/library/summary"},
+		{http.MethodDelete, "/user-data"},
 	}
 	for _, p := range paths {
 		resp := do(t, p.method, srv.URL+p.path, "", nil)

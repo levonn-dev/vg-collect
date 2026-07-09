@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +21,7 @@ import (
 	"github.com/levonn-dev/vg-collect/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/api"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/authapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/collectionapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/enrichapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
@@ -29,12 +31,17 @@ import (
 
 // stubAuthFull lets each test override exactly the methods it expects.
 type stubAuthFull struct {
-	start     func(ctx context.Context, provider string) (string, error)
-	callback  func(ctx context.Context, code, state string) (authclient.TokenPair, error)
-	dev       func(ctx context.Context, user string) (authclient.TokenPair, error)
-	refresh   func(ctx context.Context, rt string) (authclient.TokenPair, error)
-	revoke    func(ctx context.Context, rt string) error
-	providers func(ctx context.Context) ([]string, error)
+	start          func(ctx context.Context, provider string) (string, error)
+	callback       func(ctx context.Context, code, state string) (authclient.TokenPair, error)
+	dev            func(ctx context.Context, user string) (authclient.TokenPair, error)
+	refresh        func(ctx context.Context, rt string) (authclient.TokenPair, error)
+	revoke         func(ctx context.Context, rt string) error
+	providers      func(ctx context.Context) ([]string, error)
+	linkStart      func(ctx context.Context, provider, bearer string) (string, error)
+	devLink        func(ctx context.Context, user, bearer string) (authclient.TokenPair, error)
+	listIdentities func(ctx context.Context, userID, bearer string) ([]authapi.Identity, error)
+	deleteIdentity func(ctx context.Context, identityID uuid.UUID, bearer string) error
+	deleteUserAuth func(ctx context.Context, userID, bearer string) error
 }
 
 func (s *stubAuthFull) Start(ctx context.Context, p string) (string, error) {
@@ -73,18 +80,66 @@ func (s *stubAuthFull) Providers(ctx context.Context) ([]string, error) {
 	}
 	return s.providers(ctx)
 }
-
-// userStub returns a canned user or error.
-type userStub struct {
-	user userapi.User
-	err  error
+func (s *stubAuthFull) LinkStart(ctx context.Context, provider, bearer string) (string, error) {
+	if s.linkStart == nil {
+		panic("unexpected LinkStart")
+	}
+	return s.linkStart(ctx, provider, bearer)
+}
+func (s *stubAuthFull) DevLink(ctx context.Context, user, bearer string) (authclient.TokenPair, error) {
+	if s.devLink == nil {
+		panic("unexpected DevLink")
+	}
+	return s.devLink(ctx, user, bearer)
+}
+func (s *stubAuthFull) ListIdentities(ctx context.Context, userID, bearer string) ([]authapi.Identity, error) {
+	if s.listIdentities == nil {
+		panic("unexpected ListIdentities")
+	}
+	return s.listIdentities(ctx, userID, bearer)
+}
+func (s *stubAuthFull) DeleteIdentity(ctx context.Context, identityID uuid.UUID, bearer string) error {
+	if s.deleteIdentity == nil {
+		panic("unexpected DeleteIdentity")
+	}
+	return s.deleteIdentity(ctx, identityID, bearer)
+}
+func (s *stubAuthFull) DeleteUserAuth(ctx context.Context, userID, bearer string) error {
+	if s.deleteUserAuth == nil {
+		panic("unexpected DeleteUserAuth")
+	}
+	return s.deleteUserAuth(ctx, userID, bearer)
 }
 
-func (f *userStub) Get(context.Context, string, string) (userapi.User, error) {
+// stubUsersFull returns a canned user/result or error. onDelete, when set, is
+// notified on every call so a test can record DeleteMe's cross-service
+// call order.
+type stubUsersFull struct {
+	user     userapi.User
+	err      error
+	result   userclient.Result
+	onDelete func()
+}
+
+func (f *stubUsersFull) Get(context.Context, string, string) (userapi.User, error) {
 	if f.err != nil {
 		return userapi.User{}, f.err
 	}
 	return f.user, nil
+}
+
+func (f *stubUsersFull) Update(context.Context, string, string, []byte) (userclient.Result, error) {
+	if f.err != nil {
+		return userclient.Result{}, f.err
+	}
+	return f.result, nil
+}
+
+func (f *stubUsersFull) Delete(_ context.Context, _, _ string) error {
+	if f.onDelete != nil {
+		f.onDelete()
+	}
+	return f.err
 }
 
 // stubEnrichment implements server.EnrichmentAPI via function fields.
@@ -286,6 +341,78 @@ func TestCallbackFailures(t *testing.T) {
 	}
 }
 
+func TestCallbackLinkOutcomes(t *testing.T) {
+	access := mintAccess(t, "u1", "j1", time.Now().Add(5*time.Minute))
+	google := "google"
+
+	t.Run("link_success_redirects_to_account_with_provider", func(t *testing.T) {
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			callback: func(context.Context, string, string) (authclient.TokenPair, error) {
+				return authclient.TokenPair{AccessToken: access, RefreshToken: "r1",
+					ExpiresIn: 300, RefreshExpiresIn: 2000, LinkedProvider: &google}, nil
+			},
+		})
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/callback?code=c1&state=s1", nil))
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/account?linked=google" {
+			t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
+		}
+		cs := rec.Result().Cookies()
+		if len(cs) != 1 || cs[0].Name != session.CookieName {
+			t.Fatalf("cookies = %+v", cs)
+		}
+		if opened, err := h.codec.Open(cs[0].Value); err != nil || opened.RefreshToken != "r1" {
+			t.Fatalf("cookie content: %+v err=%v", opened, err)
+		}
+	})
+
+	t.Run("conflict_redirects_without_a_cookie", func(t *testing.T) {
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			callback: func(context.Context, string, string) (authclient.TokenPair, error) {
+				return authclient.TokenPair{}, authclient.ErrLinkConflict
+			},
+		})
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/callback?code=c&state=s", nil))
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/account?link_error=conflict" {
+			t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
+		}
+		if len(rec.Result().Cookies()) != 0 {
+			t.Fatalf("conflict must not set a cookie: %+v", rec.Result().Cookies())
+		}
+	})
+
+	t.Run("email_unverified_redirects_with_link_error", func(t *testing.T) {
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			callback: func(context.Context, string, string) (authclient.TokenPair, error) {
+				return authclient.TokenPair{}, authclient.ErrLinkEmailUnverified
+			},
+		})
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/callback?code=c&state=s", nil))
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/account?link_error=email_unverified" {
+			t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
+		}
+		if len(rec.Result().Cookies()) != 0 {
+			t.Fatalf("unverified must not set a cookie: %+v", rec.Result().Cookies())
+		}
+	})
+
+	t.Run("plain_login_still_redirects_home", func(t *testing.T) {
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			callback: func(context.Context, string, string) (authclient.TokenPair, error) {
+				return authclient.TokenPair{AccessToken: access, RefreshToken: "r1",
+					ExpiresIn: 300, RefreshExpiresIn: 2000}, nil
+			},
+		})
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/callback?code=c&state=s", nil))
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/" {
+			t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
+		}
+	})
+}
+
 func TestLogout(t *testing.T) {
 	fc := newStubCache()
 	revoked := ""
@@ -364,7 +491,7 @@ func TestGetMe(t *testing.T) {
 	fc := newStubCache()
 	avatar := "https://cdn.example/a.png"
 	h := newTestHandlers(t, fc, &stubAuthFull{})
-	h.users = &userStub{user: userapi.User{
+	h.users = &stubUsersFull{user: userapi.User{
 		Id: uid, Email: "alice@example.test", DisplayName: "alice",
 		AvatarUrl: &avatar, Roles: []userapi.UserRoles{"user"},
 	}}
@@ -390,7 +517,7 @@ func TestGetMe(t *testing.T) {
 	}
 
 	// Second call served from cache: break the user client to prove it.
-	h.users = &userStub{err: errors.New("must not be called")}
+	h.users = &stubUsersFull{err: errors.New("must not be called")}
 	rec = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodGet, "/api/me", nil)
 	r.AddCookie(sealedCookie(t, h, access, "r1"))
@@ -402,7 +529,7 @@ func TestGetMe(t *testing.T) {
 
 func TestGetMeUserGone(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-	h.users = &userStub{err: userclient.ErrUserNotFound}
+	h.users = &stubUsersFull{err: userclient.ErrUserNotFound}
 	uid := uuid.New()
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 	r := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -416,7 +543,7 @@ func TestGetMeUserGone(t *testing.T) {
 
 func TestGetMeUpstreamError(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-	h.users = &userStub{err: errors.New("user service down")}
+	h.users = &stubUsersFull{err: errors.New("user service down")}
 	uid := uuid.New()
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 	r := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -468,6 +595,400 @@ func TestGetMeComposesAndCaches(t *testing.T) {
 	if string(r2.body) != string(r1.body) {
 		t.Fatalf("cached body differs:\n first=%s\nsecond=%s", r1.body, r2.body)
 	}
+}
+
+func TestUpdateMe_RelaysAndInvalidatesCache(t *testing.T) {
+	uid := uuid.New()
+
+	t.Run("200_relays_projection_and_invalidates_cache", func(t *testing.T) {
+		userJSON := []byte(`{"id":"` + uid.String() + `","email":"alice@example.test","display_name":"alice2","roles":["user"],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`)
+		fc := newStubCache()
+		fc.me[uid.String()] = []byte(`{"stale":true}`)
+		h := newTestHandlers(t, fc, &stubAuthFull{})
+		h.users = &stubUsersFull{result: userclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: userJSON}}
+		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
+		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"display_name":"alice2"}`))
+		r.AddCookie(sealedCookie(t, h, access, "r1"))
+		r.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, r)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("code = %d body=%s", rec.Code, rec.Body.String())
+		}
+		var raw map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+			t.Fatal(err)
+		}
+		if _, has := raw["created_at"]; has {
+			t.Fatalf("the Me projection must not carry timestamps: %v", raw)
+		}
+		var me api.Me
+		if err := json.Unmarshal(rec.Body.Bytes(), &me); err != nil {
+			t.Fatal(err)
+		}
+		if me.Id != uid || me.Email != "alice@example.test" || me.DisplayName != "alice2" ||
+			len(me.Roles) != 1 || me.Roles[0] != "user" {
+			t.Fatalf("me = %+v", me)
+		}
+		if fc.me[uid.String()] != nil {
+			t.Fatal("a successful update must invalidate the /api/me cache")
+		}
+	})
+
+	t.Run("400_relays_verbatim_and_does_not_invalidate", func(t *testing.T) {
+		problemJSON := []byte(`{"type":"about:blank","title":"Bad Request","status":400,"code":"invalid_body","detail":"display_name too long"}`)
+		fc := newStubCache()
+		fc.me[uid.String()] = []byte(`{"cached":true}`)
+		h := newTestHandlers(t, fc, &stubAuthFull{})
+		h.users = &stubUsersFull{result: userclient.Result{Status: http.StatusBadRequest, ContentType: "application/problem+json", Body: problemJSON}}
+		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
+		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"display_name":""}`))
+		r.AddCookie(sealedCookie(t, h, access, "r1"))
+		r.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, r)
+		if rec.Code != http.StatusBadRequest || rec.Header().Get("Content-Type") != "application/problem+json" ||
+			rec.Body.String() != string(problemJSON) {
+			t.Fatalf("relay: code=%d ct=%q body=%s", rec.Code, rec.Header().Get("Content-Type"), rec.Body.String())
+		}
+		if fc.me[uid.String()] == nil {
+			t.Fatal("a rejected update must not invalidate the /api/me cache")
+		}
+	})
+
+	t.Run("upstream_error_is_502", func(t *testing.T) {
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+		h.users = &stubUsersFull{err: errors.New("user service down")}
+		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
+		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"display_name":"x"}`))
+		r.AddCookie(sealedCookie(t, h, access, "r1"))
+		r.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, r)
+		if rec.Code != http.StatusBadGateway {
+			t.Fatalf("code = %d", rec.Code)
+		}
+	})
+}
+
+func TestGetMyIdentities(t *testing.T) {
+	t.Run("200_in_list_order", func(t *testing.T) {
+		uid := uuid.New()
+		id1, id2 := uuid.New(), uuid.New()
+		emailA := "alice@example.test"
+		t1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		t2 := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			listIdentities: func(_ context.Context, userID, _ string) ([]authapi.Identity, error) {
+				if userID != uid.String() {
+					t.Errorf("userID = %q", userID)
+				}
+				return []authapi.Identity{
+					{Id: id1, Provider: "google", Email: &emailA, CreatedAt: t1},
+					{Id: id2, Provider: "dev", CreatedAt: t2},
+				}, nil
+			},
+		})
+		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
+		r := httptest.NewRequest(http.MethodGet, "/api/me/identities", nil)
+		r.AddCookie(sealedCookie(t, h, access, "r1"))
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, r)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("code = %d body=%s", rec.Code, rec.Body.String())
+		}
+		var body api.Identities
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if len(body.Identities) != 2 ||
+			body.Identities[0].Id != id1 || body.Identities[0].Provider != "google" ||
+			body.Identities[0].Email == nil || *body.Identities[0].Email != emailA ||
+			body.Identities[1].Id != id2 || body.Identities[1].Provider != "dev" || body.Identities[1].Email != nil {
+			t.Fatalf("identities = %+v", body.Identities)
+		}
+	})
+
+	t.Run("upstream_error_is_502", func(t *testing.T) {
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			listIdentities: func(context.Context, string, string) ([]authapi.Identity, error) {
+				return nil, errors.New("auth down")
+			},
+		})
+		access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
+		r := httptest.NewRequest(http.MethodGet, "/api/me/identities", nil)
+		r.AddCookie(sealedCookie(t, h, access, "r1"))
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, r)
+		if rec.Code != http.StatusBadGateway {
+			t.Fatalf("code = %d", rec.Code)
+		}
+	})
+}
+
+func TestDeleteMyIdentity(t *testing.T) {
+	iid := uuid.New()
+	cases := []struct {
+		name        string
+		err         error
+		code        int
+		problemCode string
+	}{
+		{"unlinked", nil, http.StatusNoContent, ""},
+		{"last_identity", authclient.ErrLastIdentity, http.StatusConflict, "last_identity"},
+		{"not_found", authclient.ErrIdentityNotFound, http.StatusNotFound, "identity_not_found"},
+		{"upstream_error", errors.New("boom"), http.StatusBadGateway, "upstream_error"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+				deleteIdentity: func(_ context.Context, gotID uuid.UUID, _ string) error {
+					if gotID != iid {
+						t.Errorf("identityID = %v", gotID)
+					}
+					return tc.err
+				},
+			})
+			access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
+			r := httptest.NewRequest(http.MethodDelete, "/api/me/identities/"+iid.String(), nil)
+			r.AddCookie(sealedCookie(t, h, access, "r1"))
+			rec := httptest.NewRecorder()
+			newRouterFor(t, h).ServeHTTP(rec, r)
+			if rec.Code != tc.code {
+				t.Fatalf("code = %d, want %d body=%s", rec.Code, tc.code, rec.Body.String())
+			}
+			if tc.problemCode != "" {
+				var p struct {
+					Code string `json:"code"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil || p.Code != tc.problemCode {
+					t.Fatalf("problem code = %+v err=%v", p, err)
+				}
+			}
+		})
+	}
+}
+
+func TestLinkLoginNavigations(t *testing.T) {
+	t.Run("dev_links_and_sets_a_fresh_cookie", func(t *testing.T) {
+		linkedAccess := mintAccess(t, "u1", "jlinked", time.Now().Add(5*time.Minute))
+		linked := "dev"
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			devLink: func(_ context.Context, user, _ string) (authclient.TokenPair, error) {
+				if user != "bob" {
+					t.Errorf("user = %q", user)
+				}
+				return authclient.TokenPair{AccessToken: linkedAccess, RefreshToken: "r2",
+					ExpiresIn: 300, RefreshExpiresIn: 2000, LinkedProvider: &linked}, nil
+			},
+		})
+		sessAccess := mintAccess(t, "u1", "jsess", time.Now().Add(5*time.Minute))
+		r := httptest.NewRequest(http.MethodGet, "/api/auth/link?provider=dev&user=bob", nil)
+		r.AddCookie(sealedCookie(t, h, sessAccess, "rsess"))
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, r)
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/account?linked=dev" {
+			t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
+		}
+		cs := rec.Result().Cookies()
+		if len(cs) != 1 || cs[0].Name != session.CookieName {
+			t.Fatalf("cookies = %+v", cs)
+		}
+		if opened, err := h.codec.Open(cs[0].Value); err != nil || opened.AccessToken != linkedAccess || opened.RefreshToken != "r2" {
+			t.Fatalf("cookie should seal the freshly-linked pair: %+v err=%v", opened, err)
+		}
+	})
+
+	t.Run("dev_conflict_redirects_without_a_cookie", func(t *testing.T) {
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			devLink: func(context.Context, string, string) (authclient.TokenPair, error) {
+				return authclient.TokenPair{}, authclient.ErrLinkConflict
+			},
+		})
+		sessAccess := mintAccess(t, "u1", "jsess", time.Now().Add(5*time.Minute))
+		r := httptest.NewRequest(http.MethodGet, "/api/auth/link?provider=dev&user=bob", nil)
+		r.AddCookie(sealedCookie(t, h, sessAccess, "rsess"))
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, r)
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/account?link_error=conflict" {
+			t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
+		}
+		if len(rec.Result().Cookies()) != 0 {
+			t.Fatalf("conflict must not set a cookie: %+v", rec.Result().Cookies())
+		}
+	})
+
+	t.Run("google_redirects_to_the_authorize_url", func(t *testing.T) {
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			linkStart: func(_ context.Context, provider, _ string) (string, error) {
+				if provider != "google" {
+					t.Errorf("provider = %q", provider)
+				}
+				return "https://idp.example/authorize?state=link1", nil
+			},
+		})
+		sessAccess := mintAccess(t, "u1", "jsess", time.Now().Add(5*time.Minute))
+		r := httptest.NewRequest(http.MethodGet, "/api/auth/link?provider=google", nil)
+		r.AddCookie(sealedCookie(t, h, sessAccess, "rsess"))
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, r)
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "https://idp.example/authorize?state=link1" {
+			t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
+		}
+	})
+
+	t.Run("google_start_failure_redirects_link_failed", func(t *testing.T) {
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			linkStart: func(context.Context, string, string) (string, error) {
+				return "", errors.New("boom")
+			},
+		})
+		sessAccess := mintAccess(t, "u1", "jsess", time.Now().Add(5*time.Minute))
+		r := httptest.NewRequest(http.MethodGet, "/api/auth/link?provider=google", nil)
+		r.AddCookie(sealedCookie(t, h, sessAccess, "rsess"))
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, r)
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/account?link_error=link_failed" {
+			t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
+		}
+	})
+}
+
+func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
+	t.Run("happy_path_orchestrates_purge_then_auth_then_user_then_session", func(t *testing.T) {
+		var mu sync.Mutex
+		var order []string
+		record := func(step string) {
+			mu.Lock()
+			order = append(order, step)
+			mu.Unlock()
+		}
+		uid := uuid.New()
+		fc := newStubCache()
+		fc.me[uid.String()] = []byte(`{"cached":true}`)
+		fc.recs[uid.String()] = []byte(`{"cached":true}`)
+		col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+			record("collection.PurgeUserData")
+			return collectionclient.Result{Status: http.StatusNoContent}, nil
+		}}
+		h := newTestHandlers(t, fc, &stubAuthFull{
+			deleteUserAuth: func(context.Context, string, string) error {
+				record("auth.DeleteUserAuth")
+				return nil
+			},
+		})
+		h.collection = col
+		h.users = &stubUsersFull{onDelete: func() { record("users.Delete") }}
+		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
+		r := httptest.NewRequest(http.MethodDelete, "/api/me", nil)
+		r.AddCookie(sealedCookie(t, h, access, "r1"))
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, r)
+
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("code = %d body=%s", rec.Code, rec.Body.String())
+		}
+		if want := []string{"collection.PurgeUserData", "auth.DeleteUserAuth", "users.Delete"}; !slices.Equal(order, want) {
+			t.Fatalf("order = %v, want %v", order, want)
+		}
+		if len(fc.denyAdds) != 1 || fc.denyAdds[0][0] != "j1" {
+			t.Fatalf("denylist adds = %v", fc.denyAdds)
+		}
+		if fc.me[uid.String()] != nil {
+			t.Fatal("deletion must invalidate the /api/me cache")
+		}
+		if fc.recs[uid.String()] != nil {
+			t.Fatal("deletion must invalidate the recommendations cache")
+		}
+		if !clearedCookie(rec) {
+			t.Fatal("deletion must clear the session cookie")
+		}
+	})
+
+	t.Run("purge_failure_stops_before_auth_or_user", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			res  collectionclient.Result
+			err  error
+		}{
+			{"non_204_result", collectionclient.Result{Status: http.StatusInternalServerError}, nil},
+			{"transport_error", collectionclient.Result{}, errors.New("collection down")},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				var mu sync.Mutex
+				var order []string
+				record := func(step string) {
+					mu.Lock()
+					order = append(order, step)
+					mu.Unlock()
+				}
+				col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+					record("collection.PurgeUserData")
+					return tc.res, tc.err
+				}}
+				h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+					deleteUserAuth: func(context.Context, string, string) error {
+						record("auth.DeleteUserAuth")
+						return nil
+					},
+				})
+				h.collection = col
+				h.users = &stubUsersFull{onDelete: func() { record("users.Delete") }}
+				access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
+				r := httptest.NewRequest(http.MethodDelete, "/api/me", nil)
+				r.AddCookie(sealedCookie(t, h, access, "r1"))
+				rec := httptest.NewRecorder()
+				newRouterFor(t, h).ServeHTTP(rec, r)
+
+				if rec.Code != http.StatusBadGateway {
+					t.Fatalf("code = %d", rec.Code)
+				}
+				if want := []string{"collection.PurgeUserData"}; !slices.Equal(order, want) {
+					t.Fatalf("order = %v, want %v (auth/user must not run)", order, want)
+				}
+				if clearedCookie(rec) {
+					t.Fatal("a mid-failure must keep the session intact")
+				}
+			})
+		}
+	})
+
+	t.Run("auth_failure_stops_before_user", func(t *testing.T) {
+		var mu sync.Mutex
+		var order []string
+		record := func(step string) {
+			mu.Lock()
+			order = append(order, step)
+			mu.Unlock()
+		}
+		col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+			record("collection.PurgeUserData")
+			return collectionclient.Result{Status: http.StatusNoContent}, nil
+		}}
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			deleteUserAuth: func(context.Context, string, string) error {
+				record("auth.DeleteUserAuth")
+				return errors.New("auth down")
+			},
+		})
+		h.collection = col
+		h.users = &stubUsersFull{onDelete: func() { record("users.Delete") }}
+		access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
+		r := httptest.NewRequest(http.MethodDelete, "/api/me", nil)
+		r.AddCookie(sealedCookie(t, h, access, "r1"))
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, r)
+
+		if rec.Code != http.StatusBadGateway {
+			t.Fatalf("code = %d", rec.Code)
+		}
+		if want := []string{"collection.PurgeUserData", "auth.DeleteUserAuth"}; !slices.Equal(order, want) {
+			t.Fatalf("order = %v, want %v (user delete must not run)", order, want)
+		}
+		if clearedCookie(rec) {
+			t.Fatal("a mid-failure must keep the session intact")
+		}
+	})
 }
 
 func TestHealthAndStaticPlaceholder(t *testing.T) {
@@ -617,6 +1138,9 @@ func (s *stubCollection) LibrarySummary(ctx context.Context, bearer string) (col
 		panic("unexpected LibrarySummary")
 	}
 	return s.library(ctx, bearer)
+}
+func (s *stubCollection) PurgeUserData(_ context.Context, bearer string) (collectionclient.Result, error) {
+	return s.call("purge_user_data", bearer)
 }
 
 var _ CollectionAPI = (*stubCollection)(nil)
