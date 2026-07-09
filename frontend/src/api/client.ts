@@ -4,6 +4,13 @@ export type Me =
   paths['/api/me']['get']['responses']['200']['content']['application/json']
 type Providers =
   paths['/api/auth/providers']['get']['responses']['200']['content']['application/json']
+export type Identity =
+  paths['/api/me/identities']['get']['responses']['200']['content']['application/json']['identities'][number]
+type Identities =
+  paths['/api/me/identities']['get']['responses']['200']['content']['application/json']
+type UpdateMeRequest = NonNullable<
+  paths['/api/me']['patch']['requestBody']
+>['content']['application/json']
 
 // ApiError carries the RFC 9457 problem fields the UI branches on.
 export class ApiError extends Error {
@@ -36,7 +43,7 @@ export async function getJSON<T>(path: string): Promise<T> {
 // sendJSON issues a mutating call. 204 answers resolve to undefined;
 // callers with a body type parameterize T accordingly.
 export async function sendJSON<T>(
-  method: 'POST' | 'PUT' | 'DELETE',
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
 ): Promise<T> {
@@ -63,4 +70,21 @@ export async function fetchProviders(): Promise<string[]> {
 export async function logout(): Promise<void> {
   const res = await fetch('/api/auth/logout', { method: 'POST' })
   if (!res.ok) throw await toApiError(res)
+}
+
+export function updateMe(body: UpdateMeRequest): Promise<Me> {
+  return sendJSON<Me>('PATCH', '/api/me', body)
+}
+
+export async function fetchIdentities(): Promise<Identity[]> {
+  const body = await getJSON<Identities>('/api/me/identities')
+  return body.identities
+}
+
+export function unlinkIdentity(id: string): Promise<void> {
+  return sendJSON<void>('DELETE', `/api/me/identities/${id}`)
+}
+
+export function deleteAccount(): Promise<void> {
+  return sendJSON<void>('DELETE', '/api/me')
 }

@@ -1,4 +1,4 @@
-import { ApiError, fetchMe, fetchProviders, logout, sendJSON } from './client'
+import { ApiError, fetchMe, fetchProviders, logout, sendJSON, updateMe, fetchIdentities, unlinkIdentity, deleteAccount } from './client'
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -70,4 +70,37 @@ it('sendJSON maps problem bodies onto ApiError', async () => {
   const err = await sendJSON('POST', '/api/entries/e1/reorder', {}).catch((e: unknown) => e)
   expect(err).toBeInstanceOf(ApiError)
   expect((err as ApiError).code).toBe('conflicting_order')
+})
+
+it('updateMe PATCHes and returns the profile', async () => {
+  const fetchStub = vi.fn().mockResolvedValue(jsonResponse(200, {
+    id: 'u1', email: 'a@example.test', display_name: 'Neo', roles: ['user'],
+  }))
+  vi.stubGlobal('fetch', fetchStub)
+  const me = await updateMe({ display_name: 'Neo' })
+  expect(me.display_name).toBe('Neo')
+  expect(fetchStub).toHaveBeenCalledWith('/api/me', expect.objectContaining({ method: 'PATCH' }))
+})
+
+it('fetchIdentities unwraps the list', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
+    identities: [{ id: 'i1', provider: 'dev', email: 'a@example.com', created_at: '2026-01-01T00:00:00Z' }],
+  })))
+  const ids = await fetchIdentities()
+  expect(ids).toHaveLength(1)
+  expect(ids[0].provider).toBe('dev')
+})
+
+it('unlinkIdentity DELETEs and tolerates 204', async () => {
+  const fetchStub = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+  vi.stubGlobal('fetch', fetchStub)
+  await expect(unlinkIdentity('i1')).resolves.toBeUndefined()
+  expect(fetchStub).toHaveBeenCalledWith('/api/me/identities/i1', expect.objectContaining({ method: 'DELETE' }))
+})
+
+it('deleteAccount DELETEs /api/me', async () => {
+  const fetchStub = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+  vi.stubGlobal('fetch', fetchStub)
+  await expect(deleteAccount()).resolves.toBeUndefined()
+  expect(fetchStub).toHaveBeenCalledWith('/api/me', expect.objectContaining({ method: 'DELETE' }))
 })

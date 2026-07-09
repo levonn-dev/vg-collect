@@ -83,6 +83,65 @@ export interface paths {
         get: operations["getMe"];
         put?: never;
         post?: never;
+        /**
+         * Delete the account everywhere (collection, linked logins, profile) and end the session
+         * @description Orchestrated in self-healing order: collection purge, then auth identities + refresh revocation, then the user row, then session teardown. A mid-sequence failure answers 502 with the session intact so the request can be retried; an abandoned partial deletion re-attaches to the surviving account on next login.
+         */
+        delete: operations["deleteMe"];
+        options?: never;
+        head?: never;
+        /** Edit the signed-in user's profile (display name, avatar URL) */
+        patch: operations["updateMe"];
+        trace?: never;
+    };
+    "/api/me/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Provider logins linked to the signed-in account */
+        get: operations["getMyIdentities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/identities/{identityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unlink a provider login from the signed-in account */
+        delete: operations["deleteMyIdentity"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Begin linking another login to the signed-in account; redirects like login
+         * @description A browser navigation, session-guarded (unlike /api/auth/login). Real providers redirect to the provider authorize URL and come back through /api/auth/callback; the dev provider links in one hop. Outcomes land on /account as query params: ?linked=<p> or ?link_error=<conflict|email_unverified|link_failed>.
+         */
+        get: operations["linkLogin"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -359,6 +418,23 @@ export interface components {
             display_name: string;
             avatar_url?: string;
             roles: string[];
+        };
+        /** @description Absent fields keep their value; an empty avatar_url clears it. */
+        UpdateMeRequest: {
+            display_name?: string;
+            avatar_url?: string;
+        };
+        Identity: {
+            /** Format: uuid */
+            id: string;
+            provider: string;
+            /** @description Informational; the email this login last asserted. */
+            email?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        Identities: {
+            identities: components["schemas"]["Identity"][];
         };
         PlatformRef: {
             /** Format: int64 */
@@ -923,6 +999,160 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    deleteMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account deleted; the session cookie is cleared */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["OriginForbidden"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMeRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated profile (the /api/me cache is refreshed) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Validation failure (code invalid_body; detail names the field) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["OriginForbidden"];
+            /** @description The signed-in account no longer exists (relayed from the user service) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getMyIdentities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Linked identities, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Identities"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    deleteMyIdentity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unlinked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["OriginForbidden"];
+            /** @description No such linked login (code identity_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Refusing to remove the last login (code last_identity) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    linkLogin: {
+        parameters: {
+            query: {
+                /** @description google, twitch, or dev (when the dev provider is enabled) */
+                provider: string;
+                /** @description Dev provider only: fixture handle (alice, bob, admin) */
+                user?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Provider authorize URL, or /account with the outcome params */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
         };
     };
     proxyTraces: {
