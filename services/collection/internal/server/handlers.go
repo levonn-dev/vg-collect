@@ -1406,6 +1406,20 @@ func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 	writeRawJSON(w, body)
 }
 
+// PurgeUserData is the collection leg of account deletion.
+func (h *Handlers) PurgeUserData(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
+	if err := h.store.PurgeUserData(r.Context(), userID); err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "purge failed")
+		return
+	}
+	h.invalidateDashboard(r.Context(), userID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // GetLibrarySummary answers the deduplicated game library, shaped for
 // the enrichment scoring contract.
 func (h *Handlers) GetLibrarySummary(w http.ResponseWriter, r *http.Request) {

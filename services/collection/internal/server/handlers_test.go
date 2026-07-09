@@ -51,6 +51,7 @@ type stubStore struct {
 	deleteView      func(ctx context.Context, userID, id uuid.UUID) error
 	dashboardCounts func(ctx context.Context, userID uuid.UUID, f store.Filters) (store.DashboardCounts, error)
 	pricingRows     func(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.PricingRow, error)
+	purgeUserData   func(ctx context.Context, userID uuid.UUID) error
 }
 
 var _ server.Store = (*stubStore)(nil)
@@ -156,6 +157,12 @@ func (s *stubStore) PricingRows(ctx context.Context, userID uuid.UUID, f store.F
 		panic("unexpected PricingRows")
 	}
 	return s.pricingRows(ctx, userID, f)
+}
+func (s *stubStore) PurgeUserData(ctx context.Context, userID uuid.UUID) error {
+	if s.purgeUserData == nil {
+		panic("unexpected PurgeUserData")
+	}
+	return s.purgeUserData(ctx, userID)
 }
 
 // stubEnrichment implements server.Enrichment via function fields.
@@ -2747,4 +2754,38 @@ func TestValueHistoryInvalidationThroughTheStack(t *testing.T) {
 	if !strings.Contains(string(body), `"value_cents":4200`) {
 		t.Fatalf("post-create read must recompose with the new entry: %s", body)
 	}
+}
+
+func TestUnitPurgeUserData(t *testing.T) {
+	user := uuid.New()
+
+	t.Run("authorized purge answers 204 and calls the store with the token's sub", func(t *testing.T) {
+		var gotUser uuid.UUID
+		st := &stubStore{purgeUserData: func(_ context.Context, userID uuid.UUID) error {
+			gotUser = userID
+			return nil
+		}}
+		c := newStubCache()
+		srv, a := newUnitServer(t, st, &stubEnrichment{}, c)
+		resp := do(t, http.MethodDelete, srv.URL+"/user-data", a.token(t, user.String()), nil)
+		if resp.StatusCode != http.StatusNoContent {
+			t.Fatalf("status %d", resp.StatusCode)
+		}
+		if gotUser != user {
+			t.Fatalf("store call: got user %v, want %v", gotUser, user)
+		}
+		// The dashboard cache was invalidated for exactly this user.
+		if len(c.invalidated) != 1 || c.invalidated[0] != user.String() {
+			t.Fatalf("invalidations: %v", c.invalidated)
+		}
+	})
+
+	t.Run("store error is 500", func(t *testing.T) {
+		st := &stubStore{purgeUserData: func(context.Context, uuid.UUID) error {
+			return errors.New("boom")
+		}}
+		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+		resp := do(t, http.MethodDelete, srv.URL+"/user-data", a.token(t, user.String()), nil)
+		wantProblem(t, resp, http.StatusInternalServerError, "internal")
+	})
 }

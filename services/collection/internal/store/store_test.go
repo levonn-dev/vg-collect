@@ -772,6 +772,65 @@ func TestDashboardAggregates(t *testing.T) {
 	}
 }
 
+func TestPurgeUserData_RemovesExactlyOneUsersRows(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	a, b := uuid.New(), uuid.New()
+
+	aTag, err := s.CreateTag(ctx, a, "rpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustCreate(t, s, baseEntry(a), []uuid.UUID{aTag.ID})
+	mustCreate(t, s, baseEntry(a), nil)
+	if _, err := s.CreateView(ctx, a, "Backlog", []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	bTag, err := s.CreateTag(ctx, b, "rpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustCreate(t, s, baseEntry(b), []uuid.UUID{bTag.ID})
+	if _, err := s.CreateView(ctx, b, "Backlog", []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.PurgeUserData(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+
+	aEntries, err := s.ListEntries(ctx, a, store.Filters{})
+	if err != nil || len(aEntries) != 0 {
+		t.Fatalf("a's entries must be gone: %+v %v", aEntries, err)
+	}
+	aTags, err := s.ListTags(ctx, a)
+	if err != nil || len(aTags) != 0 {
+		t.Fatalf("a's tags must be gone: %+v %v", aTags, err)
+	}
+	aViews, err := s.ListViews(ctx, a)
+	if err != nil || len(aViews) != 0 {
+		t.Fatalf("a's views must be gone: %+v %v", aViews, err)
+	}
+
+	bEntries, err := s.ListEntries(ctx, b, store.Filters{})
+	if err != nil || len(bEntries) != 1 {
+		t.Fatalf("b's entries must survive: %+v %v", bEntries, err)
+	}
+	bTags, err := s.ListTags(ctx, b)
+	if err != nil || len(bTags) != 1 {
+		t.Fatalf("b's tags must survive: %+v %v", bTags, err)
+	}
+	bViews, err := s.ListViews(ctx, b)
+	if err != nil || len(bViews) != 1 {
+		t.Fatalf("b's views must survive: %+v %v", bViews, err)
+	}
+
+	if err := s.PurgeUserData(ctx, a); err != nil {
+		t.Fatalf("purging an already-empty collection must be a no-op: %v", err)
+	}
+}
+
 func TestDashboardAggregatesFiltered(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

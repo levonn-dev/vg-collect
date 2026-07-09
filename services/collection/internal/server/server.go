@@ -44,6 +44,7 @@ type Store interface {
 	DeleteView(ctx context.Context, userID, id uuid.UUID) error
 	DashboardCounts(ctx context.Context, userID uuid.UUID, f store.Filters) (store.DashboardCounts, error)
 	PricingRows(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.PricingRow, error)
+	PurgeUserData(ctx context.Context, userID uuid.UUID) error
 }
 
 // Enrichment is the catalog surface (typed reads with the caller's

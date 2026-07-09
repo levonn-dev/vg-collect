@@ -841,6 +841,9 @@ type ServerInterface interface {
 	// Rename a tag
 	// (PUT /tags/{tagId})
 	RenameTag(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID)
+	// Delete every collection row belonging to the caller (entries, tags, saved views); idempotent
+	// (DELETE /user-data)
+	PurgeUserData(w http.ResponseWriter, r *http.Request)
 	// List the caller's saved views
 	// (GET /views)
 	ListViews(w http.ResponseWriter, r *http.Request)
@@ -1352,6 +1355,26 @@ func (siw *ServerInterfaceWrapper) RenameTag(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// PurgeUserData operation middleware
+func (siw *ServerInterfaceWrapper) PurgeUserData(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PurgeUserData(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListViews operation middleware
 func (siw *ServerInterfaceWrapper) ListViews(w http.ResponseWriter, r *http.Request) {
 
@@ -1587,6 +1610,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/tags", wrapper.CreateTag)
 	m.HandleFunc("DELETE "+options.BaseURL+"/tags/{tagId}", wrapper.DeleteTag)
 	m.HandleFunc("PUT "+options.BaseURL+"/tags/{tagId}", wrapper.RenameTag)
+	m.HandleFunc("DELETE "+options.BaseURL+"/user-data", wrapper.PurgeUserData)
 	m.HandleFunc("GET "+options.BaseURL+"/views", wrapper.ListViews)
 	m.HandleFunc("POST "+options.BaseURL+"/views", wrapper.CreateView)
 	m.HandleFunc("DELETE "+options.BaseURL+"/views/{viewId}", wrapper.DeleteView)

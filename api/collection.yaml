@@ -564,6 +564,14 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/LibrarySummary" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /user-data:
+    delete:
+      operationId: purgeUserData
+      summary: Delete every collection row belonging to the caller (entries, tags, saved views); idempotent
+      responses:
+        "204":
+          description: Purged (also when there was nothing to purge)
+        "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }

@@ -945,3 +945,21 @@ func (s *Store) PricingRows(ctx context.Context, userID uuid.UUID, f Filters) ([
 	}
 	return out, rows.Err()
 }
+
+// PurgeUserData erases everything the user owns in one transaction:
+// entries (entry_tags cascade), tags, and saved views. Account
+// deletion calls this; purging an empty collection is a no-op.
+func (s *Store) PurgeUserData(ctx context.Context, userID uuid.UUID) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		for _, q := range []string{
+			`DELETE FROM entries WHERE user_id = $1`,
+			`DELETE FROM tags WHERE user_id = $1`,
+			`DELETE FROM saved_views WHERE user_id = $1`,
+		} {
+			if _, err := tx.Exec(ctx, q, userID); err != nil {
+				return fmt.Errorf("store: purge user data: %w", err)
+			}
+		}
+		return nil
+	})
+}
