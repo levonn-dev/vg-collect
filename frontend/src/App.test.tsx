@@ -32,3 +32,17 @@ it('does not retry a 401 and routes to login', async () => {
   const meCalls = fetchMock.mock.calls.filter((c) => c[0] === '/api/me')
   expect(meCalls).toHaveLength(1)
 })
+
+it('renders the account page inside the shell', async () => {
+  window.history.pushState({}, '', '/account')
+  vi.stubGlobal('fetch', vi.fn((input: string) => {
+    const url = String(input)
+    if (url === '/api/me/identities') return Promise.resolve(jsonResponse(200, { identities: [] }))
+    if (url === '/api/auth/providers') return Promise.resolve(jsonResponse(200, { providers: [] }))
+    return Promise.resolve(jsonResponse(200, {
+      id: 'u1', email: 'alice@example.test', display_name: 'alice', roles: ['user'],
+    }))
+  }))
+  render(<App />)
+  expect(await screen.findByRole('heading', { name: 'Account' })).toBeInTheDocument()
+})

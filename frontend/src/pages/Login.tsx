@@ -32,6 +32,11 @@ export default function Login() {
           {errorMessages[error] ?? errorMessages.login_failed}
         </p>
       )}
+      {params.get('deleted') && (
+        <p role="status" className="rounded bg-green-50 p-3 text-sm text-green-700">
+          Your account has been deleted.
+        </p>
+      )}
       {providers.isPending && <p>Loading sign-in options...</p>}
       {providers.isError && (
         <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">

@@ -36,6 +36,13 @@ it('renders the chrome and the routed page for a signed-in user', async () => {
   expect(screen.getByRole('link', { name: 'Collection' })).toBeInTheDocument()
 })
 
+it('links the identity block to the account page', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, me)))
+  renderLayout()
+  await screen.findByText('page-content')
+  expect(screen.getByRole('link', { name: 'Account' })).toHaveAttribute('href', '/account')
+})
+
 it('renders the avatar without a referrer and falls back to an initial on load failure', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
     ...me, avatar_url: 'https://lh3.example/avatar=s96-c',

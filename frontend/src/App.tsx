@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { ApiError } from './api/client'
 import Layout from './components/Layout'
+import Account from './pages/Account'
 import AddWizard from './pages/AddWizard'
 import Collection from './pages/Collection'
 import EntryDetail from './pages/EntryDetail'
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="/add" element={<AddWizard />} />
             <Route path="/entries/:id" element={<EntryDetail />} />
             <Route path="/recommendations" element={<Recommendations />} />
+            <Route path="/account" element={<Account />} />
           </Route>
         </Routes>
       </BrowserRouter>

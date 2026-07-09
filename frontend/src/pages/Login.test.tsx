@@ -62,3 +62,9 @@ it('labels an unknown provider with a generic fallback', async () => {
   expect(await screen.findByRole('link', { name: 'Continue with discord' }))
     .toHaveAttribute('href', '/api/auth/login?provider=discord')
 })
+
+it('shows the account-deleted notice', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { providers: [] })))
+  renderLogin('/login?deleted=1')
+  expect(await screen.findByRole('status')).toHaveTextContent(/account.*deleted/i)
+})

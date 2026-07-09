@@ -92,8 +92,14 @@ export default function Layout() {
         </div>
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          <Avatar key={me.data.avatar_url} url={me.data.avatar_url} name={me.data.display_name} />
-          <span className="text-sm text-gray-700">{me.data.display_name}</span>
+          <NavLink
+            to="/account"
+            aria-label="Account"
+            className="flex items-center gap-3 rounded px-1 py-0.5 hover:bg-gray-50"
+          >
+            <Avatar key={me.data.avatar_url} url={me.data.avatar_url} name={me.data.display_name} />
+            <span className="text-sm text-gray-700">{me.data.display_name}</span>
+          </NavLink>
           <button
             onClick={() => signOut.mutate()}
             disabled={signOut.isPending}
