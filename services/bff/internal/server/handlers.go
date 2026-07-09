@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -15,6 +16,7 @@ import (
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/api"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/collectionapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/enrichapi"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
 )
@@ -36,7 +38,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request, params api.Logi
 			h.redirectLoginError(w, r, err)
 			return
 		}
-		h.completeNavLogin(w, r, pair)
+		h.completeNavLogin(w, r, pair, "/")
 		return
 	}
 	authorizeURL, err := h.auth.Start(r.Context(), params.Provider)
@@ -48,8 +50,10 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request, params api.Logi
 }
 
 // Callback is the redirect URI registered with providers: it finishes
-// the login server-to-server; code/state outcomes are never exposed to
-// scripts (navigation in, navigation out).
+// a login or an account link server-to-server; code/state outcomes are
+// never exposed to scripts (navigation in, navigation out). A link's
+// two refusals land back on the account page with a code the frontend
+// renders as a message, never as a failed login.
 func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request, params api.CallbackParams) {
 	code, state := "", ""
 	if params.Code != nil {
@@ -63,16 +67,28 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request, params api.C
 		return
 	}
 	pair, err := h.auth.Callback(r.Context(), code, state)
-	if err != nil {
+	switch {
+	case errors.Is(err, authclient.ErrLinkConflict):
+		http.Redirect(w, r, "/account?link_error=conflict", http.StatusFound)
+		return
+	case errors.Is(err, authclient.ErrLinkEmailUnverified):
+		http.Redirect(w, r, "/account?link_error=email_unverified", http.StatusFound)
+		return
+	case err != nil:
 		h.redirectLoginError(w, r, err)
 		return
 	}
-	h.completeNavLogin(w, r, pair)
+	if pair.LinkedProvider != nil {
+		h.completeNavLogin(w, r, pair, "/account?linked="+url.QueryEscape(*pair.LinkedProvider))
+		return
+	}
+	h.completeNavLogin(w, r, pair, "/")
 }
 
 // completeNavLogin seals the pair into the session cookie and sends
-// the browser home.
-func (h *Handlers) completeNavLogin(w http.ResponseWriter, r *http.Request, pair authclient.TokenPair) {
+// the browser to target (home after a login, the account page after a
+// link).
+func (h *Handlers) completeNavLogin(w http.ResponseWriter, r *http.Request, pair authclient.TokenPair, target string) {
 	sealed, err := h.codec.Seal(session.Session{
 		AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken,
 	})
@@ -82,7 +98,7 @@ func (h *Handlers) completeNavLogin(w http.ResponseWriter, r *http.Request, pair
 		return
 	}
 	http.SetCookie(w, h.codec.Cookie(sealed, int(pair.RefreshExpiresIn)))
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 func (h *Handlers) redirectLoginError(w http.ResponseWriter, r *http.Request, err error) {
@@ -174,6 +190,163 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 		h.failOpenEvent(r.Context(), "me_put", perr)
 	}
 	writeRawJSON(w, body)
+}
+
+// UpdateMe forwards a profile edit and drops the cached projection so
+// the app bar updates on the next fetch, not at TTL.
+func (h *Handlers) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	sess, claims, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.users.Update(r.Context(), claims.Sub, sess.AccessToken, body)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "user service unavailable")
+		return
+	}
+	if res.Status != http.StatusOK {
+		writeRelay(w, res.Status, res.ContentType, res.Body)
+		return
+	}
+	if cerr := h.cache.InvalidateMe(r.Context(), claims.Sub); cerr != nil {
+		h.failOpenEvent(r.Context(), "me_invalidate", cerr)
+	}
+	var u userapi.User
+	if err := json.Unmarshal(res.Body, &u); err != nil {
+		writeProblem(w, r, http.StatusInternalServerError, "internal", "user service answer unreadable")
+		return
+	}
+	roles := make([]string, len(u.Roles))
+	for i, role := range u.Roles {
+		roles[i] = string(role)
+	}
+	writeJSON(w, http.StatusOK, api.Me{Id: u.Id, Email: u.Email, DisplayName: u.DisplayName, AvatarUrl: u.AvatarUrl, Roles: roles})
+}
+
+// GetMyIdentities lists the session account's linked logins. Uncached:
+// it changes exactly when the user links or unlinks.
+func (h *Handlers) GetMyIdentities(w http.ResponseWriter, r *http.Request) {
+	sess, claims, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	ids, err := h.auth.ListIdentities(r.Context(), claims.Sub, sess.AccessToken)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "auth service unavailable")
+		return
+	}
+	out := api.Identities{Identities: make([]api.Identity, len(ids))}
+	for i, id := range ids {
+		out.Identities[i] = api.Identity{Id: id.Id, Provider: id.Provider, Email: id.Email, CreatedAt: id.CreatedAt}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// DeleteMyIdentity unlinks one login, relaying the auth service's two
+// user-meaningful refusals.
+func (h *Handlers) DeleteMyIdentity(w http.ResponseWriter, r *http.Request, identityId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	err := h.auth.DeleteIdentity(r.Context(), identityId, sess.AccessToken)
+	switch {
+	case errors.Is(err, authclient.ErrIdentityNotFound):
+		writeProblem(w, r, http.StatusNotFound, "identity_not_found", "no such linked login on your account")
+	case errors.Is(err, authclient.ErrLastIdentity):
+		writeProblem(w, r, http.StatusConflict, "last_identity", "an account must keep at least one login")
+	case err != nil:
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "auth service unavailable")
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// LinkLogin starts linking another provider as a navigation. Outcomes
+// travel as /account query params: navigations cannot render JSON.
+func (h *Handlers) LinkLogin(w http.ResponseWriter, r *http.Request, params api.LinkLoginParams) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	if params.Provider == "dev" {
+		user := ""
+		if params.User != nil {
+			user = *params.User
+		}
+		pair, err := h.auth.DevLink(r.Context(), user, sess.AccessToken)
+		if err != nil {
+			http.Redirect(w, r, "/account?link_error="+linkErrorCode(err), http.StatusFound)
+			return
+		}
+		h.completeNavLogin(w, r, pair, "/account?linked=dev")
+		return
+	}
+	authorizeURL, err := h.auth.LinkStart(r.Context(), params.Provider, sess.AccessToken)
+	if err != nil {
+		http.Redirect(w, r, "/account?link_error=link_failed", http.StatusFound)
+		return
+	}
+	http.Redirect(w, r, authorizeURL, http.StatusFound)
+}
+
+func linkErrorCode(err error) string {
+	switch {
+	case errors.Is(err, authclient.ErrLinkConflict):
+		return "conflict"
+	case errors.Is(err, authclient.ErrLinkEmailUnverified):
+		return "email_unverified"
+	default:
+		return "link_failed"
+	}
+}
+
+// DeleteMe deletes the account everywhere. Order is self-healing:
+// data first, then auth, then the user row that login resolution
+// anchors on; an interruption leaves a login-able account that can
+// retry, and the email fallback re-attaches an abandoned partial.
+func (h *Handlers) DeleteMe(w http.ResponseWriter, r *http.Request) {
+	sess, claims, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.PurgeUserData(r.Context(), sess.AccessToken)
+	if err != nil || res.Status != http.StatusNoContent {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection purge failed; retry")
+		return
+	}
+	if err := h.auth.DeleteUserAuth(r.Context(), claims.Sub, sess.AccessToken); err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "login erase failed; retry")
+		return
+	}
+	if err := h.users.Delete(r.Context(), claims.Sub, sess.AccessToken); err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "account delete failed; retry")
+		return
+	}
+	ttl := time.Until(claims.Exp) + time.Minute
+	if ttl < time.Minute {
+		ttl = time.Minute
+	}
+	if derr := h.cache.DenylistAdd(r.Context(), []string{claims.JTI}, ttl); derr != nil {
+		h.failOpenEvent(r.Context(), "denylist_add", derr)
+	}
+	if cerr := h.cache.InvalidateMe(r.Context(), claims.Sub); cerr != nil {
+		h.failOpenEvent(r.Context(), "me_invalidate", cerr)
+	}
+	if cerr := h.cache.InvalidateRecs(r.Context(), claims.Sub); cerr != nil {
+		h.failOpenEvent(r.Context(), "recs_invalidate", cerr)
+	}
+	http.SetCookie(w, h.codec.ClearCookie())
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // writeRelay serves an upstream answer verbatim (pass-throughs are

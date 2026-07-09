@@ -640,6 +640,21 @@ type EntryUpdateRegion string
 // EntryUpdateStatus defines model for EntryUpdate.Status.
 type EntryUpdateStatus string
 
+// Identities defines model for Identities.
+type Identities struct {
+	Identities []Identity `json:"identities"`
+}
+
+// Identity defines model for Identity.
+type Identity struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Email Informational; the email this login last asserted.
+	Email    *string            `json:"email,omitempty"`
+	Id       openapi_types.UUID `json:"id"`
+	Provider string             `json:"provider"`
+}
+
 // IgdbMeta Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
 type IgdbMeta struct {
 	Companies        []CompanyCredit     `json:"companies"`
@@ -816,6 +831,12 @@ type TagRef struct {
 	Name string             `json:"name"`
 }
 
+// UpdateMeRequest Absent fields keep their value; an empty avatar_url clears it.
+type UpdateMeRequest struct {
+	AvatarUrl   *string `json:"avatar_url,omitempty"`
+	DisplayName *string `json:"display_name,omitempty"`
+}
+
 // ValueHistory defines model for ValueHistory.
 type ValueHistory struct {
 	// Available False when enrichment was unreachable; points is then empty.
@@ -850,6 +871,15 @@ type UpstreamError = Problem
 type CallbackParams struct {
 	Code  *string `form:"code,omitempty" json:"code,omitempty"`
 	State *string `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// LinkLoginParams defines parameters for LinkLogin.
+type LinkLoginParams struct {
+	// Provider google, twitch, or dev (when the dev provider is enabled)
+	Provider string `form:"provider" json:"provider"`
+
+	// User Dev provider only: fixture handle (alice, bob, admin)
+	User *string `form:"user,omitempty" json:"user,omitempty"`
 }
 
 // LoginParams defines parameters for Login.
@@ -956,6 +986,9 @@ type UpdateEntryJSONRequestBody = EntryUpdate
 // ReorderEntryJSONRequestBody defines body for ReorderEntry for application/json ContentType.
 type ReorderEntryJSONRequestBody = ReorderRequest
 
+// UpdateMeJSONRequestBody defines body for UpdateMe for application/json ContentType.
+type UpdateMeJSONRequestBody = UpdateMeRequest
+
 // ProxyTracesJSONRequestBody defines body for ProxyTraces for application/json ContentType.
 type ProxyTracesJSONRequestBody = ProxyTracesJSONBody
 
@@ -979,6 +1012,9 @@ type ServerInterface interface {
 	// The provider redirect URI; completes login and seals the session cookie
 	// (GET /api/auth/callback)
 	Callback(w http.ResponseWriter, r *http.Request, params CallbackParams)
+	// Begin linking another login to the signed-in account; redirects like login
+	// (GET /api/auth/link)
+	LinkLogin(w http.ResponseWriter, r *http.Request, params LinkLoginParams)
 	// Begin a login; redirects the browser to the provider (or straight back for dev)
 	// (GET /api/auth/login)
 	Login(w http.ResponseWriter, r *http.Request, params LoginParams)
@@ -1012,9 +1048,21 @@ type ServerInterface interface {
 	// Move a backlog entry between two neighbors (proxied)
 	// (POST /api/entries/{entryId}/reorder)
 	ReorderEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
+	// Delete the account everywhere (collection, linked logins, profile) and end the session
+	// (DELETE /api/me)
+	DeleteMe(w http.ResponseWriter, r *http.Request)
 	// The signed-in user's profile (composed from the user service; briefly cached)
 	// (GET /api/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
+	// Edit the signed-in user's profile (display name, avatar URL)
+	// (PATCH /api/me)
+	UpdateMe(w http.ResponseWriter, r *http.Request)
+	// Provider logins linked to the signed-in account
+	// (GET /api/me/identities)
+	GetMyIdentities(w http.ResponseWriter, r *http.Request)
+	// Unlink a provider login from the signed-in account
+	// (DELETE /api/me/identities/{identityId})
+	DeleteMyIdentity(w http.ResponseWriter, r *http.Request, identityId openapi_types.UUID)
 	// Relay browser OTLP trace batches to the in-cluster collector
 	// (POST /api/otlp/v1/traces)
 	ProxyTraces(w http.ResponseWriter, r *http.Request)
@@ -1091,6 +1139,48 @@ func (siw *ServerInterfaceWrapper) Callback(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Callback(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LinkLogin operation middleware
+func (siw *ServerInterfaceWrapper) LinkLogin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LinkLoginParams
+
+	// ------------- Required query parameter "provider" -------------
+
+	if paramValue := r.URL.Query().Get("provider"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "provider"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "provider", r.URL.Query(), &params.Provider)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "user" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "user", r.URL.Query(), &params.User)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LinkLogin(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1488,11 +1578,78 @@ func (siw *ServerInterfaceWrapper) ReorderEntry(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteMe operation middleware
+func (siw *ServerInterfaceWrapper) DeleteMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMe operation middleware
 func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateMe operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyIdentities operation middleware
+func (siw *ServerInterfaceWrapper) GetMyIdentities(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyIdentities(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteMyIdentity operation middleware
+func (siw *ServerInterfaceWrapper) DeleteMyIdentity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "identityId" -------------
+	var identityId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "identityId", r.PathValue("identityId"), &identityId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "identityId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteMyIdentity(w, r, identityId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1895,6 +2052,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/callback", wrapper.Callback)
+	m.HandleFunc("GET "+options.BaseURL+"/api/auth/link", wrapper.LinkLogin)
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/login", wrapper.Login)
 	m.HandleFunc("POST "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/providers", wrapper.ListProviders)
@@ -1906,7 +2064,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/entries/{entryId}", wrapper.GetEntry)
 	m.HandleFunc("PUT "+options.BaseURL+"/api/entries/{entryId}", wrapper.UpdateEntry)
 	m.HandleFunc("POST "+options.BaseURL+"/api/entries/{entryId}/reorder", wrapper.ReorderEntry)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/me", wrapper.DeleteMe)
 	m.HandleFunc("GET "+options.BaseURL+"/api/me", wrapper.GetMe)
+	m.HandleFunc("PATCH "+options.BaseURL+"/api/me", wrapper.UpdateMe)
+	m.HandleFunc("GET "+options.BaseURL+"/api/me/identities", wrapper.GetMyIdentities)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/me/identities/{identityId}", wrapper.DeleteMyIdentity)
 	m.HandleFunc("POST "+options.BaseURL+"/api/otlp/v1/traces", wrapper.ProxyTraces)
 	m.HandleFunc("POST "+options.BaseURL+"/api/products/resolve", wrapper.ResolveProduct)
 	m.HandleFunc("GET "+options.BaseURL+"/api/products/{productId}", wrapper.GetProduct)

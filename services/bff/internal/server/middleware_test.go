@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
 
 	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
@@ -22,6 +23,7 @@ import (
 	"github.com/levonn-dev/vg-collect/services/bff/internal/cache"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/authapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
@@ -156,6 +158,16 @@ func (f *stubCache) InvalidateRecs(_ context.Context, sub string) error {
 	return nil
 }
 
+func (f *stubCache) InvalidateMe(_ context.Context, sub string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	delete(f.me, sub)
+	return nil
+}
+
 // stubAuth panics on everything; tests override what they use.
 type stubAuth struct {
 	refresh func(ctx context.Context, refreshToken string) (authclient.TokenPair, error)
@@ -176,11 +188,34 @@ func (s *stubAuth) Refresh(ctx context.Context, rt string) (authclient.TokenPair
 	}
 	return s.refresh(ctx, rt)
 }
+func (s *stubAuth) LinkStart(context.Context, string, string) (string, error) {
+	panic("unexpected LinkStart")
+}
+func (s *stubAuth) DevLink(context.Context, string, string) (authclient.TokenPair, error) {
+	panic("unexpected DevLink")
+}
+func (s *stubAuth) ListIdentities(context.Context, string, string) ([]authapi.Identity, error) {
+	panic("unexpected ListIdentities")
+}
+func (s *stubAuth) DeleteIdentity(context.Context, uuid.UUID, string) error {
+	panic("unexpected DeleteIdentity")
+}
+func (s *stubAuth) DeleteUserAuth(context.Context, string, string) error {
+	panic("unexpected DeleteUserAuth")
+}
 
 type stubUsers struct{}
 
 func (stubUsers) Get(context.Context, string, string) (userapi.User, error) {
 	panic("unexpected users.Get")
+}
+
+func (stubUsers) Update(context.Context, string, string, []byte) (userclient.Result, error) {
+	panic("unexpected users.Update")
+}
+
+func (stubUsers) Delete(context.Context, string, string) error {
+	panic("unexpected users.Delete")
 }
 
 // ---- helpers ----
@@ -965,6 +1000,14 @@ func TestProtectedRequiresSession(t *testing.T) {
 	}
 	if !clearedCookie(rec) {
 		t.Fatal("garbage cookie should be cleared")
+	}
+
+	// /api/auth/link is a navigation like /api/auth/login, but unlike it
+	// the link target is session-guarded: linking acts on an existing
+	// account, so it must never be allowlisted.
+	rec = doAuth(h, httptest.NewRequest(http.MethodGet, "/api/auth/link?provider=dev", nil), echoNext(t, new(string)))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("/api/auth/link without a session: code = %d, want 401 (it must not be allowlisted)", rec.Code)
 	}
 }
 

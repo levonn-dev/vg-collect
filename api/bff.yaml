@@ -85,6 +85,112 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+    patch:
+      operationId: updateMe
+      summary: Edit the signed-in user's profile (display name, avatar URL)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMeRequest" }
+      responses:
+        "200":
+          description: Updated profile (the /api/me cache is refreshed)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "400":
+          description: Validation failure (code invalid_body; detail names the field)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/OriginForbidden" }
+        "404":
+          description: The signed-in account no longer exists (relayed from the user service)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+    delete:
+      operationId: deleteMe
+      summary: Delete the account everywhere (collection, linked logins, profile) and end the session
+      description: >
+        Orchestrated in self-healing order: collection purge, then auth
+        identities + refresh revocation, then the user row, then session
+        teardown. A mid-sequence failure answers 502 with the session
+        intact so the request can be retried; an abandoned partial
+        deletion re-attaches to the surviving account on next login.
+      responses:
+        "204":
+          description: Account deleted; the session cookie is cleared
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/OriginForbidden" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/me/identities:
+    get:
+      operationId: getMyIdentities
+      summary: Provider logins linked to the signed-in account
+      responses:
+        "200":
+          description: Linked identities, oldest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Identities" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/me/identities/{identityId}:
+    delete:
+      operationId: deleteMyIdentity
+      summary: Unlink a provider login from the signed-in account
+      parameters:
+        - name: identityId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Unlinked
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/OriginForbidden" }
+        "404":
+          description: No such linked login (code identity_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Refusing to remove the last login (code last_identity)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/auth/link:
+    get:
+      operationId: linkLogin
+      summary: Begin linking another login to the signed-in account; redirects like login
+      description: >
+        A browser navigation, session-guarded (unlike /api/auth/login).
+        Real providers redirect to the provider authorize URL and come
+        back through /api/auth/callback; the dev provider links in one
+        hop. Outcomes land on /account as query params: ?linked=<p> or
+        ?link_error=<conflict|email_unverified|link_failed>.
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          schema: { type: string }
+          description: "google, twitch, or dev (when the dev provider is enabled)"
+        - name: user
+          in: query
+          required: false
+          schema: { type: string }
+          description: "Dev provider only: fixture handle (alice, bob, admin)"
+      responses:
+        "302":
+          description: Provider authorize URL, or /account with the outcome params
+          headers:
+            Location: { schema: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
   /api/otlp/v1/traces:
     post:
       operationId: proxyTraces
@@ -753,6 +859,29 @@ components:
         roles:
           type: array
           items: { type: string }
+    UpdateMeRequest:
+      type: object
+      description: Absent fields keep their value; an empty avatar_url clears it.
+      properties:
+        display_name: { type: string }
+        avatar_url: { type: string }
+    Identity:
+      type: object
+      required: [id, provider, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        provider: { type: string }
+        email:
+          type: string
+          description: Informational; the email this login last asserted.
+        created_at: { type: string, format: date-time }
+    Identities:
+      type: object
+      required: [identities]
+      properties:
+        identities:
+          type: array
+          items: { $ref: "#/components/schemas/Identity" }
     # The catalog schemas below mirror the enrichment service contract
     # verbatim: these routes relay the upstream body without reshaping,
     # so the browser types must describe exactly what enrichment emits.
