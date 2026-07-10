@@ -1037,6 +1037,55 @@ func TestUnitSearchPassThrough_UpstreamFailureIs502(t *testing.T) {
 	}
 }
 
+// TestUnitSearchPassThrough_PcListingTypeRelaysVerbatim pins that
+// type=pc_listing is not blocked by any bff-side enum check: the
+// generated query binding treats type as an opaque string (enrichment
+// owns validation), so it must reach the stub exactly as sent and the
+// stub's body must round-trip to the client untouched.
+func TestUnitSearchPassThrough_PcListingTypeRelaysVerbatim(t *testing.T) {
+	const relayed = `{"degraded":false,"results":[{"type":"pc_listing","pc_product_id":5099,"name":"Super Mario Bros. (NES)"}]}`
+	var gotType, gotQ string
+	enrich := &stubEnrichment{search: func(_ context.Context, _, typ, q string) (enrichmentclient.Result, error) {
+		gotType, gotQ = typ, q
+		return enrichmentclient.Result{Status: 200, ContentType: "application/json", Body: []byte(relayed)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/search?type=pc_listing&q=mario")
+	if gotType != "pc_listing" || gotQ != "mario" {
+		t.Fatalf("params reaching enrichment: type=%q q=%q, want pc_listing/mario", gotType, gotQ)
+	}
+	if rec.Code != 200 || rec.Body.String() != relayed {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestUnitResolvePassThrough_PcListingBodyRelaysVerbatim pins that a
+// pc_listing resolve body reaches the enrichment stub byte-for-byte -
+// the bff reads and forwards raw bytes, it never decodes into
+// ResolveRequest - and the stub's answer round-trips to the client.
+func TestUnitResolvePassThrough_PcListingBodyRelaysVerbatim(t *testing.T) {
+	const sent = `{"type":"pc_listing","pc_product_id":5099}`
+	const relayed = `{"id":"22222222-2222-2222-2222-222222222222","type":"pc_listing","pc_product_id":5099}`
+	var gotBody []byte
+	enrich := &stubEnrichment{resolve: func(_ context.Context, _ string, body []byte) (enrichmentclient.Result, error) {
+		gotBody = body
+		return enrichmentclient.Result{Status: 200, ContentType: "application/json", Body: []byte(relayed)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	req := httptest.NewRequest(http.MethodPost, "/api/products/resolve", strings.NewReader(sent))
+	req.AddCookie(env.cookie)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://localhost:8090")
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, req)
+	if string(gotBody) != sent {
+		t.Fatalf("body reaching enrichment: %s, want unmodified %s", gotBody, sent)
+	}
+	if rec.Code != 200 || rec.Body.String() != relayed {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestUnitProductPassThrough_RelaysProblemBody(t *testing.T) {
 	enrich := &stubEnrichment{product: func(context.Context, string, uuid.UUID) (enrichmentclient.Result, error) {
 		return enrichmentclient.Result{Status: 404, ContentType: "application/problem+json",
@@ -1269,12 +1318,13 @@ func TestUnitValueHistoryPassThrough(t *testing.T) {
 }
 
 // captureCollection embeds the stub so every method forwards, while
-// ListEntries and GetDashboard additionally expose their converted
-// params.
+// ListEntries, GetDashboard, and UpdateEntry additionally expose their
+// converted params / raw body.
 type captureCollection struct {
 	*stubCollection
-	onList      func(*collectionapi.ListEntriesParams)
-	onDashboard func(*collectionapi.GetDashboardParams)
+	onList        func(*collectionapi.ListEntriesParams)
+	onDashboard   func(*collectionapi.GetDashboardParams)
+	onUpdateEntry func(id uuid.UUID, body []byte)
 }
 
 func (c *captureCollection) ListEntries(ctx context.Context, bearer string, p *collectionapi.ListEntriesParams) (collectionclient.Result, error) {
@@ -1285,6 +1335,11 @@ func (c *captureCollection) ListEntries(ctx context.Context, bearer string, p *c
 func (c *captureCollection) GetDashboard(ctx context.Context, bearer string, p *collectionapi.GetDashboardParams) (collectionclient.Result, error) {
 	c.onDashboard(p)
 	return c.stubCollection.GetDashboard(ctx, bearer, p)
+}
+
+func (c *captureCollection) UpdateEntry(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error) {
+	c.onUpdateEntry(id, body)
+	return c.stubCollection.UpdateEntry(ctx, bearer, id, body)
 }
 
 func TestUnitCollectionListParams_Conversion(t *testing.T) {
@@ -1324,6 +1379,45 @@ func TestUnitDashboardParams_Forwarded(t *testing.T) {
 		got.ItemType == nil || string((*got.ItemType)[0]) != "game" ||
 		got.PlatformId == nil || (*got.PlatformId)[0] != 6 {
 		t.Fatalf("forwarded params: %+v", got)
+	}
+}
+
+// TestUnitUpdateEntryPassThrough_CustomPricingRoundTrips pins that a
+// pricing_mode=custom entry update reaches the collection stub with
+// its body unmodified, and the stub's answer - carrying
+// custom_value_cents/custom_value_set_at - round-trips to the client
+// verbatim. The bff neither validates nor reshapes custom pricing; it
+// is a pass-through like every other entry mutation.
+func TestUnitUpdateEntryPassThrough_CustomPricingRoundTrips(t *testing.T) {
+	id := uuid.New()
+	const sent = `{"pricing_mode":"custom","custom_value_cents":12345}`
+	relayed := []byte(`{"id":"` + id.String() + `","pricing_mode":"custom","custom_value_cents":12345,"custom_value_set_at":"2026-07-09T00:00:00Z"}`)
+
+	col := &stubCollection{answer: func(op string) (collectionclient.Result, error) {
+		if op != "update_entry" {
+			t.Fatalf("routed to %q, want update_entry", op)
+		}
+		return collectionclient.Result{Status: 200, ContentType: "application/json", Body: relayed}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+	var gotID uuid.UUID
+	var gotBody []byte
+	h.collection = &captureCollection{stubCollection: col, onUpdateEntry: func(recvID uuid.UUID, body []byte) {
+		gotID, gotBody = recvID, body
+	}}
+
+	req := httptest.NewRequest(http.MethodPut, "/api/entries/"+id.String(), strings.NewReader(sent))
+	req.AddCookie(env.cookie)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://localhost:8090")
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, req)
+
+	if gotID != id || string(gotBody) != sent {
+		t.Fatalf("collection saw id=%s body=%s, want id=%s body=%s", gotID, gotBody, id, sent)
+	}
+	if rec.Code != 200 || rec.Body.String() != string(relayed) {
+		t.Fatalf("relay: %d %s, want 200 %s", rec.Code, rec.Body.String(), relayed)
 	}
 }
 
