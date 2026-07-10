@@ -47,3 +47,12 @@ it('a serialized baseline drops no set field (absent means cleared on PUT)', () 
   expect('manual_condition' in wire).toBe(false)
   expect('purchased_at' in wire).toBe(false)
 })
+
+// Not brief-specified: direct unit coverage for the baseline change itself
+// (custom_value_cents joining the pricing pair), so a mutation that only
+// spreads this baseline - PinStar's pin toggle, for instance - cannot
+// silently drop a stored custom price out from under a "custom" mode.
+it('carries the custom price pair so an unrelated mutation cannot erase it', () => {
+  const u = entryToUpdate({ ...base, product_id: 'p1', pricing_mode: 'custom', custom_value_cents: 1200 })
+  expect(u.custom_value_cents).toBe(1200)
+})

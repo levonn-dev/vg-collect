@@ -57,7 +57,11 @@ function valuesFrom(e: Entry): FormValues {
     storageLocation: e.storage_location ?? '',
     pinned: e.pinned,
     tagIds: e.tags.map((t) => t.id),
-    pricing: { mode: e.pricing_mode, productId: e.pricing_product_id },
+    pricing: {
+      mode: e.pricing_mode,
+      productId: e.pricing_product_id,
+      customValue: centsToDollars(e.custom_value_cents),
+    },
   }
 }
 
@@ -82,6 +86,7 @@ function toUpdate(e: Entry, v: FormValues): EntryUpdate {
     purchased_from: v.purchasedFrom.trim() === '' ? undefined : v.purchasedFrom.trim(),
     pricing_mode: v.pricing.mode,
     pricing_product_id: v.pricing.productId,
+    custom_value_cents: dollarsToCents(v.pricing.customValue),
     status: v.status,
     rating: v.rating === '' ? undefined : Number(v.rating),
     notes: v.notes.trim() === '' ? undefined : v.notes,
@@ -181,6 +186,10 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
         e.preventDefault()
         if (v.pricing.mode === 'proxy' && !v.pricing.productId) {
           setPricingError('Choose a price source before saving.')
+          return
+        }
+        if (v.pricing.mode === 'custom' && dollarsToCents(v.pricing.customValue) === undefined) {
+          setPricingError('Enter a custom price before saving.')
           return
         }
         setEditedSinceSave(false)

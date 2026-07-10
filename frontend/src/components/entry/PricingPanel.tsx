@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { Product } from '../../api/catalog'
 import { fetchProduct } from '../../api/catalog'
 import type { Entry } from '../../api/collection'
-import { formatCents } from '../../lib/format'
+import { dollarsToCents, formatCents } from '../../lib/format'
 import ProxyPicker from './ProxyPicker'
 
 function MatchCard({ product }: { product: Product }) {
@@ -29,10 +29,13 @@ function MatchCard({ product }: { product: Product }) {
   )
 }
 
-// The pricing slice of the entry form's draft.
+// The pricing slice of the entry form's draft. customValue is the
+// dollars TEXT (converted to cents only at save) so partial input
+// like "59." survives typing.
 export interface PricingValue {
   mode: Entry['pricing_mode']
   productId?: string
+  customValue: string
 }
 
 interface PricingPanelProps {
@@ -69,11 +72,12 @@ export default function PricingPanel({ entry, value, onChange }: PricingPanelPro
   }
 
   const modes: Entry['pricing_mode'][] = entry.product_id
-    ? ['auto', 'proxy', 'disabled']
-    : ['proxy', 'disabled']
+    ? ['auto', 'proxy', 'custom', 'disabled']
+    : ['proxy', 'custom', 'disabled']
   const modeHelp: Record<Entry['pricing_mode'], string> = {
     auto: 'auto (this item\'s own price listing)',
     proxy: 'proxy (another listing prices this copy)',
+    custom: 'custom (a price you set yourself)',
     disabled: 'disabled (no market value)',
   }
 
@@ -147,12 +151,47 @@ export default function PricingPanel({ entry, value, onChange }: PricingPanelPro
         </div>
       )}
 
+      {value.mode === 'custom' && (
+        <div className="mt-3 flex flex-col gap-2">
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            Custom price (USD)
+            <input
+              inputMode="decimal"
+              value={value.customValue}
+              onChange={(e) => onChange({ ...value, customValue: e.target.value })}
+              placeholder="59.99"
+              className="w-32 rounded border border-gray-300 px-2 py-1 text-sm"
+            />
+          </label>
+          {entry.custom_value_set_at && (
+            <p className="text-xs text-gray-500">
+              Price set on {new Date(entry.custom_value_set_at).toLocaleDateString()}.
+            </p>
+          )}
+        </div>
+      )}
+
       {value.mode !== 'proxy' && value.productId && (
         <p className="mt-3 flex items-center gap-2 rounded bg-gray-50 p-2 text-sm text-gray-600">
           Last price proxy: {targetProduct.data?.name ?? value.productId}
           <button
             type="button"
             onClick={() => onChange({ ...value, mode: 'proxy' })}
+            aria-label="Reactivate the last price proxy"
+            className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
+          >
+            Reactivate
+          </button>
+        </p>
+      )}
+
+      {value.mode !== 'custom' && dollarsToCents(value.customValue) !== undefined && (
+        <p className="mt-3 flex items-center gap-2 rounded bg-gray-50 p-2 text-sm text-gray-600">
+          Last custom price: {formatCents(dollarsToCents(value.customValue))}
+          <button
+            type="button"
+            onClick={() => onChange({ ...value, mode: 'custom' })}
+            aria-label="Reactivate the last custom price"
             className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
           >
             Reactivate
@@ -162,9 +201,10 @@ export default function PricingPanel({ entry, value, onChange }: PricingPanelPro
 
       {picking && (
         <ProxyPicker
+          initialQuery={[entry.display_name, entry.edition].filter(Boolean).join(' ')}
           onClose={() => setPicking(false)}
           onPick={(product) => {
-            onChange({ mode: 'proxy', productId: product.id })
+            onChange({ mode: 'proxy', productId: product.id, customValue: value.customValue })
             setPicking(false)
           }}
         />

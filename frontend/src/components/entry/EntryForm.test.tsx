@@ -202,3 +202,34 @@ it('carries edits from every remaining field control into the payload', async ()
   expect(sent.pinned).toBe(true)
   expect(sent.tag_ids).toEqual(['t1'])
 })
+
+it('carries a stored custom price through an untouched save', async () => {
+  const { onSave } = renderForm(entryFixture({ pricing_mode: 'custom', custom_value_cents: 12345 }))
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+  expect(onSave).toHaveBeenCalledTimes(1)
+  const sent = onSave.mock.calls[0][0] as EntryUpdate
+  expect(sent.custom_value_cents).toBe(12345)
+  expect(sent.pricing_mode).toBe('custom')
+})
+
+it('blocks saving a custom price left empty', async () => {
+  // pricing_product_id stays undefined so PricingPanel fires no product
+  // fetch of its own here: it would otherwise race TagPicker's tags
+  // fetch for the single mocked response body (see renderForm) and
+  // could surface a second, unrelated role=alert.
+  const { onSave } = renderForm(entryFixture({ pricing_mode: 'disabled', pricing_product_id: undefined }))
+  await userEvent.click(screen.getByRole('radio', { name: /^custom/i }))
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+  expect(onSave).not.toHaveBeenCalled()
+  expect(screen.getByRole('alert')).toHaveTextContent('Enter a custom price before saving.')
+})
+
+it('keeps a stored custom price in the payload when saving under a different mode', async () => {
+  const { onSave } = renderForm(
+    entryFixture({ pricing_mode: 'proxy', pricing_product_id: 'p9', custom_value_cents: 1200 }),
+  )
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+  const sent = onSave.mock.calls[0][0] as EntryUpdate
+  expect(sent.custom_value_cents).toBe(1200)
+  expect(sent.pricing_mode).toBe('proxy')
+})

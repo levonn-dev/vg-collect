@@ -22,6 +22,7 @@ export function entryToUpdate(e: Entry): EntryUpdate {
     purchased_from: e.purchased_from,
     pricing_mode: e.pricing_mode,
     pricing_product_id: e.pricing_product_id,
+    custom_value_cents: e.custom_value_cents,
     status: e.status,
     rating: e.rating,
     notes: e.notes,
