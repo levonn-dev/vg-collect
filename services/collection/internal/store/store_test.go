@@ -874,3 +874,62 @@ func TestDashboardAggregatesFiltered(t *testing.T) {
 		t.Fatalf("filtered pricing rows: %+v %v", prows, err)
 	}
 }
+
+func TestEntryCustomValueSetAtLifecycle(t *testing.T) {
+	s := newTestStore(t)
+	userID := uuid.New()
+	v1, v2 := int64(9900), int64(12000)
+
+	e := baseEntry(userID)
+	e.PricingMode = "custom"
+	e.CustomValueCents = &v1
+	created, err := s.CreateEntry(context.Background(), e, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.CustomValueSetAt == nil {
+		t.Fatal("create with a value must stamp set-at")
+	}
+	stamp := *created.CustomValueSetAt
+
+	// Unchanged value keeps the stamp.
+	kept, err := s.UpdateEntry(context.Background(), created, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept.CustomValueSetAt == nil || !kept.CustomValueSetAt.Equal(stamp) {
+		t.Fatalf("unchanged value must keep set-at %v, got %v", stamp, kept.CustomValueSetAt)
+	}
+
+	// Mode toggle alone keeps value and stamp (memory).
+	kept.PricingMode = "disabled"
+	kept2, err := s.UpdateEntry(context.Background(), kept, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept2.CustomValueCents == nil || *kept2.CustomValueCents != v1 || !kept2.CustomValueSetAt.Equal(stamp) {
+		t.Fatal("leaving custom mode must not touch the value pair")
+	}
+
+	// Changed value restamps.
+	kept2.PricingMode = "custom"
+	kept2.CustomValueCents = &v2
+	restamped, err := s.UpdateEntry(context.Background(), kept2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restamped.CustomValueSetAt.After(stamp) {
+		t.Fatalf("changed value must restamp: %v !> %v", restamped.CustomValueSetAt, stamp)
+	}
+
+	// Clearing the value clears the stamp (pair CHECK).
+	restamped.PricingMode = "disabled"
+	restamped.CustomValueCents = nil
+	cleared, err := s.UpdateEntry(context.Background(), restamped, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.CustomValueCents != nil || cleared.CustomValueSetAt != nil {
+		t.Fatal("clearing the value must clear the pair")
+	}
+}

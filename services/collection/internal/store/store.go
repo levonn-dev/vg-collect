@@ -82,6 +82,11 @@ type Entry struct {
 	PricingMode      string
 	PricingProductID *uuid.UUID
 
+	// The custom-price pair; the DB CHECKs pair them and require the
+	// value under pricing_mode custom. set_at is computed in SQL.
+	CustomValueCents *int64
+	CustomValueSetAt *time.Time
+
 	Status          string
 	Rating          *int
 	Notes           *string
@@ -115,7 +120,8 @@ const entryCols = `id, user_id, product_id, item_type, media_type,
 	price_paid_cents, currency, purchased_at, purchased_from,
 	pricing_mode, pricing_product_id,
 	status, rating, notes, storage_location, pinned, backlog_rank,
-	source, external_ref, created_at, updated_at, cover_url`
+	source, external_ref, created_at, updated_at, cover_url,
+	custom_value_cents, custom_value_set_at`
 
 func scanEntry(row pgx.Row) (Entry, error) {
 	var e Entry
@@ -128,6 +134,7 @@ func scanEntry(row pgx.Row) (Entry, error) {
 		&e.PricingMode, &e.PricingProductID,
 		&e.Status, &e.Rating, &e.Notes, &e.StorageLocation, &e.Pinned, &e.BacklogRank,
 		&e.Source, &e.ExternalRef, &e.CreatedAt, &e.UpdatedAt, &e.CoverURL,
+		&e.CustomValueCents, &e.CustomValueSetAt,
 	)
 	return e, err
 }
@@ -229,9 +236,10 @@ func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			 price_paid_cents, currency, purchased_at, purchased_from,
 			 pricing_mode, pricing_product_id,
 			 status, rating, notes, storage_location, pinned, backlog_rank,
-			 source, external_ref, cover_url)
+			 source, external_ref, cover_url, custom_value_cents, custom_value_set_at)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
-			        $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+			        $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,
+			        $33, CASE WHEN $33::bigint IS NULL THEN NULL ELSE now() END)
 			RETURNING `+entryCols,
 			e.UserID, e.ProductID, e.ItemType, e.MediaType,
 			e.DisplayName, e.PlatformIGDBID, e.PlatformName, e.FirstReleaseDate, e.IGDBGameID,
@@ -240,7 +248,7 @@ func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			e.PricePaidCents, e.Currency, e.PurchasedAt, e.PurchasedFrom,
 			e.PricingMode, e.PricingProductID,
 			e.Status, e.Rating, e.Notes, e.StorageLocation, e.Pinned, e.BacklogRank,
-			e.Source, e.ExternalRef, e.CoverURL)
+			e.Source, e.ExternalRef, e.CoverURL, e.CustomValueCents)
 		created, err := scanEntry(row)
 		if err != nil {
 			return fmt.Errorf("store: create entry: %w", err)
@@ -328,6 +336,11 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			 pinned = $21, backlog_rank = $22,
 			 display_name = $23, platform_name = $24, first_release_date = $25,
 			 igdb_game_id = $26,
+			 custom_value_cents = $27,
+			 custom_value_set_at = CASE
+			   WHEN $27::bigint IS NOT DISTINCT FROM custom_value_cents THEN custom_value_set_at
+			   WHEN $27::bigint IS NULL THEN NULL
+			   ELSE now() END,
 			 updated_at = now()
 			WHERE id = $1 AND user_id = $2
 			RETURNING `+entryCols,
@@ -339,7 +352,7 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			e.Status, e.Rating, e.Notes, e.StorageLocation,
 			e.Pinned, e.BacklogRank,
 			e.DisplayName, e.PlatformName, e.FirstReleaseDate,
-			e.IGDBGameID)
+			e.IGDBGameID, e.CustomValueCents)
 		updated, err := scanEntry(row)
 		if err != nil {
 			return fmt.Errorf("store: update entry: %w", err)
@@ -922,6 +935,10 @@ type PricingRow struct {
 	PricingMode      string
 	ProductID        *uuid.UUID
 	PricingProductID *uuid.UUID
+	// Present together whenever set (DB CHECK); the value IS the
+	// entry's worth under pricing_mode custom.
+	CustomValueCents *int64
+	CustomValueSetAt *time.Time
 }
 
 // PricingRows lists the pricing coordinates of every entry matching
@@ -929,7 +946,8 @@ type PricingRow struct {
 func (s *Store) PricingRows(ctx context.Context, userID uuid.UUID, f Filters) ([]PricingRow, error) {
 	where, args := filterWhere(userID, f)
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, packaging, pricing_mode, product_id, pricing_product_id
+		SELECT id, packaging, pricing_mode, product_id, pricing_product_id,
+		       custom_value_cents, custom_value_set_at
 		FROM entries WHERE `+strings.Join(where, " AND "), args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: pricing rows: %w", err)
@@ -938,7 +956,8 @@ func (s *Store) PricingRows(ctx context.Context, userID uuid.UUID, f Filters) ([
 	out := []PricingRow{}
 	for rows.Next() {
 		var r PricingRow
-		if err := rows.Scan(&r.EntryID, &r.Packaging, &r.PricingMode, &r.ProductID, &r.PricingProductID); err != nil {
+		if err := rows.Scan(&r.EntryID, &r.Packaging, &r.PricingMode, &r.ProductID,
+			&r.PricingProductID, &r.CustomValueCents, &r.CustomValueSetAt); err != nil {
 			return nil, fmt.Errorf("store: scan pricing row: %w", err)
 		}
 		out = append(out, r)

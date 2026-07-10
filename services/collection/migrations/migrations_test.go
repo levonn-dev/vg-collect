@@ -10,6 +10,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -172,4 +173,52 @@ func TestSchemaGuards(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("entry_tags must cascade, %d rows remain", n)
 	}
+}
+
+func TestCustomPricingConstraints(t *testing.T) {
+	url := newTestDB(t)
+	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+
+	insert := func(mode string, valueCents *int64, setAt *time.Time) error {
+		_, err := conn.Exec(ctx, `
+			INSERT INTO entries (user_id, item_type, display_name, region, packaging,
+				pricing_mode, custom_value_cents, custom_value_set_at, status, backlog_rank)
+			VALUES (gen_random_uuid(), 'game', 'x', 'ntsc_u', 'loose', $1, $2, $3, 'backlog', 'a')`,
+			mode, valueCents, setAt)
+		return err
+	}
+	wantCheck := func(err error) {
+		t.Helper()
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "23514" {
+			t.Fatalf("want CHECK violation (23514), got %v", err)
+		}
+	}
+	now := time.Now()
+	v := int64(12345)
+
+	// custom mode requires a value.
+	wantCheck(insert("custom", nil, nil))
+	// the pair travels together.
+	wantCheck(insert("disabled", &v, nil))
+	wantCheck(insert("disabled", nil, &now))
+	// unknown mode still rejected; custom accepted with the pair.
+	wantCheck(insert("bogus", nil, nil))
+	if err := insert("custom", &v, &now); err != nil {
+		t.Fatalf("valid custom insert: %v", err)
+	}
+	if err := insert("disabled", &v, &now); err != nil {
+		t.Fatalf("memory pair under another mode must be allowed: %v", err)
+	}
+	// negative value rejected.
+	neg := int64(-1)
+	wantCheck(insert("custom", &neg, &now))
 }
