@@ -114,7 +114,11 @@ test('collection journey: add, edit, price, pin, reorder, views, insights, recom
   await expect(page.getByRole('radio', { name: /proxy/i })).toBeChecked()
   const picker = page.getByRole('dialog', { name: /choose a price source/i })
   await expect(picker).toBeVisible()
-  await picker.getByRole('searchbox', { name: /search for games and hardware/i }).fill('chrono trigger')
+  const pickerSearch = picker.getByRole('searchbox', { name: /search for games, hardware, and pricecharting/i })
+  // The picker prefills from the entry's own title (customA carries no
+  // edition, so the query is the title alone) and auto-fires the search.
+  await expect(pickerSearch).toHaveValue(customA)
+  await pickerSearch.fill('chrono trigger')
   await picker.getByRole('button', { name: 'Search', exact: true }).click()
   await picker.getByRole('button', { name: /Chrono Trigger on Super Nintendo Entertainment System/ }).first().click()
   await expect(page.getByText('Price source:')).toBeVisible()
@@ -124,6 +128,41 @@ test('collection journey: add, edit, price, pin, reorder, views, insights, recom
   // (the copy's value and the match breakdown both show one, so take
   // the first rather than assert a single match).
   await expect(page.getByRole('region', { name: 'Pricing' }).getByText(/\$\d/).first()).toBeVisible()
+
+  // --- Custom price on the proxied entry: the user's own number
+  // overrides the market source, packaging-independent.
+  await page.getByRole('radio', { name: /custom/i }).click()
+  await page.getByLabel(/custom price \(usd\)/i).fill('123.45')
+  await page.getByRole('button', { name: /save changes/i }).click()
+  await expect(page.getByText('Saved.')).toBeVisible()
+  await expect(page.getByText('$123.45')).toBeVisible()
+  await expect(page.getByText(/price set on/i)).toBeVisible()
+
+  // --- Proxy to an exact PriceCharting variant listing: search all
+  // of PC, pick the Player's Choice row, and the copy prices as it.
+  await page.getByRole('radio', { name: /proxy/i }).click()
+  await page.getByRole('button', { name: /change price source/i }).click()
+  await page.getByRole('radio', { name: 'PriceCharting' }).click()
+  await page.getByLabel(/search for games, hardware, and pricecharting/i).fill('super mario 64')
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
+  // Both the base and the variant row surface, each with a price line.
+  // first(): the all-of-PC catalog carries regional prints, so the exact
+  // base title and the Player's Choice variant each recur across regions.
+  await expect(page.getByRole('button', { name: /use super mario 64$/i }).first()).toBeVisible()
+  await page.getByRole('button', { name: /use super mario 64 \[player's choice\]/i }).first().click()
+  await expect(page.getByText(/priced as "super mario 64 \[player's choice\]"/i)).toBeVisible()
+  await page.getByRole('button', { name: /save changes/i }).click()
+  await expect(page.getByText('Saved.')).toBeVisible()
+  // The variant listing prices the copy: assert the resolved proxy's own
+  // price line (the "Priced as" card's Loose/CIB/New row), not just any
+  // dollar sign on the page. The custom-price segment above leaves the
+  // form's customValue at "123.45", so PricingPanel still renders "Last
+  // custom price: $123.45" while in proxy mode - a page-wide /\$\d/ would
+  // pass on that leftover even if this proxy save failed to reprice the
+  // entry. Scoping to the Loose/CIB/New row (stub prices are id-seeded,
+  // real ones vary by day, so assert a value is shown, not a number) can
+  // only pass once the resolved pc_listing's own pricing is displayed.
+  await expect(page.getByRole('region', { name: 'Pricing' }).getByText(/loose.*\$\d/i)).toBeVisible()
 
   // --- Pin customA from the collection list.
   await page.getByRole('link', { name: 'Collection', exact: true }).click()
