@@ -8,7 +8,9 @@ export type ResolveRequest = components['schemas']['ResolveRequest']
 export type ScoreResponse = components['schemas']['ScoreResponse']
 export type Recommendation = components['schemas']['Recommendation']
 
-export function searchCatalog(type: 'game' | 'hardware', q: string): Promise<SearchResults> {
+export type SearchKind = 'game' | 'hardware' | 'pc_listing'
+
+export function searchCatalog(type: SearchKind, q: string): Promise<SearchResults> {
   const params = new URLSearchParams({ type, q })
   return getJSON<SearchResults>(`/api/search?${params.toString()}`)
 }

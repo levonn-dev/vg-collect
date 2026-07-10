@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
+import type { SearchKind } from '../../api/catalog'
 import { searchCatalog } from '../../api/catalog'
-import { releaseYear } from '../../lib/format'
+import { formatCents, releaseYear } from '../../lib/format'
 import ItemTypeIcon from '../ItemTypeIcon'
 
 export interface GamePick {
@@ -20,20 +21,54 @@ export interface HardwarePick {
   category: string
 }
 
-export type CatalogPick = GamePick | HardwarePick
+export interface PCListingPick {
+  kind: 'pc_listing'
+  pcProductId: number
+  name: string
+}
+
+export type CatalogPick = GamePick | HardwarePick | PCListingPick
 
 interface SearchPickerProps {
   initialQuery?: string
   onPick: (pick: CatalogPick) => void
   footer?: ReactNode
+  // Which search kinds to offer; the add wizard keeps the default,
+  // the proxy picker adds the all-of-PriceCharting kind.
+  kinds?: SearchKind[]
+}
+
+const kindLabels: Record<SearchKind, string> = {
+  game: 'Games',
+  hardware: 'Hardware',
+  pc_listing: 'PriceCharting',
+}
+const kindPlaceholders: Record<SearchKind, string> = {
+  game: 'Game title...',
+  hardware: 'Console or accessory...',
+  pc_listing: 'Any listing (games, variants, hardware)...',
+}
+// The search box's aria-label names the kinds on offer: "games and
+// hardware" (default two kinds, pinned by the add wizard's tests and
+// e2e steps) or an Oxford-comma list once PriceCharting joins in.
+const kindNouns: Record<SearchKind, string> = {
+  game: 'games',
+  hardware: 'hardware',
+  pc_listing: 'PriceCharting',
+}
+function searchBoxLabel(kinds: SearchKind[]): string {
+  const nouns = kinds.map((k) => kindNouns[k])
+  if (nouns.length < 2) return `Search for ${nouns.join('')}`
+  if (nouns.length === 2) return `Search for ${nouns[0]} and ${nouns[1]}`
+  return `Search for ${nouns.slice(0, -1).join(', ')}, and ${nouns[nouns.length - 1]}`
 }
 
 // SearchPicker is the shared catalog-search surface: the add wizard's
 // first step and the pricing proxy picker. Picking a game means
-// picking a platform (a product is game-on-platform); hardware picks
-// are the listing itself.
-export default function SearchPicker({ initialQuery = '', onPick, footer }: SearchPickerProps) {
-  const [kind, setKind] = useState<'game' | 'hardware'>('game')
+// picking a platform (a product is game-on-platform); hardware and
+// pc_listing picks are the listing itself.
+export default function SearchPicker({ initialQuery = '', onPick, footer, kinds = ['game', 'hardware'] }: SearchPickerProps) {
+  const [kind, setKind] = useState<SearchKind>(kinds[0])
   const [text, setText] = useState(initialQuery)
   const [submitted, setSubmitted] = useState(initialQuery.trim())
 
@@ -53,20 +88,22 @@ export default function SearchPicker({ initialQuery = '', onPick, footer }: Sear
         }}
         className="flex flex-wrap items-center gap-2"
       >
-        <fieldset className="flex gap-2" aria-label="Search type">
-          {(['game', 'hardware'] as const).map((k) => (
-            <label key={k} className="flex items-center gap-1 text-sm">
-              <input type="radio" name="kind" checked={kind === k} onChange={() => setKind(k)} />
-              {k === 'game' ? 'Games' : 'Hardware'}
-            </label>
-          ))}
-        </fieldset>
+        {kinds.length > 1 && (
+          <fieldset className="flex gap-2" aria-label="Search type">
+            {kinds.map((k) => (
+              <label key={k} className="flex items-center gap-1 text-sm">
+                <input type="radio" name="kind" checked={kind === k} onChange={() => setKind(k)} />
+                {kindLabels[k]}
+              </label>
+            ))}
+          </fieldset>
+        )}
         <input
           type="search"
-          aria-label="Search for games and hardware"
+          aria-label={searchBoxLabel(kinds)}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={kind === 'game' ? 'Game title...' : 'Console or accessory...'}
+          placeholder={kindPlaceholders[kind]}
           className="w-64 rounded border border-gray-300 px-2 py-1 text-sm"
         />
         <button
@@ -100,7 +137,19 @@ export default function SearchPicker({ initialQuery = '', onPick, footer }: Sear
             ) : (
               <div aria-hidden="true" className="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-gray-100 text-gray-400">
                 <ItemTypeIcon
-                  type={r.type === 'game' ? 'game' : r.category === 'Systems' ? 'console' : 'accessory'}
+                  type={
+                    r.type === 'game'
+                      ? 'game'
+                      : r.type === 'pc_listing'
+                        ? r.category === 'Systems'
+                          ? 'console'
+                          : r.category === 'Controllers' || r.category === 'Accessories'
+                            ? 'accessory'
+                            : 'game' // no category, or a genre string: a game listing
+                        : r.category === 'Systems'
+                          ? 'console'
+                          : 'accessory'
+                  }
                   className="h-7 w-7"
                 />
               </div>
@@ -138,6 +187,22 @@ export default function SearchPicker({ initialQuery = '', onPick, footer }: Sear
                     </button>
                   ))}
                 </p>
+              ) : r.type === 'pc_listing' && r.pc_product_id !== undefined ? (
+                <div className="mt-1 flex flex-col gap-1">
+                  <p className="text-xs text-gray-500">
+                    Loose {formatCents(r.loose_cents) ?? '-'} / CIB {formatCents(r.cib_cents) ?? '-'} / New{' '}
+                    {formatCents(r.new_cents) ?? '-'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onPick({ kind: 'pc_listing', pcProductId: r.pc_product_id!, name: r.name })
+                    }
+                    className="self-start rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
+                  >
+                    Use {r.name}
+                  </button>
+                </div>
               ) : r.pc_product_id !== undefined ? (
                 <button
                   type="button"
