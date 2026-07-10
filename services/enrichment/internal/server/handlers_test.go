@@ -588,6 +588,90 @@ func TestUnitSearch_BadParams(t *testing.T) {
 			t.Fatalf("%s: want 400, got %d", path, rec.Code)
 		}
 	}
+
+	// The accepted-kinds message must list all three wire kinds.
+	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=amiibo&q=zelda", tok, nil)
+	if !strings.Contains(rec.Body.String(), "type must be game, hardware or pc_listing") {
+		t.Fatalf("accepted-kinds message stale: %s", rec.Body.String())
+	}
+}
+
+func TestSearch_PCListingsAllCategoriesWithPrices(t *testing.T) {
+	s := newStack(t)
+	resp := s.do(http.MethodGet, "/search?type=pc_listing&q=super+mario+64", s.userToken(), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	out := decodeBody[api.SearchResults](t, resp)
+	if out.Degraded {
+		t.Fatal("stub provider must not degrade")
+	}
+	if len(out.Results) == 0 {
+		t.Fatal("want the fixture game listing(s)")
+	}
+	for _, r := range out.Results {
+		if string(r.Type) != "pc_listing" {
+			t.Fatalf("result type %s, want pc_listing", r.Type)
+		}
+		if r.PcProductId == nil || r.ConsoleName == nil {
+			t.Fatal("pc_listing results carry the listing id and console")
+		}
+		if r.LooseCents == nil || r.CibCents == nil || r.NewCents == nil {
+			t.Fatal("stub listings always price; results must pass prices through")
+		}
+	}
+	// Game listings (no hardware category) must NOT be filtered out:
+	// the fixtures' Super Mario 64 game row has no genre.
+	found := false
+	for _, r := range out.Results {
+		if *r.PcProductId == 5005 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("game listing 5005 missing: category filter must not apply to pc_listing search")
+	}
+}
+
+func TestUnitSearch_PCListingsDegradedFallsBackToMappings(t *testing.T) {
+	env := newAuthEnv(t)
+	st := &stubStore{}
+	prices := &stubPrices{}
+	prices.search = func(ctx context.Context, q string) ([]pricecharting.Product, error) {
+		return nil, errors.New("provider down")
+	}
+	loose := int64(1100)
+	st.searchByName = func(ctx context.Context, q string, limit int) ([]store.Product, error) {
+		return []store.Product{{
+			ID: "p1", Type: "game", Name: "Super Mario 64",
+			PriceCharting: &store.PCMeta{
+				PCProductID: 5005, PCName: "Super Mario 64", ConsoleName: "Nintendo 64",
+				Current: store.PriceQuote{LooseCents: &loose},
+			},
+		}, {
+			ID: "p2", Type: "game", Name: "Unmatched Game", // no PCMeta: not a listing
+		}}, nil
+	}
+	h := newUnitHandlers(st, &stubGames{}, prices, newStubCache())
+	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=pc_listing&q=mario", env.token(t, "u1", []string{"user"}), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var out api.SearchResults
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !out.Degraded {
+		t.Fatal("provider down + cold cache must flag degraded")
+	}
+	if len(out.Results) != 1 {
+		t.Fatalf("only mapped products can answer a degraded pc_listing search; got %d results", len(out.Results))
+	}
+	r := out.Results[0]
+	if string(r.Type) != "pc_listing" || *r.PcProductId != 5005 || r.Name != "Super Mario 64" ||
+		r.LooseCents == nil || *r.LooseCents != 1100 {
+		t.Fatalf("degraded result must map the stored PCMeta, got %+v", r)
+	}
 }
 
 func TestUnitGetProduct_NotFoundAndCacheHit(t *testing.T) {
@@ -938,6 +1022,92 @@ func TestUnitResolve_LostRaceDoesNotDoubleSnapshot(t *testing.T) {
 	}
 	if snapshotCalls != 1 {
 		t.Fatalf("winning the create race must append exactly one snapshot, got %d calls", snapshotCalls)
+	}
+}
+
+func TestResolve_PCListingCreatesAndDedupes(t *testing.T) {
+	s := newStack(t)
+	body := map[string]any{"type": "pc_listing", "pc_product_id": 5001}
+	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("first resolve: status %d", resp.StatusCode)
+	}
+	first := decodeBody[api.Product](t, resp)
+	if string(first.Type) != "pc_listing" {
+		t.Fatalf("type = %s, want pc_listing", first.Type)
+	}
+	if first.Igdb != nil {
+		t.Fatal("pc_listing products must carry no igdb subdoc")
+	}
+	if first.Pricecharting == nil || first.Pricecharting.PcProductId != 5001 {
+		t.Fatal("pc_listing product must carry the picked listing")
+	}
+	if first.Pricecharting.MatchConfidence != 1.0 || first.Pricecharting.Verified {
+		t.Fatalf("want confidence 1.0 verified false, got %v/%v",
+			first.Pricecharting.MatchConfidence, first.Pricecharting.Verified)
+	}
+	if first.Pricecharting.LooseCents == nil {
+		t.Fatal("stub listings always price; want current prices on create")
+	}
+	if first.Region != nil || first.Edition != nil || first.Variant != nil {
+		t.Fatal("pc_listing identity fields must stay empty")
+	}
+
+	// Same listing again, with stray variant fields: same product, ignored.
+	body["variant"] = "players choice"
+	resp = s.do(http.MethodPost, "/products/resolve", s.userToken(), body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("second resolve: status %d", resp.StatusCode)
+	}
+	second := decodeBody[api.Product](t, resp)
+	if second.Id != first.Id {
+		t.Fatalf("dedup failed: %s vs %s", second.Id, first.Id)
+	}
+
+	// The create appended the day-zero snapshot.
+	hist := s.do(http.MethodPost, "/products/price-history:batch", s.userToken(),
+		map[string]any{"product_ids": []string{first.Id.String()}})
+	series := decodeBody[api.PriceHistoryResponse](t, hist).Series
+	if len(series[first.Id.String()]) != 1 {
+		t.Fatalf("want exactly the initial snapshot, got %d points", len(series[first.Id.String()]))
+	}
+}
+
+func TestUnitResolve_PCListingValidationAndErrors(t *testing.T) {
+	env := newAuthEnv(t)
+	tok := env.token(t, "u1", []string{"user"})
+	st := &stubStore{}
+	prices := &stubPrices{}
+	h := newUnitHandlers(st, &stubGames{}, prices, newStubCache())
+
+	// Missing pc_product_id.
+	rec := serveUnit(t, h, env, http.MethodPost, "/products/resolve", tok,
+		map[string]any{"type": "pc_listing"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("missing id: status %d", rec.Code)
+	}
+
+	// Unknown listing id -> 404 unknown_pc_product.
+	prices.product = func(ctx context.Context, id int64) (pricecharting.Product, error) {
+		return pricecharting.Product{}, pricecharting.ErrNotFound
+	}
+	st.findProduct = func(ctx context.Context, key store.ProductKey) (store.Product, error) {
+		return store.Product{}, store.ErrNotFound
+	}
+	rec = serveUnit(t, h, env, http.MethodPost, "/products/resolve", tok,
+		map[string]any{"type": "pc_listing", "pc_product_id": 999999})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown id: status %d", rec.Code)
+	}
+
+	// Provider down -> 502 upstream_unavailable.
+	prices.product = func(ctx context.Context, id int64) (pricecharting.Product, error) {
+		return pricecharting.Product{}, errors.New("boom")
+	}
+	rec = serveUnit(t, h, env, http.MethodPost, "/products/resolve", tok,
+		map[string]any{"type": "pc_listing", "pc_product_id": 5001})
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("provider down: status %d", rec.Code)
 	}
 }
 
@@ -1388,6 +1558,38 @@ func TestRefresh_InternalWalksCatalogAndSnapshots(t *testing.T) {
 	}
 	if got.PriceCharting.AsOf.Before(time.Now().Add(-time.Minute)) {
 		t.Fatalf("as_of not refreshed: %v", got.PriceCharting.AsOf)
+	}
+}
+
+// TestRefresh_WalksPCListingProducts pins that the daily walk is not
+// scoped to "game" products: ListPriced filters on the PriceCharting
+// mapping existing at all, so a pc_listing price-anchor product (no
+// igdb subdoc, created straight off a listing id) must be walked and
+// snapshotted exactly like a resolved game.
+func TestRefresh_WalksPCListingProducts(t *testing.T) {
+	s := newStack(t)
+	created := decodeBody[api.Product](t,
+		s.do(http.MethodPost, "/products/resolve", s.userToken(),
+			map[string]any{"type": "pc_listing", "pc_product_id": 5099}))
+
+	resp := s.doInternal(testInternalToken) // no JWT: the CronJob path
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("internal refresh: %d", resp.StatusCode)
+	}
+	_ = resp.Body.Close()
+
+	ctx := context.Background()
+	waitFor(t, 10*time.Second, func() bool {
+		// The create-time snapshot plus one walk snapshot.
+		n, err := s.mdb.Collection("price_snapshots").CountDocuments(ctx, map[string]any{})
+		return err == nil && n == 2
+	})
+
+	hist := s.do(http.MethodPost, "/products/price-history:batch", s.userToken(),
+		map[string]any{"product_ids": []string{created.Id.String()}})
+	series := decodeBody[api.PriceHistoryResponse](t, hist).Series
+	if len(series[created.Id.String()]) < 2 {
+		t.Fatalf("walk must snapshot pc_listing products: got %d points", len(series[created.Id.String()]))
 	}
 }
 

@@ -118,3 +118,14 @@ func TestBest(t *testing.T) {
 		t.Fatalf("empty candidates: %+v", got)
 	}
 }
+
+func TestBest_BaseListingBeatsVariantRow(t *testing.T) {
+	cands := []Candidate{
+		{PCProductID: 5005, Name: "Super Mario 64", ConsoleName: "Nintendo 64"},
+		{PCProductID: 5099, Name: "Super Mario 64 [Player's Choice]", ConsoleName: "Nintendo 64"},
+	}
+	res := Best("Super Mario 64", "", "Nintendo 64", cands)
+	if !res.OK || res.PCProductID != 5005 {
+		t.Fatalf("base listing must win for a plain resolve, got %+v", res)
+	}
+}

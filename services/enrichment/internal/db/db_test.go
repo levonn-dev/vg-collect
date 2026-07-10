@@ -84,7 +84,7 @@ func TestMigrate_CreatesCatalogAndIsIdempotent(t *testing.T) {
 		unique, _ := ix["unique"].(bool)
 		found[name] = unique
 	}
-	for _, name := range []string{"products_game_identity", "products_hardware_identity"} {
+	for _, name := range []string{"products_game_identity", "products_hardware_identity", "products_pc_listing_identity"} {
 		u, ok := found[name]
 		if !ok || !u {
 			t.Fatalf("unique index %s missing or not unique (indexes: %v)", name, found)

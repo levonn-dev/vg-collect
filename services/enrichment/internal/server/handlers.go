@@ -45,8 +45,8 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 	}
 	// The generated binding checks presence, not enum membership.
 	kind := string(params.Type)
-	if kind != "game" && kind != "hardware" {
-		problem(w, r, http.StatusBadRequest, "invalid_param", "type must be game or hardware")
+	if kind != "game" && kind != "hardware" && kind != "pc_listing" {
+		problem(w, r, http.StatusBadRequest, "invalid_param", "type must be game, hardware or pc_listing")
 		return
 	}
 	nq := normQuery(q)
@@ -62,10 +62,13 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 		results []api.SearchResult
 		perr    error
 	)
-	if kind == "game" {
+	switch kind {
+	case "game":
 		results, perr = h.searchGames(ctx, q)
-	} else {
+	case "hardware":
 		results, perr = h.searchHardware(ctx, q)
+	default:
+		results, perr = h.searchPCListings(ctx, q)
 	}
 	degraded := perr != nil
 	if degraded {
@@ -159,10 +162,57 @@ func (h *Handlers) searchHardware(ctx context.Context, q string) ([]api.SearchRe
 	return out, nil
 }
 
+// searchPCListings is the all-of-PriceCharting search behind the
+// proxy picker: no category filter (game listings included - the
+// point is variant rows IGDB does not separate), with the provider's
+// per-listing prices passed through so prints are tellable apart.
+func (h *Handlers) searchPCListings(ctx context.Context, q string) ([]api.SearchResult, error) {
+	prods, err := h.prices.Search(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.SearchResult, 0, len(prods))
+	for _, p := range prods {
+		out = append(out, pcListingResult(p.ID, p.Name, p.ConsoleName, p.Genre, quoteOf(p)))
+		if len(out) == searchLimit {
+			break
+		}
+	}
+	return out, nil
+}
+
+// pcListingResult maps one PC listing - live (provider) or cached
+// (a product's stored mapping, on the degraded path) - onto the wire
+// shape.
+func pcListingResult(id int64, name, console, category string, q store.PriceQuote) api.SearchResult {
+	res := api.SearchResult{
+		Type: api.SearchResultType("pc_listing"), Name: name,
+		PcProductId: &id, ConsoleName: &console,
+	}
+	if category != "" {
+		res.Category = &category
+	}
+	res.LooseCents = q.LooseCents
+	res.CibCents = q.CIBCents
+	res.NewCents = q.NewCents
+	return res
+}
+
 // localResults maps catalog products onto search results for the
 // degraded path.
 func localResults(kind string, prods []store.Product) []api.SearchResult {
 	out := make([]api.SearchResult, 0, len(prods))
+	if kind == "pc_listing" {
+		// Degraded: any product's stored mapping is a known listing.
+		for _, p := range prods {
+			if p.PriceCharting == nil {
+				continue
+			}
+			pc := p.PriceCharting
+			out = append(out, pcListingResult(pc.PCProductID, pc.PCName, pc.ConsoleName, "", pc.Current))
+		}
+		return out
+	}
 	for _, p := range prods {
 		isGame := p.Type == "game"
 		if (kind == "game") != isGame {
@@ -390,8 +440,16 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 		}
 		key = store.ProductKey{Type: typ, PCProductID: *req.PcProductId,
 			Region: region, Edition: edition, Variant: variant}
+	case "pc_listing":
+		if req.PcProductId == nil {
+			problem(w, r, http.StatusBadRequest, "invalid_body", "type pc_listing requires pc_product_id")
+			return
+		}
+		// Stray igdb/region/edition/variant fields are ignored, like the
+		// console/accessory path ignores stray igdb fields.
+		key = store.ProductKey{Type: typ, PCProductID: *req.PcProductId}
 	default:
-		problem(w, r, http.StatusBadRequest, "invalid_body", "type must be game, console or accessory")
+		problem(w, r, http.StatusBadRequest, "invalid_body", "type must be game, console, accessory or pc_listing")
 		return
 	}
 
@@ -543,6 +601,8 @@ func (h *Handlers) autoMatch(ctx context.Context, name, edition, platformName st
 	}
 }
 
+// buildHardwareProduct builds any PC-anchored product (console,
+// accessory, or a pc_listing price anchor) from its listing.
 func (h *Handlers) buildHardwareProduct(ctx context.Context, typ string, key store.ProductKey) (store.Product, error) {
 	pc, err := h.prices.Product(ctx, key.PCProductID)
 	if errors.Is(err, pricecharting.ErrNotFound) {

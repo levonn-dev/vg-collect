@@ -52,6 +52,7 @@
     { "id": 5051, "product-name": "Mario Kart DS", "console-name": "Nintendo DS" },
     { "id": 5052, "product-name": "Mario Kart 7", "console-name": "Nintendo 3DS" },
     { "id": 5053, "product-name": "Mario Kart 8", "console-name": "Wii U" },
+    { "id": 5099, "product-name": "Super Mario 64 [Player's Choice]", "console-name": "Nintendo 64" },
     { "id": 6001, "product-name": "Super Nintendo System", "console-name": "Super Nintendo", "genre": "Systems" },
     { "id": 6002, "product-name": "NES System", "console-name": "NES", "genre": "Systems" },
     { "id": 6003, "product-name": "Nintendo 64 System", "console-name": "Nintendo 64", "genre": "Systems" },

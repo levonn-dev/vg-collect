@@ -136,6 +136,14 @@ type ProductKey struct {
 }
 
 func (k ProductKey) filter() bson.D {
+	// A pc_listing IS the exact variant: identity is the listing id
+	// alone (region/edition/variant are stored empty).
+	if k.Type == "pc_listing" {
+		return bson.D{
+			{Key: "type", Value: "pc_listing"},
+			{Key: "pricecharting.pc_product_id", Value: k.PCProductID},
+		}
+	}
 	if k.Type == "game" {
 		return bson.D{
 			{Key: "type", Value: "game"},
