@@ -2583,6 +2583,78 @@ func TestDashboardInvalidationThroughTheStack(t *testing.T) {
 	}
 }
 
+func TestComposeValueSeries_CustomStepsInAtSetAt(t *testing.T) {
+	day := func(s string) time.Time {
+		d, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	windowStart := day("2026-06-01T00:00:00Z")
+	v := int64(5000)
+	setAt := day("2026-06-10T06:00:00Z") // mid-day: truncates to 06-10
+	customRow := store.PricingRow{EntryID: uuid.New(), Packaging: "loose",
+		PricingMode: "custom", CustomValueCents: &v, CustomValueSetAt: &setAt}
+
+	pid := uuid.New()
+	loose1, loose2 := int64(1000), int64(1200)
+	proxyRow := store.PricingRow{EntryID: uuid.New(), Packaging: "loose",
+		PricingMode: "proxy", PricingProductID: &pid}
+	series := map[string][]enrichapi.PricePoint{pid.String(): {
+		{CapturedAt: day("2026-06-05T06:00:00Z"), LooseCents: &loose1},
+		{CapturedAt: day("2026-06-15T06:00:00Z"), LooseCents: &loose2},
+	}}
+
+	points := server.ComposeValueSeries([]store.PricingRow{customRow, proxyRow}, series, windowStart)
+	// Days: 06-05 (snapshot), 06-10 (set-at injected), 06-15 (snapshot).
+	if len(points) != 3 {
+		t.Fatalf("want 3 points, got %d: %+v", len(points), points)
+	}
+	wants := []int64{1000, 6000, 6200} // custom joins on 06-10, carry-forward everywhere
+	for i, w := range wants {
+		if points[i].ValueCents != w {
+			t.Fatalf("point %d = %d, want %d", i, points[i].ValueCents, w)
+		}
+	}
+}
+
+func TestComposeValueSeries_CustomOnlyAndPreWindowClamp(t *testing.T) {
+	day := func(s string) time.Time {
+		d, _ := time.Parse(time.RFC3339, s)
+		return d
+	}
+	windowStart := day("2026-06-01T00:00:00Z")
+	v := int64(7700)
+	old := day("2026-01-15T12:00:00Z") // long before the window
+	row := store.PricingRow{EntryID: uuid.New(), Packaging: "cib",
+		PricingMode: "custom", CustomValueCents: &v, CustomValueSetAt: &old}
+
+	points := server.ComposeValueSeries([]store.PricingRow{row}, nil, windowStart)
+	if len(points) != 1 {
+		t.Fatalf("want the clamped set-at day only, got %d points", len(points))
+	}
+	if !points[0].Date.Equal(windowStart) || points[0].ValueCents != 7700 {
+		t.Fatalf("want 7700 at %v, got %+v", windowStart, points[0])
+	}
+}
+
+func TestComposeValueSeries_SetAtAtMidnightBoundary(t *testing.T) {
+	day := func(s string) time.Time {
+		d, _ := time.Parse(time.RFC3339, s)
+		return d
+	}
+	windowStart := day("2026-06-01T00:00:00Z")
+	v := int64(100)
+	exact := day("2026-06-10T00:00:00Z") // exactly midnight: contributes ON its day
+	row := store.PricingRow{EntryID: uuid.New(), Packaging: "loose",
+		PricingMode: "custom", CustomValueCents: &v, CustomValueSetAt: &exact}
+	points := server.ComposeValueSeries([]store.PricingRow{row}, nil, windowStart)
+	if len(points) != 1 || points[0].ValueCents != 100 || !points[0].Date.Equal(exact) {
+		t.Fatalf("midnight set-at must contribute on its own day, got %+v", points)
+	}
+}
+
 // The pricing rows seed entries the same way the dashboard unit tests
 // do; the enrichment stub answers per-product snapshot series.
 func TestUnitValueHistoryComposesCarriesForwardAndCaches(t *testing.T) {
@@ -2787,5 +2859,393 @@ func TestUnitPurgeUserData(t *testing.T) {
 		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
 		resp := do(t, http.MethodDelete, srv.URL+"/user-data", a.token(t, user.String()), nil)
 		wantProblem(t, resp, http.StatusInternalServerError, "internal")
+	})
+}
+
+// ---- custom pricing mode ----
+
+func TestUnitCustomPricing_ValidationMatrix(t *testing.T) {
+	productID := uuid.New()
+	cases := []struct {
+		name   string
+		mutate func(map[string]any)
+		detail string
+	}{
+		{"custom mode without a value", func(m map[string]any) {
+			m["pricing_mode"] = "custom"
+		}, "pricing_mode custom requires custom_value_cents"},
+		{"negative custom value", func(m map[string]any) {
+			m["pricing_mode"] = "custom"
+			m["custom_value_cents"] = -5
+		}, "custom_value_cents must not be negative"},
+		{"custom value over cap", func(m map[string]any) {
+			m["pricing_mode"] = "custom"
+			m["custom_value_cents"] = 1000000001
+		}, "custom_value_cents must not exceed 1000000000"},
+		{"unknown pricing mode", func(m map[string]any) {
+			m["pricing_mode"] = "bogus"
+		}, "pricing_mode must be one of auto, proxy, custom, disabled"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
+			resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()),
+				createBody(productID, tc.mutate))
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("status: got %d, want %d", resp.StatusCode, http.StatusBadRequest)
+			}
+			var p struct {
+				Code   string `json:"code"`
+				Detail string `json:"detail"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+				t.Fatal(err)
+			}
+			if p.Code != "invalid_body" {
+				t.Fatalf("code: got %q, want invalid_body", p.Code)
+			}
+			if p.Detail != tc.detail {
+				t.Fatalf("detail: got %q, want %q", p.Detail, tc.detail)
+			}
+		})
+	}
+}
+
+// TestUnitCustomPricing_MaxValueAccepted pins that the
+// custom_value_cents cap is inclusive: exactly 1000000000 is a valid
+// value, not a rejection.
+func TestUnitCustomPricing_MaxValueAccepted(t *testing.T) {
+	productID := uuid.New()
+	st := &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+		e.ID = uuid.New()
+		r := "n"
+		e.BacklogRank = &r
+		e.Tags = []store.TagRef{}
+		e.CustomValueSetAt = ptr(time.Now())
+		return e, nil
+	}}
+	enrich := &stubEnrichment{getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+		return gameProduct(id), nil
+	}}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()),
+		createBody(productID, func(m map[string]any) {
+			m["pricing_mode"] = "custom"
+			m["custom_value_cents"] = 1000000000
+		}))
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	var got struct {
+		CustomValueCents *int64 `json:"custom_value_cents"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.CustomValueCents == nil || *got.CustomValueCents != 1000000000 {
+		t.Fatalf("custom_value_cents: %v", got.CustomValueCents)
+	}
+}
+
+// TestUnitEntryValue_CustomModeShortCircuitsEnrichment pins the custom
+// pricing short-circuit on both create and update: the composed value
+// is always the stored cents, never a packaging-matched enrichment
+// price, and enrichment is never even consulted for it.
+func TestUnitEntryValue_CustomModeShortCircuitsEnrichment(t *testing.T) {
+	productID := uuid.New()
+	user := uuid.New()
+	var created store.Entry
+	st := &stubStore{
+		createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			e.ID = uuid.New()
+			r := "n"
+			e.BacklogRank = &r
+			e.Tags = []store.TagRef{}
+			e.CustomValueSetAt = ptr(time.Now()) // the store SQL stamps this server-side
+			created = e
+			return e, nil
+		},
+		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return created, nil },
+		updateEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			e.Tags = []store.TagRef{}
+			return e, nil
+		},
+	}
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			return gameProduct(id), nil
+		},
+		batchPrices: func(context.Context, string, []uuid.UUID) (map[string]enrichapi.ProductPrices, error) {
+			t.Fatal("enrichment must not be consulted for custom pricing")
+			return nil, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	tok := a.token(t, user.String())
+
+	resp := do(t, http.MethodPost, srv.URL+"/entries", tok,
+		createBody(productID, func(m map[string]any) {
+			m["pricing_mode"] = "custom"
+			m["custom_value_cents"] = 12345
+			m["packaging"] = "loose"
+		}))
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	var got struct {
+		ValueCents       *int64     `json:"value_cents"`
+		CustomValueCents *int64     `json:"custom_value_cents"`
+		CustomValueSetAt *time.Time `json:"custom_value_set_at"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ValueCents == nil || *got.ValueCents != 12345 {
+		t.Fatalf("value_cents: %v", got.ValueCents)
+	}
+	if got.CustomValueCents == nil || *got.CustomValueCents != 12345 {
+		t.Fatalf("custom_value_cents: %v", got.CustomValueCents)
+	}
+	if got.CustomValueSetAt == nil {
+		t.Fatal("custom_value_set_at must be set")
+	}
+
+	// PUT the full baseline with a different packaging: the value must
+	// not move (packaging-independent under pricing_mode custom).
+	resp = do(t, http.MethodPut, srv.URL+"/entries/"+created.ID.String(), tok,
+		updateBody(func(m map[string]any) {
+			m["packaging"] = "sealed"
+			m["pricing_mode"] = "custom"
+			m["custom_value_cents"] = 12345
+		}))
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("update status %d: %s", resp.StatusCode, body)
+	}
+	var got2 struct {
+		ValueCents *int64 `json:"value_cents"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got2); err != nil {
+		t.Fatal(err)
+	}
+	if got2.ValueCents == nil || *got2.ValueCents != 12345 {
+		t.Fatalf("value_cents after packaging change: %v", got2.ValueCents)
+	}
+}
+
+// TestUnitListEntries_MixedCustomAndProxyComposition pins that a
+// custom-priced entry is composed alongside an enrichment-priced one
+// in the same list, and the two sort correctly against each other.
+func TestUnitListEntries_MixedCustomAndProxyComposition(t *testing.T) {
+	user := uuid.New()
+	proxyTarget := uuid.New()
+	proxied := listedEntry(user, "Proxied", func(e *store.Entry) {
+		e.PricingMode = "proxy"
+		e.PricingProductID = &proxyTarget
+	})
+	custom := listedEntry(user, "Custom", func(e *store.Entry) {
+		e.PricingMode = "custom"
+		e.CustomValueCents = ptr(int64(5000))
+	})
+	st := &stubStore{listEntries: func(_ context.Context, _ uuid.UUID, f store.Filters) ([]store.Entry, error) {
+		if f.Sort != "value" || f.Order != "asc" {
+			t.Fatalf("filters must pass through: %+v", f)
+		}
+		return []store.Entry{proxied, custom}, nil
+	}}
+	enrich := &stubEnrichment{batchPrices: pricedAs(1000, 2000, 3000)}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+
+	resp := do(t, http.MethodGet, srv.URL+"/entries?sort=value&order=asc", a.token(t, user.String()), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var got struct {
+		Entries []struct {
+			DisplayName string `json:"display_name"`
+			ValueCents  *int64 `json:"value_cents"`
+		} `json:"entries"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Entries) != 2 {
+		t.Fatalf("entries: %+v", got.Entries)
+	}
+	if got.Entries[0].DisplayName != "Proxied" || got.Entries[1].DisplayName != "Custom" {
+		t.Fatalf("order: %+v", got.Entries)
+	}
+	if got.Entries[0].ValueCents == nil || *got.Entries[0].ValueCents != 2000 {
+		t.Fatalf("proxy value: %v", got.Entries[0].ValueCents)
+	}
+	if got.Entries[1].ValueCents == nil || *got.Entries[1].ValueCents != 5000 {
+		t.Fatalf("custom value: %v", got.Entries[1].ValueCents)
+	}
+}
+
+func TestUnitDashboard_CustomOnlyNeedsNoEnrichment(t *testing.T) {
+	user := uuid.New()
+	rows := []store.PricingRow{
+		{EntryID: uuid.New(), PricingMode: "custom", CustomValueCents: ptr(int64(7700)), CustomValueSetAt: ptr(time.Now())},
+	}
+	st := dashboardStore(user, rows)
+	enrich := &stubEnrichment{batchPrices: func(context.Context, string, []uuid.UUID) (map[string]enrichapi.ProductPrices, error) {
+		t.Fatal("enrichment must not be consulted for custom-only pricing")
+		return nil, nil
+	}}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+
+	resp := do(t, http.MethodGet, srv.URL+"/dashboard", a.token(t, user.String()), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var got struct {
+		Pricing struct {
+			Available       bool   `json:"available"`
+			TotalValueCents *int64 `json:"total_value_cents"`
+			PricedEntries   int    `json:"priced_entries"`
+			UnpricedEntries int    `json:"unpriced_entries"`
+			ExcludedEntries int    `json:"excluded_entries"`
+		} `json:"pricing"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Pricing.Available || got.Pricing.TotalValueCents == nil || *got.Pricing.TotalValueCents != 7700 ||
+		got.Pricing.PricedEntries != 1 || got.Pricing.UnpricedEntries != 0 || got.Pricing.ExcludedEntries != 0 {
+		t.Fatalf("dashboard: %+v", got.Pricing)
+	}
+}
+
+func TestUnitDashboard_MixedCustomProxyDisabled(t *testing.T) {
+	user := uuid.New()
+	proxyTarget := uuid.New()
+	custom := store.PricingRow{EntryID: uuid.New(), PricingMode: "custom", CustomValueCents: ptr(int64(7700)), CustomValueSetAt: ptr(time.Now())}
+	proxy := store.PricingRow{EntryID: uuid.New(), Packaging: "loose", PricingMode: "proxy", PricingProductID: &proxyTarget}
+	disabled := store.PricingRow{EntryID: uuid.New(), Packaging: "cib", PricingMode: "disabled", ProductID: ptr(uuid.New())}
+	st := dashboardStore(user, []store.PricingRow{custom, proxy, disabled})
+	enrich := &stubEnrichment{batchPrices: func(_ context.Context, _ string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error) {
+		if len(ids) != 1 || ids[0] != proxyTarget {
+			t.Fatalf("effective ids: %v", ids)
+		}
+		loose := int64(1000)
+		return map[string]enrichapi.ProductPrices{proxyTarget.String(): {LooseCents: &loose}}, nil
+	}}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+
+	resp := do(t, http.MethodGet, srv.URL+"/dashboard", a.token(t, user.String()), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var got struct {
+		Pricing struct {
+			TotalValueCents *int64 `json:"total_value_cents"`
+			PricedEntries   int    `json:"priced_entries"`
+			UnpricedEntries int    `json:"unpriced_entries"`
+			ExcludedEntries int    `json:"excluded_entries"`
+		} `json:"pricing"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Pricing.TotalValueCents == nil || *got.Pricing.TotalValueCents != 8700 ||
+		got.Pricing.PricedEntries != 2 || got.Pricing.UnpricedEntries != 0 || got.Pricing.ExcludedEntries != 1 {
+		t.Fatalf("dashboard: %+v", got.Pricing)
+	}
+}
+
+// TestUnitCreateEntry_CustomOffCatalogWithCustomModeAndPCListingProxyBorrowsNothing
+// pins two off-catalog corners: pricing_mode custom needs no product
+// at all, and a pc_listing proxy target (like hardware) grants no
+// game identity, since the existing nil-guard on target.Igdb already
+// covers any anchor product that carries no igdb block.
+func TestUnitCreateEntry_CustomOffCatalogWithCustomModeAndPCListingProxyBorrowsNothing(t *testing.T) {
+	t.Run("off-catalog custom pricing needs no product", func(t *testing.T) {
+		var stored store.Entry
+		st := &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			stored = e
+			e.ID = uuid.New()
+			r := "n"
+			e.BacklogRank = &r
+			e.Tags = []store.TagRef{}
+			e.CustomValueSetAt = ptr(time.Now())
+			return e, nil
+		}}
+		// Both enrichment fields deliberately nil: a call would panic.
+		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+		resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()),
+			jsonBody(map[string]any{
+				"display_name":       "Homebrew valued by owner",
+				"item_type":          "game",
+				"region":             "ntsc_u",
+				"packaging":          "loose",
+				"pricing_mode":       "custom",
+				"custom_value_cents": 999,
+			}))
+		if resp.StatusCode != http.StatusCreated {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status %d: %s", resp.StatusCode, body)
+		}
+		if stored.ProductID != nil || stored.PricingMode != "custom" ||
+			stored.CustomValueCents == nil || *stored.CustomValueCents != 999 {
+			t.Fatalf("stored entry: %+v", stored)
+		}
+		var got struct {
+			IgdbGameId *int64 `json:"igdb_game_id"`
+			ValueCents *int64 `json:"value_cents"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got.IgdbGameId != nil {
+			t.Fatalf("igdb_game_id must be absent: %v", *got.IgdbGameId)
+		}
+		if got.ValueCents == nil || *got.ValueCents != 999 {
+			t.Fatalf("value_cents: %v", got.ValueCents)
+		}
+	})
+
+	t.Run("pc_listing proxy grants no game identity", func(t *testing.T) {
+		pcListingID := uuid.New()
+		var stored store.Entry
+		st := &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			stored = e
+			e.ID = uuid.New()
+			r := "n"
+			e.BacklogRank = &r
+			e.Tags = []store.TagRef{}
+			return e, nil
+		}}
+		enrich := &stubEnrichment{
+			getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+				return enrichapi.Product{Id: id, Type: enrichapi.ProductType("pc_listing"), Name: "eBay: repro cart"}, nil
+			},
+			batchPrices: pricedAs(1500, 4200, 9900),
+		}
+		srv, a := newUnitServer(t, st, enrich, newStubCache())
+		resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()),
+			jsonBody(map[string]any{
+				"display_name": "Homebrew cart", "item_type": "game",
+				"region": "ntsc_u", "packaging": "loose",
+				"pricing_mode": "proxy", "pricing_product_id": pcListingID.String(),
+			}))
+		if resp.StatusCode != http.StatusCreated {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status %d: %s", resp.StatusCode, body)
+		}
+		if stored.IGDBGameID != nil {
+			t.Fatalf("pc_listing proxy target must grant no game identity: %v", *stored.IGDBGameID)
+		}
+		var got struct {
+			IgdbGameId *int64 `json:"igdb_game_id"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got.IgdbGameId != nil {
+			t.Fatalf("response igdb_game_id must be absent: %v", *got.IgdbGameId)
+		}
 	})
 }

@@ -32,7 +32,7 @@ var (
 	packagingVals = map[string]bool{"sealed": true, "cib": true, "loose": true}
 	conditionVals = map[string]bool{"mint": true, "near_mint": true, "very_good": true, "good": true, "acceptable": true, "poor": true}
 	statusVals    = map[string]bool{"backlog": true, "playing": true, "beaten": true, "completed": true, "dropped": true, "shelved": true}
-	pricingVals   = map[string]bool{"auto": true, "proxy": true, "disabled": true}
+	pricingVals   = map[string]bool{"auto": true, "proxy": true, "custom": true, "disabled": true}
 	itemTypeVals  = map[string]bool{"game": true, "console": true, "accessory": true}
 	sortVals      = map[string]bool{"name": true, "release_date": true, "purchased_at": true, "created_at": true, "value": true, "paid": true, "rating": true, "backlog_rank": true}
 	orderVals     = map[string]bool{"asc": true, "desc": true}
@@ -57,6 +57,7 @@ type entryInput struct {
 	PurchasedFrom    *string
 	PricingMode      string
 	PricingProductID *uuid.UUID
+	CustomValueCents *int64
 	Status           string
 	Rating           *int
 	Notes            *string
@@ -104,6 +105,7 @@ func createInput(b api.EntryCreate) entryInput {
 		PurchasedFrom:    b.PurchasedFrom,
 		PricingMode:      strDeref((*string)(b.PricingMode), "auto"),
 		PricingProductID: b.PricingProductId,
+		CustomValueCents: b.CustomValueCents,
 		Status:           strDeref((*string)(b.Status), "backlog"),
 		Rating:           b.Rating,
 		Notes:            b.Notes,
@@ -131,6 +133,7 @@ func updateInput(b api.EntryUpdate) entryInput {
 		PurchasedFrom:    b.PurchasedFrom,
 		PricingMode:      string(b.PricingMode),
 		PricingProductID: b.PricingProductId,
+		CustomValueCents: b.CustomValueCents,
 		Status:           string(b.Status),
 		Rating:           b.Rating,
 		Notes:            b.Notes,
@@ -153,7 +156,7 @@ func validateEntryInput(in entryInput) string {
 		return "status is not a known value"
 	}
 	if !pricingVals[in.PricingMode] {
-		return "pricing_mode must be one of auto, proxy, disabled"
+		return "pricing_mode must be one of auto, proxy, custom, disabled"
 	}
 	for name, c := range map[string]*string{
 		"box_condition": in.BoxCondition, "manual_condition": in.ManualCondition, "item_condition": in.ItemCondition,
@@ -179,6 +182,15 @@ func validateEntryInput(in entryInput) string {
 	}
 	if in.PricingMode == "proxy" && in.PricingProductID == nil {
 		return "pricing_mode proxy requires pricing_product_id"
+	}
+	if in.CustomValueCents != nil && *in.CustomValueCents < 0 {
+		return "custom_value_cents must not be negative"
+	}
+	if in.CustomValueCents != nil && *in.CustomValueCents > 1000000000 {
+		return "custom_value_cents must not exceed 1000000000"
+	}
+	if in.PricingMode == "custom" && in.CustomValueCents == nil {
+		return "pricing_mode custom requires custom_value_cents"
 	}
 	for name, lim := range map[string]struct {
 		v   *string
@@ -215,6 +227,7 @@ func applyInput(e *store.Entry, in entryInput) {
 	e.PurchasedFrom = in.PurchasedFrom
 	e.PricingMode = in.PricingMode
 	e.PricingProductID = in.PricingProductID
+	e.CustomValueCents = in.CustomValueCents
 	e.Status = in.Status
 	e.Rating = in.Rating
 	e.Notes = in.Notes
@@ -276,6 +289,8 @@ func toAPIEntry(e store.Entry, valueCents *int64) api.Entry {
 		PurchasedFrom:    e.PurchasedFrom,
 		PricingMode:      api.EntryPricingMode(e.PricingMode),
 		PricingProductId: e.PricingProductID,
+		CustomValueCents: e.CustomValueCents,
+		CustomValueSetAt: e.CustomValueSetAt,
 		Status:           api.EntryStatus(e.Status),
 		Rating:           e.Rating,
 		Notes:            e.Notes,
@@ -309,7 +324,9 @@ func toAPIEntry(e store.Entry, valueCents *int64) api.Entry {
 // best-effort (a pricing hiccup never fails an entry response).
 func (h *Handlers) respondEntry(w http.ResponseWriter, r *http.Request, bearer string, e store.Entry, status int) {
 	var value *int64
-	if id := effectiveProductID(e.PricingMode, e.ProductID, e.PricingProductID); id != nil {
+	if e.PricingMode == "custom" {
+		value = e.CustomValueCents
+	} else if id := effectiveProductID(e.PricingMode, e.ProductID, e.PricingProductID); id != nil {
 		prices, err := h.enrichment.BatchPrices(r.Context(), bearer, []uuid.UUID{*id})
 		if err != nil {
 			h.logger.WarnContext(r.Context(), "value composition unavailable", "err", err)
@@ -383,7 +400,7 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		if body.PricingMode == nil {
 			in.PricingMode = "disabled" // no own product to price against
 		} else if in.PricingMode == "auto" {
-			problem(w, r, http.StatusBadRequest, "invalid_body", "custom entries cannot use pricing_mode auto; choose proxy or disabled")
+			problem(w, r, http.StatusBadRequest, "invalid_body", "custom entries cannot use pricing_mode auto; choose proxy, custom, or disabled")
 			return
 		}
 	}
@@ -529,7 +546,7 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 			return
 		}
 		if in.PricingMode == "auto" {
-			problem(w, r, http.StatusBadRequest, "invalid_body", "custom entries cannot use pricing_mode auto; choose proxy or disabled")
+			problem(w, r, http.StatusBadRequest, "invalid_body", "custom entries cannot use pricing_mode auto; choose proxy, custom, or disabled")
 			return
 		}
 	}
@@ -887,6 +904,10 @@ func (h *Handlers) ListEntries(w http.ResponseWriter, r *http.Request, params ap
 	compose := func(subset []store.Entry) {
 		var ids []uuid.UUID
 		for _, e := range subset {
+			if e.PricingMode == "custom" {
+				values[e.ID] = e.CustomValueCents
+				continue
+			}
 			if id := effectiveProductID(e.PricingMode, e.ProductID, e.PricingProductID); id != nil {
 				ids = append(ids, *id)
 			}
@@ -901,6 +922,9 @@ func (h *Handlers) ListEntries(w http.ResponseWriter, r *http.Request, params ap
 			return
 		}
 		for _, e := range subset {
+			if e.PricingMode == "custom" {
+				continue
+			}
 			if id := effectiveProductID(e.PricingMode, e.ProductID, e.PricingProductID); id != nil {
 				if p, okPrice := prices[id.String()]; okPrice {
 					values[e.ID] = valueForPackaging(e.Packaging, p)
@@ -1217,21 +1241,33 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params a
 
 	pricing := api.DashboardPricing{Available: true}
 	var ids []uuid.UUID
+	var customTotal int64
+	customPriced := 0
 	for _, row := range rows {
+		if row.PricingMode == "custom" {
+			// The DB CHECK guarantees the value under custom mode.
+			customTotal += *row.CustomValueCents
+			customPriced++
+			continue
+		}
 		if id := effectiveProductID(row.PricingMode, row.ProductID, row.PricingProductID); id != nil {
 			ids = append(ids, *id)
 		} else {
 			pricing.ExcludedEntries++
 		}
 	}
+	pricing.PricedEntries = customPriced
 	if len(ids) > 0 {
 		prices, err := h.enrichment.BatchPrices(r.Context(), bearer, ids)
 		if err != nil {
 			pricing.Available = false
 			h.logger.WarnContext(r.Context(), "dashboard pricing unavailable", "err", err)
 		} else {
-			var total int64
+			total := customTotal
 			for _, row := range rows {
+				if row.PricingMode == "custom" {
+					continue
+				}
 				id := effectiveProductID(row.PricingMode, row.ProductID, row.PricingProductID)
 				if id == nil {
 					continue
@@ -1251,8 +1287,7 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params a
 			pricing.TotalValueCents = &total
 		}
 	} else {
-		zero := int64(0)
-		pricing.TotalValueCents = &zero
+		pricing.TotalValueCents = &customTotal
 	}
 
 	byPlatform := make([]api.PlatformCount, len(counts.ByPlatform))
@@ -1305,17 +1340,32 @@ func pointForPackaging(packaging string, p enrichapi.PricePoint) *int64 {
 	}
 }
 
-// composeValueSeries builds one point per day - the union of snapshot
-// days across the given series. Each entry contributes its
-// packaging-matched price from its effective product's latest snapshot
-// on or before the day (prices carry forward between snapshots);
-// entries whose product has no snapshot yet contribute nothing that
-// day. Series arrive oldest-first from the client.
-func composeValueSeries(rows []store.PricingRow, series map[string][]enrichapi.PricePoint) []api.ValuePoint {
+// ComposeValueSeries builds one point per day - the union of snapshot
+// days plus each custom-priced row's set-at day (clamped into the
+// window). Product-priced entries contribute their packaging-matched
+// price from the latest snapshot on or before the day; custom-priced
+// entries contribute their amount from their set-at day forward.
+// Prices carry forward between points; entries with nothing known yet
+// contribute nothing that day. Series arrive oldest-first from the
+// client. Exported for tests.
+func ComposeValueSeries(rows []store.PricingRow, series map[string][]enrichapi.PricePoint, windowStart time.Time) []api.ValuePoint {
+	windowDay := windowStart.UTC().Truncate(24 * time.Hour)
 	daySet := map[time.Time]bool{}
 	for _, points := range series {
 		for _, p := range points {
 			daySet[p.CapturedAt.UTC().Truncate(24*time.Hour)] = true
+		}
+	}
+	customDay := func(row store.PricingRow) time.Time {
+		d := row.CustomValueSetAt.UTC().Truncate(24 * time.Hour)
+		if d.Before(windowDay) {
+			return windowDay
+		}
+		return d
+	}
+	for _, row := range rows {
+		if row.PricingMode == "custom" {
+			daySet[customDay(row)] = true
 		}
 	}
 	days := make([]time.Time, 0, len(daySet))
@@ -1328,6 +1378,12 @@ func composeValueSeries(rows []store.PricingRow, series map[string][]enrichapi.P
 	for _, day := range days {
 		var total int64
 		for _, row := range rows {
+			if row.PricingMode == "custom" {
+				if !customDay(row).After(day) {
+					total += *row.CustomValueCents
+				}
+				continue
+			}
 			id := effectiveProductID(row.PricingMode, row.ProductID, row.PricingProductID)
 			if id == nil {
 				continue
@@ -1379,19 +1435,26 @@ func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	var ids []uuid.UUID
 	for _, row := range rows {
+		if row.PricingMode == "custom" {
+			continue
+		}
 		if id := effectiveProductID(row.PricingMode, row.ProductID, row.PricingProductID); id != nil {
 			ids = append(ids, *id)
 		}
 	}
 	vh := api.ValueHistory{Available: true, Points: []api.ValuePoint{}}
+	series := map[string][]enrichapi.PricePoint{}
 	if len(ids) > 0 {
-		series, err := h.enrichment.PriceHistory(r.Context(), bearer, ids, valueHistoryDays)
+		var err error
+		series, err = h.enrichment.PriceHistory(r.Context(), bearer, ids, valueHistoryDays)
 		if err != nil {
 			vh.Available = false
 			h.logger.WarnContext(r.Context(), "value history unavailable", "err", err)
-		} else {
-			vh.Points = composeValueSeries(rows, series)
 		}
+	}
+	if vh.Available {
+		windowStart := time.Now().UTC().AddDate(0, 0, -valueHistoryDays)
+		vh.Points = ComposeValueSeries(rows, series, windowStart)
 	}
 	body, err := json.Marshal(vh)
 	if err != nil {
