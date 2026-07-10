@@ -67,6 +67,7 @@ const (
 // Defines values for EntryPricingMode.
 const (
 	EntryPricingModeAuto     EntryPricingMode = "auto"
+	EntryPricingModeCustom   EntryPricingMode = "custom"
 	EntryPricingModeDisabled EntryPricingMode = "disabled"
 	EntryPricingModeProxy    EntryPricingMode = "proxy"
 )
@@ -149,6 +150,7 @@ const (
 // Defines values for EntryCreatePricingMode.
 const (
 	EntryCreatePricingModeAuto     EntryCreatePricingMode = "auto"
+	EntryCreatePricingModeCustom   EntryCreatePricingMode = "custom"
 	EntryCreatePricingModeDisabled EntryCreatePricingMode = "disabled"
 	EntryCreatePricingModeProxy    EntryCreatePricingMode = "proxy"
 )
@@ -211,6 +213,7 @@ const (
 // Defines values for EntryUpdatePricingMode.
 const (
 	Auto     EntryUpdatePricingMode = "auto"
+	Custom   EntryUpdatePricingMode = "custom"
 	Disabled EntryUpdatePricingMode = "disabled"
 	Proxy    EntryUpdatePricingMode = "proxy"
 )
@@ -238,6 +241,7 @@ const (
 	ProductTypeAccessory ProductType = "accessory"
 	ProductTypeConsole   ProductType = "console"
 	ProductTypeGame      ProductType = "game"
+	ProductTypePcListing ProductType = "pc_listing"
 )
 
 // Defines values for ResolveRequestType.
@@ -245,12 +249,14 @@ const (
 	ResolveRequestTypeAccessory ResolveRequestType = "accessory"
 	ResolveRequestTypeConsole   ResolveRequestType = "console"
 	ResolveRequestTypeGame      ResolveRequestType = "game"
+	ResolveRequestTypePcListing ResolveRequestType = "pc_listing"
 )
 
 // Defines values for SearchResultType.
 const (
-	SearchResultTypeGame     SearchResultType = "game"
-	SearchResultTypeHardware SearchResultType = "hardware"
+	SearchResultTypeGame      SearchResultType = "game"
+	SearchResultTypeHardware  SearchResultType = "hardware"
+	SearchResultTypePcListing SearchResultType = "pc_listing"
 )
 
 // Defines values for GetDashboardParamsItemType.
@@ -366,8 +372,9 @@ const (
 
 // Defines values for SearchCatalogParamsType.
 const (
-	SearchCatalogParamsTypeGame     SearchCatalogParamsType = "game"
-	SearchCatalogParamsTypeHardware SearchCatalogParamsType = "hardware"
+	SearchCatalogParamsTypeGame      SearchCatalogParamsType = "game"
+	SearchCatalogParamsTypeHardware  SearchCatalogParamsType = "hardware"
+	SearchCatalogParamsTypePcListing SearchCatalogParamsType = "pc_listing"
 )
 
 // CompanyCredit defines model for CompanyCredit.
@@ -409,17 +416,23 @@ type DashboardPricing struct {
 	UnpricedEntries int `json:"unpriced_entries"`
 }
 
-// Entry One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries a name without an igdb id when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable.
+// Entry One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries a name without an igdb id when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; (or, with pricing_mode custom, taken directly from custom_value_cents, packaging-independent); it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable.
 type Entry struct {
 	// BacklogRank Present exactly while status is backlog; server-generated.
 	BacklogRank  *string            `json:"backlog_rank,omitempty"`
 	BoxCondition *EntryBoxCondition `json:"box_condition,omitempty"`
 
 	// CoverUrl Cover art URL snapshotted from the product at creation. Absent on custom entries, hardware, and products without art (render a placeholder).
-	CoverUrl    *string   `json:"cover_url,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	Currency    string    `json:"currency"`
-	DisplayName string    `json:"display_name"`
+	CoverUrl  *string   `json:"cover_url,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	Currency  string    `json:"currency"`
+
+	// CustomValueCents The user-set market value (USD cents). With pricing_mode custom it IS the entry's value; under any other mode it persists as "last custom price" memory.
+	CustomValueCents *int64 `json:"custom_value_cents,omitempty"`
+
+	// CustomValueSetAt Server-managed: stamped when custom_value_cents is first set or changes value, untouched otherwise. Read-only.
+	CustomValueSetAt *time.Time `json:"custom_value_set_at,omitempty"`
+	DisplayName      string     `json:"display_name"`
 
 	// Edition Per-copy variant note ("first print (glitched rev)", "black edition"): the idiom for variants of cataloged items is an entry on the base product with the variant recorded here.
 	Edition          *string             `json:"edition,omitempty"`
@@ -489,10 +502,11 @@ type EntrySource string
 // EntryStatus defines model for Entry.Status.
 type EntryStatus string
 
-// EntryCreate Product-backed: product_id comes from a prior enrichment resolve and the catalog fields are snapshotted server-side (display_name/item_type/platform_name/first_release_date must NOT be sent). Custom (no product_id): display_name and item_type are required, platform_name and first_release_date optional; pricing_mode defaults to disabled and must not be auto. media_type accepts only physical (the column already allows digital: the API widens when platform sync arrives). source is server-set manual. pricing_product_id is required when pricing_mode is proxy; box_condition requires has_box and manual_condition requires has_manual.
+// EntryCreate Product-backed: product_id comes from a prior enrichment resolve and the catalog fields are snapshotted server-side (display_name/item_type/platform_name/first_release_date must NOT be sent). Custom (no product_id): display_name and item_type are required, platform_name and first_release_date optional; pricing_mode defaults to disabled and must not be auto. media_type accepts only physical (the column already allows digital: the API widens when platform sync arrives). source is server-set manual. pricing_product_id is required when pricing_mode is proxy; box_condition requires has_box and manual_condition requires has_manual. custom_value_cents is required when pricing_mode is custom.
 type EntryCreate struct {
-	BoxCondition *EntryCreateBoxCondition `json:"box_condition,omitempty"`
-	Currency     *string                  `json:"currency,omitempty"`
+	BoxCondition     *EntryCreateBoxCondition `json:"box_condition,omitempty"`
+	Currency         *string                  `json:"currency,omitempty"`
+	CustomValueCents *int64                   `json:"custom_value_cents,omitempty"`
 
 	// DisplayName Custom entries only (required there).
 	DisplayName *string `json:"display_name,omitempty"`
@@ -584,10 +598,11 @@ type EntryPlatform struct {
 	Name           string `json:"name"`
 }
 
-// EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). product_id, media_type, and custom-ness are immutable. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags.
+// EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). product_id, media_type, and custom-ness are immutable. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
 type EntryUpdate struct {
-	BoxCondition *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
-	Currency     *string                  `json:"currency,omitempty"`
+	BoxCondition     *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
+	Currency         *string                  `json:"currency,omitempty"`
+	CustomValueCents *int64                   `json:"custom_value_cents,omitempty"`
 
 	// DisplayName Custom entries only (required there).
 	DisplayName *string `json:"display_name,omitempty"`
@@ -760,7 +775,7 @@ type ReorderRequest struct {
 	BeforeId *openapi_types.UUID `json:"before_id"`
 }
 
-// ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on); console/accessory require pc_product_id. region/edition/variant distinguish physical variants and are part of the product identity.
+// ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on); console/accessory require pc_product_id. region/edition/variant distinguish physical variants and are part of the product identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
 type ResolveRequest struct {
 	Edition        *string            `json:"edition,omitempty"`
 	IgdbGameId     *int64             `json:"igdb_game_id,omitempty"`
@@ -790,14 +805,17 @@ type ScoreResponse struct {
 	Recommendations []Recommendation `json:"recommendations"`
 }
 
-// SearchResult Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories).
+// SearchResult Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). pc_listing results carry the pc_* fields, the PriceCharting category (empty when the provider lists none), and the standard per-listing loose/cib/new prices so variant prints are tellable apart.
 type SearchResult struct {
 	Category         *string             `json:"category,omitempty"`
+	CibCents         *int64              `json:"cib_cents,omitempty"`
 	ConsoleName      *string             `json:"console_name,omitempty"`
 	CoverUrl         *string             `json:"cover_url,omitempty"`
 	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
 	IgdbGameId       *int64              `json:"igdb_game_id,omitempty"`
+	LooseCents       *int64              `json:"loose_cents,omitempty"`
 	Name             string              `json:"name"`
+	NewCents         *int64              `json:"new_cents,omitempty"`
 	PcProductId      *int64              `json:"pc_product_id,omitempty"`
 	Platforms        *[]PlatformRef      `json:"platforms,omitempty"`
 	Type             SearchResultType    `json:"type"`

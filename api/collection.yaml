@@ -617,9 +617,11 @@ components:
         without an igdb id when supplied, and igdb_game_id is always
         absent. value_cents is composed at read time from the
         effective pricing product and the packaging-matched price
-        field; it is null when pricing_mode is disabled, the product
-        is unmatched, no price exists for the packaging, or enrichment
-        is temporarily unreachable.
+        field; (or, with pricing_mode custom, taken directly from
+        custom_value_cents, packaging-independent); it is null when
+        pricing_mode is disabled, the product is unmatched, no price
+        exists for the packaging, or enrichment is temporarily
+        unreachable.
       type: object
       required: [id, item_type, media_type, display_name, region,
                  packaging, has_box, has_manual, currency, pricing_mode, status,
@@ -666,8 +668,21 @@ components:
         currency: { type: string, pattern: "^[A-Z]{3}$" }
         purchased_at: { type: string, format: date }
         purchased_from: { type: string }
-        pricing_mode: { type: string, enum: [auto, proxy, disabled] }
+        pricing_mode: { type: string, enum: [auto, proxy, custom, disabled] }
         pricing_product_id: { type: string, format: uuid }
+        custom_value_cents:
+          type: integer
+          format: int64
+          description: >
+            The user-set market value (USD cents). With
+            pricing_mode custom it IS the entry's value; under any
+            other mode it persists as "last custom price" memory.
+        custom_value_set_at:
+          type: string
+          format: date-time
+          description: >
+            Server-managed: stamped when custom_value_cents is first
+            set or changes value, untouched otherwise. Read-only.
         status: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
         rating: { type: integer, minimum: 1, maximum: 10 }
         notes: { type: string }
@@ -696,7 +711,8 @@ components:
         allows digital: the API widens when platform sync arrives).
         source is server-set manual. pricing_product_id is required
         when pricing_mode is proxy; box_condition requires has_box and
-        manual_condition requires has_manual.
+        manual_condition requires has_manual. custom_value_cents is
+        required when pricing_mode is custom.
       type: object
       required: [region, packaging]
       properties:
@@ -736,8 +752,9 @@ components:
         currency: { type: string, pattern: "^[A-Z]{3}$", default: USD }
         purchased_at: { type: string, format: date }
         purchased_from: { type: string, maxLength: 200 }
-        pricing_mode: { type: string, enum: [auto, proxy, disabled], default: auto }
+        pricing_mode: { type: string, enum: [auto, proxy, custom, disabled], default: auto }
         pricing_product_id: { type: string, format: uuid }
+        custom_value_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
         status:
           type: string
           enum: [backlog, playing, beaten, completed, dropped, shelved]
@@ -758,7 +775,8 @@ components:
         display_name is required and platform_name/first_release_date
         replace like any optional field; on product-backed entries all
         three are rejected. tag_ids replaces the tag set; absent means
-        no tags.
+        no tags. custom_value_cents is required when pricing_mode is
+        custom.
       type: object
       required: [region, packaging, pricing_mode, status, pinned]
       properties:
@@ -789,8 +807,9 @@ components:
         currency: { type: string, pattern: "^[A-Z]{3}$", default: USD }
         purchased_at: { type: string, format: date }
         purchased_from: { type: string, maxLength: 200 }
-        pricing_mode: { type: string, enum: [auto, proxy, disabled] }
+        pricing_mode: { type: string, enum: [auto, proxy, custom, disabled] }
         pricing_product_id: { type: string, format: uuid }
+        custom_value_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
         status: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
         rating: { type: integer, minimum: 1, maximum: 10 }
         notes: { type: string, maxLength: 10000 }

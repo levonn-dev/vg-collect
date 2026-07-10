@@ -24,6 +24,7 @@ const (
 	ProductTypeAccessory ProductType = "accessory"
 	ProductTypeConsole   ProductType = "console"
 	ProductTypeGame      ProductType = "game"
+	ProductTypePcListing ProductType = "pc_listing"
 )
 
 // Defines values for RefreshAcceptedStatus.
@@ -36,18 +37,21 @@ const (
 	ResolveRequestTypeAccessory ResolveRequestType = "accessory"
 	ResolveRequestTypeConsole   ResolveRequestType = "console"
 	ResolveRequestTypeGame      ResolveRequestType = "game"
+	ResolveRequestTypePcListing ResolveRequestType = "pc_listing"
 )
 
 // Defines values for SearchResultType.
 const (
-	SearchResultTypeGame     SearchResultType = "game"
-	SearchResultTypeHardware SearchResultType = "hardware"
+	SearchResultTypeGame      SearchResultType = "game"
+	SearchResultTypeHardware  SearchResultType = "hardware"
+	SearchResultTypePcListing SearchResultType = "pc_listing"
 )
 
 // Defines values for SearchCatalogParamsType.
 const (
-	SearchCatalogParamsTypeGame     SearchCatalogParamsType = "game"
-	SearchCatalogParamsTypeHardware SearchCatalogParamsType = "hardware"
+	SearchCatalogParamsTypeGame      SearchCatalogParamsType = "game"
+	SearchCatalogParamsTypeHardware  SearchCatalogParamsType = "hardware"
+	SearchCatalogParamsTypePcListing SearchCatalogParamsType = "pc_listing"
 )
 
 // CompanyCredit defines model for CompanyCredit.
@@ -197,7 +201,7 @@ type RefreshAccepted struct {
 // RefreshAcceptedStatus defines model for RefreshAccepted.Status.
 type RefreshAcceptedStatus string
 
-// ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on); console/accessory require pc_product_id. region/edition/variant distinguish physical variants and are part of the product identity.
+// ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on); console/accessory require pc_product_id. region/edition/variant distinguish physical variants and are part of the product identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
 type ResolveRequest struct {
 	Edition        *string            `json:"edition,omitempty"`
 	IgdbGameId     *int64             `json:"igdb_game_id,omitempty"`
@@ -224,14 +228,17 @@ type ScoreResponse struct {
 	Recommendations []Recommendation `json:"recommendations"`
 }
 
-// SearchResult Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories).
+// SearchResult Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). pc_listing results carry the pc_* fields, the PriceCharting category (empty when the provider lists none), and the standard per-listing loose/cib/new prices so variant prints are tellable apart.
 type SearchResult struct {
 	Category         *string             `json:"category,omitempty"`
+	CibCents         *int64              `json:"cib_cents,omitempty"`
 	ConsoleName      *string             `json:"console_name,omitempty"`
 	CoverUrl         *string             `json:"cover_url,omitempty"`
 	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
 	IgdbGameId       *int64              `json:"igdb_game_id,omitempty"`
+	LooseCents       *int64              `json:"loose_cents,omitempty"`
 	Name             string              `json:"name"`
+	NewCents         *int64              `json:"new_cents,omitempty"`
 	PcProductId      *int64              `json:"pc_product_id,omitempty"`
 	Platforms        *[]PlatformRef      `json:"platforms,omitempty"`
 	Type             SearchResultType    `json:"type"`

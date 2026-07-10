@@ -26,11 +26,15 @@ paths:
         by construction). When the provider is down and the cache is
         cold, the local catalog answers a name match and the response
         is flagged degraded.
+        type pc_listing searches ALL of PriceCharting (games, hardware,
+        every category) and carries the provider's loose/cib/new prices
+        per listing; it exists for picking exact variant listings as
+        price sources.
       parameters:
         - name: type
           in: query
           required: true
-          schema: { type: string, enum: [game, hardware] }
+          schema: { type: string, enum: [game, hardware, pc_listing] }
         - name: q
           in: query
           required: true
@@ -272,10 +276,14 @@ components:
         Flat result with a type discriminator. Game results carry the
         igdb_* fields; hardware results carry the pc_* fields plus the
         PriceCharting category (Systems, Controllers, Accessories).
+        pc_listing results carry the pc_* fields, the PriceCharting
+        category (empty when the provider lists none), and the standard
+        per-listing loose/cib/new prices so variant prints are tellable
+        apart.
       type: object
       required: [type, name]
       properties:
-        type: { type: string, enum: [game, hardware] }
+        type: { type: string, enum: [game, hardware, pc_listing] }
         name: { type: string }
         igdb_game_id: { type: integer, format: int64 }
         platforms:
@@ -286,6 +294,9 @@ components:
         pc_product_id: { type: integer, format: int64 }
         console_name: { type: string }
         category: { type: string }
+        loose_cents: { type: integer, format: int64 }
+        cib_cents: { type: integer, format: int64 }
+        new_cents: { type: integer, format: int64 }
     SearchResults:
       type: object
       required: [degraded, results]
@@ -351,7 +362,7 @@ components:
       required: [id, type, name, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [game, console, accessory] }
+        type: { type: string, enum: [game, console, accessory, pc_listing] }
         name: { type: string }
         platform: { $ref: "#/components/schemas/PlatformRef" }
         region: { type: string }
@@ -367,10 +378,13 @@ components:
         platform must be one the game released on); console/accessory
         require pc_product_id. region/edition/variant distinguish
         physical variants and are part of the product identity.
+        type pc_listing requires pc_product_id and mints a price-anchor
+        product for that exact listing; region/edition/variant are
+        ignored (the listing IS the exact variant).
       type: object
       required: [type]
       properties:
-        type: { type: string, enum: [game, console, accessory] }
+        type: { type: string, enum: [game, console, accessory, pc_listing] }
         igdb_game_id: { type: integer, format: int64 }
         platform_igdb_id: { type: integer, format: int64 }
         pc_product_id: { type: integer, format: int64 }

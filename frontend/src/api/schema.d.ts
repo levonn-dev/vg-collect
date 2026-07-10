@@ -443,10 +443,10 @@ export interface components {
             /** @description IGDB platform logo; the display fallback for products without cover art. */
             logo_url?: string;
         };
-        /** @description Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). */
+        /** @description Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). pc_listing results carry the pc_* fields, the PriceCharting category (empty when the provider lists none), and the standard per-listing loose/cib/new prices so variant prints are tellable apart. */
         SearchResult: {
             /** @enum {string} */
-            type: "game" | "hardware";
+            type: "game" | "hardware" | "pc_listing";
             name: string;
             /** Format: int64 */
             igdb_game_id?: number;
@@ -458,6 +458,12 @@ export interface components {
             pc_product_id?: number;
             console_name?: string;
             category?: string;
+            /** Format: int64 */
+            loose_cents?: number;
+            /** Format: int64 */
+            cib_cents?: number;
+            /** Format: int64 */
+            new_cents?: number;
         };
         SearchResults: {
             /** @description True when the provider was unreachable and the local catalog answered instead. */
@@ -507,7 +513,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            type: "game" | "console" | "accessory";
+            type: "game" | "console" | "accessory" | "pc_listing";
             name: string;
             platform?: components["schemas"]["PlatformRef"];
             region?: string;
@@ -520,10 +526,10 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
-        /** @description type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on); console/accessory require pc_product_id. region/edition/variant distinguish physical variants and are part of the product identity. */
+        /** @description type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on); console/accessory require pc_product_id. region/edition/variant distinguish physical variants and are part of the product identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant). */
         ResolveRequest: {
             /** @enum {string} */
-            type: "game" | "console" | "accessory";
+            type: "game" | "console" | "accessory" | "pc_listing";
             /** Format: int64 */
             igdb_game_id?: number;
             /** Format: int64 */
@@ -567,7 +573,7 @@ export interface components {
             igdb_platform_id?: number;
             name: string;
         };
-        /** @description One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries a name without an igdb id when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable. */
+        /** @description One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries a name without an igdb id when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; (or, with pricing_mode custom, taken directly from custom_value_cents, packaging-independent); it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable. */
         Entry: {
             /** Format: uuid */
             id: string;
@@ -612,9 +618,19 @@ export interface components {
             purchased_at?: string;
             purchased_from?: string;
             /** @enum {string} */
-            pricing_mode: "auto" | "proxy" | "disabled";
+            pricing_mode: "auto" | "proxy" | "custom" | "disabled";
             /** Format: uuid */
             pricing_product_id?: string;
+            /**
+             * Format: int64
+             * @description The user-set market value (USD cents). With pricing_mode custom it IS the entry's value; under any other mode it persists as "last custom price" memory.
+             */
+            custom_value_cents?: number;
+            /**
+             * Format: date-time
+             * @description Server-managed: stamped when custom_value_cents is first set or changes value, untouched otherwise. Read-only.
+             */
+            custom_value_set_at?: string;
             /** @enum {string} */
             status: "backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved";
             rating?: number;
@@ -634,7 +650,7 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
-        /** @description Product-backed: product_id comes from a prior enrichment resolve and the catalog fields are snapshotted server-side (display_name/item_type/platform_name/first_release_date must NOT be sent). Custom (no product_id): display_name and item_type are required, platform_name and first_release_date optional; pricing_mode defaults to disabled and must not be auto. media_type accepts only physical (the column already allows digital: the API widens when platform sync arrives). source is server-set manual. pricing_product_id is required when pricing_mode is proxy; box_condition requires has_box and manual_condition requires has_manual. */
+        /** @description Product-backed: product_id comes from a prior enrichment resolve and the catalog fields are snapshotted server-side (display_name/item_type/platform_name/first_release_date must NOT be sent). Custom (no product_id): display_name and item_type are required, platform_name and first_release_date optional; pricing_mode defaults to disabled and must not be auto. media_type accepts only physical (the column already allows digital: the API widens when platform sync arrives). source is server-set manual. pricing_product_id is required when pricing_mode is proxy; box_condition requires has_box and manual_condition requires has_manual. custom_value_cents is required when pricing_mode is custom. */
         EntryCreate: {
             /**
              * Format: uuid
@@ -687,9 +703,11 @@ export interface components {
              * @default auto
              * @enum {string}
              */
-            pricing_mode: "auto" | "proxy" | "disabled";
+            pricing_mode: "auto" | "proxy" | "custom" | "disabled";
             /** Format: uuid */
             pricing_product_id?: string;
+            /** Format: int64 */
+            custom_value_cents?: number;
             /**
              * @default backlog
              * @enum {string}
@@ -702,7 +720,7 @@ export interface components {
             pinned: boolean;
             tag_ids?: string[];
         };
-        /** @description Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). product_id, media_type, and custom-ness are immutable. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. */
+        /** @description Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). product_id, media_type, and custom-ness are immutable. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom. */
         EntryUpdate: {
             /** @description Custom entries only (required there). */
             display_name?: string;
@@ -737,9 +755,11 @@ export interface components {
             purchased_at?: string;
             purchased_from?: string;
             /** @enum {string} */
-            pricing_mode: "auto" | "proxy" | "disabled";
+            pricing_mode: "auto" | "proxy" | "custom" | "disabled";
             /** Format: uuid */
             pricing_product_id?: string;
+            /** Format: int64 */
+            custom_value_cents?: number;
             /** @enum {string} */
             status: "backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved";
             rating?: number;
@@ -1194,7 +1214,7 @@ export interface operations {
     searchCatalog: {
         parameters: {
             query: {
-                type: "game" | "hardware";
+                type: "game" | "hardware" | "pc_listing";
                 q: string;
             };
             header?: never;
