@@ -1,0 +1,42 @@
+meta {
+  name: search pc listings (all of pricecharting)
+  type: http
+  seq: 12
+}
+
+get {
+  url: {{enrichment_url}}/search?type=pc_listing&q=super mario 64
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.results[0].type: eq pc_listing
+  res.body.results[0].pc_product_id: isNumber
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.results && res.body.results.length) {
+    const first = res.body.results[0];
+    if (first.pc_product_id != null) {
+      bru.setEnvVar("pc_product_id", first.pc_product_id);
+    }
+  }
+}
+
+docs {
+  type pc_listing searches ALL of PriceCharting (games, hardware, every
+  category), not just the local catalog, so variant prints are tellable
+  apart. Expect 200 with a results array; each entry is a flat
+  pc_listing carrying a numeric pc_product_id, the console_name, and the
+  per-listing loose/cib/new cents when the provider lists them. The
+  first result's pc_product_id is stored as the pc_product_id env var
+  for resolve-pc-listing to anchor a price on. The concrete listings and
+  their prices are whatever PriceCharting returns for the query, so this
+  flow asserts shape, not exact ids.
+}

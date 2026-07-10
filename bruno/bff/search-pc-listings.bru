@@ -1,0 +1,43 @@
+meta {
+  name: search pc listings (via gateway)
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{bff_url}}/api/search?type=pc_listing&q=super mario 64
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.results[0].type: eq pc_listing
+  res.body.results[0].pc_product_id: isNumber
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.results && res.body.results.length) {
+    const results = res.body.results;
+    // create-proxy-entry.bru packages loose, so pick the first result
+    // priced for loose_cents (provider-safe downstream); fall back to
+    // results[0] so the flow still passes if none carry that price.
+    const picked = results.find((r) => r.loose_cents != null) || results[0];
+    if (picked.pc_product_id != null) {
+      bru.setEnvVar("bff_pc_product_id", picked.pc_product_id);
+    }
+  }
+}
+
+docs {
+  Run bff/dev-login first (cookie jar). The pc_listing search is relayed
+  verbatim to enrichment: type pc_listing searches all of PriceCharting
+  so the SPA can pick an exact variant listing as a price source. Expect
+  200 with a results array of flat pc_listings, each carrying a numeric
+  pc_product_id and the per-listing loose/cib/new cents when present.
+  The stored pc_product_id (bff_pc_product_id, for the resolve step) is
+  taken from the first result priced for loose_cents - the packaging
+  create-proxy-entry.bru sends - falling back to results[0] if no result
+  prices it, so create-proxy-entry's value_cents assert stays
+  provider-safe. Shape is asserted, not the concrete listings.
+}

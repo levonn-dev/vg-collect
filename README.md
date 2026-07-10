@@ -147,8 +147,10 @@ tags, saved views, and filter-aware dashboard composition with live
 enrichment pricing), the frontend (collection views in table, cover
 grid, and compact list over the full filter/sort/group matrix, saved
 views, a drag-orderable backlog, an add wizard with match confirmation
-and a custom-item path, entry editing with pricing affordances, an
-account page (profile editing, linking multiple provider logins to
+and a custom-item path, entry editing with pricing affordances,
+pricing sources that can proxy any PriceCharting listing (exact
+variant rows included) or take a user-set custom price, an account
+page (profile editing, linking multiple provider logins to
 one account with conflict-safe identity-first sign-in, unlinking, and
 full account deletion), an
 insights strip on the homepage whose stats follow the active filters
@@ -156,8 +158,8 @@ insights strip on the homepage whose stats follow the active filters
 and a dark-default theme with a light toggle, all covered end to end
 by the Playwright journey), and observability plus docs (five
 Grafana dashboards, ten alert rules with runbooks, and traces stitched
-from browser to database). Real IGDB and PriceCharting keys remain the
-only unexercised path; stub mode is the shipped default. Frontend still
+from browser to database). Stub provider mode remains the credential-less default;
+real IGDB and PriceCharting keys have been exercised live in dev. Frontend still
 needs a lot of style work and cleaning user flows.
 
 ## License

@@ -1,0 +1,49 @@
+meta {
+  name: create proxy entry (priced by a pc listing)
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{bff_url}}/api/entries
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "display_name": "Super Mario 64 (proxy via PriceCharting listing)",
+    "item_type": "game",
+    "platform_name": "Nintendo 64",
+    "region": "ntsc_u",
+    "packaging": "loose",
+    "pricing_mode": "proxy",
+    "pricing_product_id": "{{bff_pc_listing_product_id}}"
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.pricing_mode: eq proxy
+  res.body.product_id: isUndefined
+  res.body.value_cents: isNumber
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("bff_proxy_entry_id", res.body.id);
+  }
+}
+
+docs {
+  Run resolve-pc-listing first (it stores bff_pc_listing_product_id).
+  Closes the proxy path through the gateway: a custom (off-catalog)
+  entry whose value_cents is proxied from the resolved PriceCharting
+  listing, packaging-matched (loose here). Expect 201 with pricing_mode
+  proxy, no product_id (custom entries own their display fields), and a
+  numeric value_cents - search-pc-listings picks its captured listing
+  from results already priced for loose_cents, so this composed price
+  is provider-safe rather than assuming an arbitrary result prices it.
+  The entry id is stored as bff_proxy_entry_id. delete me (or collection
+  purge) cleans it up.
+}

@@ -1,0 +1,40 @@
+meta {
+  name: resolve pc listing (via gateway)
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{bff_url}}/api/products/resolve
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "type": "pc_listing",
+    "pc_product_id": {{bff_pc_product_id}}
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.type: eq pc_listing
+  res.body.pricecharting: isDefined
+  res.body.igdb: isUndefined
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setEnvVar("bff_pc_listing_product_id", res.body.id);
+  }
+}
+
+docs {
+  Run search-pc-listings first (it stores bff_pc_product_id). Relayed
+  verbatim to enrichment, which mints or finds a price-anchor product
+  for that exact listing: expect 200 with type pc_listing and the
+  pricecharting subdoc, and no igdb projection (a listing is a price
+  source, not a catalog game). The product id is stored as
+  bff_pc_listing_product_id for the proxy entry.
+}
