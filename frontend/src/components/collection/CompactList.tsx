@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { Entry } from '../../api/collection'
-import { formatCents } from '../../lib/format'
+import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import { statusLabels } from './EntryTable'
 
 interface CompactListProps {
@@ -10,6 +10,7 @@ interface CompactListProps {
 }
 
 export default function CompactList({ entries, pinSlot }: CompactListProps) {
+  const money = useDisplayMoney()
   return (
     <ul className="divide-y divide-gray-100 text-sm">
       {entries.map((e) => (
@@ -20,7 +21,7 @@ export default function CompactList({ entries, pinSlot }: CompactListProps) {
           </Link>
           <span className="text-gray-400">{e.platform?.name ?? '-'}</span>
           <span className="text-gray-400">{statusLabels[e.status]}</span>
-          <span className="ml-auto text-gray-500">{formatCents(e.value_cents) ?? '-'}</span>
+          <span className="ml-auto text-gray-500">{money.entryValue(e) ?? '-'}</span>
         </li>
       ))}
     </ul>

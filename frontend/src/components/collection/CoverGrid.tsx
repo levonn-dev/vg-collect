@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { Entry } from '../../api/collection'
-import { formatCents } from '../../lib/format'
+import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import ItemTypeIcon from '../ItemTypeIcon'
 
 interface CoverGridProps {
@@ -10,6 +10,7 @@ interface CoverGridProps {
 }
 
 export default function CoverGrid({ entries, pinSlot }: CoverGridProps) {
+  const money = useDisplayMoney()
   return (
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
       {entries.map((e) => (
@@ -36,7 +37,7 @@ export default function CoverGrid({ entries, pinSlot }: CoverGridProps) {
           </Link>
           <p className="mt-1 flex items-center justify-between text-xs text-gray-500">
             <span>{e.platform?.name ?? '-'}</span>
-            <span>{formatCents(e.value_cents) ?? '-'}</span>
+            <span>{money.entryValue(e) ?? '-'}</span>
           </p>
           <p className="mt-1 text-xs">
             {pinSlot ? pinSlot(e) : e.pinned && <span aria-label="Pinned">{'\u2605'}</span>}

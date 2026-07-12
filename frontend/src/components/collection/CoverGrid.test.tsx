@@ -1,13 +1,15 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { entryFixture } from '../../test/fixtures'
+import { renderWithMoney } from '../../test/money'
 import CoverGrid from './CoverGrid'
 
-const renderGrid = (entries = [entryFixture()]) =>
-  render(
+const renderGrid = (entries = [entryFixture()], opts: { currency?: string } = {}) =>
+  renderWithMoney(
     <MemoryRouter>
       <CoverGrid entries={entries} />
     </MemoryRouter>,
+    opts,
   )
 
 it('renders cover art when the snapshot exists', () => {
@@ -35,4 +37,9 @@ it('shows value and pin state', () => {
   renderGrid([entryFixture({ value_cents: 4200, pinned: true })])
   expect(screen.getByText('$42.00')).toBeInTheDocument()
   expect(screen.getByLabelText('Pinned')).toBeInTheDocument()
+})
+
+it('converts the value into the display currency', () => {
+  renderGrid([entryFixture({ value_cents: 4200 })], { currency: 'EUR' })
+  expect(screen.getByText('€21.00')).toBeInTheDocument()
 })

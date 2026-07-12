@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { Entry } from '../../api/collection'
 import { formatCents, releaseYear } from '../../lib/format'
+import { useDisplayMoney } from '../../lib/useDisplayMoney'
 
 // eslint-disable-next-line react-refresh/only-export-components -- shared label map, consumed by other collection views alongside this component.
 export const statusLabels: Record<Entry['status'], string> = {
@@ -21,6 +22,7 @@ interface EntryTableProps {
 }
 
 export default function EntryTable({ entries, pinSlot }: EntryTableProps) {
+  const money = useDisplayMoney()
   return (
     <table className="w-full text-left text-sm">
       <thead>
@@ -31,7 +33,7 @@ export default function EntryTable({ entries, pinSlot }: EntryTableProps) {
           <th className="py-2 pr-3">Packaging</th>
           <th className="py-2 pr-3">Rating</th>
           <th className="py-2 pr-3 text-right">Paid</th>
-          <th className="py-2 text-right">Value (USD)</th>
+          <th className="py-2 text-right">Value ({money.currency})</th>
         </tr>
       </thead>
       <tbody>
@@ -52,7 +54,7 @@ export default function EntryTable({ entries, pinSlot }: EntryTableProps) {
             <td className="py-2 pr-3">{e.packaging}</td>
             <td className="py-2 pr-3">{e.rating ?? '-'}</td>
             <td className="py-2 pr-3 text-right">{formatCents(e.price_paid_cents, e.currency) ?? '-'}</td>
-            <td className="py-2 text-right">{formatCents(e.value_cents) ?? '-'}</td>
+            <td className="py-2 text-right">{money.entryValue(e) ?? '-'}</td>
           </tr>
         ))}
       </tbody>
