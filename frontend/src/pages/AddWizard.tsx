@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { createEntry } from '../api/collection'
 import type { CatalogPick } from '../components/catalog/SearchPicker'
 import SearchPicker from '../components/catalog/SearchPicker'
+import ConfirmShell from '../components/wizard/ConfirmShell'
 import ConfirmStep from '../components/wizard/ConfirmStep'
 import type { CustomValues } from '../components/wizard/CustomStep'
 import CustomStep from '../components/wizard/CustomStep'
@@ -13,10 +14,10 @@ import { useDisplayMoney } from '../lib/useDisplayMoney'
 
 type WizardStep =
   | { step: 'search' }
-  | { step: 'details'; pick: CatalogPick }
+  | { step: 'details'; pick: CatalogPick; details?: DetailsValues }
   | { step: 'confirm'; pick: CatalogPick; details: DetailsValues }
-  | { step: 'custom' }
-  | { step: 'custom-details'; custom: CustomValues }
+  | { step: 'custom'; custom?: CustomValues; details?: DetailsValues }
+  | { step: 'custom-details'; custom: CustomValues; details?: DetailsValues }
   | { step: 'custom-confirm'; custom: CustomValues; details: DetailsValues }
 
 export default function AddWizard() {
@@ -48,6 +49,7 @@ export default function AddWizard() {
         <DetailsStep
           heading={`Your copy of ${state.pick.name}`}
           currency={money.profileCurrency}
+          initialValues={state.details}
           onBack={() => setState({ step: 'search' })}
           onNext={(details) => setState({ ...state, step: 'confirm', details })}
         />
@@ -56,20 +58,22 @@ export default function AddWizard() {
         <ConfirmStep
           pick={state.pick}
           details={state.details}
-          onBack={() => setState({ step: 'details', pick: state.pick })}
+          onBack={() => setState({ step: 'details', pick: state.pick, details: state.details })}
         />
       )}
       {state.step === 'custom' && (
         <CustomStep
+          initialValues={state.custom}
           onBack={() => setState({ step: 'search' })}
-          onNext={(custom) => setState({ step: 'custom-details', custom })}
+          onNext={(custom) => setState({ step: 'custom-details', custom, details: state.details })}
         />
       )}
       {state.step === 'custom-details' && (
         <DetailsStep
           heading={`Your copy of ${state.custom.displayName}`}
           currency={money.profileCurrency}
-          onBack={() => setState({ step: 'custom' })}
+          initialValues={state.details}
+          onBack={() => setState({ step: 'custom', custom: state.custom, details: state.details })}
           onNext={(details) => setState({ ...state, step: 'custom-confirm', details })}
         />
       )}
@@ -77,7 +81,7 @@ export default function AddWizard() {
         <CustomConfirm
           custom={state.custom}
           details={state.details}
-          onBack={() => setState({ step: 'custom-details', custom: state.custom })}
+          onBack={() => setState({ step: 'custom-details', custom: state.custom, details: state.details })}
         />
       )}
     </main>
@@ -112,32 +116,19 @@ function CustomConfirm({
     },
   })
   return (
-    <section aria-label="Confirm custom item" className="flex flex-col gap-3">
-      <h3 className="text-lg font-semibold">Confirm: {custom.displayName}</h3>
-      <p className="text-sm text-gray-600">
-        {[custom.platformName || null, custom.itemType, 'custom item'].filter(Boolean).join(' - ')}
-      </p>
+    <ConfirmShell
+      ariaLabel="Confirm custom item"
+      title={custom.displayName}
+      subtitle={[custom.platformName || null, custom.itemType, 'custom item'].filter(Boolean).join(' - ')}
+      errorMessage={create.isError ? create.error.message || 'The entry could not be created.' : undefined}
+      onBack={onBack}
+      onSubmit={() => create.mutate()}
+      submitPending={create.isPending}
+    >
       <p className="rounded bg-gray-50 p-3 text-sm text-gray-600">
         Custom items start without market pricing. To track a value, open the entry afterwards
         and choose a similar listed item as its price source.
       </p>
-      {create.isError && (
-        <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">
-          {create.error.message || 'The entry could not be created.'}
-        </p>
-      )}
-      <div className="flex gap-2">
-        <button onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
-          Back
-        </button>
-        <button
-          onClick={() => create.mutate()}
-          disabled={create.isPending}
-          className="rounded bg-gray-900 px-4 py-1 text-sm text-white enabled:hover:bg-gray-700 disabled:opacity-50"
-        >
-          Add to collection
-        </button>
-      </div>
-    </section>
+    </ConfirmShell>
   )
 }

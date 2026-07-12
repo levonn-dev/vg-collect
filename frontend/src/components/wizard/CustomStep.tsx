@@ -9,14 +9,18 @@ export interface CustomValues {
 }
 
 interface CustomStepProps {
+  // Seeds the form when a caller remounts this step with values it
+  // already collected (e.g. wizard Back from a later step); omitted,
+  // the step starts blank as before.
+  initialValues?: CustomValues
   onBack: () => void
   onNext: (c: CustomValues) => void
 }
 
 // CustomStep collects the display facts for an item no provider lists.
 // These stay user-owned and editable, unlike catalog snapshots.
-export default function CustomStep({ onBack, onNext }: CustomStepProps) {
-  const [v, setV] = useState<CustomValues>({
+export default function CustomStep({ initialValues, onBack, onNext }: CustomStepProps) {
+  const [v, setV] = useState<CustomValues>(() => initialValues ?? {
     displayName: '', itemType: 'game', platformName: '', firstReleaseDate: '',
   })
   const inputClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
