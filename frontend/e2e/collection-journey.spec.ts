@@ -182,6 +182,16 @@ test('collection journey: add, edit, price, pin, reorder, views, insights, recom
   await expect(board).toBeVisible()
   const handleA = board.getByRole('button', { name: `Drag ${customA}` })
   const targetB = board.getByRole('button', { name: `Drag ${customB}` })
+  // Pre-drag order: A is above B (backlog rank appends in creation
+  // order), so the post-drag check below reflects a real move and not
+  // the starting layout. allTextContents does not auto-wait, so gate on
+  // a handle first.
+  await expect(handleA).toBeVisible()
+  const beforeTexts = await board.getByRole('listitem').allTextContents()
+  const beforeA = beforeTexts.findIndex((t) => t.includes(customA))
+  const beforeB = beforeTexts.findIndex((t) => t.includes(customB))
+  expect(beforeA).toBeGreaterThanOrEqual(0)
+  expect(beforeA).toBeLessThan(beforeB)
   const from = await handleA.boundingBox()
   const to = await targetB.boundingBox()
   if (!from || !to) throw new Error('drag handles not visible')
