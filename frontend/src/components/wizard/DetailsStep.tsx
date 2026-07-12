@@ -70,12 +70,16 @@ interface DetailsStepProps {
   // Label only: the price-paid field is stamped with this at create
   // time (detailsToCreate takes it separately), never edited here.
   currency: string
+  // Seeds the form when a caller remounts this step with values it
+  // already collected (e.g. wizard Back from a later step); omitted,
+  // the step starts blank as before.
+  initialValues?: DetailsValues
   onBack: () => void
   onNext: (d: DetailsValues) => void
 }
 
-export default function DetailsStep({ heading, currency, onBack, onNext }: DetailsStepProps) {
-  const [v, setV] = useState<DetailsValues>(defaultDetails)
+export default function DetailsStep({ heading, currency, initialValues, onBack, onNext }: DetailsStepProps) {
+  const [v, setV] = useState<DetailsValues>(() => initialValues ?? defaultDetails())
   const set = <K extends keyof DetailsValues>(key: K, value: DetailsValues[K]) =>
     setV((prev) => ({ ...prev, [key]: value }))
   // Packaging implies the flags: loose is by definition unboxed, while

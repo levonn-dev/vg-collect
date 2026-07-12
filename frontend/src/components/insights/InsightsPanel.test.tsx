@@ -102,3 +102,19 @@ it('reports when stats cannot be loaded without blocking the page', async () => 
   renderPanel()
   expect(await screen.findByRole('alert')).toHaveTextContent(/stats cannot be loaded/i)
 })
+
+it('reports when the value history fails to load without hiding the rest', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+    const u = String(url)
+    if (u.startsWith('/api/dashboard/value-history')) return Promise.resolve(jsonResponse(500, {}))
+    if (u.startsWith('/api/dashboard')) return Promise.resolve(jsonResponse(200, dashboardFixture()))
+    if (u.startsWith('/api/recommendations')) return Promise.resolve(jsonResponse(200, recs))
+    return Promise.resolve(jsonResponse(404, {}))
+  }))
+  renderPanel()
+  await screen.findByText('42')
+  await userEvent.click(screen.getByRole('button', { name: 'Show insights' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(/value history cannot be loaded/i)
+  // The rest of the expanded section still renders.
+  expect(await screen.findByRole('region', { name: 'By platform' })).toBeInTheDocument()
+})

@@ -49,6 +49,12 @@ it('shows the degraded banner when pricing is unavailable', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent(/pricing is temporarily unavailable/i)
 })
 
+it('shows the query-error banner when the entries list fails to load', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(500, {})))
+  renderCollection()
+  expect(await screen.findByRole('alert')).toHaveTextContent(/collection cannot be loaded/i)
+})
+
 it('shows the empty-collection state with a link to add the first item', async () => {
   stubApi(listFixture([]))
   renderCollection()

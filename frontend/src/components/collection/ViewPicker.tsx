@@ -49,6 +49,14 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
   }
 
   const error = save.error ?? update.error ?? remove.error
+  // Each mutation's error otherwise lingers until that same mutation
+  // fires again, so an unrelated later success would still show the
+  // previous failure - reset all three before any new action starts.
+  const resetErrors = () => {
+    save.reset()
+    update.reset()
+    remove.reset()
+  }
 
   return (
     <section aria-label="Saved views" className="mb-3 flex flex-wrap items-center gap-2">
@@ -71,7 +79,10 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
         type="button"
         onClick={() => {
           const name = window.prompt('Name this view')
-          if (name?.trim()) save.mutate(name.trim())
+          if (name?.trim()) {
+            resetErrors()
+            save.mutate(name.trim())
+          }
         }}
         disabled={save.isPending}
         className="rounded border border-gray-300 px-2 py-1 text-sm enabled:hover:bg-gray-50 disabled:opacity-50"
@@ -82,7 +93,10 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
         <>
           <button
             type="button"
-            onClick={() => update.mutate()}
+            onClick={() => {
+              resetErrors()
+              update.mutate()
+            }}
             disabled={update.isPending}
             className="rounded border border-gray-300 px-2 py-1 text-sm enabled:hover:bg-gray-50 disabled:opacity-50"
           >
@@ -91,7 +105,10 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
           <button
             type="button"
             onClick={() => {
-              if (window.confirm('Delete this saved view?')) remove.mutate()
+              if (window.confirm('Delete this saved view?')) {
+                resetErrors()
+                remove.mutate()
+              }
             }}
             disabled={remove.isPending}
             className="rounded border border-gray-300 px-2 py-1 text-sm text-red-700 enabled:hover:bg-red-50 disabled:opacity-50"

@@ -77,8 +77,10 @@ export default function BacklogBoard({ entries }: { entries: Entry[] }) {
 
   const reorder = useMutation({
     mutationFn: ({ id, pair }: { id: string; pair: NeighborIDs }) => reorderEntry(id, pair),
-    onMutate: ({ id, pair }) => {
+    onMutate: async ({ id, pair }) => {
       setConflict(null)
+      await queryClient.cancelQueries({ queryKey: ['entries'] })
+      const previous = queryClient.getQueriesData<EntryList>({ queryKey: ['entries'] })
       // Optimistically reorder every cached entries page (only the
       // active one is mounted; the rest invalidate below anyway).
       queryClient.setQueriesData<EntryList>({ queryKey: ['entries'] }, (old) => {
@@ -94,8 +96,10 @@ export default function BacklogBoard({ entries }: { entries: Entry[] }) {
         moved.splice(anchor < 0 ? moved.length : anchor, 0, row)
         return { ...old, entries: moved }
       })
+      return { previous }
     },
-    onError: (err) => {
+    onError: (err, _vars, context) => {
+      context?.previous.forEach(([key, data]) => queryClient.setQueryData(key, data))
       setConflict(
         err instanceof ApiError && err.code === 'conflicting_order'
           ? 'The backlog changed somewhere else; the list has been refreshed.'
@@ -108,6 +112,7 @@ export default function BacklogBoard({ entries }: { entries: Entry[] }) {
   })
 
   const submit = (id: string, pair: NeighborIDs | null) => {
+    if (reorder.isPending) return
     if (pair) reorder.mutate({ id, pair })
   }
   const handleDragEnd = (event: DragEndEvent) => {

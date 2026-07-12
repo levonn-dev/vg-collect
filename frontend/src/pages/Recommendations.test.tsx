@@ -46,3 +46,15 @@ it('explains an empty answer', async () => {
   renderRecs()
   expect(await screen.findByText(/add and rate a few games/i)).toBeInTheDocument()
 })
+
+it('shows a loading state while scoring', () => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise(() => {})))
+  renderRecs()
+  expect(screen.getByText(/scoring your library/i)).toBeInTheDocument()
+})
+
+it('shows the error state when recommendations fail to load', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(500, {})))
+  renderRecs()
+  expect(await screen.findByRole('alert')).toHaveTextContent(/cannot be loaded right now/i)
+})

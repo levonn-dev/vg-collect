@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Test sources are excluded from utility scanning: identifiers that only ever appear in test code must not surface as shipped utility classes. */
+@source not "**/*.test.{ts,tsx}";
+@source not "test/**";
+
 /* Enable dark: utilities against the html-level class (applied before
    first paint by the script in index.html). */
 @custom-variant dark (&:where(.dark, .dark *));
