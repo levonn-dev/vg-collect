@@ -43,9 +43,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	mongoURL, err := db.ComposeURL(cfg.MongoURL, cfg.MongoUsername, cfg.MongoPassword)
+	if err != nil {
+		return err
+	}
 
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
-		return db.Migrate(ctx, cfg.MongoURL, cfg.MongoDB, migrations.FS, ".")
+		return db.Migrate(ctx, mongoURL, cfg.MongoDB, migrations.FS, ".")
 	}
 
 	shutdown, err := vgotel.Setup(ctx, vgotel.Config{ServiceName: "enrichment", Version: cfg.Version})
@@ -54,7 +58,7 @@ func run() error {
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
-	client, err := db.Connect(ctx, cfg.MongoURL)
+	client, err := db.Connect(ctx, mongoURL)
 	if err != nil {
 		return err
 	}

@@ -25,11 +25,13 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["migrate"]
           env: &appEnv
+            - name: MONGO_USERNAME
+              value: {{ .Values.mongo.username | quote }}
             - name: MONGO_PASSWORD
               valueFrom:
                 secretKeyRef: { name: enrichment-secrets, key: mongo-password }
             - name: MONGO_URL
-              value: "mongodb://{{ .Values.mongo.username }}:$(MONGO_PASSWORD)@{{ include "enrichment.mongoHost" . }}:27017/{{ .Values.mongo.database }}?tls=true&tlsCAFile=/etc/vg/mongo-ca/ca.crt&authSource=admin"
+              value: "mongodb://{{ include "enrichment.mongoHost" . }}:27017/{{ .Values.mongo.database }}?tls=true&tlsCAFile=/etc/vg/mongo-ca/ca.crt&authSource=admin"
             - name: MONGO_DB
               value: {{ .Values.mongo.database | quote }}
             # The accepted internal-caller token set: the current one,

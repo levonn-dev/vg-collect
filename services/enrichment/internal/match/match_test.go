@@ -119,6 +119,27 @@ func TestBest(t *testing.T) {
 	}
 }
 
+func TestBest_ApostropheVariantsMatchThroughNormalize(t *testing.T) {
+	// The lower-level Normalize coverage proves straight/curly
+	// apostrophes and a dropped apostrophe all fold to the same token;
+	// this drives that through Best() itself, with an unrelated
+	// neighbor present so the win is non-vacuous.
+	cands := []Candidate{
+		{PCProductID: 41, Name: "Demon\u2019s Souls", ConsoleName: "PlayStation"}, // curly apostrophe (Go unicode escape keeps the source ASCII)
+		{PCProductID: 42, Name: "Chrono Cross", ConsoleName: "PlayStation"},       // unrelated neighbor
+	}
+	got := Best("Demon's Souls", "", "PlayStation", cands) // straight apostrophe
+	if !got.OK || got.PCProductID != 41 || got.Confidence != 1.0 {
+		t.Fatalf("curly-apostrophe candidate must win: %+v", got)
+	}
+
+	got = Best("Demon's Souls", "", "PlayStation",
+		[]Candidate{{PCProductID: 43, Name: "Demons Souls", ConsoleName: "PlayStation"}}) // no apostrophe
+	if !got.OK || got.PCProductID != 43 || got.Confidence != 1.0 {
+		t.Fatalf("no-apostrophe candidate must win: %+v", got)
+	}
+}
+
 func TestBest_BaseListingBeatsVariantRow(t *testing.T) {
 	cands := []Candidate{
 		{PCProductID: 5005, Name: "Super Mario 64", ConsoleName: "Nintendo 64"},

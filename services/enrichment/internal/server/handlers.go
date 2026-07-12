@@ -203,11 +203,18 @@ func pcListingResult(id int64, name, console, category string, q store.PriceQuot
 func localResults(kind string, prods []store.Product) []api.SearchResult {
 	out := make([]api.SearchResult, 0, len(prods))
 	if kind == "pc_listing" {
-		// Degraded: any product's stored mapping is a known listing.
+		// Degraded: any product's stored mapping is a known listing. A
+		// resolved game/hardware product can carry the same
+		// pc_product_id as a separate pc_listing anchor product (two
+		// independent resolves; nothing ties their identities
+		// together), so an order-preserving de-dupe keeps one row per
+		// listing.
+		seen := make(map[int64]bool, len(prods))
 		for _, p := range prods {
-			if p.PriceCharting == nil {
+			if p.PriceCharting == nil || seen[p.PriceCharting.PCProductID] {
 				continue
 			}
+			seen[p.PriceCharting.PCProductID] = true
 			pc := p.PriceCharting
 			out = append(out, pcListingResult(pc.PCProductID, pc.PCName, pc.ConsoleName, "", pc.Current))
 		}
@@ -1048,7 +1055,9 @@ func (h *Handlers) startRefresh(w http.ResponseWriter, r *http.Request) {
 
 // runRefresh walks every mapped product: current prices updated, one
 // snapshot appended, failures counted and skipped (the walk finishes
-// what it can). Orphaned products keep snapshotting by design.
+// what it can). Orphaned products keep snapshotting by design. Once
+// the budget expires, the ctx.Err() check between products stops the
+// walk instead of burning a failure for every remaining product.
 func (h *Handlers) runRefresh(ctx context.Context) {
 	start := h.now()
 	prods, err := h.store.ListPriced(ctx)
@@ -1056,8 +1065,14 @@ func (h *Handlers) runRefresh(ctx context.Context) {
 		h.logger.ErrorContext(ctx, "refresh walk aborted", "err", err)
 		return
 	}
-	var updated, snapshots, failures int
+	var updated, snapshots, failures, walked int
 	for _, p := range prods {
+		if err := ctx.Err(); err != nil {
+			h.logger.WarnContext(ctx, "refresh walk stopped early: context done",
+				"walked", walked, "remaining", len(prods)-walked, "err", err)
+			break
+		}
+		walked++
 		pc, err := h.prices.Product(ctx, p.PriceCharting.PCProductID)
 		if err != nil {
 			failures++
@@ -1086,7 +1101,7 @@ func (h *Handlers) runRefresh(ctx context.Context) {
 		}
 	}
 	h.logger.InfoContext(ctx, "refresh walk finished",
-		"walked", len(prods), "updated", updated, "snapshots", snapshots,
+		"walked", walked, "updated", updated, "snapshots", snapshots,
 		"failures", failures, "duration_ms", h.now().Sub(start).Milliseconds())
 }
 

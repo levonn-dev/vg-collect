@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -20,6 +21,29 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/mongo/otelmongo"
 )
+
+// ComposeURL returns the URL Connect and Migrate should use. When
+// username and password are both empty, baseURL passes through
+// unchanged byte-for-byte (baseURL may already carry inline
+// credentials, e.g. local dev and testcontainers connection strings).
+// When both are set, baseURL must not already carry userinfo -
+// ComposeURL injects url.UserPassword(username, password) and errors
+// otherwise, since two credential sources for one connection cannot
+// be reconciled safely.
+func ComposeURL(baseURL, username, password string) (string, error) {
+	if username == "" && password == "" {
+		return baseURL, nil
+	}
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("db: parse mongo url: %w", err)
+	}
+	if u.User != nil {
+		return "", errors.New("db: mongo url already has userinfo; cannot also set MONGO_USERNAME/MONGO_PASSWORD")
+	}
+	u.User = url.UserPassword(username, password)
+	return u.String(), nil
+}
 
 // Connect builds an OTel-instrumented client from a mongodb:// URL and
 // verifies connectivity. TLS rides in URL parameters

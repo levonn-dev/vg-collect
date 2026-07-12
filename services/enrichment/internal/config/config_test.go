@@ -35,6 +35,33 @@ func TestLoad_MissingRequired(t *testing.T) {
 	}
 }
 
+func TestLoad_MongoCredentialPairBothOrNeither(t *testing.T) {
+	setBase(t)
+	if _, err := Load(); err != nil {
+		t.Fatalf("credential-less pair should load: %v", err)
+	}
+
+	t.Setenv("MONGO_USERNAME", "enrichment")
+	if _, err := Load(); err == nil {
+		t.Fatal("want error for MONGO_USERNAME without MONGO_PASSWORD")
+	}
+
+	t.Setenv("MONGO_USERNAME", "")
+	t.Setenv("MONGO_PASSWORD", "s3cret")
+	if _, err := Load(); err == nil {
+		t.Fatal("want error for MONGO_PASSWORD without MONGO_USERNAME")
+	}
+
+	t.Setenv("MONGO_USERNAME", "enrichment")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("full credential pair should load: %v", err)
+	}
+	if cfg.MongoUsername != "enrichment" || cfg.MongoPassword != "s3cret" {
+		t.Fatalf("credential pair not parsed: %+v", cfg)
+	}
+}
+
 func TestLoad_RealModesRequireCredentials(t *testing.T) {
 	setBase(t)
 	t.Setenv("IGDB_MODE", "real")

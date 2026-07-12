@@ -20,6 +20,12 @@ type Config struct {
 	// database name.
 	MongoURL string `env:"MONGO_URL,required"`
 	MongoDB  string `env:"MONGO_DB"  envDefault:"enrichment"`
+	// Optional credential pair composed into MongoURL's userinfo (see
+	// db.ComposeURL) rather than arriving pre-embedded. Must be both
+	// set or both empty; when empty, MongoURL is used exactly as
+	// given, which may itself already carry inline credentials.
+	MongoUsername string `env:"MONGO_USERNAME"`
+	MongoPassword string `env:"MONGO_PASSWORD"`
 
 	ValkeyURL string `env:"VALKEY_URL,required"`
 	// CA bundle for rediss:// against the in-cluster CA-issued cert.
@@ -58,6 +64,9 @@ func Load() (Config, error) {
 	cfg, err := libconfig.Load[Config]()
 	if err != nil {
 		return Config{}, err
+	}
+	if (cfg.MongoUsername == "") != (cfg.MongoPassword == "") {
+		return Config{}, errors.New("config: MONGO_USERNAME and MONGO_PASSWORD must both be set or both be empty")
 	}
 	switch cfg.IGDBMode {
 	case "stub":

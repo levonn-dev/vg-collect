@@ -35,6 +35,30 @@ func TestOwnerWeights_ThroughScore(t *testing.T) {
 	}
 }
 
+func TestOwnerWeight_Rating8BoundaryThroughScore(t *testing.T) {
+	// Pins the >= 8 threshold exactly: a rating of 8 must land on the
+	// lifted (2.0) side. The nearest neighbor below - 7, the field is an
+	// integer 1-10 - must stay at 1.0, so the pin is not vacuous.
+	meta := map[int64]Meta{
+		1: {Similar: []int64{201}},
+		2: {Similar: []int64{202}},
+	}
+	lib := []LibraryGame{
+		{GameID: 1, Rating: intp(8)},
+		{GameID: 2, Rating: intp(7)},
+	}
+	got := Score(lib, meta, []int64{201, 202})
+	want := map[int64]float64{201: 2.0, 202: 1.0}
+	if len(got) != 2 {
+		t.Fatalf("want 2 scored, got %d", len(got))
+	}
+	for _, s := range got {
+		if want[s.GameID] != s.Score {
+			t.Errorf("candidate %d: score %.2f, want %.2f", s.GameID, s.Score, want[s.GameID])
+		}
+	}
+}
+
 func TestScore_EdgesAccumulateAndOwnedExcluded(t *testing.T) {
 	meta := map[int64]Meta{
 		1: {Similar: []int64{100, 2}}, // 2 is owned: never a candidate

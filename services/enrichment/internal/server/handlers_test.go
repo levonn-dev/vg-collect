@@ -718,6 +718,56 @@ func TestUnitSearch_PCListingsDegradedFallsBackToMappings(t *testing.T) {
 	}
 }
 
+// TestUnitSearch_PCListingsDegradedDedupesSharedPCProductID pins the
+// degraded local-fallback dedupe: a resolved game product that
+// auto-matched to a PriceCharting listing, and a separate pc_listing
+// anchor product created straight off that same listing id, are two
+// distinct local documents with no identity tying them together -
+// both can match the query text and both carry the same
+// pc_product_id, so the fallback must collapse them to one row.
+func TestUnitSearch_PCListingsDegradedDedupesSharedPCProductID(t *testing.T) {
+	env := newAuthEnv(t)
+	st := &stubStore{}
+	prices := &stubPrices{}
+	prices.search = func(ctx context.Context, q string) ([]pricecharting.Product, error) {
+		return nil, errors.New("provider down")
+	}
+	loose := int64(1100)
+	st.searchByName = func(ctx context.Context, q string, limit int) ([]store.Product, error) {
+		return []store.Product{
+			{
+				ID: "game-1", Type: "game", Name: "Super Mario 64",
+				PriceCharting: &store.PCMeta{
+					PCProductID: 5005, PCName: "Super Mario 64", ConsoleName: "Nintendo 64",
+					Current: store.PriceQuote{LooseCents: &loose},
+				},
+			},
+			{
+				ID: "listing-1", Type: "pc_listing", Name: "Super Mario 64",
+				PriceCharting: &store.PCMeta{
+					PCProductID: 5005, PCName: "Super Mario 64", ConsoleName: "Nintendo 64",
+					Current: store.PriceQuote{LooseCents: &loose},
+				},
+			},
+		}, nil
+	}
+	h := newUnitHandlers(st, &stubGames{}, prices, newStubCache())
+	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=pc_listing&q=mario", env.token(t, "u1", []string{"user"}), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var out api.SearchResults
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Results) != 1 {
+		t.Fatalf("degraded pc_listing results must dedupe by pc_product_id: got %d, %+v", len(out.Results), out.Results)
+	}
+	if *out.Results[0].PcProductId != 5005 {
+		t.Fatalf("unexpected surviving row: %+v", out.Results[0])
+	}
+}
+
 func TestUnitGetProduct_NotFoundAndCacheHit(t *testing.T) {
 	env := newAuthEnv(t)
 	c := newStubCache()
@@ -785,6 +835,28 @@ func TestUnitGetProduct_StaleIGDBRefetchAndStaleServeOnError(t *testing.T) {
 	rec = serveUnit(t, h2, env, http.MethodGet, "/products/"+prod.ID, tok, nil)
 	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte("Chrono Trigger")) {
 		t.Fatalf("stale serve: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUnitGetProduct_FreshIGDBSkipsProviderRefetch(t *testing.T) {
+	env := newAuthEnv(t)
+	tok := env.token(t, "u1", []string{"user"})
+	fresh := time.Now().Add(-1 * time.Hour) // well inside the 720h window
+	prod := store.Product{
+		ID: "66666666-6666-6666-6666-666666666666", Type: "game", Name: "Chrono Trigger",
+		IGDB: &store.IGDBMeta{GameID: 1011, Name: "Chrono Trigger", FetchedAt: fresh,
+			Genres: []store.Genre{}, Themes: []string{}, Franchises: []string{}, SimilarGames: []int64{}, Companies: []store.Company{}},
+	}
+	st := &stubStore{getProduct: func(context.Context, string) (store.Product, error) { return prod, nil }}
+	// gamesByIDs, upsertRaw and setIGDB are all left nil: a fresh
+	// product must not touch the provider or the store's write paths,
+	// and every stub panics loudly if called unexpectedly.
+	games := &stubGames{}
+	h := newUnitHandlers(st, games, nil, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodGet, "/products/"+prod.ID, tok, nil)
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte("Chrono Trigger")) {
+		t.Fatalf("fresh serve: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -1210,7 +1282,7 @@ func TestUnitBatchPrices_CapAndBadBody(t *testing.T) {
 	}
 }
 
-func TestBatchPriceHistoryGroupsAndWindows(t *testing.T) {
+func TestUnitBatchPriceHistoryGroupsAndWindows(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
 	fixed := time.Date(2026, time.July, 5, 12, 0, 0, 0, time.UTC)
@@ -1254,7 +1326,7 @@ func TestBatchPriceHistoryGroupsAndWindows(t *testing.T) {
 	}
 }
 
-func TestBatchPriceHistoryRejectsBadInput(t *testing.T) {
+func TestUnitBatchPriceHistoryRejectsBadInput(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
 	st := &stubStore{} // any store call would panic: rejection happens first
@@ -1300,7 +1372,7 @@ func TestBatchPriceHistoryRejectsBadInput(t *testing.T) {
 	}
 }
 
-func TestBatchPriceHistoryStoreFailureIs500(t *testing.T) {
+func TestUnitBatchPriceHistoryStoreFailureIs500(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
 	st := &stubStore{
@@ -1745,6 +1817,38 @@ func TestUnitRefresh_WalkSurvivesPerProductFailures(t *testing.T) {
 	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 	if snaps != 1 {
 		t.Fatalf("the healthy product must still snapshot: %d", snaps)
+	}
+}
+
+func TestUnitRunRefresh_StopsEarlyOnContextCancellation(t *testing.T) {
+	prods := make([]store.Product, 5)
+	for i := range prods {
+		prods[i] = store.Product{ID: fmt.Sprintf("p%d", i), PriceCharting: &store.PCMeta{PCProductID: int64(i)}}
+	}
+	st := &stubStore{
+		listPriced:       func(context.Context) ([]store.Product, error) { return prods, nil },
+		setCurrentPrices: func(context.Context, string, store.PriceQuote, time.Time) error { return nil },
+		appendSnapshot:   func(context.Context, store.Snapshot) error { return nil },
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var calls int
+	prices := &stubPrices{product: func(context.Context, int64) (pricecharting.Product, error) {
+		calls++
+		if calls == 2 {
+			// The budget expires partway through the walk (after the
+			// 2nd of 5 products): the next iteration's ctx.Err() check
+			// must stop the walk instead of visiting the rest.
+			cancel()
+		}
+		return pricecharting.Product{ID: 1, Name: "P", ConsoleName: "C"}, nil
+	}}
+	h := newUnitHandlers(st, nil, prices, newStubCache())
+
+	h.runRefresh(ctx)
+
+	if calls != 2 {
+		t.Fatalf("walk must stop between products once ctx is done: price provider called %d times, want 2", calls)
 	}
 }
 

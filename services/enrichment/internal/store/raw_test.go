@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
+
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/igdb"
 )
 
@@ -47,6 +49,37 @@ func TestRaw_UpsertReplaceAndMissingAbsent(t *testing.T) {
 	}
 	if out, err := s.RawByIDs(ctx, nil); err != nil || out != nil {
 		t.Fatalf("empty query should be a no-op: %v, %v", out, err)
+	}
+}
+
+func TestRaw_UpsertReplaceDropsFieldsAbsentFromReplacement(t *testing.T) {
+	s, mdb := newTestStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 7, 1, 6, 0, 0, 0, time.UTC)
+
+	// Seed a doc carrying a field the RawGame struct does not define, as
+	// a stand-in for a document written under a since-dropped schema
+	// field. UpsertRaw's ReplaceOneModel must replace the whole
+	// document, not $set-merge it, so the field must vanish.
+	if _, err := mdb.Collection("igdb_raw").InsertOne(ctx, bson.D{
+		{Key: "_id", Value: int64(1011)},
+		{Key: "game", Value: bson.D{{Key: "id", Value: int64(1011)}, {Key: "name", Value: "Chrono Trigger"}}},
+		{Key: "fetched_at", Value: at},
+		{Key: "legacy_unused_field", Value: "must not survive a replace"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.UpsertRaw(ctx, []igdb.Game{{ID: 1011, Name: "Chrono Trigger"}}, at.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	var raw bson.M
+	if err := mdb.Collection("igdb_raw").FindOne(ctx, bson.D{{Key: "_id", Value: int64(1011)}}).Decode(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, present := raw["legacy_unused_field"]; present {
+		t.Fatalf("ReplaceOneModel must drop fields absent from the replacement document: %+v", raw)
 	}
 }
 
