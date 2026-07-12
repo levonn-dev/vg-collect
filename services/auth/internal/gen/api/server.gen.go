@@ -181,6 +181,9 @@ type TokenPair struct {
 // BadRequest defines model for BadRequest.
 type BadRequest = Problem
 
+// InternalError defines model for InternalError.
+type InternalError = Problem
+
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Problem
 

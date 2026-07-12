@@ -257,6 +257,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/RefreshProblem"
+        "500": { $ref: "#/components/responses/InternalError" }
         "503":
           description: Role source (user service) unavailable; retry later, token not consumed
           content:
@@ -275,6 +276,7 @@ paths:
       responses:
         "204":
           description: Chain revoked (or token unknown; idempotent)
+        "500": { $ref: "#/components/responses/InternalError" }
   /.well-known/jwks.json:
     get:
       operationId: getJwks
@@ -302,6 +304,11 @@ components:
           schema: { $ref: "#/components/schemas/Problem" }
     Unauthorized:
       description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    InternalError:
+      description: Unexpected server-side failure
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }

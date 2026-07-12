@@ -184,6 +184,9 @@ type TokenPair struct {
 // BadRequest defines model for BadRequest.
 type BadRequest = Problem
 
+// InternalError defines model for InternalError.
+type InternalError = Problem
+
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Problem
 
@@ -1291,6 +1294,7 @@ type RefreshTokenResponse struct {
 	HTTPResponse              *http.Response
 	JSON200                   *TokenPair
 	ApplicationproblemJSON401 *RefreshProblem
+	ApplicationproblemJSON500 *InternalError
 	ApplicationproblemJSON503 *Problem
 }
 
@@ -1311,8 +1315,9 @@ func (r RefreshTokenResponse) StatusCode() int {
 }
 
 type RevokeTokenResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON500 *InternalError
 }
 
 // Status returns HTTPResponse.Status
@@ -1897,6 +1902,13 @@ func ParseRefreshTokenResponse(rsp *http.Response) (*RefreshTokenResponse, error
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -1920,6 +1932,16 @@ func ParseRevokeTokenResponse(rsp *http.Response) (*RevokeTokenResponse, error) 
 	response := &RevokeTokenResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
 	}
 
 	return response, nil

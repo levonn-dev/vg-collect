@@ -1,0 +1,56 @@
+meta {
+  name: create entry (custom price)
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{collection_url}}/entries
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "product_id": "{{product_id}}",
+    "region": "ntsc_u",
+    "packaging": "sealed",
+    "pricing_mode": "custom",
+    "custom_value_cents": 15000,
+    "custom_value_entered_cents": 12000,
+    "custom_value_entered_currency": "GBP",
+    "price_paid_cents": 9000
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.pricing_mode: eq custom
+  res.body.value_cents: eq 15000
+  res.body.custom_value_entered_cents: eq 12000
+  res.body.custom_value_entered_currency: eq GBP
+  res.body.custom_value_set_at: isDefined
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("custom_price_entry_id", res.body.id);
+  }
+}
+
+docs {
+  Same product-backed bootstrap as create-entry, but pricing_mode
+  custom from the start instead of composed later by an update:
+  value_cents comes straight from custom_value_cents, so packaging
+  (sealed here) plays no part in it. Expect 201 with value_cents 15000
+  and custom_value_set_at stamped by the server; the entry still keeps
+  its product_id join and catalog snapshot. custom_value_cents is the
+  USD snapshot the backend aggregates with; the entered pair
+  (custom_value_entered_cents, custom_value_entered_currency) is what
+  the user actually typed, echoed back for pinned display - send both
+  together or neither, and only alongside custom_value_cents.
+}
