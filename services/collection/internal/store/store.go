@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -505,10 +506,10 @@ func (s *Store) CreateTag(ctx context.Context, userID uuid.UUID, name string) (T
 	return t, nil
 }
 
-// isUniqueViolation reports a Postgres 23505 (unique_violation).
+// isUniqueViolation reports a Postgres unique_violation.
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
 }
 
 // Filters is the list-matrix input. Multi-value dimensions OR within

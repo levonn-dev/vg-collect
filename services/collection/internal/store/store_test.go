@@ -397,11 +397,11 @@ func paramsEqual(t *testing.T, got, want []byte) bool {
 
 // seedMatrix creates a deliberately varied collection for one user:
 //
-//	chrono  game      SNES(6) backlog  cib    ntsc_u  rating 9  paid 5000 USD  tags rpg,fav  year 1995
-//	alundra game      PS1(7)  playing  loose  pal     no rating no paid        tags rpg      year 1997
-//	snes    console   SNES(6) shelved  cib    ntsc_u  no rating paid 12000 USD no tags       no year
-//	terra   game      SNES(6) backlog  sealed ntsc_j  rating 3  no paid        tags fav      year 1996  PINNED
-//	pad     accessory (none)  shelved  loose  region_free       paid 2000 EUR  no tags       no year
+//	chrono  game      SNES(6) backlog  cib    ntsc_u  rating 9  paid 5000 USD  tags rpg,fav  year 1995  condition mint     purchased 2020-01-15
+//	alundra game      PS1(7)  playing  loose  pal     no rating no paid        tags rpg      year 1997  no condition       purchased 2021-06-01
+//	snes    console   SNES(6) shelved  cib    ntsc_u  no rating paid 12000 USD no tags       no year    no condition       purchased 2019-03-10
+//	terra   game      SNES(6) backlog  sealed ntsc_j  rating 3  no paid        tags fav      year 1996  condition good     no purchase date  PINNED
+//	pad     accessory (none)  shelved  loose  region_free       paid 2000 EUR  no tags       no year    no condition       no purchase date
 func seedMatrix(t *testing.T, s *store.Store) (user uuid.UUID, byName map[string]store.Entry, tagIDs map[string]uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
@@ -428,17 +428,21 @@ func seedMatrix(t *testing.T, s *store.Store) (user uuid.UUID, byName map[string
 		e.IGDBGameID = ptr(int64(1000))
 		e.FirstReleaseDate = ptr(time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC))
 		e.Rating, e.PricePaidCents = ptr(9), ptr(int64(5000))
+		e.ItemCondition = ptr("mint")
+		e.PurchasedAt = ptr(time.Date(2020, time.January, 15, 0, 0, 0, 0, time.UTC))
 	}, rpg.ID, fav.ID)
 	byName["alundra"] = mk("Alundra", func(e *store.Entry) {
 		e.PlatformIGDBID, e.PlatformName = ptr(int64(7)), ptr("PS1")
 		e.IGDBGameID = ptr(int64(1001))
 		e.FirstReleaseDate = ptr(time.Date(1997, time.April, 11, 0, 0, 0, 0, time.UTC))
 		e.Status, e.Packaging, e.Region = "playing", "loose", "pal"
+		e.PurchasedAt = ptr(time.Date(2021, time.June, 1, 0, 0, 0, 0, time.UTC))
 	}, rpg.ID)
 	byName["snes"] = mk("Super Nintendo", func(e *store.Entry) {
 		e.ItemType = "console"
 		e.PlatformIGDBID, e.PlatformName = ptr(int64(6)), ptr("SNES")
 		e.Status, e.PricePaidCents = "shelved", ptr(int64(12000))
+		e.PurchasedAt = ptr(time.Date(2019, time.March, 10, 0, 0, 0, 0, time.UTC))
 	})
 	byName["terra"] = mk("Terranigma", func(e *store.Entry) {
 		e.PlatformIGDBID, e.PlatformName = ptr(int64(6)), ptr("SNES")
@@ -446,6 +450,7 @@ func seedMatrix(t *testing.T, s *store.Store) (user uuid.UUID, byName map[string
 		e.FirstReleaseDate = ptr(time.Date(1996, time.October, 19, 0, 0, 0, 0, time.UTC))
 		e.Packaging, e.Region = "sealed", "ntsc_j"
 		e.Rating, e.Pinned = ptr(3), true
+		e.ItemCondition = ptr("good")
 	}, fav.ID)
 	byName["pad"] = mk("Controller", func(e *store.Entry) {
 		e.ItemType = "accessory"
@@ -523,6 +528,14 @@ func TestListFilters(t *testing.T) {
 	wantNames(t, list(f), "Chrono Trigger")
 
 	f = base
+	f.ItemConditions = []string{"mint"}
+	wantNames(t, list(f), "Chrono Trigger")
+
+	f = base
+	f.ItemConditions = []string{"mint", "good"}           // OR within a dimension
+	wantNames(t, list(f), "Terranigma", "Chrono Trigger") // terra is pinned
+
+	f = base
 	f.Statuses = []string{"dropped"}
 	if got := list(f); len(got) != 0 {
 		t.Fatalf("expected empty, got %v", names(got))
@@ -551,6 +564,12 @@ func TestListSorts(t *testing.T) {
 		"Terranigma", "Controller", "Chrono Trigger", "Super Nintendo", "Alundra")
 	wantNames(t, list(store.Filters{Sort: "release_date", Order: "asc"}),
 		"Terranigma", "Chrono Trigger", "Alundra", "Controller", "Super Nintendo")
+	// purchased_at: snes (2019) < chrono (2020) < alundra (2021); terra
+	// and pad never purchased (nulls last regardless of direction).
+	wantNames(t, list(store.Filters{Sort: "purchased_at", Order: "asc"}),
+		"Terranigma", "Super Nintendo", "Chrono Trigger", "Alundra", "Controller")
+	wantNames(t, list(store.Filters{Sort: "purchased_at", Order: "desc"}),
+		"Terranigma", "Alundra", "Chrono Trigger", "Super Nintendo", "Controller")
 	wantNames(t, list(store.Filters{Sort: "created_at", Order: "asc"}),
 		"Terranigma", "Chrono Trigger", "Alundra", "Super Nintendo", "Controller")
 

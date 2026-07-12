@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1062,6 +1064,29 @@ func TestUnitGetEntry_DisabledPricingSkipsComposition(t *testing.T) {
 	}
 }
 
+// TestUnitGetEntry_SealedPricesFromNewCents pins that packaging=sealed
+// composes the new-price quote, not the loose or cib figure.
+func TestUnitGetEntry_SealedPricesFromNewCents(t *testing.T) {
+	user := uuid.New()
+	e := storedGameEntry(user)
+	e.Packaging = "sealed"
+	st := &stubStore{getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return e, nil }}
+	enrich := &stubEnrichment{batchPrices: pricedAs(1500, 4200, 9900)}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+
+	resp := do(t, http.MethodGet, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var got struct {
+		ValueCents *int64 `json:"value_cents"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&got)
+	if got.ValueCents == nil || *got.ValueCents != 9900 {
+		t.Fatalf("sealed packaging must price from new_cents (9900), got %v", got.ValueCents)
+	}
+}
+
 func TestUnitUpdateEntry(t *testing.T) {
 	user := uuid.New()
 	e := storedGameEntry(user)
@@ -1143,6 +1168,39 @@ func TestUnitUpdateEntry(t *testing.T) {
 				m["pricing_product_id"] = uuid.NewString()
 			}))
 		wantProblem(t, resp, http.StatusNotFound, "unknown_pricing_product")
+	})
+
+	// The gate's other disjunct: a product-backed entry proxying to its
+	// OWN product (rather than an unchanged proxy override) is also
+	// already known-good and needs no round-trip.
+	t.Run("proxying to the entry's own product needs no validation", func(t *testing.T) {
+		var updated store.Entry
+		st := &stubStore{
+			getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return e, nil },
+			updateEntry: func(_ context.Context, in store.Entry, _ []uuid.UUID) (store.Entry, error) {
+				updated = in
+				in.Tags = []store.TagRef{}
+				return in, nil
+			},
+		}
+		enrich := &stubEnrichment{
+			// getProduct deliberately nil: a call would panic the stub.
+			batchPrices: pricedAs(1500, 4200, 9900),
+		}
+		srv, a := newUnitServer(t, st, enrich, newStubCache())
+
+		resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+			updateBody(func(m map[string]any) {
+				m["pricing_mode"] = "proxy"
+				m["pricing_product_id"] = e.ProductID.String()
+			}))
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status %d: %s", resp.StatusCode, body)
+		}
+		if updated.PricingMode != "proxy" || updated.PricingProductID == nil || *updated.PricingProductID != *e.ProductID {
+			t.Fatalf("update payload: %+v", updated)
+		}
 	})
 
 	t.Run("switching disabled to proxy re-validates even if pricing_product_id was already stored", func(t *testing.T) {
@@ -1934,6 +1992,35 @@ func TestUnitListEntries_Pagination(t *testing.T) {
 	}
 }
 
+// TestUnitListEntries_OffsetOverflowClampsToEmptyPage pins that an
+// absurd-but-contract-legal offset (the contract sets no upper bound)
+// answers a normal empty page rather than overflowing the paging math.
+func TestUnitListEntries_OffsetOverflowClampsToEmptyPage(t *testing.T) {
+	user := uuid.New()
+	only := listedEntry(user, "Only", nil)
+	st := &stubStore{listEntries: func(context.Context, uuid.UUID, store.Filters) ([]store.Entry, error) {
+		return []store.Entry{only}, nil
+	}}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+
+	resp := do(t, http.MethodGet, fmt.Sprintf("%s/entries?offset=%d", srv.URL, math.MaxInt),
+		a.token(t, user.String()), nil)
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("an absurd but contract-legal offset must not 500: %d: %s", resp.StatusCode, body)
+	}
+	var got struct {
+		TotalCount int   `json:"total_count"`
+		Entries    []any `json:"entries"`
+	}
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.TotalCount != 1 || len(got.Entries) != 0 {
+		t.Fatalf("want total_count=1, empty page; got %+v", got)
+	}
+}
+
 // TestUnitListEntries_DefaultSortAndOrder pins the unset-params
 // default: created_at desc, and a default limit generous enough that
 // a small result set reaches the response whole.
@@ -2162,6 +2249,28 @@ func TestUnitTags(t *testing.T) {
 			t.Fatalf("delete: %d", resp.StatusCode)
 		}
 	})
+}
+
+// TestUnitCreateTag_NameCapCountsRunesNotBytes pins that the 50-character
+// cap counts runes, not bytes: 50 multibyte characters (each of these
+// three bytes in UTF-8) is exactly at the cap and must pass; 51 fails.
+func TestUnitCreateTag_NameCapCountsRunesNotBytes(t *testing.T) {
+	st := &stubStore{createTag: func(_ context.Context, _ uuid.UUID, name string) (store.Tag, error) {
+		return store.Tag{ID: uuid.New(), Name: name}, nil
+	}}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	tok := a.token(t, uuid.NewString())
+
+	at50 := strings.Repeat("\u3042", 50) // 50 runes, 150 bytes
+	resp := do(t, http.MethodPost, srv.URL+"/tags", tok, jsonBody(map[string]any{"name": at50}))
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("50 runes at the cap must pass under rune counting: %d: %s", resp.StatusCode, body)
+	}
+
+	over50 := strings.Repeat("\u3042", 51)
+	resp = do(t, http.MethodPost, srv.URL+"/tags", tok, jsonBody(map[string]any{"name": over50}))
+	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
 func TestUnitViews(t *testing.T) {
@@ -2652,6 +2761,63 @@ func TestComposeValueSeries_SetAtAtMidnightBoundary(t *testing.T) {
 	points := server.ComposeValueSeries([]store.PricingRow{row}, nil, windowStart)
 	if len(points) != 1 || points[0].ValueCents != 100 || !points[0].Date.Equal(exact) {
 		t.Fatalf("midnight set-at must contribute on its own day, got %+v", points)
+	}
+}
+
+// TestComposeValueSeries_SnapshotCapturedAtMidnightBoundary covers the
+// other captured-at input (a product snapshot, not a custom set-at):
+// existing snapshot fixtures all use 06:00Z, so pin the exact-midnight
+// case too.
+func TestComposeValueSeries_SnapshotCapturedAtMidnightBoundary(t *testing.T) {
+	day := func(s string) time.Time {
+		d, _ := time.Parse(time.RFC3339, s)
+		return d
+	}
+	windowStart := day("2026-06-01T00:00:00Z")
+	pid := uuid.New()
+	loose := int64(1000)
+	exact := day("2026-06-10T00:00:00Z") // exactly midnight, not the fixtures' usual 06:00Z
+	row := store.PricingRow{EntryID: uuid.New(), Packaging: "loose",
+		PricingMode: "proxy", PricingProductID: &pid}
+	series := map[string][]enrichapi.PricePoint{pid.String(): {{CapturedAt: exact, LooseCents: &loose}}}
+
+	points := server.ComposeValueSeries([]store.PricingRow{row}, series, windowStart)
+	if len(points) != 1 || !points[0].Date.Equal(exact) || points[0].ValueCents != 1000 {
+		t.Fatalf("midnight snapshot must bucket into and price its own day, got %+v", points)
+	}
+}
+
+// TestComposeValueSeries_SortsShuffledSeriesDefensively pins that
+// composition does not depend on the caller delivering each product's
+// snapshots oldest-first: a shuffled series composes identically to
+// the same points pre-sorted.
+func TestComposeValueSeries_SortsShuffledSeriesDefensively(t *testing.T) {
+	day := func(s string) time.Time {
+		d, _ := time.Parse(time.RFC3339, s)
+		return d
+	}
+	windowStart := day("2026-06-01T00:00:00Z")
+	pid := uuid.New()
+	row := store.PricingRow{EntryID: uuid.New(), Packaging: "loose",
+		PricingMode: "proxy", PricingProductID: &pid}
+
+	l1, l2, l3 := int64(1000), int64(1200), int64(1500)
+	oldest := enrichapi.PricePoint{CapturedAt: day("2026-06-05T06:00:00Z"), LooseCents: &l1}
+	middle := enrichapi.PricePoint{CapturedAt: day("2026-06-10T06:00:00Z"), LooseCents: &l2}
+	newest := enrichapi.PricePoint{CapturedAt: day("2026-06-20T06:00:00Z"), LooseCents: &l3}
+
+	want := server.ComposeValueSeries([]store.PricingRow{row},
+		map[string][]enrichapi.PricePoint{pid.String(): {oldest, middle, newest}}, windowStart)
+	got := server.ComposeValueSeries([]store.PricingRow{row},
+		map[string][]enrichapi.PricePoint{pid.String(): {newest, oldest, middle}}, windowStart)
+
+	if len(got) != len(want) {
+		t.Fatalf("shuffled input produced %d points, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if !got[i].Date.Equal(want[i].Date.Time) || got[i].ValueCents != want[i].ValueCents {
+			t.Fatalf("point %d: shuffled gave %+v, sorted-input gave %+v", i, got[i], want[i])
+		}
 	}
 }
 

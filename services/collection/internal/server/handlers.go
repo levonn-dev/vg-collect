@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -26,8 +27,7 @@ var _ api.ServerInterface = (*Handlers)(nil)
 const maxBodyBytes = 64 * 1024
 
 var (
-	currencyRe        = regexp.MustCompile(`^[A-Z]{3}$`)
-	enteredCurrencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
+	currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
 
 	regionVals    = map[string]bool{"ntsc_u": true, "ntsc_j": true, "pal": true, "region_free": true}
 	packagingVals = map[string]bool{"sealed": true, "cib": true, "loose": true}
@@ -212,7 +212,7 @@ func validateEntryInput(in entryInput) string {
 		if *in.CustomValueEnteredCents > 1000000000 {
 			return "custom_value_entered_cents must not exceed 1000000000"
 		}
-		if !enteredCurrencyRe.MatchString(*in.CustomValueEnteredCurrency) {
+		if !currencyRe.MatchString(*in.CustomValueEnteredCurrency) {
 			return "custom_value_entered_currency must be a 3-letter uppercase code"
 		}
 	}
@@ -225,7 +225,7 @@ func validateEntryInput(in entryInput) string {
 		"storage_location": {in.StorageLocation, 200},
 		"notes":            {in.Notes, 10000},
 	} {
-		if lim.v != nil && len(*lim.v) > lim.max {
+		if lim.v != nil && utf8.RuneCountInString(*lim.v) > lim.max {
 			return name + " is too long"
 		}
 	}
@@ -385,13 +385,13 @@ func validateCustomFields(body api.EntryCreate) string {
 	if body.DisplayName == nil || strings.TrimSpace(*body.DisplayName) == "" {
 		return "custom entries (no product_id) require display_name"
 	}
-	if len(*body.DisplayName) > 200 {
+	if utf8.RuneCountInString(*body.DisplayName) > 200 {
 		return "display_name is too long"
 	}
 	if body.ItemType == nil || !itemTypeVals[string(*body.ItemType)] {
 		return "custom entries (no product_id) require item_type (game, console, or accessory)"
 	}
-	if body.PlatformName != nil && (strings.TrimSpace(*body.PlatformName) == "" || len(*body.PlatformName) > 100) {
+	if body.PlatformName != nil && (strings.TrimSpace(*body.PlatformName) == "" || utf8.RuneCountInString(*body.PlatformName) > 100) {
 		return "platform_name must be 1-100 characters"
 	}
 	return ""
@@ -565,11 +565,11 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		return
 	}
 	if custom {
-		if body.DisplayName == nil || strings.TrimSpace(*body.DisplayName) == "" || len(*body.DisplayName) > 200 {
+		if body.DisplayName == nil || strings.TrimSpace(*body.DisplayName) == "" || utf8.RuneCountInString(*body.DisplayName) > 200 {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "custom entries require display_name (1-200 characters)")
 			return
 		}
-		if body.PlatformName != nil && (strings.TrimSpace(*body.PlatformName) == "" || len(*body.PlatformName) > 100) {
+		if body.PlatformName != nil && (strings.TrimSpace(*body.PlatformName) == "" || utf8.RuneCountInString(*body.PlatformName) > 100) {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "platform_name must be 1-100 characters")
 			return
 		}
@@ -966,7 +966,10 @@ func (h *Handlers) ListEntries(w http.ResponseWriter, r *http.Request, params ap
 	}
 
 	total := len(entries)
-	page := entries[min(offset, total):min(offset+limit, total)]
+	// offset has no contract upper bound; clamp into range before adding
+	// limit so the sum can never overflow.
+	start := min(offset, total)
+	page := entries[start:min(start+limit, total)]
 	if f.Sort != "value" {
 		compose(page)
 	}
@@ -1005,7 +1008,7 @@ func toAPIView(v store.View) (api.SavedView, error) {
 const maxViewParamsBytes = 8192
 
 func validateTagName(name string) string {
-	if strings.TrimSpace(name) == "" || len(name) > 50 {
+	if strings.TrimSpace(name) == "" || utf8.RuneCountInString(name) > 50 {
 		return "name must be 1-50 characters"
 	}
 	return ""
@@ -1116,7 +1119,7 @@ func viewBody(w http.ResponseWriter, r *http.Request) (api.ViewCreate, []byte, b
 		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
 		return body, nil, false
 	}
-	if strings.TrimSpace(body.Name) == "" || len(body.Name) > 100 {
+	if strings.TrimSpace(body.Name) == "" || utf8.RuneCountInString(body.Name) > 100 {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "name must be 1-100 characters")
 		return body, nil, false
 	}
@@ -1125,7 +1128,7 @@ func viewBody(w http.ResponseWriter, r *http.Request) (api.ViewCreate, []byte, b
 		problem(w, r, http.StatusBadRequest, "invalid_body", "params must be a JSON object")
 		return body, nil, false
 	}
-	if len(params) > maxViewParamsBytes {
+	if len(params) > maxViewParamsBytes { // marshaled bytes, not characters: a storage cap, not a maxLength
 		problem(w, r, http.StatusBadRequest, "invalid_body", "params is too large")
 		return body, nil, false
 	}
@@ -1374,9 +1377,13 @@ func pointForPackaging(packaging string, p enrichapi.PricePoint) *int64 {
 // price from the latest snapshot on or before the day; custom-priced
 // entries contribute their amount from their set-at day forward.
 // Prices carry forward between points; entries with nothing known yet
-// contribute nothing that day. Series arrive oldest-first from the
-// client. Exported for tests.
+// contribute nothing that day. Each product's points are sorted
+// oldest-first internally, regardless of the order series arrives in.
+// Exported for tests.
 func ComposeValueSeries(rows []store.PricingRow, series map[string][]enrichapi.PricePoint, windowStart time.Time) []api.ValuePoint {
+	for _, points := range series {
+		sort.SliceStable(points, func(i, j int) bool { return points[i].CapturedAt.Before(points[j].CapturedAt) })
+	}
 	windowDay := windowStart.UTC().Truncate(24 * time.Hour)
 	daySet := map[time.Time]bool{}
 	for _, points := range series {
