@@ -1,4 +1,6 @@
+import type { Me } from '../api/client'
 import type { Dashboard, Entry, EntryList } from '../api/collection'
+import type { FXRates } from '../api/fx'
 
 let seq = 0
 
@@ -48,6 +50,30 @@ export function dashboardFixture(overrides: Partial<Dashboard> = {}): Dashboard 
       available: true, total_value_cents: 384200,
       priced_entries: 35, unpriced_entries: 4, excluded_entries: 3,
     },
+    ...overrides,
+  }
+}
+
+export function meFixture(overrides: Partial<Me> = {}): Me {
+  return {
+    id: '99999999-0000-0000-0000-000000000001',
+    email: 'alice@example.com',
+    display_name: 'Alice',
+    roles: ['user'],
+    preferred_currency: 'USD',
+    ...overrides,
+  }
+}
+
+// Round rates on purpose: $42.00 is exactly 21 EUR, 31.50 GBP, 6300 JPY.
+// date defaults to today (real wall-clock) so a default render is never
+// flagged stale no matter when the suite runs; pass an explicit date
+// override to test the stale-snapshot cue.
+export function fxRatesFixture(overrides: Partial<FXRates> = {}): FXRates {
+  return {
+    base: 'USD',
+    date: new Date().toISOString().slice(0, 10),
+    rates: { EUR: 0.5, GBP: 0.75, JPY: 150 },
     ...overrides,
   }
 }
