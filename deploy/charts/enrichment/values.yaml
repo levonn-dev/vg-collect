@@ -17,11 +17,15 @@ env:
 # Provider switches. stub serves the embedded fixture catalog
 # (credential-less dev/e2e); real requires the corresponding secret
 # store keys to exist - Tilt flips these only when the credentials are
-# present in .env, mirroring the auth provider flags.
+# present in .env, mirroring the auth provider flags. The fx switch is
+# credential-less either way, so real is the default; set fx.mode=stub
+# for deterministic/offline rates instead.
 igdb:
   mode: stub
 pricecharting:
   mode: stub
+fx:
+  mode: real
 
 # The daily price walk: a CronJob POSTs the cluster-internal refresh
 # endpoint, authenticating with the static internal-caller token from

@@ -256,6 +256,18 @@ func localResults(kind string, prods []store.Product) []api.SearchResult {
 	return out
 }
 
+// GetFxLatest serves the provider's cached rate snapshot. Rates power
+// display-side conversion in the SPA only; nothing stored ever
+// depends on them, so a failure here degrades display to USD.
+func (h *Handlers) GetFxLatest(w http.ResponseWriter, r *http.Request) {
+	rates, err := h.fxRates.Latest(r.Context())
+	if err != nil {
+		problem(w, r, http.StatusBadGateway, "upstream_unavailable", "exchange rates are unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, api.FXRates{Base: rates.Base, Date: rates.Date, Rates: rates.Rates})
+}
+
 // GetProduct is the identity lookup: Valkey, then Mongo, refetching a
 // stale IGDB projection inline best-effort (stale serves when the
 // provider is down). Prices refresh on the daily cadence only.

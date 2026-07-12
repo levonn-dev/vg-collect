@@ -77,6 +77,8 @@ spec:
               valueFrom:
                 secretKeyRef: { name: enrichment-secrets, key: pricecharting-api-key }
             {{- end }}
+            - name: FX_MODE
+              value: {{ .Values.fx.mode | quote }}
             - name: SEARCH_CACHE_TTL
               value: {{ .Values.env.searchCacheTtl | quote }}
             - name: PRODUCT_CACHE_TTL

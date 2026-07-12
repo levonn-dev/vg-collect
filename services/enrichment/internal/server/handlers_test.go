@@ -22,6 +22,7 @@ import (
 	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/cache"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/db"
+	"github.com/levonn-dev/vg-collect/services/enrichment/internal/fx"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/pricecharting"
@@ -282,9 +283,27 @@ func (c *stubCache) InvalidateProduct(_ context.Context, id string) error {
 	return nil
 }
 
-// newUnitHandlers builds Handlers over stubs with fast defaults.
+// stubFX implements server.FXProvider via a function field.
+type stubFX struct {
+	latest func(ctx context.Context) (fx.Rates, error)
+}
+
+var _ FXProvider = (*stubFX)(nil)
+
+func (s *stubFX) Latest(ctx context.Context) (fx.Rates, error) {
+	if s.latest == nil {
+		panic("unexpected Latest")
+	}
+	return s.latest(ctx)
+}
+
+// newUnitHandlers builds Handlers over stubs with fast defaults. Every
+// caller here is indifferent to FX, so the fx collaborator is always
+// the zero-configured stub; tests that care about FX behavior build
+// Handlers directly (see doAuthedFxRequest) so they can supply their
+// own configured stub instead.
 func newUnitHandlers(st Store, games GameProvider, prices PriceProvider, c Cache) *Handlers {
-	return New(st, games, prices, c, Options{
+	return New(st, games, prices, &stubFX{}, c, Options{
 		SearchCacheTTL:         time.Hour,
 		ProductCacheTTL:        time.Minute,
 		IGDBRefreshAfter:       720 * time.Hour,
@@ -315,6 +334,27 @@ func serveUnit(t *testing.T, h *Handlers, env *authEnv, method, path, token stri
 	router := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil })
 	router.ServeHTTP(rec, req)
 	return rec
+}
+
+// doAuthedFxRequest builds Handlers the same way newUnitHandlers does
+// (same TTLs, internal secret and discard logger) but with rates as
+// the fx collaborator instead of the default stub, mints the usual
+// test JWT, and serves an authed GET /fx/latest through NewRouter --
+// mirroring TestUnitGetProduct_NotFoundAndCacheHit's harness (same
+// validator, logger and ready func), the nearest existing authed GET
+// test in this file.
+func doAuthedFxRequest(t *testing.T, rates FXProvider) *httptest.ResponseRecorder {
+	t.Helper()
+	env := newAuthEnv(t)
+	h := New(nil, nil, nil, rates, newStubCache(), Options{
+		SearchCacheTTL:         time.Hour,
+		ProductCacheTTL:        time.Minute,
+		IGDBRefreshAfter:       720 * time.Hour,
+		InternalRefreshSecrets: []string{testInternalToken},
+		Logger:                 slog.New(slog.DiscardHandler),
+	})
+	tok := env.token(t, "u1", []string{"user"})
+	return serveUnit(t, h, env, http.MethodGet, "/fx/latest", tok, nil)
 }
 
 // ---------------------------------------------------------------
@@ -382,8 +422,12 @@ func newStack(t *testing.T) *stack {
 	if err != nil {
 		t.Fatal(err)
 	}
+	rates, err := fx.NewStub()
+	if err != nil {
+		t.Fatal(err)
+	}
 	env := newAuthEnv(t)
-	h := New(st, games, prices, cache.New(rdb), Options{
+	h := New(st, games, prices, rates, cache.New(rdb), Options{
 		SearchCacheTTL:         time.Hour,
 		ProductCacheTTL:        time.Minute,
 		IGDBRefreshAfter:       720 * time.Hour,
@@ -1616,7 +1660,7 @@ func TestRefresh_AdminRBACAndConflict(t *testing.T) {
 func TestUnitInternalRefresh_TokenGuard(t *testing.T) {
 	env := newAuthEnv(t)
 	h := New(&stubStore{listPriced: func(context.Context) ([]store.Product, error) { return nil, nil }},
-		nil, nil, newStubCache(), Options{
+		nil, nil, nil, newStubCache(), Options{
 			// An A/B pair mid-rotation: both must be accepted.
 			InternalRefreshSecrets: []string{"new-token", "old-token"},
 			Logger:                 slog.New(slog.DiscardHandler),
@@ -1790,5 +1834,46 @@ func TestAdminMapping_CorrectVerifyClearAndErrors(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound || !bytes.Contains(body, []byte("product_not_found")) {
 		t.Fatalf("ghost product: %d %s", resp.StatusCode, body)
+	}
+}
+
+// ---------------------------------------------------------------
+// FX rates
+// ---------------------------------------------------------------
+
+func TestUnitGetFxLatest_ServesSnapshot(t *testing.T) {
+	rates := &stubFX{latest: func(context.Context) (fx.Rates, error) {
+		return fx.Rates{Base: "USD", Date: "2026-07-01", Rates: map[string]float64{"EUR": 0.5, "JPY": 150}}, nil
+	}}
+	// Build the server through this file's usual harness, substituting
+	// the fx stub; then issue an authed GET /fx/latest the same way the
+	// neighboring GET tests do.
+	rec := doAuthedFxRequest(t, rates)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: %d body %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Base  string             `json:"base"`
+		Date  string             `json:"date"`
+		Rates map[string]float64 `json:"rates"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Base != "USD" || got.Date != "2026-07-01" || got.Rates["EUR"] != 0.5 || got.Rates["JPY"] != 150 {
+		t.Fatalf("snapshot: %+v", got)
+	}
+}
+
+func TestUnitGetFxLatest_ColdFailureAnswers502(t *testing.T) {
+	rates := &stubFX{latest: func(context.Context) (fx.Rates, error) {
+		return fx.Rates{}, errors.New("upstream down")
+	}}
+	rec := doAuthedFxRequest(t, rates)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status: %d, want 502", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "upstream_unavailable") {
+		t.Fatalf("problem code missing: %s", rec.Body.String())
 	}
 }

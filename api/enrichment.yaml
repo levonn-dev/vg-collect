@@ -179,6 +179,24 @@ paths:
               schema: { $ref: "#/components/schemas/ScoreResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /fx/latest:
+    get:
+      operationId: getFxLatest
+      summary: Latest USD-based exchange rates (cached daily snapshot)
+      description: >
+        Rates are target-units-per-USD from the ECB reference set via
+        frankfurter.dev (embedded fixtures in stub mode). Snapshots
+        refresh at most hourly; an upstream failure serves the last
+        good snapshot, so only a cold cache answers 502. Rates power
+        display-side conversion only; nothing stored depends on them.
+      responses:
+        "200":
+          description: Rate snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FXRates" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
   /admin/refresh:
     post:
       operationId: triggerRefresh
@@ -307,6 +325,22 @@ components:
         results:
           type: array
           items: { $ref: "#/components/schemas/SearchResult" }
+    FXRates:
+      type: object
+      required: [base, date, rates]
+      properties:
+        base:
+          type: string
+          description: Always USD.
+        date:
+          type: string
+          description: Upstream snapshot date (YYYY-MM-DD), not the fetch time.
+        rates:
+          type: object
+          description: >
+            Target-units-per-USD by ISO 4217 code. USD itself is
+            omitted (it is the base; conversion short-circuits).
+          additionalProperties: { type: number, format: double }
     IgdbMeta:
       description: Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
       type: object

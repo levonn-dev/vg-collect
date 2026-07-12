@@ -20,6 +20,7 @@ import (
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/cache"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/config"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/db"
+	"github.com/levonn-dev/vg-collect/services/enrichment/internal/fx"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/pricecharting"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/server"
@@ -90,10 +91,19 @@ func run() error {
 			return err
 		}
 	}
+	var rates server.FXProvider
+	if cfg.FXMode == "real" {
+		rates = fx.NewClient()
+	} else {
+		rates, err = fx.NewStub()
+		if err != nil {
+			return err
+		}
+	}
 
 	st := store.New(client.Database(cfg.MongoDB))
 	v := jwtauth.NewValidator(cfg.JWKSURL, cfg.JWTIssuer, cfg.JWTAudience)
-	h := server.New(st, games, prices, cache.New(rdb), server.Options{
+	h := server.New(st, games, prices, rates, cache.New(rdb), server.Options{
 		SearchCacheTTL:         cfg.SearchCacheTTL,
 		ProductCacheTTL:        cfg.ProductCacheTTL,
 		IGDBRefreshAfter:       cfg.IGDBRefreshAfter,

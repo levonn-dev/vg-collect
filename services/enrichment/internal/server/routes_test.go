@@ -27,7 +27,7 @@ const testInternalToken = "test-internal-token"
 func newBareRouter(t *testing.T, ready func(context.Context) error) (http.Handler, *authEnv) {
 	t.Helper()
 	env := newAuthEnv(t)
-	h := New(nil, nil, nil, nil, Options{
+	h := New(nil, nil, nil, nil, nil, Options{
 		InternalRefreshSecrets: []string{testInternalToken},
 		Logger:                 slog.New(slog.DiscardHandler),
 	})

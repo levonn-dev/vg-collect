@@ -64,6 +64,18 @@ type CompanyCredit struct {
 	Publisher bool   `json:"publisher"`
 }
 
+// FXRates defines model for FXRates.
+type FXRates struct {
+	// Base Always USD.
+	Base string `json:"base"`
+
+	// Date Upstream snapshot date (YYYY-MM-DD), not the fetch time.
+	Date string `json:"date"`
+
+	// Rates Target-units-per-USD by ISO 4217 code. USD itself is omitted (it is the base; conversion short-circuits).
+	Rates map[string]float64 `json:"rates"`
+}
+
 // IgdbMeta Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
 type IgdbMeta struct {
 	Companies        []CompanyCredit     `json:"companies"`
@@ -374,6 +386,9 @@ type ClientInterface interface {
 	// TriggerRefresh request
 	TriggerRefresh(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetFxLatest request
+	GetFxLatest(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// BatchPriceHistoryWithBody request with any body
 	BatchPriceHistoryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -427,6 +442,18 @@ func (c *Client) SetProductMapping(ctx context.Context, productId openapi_types.
 
 func (c *Client) TriggerRefresh(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTriggerRefreshRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetFxLatest(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetFxLatestRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -624,6 +651,33 @@ func NewTriggerRefreshRequest(server string) (*http.Request, error) {
 	}
 
 	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetFxLatestRequest generates requests for GetFxLatest
+func NewGetFxLatestRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fx/latest")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -933,6 +987,9 @@ type ClientWithResponsesInterface interface {
 	// TriggerRefreshWithResponse request
 	TriggerRefreshWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*TriggerRefreshResponse, error)
 
+	// GetFxLatestWithResponse request
+	GetFxLatestWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetFxLatestResponse, error)
+
 	// BatchPriceHistoryWithBodyWithResponse request with any body
 	BatchPriceHistoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchPriceHistoryResponse, error)
 
@@ -1006,6 +1063,30 @@ func (r TriggerRefreshResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r TriggerRefreshResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetFxLatestResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *FXRates
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON502 *UpstreamError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetFxLatestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetFxLatestResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1182,6 +1263,15 @@ func (c *ClientWithResponses) TriggerRefreshWithResponse(ctx context.Context, re
 		return nil, err
 	}
 	return ParseTriggerRefreshResponse(rsp)
+}
+
+// GetFxLatestWithResponse request returning *GetFxLatestResponse
+func (c *ClientWithResponses) GetFxLatestWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetFxLatestResponse, error) {
+	rsp, err := c.GetFxLatest(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetFxLatestResponse(rsp)
 }
 
 // BatchPriceHistoryWithBodyWithResponse request with arbitrary body returning *BatchPriceHistoryResponse
@@ -1372,6 +1462,46 @@ func ParseTriggerRefreshResponse(rsp *http.Response) (*TriggerRefreshResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetFxLatestResponse parses an HTTP response from a GetFxLatestWithResponse call
+func ParseGetFxLatestResponse(rsp *http.Response) (*GetFxLatestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetFxLatestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FXRates
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest UpstreamError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
 
 	}
 

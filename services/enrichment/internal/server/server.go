@@ -14,6 +14,7 @@ import (
 
 	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/cache"
+	"github.com/levonn-dev/vg-collect/services/enrichment/internal/fx"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/match"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/pricecharting"
@@ -57,6 +58,12 @@ type PriceProvider interface {
 	Product(ctx context.Context, id int64) (pricecharting.Product, error)
 }
 
+// FXProvider is the exchange-rate surface (real or stub, selected by
+// FX_MODE).
+type FXProvider interface {
+	Latest(ctx context.Context) (fx.Rates, error)
+}
+
 // Cache is the Valkey surface. Errors mean "Valkey is having a
 // moment"; every call site fails open (miss + log).
 type Cache interface {
@@ -75,6 +82,8 @@ var (
 	_ GameProvider  = (*igdb.Stub)(nil)
 	_ PriceProvider = (*pricecharting.Client)(nil)
 	_ PriceProvider = (*pricecharting.Stub)(nil)
+	_ FXProvider    = (*fx.Client)(nil)
+	_ FXProvider    = (*fx.Stub)(nil)
 	_ Cache         = (*cache.Cache)(nil)
 )
 
@@ -96,11 +105,12 @@ type Options struct {
 // Handlers owns the collaborators and knobs for every HTTP handler in
 // the enrichment service.
 type Handlers struct {
-	store  Store
-	games  GameProvider
-	prices PriceProvider
-	cache  Cache
-	logger *slog.Logger
+	store   Store
+	games   GameProvider
+	prices  PriceProvider
+	fxRates FXProvider
+	cache   Cache
+	logger  *slog.Logger
 
 	searchTTL        time.Duration
 	productTTL       time.Duration
@@ -116,13 +126,14 @@ type Handlers struct {
 }
 
 // New builds a Handlers wired to the given collaborators.
-func New(st Store, games GameProvider, prices PriceProvider, c Cache, opts Options) *Handlers {
+func New(st Store, games GameProvider, prices PriceProvider, fxRates FXProvider, c Cache, opts Options) *Handlers {
 	return &Handlers{
-		store:  st,
-		games:  games,
-		prices: prices,
-		cache:  c,
-		logger: opts.Logger,
+		store:   st,
+		games:   games,
+		prices:  prices,
+		fxRates: fxRates,
+		cache:   c,
+		logger:  opts.Logger,
 
 		searchTTL:        opts.SearchCacheTTL,
 		productTTL:       opts.ProductCacheTTL,

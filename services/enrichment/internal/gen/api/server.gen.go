@@ -61,6 +61,18 @@ type CompanyCredit struct {
 	Publisher bool   `json:"publisher"`
 }
 
+// FXRates defines model for FXRates.
+type FXRates struct {
+	// Base Always USD.
+	Base string `json:"base"`
+
+	// Date Upstream snapshot date (YYYY-MM-DD), not the fetch time.
+	Date string `json:"date"`
+
+	// Rates Target-units-per-USD by ISO 4217 code. USD itself is omitted (it is the base; conversion short-circuits).
+	Rates map[string]float64 `json:"rates"`
+}
+
 // IgdbMeta Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
 type IgdbMeta struct {
 	Companies        []CompanyCredit     `json:"companies"`
@@ -298,6 +310,9 @@ type ServerInterface interface {
 	// Trigger an immediate price refresh walk (role admin)
 	// (POST /admin/refresh)
 	TriggerRefresh(w http.ResponseWriter, r *http.Request)
+	// Latest USD-based exchange rates (cached daily snapshot)
+	// (GET /fx/latest)
+	GetFxLatest(w http.ResponseWriter, r *http.Request)
 	// Price snapshot series for a set of products (value-over-time composition)
 	// (POST /products/price-history:batch)
 	BatchPriceHistory(w http.ResponseWriter, r *http.Request)
@@ -369,6 +384,26 @@ func (siw *ServerInterfaceWrapper) TriggerRefresh(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.TriggerRefresh(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFxLatest operation middleware
+func (siw *ServerInterfaceWrapper) GetFxLatest(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFxLatest(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -666,6 +701,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc("PUT "+options.BaseURL+"/admin/products/{productId}/pricecharting", wrapper.SetProductMapping)
 	m.HandleFunc("POST "+options.BaseURL+"/admin/refresh", wrapper.TriggerRefresh)
+	m.HandleFunc("GET "+options.BaseURL+"/fx/latest", wrapper.GetFxLatest)
 	m.HandleFunc("POST "+options.BaseURL+"/products/price-history:batch", wrapper.BatchPriceHistory)
 	m.HandleFunc("POST "+options.BaseURL+"/products/prices:batch", wrapper.BatchPrices)
 	m.HandleFunc("POST "+options.BaseURL+"/products/resolve", wrapper.ResolveProduct)
