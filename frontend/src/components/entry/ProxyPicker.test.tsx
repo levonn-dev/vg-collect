@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, putBody } from '../../test/fixtures'
 import { renderWithMoney } from '../../test/money'
 import ProxyPicker from './ProxyPicker'
 
@@ -55,7 +55,7 @@ it('offers PriceCharting and resolves a pc_listing pick to its product', async (
 
   const [resolveUrl, resolveInit] = fetchMock.mock.calls[1] as [string, RequestInit]
   expect(resolveUrl).toBe('/api/products/resolve')
-  expect(JSON.parse(resolveInit.body as string)).toEqual({ type: 'pc_listing', pc_product_id: 5099 })
+  expect(putBody(resolveInit)).toEqual({ type: 'pc_listing', pc_product_id: 5099 })
   expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'p10' }))
 })
 
@@ -71,4 +71,44 @@ it('prefills the search box from an initialQuery prop', () => {
   expect(screen.getByRole('searchbox', { name: /search for games, hardware, and pricecharting/i })).toHaveValue(
     "Super Mario 64 Player's Choice",
   )
+})
+
+it('reports when the resolve fails', async () => {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    const u = String(url)
+    if (u.startsWith('/api/search')) {
+      return Promise.resolve(jsonResponse(200, {
+        degraded: false,
+        results: [{ type: 'game', name: 'Chrono Trigger', igdb_game_id: 1000, platforms: [{ igdb_platform_id: 6, name: 'SNES' }] }],
+      }))
+    }
+    if (u === '/api/products/resolve') return Promise.resolve(jsonResponse(500, {}))
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWithMoney(<ProxyPicker onPick={vi.fn()} onClose={vi.fn()} />)
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'chrono')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(/cannot be used right now/i)
+})
+
+it('is a modal dialog and starts focus inside it', () => {
+  vi.stubGlobal('fetch', vi.fn())
+  renderWithMoney(<ProxyPicker onPick={vi.fn()} onClose={vi.fn()} />)
+  const dialog = screen.getByRole('dialog')
+  expect(dialog).toHaveAttribute('aria-modal', 'true')
+  expect(dialog).toContainElement(document.activeElement as HTMLElement)
+})
+
+it('returns focus to the opener once the dialog closes', () => {
+  vi.stubGlobal('fetch', vi.fn())
+  const opener = document.createElement('button')
+  document.body.appendChild(opener)
+  opener.focus()
+  const { unmount } = renderWithMoney(<ProxyPicker onPick={vi.fn()} onClose={vi.fn()} />)
+  expect(document.activeElement).not.toBe(opener)
+  unmount()
+  expect(document.activeElement).toBe(opener)
+  opener.remove()
 })

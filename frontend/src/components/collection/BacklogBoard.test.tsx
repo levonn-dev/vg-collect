@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { fetchEntries } from '../../api/collection'
-import { entryFixture, jsonResponse, listFixture } from '../../test/fixtures'
+import { entryFixture, jsonResponse, listFixture, putBody } from '../../test/fixtures'
 import BacklogBoard from './BacklogBoard'
 
 const entries = [
@@ -42,7 +42,7 @@ it('Move down posts the visual-neighbor pair', async () => {
   expect(fetchMock).toHaveBeenCalledTimes(1)
   const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
   expect(url).toBe(`/api/entries/${entries[0].id}/reorder`)
-  expect(JSON.parse(init.body as string)).toEqual({
+  expect(putBody(init)).toEqual({
     after_id: entries[1].id,
     before_id: entries[2].id,
   })
@@ -56,7 +56,7 @@ it('Move up posts the visual-neighbor pair', async () => {
   expect(fetchMock).toHaveBeenCalledTimes(1)
   const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
   expect(url).toBe(`/api/entries/${entries[2].id}/reorder`)
-  expect(JSON.parse(init.body as string)).toEqual({
+  expect(putBody(init)).toEqual({
     after_id: entries[0].id,
     before_id: entries[1].id,
   })
@@ -117,4 +117,62 @@ it('a move reorders the rendered rows and locks the buttons before the server an
   // flag applies - only the in-flight lock can disable its buttons.
   expect(screen.getByRole('button', { name: 'Move First up' })).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Move First down' })).toBeDisabled()
+})
+
+// The drag handle carries no `disabled` attribute while a reorder is
+// pending (only the Move buttons do), so proving the guard needs an
+// actual drag: stub every row's rect so closestCenter resolves to a
+// distinct, deterministic neighbor instead of jsdom's zero-sized default.
+function stubRowRects() {
+  screen.getAllByRole('listitem').forEach((li, i) => {
+    const top = i * 50
+    li.getBoundingClientRect = () => ({
+      x: 0, y: top, width: 300, height: 40, top, left: 0, right: 300, bottom: top + 40,
+      toJSON: () => ({}),
+    })
+  })
+}
+
+function dragHandle(name: string, deltaY: number) {
+  const handle = screen.getByRole('button', { name })
+  fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, button: 0, clientX: 0, clientY: 0 })
+  fireEvent.pointerMove(document, { pointerId: 1, isPrimary: true, clientX: 0, clientY: deltaY })
+  fireEvent.pointerUp(document, { pointerId: 1, isPrimary: true, clientX: 0, clientY: deltaY })
+}
+
+it('a drag submitted while a reorder is pending is a no-op', async () => {
+  const fetchMock = vi.fn().mockImplementation(() => new Promise<Response>(() => {}))
+  vi.stubGlobal('fetch', fetchMock)
+  renderBoard()
+  stubRowRects()
+  dragHandle('Drag First', 100)
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+  dragHandle('Drag First', 100)
+  // Give the guarded second attempt the same async onMutate hop the
+  // first one needed, so a regression would have time to show up.
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  expect(fetchMock).toHaveBeenCalledTimes(1)
+})
+
+it('a failed reorder restores the pre-drag order before any refetch resolves', async () => {
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(jsonResponse(200, listFixture(entries)))
+    .mockResolvedValueOnce(jsonResponse(500, {}))
+    .mockImplementation(() => new Promise<Response>(() => {}))
+  vi.stubGlobal('fetch', fetchMock)
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <BoardFromCache />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  const rowNames = () => screen.getAllByRole('link').map((a) => a.textContent)
+  await screen.findByRole('button', { name: 'Move Second up' })
+  await userEvent.click(screen.getByRole('button', { name: 'Move Second up' }))
+  // The third fetch call (the onSettled refetch) never resolves, so a
+  // restored order can only be the onError rollback.
+  await waitFor(() => expect(rowNames()).toEqual(['First', 'Second', 'Third']))
+  expect(await screen.findByRole('alert')).toHaveTextContent(/could not be saved/i)
 })

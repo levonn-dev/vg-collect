@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, putBody } from '../../test/fixtures'
 import { defaultListState, toViewParams } from '../../lib/listParams'
 import ViewPicker from './ViewPicker'
 
@@ -48,7 +48,7 @@ it('saves the current state under a prompted name', async () => {
   await userEvent.click(await screen.findByRole('button', { name: /save view/i }))
   const post = fetchMock.mock.calls[1]
   expect(post[0]).toBe('/api/views')
-  const body = JSON.parse((post[1] as RequestInit).body as string) as { name: string; params: unknown }
+  const body = putBody<{ name: string; params: unknown }>(post[1] as RequestInit)
   expect(body.name).toBe('New view')
   expect(body.params).toEqual(toViewParams(savedState))
   expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ viewId: 'v2' }))
@@ -65,7 +65,7 @@ it('updates the active view with the current state', async () => {
   await userEvent.click(await screen.findByRole('button', { name: /update view/i }))
   const put = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'PUT')
   expect(put?.[0]).toBe('/api/views/v1')
-  const body = JSON.parse((put?.[1] as RequestInit).body as string) as { params: Record<string, unknown> }
+  const body = putBody<{ params: Record<string, unknown> }>(put?.[1] as RequestInit)
   expect(body.params.packaging).toEqual(['cib'])
 })
 
@@ -93,4 +93,25 @@ it('surfaces a name conflict on save', async () => {
   renderPicker(savedState)
   await userEvent.click(await screen.findByRole('button', { name: /save view/i }))
   expect(await screen.findByRole('alert')).toHaveTextContent(/already in use/i)
+})
+
+it('clears a stale save error once a later, different action succeeds', async () => {
+  const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+    if (init?.method === 'POST') {
+      return Promise.resolve(jsonResponse(409, {
+        type: 'about:blank', title: 'Conflict', status: 409, code: 'name_taken', detail: 'view name already in use',
+      }))
+    }
+    if (init?.method === 'PUT') return Promise.resolve(jsonResponse(200, view))
+    return Promise.resolve(jsonResponse(200, { views: [view] }))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  vi.spyOn(window, 'prompt').mockReturnValue('Backlog wall')
+  renderPicker({ ...savedState, viewId: 'v1' })
+  await userEvent.click(await screen.findByRole('button', { name: /save view/i }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(/already in use/i)
+  // A later, unrelated mutation (update, not save) succeeding must not
+  // leave the earlier save failure on screen.
+  await userEvent.click(screen.getByRole('button', { name: /update view/i }))
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
 })

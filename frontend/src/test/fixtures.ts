@@ -83,3 +83,10 @@ export const jsonResponse = (status: number, body: unknown) =>
     status,
     headers: { 'Content-Type': 'application/json' },
   })
+
+// putBody parses the JSON body recorded on a fetch mock call - the
+// cast-and-parse step every mutation-body assertion in this suite
+// needs before comparing the object a component actually sent.
+export function putBody<T = unknown>(init: RequestInit | undefined): T {
+  return JSON.parse(init?.body as string) as T
+}

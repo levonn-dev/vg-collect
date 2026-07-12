@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import type { Entry } from '../../api/collection'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import { statusLabels } from './EntryTable'
+import { rowMeta } from './rowMeta'
 
 interface CompactListProps {
   entries: Entry[]
@@ -13,17 +14,20 @@ export default function CompactList({ entries, pinSlot }: CompactListProps) {
   const money = useDisplayMoney()
   return (
     <ul className="divide-y divide-gray-100 text-sm">
-      {entries.map((e) => (
-        <li key={e.id} className="flex items-center gap-2 py-1">
-          {pinSlot ? pinSlot(e) : e.pinned && <span aria-label="Pinned">{'\u2605'}</span>}
-          <Link to={`/entries/${e.id}`} className="font-medium hover:underline">
-            {e.display_name}
-          </Link>
-          <span className="text-gray-400">{e.platform?.name ?? '-'}</span>
-          <span className="text-gray-400">{statusLabels[e.status]}</span>
-          <span className="ml-auto text-gray-500">{money.entryValue(e) ?? '-'}</span>
-        </li>
-      ))}
+      {entries.map((e) => {
+        const meta = rowMeta(e, money, { pinSlot })
+        return (
+          <li key={e.id} className="flex items-center gap-2 py-1">
+            {meta.pin}
+            <Link to={`/entries/${e.id}`} className="font-medium hover:underline">
+              {e.display_name}
+            </Link>
+            <span className="text-gray-400">{meta.platform}</span>
+            <span className="text-gray-400">{statusLabels[e.status]}</span>
+            <span className="ml-auto text-gray-500">{meta.value}</span>
+          </li>
+        )
+      })}
     </ul>
   )
 }

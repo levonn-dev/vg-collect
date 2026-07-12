@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { entryFixture, jsonResponse } from '../../test/fixtures'
+import { entryFixture, jsonResponse, putBody } from '../../test/fixtures'
 import PinStar from './PinStar'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -23,7 +23,7 @@ it('PUTs the full baseline with pinned flipped', async () => {
   expect(fetchMock).toHaveBeenCalledTimes(1)
   const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
   expect(url).toBe(`/api/entries/${e.id}`)
-  const body = JSON.parse(init.body as string) as Record<string, unknown>
+  const body = putBody<Record<string, unknown>>(init)
   expect(body.pinned).toBe(true)
   // The one-field toggle must not strip the rest of the entry.
   expect(body.notes).toBe('keep me')

@@ -1,6 +1,8 @@
 import { useMutation } from '@tanstack/react-query'
-import type { Product, ResolveRequest } from '../../api/catalog'
+import { useEffect, useRef } from 'react'
+import type { Product } from '../../api/catalog'
 import { resolveProduct } from '../../api/catalog'
+import { resolveRequestFor } from '../../lib/catalog'
 import type { CatalogPick } from '../catalog/SearchPicker'
 import SearchPicker from '../catalog/SearchPicker'
 
@@ -17,21 +19,30 @@ interface ProxyPickerProps {
 // the shared search surface plus a resolve to mint/fetch the product.
 // The caller owns the PUT that activates it.
 export default function ProxyPicker({ onPick, onClose, initialQuery }: ProxyPickerProps) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  // A dialog opens on top of the page's own focus; move focus in so
+  // keyboard and screen-reader users land inside it, and give it back
+  // to whatever had it when this closes (unmounts).
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
+    dialogRef.current?.querySelector<HTMLElement>('input')?.focus()
+    return () => opener?.focus()
+  }, [])
+
   const resolve = useMutation({
-    mutationFn: (pick: CatalogPick) => {
-      const req: ResolveRequest =
-        pick.kind === 'game'
-          ? { type: 'game', igdb_game_id: pick.igdbGameId, platform_igdb_id: pick.platformId }
-          : pick.kind === 'pc_listing'
-            ? { type: 'pc_listing', pc_product_id: pick.pcProductId }
-            : { type: pick.category === 'Systems' ? 'console' : 'accessory', pc_product_id: pick.pcProductId }
-      return resolveProduct(req)
-    },
+    mutationFn: (pick: CatalogPick) => resolveProduct(resolveRequestFor(pick)),
     onSuccess: (product) => onPick(product),
   })
 
   return (
-    <div role="dialog" aria-label="Choose a price source" className="mt-3 rounded border border-gray-300 bg-gray-50 p-3">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Choose a price source"
+      className="mt-3 rounded border border-gray-300 bg-gray-50 p-3"
+    >
       <div className="mb-2 flex items-center justify-between">
         <p className="text-sm font-semibold">Choose a price source</p>
         <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-900">

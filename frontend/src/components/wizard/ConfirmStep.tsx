@@ -1,25 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { ApiError } from '../../api/client'
-import type { ResolveRequest } from '../../api/catalog'
 import { resolveProduct } from '../../api/catalog'
 import { createEntry } from '../../api/collection'
+import { resolveRequestFor } from '../../lib/catalog'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import type { CatalogPick } from '../catalog/SearchPicker'
 import type { DetailsValues } from './DetailsStep'
 import { detailsToCreate } from './DetailsStep'
-
-function resolveRequestFor(pick: CatalogPick): ResolveRequest {
-  if (pick.kind === 'game') {
-    return { type: 'game', igdb_game_id: pick.igdbGameId, platform_igdb_id: pick.platformId }
-  }
-  if (pick.kind === 'pc_listing') {
-    return { type: 'pc_listing', pc_product_id: pick.pcProductId }
-  }
-  // PriceCharting's Systems category maps to console; everything else
-  // it lists for hardware (controllers, accessories) is an accessory.
-  return { type: pick.category === 'Systems' ? 'console' : 'accessory', pc_product_id: pick.pcProductId }
-}
+import ConfirmShell from './ConfirmShell'
 
 interface ConfirmStepProps {
   pick: CatalogPick
@@ -76,11 +65,15 @@ export default function ConfirmStep({ pick, details, onBack }: ConfirmStepProps)
   const p = product.data
   const pc = p.pricecharting
   return (
-    <section aria-label="Confirm" className="flex flex-col gap-3">
-      <h3 className="text-lg font-semibold">Confirm: {p.name}</h3>
-      <p className="text-sm text-gray-600">
-        {[p.platform?.name, p.type].filter(Boolean).join(' - ')}
-      </p>
+    <ConfirmShell
+      ariaLabel="Confirm"
+      title={p.name}
+      subtitle={[p.platform?.name, p.type].filter(Boolean).join(' - ')}
+      errorMessage={create.isError ? create.error.message || 'The entry could not be created.' : undefined}
+      onBack={onBack}
+      onSubmit={() => create.mutate()}
+      submitPending={create.isPending}
+    >
       {pc ? (
         <p className="rounded bg-green-50 p-3 text-sm text-green-800">
           Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%
@@ -91,23 +84,6 @@ export default function ConfirmStep({ pick, details, onBack }: ConfirmStepProps)
           No confirmed price listing yet - market value stays empty until a match is made.
         </p>
       )}
-      {create.isError && (
-        <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">
-          {create.error.message || 'The entry could not be created.'}
-        </p>
-      )}
-      <div className="flex gap-2">
-        <button onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
-          Back
-        </button>
-        <button
-          onClick={() => create.mutate()}
-          disabled={create.isPending}
-          className="rounded bg-gray-900 px-4 py-1 text-sm text-white enabled:hover:bg-gray-700 disabled:opacity-50"
-        >
-          Add to collection
-        </button>
-      </div>
-    </section>
+    </ConfirmShell>
   )
 }
