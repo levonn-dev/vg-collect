@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Navigate, NavLink, Outlet, useNavigate } from 'react-router'
 import { ApiError, fetchMe, logout } from '../api/client'
+import CurrencySelect from './CurrencySelect'
 import ThemeToggle from './ThemeToggle'
 
 function navClass({ isActive }: { isActive: boolean }): string {
@@ -91,6 +92,7 @@ export default function Layout() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          <CurrencySelect />
           <ThemeToggle />
           <NavLink
             to="/account"

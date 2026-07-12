@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { jsonResponse } from '../test/fixtures'
+import { fxRatesFixture, jsonResponse } from '../test/fixtures'
 import Layout from './Layout'
 
 function renderLayout() {
@@ -82,9 +82,16 @@ it('shows an error state on non-auth failures', async () => {
 })
 
 it('logs out and navigates to login', async () => {
-  const fetchMock = vi.fn()
-    .mockResolvedValueOnce(jsonResponse(200, me))
-    .mockResolvedValueOnce(new Response(null, { status: 204 }))
+  // Routed by path rather than call order: CurrencySelect (mounted in
+  // the header once /api/me resolves) fetches /api/fx, and, because
+  // this client's default staleTime is 0, its own /api/me observer
+  // triggers a background refetch too - so /api/me must tolerate
+  // being called more than once.
+  const fetchMock = vi.fn((path: string) => {
+    if (path === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
+    if (path === '/api/auth/logout') return Promise.resolve(new Response(null, { status: 204 }))
+    return Promise.resolve(jsonResponse(200, me))
+  })
   vi.stubGlobal('fetch', fetchMock)
   renderLayout()
   await userEvent.click(await screen.findByRole('button', { name: 'Log out' }))
