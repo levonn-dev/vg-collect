@@ -56,3 +56,14 @@ it('carries the custom price pair so an unrelated mutation cannot erase it', () 
   const u = entryToUpdate({ ...base, product_id: 'p1', pricing_mode: 'custom', custom_value_cents: 1200 })
   expect(u.custom_value_cents).toBe(1200)
 })
+
+// This file hand-rolls a `base` Entry literal rather than using
+// entryFixture; adapted from the brief's entryFixture(...) form to match.
+it('echoes the stored entered pair in the full-replacement baseline', () => {
+  const u = entryToUpdate({
+    ...base, product_id: 'p1', pricing_mode: 'custom',
+    custom_value_cents: 12000, custom_value_entered_cents: 6000, custom_value_entered_currency: 'EUR',
+  })
+  expect(u.custom_value_entered_cents).toBe(6000)
+  expect(u.custom_value_entered_currency).toBe('EUR')
+})

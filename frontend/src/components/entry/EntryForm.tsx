@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import type { Entry, EntryUpdate } from '../../api/collection'
-import { centsToDollars, dollarsToCents } from '../../lib/format'
+import { centsToDollars, dollarsToCents, enteredCentsToUsdCents, usdCentsToMajor } from '../../lib/format'
 import { entryToUpdate } from '../../lib/entryUpdate'
 import { CONDITIONS, PACKAGINGS, REGIONS, STATUSES } from '../../lib/listParams'
+import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import type { PricingValue } from './PricingPanel'
 import PricingPanel from './PricingPanel'
 import TagPicker from './TagPicker'
@@ -22,7 +23,6 @@ interface FormValues {
   manualCondition: Condition | ''
   itemCondition: Condition | ''
   pricePaid: string
-  currency: string
   purchasedAt: string
   purchasedFrom: string
   status: Entry['status']
@@ -34,7 +34,20 @@ interface FormValues {
   pricing: PricingValue
 }
 
-function valuesFrom(e: Entry): FormValues {
+// customValueDraft seeds the custom-price text: a stored pair in the
+// input currency is shown verbatim (the pin rule's edit-side twin);
+// anything else converts the USD snapshot into the input currency.
+// eslint-disable-next-line react-refresh/only-export-components -- shared with the test, alongside this component.
+export function customValueDraft(e: Entry, inputCurrency: string, rate: number | undefined): string {
+  if (e.custom_value_entered_cents !== undefined && e.custom_value_entered_currency === inputCurrency) {
+    return centsToDollars(e.custom_value_entered_cents)
+  }
+  if (e.custom_value_cents === undefined) return ''
+  if (inputCurrency === 'USD' || rate === undefined) return centsToDollars(e.custom_value_cents)
+  return usdCentsToMajor(e.custom_value_cents, rate).toFixed(2)
+}
+
+function valuesFrom(e: Entry, inputCurrency: string, rate: number | undefined): FormValues {
   return {
     displayName: e.display_name,
     platformName: e.platform?.name ?? '',
@@ -48,7 +61,6 @@ function valuesFrom(e: Entry): FormValues {
     manualCondition: e.manual_condition ?? '',
     itemCondition: e.item_condition ?? '',
     pricePaid: centsToDollars(e.price_paid_cents),
-    currency: e.currency,
     purchasedAt: e.purchased_at ?? '',
     purchasedFrom: e.purchased_from ?? '',
     status: e.status,
@@ -60,16 +72,22 @@ function valuesFrom(e: Entry): FormValues {
     pricing: {
       mode: e.pricing_mode,
       productId: e.pricing_product_id,
-      customValue: centsToDollars(e.custom_value_cents),
+      customValue: customValueDraft(e, inputCurrency, rate),
     },
   }
 }
 
 // toUpdate lays the form values over the faithful PUT baseline. The
 // update is a full replacement (absent optional = cleared), so
-// cleared inputs become absent fields on purpose, and the pricing
-// pair comes from the panel-edited draft like every other field.
-function toUpdate(e: Entry, v: FormValues): EntryUpdate {
+// cleared inputs become absent fields on purpose. Two fields ride the
+// baseline through untouched instead: currency is stamped once at
+// create and never re-currencied by an edit, so entryToUpdate(e)'s
+// `currency: e.currency` is left standing with no override here; and
+// the custom-price pair, whose baseline is only overridden below when
+// the draft holds a convertible value - an empty or unconvertible
+// draft must not clobber stored memory just because some unrelated
+// field changed.
+function toUpdate(e: Entry, v: FormValues, inputCurrency: string, rate: number | undefined): EntryUpdate {
   const u: EntryUpdate = {
     ...entryToUpdate(e),
     region: v.region,
@@ -81,18 +99,22 @@ function toUpdate(e: Entry, v: FormValues): EntryUpdate {
     manual_condition: v.hasManual && v.manualCondition !== '' ? v.manualCondition : undefined,
     item_condition: v.itemCondition === '' ? undefined : v.itemCondition,
     price_paid_cents: dollarsToCents(v.pricePaid),
-    currency: v.currency.trim() === '' ? 'USD' : v.currency.trim().toUpperCase(),
     purchased_at: v.purchasedAt === '' ? undefined : v.purchasedAt,
     purchased_from: v.purchasedFrom.trim() === '' ? undefined : v.purchasedFrom.trim(),
     pricing_mode: v.pricing.mode,
     pricing_product_id: v.pricing.productId,
-    custom_value_cents: dollarsToCents(v.pricing.customValue),
     status: v.status,
     rating: v.rating === '' ? undefined : Number(v.rating),
     notes: v.notes.trim() === '' ? undefined : v.notes,
     storage_location: v.storageLocation.trim() === '' ? undefined : v.storageLocation.trim(),
     pinned: v.pinned,
     tag_ids: v.tagIds,
+  }
+  const draftCents = dollarsToCents(v.pricing.customValue)
+  if (draftCents !== undefined && (inputCurrency === 'USD' || rate !== undefined)) {
+    u.custom_value_cents = inputCurrency === 'USD' ? draftCents : enteredCentsToUsdCents(draftCents, rate!)
+    u.custom_value_entered_cents = draftCents
+    u.custom_value_entered_currency = inputCurrency
   }
   if (!e.product_id) {
     u.display_name = v.displayName.trim()
@@ -127,7 +149,11 @@ interface EntryFormProps {
 }
 
 export default function EntryForm({ entry, onSave, saving, saved, error }: EntryFormProps) {
-  const [v, setV] = useState<FormValues>(() => valuesFrom(entry))
+  const money = useDisplayMoney()
+  // The input currency freezes per mount: a rate snapshot arriving
+  // mid-edit must not silently reinterpret typed text.
+  const [inputCurrency] = useState(() => (money.ready ? money.currency : 'USD'))
+  const [v, setV] = useState<FormValues>(() => valuesFrom(entry, inputCurrency, money.rateFor(inputCurrency)))
   // The saved confirmation must disappear the moment the form drifts
   // from what was saved, so every field change flips this.
   const [editedSinceSave, setEditedSinceSave] = useState(false)
@@ -180,10 +206,15 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
           embeds the catalog search form, and forms cannot nest. The
           draft still lives here, so pricing edits save with the same
           button as everything else. */}
-      <PricingPanel entry={entry} value={v.pricing} onChange={(p) => set('pricing', p)} />
+      <PricingPanel entry={entry} value={v.pricing} onChange={(p) => set('pricing', p)} inputCurrency={inputCurrency} />
     <form
       onSubmit={(e) => {
         e.preventDefault()
+        // Read fresh at submit: the input currency froze at mount, but
+        // its rate must not - a header switch mid-edit (optimistic
+        // ['me'] update, no remount) can move the CURRENT display
+        // currency's rate without touching the frozen input currency's.
+        const submitRate = money.rateFor(inputCurrency)
         if (v.pricing.mode === 'proxy' && !v.pricing.productId) {
           setPricingError('Choose a price source before saving.')
           return
@@ -192,8 +223,12 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
           setPricingError('Enter a custom price before saving.')
           return
         }
+        if (v.pricing.mode === 'custom' && inputCurrency !== 'USD' && submitRate === undefined) {
+          setPricingError('Exchange rates are unavailable; try saving again shortly.')
+          return
+        }
         setEditedSinceSave(false)
-        onSave(toUpdate(entry, v))
+        onSave(toUpdate(entry, v, inputCurrency, submitRate))
       }}
       className="flex flex-col gap-4"
       aria-label="Entry editor"
@@ -257,12 +292,8 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
 
       <section aria-label="Acquisition" className="flex flex-wrap gap-3">
         <label className={labelClass}>
-          Price paid
+          Price paid ({entry.currency})
           <input inputMode="decimal" value={v.pricePaid} onChange={(e) => set('pricePaid', e.target.value)} placeholder="59.99" className={inputClass} />
-        </label>
-        <label className={labelClass}>
-          Currency
-          <input value={v.currency} onChange={(e) => set('currency', e.target.value)} maxLength={3} className={inputClass} />
         </label>
         <label className={labelClass}>
           Purchased on

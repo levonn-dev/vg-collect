@@ -4,9 +4,11 @@ import type { Product } from '../../api/catalog'
 import { fetchProduct } from '../../api/catalog'
 import type { Entry } from '../../api/collection'
 import { dollarsToCents, formatCents } from '../../lib/format'
+import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import ProxyPicker from './ProxyPicker'
 
 function MatchCard({ product }: { product: Product }) {
+  const money = useDisplayMoney()
   const pc = product.pricecharting
   if (!pc) {
     return (
@@ -22,8 +24,8 @@ function MatchCard({ product }: { product: Product }) {
         {pc.verified ? ', verified' : ''}.
       </p>
       <p className="mt-1 text-xs text-green-800">
-        Loose {formatCents(pc.loose_cents) ?? '-'} / CIB {formatCents(pc.cib_cents) ?? '-'} / New{' '}
-        {formatCents(pc.new_cents) ?? '-'}
+        Loose {money.format(pc.loose_cents) ?? '-'} / CIB {money.format(pc.cib_cents) ?? '-'} / New{' '}
+        {money.format(pc.new_cents) ?? '-'}
       </p>
     </div>
   )
@@ -42,6 +44,9 @@ interface PricingPanelProps {
   entry: Entry
   value: PricingValue
   onChange: (v: PricingValue) => void
+  // Frozen per the owning form's mount (see EntryForm); the panel never
+  // computes it, only labels with it.
+  inputCurrency: string
 }
 
 // PricingPanel owns every pricing affordance on the entry page, as a
@@ -50,8 +55,9 @@ interface PricingPanelProps {
 // persists across mode changes by design: off proxy it is "last proxy
 // target" memory, and any activation INTO proxy is re-validated by the
 // server on save (a vanished target answers 404).
-export default function PricingPanel({ entry, value, onChange }: PricingPanelProps) {
+export default function PricingPanel({ entry, value, onChange, inputCurrency }: PricingPanelProps) {
   const [picking, setPicking] = useState(false)
+  const money = useDisplayMoney()
 
   const ownProduct = useQuery({
     queryKey: ['product', entry.product_id],
@@ -85,11 +91,20 @@ export default function PricingPanel({ entry, value, onChange }: PricingPanelPro
     <section aria-label="Pricing" className="mb-6 rounded border border-gray-200 p-4">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Pricing</h3>
       <p className="mt-1 text-lg">
-        {formatCents(entry.value_cents) ?? 'No market value available.'}
+        {money.entryValue(entry) ?? 'No market value available.'}
       </p>
-      {/* The price provider quotes in USD only, so this is a label,
-          not a currency choice. */}
-      <p className="mt-1 text-xs text-gray-500">Market values are in USD.</p>
+      {!money.ready ? (
+        <p className="mt-1 text-xs text-gray-500">
+          Exchange rates are unavailable; values show in USD.
+        </p>
+      ) : money.currency === 'USD' ? (
+        <p className="mt-1 text-xs text-gray-500">Market values are in USD.</p>
+      ) : (
+        <p className="mt-1 text-xs text-gray-500">
+          Converted from USD at ECB rates ({money.rateDate}
+          {money.rateStale ? '; more than a week old' : ''}).
+        </p>
+      )}
 
       <fieldset className="mt-3 flex flex-col gap-1" aria-label="Pricing mode">
         {modes.map((m) => (
@@ -154,7 +169,7 @@ export default function PricingPanel({ entry, value, onChange }: PricingPanelPro
       {value.mode === 'custom' && (
         <div className="mt-3 flex flex-col gap-2">
           <label className="flex flex-col gap-1 text-sm font-medium">
-            Custom price (USD)
+            Custom price ({inputCurrency})
             <input
               inputMode="decimal"
               value={value.customValue}
@@ -187,7 +202,7 @@ export default function PricingPanel({ entry, value, onChange }: PricingPanelPro
 
       {value.mode !== 'custom' && dollarsToCents(value.customValue) !== undefined && (
         <p className="mt-3 flex items-center gap-2 rounded bg-gray-50 p-2 text-sm text-gray-600">
-          Last custom price: {formatCents(dollarsToCents(value.customValue))}
+          Last custom price: {formatCents(dollarsToCents(value.customValue), inputCurrency)}
           <button
             type="button"
             onClick={() => onChange({ ...value, mode: 'custom' })}

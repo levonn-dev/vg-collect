@@ -1,19 +1,21 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { EntryUpdate } from '../../api/collection'
-import { entryFixture, jsonResponse } from '../../test/fixtures'
+import { entryFixture, fxRatesFixture, jsonResponse, meFixture } from '../../test/fixtures'
+import { renderWithMoney } from '../../test/money'
 import EntryForm from './EntryForm'
 
-function renderForm(entry = entryFixture(), onSave = vi.fn()) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function renderForm(
+  entry = entryFixture(),
+  onSave = vi.fn(),
+  moneyOpts: { currency?: string; rates?: boolean } = {},
+) {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { tags: [] })))
-  const view = render(
-    <QueryClientProvider client={qc}>
-      <EntryForm entry={entry} onSave={onSave} saving={false} saved={false} error={null} />
-    </QueryClientProvider>,
+  const view = renderWithMoney(
+    <EntryForm entry={entry} onSave={onSave} saving={false} saved={false} error={null} />,
+    moneyOpts,
   )
-  return { onSave, unmount: view.unmount }
+  return { onSave, unmount: view.unmount, queryClient: view.queryClient }
 }
 
 afterEach(() => vi.unstubAllGlobals())
@@ -65,16 +67,13 @@ it('clearing an optional input drops the field from the payload', async () => {
 })
 
 it('drafts pricing edits for the save button: the radio moves, Saved. retracts, the payload carries them', async () => {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { tags: [] })))
   const onSave = vi.fn()
-  render(
-    <QueryClientProvider client={qc}>
-      <EntryForm
-        entry={entryFixture({ pricing_mode: 'proxy', pricing_product_id: 'p9' })}
-        onSave={onSave} saving={false} saved={true} error={null}
-      />
-    </QueryClientProvider>,
+  renderWithMoney(
+    <EntryForm
+      entry={entryFixture({ pricing_mode: 'proxy', pricing_product_id: 'p9' })}
+      onSave={onSave} saving={false} saved={true} error={null}
+    />,
   )
   expect(screen.getByText('Saved.')).toBeInTheDocument()
   await userEvent.click(screen.getByRole('radio', { name: /disabled/i }))
@@ -131,14 +130,27 @@ it('checks box and manual when packaging goes cib or sealed', async () => {
 })
 
 it('renders the save error', () => {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { tags: [] })))
-  render(
-    <QueryClientProvider client={qc}>
-      <EntryForm entry={entryFixture()} onSave={vi.fn()} saving={false} saved={false} error="no such pricing product" />
-    </QueryClientProvider>,
+  renderWithMoney(
+    <EntryForm entry={entryFixture()} onSave={vi.fn()} saving={false} saved={false} error="no such pricing product" />,
   )
   expect(screen.getByRole('alert')).toHaveTextContent('no such pricing product')
+})
+
+// Price paid is stamped once at create and never re-currencied by an
+// edit: the label shows the entry's own stored currency (JPY) even
+// though the signed-in profile displays in a different one (EUR), and
+// the save payload must carry the same stored code through unchanged.
+it('preserves the stored paid currency on edit and shows it on the label', async () => {
+  const entry = entryFixture({ currency: 'JPY', price_paid_cents: 500000 })
+  const { onSave } = renderForm(entry, vi.fn(), { currency: 'EUR' })
+
+  expect(screen.queryByLabelText(/^currency$/i)).not.toBeInTheDocument()
+  expect(screen.getByText(/price paid \(jpy\)/i)).toBeInTheDocument()
+
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+  const sent = onSave.mock.calls[0][0] as EntryUpdate
+  expect(sent.currency).toBe('JPY')
 })
 
 // Not brief-specified: the fields above cover the payload semantics the
@@ -147,15 +159,10 @@ it('renders the save error', () => {
 // coverage gate holds; it is additional breadth, not new behavior.
 it('carries edits from every remaining field control into the payload', async () => {
   const tags = [{ id: 't1', name: 'rpg', entry_count: 1 }]
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { tags })))
   const onSave = vi.fn()
   const entry = entryFixture({ product_id: undefined, display_name: 'Repro Cart' })
-  render(
-    <QueryClientProvider client={qc}>
-      <EntryForm entry={entry} onSave={onSave} saving={false} saved={false} error={null} />
-    </QueryClientProvider>,
-  )
+  renderWithMoney(<EntryForm entry={entry} onSave={onSave} saving={false} saved={false} error={null} />)
   await userEvent.click(await screen.findByRole('checkbox', { name: /rpg/i }))
 
   await userEvent.clear(screen.getByLabelText(/^name$/i))
@@ -169,8 +176,6 @@ it('carries edits from every remaining field control into the payload', async ()
   await userEvent.selectOptions(screen.getByLabelText(/item condition/i), 'poor')
   await userEvent.click(screen.getByRole('checkbox', { name: /has manual/i }))
   await userEvent.type(screen.getByLabelText(/price paid/i), '9.99')
-  await userEvent.clear(screen.getByLabelText(/^currency$/i))
-  await userEvent.type(screen.getByLabelText(/^currency$/i), 'eur')
   fireEvent.change(screen.getByLabelText(/purchased on/i), { target: { value: '2020-05-01' } })
   await userEvent.type(screen.getByLabelText(/purchased from/i), 'a friend')
   await userEvent.selectOptions(screen.getByLabelText(/^status/i), 'playing')
@@ -193,7 +198,6 @@ it('carries edits from every remaining field control into the payload', async ()
   expect(sent.has_box).toBe(false)
   expect(sent.has_manual).toBe(true)
   expect(sent.price_paid_cents).toBe(999)
-  expect(sent.currency).toBe('EUR')
   expect(sent.purchased_at).toBe('2020-05-01')
   expect(sent.purchased_from).toBe('a friend')
   expect(sent.status).toBe('playing')
@@ -232,4 +236,90 @@ it('keeps a stored custom price in the payload when saving under a different mod
   const sent = onSave.mock.calls[0][0] as EntryUpdate
   expect(sent.custom_value_cents).toBe(1200)
   expect(sent.pricing_mode).toBe('proxy')
+})
+
+it('saves a custom price typed in the display currency as pair plus USD snapshot', async () => {
+  const entry = entryFixture({ pricing_mode: 'custom', custom_value_cents: 5400 })
+  const { onSave } = renderForm(entry, vi.fn(), { currency: 'EUR' })
+
+  const input = screen.getByLabelText(/custom price \(eur\)/i)
+  await userEvent.clear(input)
+  await userEvent.type(input, '80')
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+
+  const sent = onSave.mock.calls[0][0] as EntryUpdate
+  expect(sent.custom_value_entered_cents).toBe(8000)
+  expect(sent.custom_value_entered_currency).toBe('EUR')
+  expect(sent.custom_value_cents).toBe(16000) // 8000 / 0.5
+})
+
+it('prefills the input from a matching stored pair, verbatim', () => {
+  const entry = entryFixture({
+    pricing_mode: 'custom',
+    custom_value_cents: 11900,
+    custom_value_entered_cents: 6000,
+    custom_value_entered_currency: 'EUR',
+  })
+  renderForm(entry, vi.fn(), { currency: 'EUR' })
+  expect(screen.getByLabelText(/custom price \(eur\)/i)).toHaveValue('60.00')
+})
+
+it('falls back to a USD input when rates are unavailable', () => {
+  const entry = entryFixture({ pricing_mode: 'custom', custom_value_cents: 5400 })
+  renderForm(entry, vi.fn(), { currency: 'EUR', rates: false })
+  expect(screen.getByLabelText(/custom price \(usd\)/i)).toHaveValue('54.00')
+})
+
+it('blocks saving a custom price when the rate vanishes after mount', async () => {
+  // The input currency froze to EUR at mount; a fresh snapshot then
+  // arrives WITHOUT a EUR rate. Replacing the cached snapshot with a
+  // defined object updates observers synchronously and stays fresh
+  // (staleTime Infinity), so no refetch races the assertion.
+  const entry = entryFixture({ pricing_mode: 'custom', custom_value_cents: 5400 })
+  const { onSave, queryClient } = renderForm(entry, vi.fn(), { currency: 'EUR' })
+  expect(screen.getByLabelText(/custom price \(eur\)/i)).toBeInTheDocument()
+  await act(() => queryClient.setQueryData(['fx'], fxRatesFixture({ rates: { GBP: 0.75 } })))
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+  expect(onSave).not.toHaveBeenCalled()
+  expect(screen.getByRole('alert')).toHaveTextContent('Exchange rates are unavailable; try saving again shortly.')
+})
+
+it('converts the draft at the frozen input currency when the display currency changes mid-edit', async () => {
+  // The input currency froze to EUR at mount. The header selector then
+  // flips the profile to JPY mid-edit (optimistic ['me'] update, no
+  // remount) - the draft typed in EUR must still convert at EUR's
+  // rate, not JPY's.
+  const entry = entryFixture({ pricing_mode: 'custom', custom_value_cents: 5400 })
+  const { onSave, queryClient } = renderForm(entry, vi.fn(), { currency: 'EUR' })
+  const input = screen.getByLabelText(/custom price \(eur\)/i)
+  expect(input).toBeInTheDocument()
+  await userEvent.clear(input)
+  await userEvent.type(input, '60')
+  await act(() => queryClient.setQueryData(['me'], meFixture({ preferred_currency: 'JPY' })))
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+  const sent = onSave.mock.calls[0][0] as EntryUpdate
+  expect(sent.custom_value_cents).toBe(12000)
+  expect(sent.custom_value_entered_cents).toBe(6000)
+  expect(sent.custom_value_entered_currency).toBe('EUR')
+})
+
+// Not brief-specified: locks in the deliberate behavior change named in the
+// design (a blanked draft no longer clears stored memory on save) - without
+// this, a stray clear-then-switch-mode click would silently erase
+// custom_value_cents from the baseline echo.
+it('preserves a stored custom price when the draft is blanked and saved under a different mode', async () => {
+  const entry = entryFixture({
+    pricing_mode: 'custom',
+    custom_value_cents: 1200,
+    custom_value_entered_cents: 1200,
+    custom_value_entered_currency: 'USD',
+  })
+  const { onSave } = renderForm(entry)
+  await userEvent.clear(screen.getByLabelText(/custom price \(usd\)/i))
+  await userEvent.click(screen.getByRole('radio', { name: /disabled/i }))
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+  const sent = onSave.mock.calls[0][0] as EntryUpdate
+  expect(sent.custom_value_cents).toBe(1200)
+  expect(sent.custom_value_entered_cents).toBe(1200)
+  expect(sent.custom_value_entered_currency).toBe('USD')
 })

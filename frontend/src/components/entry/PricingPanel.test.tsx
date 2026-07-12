@@ -1,9 +1,9 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Entry } from '../../api/collection'
 import { centsToDollars } from '../../lib/format'
-import { entryFixture, jsonResponse } from '../../test/fixtures'
+import { entryFixture, fxRatesFixture, jsonResponse } from '../../test/fixtures'
+import { renderWithMoney } from '../../test/money'
 import type { PricingValue } from './PricingPanel'
 import PricingPanel from './PricingPanel'
 
@@ -41,13 +41,12 @@ function renderPanel(
     productId: entry.pricing_product_id,
     customValue: centsToDollars(entry.custom_value_cents),
   },
+  currency = 'USD',
 ) {
   const onChange = vi.fn()
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
-    <QueryClientProvider client={qc}>
-      <PricingPanel entry={entry} value={value} onChange={onChange} />
-    </QueryClientProvider>,
+  renderWithMoney(
+    <PricingPanel entry={entry} value={value} onChange={onChange} inputCurrency={currency} />,
+    { currency },
   )
   return onChange
 }
@@ -64,6 +63,66 @@ it('labels market values as USD', () => {
   stubFetch({ '/api/products/': matchedProduct })
   renderPanel(entryFixture({ value_cents: 4200 }))
   expect(screen.getByText('Market values are in USD.')).toBeInTheDocument()
+})
+
+it('converts the match quotes and names the rate snapshot', async () => {
+  stubFetch({ '/api/products/': matchedProduct })
+  renderPanel(entryFixture(), undefined, 'EUR')
+  expect(await screen.findByText(/loose €7\.50/i)).toBeInTheDocument() // 1500 * 0.5
+  expect(screen.getByText(/converted from usd at ecb rates \(\d{4}-\d{2}-\d{2}\)/i)).toBeInTheDocument()
+  expect(screen.queryByText(/more than a week old/i)).not.toBeInTheDocument()
+  expect(screen.queryByText('Market values are in USD.')).not.toBeInTheDocument()
+})
+
+it('flags the rate snapshot as stale once it is more than a week old', async () => {
+  stubFetch({ '/api/products/': matchedProduct })
+  const entry = entryFixture()
+  const value: PricingValue = {
+    mode: entry.pricing_mode,
+    productId: entry.pricing_product_id,
+    customValue: centsToDollars(entry.custom_value_cents),
+  }
+  const { queryClient } = renderWithMoney(
+    <PricingPanel entry={entry} value={value} onChange={vi.fn()} inputCurrency="EUR" />,
+    { currency: 'EUR' },
+  )
+  await act(() => queryClient.setQueryData(['fx'], fxRatesFixture({ date: '2026-01-01' })))
+  expect(await screen.findByText(/more than a week old/i)).toBeInTheDocument()
+})
+
+it('keeps the plain USD note under USD', () => {
+  stubFetch({ '/api/products/': matchedProduct })
+  renderPanel()
+  expect(screen.getByText('Market values are in USD.')).toBeInTheDocument()
+})
+
+it('states the fallback while rates are unavailable', () => {
+  stubFetch({})
+  const onChange = vi.fn()
+  renderWithMoney(
+    <PricingPanel
+      entry={entryFixture()}
+      value={{ mode: 'auto', productId: undefined, customValue: '' }}
+      onChange={onChange}
+      inputCurrency="USD"
+    />,
+    { currency: 'EUR', rates: false },
+  )
+  expect(screen.getByText(/exchange rates are unavailable; values show in usd/i)).toBeInTheDocument()
+})
+
+it('pins the entry value from a matching entered pair', () => {
+  stubFetch({})
+  const entry = entryFixture({
+    pricing_mode: 'custom',
+    product_id: undefined,
+    value_cents: 11900,
+    custom_value_cents: 11900,
+    custom_value_entered_cents: 6000,
+    custom_value_entered_currency: 'EUR',
+  })
+  renderPanel(entry, undefined, 'EUR')
+  expect(screen.getByText('€60.00')).toBeInTheDocument()
 })
 
 it('shows the match card in auto mode', async () => {
@@ -213,4 +272,11 @@ it('remembers the last custom price under another mode with a reactivate afforda
   const reactivateButton = screen.getByRole('button', { name: 'Reactivate the last custom price' })
   await userEvent.click(reactivateButton)
   expect(onChange).toHaveBeenCalledWith({ mode: 'custom', productId: undefined, customValue: '12.00' })
+})
+
+it('labels the custom input and the memory row in the input currency', () => {
+  stubFetch({})
+  const entry = entryFixture({ pricing_mode: 'custom', product_id: undefined })
+  renderPanel(entry, { mode: 'custom', productId: undefined, customValue: '60' }, 'EUR')
+  expect(screen.getByLabelText(/custom price \(eur\)/i)).toBeInTheDocument()
 })
