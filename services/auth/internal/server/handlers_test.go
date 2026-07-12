@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"math/big"
 	"net/http"
@@ -83,11 +84,12 @@ type stubUsersServer struct {
 	srv *httptest.Server
 	v   *jwtauth.Validator
 
-	mu         sync.Mutex
-	byEmail    map[string]*userRec
-	byID       map[uuid.UUID]*userRec
-	fail       bool
-	localeHint string
+	mu             sync.Mutex
+	byEmail        map[string]*userRec
+	byID           map[uuid.UUID]*userRec
+	fail           bool
+	localeHint     string
+	lastUpsertBody []byte
 }
 
 // newJWKSValidator builds a jwtauth.Validator against a JWKS httptest
@@ -147,12 +149,14 @@ func (f *stubUsersServer) upsert(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	raw, _ := io.ReadAll(r.Body)
+	f.lastUpsertBody = raw
 	var req struct {
 		Email       string  `json:"email"`
 		DisplayName string  `json:"display_name"`
 		LocaleHint  *string `json:"locale_hint"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	_ = json.Unmarshal(raw, &req)
 	if req.LocaleHint != nil {
 		f.localeHint = *req.LocaleHint
 	}
@@ -234,6 +238,16 @@ func (f *stubUsersServer) lastLocaleHint() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.localeHint
+}
+
+// lastUpsertRaw reports the raw JSON bytes of the most recent upsert
+// body, so a test can prove a key is absent from the wire -- a decoded
+// zero value alone can't distinguish "key omitted" from "key present
+// with a zero value" for non-pointer fields.
+func (f *stubUsersServer) lastUpsertRaw() []byte {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lastUpsertBody
 }
 
 // --- slim stub IdP (discovery + jwks + token endpoint) ---
@@ -651,6 +665,32 @@ func TestOauthCallback_ForwardsLocaleHint(t *testing.T) {
 	}
 	if got := e.users.lastLocaleHint(); got != "de-DE" {
 		t.Fatalf("locale_hint reaching the user service: %q, want de-DE", got)
+	}
+}
+
+func TestOauthCallback_NoAcceptLanguageOmitsLocaleHint(t *testing.T) {
+	e := newEnv(t, false)
+	resp := post(t, e.srv.URL+"/oauth/start", map[string]string{"provider": "google"})
+	start := decode[struct {
+		AuthorizeURL string `json:"authorize_url"`
+	}](t, resp)
+	u, _ := url.Parse(start.AuthorizeURL)
+	q := u.Query()
+	e.idp.registerCode("code-noloc", q.Get("nonce"), jwt.MapClaims{
+		"sub": "s-noloc", "email": "noloc@example.com", "email_verified": true, "name": "NoLoc",
+	})
+	// post() never sets Accept-Language, so this drives the callback
+	// with the header fully absent (not merely empty).
+	resp = post(t, e.srv.URL+"/oauth/callback",
+		map[string]string{"code": "code-noloc", "state": q.Get("state")})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("callback status: %d", resp.StatusCode)
+	}
+	if got := e.users.lastLocaleHint(); got != "" {
+		t.Fatalf("locale_hint reaching the user service: %q, want empty", got)
+	}
+	if raw := e.users.lastUpsertRaw(); strings.Contains(string(raw), "locale_hint") {
+		t.Fatalf("upsert body carried a locale_hint key, want it absent: %s", raw)
 	}
 }
 

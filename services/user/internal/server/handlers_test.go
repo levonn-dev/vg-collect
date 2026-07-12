@@ -357,6 +357,23 @@ func TestUpdateUser_SelfOnlyAndValidation(t *testing.T) {
 		}
 	})
 
+	t.Run("valid preferred_currency updates and persists", func(t *testing.T) {
+		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"),
+			map[string]string{"preferred_currency": "EUR"})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+		var got struct {
+			PreferredCurrency string `json:"preferred_currency"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got.PreferredCurrency != "EUR" {
+			t.Fatalf("preferred_currency = %q, want %q", got.PreferredCurrency, "EUR")
+		}
+	})
+
 	t.Run("unknown userId with matching sub 404", func(t *testing.T) {
 		unknown := uuid.New().String()
 		resp := do(t, "PATCH", srv.URL+"/users/"+unknown, a.token(t, unknown, "user"),
