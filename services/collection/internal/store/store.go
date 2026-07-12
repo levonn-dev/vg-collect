@@ -87,6 +87,12 @@ type Entry struct {
 	CustomValueCents *int64
 	CustomValueSetAt *time.Time
 
+	// The typed custom-price pair (display metadata; the DB CHECKs
+	// pair them). custom_value_cents stays the USD value all math
+	// uses.
+	CustomValueEnteredCents    *int64
+	CustomValueEnteredCurrency *string
+
 	Status          string
 	Rating          *int
 	Notes           *string
@@ -121,7 +127,8 @@ const entryCols = `id, user_id, product_id, item_type, media_type,
 	pricing_mode, pricing_product_id,
 	status, rating, notes, storage_location, pinned, backlog_rank,
 	source, external_ref, created_at, updated_at, cover_url,
-	custom_value_cents, custom_value_set_at`
+	custom_value_cents, custom_value_set_at,
+	custom_value_entered_cents, custom_value_entered_currency`
 
 func scanEntry(row pgx.Row) (Entry, error) {
 	var e Entry
@@ -135,6 +142,7 @@ func scanEntry(row pgx.Row) (Entry, error) {
 		&e.Status, &e.Rating, &e.Notes, &e.StorageLocation, &e.Pinned, &e.BacklogRank,
 		&e.Source, &e.ExternalRef, &e.CreatedAt, &e.UpdatedAt, &e.CoverURL,
 		&e.CustomValueCents, &e.CustomValueSetAt,
+		&e.CustomValueEnteredCents, &e.CustomValueEnteredCurrency,
 	)
 	return e, err
 }
@@ -236,10 +244,12 @@ func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			 price_paid_cents, currency, purchased_at, purchased_from,
 			 pricing_mode, pricing_product_id,
 			 status, rating, notes, storage_location, pinned, backlog_rank,
-			 source, external_ref, cover_url, custom_value_cents, custom_value_set_at)
+			 source, external_ref, cover_url, custom_value_cents, custom_value_set_at,
+			 custom_value_entered_cents, custom_value_entered_currency)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
 			        $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,
-			        $33, CASE WHEN $33::bigint IS NULL THEN NULL ELSE now() END)
+			        $33, CASE WHEN $33::bigint IS NULL THEN NULL ELSE now() END,
+			        $34, $35)
 			RETURNING `+entryCols,
 			e.UserID, e.ProductID, e.ItemType, e.MediaType,
 			e.DisplayName, e.PlatformIGDBID, e.PlatformName, e.FirstReleaseDate, e.IGDBGameID,
@@ -248,7 +258,8 @@ func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			e.PricePaidCents, e.Currency, e.PurchasedAt, e.PurchasedFrom,
 			e.PricingMode, e.PricingProductID,
 			e.Status, e.Rating, e.Notes, e.StorageLocation, e.Pinned, e.BacklogRank,
-			e.Source, e.ExternalRef, e.CoverURL, e.CustomValueCents)
+			e.Source, e.ExternalRef, e.CoverURL, e.CustomValueCents,
+			e.CustomValueEnteredCents, e.CustomValueEnteredCurrency)
 		created, err := scanEntry(row)
 		if err != nil {
 			return fmt.Errorf("store: create entry: %w", err)
@@ -341,6 +352,8 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			   WHEN $27::bigint IS NOT DISTINCT FROM custom_value_cents THEN custom_value_set_at
 			   WHEN $27::bigint IS NULL THEN NULL
 			   ELSE now() END,
+			 custom_value_entered_cents = $28,
+			 custom_value_entered_currency = $29,
 			 updated_at = now()
 			WHERE id = $1 AND user_id = $2
 			RETURNING `+entryCols,
@@ -352,7 +365,8 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			e.Status, e.Rating, e.Notes, e.StorageLocation,
 			e.Pinned, e.BacklogRank,
 			e.DisplayName, e.PlatformName, e.FirstReleaseDate,
-			e.IGDBGameID, e.CustomValueCents)
+			e.IGDBGameID, e.CustomValueCents,
+			e.CustomValueEnteredCents, e.CustomValueEnteredCurrency)
 		updated, err := scanEntry(row)
 		if err != nil {
 			return fmt.Errorf("store: update entry: %w", err)

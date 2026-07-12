@@ -2885,6 +2885,38 @@ func TestUnitCustomPricing_ValidationMatrix(t *testing.T) {
 		{"unknown pricing mode", func(m map[string]any) {
 			m["pricing_mode"] = "bogus"
 		}, "pricing_mode must be one of auto, proxy, custom, disabled"},
+		{"entered pair missing its currency", func(m map[string]any) {
+			m["pricing_mode"] = "custom"
+			m["custom_value_cents"] = 5400
+			m["custom_value_entered_cents"] = 6000
+		}, "custom_value_entered_cents and custom_value_entered_currency must be provided together"},
+		{"entered currency missing its cents", func(m map[string]any) {
+			m["pricing_mode"] = "custom"
+			m["custom_value_cents"] = 5400
+			m["custom_value_entered_currency"] = "EUR"
+		}, "custom_value_entered_cents and custom_value_entered_currency must be provided together"},
+		{"entered pair without custom value", func(m map[string]any) {
+			m["custom_value_entered_cents"] = 6000
+			m["custom_value_entered_currency"] = "EUR"
+		}, "custom_value_entered requires custom_value_cents"},
+		{"entered cents negative", func(m map[string]any) {
+			m["pricing_mode"] = "custom"
+			m["custom_value_cents"] = 5400
+			m["custom_value_entered_cents"] = -1
+			m["custom_value_entered_currency"] = "EUR"
+		}, "custom_value_entered_cents must not be negative"},
+		{"entered cents over cap", func(m map[string]any) {
+			m["pricing_mode"] = "custom"
+			m["custom_value_cents"] = 5400
+			m["custom_value_entered_cents"] = 1000000001
+			m["custom_value_entered_currency"] = "EUR"
+		}, "custom_value_entered_cents must not exceed 1000000000"},
+		{"entered currency malformed", func(m map[string]any) {
+			m["pricing_mode"] = "custom"
+			m["custom_value_cents"] = 5400
+			m["custom_value_entered_cents"] = 6000
+			m["custom_value_entered_currency"] = "eur"
+		}, "custom_value_entered_currency must be a 3-letter uppercase code"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -3032,6 +3064,57 @@ func TestUnitEntryValue_CustomModeShortCircuitsEnrichment(t *testing.T) {
 	}
 	if got2.ValueCents == nil || *got2.ValueCents != 12345 {
 		t.Fatalf("value_cents after packaging change: %v", got2.ValueCents)
+	}
+}
+
+// TestUnitEnteredPair_PassthroughOnCreate pins that the typed pair
+// rides create -> store -> response untouched, next to the USD
+// snapshot the backend actually computes with.
+func TestUnitEnteredPair_PassthroughOnCreate(t *testing.T) {
+	productID := uuid.New()
+	var stored store.Entry
+	st := &stubStore{
+		createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			stored = e
+			e.ID = uuid.New()
+			r := "n"
+			e.BacklogRank = &r
+			e.Tags = []store.TagRef{}
+			e.CustomValueSetAt = ptr(time.Now())
+			return e, nil
+		},
+	}
+	enrich := &stubEnrichment{getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+		return gameProduct(id), nil
+	}}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()),
+		createBody(productID, func(m map[string]any) {
+			m["pricing_mode"] = "custom"
+			m["custom_value_cents"] = 5400
+			m["custom_value_entered_cents"] = 6000
+			m["custom_value_entered_currency"] = "EUR"
+		}))
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status: %d", resp.StatusCode)
+	}
+	if stored.CustomValueEnteredCents == nil || *stored.CustomValueEnteredCents != 6000 ||
+		stored.CustomValueEnteredCurrency == nil || *stored.CustomValueEnteredCurrency != "EUR" {
+		t.Fatalf("pair reaching the store: %+v %+v", stored.CustomValueEnteredCents, stored.CustomValueEnteredCurrency)
+	}
+	var got struct {
+		EnteredCents    *int64  `json:"custom_value_entered_cents"`
+		EnteredCurrency *string `json:"custom_value_entered_currency"`
+		ValueCents      *int64  `json:"value_cents"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.EnteredCents == nil || *got.EnteredCents != 6000 || got.EnteredCurrency == nil || *got.EnteredCurrency != "EUR" {
+		t.Fatalf("pair in the response: %+v %+v", got.EnteredCents, got.EnteredCurrency)
+	}
+	if got.ValueCents == nil || *got.ValueCents != 5400 {
+		t.Fatalf("value_cents must stay the USD snapshot: %+v", got.ValueCents)
 	}
 }
 

@@ -683,6 +683,19 @@ components:
           description: >
             Server-managed: stamped when custom_value_cents is first
             set or changes value, untouched otherwise. Read-only.
+        custom_value_entered_cents:
+          type: integer
+          format: int64
+          description: >
+            The custom price exactly as the user typed it, in
+            custom_value_entered_currency minor units (major units x
+            100, including zero-decimal currencies). Display metadata
+            only: no aggregation reads it; custom_value_cents remains
+            the USD value used everywhere.
+        custom_value_entered_currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          description: Currency of custom_value_entered_cents.
         status: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
         rating: { type: integer, minimum: 1, maximum: 10 }
         notes: { type: string }
@@ -755,6 +768,8 @@ components:
         pricing_mode: { type: string, enum: [auto, proxy, custom, disabled], default: auto }
         pricing_product_id: { type: string, format: uuid }
         custom_value_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        custom_value_entered_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        custom_value_entered_currency: { type: string, pattern: "^[A-Z]{3}$" }
         status:
           type: string
           enum: [backlog, playing, beaten, completed, dropped, shelved]
@@ -810,6 +825,8 @@ components:
         pricing_mode: { type: string, enum: [auto, proxy, custom, disabled] }
         pricing_product_id: { type: string, format: uuid }
         custom_value_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        custom_value_entered_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        custom_value_entered_currency: { type: string, pattern: "^[A-Z]{3}$" }
         status: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
         rating: { type: integer, minimum: 1, maximum: 10 }
         notes: { type: string, maxLength: 10000 }

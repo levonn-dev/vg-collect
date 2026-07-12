@@ -401,6 +401,12 @@ type Entry struct {
 	// CustomValueCents The user-set market value (USD cents). With pricing_mode custom it IS the entry's value; under any other mode it persists as "last custom price" memory.
 	CustomValueCents *int64 `json:"custom_value_cents,omitempty"`
 
+	// CustomValueEnteredCents The custom price exactly as the user typed it, in custom_value_entered_currency minor units (major units x 100, including zero-decimal currencies). Display metadata only: no aggregation reads it; custom_value_cents remains the USD value used everywhere.
+	CustomValueEnteredCents *int64 `json:"custom_value_entered_cents,omitempty"`
+
+	// CustomValueEnteredCurrency Currency of custom_value_entered_cents.
+	CustomValueEnteredCurrency *string `json:"custom_value_entered_currency,omitempty"`
+
 	// CustomValueSetAt Server-managed: stamped when custom_value_cents is first set or changes value, untouched otherwise. Read-only.
 	CustomValueSetAt *time.Time `json:"custom_value_set_at,omitempty"`
 	DisplayName      string     `json:"display_name"`
@@ -475,9 +481,11 @@ type EntryStatus string
 
 // EntryCreate Product-backed: product_id comes from a prior enrichment resolve and the catalog fields are snapshotted server-side (display_name/item_type/platform_name/first_release_date must NOT be sent). Custom (no product_id): display_name and item_type are required, platform_name and first_release_date optional; pricing_mode defaults to disabled and must not be auto. media_type accepts only physical (the column already allows digital: the API widens when platform sync arrives). source is server-set manual. pricing_product_id is required when pricing_mode is proxy; box_condition requires has_box and manual_condition requires has_manual. custom_value_cents is required when pricing_mode is custom.
 type EntryCreate struct {
-	BoxCondition     *EntryCreateBoxCondition `json:"box_condition,omitempty"`
-	Currency         *string                  `json:"currency,omitempty"`
-	CustomValueCents *int64                   `json:"custom_value_cents,omitempty"`
+	BoxCondition               *EntryCreateBoxCondition `json:"box_condition,omitempty"`
+	Currency                   *string                  `json:"currency,omitempty"`
+	CustomValueCents           *int64                   `json:"custom_value_cents,omitempty"`
+	CustomValueEnteredCents    *int64                   `json:"custom_value_entered_cents,omitempty"`
+	CustomValueEnteredCurrency *string                  `json:"custom_value_entered_currency,omitempty"`
 
 	// DisplayName Custom entries only (required there).
 	DisplayName *string `json:"display_name,omitempty"`
@@ -571,9 +579,11 @@ type EntryPlatform struct {
 
 // EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). product_id, media_type, and custom-ness are immutable. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
 type EntryUpdate struct {
-	BoxCondition     *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
-	Currency         *string                  `json:"currency,omitempty"`
-	CustomValueCents *int64                   `json:"custom_value_cents,omitempty"`
+	BoxCondition               *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
+	Currency                   *string                  `json:"currency,omitempty"`
+	CustomValueCents           *int64                   `json:"custom_value_cents,omitempty"`
+	CustomValueEnteredCents    *int64                   `json:"custom_value_entered_cents,omitempty"`
+	CustomValueEnteredCurrency *string                  `json:"custom_value_entered_currency,omitempty"`
 
 	// DisplayName Custom entries only (required there).
 	DisplayName *string `json:"display_name,omitempty"`

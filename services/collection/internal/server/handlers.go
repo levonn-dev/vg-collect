@@ -26,7 +26,8 @@ var _ api.ServerInterface = (*Handlers)(nil)
 const maxBodyBytes = 64 * 1024
 
 var (
-	currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
+	currencyRe        = regexp.MustCompile(`^[A-Z]{3}$`)
+	enteredCurrencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
 
 	regionVals    = map[string]bool{"ntsc_u": true, "ntsc_j": true, "pal": true, "region_free": true}
 	packagingVals = map[string]bool{"sealed": true, "cib": true, "loose": true}
@@ -43,27 +44,29 @@ var (
 // bodies, unwrapped to plain values (defaults applied) so one
 // validator serves both operations.
 type entryInput struct {
-	Region           string
-	Edition          *string
-	Packaging        string
-	HasBox           bool
-	HasManual        bool
-	BoxCondition     *string
-	ManualCondition  *string
-	ItemCondition    *string
-	PricePaidCents   *int64
-	Currency         string
-	PurchasedAt      *time.Time
-	PurchasedFrom    *string
-	PricingMode      string
-	PricingProductID *uuid.UUID
-	CustomValueCents *int64
-	Status           string
-	Rating           *int
-	Notes            *string
-	StorageLocation  *string
-	Pinned           bool
-	TagIDs           []uuid.UUID
+	Region                     string
+	Edition                    *string
+	Packaging                  string
+	HasBox                     bool
+	HasManual                  bool
+	BoxCondition               *string
+	ManualCondition            *string
+	ItemCondition              *string
+	PricePaidCents             *int64
+	Currency                   string
+	PurchasedAt                *time.Time
+	PurchasedFrom              *string
+	PricingMode                string
+	PricingProductID           *uuid.UUID
+	CustomValueCents           *int64
+	CustomValueEnteredCents    *int64
+	CustomValueEnteredCurrency *string
+	Status                     string
+	Rating                     *int
+	Notes                      *string
+	StorageLocation            *string
+	Pinned                     bool
+	TagIDs                     []uuid.UUID
 }
 
 func strDeref(s *string, def string) string {
@@ -91,27 +94,29 @@ func uuidsFrom(ids *[]openapi_types.UUID) []uuid.UUID {
 // createInput unwraps an EntryCreate, applying the contract defaults.
 func createInput(b api.EntryCreate) entryInput {
 	return entryInput{
-		Region:           string(b.Region),
-		Edition:          b.Edition,
-		Packaging:        string(b.Packaging),
-		HasBox:           b.HasBox != nil && *b.HasBox,
-		HasManual:        b.HasManual != nil && *b.HasManual,
-		BoxCondition:     (*string)(b.BoxCondition),
-		ManualCondition:  (*string)(b.ManualCondition),
-		ItemCondition:    (*string)(b.ItemCondition),
-		PricePaidCents:   b.PricePaidCents,
-		Currency:         strDeref(b.Currency, "USD"),
-		PurchasedAt:      dateToTime(b.PurchasedAt),
-		PurchasedFrom:    b.PurchasedFrom,
-		PricingMode:      strDeref((*string)(b.PricingMode), "auto"),
-		PricingProductID: b.PricingProductId,
-		CustomValueCents: b.CustomValueCents,
-		Status:           strDeref((*string)(b.Status), "backlog"),
-		Rating:           b.Rating,
-		Notes:            b.Notes,
-		StorageLocation:  b.StorageLocation,
-		Pinned:           b.Pinned != nil && *b.Pinned,
-		TagIDs:           uuidsFrom(b.TagIds),
+		Region:                     string(b.Region),
+		Edition:                    b.Edition,
+		Packaging:                  string(b.Packaging),
+		HasBox:                     b.HasBox != nil && *b.HasBox,
+		HasManual:                  b.HasManual != nil && *b.HasManual,
+		BoxCondition:               (*string)(b.BoxCondition),
+		ManualCondition:            (*string)(b.ManualCondition),
+		ItemCondition:              (*string)(b.ItemCondition),
+		PricePaidCents:             b.PricePaidCents,
+		Currency:                   strDeref(b.Currency, "USD"),
+		PurchasedAt:                dateToTime(b.PurchasedAt),
+		PurchasedFrom:              b.PurchasedFrom,
+		PricingMode:                strDeref((*string)(b.PricingMode), "auto"),
+		PricingProductID:           b.PricingProductId,
+		CustomValueCents:           b.CustomValueCents,
+		CustomValueEnteredCents:    b.CustomValueEnteredCents,
+		CustomValueEnteredCurrency: b.CustomValueEnteredCurrency,
+		Status:                     strDeref((*string)(b.Status), "backlog"),
+		Rating:                     b.Rating,
+		Notes:                      b.Notes,
+		StorageLocation:            b.StorageLocation,
+		Pinned:                     b.Pinned != nil && *b.Pinned,
+		TagIDs:                     uuidsFrom(b.TagIds),
 	}
 }
 
@@ -119,27 +124,29 @@ func createInput(b api.EntryCreate) entryInput {
 // optional fields clear).
 func updateInput(b api.EntryUpdate) entryInput {
 	return entryInput{
-		Region:           string(b.Region),
-		Edition:          b.Edition,
-		Packaging:        string(b.Packaging),
-		HasBox:           b.HasBox != nil && *b.HasBox,
-		HasManual:        b.HasManual != nil && *b.HasManual,
-		BoxCondition:     (*string)(b.BoxCondition),
-		ManualCondition:  (*string)(b.ManualCondition),
-		ItemCondition:    (*string)(b.ItemCondition),
-		PricePaidCents:   b.PricePaidCents,
-		Currency:         strDeref(b.Currency, "USD"),
-		PurchasedAt:      dateToTime(b.PurchasedAt),
-		PurchasedFrom:    b.PurchasedFrom,
-		PricingMode:      string(b.PricingMode),
-		PricingProductID: b.PricingProductId,
-		CustomValueCents: b.CustomValueCents,
-		Status:           string(b.Status),
-		Rating:           b.Rating,
-		Notes:            b.Notes,
-		StorageLocation:  b.StorageLocation,
-		Pinned:           b.Pinned,
-		TagIDs:           uuidsFrom(b.TagIds),
+		Region:                     string(b.Region),
+		Edition:                    b.Edition,
+		Packaging:                  string(b.Packaging),
+		HasBox:                     b.HasBox != nil && *b.HasBox,
+		HasManual:                  b.HasManual != nil && *b.HasManual,
+		BoxCondition:               (*string)(b.BoxCondition),
+		ManualCondition:            (*string)(b.ManualCondition),
+		ItemCondition:              (*string)(b.ItemCondition),
+		PricePaidCents:             b.PricePaidCents,
+		Currency:                   strDeref(b.Currency, "USD"),
+		PurchasedAt:                dateToTime(b.PurchasedAt),
+		PurchasedFrom:              b.PurchasedFrom,
+		PricingMode:                string(b.PricingMode),
+		PricingProductID:           b.PricingProductId,
+		CustomValueCents:           b.CustomValueCents,
+		CustomValueEnteredCents:    b.CustomValueEnteredCents,
+		CustomValueEnteredCurrency: b.CustomValueEnteredCurrency,
+		Status:                     string(b.Status),
+		Rating:                     b.Rating,
+		Notes:                      b.Notes,
+		StorageLocation:            b.StorageLocation,
+		Pinned:                     b.Pinned,
+		TagIDs:                     uuidsFrom(b.TagIds),
 	}
 }
 
@@ -192,6 +199,23 @@ func validateEntryInput(in entryInput) string {
 	if in.PricingMode == "custom" && in.CustomValueCents == nil {
 		return "pricing_mode custom requires custom_value_cents"
 	}
+	if (in.CustomValueEnteredCents == nil) != (in.CustomValueEnteredCurrency == nil) {
+		return "custom_value_entered_cents and custom_value_entered_currency must be provided together"
+	}
+	if in.CustomValueEnteredCents != nil {
+		if in.CustomValueCents == nil {
+			return "custom_value_entered requires custom_value_cents"
+		}
+		if *in.CustomValueEnteredCents < 0 {
+			return "custom_value_entered_cents must not be negative"
+		}
+		if *in.CustomValueEnteredCents > 1000000000 {
+			return "custom_value_entered_cents must not exceed 1000000000"
+		}
+		if !enteredCurrencyRe.MatchString(*in.CustomValueEnteredCurrency) {
+			return "custom_value_entered_currency must be a 3-letter uppercase code"
+		}
+	}
 	for name, lim := range map[string]struct {
 		v   *string
 		max int
@@ -228,6 +252,8 @@ func applyInput(e *store.Entry, in entryInput) {
 	e.PricingMode = in.PricingMode
 	e.PricingProductID = in.PricingProductID
 	e.CustomValueCents = in.CustomValueCents
+	e.CustomValueEnteredCents = in.CustomValueEnteredCents
+	e.CustomValueEnteredCurrency = in.CustomValueEnteredCurrency
 	e.Status = in.Status
 	e.Rating = in.Rating
 	e.Notes = in.Notes
@@ -269,39 +295,41 @@ func valueForPackaging(packaging string, p enrichapi.ProductPrices) *int64 {
 // contract shape.
 func toAPIEntry(e store.Entry, valueCents *int64) api.Entry {
 	out := api.Entry{
-		Id:               e.ID,
-		ProductId:        e.ProductID,
-		ItemType:         api.EntryItemType(e.ItemType),
-		MediaType:        api.EntryMediaType(e.MediaType),
-		DisplayName:      e.DisplayName,
-		CoverUrl:         e.CoverURL,
-		IgdbGameId:       e.IGDBGameID,
-		Region:           api.EntryRegion(e.Region),
-		Edition:          e.Edition,
-		Packaging:        api.EntryPackaging(e.Packaging),
-		HasBox:           e.HasBox,
-		HasManual:        e.HasManual,
-		BoxCondition:     (*api.EntryBoxCondition)(e.BoxCondition),
-		ManualCondition:  (*api.EntryManualCondition)(e.ManualCondition),
-		ItemCondition:    (*api.EntryItemCondition)(e.ItemCondition),
-		PricePaidCents:   e.PricePaidCents,
-		Currency:         e.Currency,
-		PurchasedFrom:    e.PurchasedFrom,
-		PricingMode:      api.EntryPricingMode(e.PricingMode),
-		PricingProductId: e.PricingProductID,
-		CustomValueCents: e.CustomValueCents,
-		CustomValueSetAt: e.CustomValueSetAt,
-		Status:           api.EntryStatus(e.Status),
-		Rating:           e.Rating,
-		Notes:            e.Notes,
-		StorageLocation:  e.StorageLocation,
-		Pinned:           e.Pinned,
-		BacklogRank:      e.BacklogRank,
-		Source:           api.EntrySource(e.Source),
-		ExternalRef:      e.ExternalRef,
-		ValueCents:       valueCents,
-		CreatedAt:        e.CreatedAt,
-		UpdatedAt:        e.UpdatedAt,
+		Id:                         e.ID,
+		ProductId:                  e.ProductID,
+		ItemType:                   api.EntryItemType(e.ItemType),
+		MediaType:                  api.EntryMediaType(e.MediaType),
+		DisplayName:                e.DisplayName,
+		CoverUrl:                   e.CoverURL,
+		IgdbGameId:                 e.IGDBGameID,
+		Region:                     api.EntryRegion(e.Region),
+		Edition:                    e.Edition,
+		Packaging:                  api.EntryPackaging(e.Packaging),
+		HasBox:                     e.HasBox,
+		HasManual:                  e.HasManual,
+		BoxCondition:               (*api.EntryBoxCondition)(e.BoxCondition),
+		ManualCondition:            (*api.EntryManualCondition)(e.ManualCondition),
+		ItemCondition:              (*api.EntryItemCondition)(e.ItemCondition),
+		PricePaidCents:             e.PricePaidCents,
+		Currency:                   e.Currency,
+		PurchasedFrom:              e.PurchasedFrom,
+		PricingMode:                api.EntryPricingMode(e.PricingMode),
+		PricingProductId:           e.PricingProductID,
+		CustomValueCents:           e.CustomValueCents,
+		CustomValueSetAt:           e.CustomValueSetAt,
+		CustomValueEnteredCents:    e.CustomValueEnteredCents,
+		CustomValueEnteredCurrency: e.CustomValueEnteredCurrency,
+		Status:                     api.EntryStatus(e.Status),
+		Rating:                     e.Rating,
+		Notes:                      e.Notes,
+		StorageLocation:            e.StorageLocation,
+		Pinned:                     e.Pinned,
+		BacklogRank:                e.BacklogRank,
+		Source:                     api.EntrySource(e.Source),
+		ExternalRef:                e.ExternalRef,
+		ValueCents:                 valueCents,
+		CreatedAt:                  e.CreatedAt,
+		UpdatedAt:                  e.UpdatedAt,
 	}
 	if e.PlatformName != nil {
 		out.Platform = &api.EntryPlatform{IgdbPlatformId: e.PlatformIGDBID, Name: *e.PlatformName}

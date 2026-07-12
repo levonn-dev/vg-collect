@@ -193,9 +193,17 @@ func TestEntryCoverURLPersistsThroughCreateAndList(t *testing.T) {
 
 	e := baseEntry(userID)
 	e.CoverURL = &cover
+	e.CustomValueCents = ptr(int64(5400))
+	e.CustomValueEnteredCents = ptr(int64(6000))
+	e.CustomValueEnteredCurrency = ptr("EUR")
 	created := mustCreate(t, s, e, nil)
 	if created.CoverURL == nil || *created.CoverURL != cover {
 		t.Fatalf("create must return the cover snapshot, got %v", created.CoverURL)
+	}
+	if created.CustomValueEnteredCents == nil || *created.CustomValueEnteredCents != 6000 ||
+		created.CustomValueEnteredCurrency == nil || *created.CustomValueEnteredCurrency != "EUR" {
+		t.Fatalf("create must return the entered pair, got %v %v",
+			created.CustomValueEnteredCents, created.CustomValueEnteredCurrency)
 	}
 	got, err := s.GetEntry(ctx, userID, created.ID)
 	if err != nil {
@@ -203,6 +211,22 @@ func TestEntryCoverURLPersistsThroughCreateAndList(t *testing.T) {
 	}
 	if got.CoverURL == nil || *got.CoverURL != cover {
 		t.Fatalf("read back: %v", got.CoverURL)
+	}
+	if got.CustomValueEnteredCents == nil || *got.CustomValueEnteredCents != 6000 ||
+		got.CustomValueEnteredCurrency == nil || *got.CustomValueEnteredCurrency != "EUR" {
+		t.Fatalf("read back entered pair: %v %v", got.CustomValueEnteredCents, got.CustomValueEnteredCurrency)
+	}
+
+	// Clearing the entered pair on update comes back nil.
+	got.CustomValueEnteredCents = nil
+	got.CustomValueEnteredCurrency = nil
+	updated, err := s.UpdateEntry(ctx, got, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.CustomValueEnteredCents != nil || updated.CustomValueEnteredCurrency != nil {
+		t.Fatalf("update must clear the entered pair, got %v %v",
+			updated.CustomValueEnteredCents, updated.CustomValueEnteredCurrency)
 	}
 
 	// Null stays null (customs and hardware never set one).
