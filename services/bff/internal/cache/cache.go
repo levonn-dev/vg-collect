@@ -98,10 +98,18 @@ func (c *Cache) GetRefreshResult(ctx context.Context, key string) (string, error
 	return v, nil
 }
 
+// meKeyVersion tags the /api/me cache key with the projection shape.
+// Bump it whenever the Me projection changes so a deploy never serves
+// a pre-deploy body for the old shape ("v1" was the unversioned era;
+// v2 added preferred_currency).
+const meKeyVersion = "v2"
+
+func meKey(sub string) string { return "me:" + meKeyVersion + ":" + sub }
+
 // GetMe returns the cached /api/me body for sub, or nil when absent.
 // Copied out of the client's reply string so callers own the bytes.
 func (c *Cache) GetMe(ctx context.Context, sub string) ([]byte, error) {
-	v, err := c.rdb.Get(ctx, "me:"+sub).Result()
+	v, err := c.rdb.Get(ctx, meKey(sub)).Result()
 	if errors.Is(err, redis.Nil) {
 		return nil, nil
 	}
@@ -113,7 +121,7 @@ func (c *Cache) GetMe(ctx context.Context, sub string) ([]byte, error) {
 
 // PutMe caches a marshaled /api/me body.
 func (c *Cache) PutMe(ctx context.Context, sub string, body []byte, ttl time.Duration) error {
-	if err := c.rdb.Set(ctx, "me:"+sub, body, ttl).Err(); err != nil {
+	if err := c.rdb.Set(ctx, meKey(sub), body, ttl).Err(); err != nil {
 		return fmt.Errorf("cache: put me: %w", err)
 	}
 	return nil
@@ -122,7 +130,7 @@ func (c *Cache) PutMe(ctx context.Context, sub string, body []byte, ttl time.Dur
 // InvalidateMe drops a user's cached /api/me after a profile edit so
 // the header reflects the change immediately, not at TTL expiry.
 func (c *Cache) InvalidateMe(ctx context.Context, sub string) error {
-	if err := c.rdb.Del(ctx, "me:"+sub).Err(); err != nil {
+	if err := c.rdb.Del(ctx, meKey(sub)).Err(); err != nil {
 		return fmt.Errorf("cache: invalidate me: %w", err)
 	}
 	return nil

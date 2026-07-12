@@ -382,6 +382,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest USD-based exchange rates (relayed from the enrichment service)
+         * @description Rates are target-units-per-USD; USD is the base and omitted from the map. The SPA converts market values client-side with these; a failure only degrades display to USD.
+         */
+        get: operations["getFx"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recommendations": {
         parameters: {
             query?: never;
@@ -406,6 +426,16 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        FXRates: {
+            /** @description Always USD. */
+            base: string;
+            /** @description Upstream snapshot date (YYYY-MM-DD). */
+            date: string;
+            /** @description Target-units-per-USD by ISO 4217 code; USD omitted. */
+            rates: {
+                [key: string]: number;
+            };
+        };
         Providers: {
             /** @description Subset of: google, twitch, dev */
             providers: string[];
@@ -418,11 +448,14 @@ export interface components {
             display_name: string;
             avatar_url?: string;
             roles: string[];
+            /** @description Display currency for market values; USD until set. */
+            preferred_currency: string;
         };
         /** @description Absent fields keep their value; an empty avatar_url clears it. */
         UpdateMeRequest: {
             display_name?: string;
             avatar_url?: string;
+            preferred_currency?: string;
         };
         Identity: {
             /** Format: uuid */
@@ -631,6 +664,13 @@ export interface components {
              * @description Server-managed: stamped when custom_value_cents is first set or changes value, untouched otherwise. Read-only.
              */
             custom_value_set_at?: string;
+            /**
+             * Format: int64
+             * @description The custom price exactly as the user typed it, in custom_value_entered_currency minor units (major units x 100, including zero-decimal currencies). Display metadata only: no aggregation reads it; custom_value_cents remains the USD value used everywhere.
+             */
+            custom_value_entered_cents?: number;
+            /** @description Currency of custom_value_entered_cents. */
+            custom_value_entered_currency?: string;
             /** @enum {string} */
             status: "backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved";
             rating?: number;
@@ -708,6 +748,9 @@ export interface components {
             pricing_product_id?: string;
             /** Format: int64 */
             custom_value_cents?: number;
+            /** Format: int64 */
+            custom_value_entered_cents?: number;
+            custom_value_entered_currency?: string;
             /**
              * @default backlog
              * @enum {string}
@@ -760,6 +803,9 @@ export interface components {
             pricing_product_id?: string;
             /** Format: int64 */
             custom_value_cents?: number;
+            /** Format: int64 */
+            custom_value_entered_cents?: number;
+            custom_value_entered_currency?: string;
             /** @enum {string} */
             status: "backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved";
             rating?: number;
@@ -1942,6 +1988,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValueHistory"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getFx: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rate snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FXRates"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

@@ -180,7 +180,7 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 	for i, role := range u.Roles {
 		roles[i] = string(role)
 	}
-	me := api.Me{Id: u.Id, Email: u.Email, DisplayName: u.DisplayName, AvatarUrl: u.AvatarUrl, Roles: roles}
+	me := api.Me{Id: u.Id, Email: u.Email, DisplayName: u.DisplayName, AvatarUrl: u.AvatarUrl, Roles: roles, PreferredCurrency: u.PreferredCurrency}
 	body, err := json.Marshal(me)
 	if err != nil {
 		writeProblem(w, r, http.StatusInternalServerError, "internal", "encoding failed")
@@ -225,7 +225,7 @@ func (h *Handlers) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	for i, role := range u.Roles {
 		roles[i] = string(role)
 	}
-	writeJSON(w, http.StatusOK, api.Me{Id: u.Id, Email: u.Email, DisplayName: u.DisplayName, AvatarUrl: u.AvatarUrl, Roles: roles})
+	writeJSON(w, http.StatusOK, api.Me{Id: u.Id, Email: u.Email, DisplayName: u.DisplayName, AvatarUrl: u.AvatarUrl, Roles: roles, PreferredCurrency: u.PreferredCurrency})
 }
 
 // GetMyIdentities lists the session account's linked logins. Uncached:
@@ -369,6 +369,22 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 		return
 	}
 	res, err := h.enrichment.Search(r.Context(), sess.AccessToken, string(params.Type), params.Q)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// GetFx relays the enrichment service's exchange-rate snapshot with
+// the user's own token.
+func (h *Handlers) GetFx(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.enrichment.FX(r.Context(), sess.AccessToken)
 	if err != nil {
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
 		return

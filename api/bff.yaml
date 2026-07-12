@@ -799,6 +799,22 @@ paths:
               schema: { $ref: "#/components/schemas/ValueHistory" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/fx:
+    get:
+      operationId: getFx
+      summary: Latest USD-based exchange rates (relayed from the enrichment service)
+      description: >
+        Rates are target-units-per-USD; USD is the base and omitted
+        from the map. The SPA converts market values client-side with
+        these; a failure only degrades display to USD.
+      responses:
+        "200":
+          description: Rate snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FXRates" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
   /api/recommendations:
     get:
       operationId: getRecommendations
@@ -836,6 +852,20 @@ components:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
   schemas:
+    FXRates:
+      type: object
+      required: [base, date, rates]
+      properties:
+        base:
+          type: string
+          description: Always USD.
+        date:
+          type: string
+          description: Upstream snapshot date (YYYY-MM-DD).
+        rates:
+          type: object
+          description: Target-units-per-USD by ISO 4217 code; USD omitted.
+          additionalProperties: { type: number, format: double }
     Providers:
       type: object
       required: [providers]
@@ -850,7 +880,7 @@ components:
         are intentionally omitted; add fields only when the SPA has a
         concrete use for them.
       type: object
-      required: [id, email, display_name, roles]
+      required: [id, email, display_name, roles, preferred_currency]
       properties:
         id: { type: string, format: uuid }
         email: { type: string }
@@ -859,12 +889,16 @@ components:
         roles:
           type: array
           items: { type: string }
+        preferred_currency:
+          type: string
+          description: Display currency for market values; USD until set.
     UpdateMeRequest:
       type: object
       description: Absent fields keep their value; an empty avatar_url clears it.
       properties:
         display_name: { type: string }
         avatar_url: { type: string }
+        preferred_currency: { type: string, pattern: "^[A-Z]{3}$" }
     Identity:
       type: object
       required: [id, provider, created_at]
@@ -1141,6 +1175,19 @@ components:
           description: >
             Server-managed: stamped when custom_value_cents is first
             set or changes value, untouched otherwise. Read-only.
+        custom_value_entered_cents:
+          type: integer
+          format: int64
+          description: >
+            The custom price exactly as the user typed it, in
+            custom_value_entered_currency minor units (major units x
+            100, including zero-decimal currencies). Display metadata
+            only: no aggregation reads it; custom_value_cents remains
+            the USD value used everywhere.
+        custom_value_entered_currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          description: Currency of custom_value_entered_cents.
         status: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
         rating: { type: integer, minimum: 1, maximum: 10 }
         notes: { type: string }
@@ -1213,6 +1260,8 @@ components:
         pricing_mode: { type: string, enum: [auto, proxy, custom, disabled], default: auto }
         pricing_product_id: { type: string, format: uuid }
         custom_value_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        custom_value_entered_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        custom_value_entered_currency: { type: string, pattern: "^[A-Z]{3}$" }
         status:
           type: string
           enum: [backlog, playing, beaten, completed, dropped, shelved]
@@ -1268,6 +1317,8 @@ components:
         pricing_mode: { type: string, enum: [auto, proxy, custom, disabled] }
         pricing_product_id: { type: string, format: uuid }
         custom_value_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        custom_value_entered_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        custom_value_entered_currency: { type: string, pattern: "^[A-Z]{3}$" }
         status: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
         rating: { type: integer, minimum: 1, maximum: 10 }
         notes: { type: string, maxLength: 10000 }

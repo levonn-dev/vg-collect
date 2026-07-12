@@ -148,6 +148,7 @@ type stubEnrichment struct {
 	resolve func(ctx context.Context, bearer string, body []byte) (enrichmentclient.Result, error)
 	product func(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error)
 	score   func(ctx context.Context, bearer string, req enrichapi.ScoreRequest) ([]byte, bool, error)
+	fx      func(ctx context.Context, bearer string) (enrichmentclient.Result, error)
 }
 
 var _ EnrichmentAPI = (*stubEnrichment)(nil)
@@ -178,6 +179,13 @@ func (s *stubEnrichment) Score(ctx context.Context, bearer string, req enrichapi
 		panic("unexpected Score")
 	}
 	return s.score(ctx, bearer, req)
+}
+
+func (s *stubEnrichment) FX(ctx context.Context, bearer string) (enrichmentclient.Result, error) {
+	if s.fx == nil {
+		panic("unexpected FX")
+	}
+	return s.fx(ctx, bearer)
 }
 
 func testLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
@@ -671,6 +679,80 @@ func TestUpdateMe_RelaysAndInvalidatesCache(t *testing.T) {
 	})
 }
 
+// TestUnitGetMe_IncludesPreferredCurrency pins that the profile's
+// currency reaches the browser projection.
+func TestUnitGetMe_IncludesPreferredCurrency(t *testing.T) {
+	uid := uuid.New()
+	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h.users = &stubUsersFull{user: userapi.User{
+		Id: uid, Email: "alice@example.test", DisplayName: "alice",
+		Roles: []userapi.UserRoles{"user"}, PreferredCurrency: "EUR",
+	}}
+	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
+	r := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	r.AddCookie(sealedCookie(t, h, access, "r1"))
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: %d", rec.Code)
+	}
+	var got struct {
+		PreferredCurrency string `json:"preferred_currency"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.PreferredCurrency != "EUR" {
+		t.Fatalf("preferred_currency: %q, want EUR", got.PreferredCurrency)
+	}
+}
+
+// captureUsers embeds the stub so Get and Delete forward unchanged,
+// while Update additionally exposes the raw body reaching the user
+// service (mirrors captureCollection's pass-through capture).
+type captureUsers struct {
+	*stubUsersFull
+	onUpdate func(body []byte)
+}
+
+func (c *captureUsers) Update(ctx context.Context, id, bearer string, body []byte) (userclient.Result, error) {
+	c.onUpdate(body)
+	return c.stubUsersFull.Update(ctx, id, bearer, body)
+}
+
+// TestUnitUpdateMe_RelaysPreferredCurrency pins that the PATCH body
+// reaches the user service verbatim and the answer projects the field.
+func TestUnitUpdateMe_RelaysPreferredCurrency(t *testing.T) {
+	uid := uuid.New()
+	userJSON := []byte(`{"id":"` + uid.String() + `","email":"alice@example.test","display_name":"alice","preferred_currency":"JPY","roles":["user"],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`)
+	users := &stubUsersFull{result: userclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: userJSON}}
+	var gotBody []byte
+	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h.users = &captureUsers{stubUsersFull: users, onUpdate: func(body []byte) { gotBody = body }}
+	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
+	r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"preferred_currency":"JPY"}`))
+	r.AddCookie(sealedCookie(t, h, access, "r1"))
+	r.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, r)
+
+	if !strings.Contains(string(gotBody), `"preferred_currency":"JPY"`) {
+		t.Fatalf("relayed body = %s, want it to contain preferred_currency JPY", gotBody)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		PreferredCurrency string `json:"preferred_currency"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.PreferredCurrency != "JPY" {
+		t.Fatalf("preferred_currency: %q, want JPY", got.PreferredCurrency)
+	}
+}
+
 func TestGetMyIdentities(t *testing.T) {
 	t.Run("200_in_list_order", func(t *testing.T) {
 		uid := uuid.New()
@@ -1034,6 +1116,57 @@ func TestUnitSearchPassThrough_UpstreamFailureIs502(t *testing.T) {
 	rec := doAuthed(t, h, env, http.MethodGet, "/api/search?type=game&q=zelda")
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("upstream failure: %d", rec.Code)
+	}
+}
+
+// TestUnitFxRelay_SnapshotRelaysVerbatim pins that /api/fx passes the
+// enrichment answer through byte-for-byte with the user's own token.
+func TestUnitFxRelay_SnapshotRelaysVerbatim(t *testing.T) {
+	const relayed = `{"base":"USD","date":"2026-07-01","rates":{"EUR":0.5,"JPY":150}}`
+	var gotBearer string
+	enrich := &stubEnrichment{fx: func(_ context.Context, bearer string) (enrichmentclient.Result, error) {
+		gotBearer = bearer
+		return enrichmentclient.Result{Status: 200, ContentType: "application/json", Body: []byte(relayed)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/fx")
+	if rec.Code != 200 || rec.Body.String() != relayed {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer != env.sessionAccessToken {
+		t.Fatalf("bearer reaching enrichment: %q", gotBearer)
+	}
+}
+
+// TestUnitFxRelay_UpstreamProblemRelaysVerbatim pins that a 502
+// problem from enrichment (cold fx cache) reaches the browser with
+// status, content type, and body intact.
+func TestUnitFxRelay_UpstreamProblemRelaysVerbatim(t *testing.T) {
+	const problem = `{"type":"about:blank","title":"Bad Gateway","status":502,"code":"upstream_unavailable","detail":"exchange rates are unavailable"}`
+	enrich := &stubEnrichment{fx: func(context.Context, string) (enrichmentclient.Result, error) {
+		return enrichmentclient.Result{Status: 502, ContentType: "application/problem+json", Body: []byte(problem)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/fx")
+	if rec.Code != 502 || rec.Body.String() != problem {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
+		t.Fatalf("content type: %q", ct)
+	}
+}
+
+func TestUnitFxRelay_ClientErrorAnswers502(t *testing.T) {
+	enrich := &stubEnrichment{fx: func(context.Context, string) (enrichmentclient.Result, error) {
+		return enrichmentclient.Result{}, enrichmentclient.ErrUpstream
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/fx")
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status: %d, want 502", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "upstream_error") {
+		t.Fatalf("problem code missing: %s", rec.Body.String())
 	}
 }
 
@@ -1417,6 +1550,45 @@ func TestUnitUpdateEntryPassThrough_CustomPricingRoundTrips(t *testing.T) {
 		t.Fatalf("collection saw id=%s body=%s, want id=%s body=%s", gotID, gotBody, id, sent)
 	}
 	if rec.Code != 200 || rec.Body.String() != string(relayed) {
+		t.Fatalf("relay: %d %s, want 200 %s", rec.Code, rec.Body.String(), relayed)
+	}
+}
+
+// TestUnitUpdateEntryPassThrough_CustomPricingEnteredPairRoundTrips pins
+// that the typed custom-price pair (custom_value_entered_cents /
+// custom_value_entered_currency) rides an entry update through the bff
+// exactly like every other custom pricing field: unmodified in, and the
+// collection stub's answer - carrying the pair - relays to the client
+// verbatim. The bff neither validates nor reshapes it.
+func TestUnitUpdateEntryPassThrough_CustomPricingEnteredPairRoundTrips(t *testing.T) {
+	id := uuid.New()
+	const sent = `{"pricing_mode":"custom","custom_value_cents":5400,"custom_value_entered_cents":6000,"custom_value_entered_currency":"EUR"}`
+	const relayed = `{"id":"e1","custom_value_cents":5400,"custom_value_entered_cents":6000,"custom_value_entered_currency":"EUR","pricing_mode":"custom"}`
+
+	col := &stubCollection{answer: func(op string) (collectionclient.Result, error) {
+		if op != "update_entry" {
+			t.Fatalf("routed to %q, want update_entry", op)
+		}
+		return collectionclient.Result{Status: 200, ContentType: "application/json", Body: []byte(relayed)}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+	var gotID uuid.UUID
+	var gotBody []byte
+	h.collection = &captureCollection{stubCollection: col, onUpdateEntry: func(recvID uuid.UUID, body []byte) {
+		gotID, gotBody = recvID, body
+	}}
+
+	req := httptest.NewRequest(http.MethodPut, "/api/entries/"+id.String(), strings.NewReader(sent))
+	req.AddCookie(env.cookie)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://localhost:8090")
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, req)
+
+	if gotID != id || string(gotBody) != sent {
+		t.Fatalf("collection saw id=%s body=%s, want id=%s body=%s", gotID, gotBody, id, sent)
+	}
+	if rec.Code != 200 || rec.Body.String() != relayed {
 		t.Fatalf("relay: %d %s, want 200 %s", rec.Code, rec.Body.String(), relayed)
 	}
 }

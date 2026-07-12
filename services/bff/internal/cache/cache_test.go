@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
 
 	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
@@ -12,6 +13,15 @@ import (
 )
 
 func newTestCache(t *testing.T) *cache.Cache {
+	t.Helper()
+	c, _ := newTestCacheWithClient(t)
+	return c
+}
+
+// newTestCacheWithClient is newTestCache but also hands back the raw
+// client, for tests that need to reach around the Cache API (e.g. to
+// seed or inspect a key directly).
+func newTestCacheWithClient(t *testing.T) (*cache.Cache, *redis.Client) {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("requires docker")
@@ -31,7 +41,7 @@ func newTestCache(t *testing.T) *cache.Cache {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
-	return cache.New(client)
+	return cache.New(client), client
 }
 
 func TestDenylist(t *testing.T) {
@@ -103,7 +113,7 @@ func TestRefreshResult(t *testing.T) {
 }
 
 func TestMeCache(t *testing.T) {
-	c := newTestCache(t)
+	c, client := newTestCacheWithClient(t)
 	ctx := context.Background()
 
 	body, err := c.GetMe(ctx, "user-1")
@@ -117,6 +127,25 @@ func TestMeCache(t *testing.T) {
 	if err != nil || string(body) != `{"id":"user-1"}` {
 		t.Fatalf("body=%q err=%v", body, err)
 	}
+
+	// The round-trip key is versioned: a deploy that changes the Me
+	// projection bumps the version tag, so a pre-deploy body never
+	// leaks into a post-deploy read.
+	versioned, err := client.Get(ctx, "me:v2:user-1").Result()
+	if err != nil || versioned != `{"id":"user-1"}` {
+		t.Fatalf("PutMe must write the versioned key me:v2:<sub>: got=%q err=%v", versioned, err)
+	}
+
+	// A body left over from before versioning (the unversioned "me:"
+	// key) must not be served: it is the old, unversioned shape.
+	if err := client.Set(ctx, "me:user-2", []byte(`{"legacy":true}`), time.Minute).Err(); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := c.GetMe(ctx, "user-2")
+	if err != nil || legacy != nil {
+		t.Fatalf("a legacy unversioned key must miss: body=%q err=%v", legacy, err)
+	}
+
 	if err := c.InvalidateMe(ctx, "user-1"); err != nil {
 		t.Fatal(err)
 	}

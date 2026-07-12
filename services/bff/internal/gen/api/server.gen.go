@@ -430,6 +430,12 @@ type Entry struct {
 	// CustomValueCents The user-set market value (USD cents). With pricing_mode custom it IS the entry's value; under any other mode it persists as "last custom price" memory.
 	CustomValueCents *int64 `json:"custom_value_cents,omitempty"`
 
+	// CustomValueEnteredCents The custom price exactly as the user typed it, in custom_value_entered_currency minor units (major units x 100, including zero-decimal currencies). Display metadata only: no aggregation reads it; custom_value_cents remains the USD value used everywhere.
+	CustomValueEnteredCents *int64 `json:"custom_value_entered_cents,omitempty"`
+
+	// CustomValueEnteredCurrency Currency of custom_value_entered_cents.
+	CustomValueEnteredCurrency *string `json:"custom_value_entered_currency,omitempty"`
+
 	// CustomValueSetAt Server-managed: stamped when custom_value_cents is first set or changes value, untouched otherwise. Read-only.
 	CustomValueSetAt *time.Time `json:"custom_value_set_at,omitempty"`
 	DisplayName      string     `json:"display_name"`
@@ -504,9 +510,11 @@ type EntryStatus string
 
 // EntryCreate Product-backed: product_id comes from a prior enrichment resolve and the catalog fields are snapshotted server-side (display_name/item_type/platform_name/first_release_date must NOT be sent). Custom (no product_id): display_name and item_type are required, platform_name and first_release_date optional; pricing_mode defaults to disabled and must not be auto. media_type accepts only physical (the column already allows digital: the API widens when platform sync arrives). source is server-set manual. pricing_product_id is required when pricing_mode is proxy; box_condition requires has_box and manual_condition requires has_manual. custom_value_cents is required when pricing_mode is custom.
 type EntryCreate struct {
-	BoxCondition     *EntryCreateBoxCondition `json:"box_condition,omitempty"`
-	Currency         *string                  `json:"currency,omitempty"`
-	CustomValueCents *int64                   `json:"custom_value_cents,omitempty"`
+	BoxCondition               *EntryCreateBoxCondition `json:"box_condition,omitempty"`
+	Currency                   *string                  `json:"currency,omitempty"`
+	CustomValueCents           *int64                   `json:"custom_value_cents,omitempty"`
+	CustomValueEnteredCents    *int64                   `json:"custom_value_entered_cents,omitempty"`
+	CustomValueEnteredCurrency *string                  `json:"custom_value_entered_currency,omitempty"`
 
 	// DisplayName Custom entries only (required there).
 	DisplayName *string `json:"display_name,omitempty"`
@@ -600,9 +608,11 @@ type EntryPlatform struct {
 
 // EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). product_id, media_type, and custom-ness are immutable. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
 type EntryUpdate struct {
-	BoxCondition     *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
-	Currency         *string                  `json:"currency,omitempty"`
-	CustomValueCents *int64                   `json:"custom_value_cents,omitempty"`
+	BoxCondition               *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
+	Currency                   *string                  `json:"currency,omitempty"`
+	CustomValueCents           *int64                   `json:"custom_value_cents,omitempty"`
+	CustomValueEnteredCents    *int64                   `json:"custom_value_entered_cents,omitempty"`
+	CustomValueEnteredCurrency *string                  `json:"custom_value_entered_currency,omitempty"`
 
 	// DisplayName Custom entries only (required there).
 	DisplayName *string `json:"display_name,omitempty"`
@@ -655,6 +665,18 @@ type EntryUpdateRegion string
 // EntryUpdateStatus defines model for EntryUpdate.Status.
 type EntryUpdateStatus string
 
+// FXRates defines model for FXRates.
+type FXRates struct {
+	// Base Always USD.
+	Base string `json:"base"`
+
+	// Date Upstream snapshot date (YYYY-MM-DD).
+	Date string `json:"date"`
+
+	// Rates Target-units-per-USD by ISO 4217 code; USD omitted.
+	Rates map[string]float64 `json:"rates"`
+}
+
 // Identities defines model for Identities.
 type Identities struct {
 	Identities []Identity `json:"identities"`
@@ -690,7 +712,10 @@ type Me struct {
 	DisplayName string             `json:"display_name"`
 	Email       string             `json:"email"`
 	Id          openapi_types.UUID `json:"id"`
-	Roles       []string           `json:"roles"`
+
+	// PreferredCurrency Display currency for market values; USD until set.
+	PreferredCurrency string   `json:"preferred_currency"`
+	Roles             []string `json:"roles"`
 }
 
 // PlatformCount defines model for PlatformCount.
@@ -851,8 +876,9 @@ type TagRef struct {
 
 // UpdateMeRequest Absent fields keep their value; an empty avatar_url clears it.
 type UpdateMeRequest struct {
-	AvatarUrl   *string `json:"avatar_url,omitempty"`
-	DisplayName *string `json:"display_name,omitempty"`
+	AvatarUrl         *string `json:"avatar_url,omitempty"`
+	DisplayName       *string `json:"display_name,omitempty"`
+	PreferredCurrency *string `json:"preferred_currency,omitempty"`
 }
 
 // ValueHistory defines model for ValueHistory.
@@ -1066,6 +1092,9 @@ type ServerInterface interface {
 	// Move a backlog entry between two neighbors (proxied)
 	// (POST /api/entries/{entryId}/reorder)
 	ReorderEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
+	// Latest USD-based exchange rates (relayed from the enrichment service)
+	// (GET /api/fx)
+	GetFx(w http.ResponseWriter, r *http.Request)
 	// Delete the account everywhere (collection, linked logins, profile) and end the session
 	// (DELETE /api/me)
 	DeleteMe(w http.ResponseWriter, r *http.Request)
@@ -1596,6 +1625,20 @@ func (siw *ServerInterfaceWrapper) ReorderEntry(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetFx operation middleware
+func (siw *ServerInterfaceWrapper) GetFx(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFx(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteMe operation middleware
 func (siw *ServerInterfaceWrapper) DeleteMe(w http.ResponseWriter, r *http.Request) {
 
@@ -2082,6 +2125,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/entries/{entryId}", wrapper.GetEntry)
 	m.HandleFunc("PUT "+options.BaseURL+"/api/entries/{entryId}", wrapper.UpdateEntry)
 	m.HandleFunc("POST "+options.BaseURL+"/api/entries/{entryId}/reorder", wrapper.ReorderEntry)
+	m.HandleFunc("GET "+options.BaseURL+"/api/fx", wrapper.GetFx)
 	m.HandleFunc("DELETE "+options.BaseURL+"/api/me", wrapper.DeleteMe)
 	m.HandleFunc("GET "+options.BaseURL+"/api/me", wrapper.GetMe)
 	m.HandleFunc("PATCH "+options.BaseURL+"/api/me", wrapper.UpdateMe)
