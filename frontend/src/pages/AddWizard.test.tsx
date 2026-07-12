@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { entryFixture, jsonResponse } from '../test/fixtures'
+import { entryFixture, fxRatesFixture, jsonResponse, meFixture } from '../test/fixtures'
 import AddWizard from './AddWizard'
 
 const searchAnswer = {
@@ -22,7 +22,16 @@ const product = {
   created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
 }
 
-function renderWizard(path = '/add', qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+function renderWizard(
+  path = '/add',
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } }),
+  currency = 'USD',
+) {
+  // SearchPicker now reads useDisplayMoney unconditionally; seed its
+  // queries so they never hit the fetch mock (whose single mocked
+  // Response the app-level assertions in these tests already read once).
+  qc.setQueryData(['me'], meFixture({ preferred_currency: currency }))
+  qc.setQueryData(['fx'], fxRatesFixture())
   return {
     qc,
     ...render(
@@ -74,6 +83,32 @@ it('walks search, details, and match confirmation to a created entry', async () 
   expect(body.display_name).toBeUndefined() // catalog facts come from the product
 })
 
+it('stamps the created entry with the profile currency', async () => {
+  const created = entryFixture({ display_name: 'Chrono Trigger', currency: 'EUR' })
+  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    const u = String(url)
+    if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, searchAnswer))
+    if (u === '/api/products/resolve') return Promise.resolve(jsonResponse(200, product))
+    if (u === '/api/entries' && init?.method === 'POST') return Promise.resolve(jsonResponse(201, created))
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWizard('/add', undefined, 'EUR')
+
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'chrono')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
+  expect(await screen.findByText(/your copy of chrono trigger/i)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+  expect(await screen.findByText(/match 93%/i)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
+  expect(await screen.findByText('entry-detail')).toBeInTheDocument()
+
+  const post = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST' && c[0] === '/api/entries')
+  const body = JSON.parse((post?.[1] as RequestInit).body as string) as Record<string, unknown>
+  expect(body.currency).toBe('EUR')
+})
+
 it('invalidates the dashboard and recommendations caches on create', async () => {
   const created = entryFixture({ display_name: 'Chrono Trigger' })
   const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
@@ -84,7 +119,7 @@ it('invalidates the dashboard and recommendations caches on create', async () =>
     return Promise.resolve(jsonResponse(404, {}))
   })
   vi.stubGlobal('fetch', fetchMock)
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(['dashboard'], { stale: true })
   qc.setQueryData(['recommendations'], { stale: true })
   renderWizard('/add', qc)
@@ -168,7 +203,7 @@ it('invalidates the dashboard and recommendations caches on a custom create', as
     return Promise.resolve(jsonResponse(404, {}))
   })
   vi.stubGlobal('fetch', fetchMock)
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(['dashboard'], { stale: true })
   qc.setQueryData(['recommendations'], { stale: true })
   renderWizard('/add', qc)

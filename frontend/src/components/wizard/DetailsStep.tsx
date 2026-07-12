@@ -15,7 +15,6 @@ export interface DetailsValues {
   manualCondition: Condition | ''
   itemCondition: Condition | ''
   pricePaid: string
-  currency: string
   purchasedAt: string
   purchasedFrom: string
   status: EntryCreate['status']
@@ -30,16 +29,19 @@ export function defaultDetails(): DetailsValues {
   return {
     region: 'ntsc_u', edition: '', packaging: 'cib', hasBox: true, hasManual: true,
     boxCondition: '', manualCondition: '', itemCondition: '', pricePaid: '',
-    currency: 'USD', purchasedAt: '', purchasedFrom: '', status: 'backlog',
+    purchasedAt: '', purchasedFrom: '', status: 'backlog',
     rating: '', notes: '', storageLocation: '', pinned: false,
   }
 }
 
 // detailsToCreate maps the step's values onto the shared EntryCreate
 // fields. pricing_mode is auto (the product-backed default); the
-// custom path overrides it to disabled after spreading.
+// custom path overrides it to disabled after spreading. currency is
+// the caller's stamp (the signed-in profile's currency) - this step
+// never collects one, and stamping needs no rate, so it still works
+// while conversion is down.
 // eslint-disable-next-line react-refresh/only-export-components -- shared with ConfirmStep and the test, alongside this component.
-export function detailsToCreate(d: DetailsValues): Omit<EntryCreate, 'product_id' | 'display_name' | 'item_type' | 'platform_name' | 'first_release_date'> {
+export function detailsToCreate(d: DetailsValues, currency: string): Omit<EntryCreate, 'product_id' | 'display_name' | 'item_type' | 'platform_name' | 'first_release_date'> {
   return {
     media_type: 'physical',
     region: d.region,
@@ -51,7 +53,7 @@ export function detailsToCreate(d: DetailsValues): Omit<EntryCreate, 'product_id
     manual_condition: d.hasManual && d.manualCondition !== '' ? d.manualCondition : undefined,
     item_condition: d.itemCondition === '' ? undefined : d.itemCondition,
     price_paid_cents: dollarsToCents(d.pricePaid),
-    currency: d.currency.trim() === '' ? 'USD' : d.currency.trim().toUpperCase(),
+    currency,
     purchased_at: d.purchasedAt === '' ? undefined : d.purchasedAt,
     purchased_from: d.purchasedFrom.trim() === '' ? undefined : d.purchasedFrom.trim(),
     pricing_mode: 'auto',
@@ -65,11 +67,14 @@ export function detailsToCreate(d: DetailsValues): Omit<EntryCreate, 'product_id
 
 interface DetailsStepProps {
   heading: string
+  // Label only: the price-paid field is stamped with this at create
+  // time (detailsToCreate takes it separately), never edited here.
+  currency: string
   onBack: () => void
   onNext: (d: DetailsValues) => void
 }
 
-export default function DetailsStep({ heading, onBack, onNext }: DetailsStepProps) {
+export default function DetailsStep({ heading, currency, onBack, onNext }: DetailsStepProps) {
   const [v, setV] = useState<DetailsValues>(defaultDetails)
   const set = <K extends keyof DetailsValues>(key: K, value: DetailsValues[K]) =>
     setV((prev) => ({ ...prev, [key]: value }))
@@ -148,12 +153,8 @@ export default function DetailsStep({ heading, onBack, onNext }: DetailsStepProp
       </div>
       <div className="flex flex-wrap gap-3">
         <label className={labelClass}>
-          Price paid
+          Price paid ({currency})
           <input inputMode="decimal" value={v.pricePaid} onChange={(e) => set('pricePaid', e.target.value)} placeholder="59.99" className={inputClass} />
-        </label>
-        <label className={labelClass}>
-          Currency
-          <input value={v.currency} onChange={(e) => set('currency', e.target.value)} maxLength={3} className={inputClass} />
         </label>
         <label className={labelClass}>
           Purchased on

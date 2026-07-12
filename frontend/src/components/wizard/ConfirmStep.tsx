@@ -4,6 +4,7 @@ import { ApiError } from '../../api/client'
 import type { ResolveRequest } from '../../api/catalog'
 import { resolveProduct } from '../../api/catalog'
 import { createEntry } from '../../api/collection'
+import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import type { CatalogPick } from '../catalog/SearchPicker'
 import type { DetailsValues } from './DetailsStep'
 import { detailsToCreate } from './DetailsStep'
@@ -33,6 +34,7 @@ interface ConfirmStepProps {
 export default function ConfirmStep({ pick, details, onBack }: ConfirmStepProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const money = useDisplayMoney()
   const req = resolveRequestFor(pick)
   const product = useQuery({
     queryKey: ['resolve', JSON.stringify(req)],
@@ -43,7 +45,7 @@ export default function ConfirmStep({ pick, details, onBack }: ConfirmStepProps)
   const create = useMutation({
     mutationFn: () => {
       if (!product.data) throw new Error('no product')
-      return createEntry({ product_id: product.data.id, ...detailsToCreate(details) })
+      return createEntry({ product_id: product.data.id, ...detailsToCreate(details, money.profileCurrency) })
     },
     onSuccess: (entry) => {
       void queryClient.invalidateQueries({ queryKey: ['entries'] })

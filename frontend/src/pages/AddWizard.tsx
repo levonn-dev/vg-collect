@@ -9,6 +9,7 @@ import type { CustomValues } from '../components/wizard/CustomStep'
 import CustomStep from '../components/wizard/CustomStep'
 import type { DetailsValues } from '../components/wizard/DetailsStep'
 import DetailsStep, { detailsToCreate } from '../components/wizard/DetailsStep'
+import { useDisplayMoney } from '../lib/useDisplayMoney'
 
 type WizardStep =
   | { step: 'search' }
@@ -21,6 +22,7 @@ type WizardStep =
 export default function AddWizard() {
   const [searchParams] = useSearchParams()
   const [state, setState] = useState<WizardStep>({ step: 'search' })
+  const money = useDisplayMoney()
 
   return (
     <main className="py-6" aria-label="Add to collection">
@@ -45,6 +47,7 @@ export default function AddWizard() {
       {state.step === 'details' && (
         <DetailsStep
           heading={`Your copy of ${state.pick.name}`}
+          currency={money.profileCurrency}
           onBack={() => setState({ step: 'search' })}
           onNext={(details) => setState({ ...state, step: 'confirm', details })}
         />
@@ -65,6 +68,7 @@ export default function AddWizard() {
       {state.step === 'custom-details' && (
         <DetailsStep
           heading={`Your copy of ${state.custom.displayName}`}
+          currency={money.profileCurrency}
           onBack={() => setState({ step: 'custom' })}
           onNext={(details) => setState({ ...state, step: 'custom-confirm', details })}
         />
@@ -89,10 +93,11 @@ function CustomConfirm({
 }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const money = useDisplayMoney()
   const create = useMutation({
     mutationFn: () =>
       createEntry({
-        ...detailsToCreate(details),
+        ...detailsToCreate(details, money.profileCurrency),
         pricing_mode: 'disabled',
         display_name: custom.displayName,
         item_type: custom.itemType,
