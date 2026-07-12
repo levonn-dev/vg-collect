@@ -11,6 +11,9 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: process.env.BFF_URL ?? 'http://localhost:8090',
+    // Money assertions read navigator.language; pin en-US so symbol
+    // placement and grouping stay deterministic across machines.
+    locale: 'en-US',
     trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
