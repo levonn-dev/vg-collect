@@ -12,7 +12,8 @@ patch {
 
 body:json {
   {
-    "display_name": "Alice Prime"
+    "display_name": "Alice Prime",
+    "preferred_currency": "EUR"
   }
 }
 
@@ -22,5 +23,7 @@ docs {
   /api/me cache so the next "me" shows the change immediately. The
   user service's validation problems relay verbatim (400 invalid_body
   naming the field). Logins never overwrite this: provider claims fill
-  the profile only when the account is first created.
+  the profile only when the account is first created. preferred_currency
+  drives the SPA's display conversion; pattern ^[A-Z]{3}$, validated by
+  the user service.
 }

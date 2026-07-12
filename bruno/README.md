@@ -70,10 +70,15 @@ sequence with the `local` environment selected:
    automatically.
 4. The collection relays (`collection entries`, `recommendations`,
    `collection value history`) exercise the domain surface through the
-   same cookie.
+   same cookie, and `fx rates` relays the enrichment exchange-rate
+   snapshot (target-units-per-USD, USD omitted) the SPA converts market
+   values with client-side; a cold fx cache answers 502 and the app just
+   renders USD.
 5. The account-management flows mirror the SPA's account page:
-   `me update` edits the profile (edits survive later logins - provider
-   claims fill the profile only at creation); `link dev bob` is the
+   `me update` edits the profile, including `preferred_currency` (pattern
+   `^[A-Z]{3}$`) that drives the SPA's display conversion (edits survive
+   later logins - provider claims fill the profile only at creation);
+   `link dev bob` is the
    linking navigation (302 to `/account?linked=dev`, or
    `?link_error=conflict` when dev-bob already belongs to another
    account); `me identities` lists the linked logins and stores the bob
@@ -158,6 +163,12 @@ list + backlog order, a reorder, a tag, a pin/rate update, a saved
 view, the dashboard, the library summary, and a custom off-catalog
 entry priced by proxy. Reruns are mostly idempotent; tag and view
 creations answer 409 on the second run (names are unique per user).
+
+`update entry (custom price)` carries both `custom_value_cents` (the USD
+snapshot the backend aggregates with) and the entered pair
+(`custom_value_entered_cents` plus `custom_value_entered_currency`, the
+amount the user actually typed, echoed back for pinned display); send
+both together or neither.
 
 `value history` plots the collection's worth over the last ninety days,
 one point per snapshot day; it is cached about five minutes and

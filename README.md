@@ -159,8 +159,10 @@ and a dark-default theme with a light toggle, all covered end to end
 by the Playwright journey), and observability plus docs (five
 Grafana dashboards, ten alert rules with runbooks, and traces stitched
 from browser to database). Stub provider mode remains the credential-less default;
-real IGDB and PriceCharting keys have been exercised live in dev. Frontend still
-needs a lot of style work and cleaning user flows.
+real IGDB and PriceCharting keys have been exercised live in dev, and FX rates
+drive the SPA's client-side currency conversion (frankfurter.dev live, embedded
+fixtures in stub mode). Frontend still needs a lot of style work and cleaning
+user flows.
 
 ## License
 

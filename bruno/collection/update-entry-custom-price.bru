@@ -19,7 +19,9 @@ body:json {
     "region": "ntsc_u",
     "packaging": "cib",
     "pricing_mode": "custom",
-    "custom_value_cents": 12345,
+    "custom_value_entered_cents": 6000,
+    "custom_value_entered_currency": "EUR",
+    "custom_value_cents": 12000,
     "status": "backlog",
     "pinned": false,
     "price_paid_cents": 4500
@@ -29,7 +31,9 @@ body:json {
 assert {
   res.status: eq 200
   res.body.pricing_mode: eq custom
-  res.body.value_cents: eq 12345
+  res.body.value_cents: eq 12000
+  res.body.custom_value_entered_cents: eq 6000
+  res.body.custom_value_entered_currency: eq EUR
   res.body.custom_value_set_at: isDefined
 }
 
@@ -38,9 +42,12 @@ docs {
   user-set price: pricing_mode custom means value_cents is taken
   directly from custom_value_cents (packaging-independent), not composed
   from a catalog product. Run create-entry first for entry_id. Expect
-  200 with value_cents 12345 and custom_value_set_at stamped by the
+  200 with value_cents 12000 and custom_value_set_at stamped by the
   server (it re-stamps only when the amount changes). This works on a
   product-backed entry too: the catalog price is ignored while the mode
   is custom, and the entry keeps its product_id join. auto is the only
-  mode a custom (off-catalog) entry cannot use.
+  mode a custom (off-catalog) entry cannot use. custom_value_cents stays
+  the USD snapshot the backend aggregates with; the entered pair is the
+  number the user actually typed, echoed back for pinned display. Send
+  both together or neither.
 }

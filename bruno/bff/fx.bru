@@ -1,0 +1,22 @@
+meta {
+  name: fx rates
+  type: http
+  seq: 16
+}
+
+get {
+  url: {{bff_url}}/api/fx
+  body: none
+  auth: none
+}
+
+docs {
+  Latest USD-based exchange rates, relayed from the enrichment
+  service (frankfurter.dev in real mode, embedded fixtures in stub
+  mode). Rates are target-units-per-USD and USD is omitted; date is
+  the upstream snapshot day. The SPA converts market values
+  client-side with these. Nothing stored depends on them: a cold-cache
+  failure answers 502 and the app just renders USD.
+
+  Needs a session: run "dev login" first.
+}
