@@ -40,8 +40,9 @@ type Problem struct {
 
 // UpdateUserRequest Absent fields keep their value; an empty avatar_url clears it.
 type UpdateUserRequest struct {
-	AvatarUrl   *string `json:"avatar_url,omitempty"`
-	DisplayName *string `json:"display_name,omitempty"`
+	AvatarUrl         *string `json:"avatar_url,omitempty"`
+	DisplayName       *string `json:"display_name,omitempty"`
+	PreferredCurrency *string `json:"preferred_currency,omitempty"`
 }
 
 // UpsertUserRequest defines model for UpsertUserRequest.
@@ -49,6 +50,9 @@ type UpsertUserRequest struct {
 	AvatarUrl   *string `json:"avatar_url,omitempty"`
 	DisplayName string  `json:"display_name"`
 	Email       string  `json:"email"`
+
+	// LocaleHint BCP 47 language tag from the login request's Accept-Language header. Applied only when this upsert creates the account: it seeds preferred_currency and never touches an existing user.
+	LocaleHint *string `json:"locale_hint,omitempty"`
 }
 
 // User defines model for User.
@@ -58,8 +62,11 @@ type User struct {
 	DisplayName string             `json:"display_name"`
 	Email       string             `json:"email"`
 	Id          openapi_types.UUID `json:"id"`
-	Roles       []UserRoles        `json:"roles"`
-	UpdatedAt   time.Time          `json:"updated_at"`
+
+	// PreferredCurrency The display currency the SPA converts market values into. Defaulted from locale_hint at account creation, USD when no hint maps.
+	PreferredCurrency string      `json:"preferred_currency"`
+	Roles             []UserRoles `json:"roles"`
+	UpdatedAt         time.Time   `json:"updated_at"`
 }
 
 // UserRoles defines model for User.Roles.

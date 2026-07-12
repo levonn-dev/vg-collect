@@ -112,7 +112,7 @@ components:
   schemas:
     User:
       type: object
-      required: [id, email, display_name, roles, created_at, updated_at]
+      required: [id, email, display_name, roles, preferred_currency, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         email: { type: string }
@@ -121,6 +121,12 @@ components:
         roles:
           type: array
           items: { type: string, enum: [user, admin] }
+        preferred_currency:
+          type: string
+          description: >
+            The display currency the SPA converts market values into.
+            Defaulted from locale_hint at account creation, USD when
+            no hint maps.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     UpsertUserRequest:
@@ -130,12 +136,23 @@ components:
         email: { type: string }
         display_name: { type: string }
         avatar_url: { type: string }
+        locale_hint:
+          type: string
+          maxLength: 64
+          description: >
+            BCP 47 language tag from the login request's
+            Accept-Language header. Applied only when this upsert
+            creates the account: it seeds preferred_currency and never
+            touches an existing user.
     UpdateUserRequest:
       type: object
       description: Absent fields keep their value; an empty avatar_url clears it.
       properties:
         display_name: { type: string }
         avatar_url: { type: string }
+        preferred_currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
     Problem:
       type: object
       required: [type, title, status]

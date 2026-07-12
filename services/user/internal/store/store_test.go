@@ -50,7 +50,7 @@ func TestUpsert_FillsOnCreateOnly(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	u1, err := s.Upsert(ctx, "a@example.com", "Alice", nil)
+	u1, err := s.Upsert(ctx, "a@example.com", "Alice", nil, "USD")
 	if err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestUpsert_FillsOnCreateOnly(t *testing.T) {
 
 	// A later login must not clobber the profile: same id, same fields.
 	avatar := "https://img.example/a.png"
-	u2, err := s.Upsert(ctx, "a@example.com", "Alice II", &avatar)
+	u2, err := s.Upsert(ctx, "a@example.com", "Alice II", &avatar, "USD")
 	if err != nil {
 		t.Fatalf("Upsert existing: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestUpsert_FillsOnCreateOnly(t *testing.T) {
 	}
 
 	// citext: case-insensitive email still resolves the same account.
-	u3, err := s.Upsert(ctx, "A@EXAMPLE.COM", "Alice III", nil)
+	u3, err := s.Upsert(ctx, "A@EXAMPLE.COM", "Alice III", nil, "USD")
 	if err != nil {
 		t.Fatalf("Upsert citext: %v", err)
 	}
@@ -90,14 +90,14 @@ func TestUpsert_FillsOnCreateOnly(t *testing.T) {
 func TestUpdate_FieldSemantics(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	created, err := s.Upsert(ctx, "c@example.com", "Carol", nil)
+	created, err := s.Upsert(ctx, "c@example.com", "Carol", nil, "USD")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	name := "Carol Prime"
 	avatar := "https://img.example/c.png"
-	u, err := s.Update(ctx, created.ID, &name, &avatar)
+	u, err := s.Update(ctx, created.ID, &name, &avatar, nil)
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestUpdate_FieldSemantics(t *testing.T) {
 
 	// nil keeps, empty string clears the avatar.
 	empty := ""
-	u, err = s.Update(ctx, created.ID, nil, &empty)
+	u, err = s.Update(ctx, created.ID, nil, &empty, nil)
 	if err != nil {
 		t.Fatalf("Update clear: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestUpdate_FieldSemantics(t *testing.T) {
 		t.Fatalf("clear semantics wrong: %+v", u)
 	}
 
-	_, err = s.Update(ctx, uuid.New(), &name, nil)
+	_, err = s.Update(ctx, uuid.New(), &name, nil, nil)
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
@@ -130,7 +130,7 @@ func TestUpdate_FieldSemantics(t *testing.T) {
 func TestDelete_IdempotentAndCascades(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	created, err := s.Upsert(ctx, "d@example.com", "Dave", nil)
+	created, err := s.Upsert(ctx, "d@example.com", "Dave", nil, "USD")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestDelete_IdempotentAndCascades(t *testing.T) {
 		t.Fatalf("user survived: %v", err)
 	}
 	// user_roles cascaded: re-creating by email gets a fresh id + role.
-	again, err := s.Upsert(ctx, "d@example.com", "Dave", nil)
+	again, err := s.Upsert(ctx, "d@example.com", "Dave", nil, "USD")
 	if err != nil || again.ID == created.ID || len(again.Roles) != 1 {
 		t.Fatalf("recreate = %+v %v", again, err)
 	}
@@ -150,11 +150,51 @@ func TestDelete_IdempotentAndCascades(t *testing.T) {
 	}
 }
 
+func TestStorePreferredCurrencyLifecycle(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	// First login with a hint-derived currency: the insert seeds it.
+	u, err := st.Upsert(ctx, "cur@example.com", "Cur", nil, "EUR")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if u.PreferredCurrency != "EUR" {
+		t.Fatalf("seeded currency: %q", u.PreferredCurrency)
+	}
+
+	// A later login with a different hint never overwrites.
+	u, err = st.Upsert(ctx, "cur@example.com", "Cur", nil, "JPY")
+	if err != nil {
+		t.Fatalf("second upsert: %v", err)
+	}
+	if u.PreferredCurrency != "EUR" {
+		t.Fatalf("existing row must keep its currency, got %q", u.PreferredCurrency)
+	}
+
+	// The profile update changes it; nil leaves it alone.
+	gbp := "GBP"
+	u, err = st.Update(ctx, u.ID, nil, nil, &gbp)
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if u.PreferredCurrency != "GBP" {
+		t.Fatalf("updated currency: %q", u.PreferredCurrency)
+	}
+	u, err = st.Update(ctx, u.ID, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("nil update: %v", err)
+	}
+	if u.PreferredCurrency != "GBP" {
+		t.Fatalf("nil must keep the currency, got %q", u.PreferredCurrency)
+	}
+}
+
 func TestGet(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	created, err := s.Upsert(ctx, "b@example.com", "Bob", nil)
+	created, err := s.Upsert(ctx, "b@example.com", "Bob", nil, "USD")
 	if err != nil {
 		t.Fatal(err)
 	}

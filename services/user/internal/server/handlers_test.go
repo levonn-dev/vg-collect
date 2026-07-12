@@ -415,19 +415,19 @@ func TestDeleteUser_SelfOnlyIdempotent(t *testing.T) {
 // field is nil panics with a clear message -- an unexpected collaborator call
 // is a loud test failure, not a silent zero value.
 type stubStore struct {
-	upsert func(ctx context.Context, email, displayName string, avatarURL *string) (store.User, error)
+	upsert func(ctx context.Context, email, displayName string, avatarURL *string, preferredCurrency string) (store.User, error)
 	get    func(ctx context.Context, id uuid.UUID) (store.User, error)
-	update func(ctx context.Context, id uuid.UUID, displayName, avatarURL *string) (store.User, error)
+	update func(ctx context.Context, id uuid.UUID, displayName, avatarURL, preferredCurrency *string) (store.User, error)
 	delete func(ctx context.Context, id uuid.UUID) error
 }
 
 var _ server.Store = (*stubStore)(nil)
 
-func (s *stubStore) Upsert(ctx context.Context, email, displayName string, avatarURL *string) (store.User, error) {
+func (s *stubStore) Upsert(ctx context.Context, email, displayName string, avatarURL *string, preferredCurrency string) (store.User, error) {
 	if s.upsert == nil {
 		panic("unexpected Upsert")
 	}
-	return s.upsert(ctx, email, displayName, avatarURL)
+	return s.upsert(ctx, email, displayName, avatarURL, preferredCurrency)
 }
 
 func (s *stubStore) Get(ctx context.Context, id uuid.UUID) (store.User, error) {
@@ -437,11 +437,11 @@ func (s *stubStore) Get(ctx context.Context, id uuid.UUID) (store.User, error) {
 	return s.get(ctx, id)
 }
 
-func (s *stubStore) Update(ctx context.Context, id uuid.UUID, displayName, avatarURL *string) (store.User, error) {
+func (s *stubStore) Update(ctx context.Context, id uuid.UUID, displayName, avatarURL, preferredCurrency *string) (store.User, error) {
 	if s.update == nil {
 		panic("unexpected Update")
 	}
-	return s.update(ctx, id, displayName, avatarURL)
+	return s.update(ctx, id, displayName, avatarURL, preferredCurrency)
 }
 
 func (s *stubStore) Delete(ctx context.Context, id uuid.UUID) error {
@@ -554,7 +554,7 @@ func TestUnitUpsert_EmptyDisplayName_BadRequest(t *testing.T) {
 func TestUnitUpsert_StoreError_InternalServerError(t *testing.T) {
 	// When the store returns a non-nil error, the handler must return 500.
 	st := &stubStore{
-		upsert: func(context.Context, string, string, *string) (store.User, error) {
+		upsert: func(context.Context, string, string, *string, string) (store.User, error) {
 			return store.User{}, errStubUser
 		},
 	}
@@ -570,7 +570,7 @@ func TestUnitUpsert_Success_ReturnsAPIUser(t *testing.T) {
 	// the full api.User shape (id, email, display_name, roles).
 	wantID := uuid.New()
 	st := &stubStore{
-		upsert: func(_ context.Context, email, displayName string, _ *string) (store.User, error) {
+		upsert: func(_ context.Context, email, displayName string, _ *string, _ string) (store.User, error) {
 			return store.User{
 				ID: wantID, Email: email, DisplayName: displayName,
 				Roles: []string{"user"}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
@@ -604,6 +604,37 @@ func TestUnitUpsert_Success_ReturnsAPIUser(t *testing.T) {
 	}
 	if len(body.Roles) != 1 || body.Roles[0] != "user" {
 		t.Errorf("roles = %v, want [user]", body.Roles)
+	}
+}
+
+// TestUnitUpsert_LocaleHintSeedsCurrency pins that the handler maps
+// the hint and the store receives the derived currency.
+func TestUnitUpsert_LocaleHintSeedsCurrency(t *testing.T) {
+	var gotCurrency string
+	st := &stubStore{
+		upsert: func(_ context.Context, email, name string, _ *string, preferredCurrency string) (store.User, error) {
+			gotCurrency = preferredCurrency
+			return store.User{Email: email, DisplayName: name, PreferredCurrency: preferredCurrency, Roles: []string{"user"}}, nil
+		},
+	}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
+		a.token(t, "svc", "service"),
+		map[string]string{"email": "d@example.com", "display_name": "Dora", "locale_hint": "de-DE"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status: %d", resp.StatusCode)
+	}
+	if gotCurrency != "EUR" {
+		t.Fatalf("currency reaching the store: %q, want EUR", gotCurrency)
+	}
+	var got struct {
+		PreferredCurrency string `json:"preferred_currency"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.PreferredCurrency != "EUR" {
+		t.Fatalf("preferred_currency in response: %q", got.PreferredCurrency)
 	}
 }
 
@@ -738,7 +769,7 @@ func TestUnitUpdateUser_StoreError_InternalServerError(t *testing.T) {
 	// A generic (non-sentinel) store error must surface as 500 internal.
 	userID := uuid.New()
 	st := &stubStore{
-		update: func(context.Context, uuid.UUID, *string, *string) (store.User, error) {
+		update: func(context.Context, uuid.UUID, *string, *string, *string) (store.User, error) {
 			return store.User{}, errStubUser
 		},
 	}
@@ -746,6 +777,14 @@ func TestUnitUpdateUser_StoreError_InternalServerError(t *testing.T) {
 	resp := do(t, "PATCH", srv.URL+"/users/"+userID.String(),
 		a.token(t, userID.String(), "user"), map[string]string{"display_name": "Neo"})
 	wantUnitProblem(t, resp, http.StatusInternalServerError, "internal")
+}
+
+func TestUnitUpdateUser_PreferredCurrencyValidation(t *testing.T) {
+	srv, a := newUnitServer(t, &stubStore{})
+	uid := uuid.NewString()
+	resp := do(t, "PATCH", srv.URL+"/users/"+uid, a.token(t, uid),
+		map[string]string{"preferred_currency": "eur"})
+	wantUnitProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
 // --- DeleteUser unit branch matrix ---

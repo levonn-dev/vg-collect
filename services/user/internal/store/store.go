@@ -41,13 +41,14 @@ func rolesQ(ctx context.Context, q querier, id uuid.UUID) ([]string, error) {
 }
 
 type User struct {
-	ID          uuid.UUID
-	Email       string
-	DisplayName string
-	AvatarURL   *string
-	Roles       []string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID                uuid.UUID
+	Email             string
+	DisplayName       string
+	AvatarURL         *string
+	PreferredCurrency string
+	Roles             []string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type Store struct{ pool *pgxpool.Pool }
@@ -58,23 +59,23 @@ func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 // returned untouched (the profile belongs to the user once created,
 // so logins never overwrite display name or avatar). The default
 // `user` role is granted idempotently, all in one transaction.
-func (s *Store) Upsert(ctx context.Context, email, displayName string, avatarURL *string) (User, error) {
+func (s *Store) Upsert(ctx context.Context, email, displayName string, avatarURL *string, preferredCurrency string) (User, error) {
 	var u User
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, `
-			INSERT INTO users (email, display_name, avatar_url)
-			VALUES ($1, $2, $3)
+			INSERT INTO users (email, display_name, avatar_url, preferred_currency)
+			VALUES ($1, $2, $3, $4)
 			ON CONFLICT (email) DO NOTHING
-			RETURNING id, email, display_name, avatar_url, created_at, updated_at`,
-			email, displayName, avatarURL,
-		).Scan(&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.CreatedAt, &u.UpdatedAt)
+			RETURNING id, email, display_name, avatar_url, preferred_currency, created_at, updated_at`,
+			email, displayName, avatarURL, preferredCurrency,
+		).Scan(&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.PreferredCurrency, &u.CreatedAt, &u.UpdatedAt)
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Existing account: read it (the conflicting insert, if
 			// concurrent, has committed by the time DO NOTHING returns).
 			err = tx.QueryRow(ctx, `
-				SELECT id, email, display_name, avatar_url, created_at, updated_at
+				SELECT id, email, display_name, avatar_url, preferred_currency, created_at, updated_at
 				FROM users WHERE email = $1`, email,
-			).Scan(&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.CreatedAt, &u.UpdatedAt)
+			).Scan(&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.PreferredCurrency, &u.CreatedAt, &u.UpdatedAt)
 		}
 		if err != nil {
 			return fmt.Errorf("store: upsert: %w", err)
@@ -97,8 +98,9 @@ func (s *Store) Upsert(ctx context.Context, email, displayName string, avatarURL
 }
 
 // Update edits the self-serviceable profile fields. displayName nil
-// keeps the current value; avatarURL nil keeps, empty string clears.
-func (s *Store) Update(ctx context.Context, id uuid.UUID, displayName, avatarURL *string) (User, error) {
+// keeps the current value; avatarURL nil keeps, empty string clears;
+// preferredCurrency nil keeps.
+func (s *Store) Update(ctx context.Context, id uuid.UUID, displayName, avatarURL, preferredCurrency *string) (User, error) {
 	var u User
 	err := s.pool.QueryRow(ctx, `
 		UPDATE users SET
@@ -108,11 +110,12 @@ func (s *Store) Update(ctx context.Context, id uuid.UUID, displayName, avatarURL
 				WHEN $3 = '' THEN NULL
 				ELSE $3
 			END,
+			preferred_currency = COALESCE($4, preferred_currency),
 			updated_at = now()
 		WHERE id = $1
-		RETURNING id, email, display_name, avatar_url, created_at, updated_at`,
-		id, displayName, avatarURL,
-	).Scan(&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.CreatedAt, &u.UpdatedAt)
+		RETURNING id, email, display_name, avatar_url, preferred_currency, created_at, updated_at`,
+		id, displayName, avatarURL, preferredCurrency,
+	).Scan(&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.PreferredCurrency, &u.CreatedAt, &u.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -139,9 +142,9 @@ func (s *Store) Delete(ctx context.Context, id uuid.UUID) error {
 func (s *Store) Get(ctx context.Context, id uuid.UUID) (User, error) {
 	var u User
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, email, display_name, avatar_url, created_at, updated_at
+		SELECT id, email, display_name, avatar_url, preferred_currency, created_at, updated_at
 		FROM users WHERE id = $1`, id,
-	).Scan(&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.CreatedAt, &u.UpdatedAt)
+	).Scan(&u.ID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.PreferredCurrency, &u.CreatedAt, &u.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
 	}

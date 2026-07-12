@@ -16,9 +16,9 @@ import (
 // Store is the persistence surface the handlers consume. The sentinel error
 // store.ErrNotFound is returned as-is; handlers branch on it via errors.Is.
 type Store interface {
-	Upsert(ctx context.Context, email, displayName string, avatarURL *string) (store.User, error)
+	Upsert(ctx context.Context, email, displayName string, avatarURL *string, preferredCurrency string) (store.User, error)
 	Get(ctx context.Context, id uuid.UUID) (store.User, error)
-	Update(ctx context.Context, id uuid.UUID, displayName, avatarURL *string) (store.User, error)
+	Update(ctx context.Context, id uuid.UUID, displayName, avatarURL, preferredCurrency *string) (store.User, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -20,6 +21,8 @@ const (
 	maxDisplayName = 100
 	maxAvatarURL   = 2048
 )
+
+var preferredCurrencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
 
 func (h *Handlers) UpsertUser(w http.ResponseWriter, r *http.Request) {
 	claims, _ := jwtauth.FromContext(r.Context())
@@ -37,7 +40,11 @@ func (h *Handlers) UpsertUser(w http.ResponseWriter, r *http.Request) {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "email and display_name are required")
 		return
 	}
-	u, err := h.store.Upsert(r.Context(), req.Email, req.DisplayName, req.AvatarUrl)
+	hint := ""
+	if req.LocaleHint != nil {
+		hint = *req.LocaleHint
+	}
+	u, err := h.store.Upsert(r.Context(), req.Email, req.DisplayName, req.AvatarUrl, currencyForLocale(hint))
 	if err != nil {
 		problem(w, r, http.StatusInternalServerError, "internal", "upsert failed")
 		return
@@ -94,7 +101,11 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request, userId ope
 			return
 		}
 	}
-	u, err := h.store.Update(r.Context(), userId, req.DisplayName, req.AvatarUrl)
+	if req.PreferredCurrency != nil && !preferredCurrencyRe.MatchString(*req.PreferredCurrency) {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "preferred_currency must be a 3-letter uppercase code")
+		return
+	}
+	u, err := h.store.Update(r.Context(), userId, req.DisplayName, req.AvatarUrl, req.PreferredCurrency)
 	if errors.Is(err, store.ErrNotFound) {
 		problem(w, r, http.StatusNotFound, "user_not_found", "no such user")
 		return
@@ -128,12 +139,13 @@ func toAPI(u store.User) api.User {
 		roles[i] = api.UserRoles(r)
 	}
 	return api.User{
-		Id:          u.ID,
-		Email:       u.Email,
-		DisplayName: u.DisplayName,
-		AvatarUrl:   u.AvatarURL,
-		Roles:       roles,
-		CreatedAt:   u.CreatedAt,
-		UpdatedAt:   u.UpdatedAt,
+		Id:                u.ID,
+		Email:             u.Email,
+		DisplayName:       u.DisplayName,
+		AvatarUrl:         u.AvatarURL,
+		PreferredCurrency: u.PreferredCurrency,
+		Roles:             roles,
+		CreatedAt:         u.CreatedAt,
+		UpdatedAt:         u.UpdatedAt,
 	}
 }
