@@ -1,7 +1,7 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../test/fixtures'
+import { renderWithMoney } from '../../test/money'
 import ProxyPicker from './ProxyPicker'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -21,12 +21,7 @@ it('search, platform pick, resolve, and hand back the product', async () => {
   })
   vi.stubGlobal('fetch', fetchMock)
   const onPick = vi.fn()
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
-    <QueryClientProvider client={qc}>
-      <ProxyPicker onPick={onPick} onClose={vi.fn()} />
-    </QueryClientProvider>,
-  )
+  renderWithMoney(<ProxyPicker onPick={onPick} onClose={vi.fn()} />)
   await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'chrono')
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
@@ -51,12 +46,7 @@ it('offers PriceCharting and resolves a pc_listing pick to its product', async (
   })
   vi.stubGlobal('fetch', fetchMock)
   const onPick = vi.fn()
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
-    <QueryClientProvider client={qc}>
-      <ProxyPicker onPick={onPick} onClose={vi.fn()} />
-    </QueryClientProvider>,
-  )
+  renderWithMoney(<ProxyPicker onPick={onPick} onClose={vi.fn()} />)
   expect(screen.getByRole('radio', { name: 'PriceCharting' })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('radio', { name: 'PriceCharting' }))
   await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'mario')
@@ -75,11 +65,8 @@ it('prefills the search box from an initialQuery prop', () => {
       ? Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
       : Promise.resolve(jsonResponse(404, {})),
   ))
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
-    <QueryClientProvider client={qc}>
-      <ProxyPicker onPick={vi.fn()} onClose={vi.fn()} initialQuery="Super Mario 64 Player's Choice" />
-    </QueryClientProvider>,
+  renderWithMoney(
+    <ProxyPicker onPick={vi.fn()} onClose={vi.fn()} initialQuery="Super Mario 64 Player's Choice" />,
   )
   expect(screen.getByRole('searchbox', { name: /search for games, hardware, and pricecharting/i })).toHaveValue(
     "Super Mario 64 Player's Choice",

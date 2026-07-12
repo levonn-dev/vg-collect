@@ -3,7 +3,8 @@ import type { ReactNode } from 'react'
 import { useState } from 'react'
 import type { SearchKind } from '../../api/catalog'
 import { searchCatalog } from '../../api/catalog'
-import { formatCents, releaseYear } from '../../lib/format'
+import { releaseYear } from '../../lib/format'
+import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import ItemTypeIcon from '../ItemTypeIcon'
 
 export interface GamePick {
@@ -68,6 +69,7 @@ function searchBoxLabel(kinds: SearchKind[]): string {
 // picking a platform (a product is game-on-platform); hardware and
 // pc_listing picks are the listing itself.
 export default function SearchPicker({ initialQuery = '', onPick, footer, kinds = ['game', 'hardware'] }: SearchPickerProps) {
+  const money = useDisplayMoney()
   const [kind, setKind] = useState<SearchKind>(kinds[0])
   const [text, setText] = useState(initialQuery)
   const [submitted, setSubmitted] = useState(initialQuery.trim())
@@ -190,8 +192,8 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
               ) : r.type === 'pc_listing' && r.pc_product_id !== undefined ? (
                 <div className="mt-1 flex flex-col gap-1">
                   <p className="text-xs text-gray-500">
-                    Loose {formatCents(r.loose_cents) ?? '-'} / CIB {formatCents(r.cib_cents) ?? '-'} / New{' '}
-                    {formatCents(r.new_cents) ?? '-'}
+                    Loose {money.format(r.loose_cents) ?? '-'} / CIB {money.format(r.cib_cents) ?? '-'} / New{' '}
+                    {money.format(r.new_cents) ?? '-'}
                   </p>
                   <button
                     type="button"

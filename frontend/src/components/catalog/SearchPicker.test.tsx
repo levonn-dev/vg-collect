@@ -1,17 +1,15 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../test/fixtures'
+import { renderWithMoney } from '../../test/money'
 import SearchPicker from './SearchPicker'
 
-function renderPicker(props: Partial<Parameters<typeof SearchPicker>[0]> = {}) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function renderPicker(
+  props: Partial<Parameters<typeof SearchPicker>[0]> = {},
+  opts: { currency?: string } = {},
+) {
   const onPick = vi.fn()
-  render(
-    <QueryClientProvider client={qc}>
-      <SearchPicker onPick={onPick} {...props} />
-    </QueryClientProvider>,
-  )
+  renderWithMoney(<SearchPicker onPick={onPick} {...props} />, opts)
   return onPick
 }
 
@@ -155,6 +153,21 @@ it('renders a pc_listing price line, with - for a missing value', async () => {
   expect(screen.getByText(/Loose \$8\.00 \/ CIB - \/ New \$20\.00/)).toBeInTheDocument()
   const metroidRow = screen.getByText('Metroid Prime').closest('li')!
   expect(metroidRow.querySelector('svg[data-icon="game"]')).toBeInTheDocument()
+})
+
+it('converts pc_listing quote lines into the display currency', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
+    degraded: false,
+    results: [{
+      type: 'pc_listing', name: 'Chrono Trigger', pc_product_id: 5099,
+      console_name: 'Super Nintendo', loose_cents: 1000, cib_cents: 2000, new_cents: 4000,
+    }],
+  })))
+  renderPicker({ kinds: ['game', 'hardware', 'pc_listing'] }, { currency: 'EUR' })
+  await userEvent.click(screen.getByRole('radio', { name: 'PriceCharting' }))
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'chrono')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  expect(await screen.findByText(/Loose €5\.00 \/ CIB €10\.00 \/ New €20\.00/)).toBeInTheDocument()
 })
 
 it('picks a pc_listing result via its Use button', async () => {
