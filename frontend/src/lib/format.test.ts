@@ -1,10 +1,38 @@
-import { centsToDollars, dollarsToCents, formatCents, releaseYear } from './format'
+import { centsToDollars, dollarsToCents, enteredCentsToUsdCents, formatCents, formatMajor, isStaleRateDate, releaseYear, usdCentsToMajor } from './format'
 
 it('formatCents renders currency and passes null through', () => {
   expect(formatCents(4200)).toBe('$42.00')
   expect(formatCents(999, 'EUR')).toContain('9.99')
   expect(formatCents(null)).toBeNull()
   expect(formatCents(undefined)).toBeNull()
+})
+
+it('formatCents honors an explicit locale', () => {
+  expect(formatCents(123456, 'EUR', 'de-DE')).toBe('1.234,56 €')
+  expect(formatCents(123456, 'EUR', 'en-US')).toBe('€1,234.56')
+  expect(formatCents(50000, 'JPY', 'en-US')).toBe('¥500')
+})
+
+it('formatMajor renders major amounts, optionally whole-unit', () => {
+  expect(formatMajor(21, 'EUR', 'en-US')).toBe('€21.00')
+  expect(formatMajor(1234.56, 'USD', 'en-US', { wholeUnits: true })).toBe('$1,235')
+})
+
+it('converts between USD cents and display major units', () => {
+  expect(usdCentsToMajor(4200, 0.5)).toBe(21)
+  expect(usdCentsToMajor(4200, 1)).toBe(42)
+  expect(enteredCentsToUsdCents(6000, 0.5)).toBe(12000)
+  expect(enteredCentsToUsdCents(50000, 150)).toBe(333) // 500 JPY -> $3.33
+  expect(enteredCentsToUsdCents(5999, 1)).toBe(5999)
+})
+
+it('isStaleRateDate flags a snapshot only once a full week has elapsed', () => {
+  const oneWeekLater = new Date(Date.UTC(2026, 0, 8)) // 2026-01-01 + exactly 7 days
+  expect(isStaleRateDate('2026-01-01', oneWeekLater)).toBe(false)
+  const justOver = new Date(Date.UTC(2026, 0, 8, 0, 0, 1))
+  expect(isStaleRateDate('2026-01-01', justOver)).toBe(true)
+  expect(isStaleRateDate('not-a-date', oneWeekLater)).toBe(false)
+  expect(isStaleRateDate('', oneWeekLater)).toBe(false)
 })
 
 it('releaseYear extracts the year', () => {
