@@ -84,3 +84,16 @@ func TestLoad_InternalRefreshSecrets(t *testing.T) {
 		t.Fatal("want error for empty entries in the accepted set")
 	}
 }
+
+func TestLoadFXModeValidation(t *testing.T) {
+	setBase(t)
+
+	t.Setenv("FX_MODE", "bogus")
+	if _, err := Load(); err == nil {
+		t.Fatal("FX_MODE=bogus must fail validation")
+	}
+	t.Setenv("FX_MODE", "real")
+	if _, err := Load(); err != nil {
+		t.Fatalf("FX_MODE=real (credential-less): %v", err)
+	}
+}

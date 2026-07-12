@@ -41,6 +41,7 @@ type Config struct {
 	IGDBClientSecret    string `env:"IGDB_CLIENT_SECRET"`
 	PriceChartingMode   string `env:"PRICECHARTING_MODE"   envDefault:"stub"`
 	PriceChartingAPIKey string `env:"PRICECHARTING_API_KEY"`
+	FXMode              string `env:"FX_MODE"              envDefault:"stub"`
 
 	// Read-pattern tunables: search query cache, product read cache,
 	// and the IGDB projection staleness horizon.
@@ -75,6 +76,11 @@ func Load() (Config, error) {
 		}
 	default:
 		return Config{}, fmt.Errorf("config: PRICECHARTING_MODE must be stub or real, got %q", cfg.PriceChartingMode)
+	}
+	switch cfg.FXMode {
+	case "stub", "real":
+	default:
+		return Config{}, fmt.Errorf("config: FX_MODE must be stub or real, got %q", cfg.FXMode)
 	}
 	if strings.HasPrefix(cfg.ValkeyURL, "rediss://") && cfg.ValkeyCAFile == "" {
 		return Config{}, errors.New("config: VALKEY_CA_FILE is required for a rediss:// VALKEY_URL")
