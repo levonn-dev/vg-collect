@@ -86,7 +86,7 @@ func TestUpsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	avatar := "https://img.example/a.png"
-	u, err := c.Upsert(context.Background(), "a@example.com", "Alice", &avatar)
+	u, err := c.Upsert(context.Background(), "a@example.com", "Alice", &avatar, "de-DE")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestUpsert_UpstreamErrorSurfaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Upsert(context.Background(), "a@example.com", "Alice", nil); err == nil {
+	if _, err := c.Upsert(context.Background(), "a@example.com", "Alice", nil, ""); err == nil {
 		t.Fatal("want error for 500 from user service")
 	}
 }

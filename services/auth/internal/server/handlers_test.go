@@ -83,10 +83,11 @@ type stubUsersServer struct {
 	srv *httptest.Server
 	v   *jwtauth.Validator
 
-	mu      sync.Mutex
-	byEmail map[string]*userRec
-	byID    map[uuid.UUID]*userRec
-	fail    bool
+	mu         sync.Mutex
+	byEmail    map[string]*userRec
+	byID       map[uuid.UUID]*userRec
+	fail       bool
+	localeHint string
 }
 
 // newJWKSValidator builds a jwtauth.Validator against a JWKS httptest
@@ -147,10 +148,14 @@ func (f *stubUsersServer) upsert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Email       string `json:"email"`
-		DisplayName string `json:"display_name"`
+		Email       string  `json:"email"`
+		DisplayName string  `json:"display_name"`
+		LocaleHint  *string `json:"locale_hint"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
+	if req.LocaleHint != nil {
+		f.localeHint = *req.LocaleHint
+	}
 	u, ok := f.byEmail[req.Email]
 	if !ok {
 		u = &userRec{ID: uuid.New(), Email: req.Email, Roles: []string{"user"}}
@@ -221,6 +226,14 @@ func (f *stubUsersServer) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.byEmail)
+}
+
+// lastLocaleHint reports the locale_hint decoded off the most recent
+// upsert body (empty when none was sent, or the field was omitted).
+func (f *stubUsersServer) lastLocaleHint() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.localeHint
 }
 
 // --- slim stub IdP (discovery + jwks + token endpoint) ---
@@ -607,6 +620,37 @@ func TestOauthCallback_UnverifiedEmailRejected(t *testing.T) {
 	wantProblem(t, resp, 403, "email_unverified")
 	if e.users.count() != 0 {
 		t.Fatal("unverified login must not reach the user service")
+	}
+}
+
+func TestOauthCallback_ForwardsLocaleHint(t *testing.T) {
+	e := newEnv(t, false)
+	resp := post(t, e.srv.URL+"/oauth/start", map[string]string{"provider": "google"})
+	start := decode[struct {
+		AuthorizeURL string `json:"authorize_url"`
+	}](t, resp)
+	u, _ := url.Parse(start.AuthorizeURL)
+	q := u.Query()
+	e.idp.registerCode("code-loc", q.Get("nonce"), jwt.MapClaims{
+		"sub": "s-loc", "email": "loc@example.com", "email_verified": true, "name": "Loc",
+	})
+	body, _ := json.Marshal(map[string]string{"code": "code-loc", "state": q.Get("state")})
+	req, err := http.NewRequest(http.MethodPost, e.srv.URL+"/oauth/callback", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Language", "de-DE,de;q=0.9,en;q=0.5")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("callback status: %d", res.StatusCode)
+	}
+	if got := e.users.lastLocaleHint(); got != "de-DE" {
+		t.Fatalf("locale_hint reaching the user service: %q, want de-DE", got)
 	}
 }
 
@@ -1321,17 +1365,17 @@ func (m *stubMinter) TTL() time.Duration { return m.ttl }
 
 // stubUserService implements server.UserService.
 type stubUserService struct {
-	upsert func(ctx context.Context, email, displayName string, avatarURL *string) (userclient.User, error)
+	upsert func(ctx context.Context, email, displayName string, avatarURL *string, localeHint string) (userclient.User, error)
 	get    func(ctx context.Context, id uuid.UUID) (userclient.User, error)
 }
 
 var _ server.UserService = (*stubUserService)(nil)
 
-func (u *stubUserService) Upsert(ctx context.Context, email, displayName string, avatarURL *string) (userclient.User, error) {
+func (u *stubUserService) Upsert(ctx context.Context, email, displayName string, avatarURL *string, localeHint string) (userclient.User, error) {
 	if u.upsert == nil {
 		panic("unexpected Upsert")
 	}
-	return u.upsert(ctx, email, displayName, avatarURL)
+	return u.upsert(ctx, email, displayName, avatarURL, localeHint)
 }
 
 func (u *stubUserService) Get(ctx context.Context, id uuid.UUID) (userclient.User, error) {
@@ -1721,7 +1765,7 @@ func TestUnitCompleteLogin_EmailUnverified(t *testing.T) {
 
 func TestUnitCompleteLogin_UpsertError(t *testing.T) {
 	users := &stubUserService{
-		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+		upsert: func(context.Context, string, string, *string, string) (userclient.User, error) {
 			return userclient.User{}, errStub
 		},
 	}
@@ -1733,7 +1777,7 @@ func TestUnitCompleteLogin_BindIdentityError(t *testing.T) {
 	st := consumeGoogle()
 	st.bindIdentity = func(context.Context, string, string, string, uuid.UUID) error { return errStub }
 	users := &stubUserService{
-		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+		upsert: func(context.Context, string, string, *string, string) (userclient.User, error) {
 			return upsertedUser(), nil
 		},
 	}
@@ -1745,7 +1789,7 @@ func TestUnitCompleteLogin_MintError(t *testing.T) {
 	st := consumeGoogle()
 	st.bindIdentity = func(context.Context, string, string, string, uuid.UUID) error { return nil }
 	users := &stubUserService{
-		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+		upsert: func(context.Context, string, string, *string, string) (userclient.User, error) {
 			return upsertedUser(), nil
 		},
 	}
@@ -1759,7 +1803,7 @@ func TestUnitCompleteLogin_CreateSessionError(t *testing.T) {
 	st.bindIdentity = func(context.Context, string, string, string, uuid.UUID) error { return nil }
 	st.createSession = func(context.Context, string, uuid.UUID, string, time.Time) error { return errStub }
 	users := &stubUserService{
-		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+		upsert: func(context.Context, string, string, *string, string) (userclient.User, error) {
 			return upsertedUser(), nil
 		},
 	}
@@ -1784,7 +1828,7 @@ func TestUnitCompleteLogin_SuccessViaCallback(t *testing.T) {
 	}
 	var upsertEmail, upsertName string
 	users := &stubUserService{
-		upsert: func(_ context.Context, email, displayName string, _ *string) (userclient.User, error) {
+		upsert: func(_ context.Context, email, displayName string, _ *string, _ string) (userclient.User, error) {
 			upsertEmail, upsertName = email, displayName
 			return u, nil
 		},
@@ -1832,7 +1876,7 @@ func TestUnitCompleteLogin_KnownIdentityWinsOverEmail(t *testing.T) {
 			}
 			return userclient.User{ID: boundUser, Roles: []string{"user"}}, nil
 		},
-		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+		upsert: func(context.Context, string, string, *string, string) (userclient.User, error) {
 			upsertCalled = true
 			return userclient.User{}, nil
 		},
@@ -1883,7 +1927,7 @@ func TestUnitCompleteLogin_NewIdentityFallsBackToEmail(t *testing.T) {
 		return nil
 	}
 	users := &stubUserService{
-		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+		upsert: func(context.Context, string, string, *string, string) (userclient.User, error) {
 			return u, nil
 		},
 	}
@@ -1926,7 +1970,7 @@ func TestUnitCompleteLogin_DeadUserHealsViaEmail(t *testing.T) {
 			}
 			return userclient.User{}, userclient.ErrUserNotFound
 		},
-		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+		upsert: func(context.Context, string, string, *string, string) (userclient.User, error) {
 			return fresh, nil
 		},
 	}
@@ -1953,7 +1997,7 @@ func TestUnitCompleteLogin_HealUpsertError(t *testing.T) {
 		get: func(context.Context, uuid.UUID) (userclient.User, error) {
 			return userclient.User{}, userclient.ErrUserNotFound
 		},
-		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+		upsert: func(context.Context, string, string, *string, string) (userclient.User, error) {
 			return userclient.User{}, errStub
 		},
 	}
@@ -1975,7 +2019,7 @@ func TestUnitCompleteLogin_HealRebindError(t *testing.T) {
 		get: func(context.Context, uuid.UUID) (userclient.User, error) {
 			return userclient.User{}, userclient.ErrUserNotFound
 		},
-		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+		upsert: func(context.Context, string, string, *string, string) (userclient.User, error) {
 			return upsertedUser(), nil
 		},
 	}
@@ -2005,7 +2049,7 @@ func TestUnitCompleteLogin_BindRaceResolvesOnce(t *testing.T) {
 		return nil
 	}
 	users := &stubUserService{
-		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+		upsert: func(context.Context, string, string, *string, string) (userclient.User, error) {
 			return upsertedUser(), nil
 		},
 		get: func(_ context.Context, id uuid.UUID) (userclient.User, error) {
@@ -2041,7 +2085,7 @@ func TestUnitCompleteLogin_BindRaceResolveError(t *testing.T) {
 		return store.ErrIdentityTaken
 	}
 	users := &stubUserService{
-		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+		upsert: func(context.Context, string, string, *string, string) (userclient.User, error) {
 			return upsertedUser(), nil
 		},
 	}
@@ -2065,7 +2109,7 @@ func TestUnitCompleteLogin_BindRaceUserLookupError(t *testing.T) {
 		return store.ErrIdentityTaken
 	}
 	users := &stubUserService{
-		upsert: func(context.Context, string, string, *string) (userclient.User, error) {
+		upsert: func(context.Context, string, string, *string, string) (userclient.User, error) {
 			return upsertedUser(), nil
 		},
 		get: func(context.Context, uuid.UUID) (userclient.User, error) {
@@ -2466,7 +2510,7 @@ func TestUnitDevToken_SuccessDelegatesToCompleteLogin(t *testing.T) {
 	}
 	u := upsertedUser()
 	users := &stubUserService{
-		upsert: func(_ context.Context, email, _ string, _ *string) (userclient.User, error) {
+		upsert: func(_ context.Context, email, _ string, _ *string, _ string) (userclient.User, error) {
 			if email != "alice@example.com" {
 				t.Errorf("dev upsert email = %q, want the alice fixture", email)
 			}

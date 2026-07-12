@@ -54,11 +54,15 @@ func New(baseURL string, minter *token.Minter) (*Client, error) {
 
 // Upsert finds-or-creates the user at login (an existing profile is
 // returned untouched; the profile belongs to the user once created)
-// and returns the canonical id + roles to mint claims from.
-func (c *Client) Upsert(ctx context.Context, email, displayName string, avatarURL *string) (User, error) {
-	resp, err := c.api.UpsertUserWithResponse(ctx, userapi.UpsertUserJSONRequestBody{
-		Email: email, DisplayName: displayName, AvatarUrl: avatarURL,
-	})
+// and returns the canonical id + roles to mint claims from. localeHint
+// is the best Accept-Language tag from the login request, if any; the
+// user service applies it only when this upsert creates the account.
+func (c *Client) Upsert(ctx context.Context, email, displayName string, avatarURL *string, localeHint string) (User, error) {
+	body := userapi.UpsertUserJSONRequestBody{Email: email, DisplayName: displayName, AvatarUrl: avatarURL}
+	if localeHint != "" {
+		body.LocaleHint = &localeHint
+	}
+	resp, err := c.api.UpsertUserWithResponse(ctx, body)
 	if err != nil {
 		return User{}, fmt.Errorf("userclient: upsert: %w", err)
 	}

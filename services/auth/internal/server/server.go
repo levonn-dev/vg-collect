@@ -56,7 +56,7 @@ type Minter interface {
 // userclient.ErrUserNotFound when the account is gone; handlers branch on
 // it via errors.Is.
 type UserService interface {
-	Upsert(ctx context.Context, email, displayName string, avatarURL *string) (userclient.User, error)
+	Upsert(ctx context.Context, email, displayName string, avatarURL *string, localeHint string) (userclient.User, error)
 	Get(ctx context.Context, id uuid.UUID) (userclient.User, error)
 }
 

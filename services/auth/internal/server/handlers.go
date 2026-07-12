@@ -274,6 +274,8 @@ func (h *Handlers) completeLogin(w http.ResponseWriter, r *http.Request, provide
 		return
 	}
 
+	localeHint := bestLanguageTag(r.Header.Get("Accept-Language"))
+
 	ident, err := h.store.ResolveIdentity(r.Context(), provider, claims.Subject, claims.Email)
 	switch {
 	case err == nil:
@@ -288,7 +290,7 @@ func (h *Handlers) completeLogin(w http.ResponseWriter, r *http.Request, provide
 		}
 		// The bound user is gone (an interrupted account deletion):
 		// re-anchor by email and move the identity to the survivor.
-		u, uerr := h.upsertByEmail(r.Context(), claims)
+		u, uerr := h.upsertByEmail(r.Context(), claims, localeHint)
 		if uerr != nil {
 			problem(w, r, http.StatusBadGateway, "user_service_error", "profile upsert failed")
 			return
@@ -305,7 +307,7 @@ func (h *Handlers) completeLogin(w http.ResponseWriter, r *http.Request, provide
 	}
 
 	// First-time identity: find-or-create the account by verified email.
-	u, err := h.upsertByEmail(r.Context(), claims)
+	u, err := h.upsertByEmail(r.Context(), claims, localeHint)
 	if err != nil {
 		problem(w, r, http.StatusBadGateway, "user_service_error", "profile upsert failed")
 		return
@@ -335,13 +337,15 @@ func (h *Handlers) completeLogin(w http.ResponseWriter, r *http.Request, provide
 }
 
 // upsertByEmail funnels the two email-fallback call sites through one
-// claim mapping.
-func (h *Handlers) upsertByEmail(ctx context.Context, claims oidc.IDClaims) (userclient.User, error) {
+// claim mapping. localeHint is the best Accept-Language tag from the
+// login request, forwarded so the user service can seed a default for
+// a brand-new account only.
+func (h *Handlers) upsertByEmail(ctx context.Context, claims oidc.IDClaims, localeHint string) (userclient.User, error) {
 	var avatar *string
 	if claims.AvatarURL != "" {
 		avatar = &claims.AvatarURL
 	}
-	return h.users.Upsert(ctx, claims.Email, claims.DisplayName, avatar)
+	return h.users.Upsert(ctx, claims.Email, claims.DisplayName, avatar, localeHint)
 }
 
 // mintLoginSession writes the token response for a resolved login.
