@@ -55,6 +55,7 @@ it('is pinned to USD and disabled while rates are unavailable', () => {
   renderWithMoney(<CurrencySelect />, { rates: false })
   const select: HTMLSelectElement = screen.getByLabelText('Display currency')
   expect(select.disabled).toBe(true)
+  expect(select.title).toBe('Exchange rates are unavailable; prices show in USD.')
   const options = Array.from(select.querySelectorAll('option')).map((o) => o.value)
   expect(options).toEqual(['USD'])
 })

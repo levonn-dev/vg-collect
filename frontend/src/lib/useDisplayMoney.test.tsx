@@ -28,7 +28,7 @@ it('USD is the identity: no rate lookup, plain formatting', () => {
   const m = money('USD')
   expect(m.currency).toBe('USD')
   expect(m.ready).toBe(true)
-  expect(m.rate).toBe(1)
+  expect(m.rateFor('USD')).toBe(1)
   expect(m.rateDate).toBeUndefined()
   expect(m.rateStale).toBe(false)
   expect(m.format(4200)).toBe('$42.00')
@@ -38,7 +38,7 @@ it('USD is the identity: no rate lookup, plain formatting', () => {
 it('converts USD cents into the profile currency', () => {
   const m = money('EUR')
   expect(m.currency).toBe('EUR')
-  expect(m.rate).toBe(0.5)
+  expect(m.rateFor('EUR')).toBe(0.5)
   expect(m.rateDate).toBe(today)
   expect(m.rateStale).toBe(false)
   expect(m.format(4200)).toBe('€21.00')
@@ -50,7 +50,7 @@ it('falls back to USD display while rates cannot serve the currency', () => {
   expect(m.currency).toBe('USD')
   expect(m.profileCurrency).toBe('EUR')
   expect(m.ready).toBe(false)
-  expect(m.rate).toBeUndefined()
+  expect(m.rateFor('EUR')).toBeUndefined()
   expect(m.rateStale).toBe(false)
   expect(m.format(4200)).toBe('$42.00')
 })
@@ -91,4 +91,41 @@ it('pins the typed pair when its currency matches the display currency', () => {
 
   const noPair = entryFixture({ pricing_mode: 'auto', value_cents: 4200 })
   expect(m.entryValue(noPair)).toBe('€21.00')
+})
+
+it('requires pricing_mode custom for the pin rule: an entered pair on a non-custom entry still converts', () => {
+  const m = money('EUR')
+  const autoWithPair = entryFixture({
+    pricing_mode: 'auto',
+    value_cents: 4200,
+    custom_value_entered_cents: 6000,
+    custom_value_entered_currency: 'EUR',
+  })
+  expect(m.entryValue(autoWithPair)).toBe('€21.00') // converts value_cents; the entered pair is ignored
+})
+
+it('pins a zero entered amount when it matches the display currency (falsy zero is not absent)', () => {
+  const m = money('EUR')
+  const zeroPinned = entryFixture({
+    pricing_mode: 'custom',
+    value_cents: 11900, // drifted USD snapshot; must not be used
+    custom_value_cents: 0,
+    custom_value_entered_cents: 0,
+    custom_value_entered_currency: 'EUR',
+  })
+  expect(m.entryValue(zeroPinned)).toBe('€0.00')
+})
+
+it('formats a zero amount instead of treating it as absent, in USD and a converted currency', () => {
+  expect(money('USD').format(0)).toBe('$0.00')
+  expect(money('EUR').format(0)).toBe('€0.00')
+})
+
+it('treats a zero, negative, or non-finite rate as unavailable, same as a missing one', () => {
+  for (const bad of [0, -1, NaN]) {
+    const m = money('EUR', true, { rates: { EUR: bad } })
+    expect(m.ready).toBe(false)
+    expect(m.rateFor('EUR')).toBeUndefined()
+  }
+  expect(money('EUR').ready).toBe(true) // a normal fixture still works
 })

@@ -37,8 +37,7 @@ interface FormValues {
 // customValueDraft seeds the custom-price text: a stored pair in the
 // input currency is shown verbatim (the pin rule's edit-side twin);
 // anything else converts the USD snapshot into the input currency.
-// eslint-disable-next-line react-refresh/only-export-components -- shared with the test, alongside this component.
-export function customValueDraft(e: Entry, inputCurrency: string, rate: number | undefined): string {
+function customValueDraft(e: Entry, inputCurrency: string, rate: number | undefined): string {
   if (e.custom_value_entered_cents !== undefined && e.custom_value_entered_currency === inputCurrency) {
     return centsToDollars(e.custom_value_entered_cents)
   }

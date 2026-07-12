@@ -31,11 +31,9 @@ export interface DisplayMoney {
   // True while actively converting from a snapshot older than a week;
   // USD and rates-down are never stale.
   rateStale: boolean
-  // Target-units-per-USD for `currency`: 1 for USD, undefined while
-  // not ready.
-  rate?: number
   // Rate for an arbitrary code from the current snapshot (1 for USD,
-  // undefined while rates are unavailable or the code is unrated).
+  // undefined while rates are unavailable, the code is unrated, or its
+  // rate is implausible - zero, negative, or non-finite).
   // The custom-price form converts at ITS OWN frozen input currency,
   // which can differ from the active display currency mid-edit.
   rateFor: (code: string) => number | undefined
@@ -48,6 +46,13 @@ export interface DisplayMoney {
   entryValue: (e: Entry) => string | null
 }
 
+// plausibleRate rejects a zero, negative, or non-finite rate: none of
+// those can represent a real conversion, so the hook treats the code
+// as unrated - identical to a missing entry in the snapshot.
+function plausibleRate(rate: number | undefined): number | undefined {
+  return rate !== undefined && Number.isFinite(rate) && rate > 0 ? rate : undefined
+}
+
 // useDisplayMoney is the single conversion point: every market-value
 // render flows through it. USD stays canonical and short-circuits
 // (never a rate lookup); price-paid amounts never come through here.
@@ -56,7 +61,9 @@ export function useDisplayMoney(): DisplayMoney {
   const fx = useFxRates()
 
   const profileCurrency = me.data?.preferred_currency ?? 'USD'
-  const rate = profileCurrency === 'USD' ? 1 : fx.data?.rates[profileCurrency]
+  // USD short-circuits to 1 without ever consulting the snapshot; any
+  // other code must clear plausibleRate to count as ready.
+  const rate = profileCurrency === 'USD' ? 1 : plausibleRate(fx.data?.rates[profileCurrency])
   const ready = rate !== undefined
   const currency = ready ? profileCurrency : 'USD'
   const active = ready && currency !== 'USD'
@@ -76,8 +83,7 @@ export function useDisplayMoney(): DisplayMoney {
     ready,
     rateDate: active ? fx.data?.date : undefined,
     rateStale: active && fx.data !== undefined && isStaleRateDate(fx.data.date),
-    rate: ready ? rate : undefined,
-    rateFor: (code) => (code === 'USD' ? 1 : fx.data?.rates[code]),
+    rateFor: (code) => (code === 'USD' ? 1 : plausibleRate(fx.data?.rates[code])),
     format: (usdCents) => toDisplay(usdCents, false),
     format0: (usdCents) => toDisplay(usdCents, true),
     entryValue: (e) => {
