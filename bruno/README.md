@@ -83,15 +83,22 @@ sequence with the `local` environment selected:
    `?link_error=conflict` when dev-bob already belongs to another
    account); `me identities` lists the linked logins and stores the bob
    row's id; `unlink bob` removes it (409 `last_identity` guards the
-   only remaining login); `delete me` deletes the whole account in
+   only remaining login).
+6. The proxy-pricing path prices an entry from any PriceCharting
+   listing through the gateway: `search pc listings (via gateway)`
+   searches all of PriceCharting with per-listing prices, `resolve pc
+   listing (via gateway)` mints (or finds) the listing-backed product
+   and stores its id, and `create proxy entry (priced by a pc
+   listing)` creates an entry whose `value_cents` comes from that
+   listing.
+7. Teardown, in order: `delete me` deletes the whole account in
    self-healing order (collection purge, auth wipe, user row, session
    teardown) - fixture accounts are disposable, the next dev login
-   recreates one fresh.
-6. `logout (clears the cookie, revokes the chain)` ends the session and
-   revokes its refresh chain server-side; the jar drops the cleared
-   cookie. After this, `me` returns 401 until you log in again. It is
-   idempotent, so it is also safe to run right after `delete me`
-   already ended the session.
+   recreates one fresh. `logout (clears the cookie, revokes the
+   chain)` ends the session and revokes its refresh chain server-side;
+   the jar drops the cleared cookie. After this, `me` returns 401
+   until you log in again. It is idempotent, so it is also safe to run
+   right after `delete me` already ended the session.
 
 ## Fixture users only
 
@@ -139,7 +146,12 @@ environment selected, run `auth / dev token` once, then the folder in
 3. `resolve hardware (console)` and `recommendations score` round out
    the surface and have no ordering dependency beyond the initial
    token.
-4. `admin - trigger refresh walk` and `admin - correct product mapping`
+4. `search pc listings (all of pricecharting)` searches every
+   PriceCharting listing with per-listing prices (degrading to the
+   local catalog if the provider errors), and `resolve pc listing
+   (price anchor)` mints the listing-backed product any entry can
+   proxy its price from.
+5. `admin - trigger refresh walk` and `admin - correct product mapping`
    need the admin role grant described above.
 
 `price history batch` returns a product's snapshot series (default 90
@@ -159,16 +171,18 @@ keys are needed to run the folder end to end.
 tokens. Bootstrap chain: `auth / dev token` (token), then
 `enrichment / resolve game` (product_id), then `collection / create
 entry`. The flows are numbered in a happy-path order: two entries,
-list + backlog order, a reorder, a tag, a pin/rate update, a saved
+list + backlog order, a reorder, a tag, a pin/rate update, a single
+entry read, a tag list, a saved
 view, the dashboard, the library summary, and a custom off-catalog
 entry priced by proxy. Reruns are mostly idempotent; tag and view
 creations answer 409 on the second run (names are unique per user).
 
-`update entry (custom price)` carries both `custom_value_cents` (the USD
-snapshot the backend aggregates with) and the entered pair
-(`custom_value_entered_cents` plus `custom_value_entered_currency`, the
-amount the user actually typed, echoed back for pinned display); send
-both together or neither.
+`create entry (custom price)` and `update entry (custom price)` both
+carry `custom_value_cents` (the USD snapshot the backend aggregates
+with) and the entered pair (`custom_value_entered_cents` plus
+`custom_value_entered_currency`, the amount the user actually typed,
+echoed back for pinned display); send both together or neither, and
+only alongside `custom_value_cents`.
 
 `value history` plots the collection's worth over the last ninety days,
 one point per snapshot day; it is cached about five minutes and

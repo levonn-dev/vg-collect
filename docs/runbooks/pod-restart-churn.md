@@ -14,8 +14,10 @@ Triage:
    termination reason and event list.
 2. If the reason is OOMKilled, the container's memory limit in its chart's
    resources block is too low for real usage, or the process is leaking;
-   check the memory panel (panel 8) on the Service HTTP RED dashboard
-   (vg-service-red) for a climbing trend before the kill.
+   check the working-set memory panel on the Pod details dashboard
+   (vg-pod-details) for a climbing trend before the kill (it covers every
+   pod; the Go heap panel on vg-service-red only plots the five app
+   services).
 3. If the reason is a crash rather than OOM, open the Pod details dashboard
    (vg-pod-details) for the same namespace and pod to correlate CPU and
    memory with the restarts, then read the container logs for the panic or

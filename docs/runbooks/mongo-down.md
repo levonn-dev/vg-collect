@@ -13,7 +13,8 @@ Triage:
    the pod is down, crash-looping or just unready.
 2. Read the container logs (`kubectl -n vg-collect logs enrichment-mongo-0
    -c mongo`) for the startup or crash reason.
-3. While mongo is down, the enrichment service degrades to stale catalog
-   reads rather than failing outright; confirm on the Service HTTP RED
-   dashboard (vg-service-red) whether enrichment's error rate actually
-   moved.
+3. While mongo is down, enrichment stays graceful only for products still
+   warm in its Valkey cache (5 minute TTL); cache-cold product and search
+   reads return 500 once mongo is genuinely unreachable. Check the Service
+   HTTP RED dashboard (vg-service-red) for how far enrichment's error rate
+   has actually climbed.

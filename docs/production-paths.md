@@ -63,7 +63,9 @@ gets longer retention on real storage classes. On the collector side,
 the gateway scales horizontally (it is stateless) and keeps
 memory_limiter regardless of scale. Per-datastore exporters should get
 dedicated read-only monitoring credentials instead of the owner/root
-users the dev tier reuses. Jaeger v2 gets a real storage backend
+users the dev tier reuses (for Valkey that first means adding
+authentication at all: the dev-tier Valkey instances are TLS-only but
+credential-less, so there is no existing credential to narrow). Jaeger v2 gets a real storage backend
 (OpenSearch/Cassandra) instead of in-memory.
 
 ## Edge

@@ -17,6 +17,7 @@ body:json {
 }
 
 docs {
-  204 always (idempotent). Afterwards refresh returns 401 and a new
-  login is required.
+  204 in the normal case (idempotent; the contract also declares 500
+  for unexpected revocation failures). Afterwards refresh returns 401
+  and a new login is required.
 }

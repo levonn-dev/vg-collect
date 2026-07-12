@@ -12,9 +12,10 @@ Triage:
 
 1. Open the Datastores dashboard (vg-datastores); panel 1 shows which
    service's Postgres instance is affected.
-2. Look for a connection leak: pool metrics carried on traces show whether a
-   service is opening more connections than it returns; consider lowering
-   that service's pool size.
+2. Look for a connection leak: compare the suspect service's configured
+   pool maximum against its share of pg_stat_activity_count on the same
+   dashboard; a service holding close to its whole pool at idle traffic
+   is leaking. Consider lowering that service's pool size.
 3. max_connections is left at the postgres image's default; raise it via the
    chart's postgres args only with a documented reason, not as a first
    response.

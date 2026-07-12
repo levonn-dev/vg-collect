@@ -19,7 +19,7 @@ Postgres/MongoDB/Valkey datastores, full observability.
 
 ```bash
 task bootstrap          # tool checks + .env scaffold (edit .env if you have real keys)
-task bootstrap:cluster  # once per cluster: cert-manager, external-secrets, CA issuers
+task bootstrap:cluster  # once per cluster: cert-manager, external-secrets, the APISIX gateway, the observability stack, CA issuers
 task run                # tilt up: builds images, deploys charts, port-forwards
 ```
 
@@ -36,7 +36,7 @@ add yours to `allow_k8s_contexts` in the Tiltfile if it's not listed.
 | `task gen` | regenerate OpenAPI server stubs/types + the frontend's typed API client |
 | `task tidy` | go mod tidy every module |
 | `task build` | compile every module + the frontend bundle |
-| `task e2e` | Playwright login smoke against the running stack |
+| `task e2e` | Playwright smoke suite against the running stack (login, collection journey, display currency, account) |
 | `task run` / `task down` | tilt up / down |
 | `task nuke` | full app-stack reset: tilt down + the vg-collect namespace (see Teardown) |
 
@@ -152,7 +152,10 @@ pricing sources that can proxy any PriceCharting listing (exact
 variant rows included) or take a user-set custom price, an account
 page (profile editing, linking multiple provider logins to
 one account with conflict-safe identity-first sign-in, unlinking, and
-full account deletion), an
+full account deletion), a header
+display-currency selector (saved to the profile, converting every
+market value client-side while price-paid records keep their stamped
+currency), an
 insights strip on the homepage whose stats follow the active filters
 (with expandable breakdowns, value-over-time, and recommendations),
 and a dark-default theme with a light toggle, all covered end to end
