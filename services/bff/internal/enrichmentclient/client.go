@@ -101,6 +101,17 @@ func (c *Client) Product(ctx context.Context, bearer string, id uuid.UUID) (Resu
 		http.StatusOK, http.StatusNotFound)
 }
 
+// FX relays GET /fx/latest. A 502 is a relayable answer (cold fx
+// cache upstream), not a client failure.
+func (c *Client) FX(ctx context.Context, bearer string) (Result, error) {
+	resp, err := c.api.GetFxLatestWithResponse(ctx, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("enrichmentclient: fx: %w", err)
+	}
+	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
+		http.StatusOK, http.StatusBadGateway)
+}
+
 // Score calls the recommendation scorer with the user's own token,
 // returning the raw 200 body plus its decoded degraded flag (the
 // caller caches only non-degraded results). Any other answer is an
