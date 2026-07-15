@@ -301,6 +301,29 @@ func (s *Store) SetPriceCharting(ctx context.Context, id string, m *PCMeta) erro
 	return nil
 }
 
+// SetPriceChartingIfMissing sets the mapping only while the product
+// has none (the bson nil filter matches a missing or null subdocument)
+// and reports whether this call landed it. Fill-only by design: a
+// user's manual match must never overwrite an existing mapping, and
+// racing fillers converge on exactly one winner - the caller gates its
+// side effects (snapshot) on the returned bool.
+func (s *Store) SetPriceChartingIfMissing(ctx context.Context, id string, m *PCMeta) (bool, error) {
+	res, err := s.db.Collection(colProducts).UpdateOne(ctx,
+		bson.D{
+			{Key: "_id", Value: id},
+			{Key: "pricecharting", Value: nil},
+		},
+		bson.D{{Key: "$set", Value: bson.D{
+			{Key: "pricecharting", Value: m},
+			{Key: "updated_at", Value: time.Now().UTC().Truncate(time.Millisecond)},
+		}}},
+	)
+	if err != nil {
+		return false, fmt.Errorf("store: set pricecharting if missing: %w", err)
+	}
+	return res.MatchedCount == 1, nil
+}
+
 // SetCurrentPrices updates the mapped product's current prices (the
 // daily walk's partial update). ErrNotFound covers both a missing
 // product and an unmatched one.

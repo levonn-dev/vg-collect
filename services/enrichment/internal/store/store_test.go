@@ -216,6 +216,62 @@ func TestProduct_SubdocUpdates(t *testing.T) {
 	}
 }
 
+func TestProduct_SetPriceChartingIfMissing_FillsExactlyOnce(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+
+	created, err := s.CreateProduct(ctx, gameProduct(1018, 19, "Terranigma", "Super Nintendo Entertainment System", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	loose := int64(9800)
+	meta := &store.PCMeta{
+		PCProductID: 7001, PCName: "Terranigma [PAL]", ConsoleName: "PAL Super Nintendo",
+		MatchConfidence: 1.0, Verified: false,
+		Current: store.PriceQuote{LooseCents: &loose},
+		AsOf:    time.Now().UTC().Truncate(time.Millisecond),
+	}
+	landed, err := s.SetPriceChartingIfMissing(ctx, created.ID, meta)
+	if err != nil || !landed {
+		t.Fatalf("first fill must land: landed=%v err=%v", landed, err)
+	}
+	got, err := s.GetProduct(ctx, created.ID)
+	if err != nil || got.PriceCharting == nil || got.PriceCharting.PCProductID != 7001 {
+		t.Fatalf("fill must persist the mapping: %+v, %v", got.PriceCharting, err)
+	}
+
+	// Mapped now: a second fill must not land and must change nothing.
+	// This is the guard that fails if the conditional filter is ever
+	// swapped for the unconditional SetPriceCharting.
+	other := &store.PCMeta{PCProductID: 7002, PCName: "Wrong", ConsoleName: "Wrong",
+		MatchConfidence: 1.0, Verified: false, AsOf: meta.AsOf}
+	landed, err = s.SetPriceChartingIfMissing(ctx, created.ID, other)
+	if err != nil || landed {
+		t.Fatalf("second fill must not land: landed=%v err=%v", landed, err)
+	}
+	got, err = s.GetProduct(ctx, created.ID)
+	if err != nil || got.PriceCharting.PCProductID != 7001 {
+		t.Fatalf("existing mapping must be untouched: %+v, %v", got.PriceCharting, err)
+	}
+
+	// A mapping cleared by the admin path ($unset) is missing again:
+	// fillable.
+	if err := s.SetPriceCharting(ctx, created.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	landed, err = s.SetPriceChartingIfMissing(ctx, created.ID, other)
+	if err != nil || !landed {
+		t.Fatalf("cleared mapping must be fillable: landed=%v err=%v", landed, err)
+	}
+
+	// Unknown product id: no landing, no error.
+	landed, err = s.SetPriceChartingIfMissing(ctx, "00000000-0000-0000-0000-000000000000", meta)
+	if err != nil || landed {
+		t.Fatalf("unknown id: landed=%v err=%v", landed, err)
+	}
+}
+
 func TestProduct_ByIDsAndSearch(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
