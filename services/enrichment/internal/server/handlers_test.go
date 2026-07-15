@@ -44,6 +44,7 @@ type stubStore struct {
 	setPriceChartingIfMissing func(ctx context.Context, id string, m *store.PCMeta) (bool, error)
 	setCurrentPrices          func(ctx context.Context, id string, q store.PriceQuote, asOf time.Time) error
 	listPriced                func(ctx context.Context) ([]store.Product, error)
+	listUnmatchedGames        func(ctx context.Context, limit int) ([]store.Product, error)
 	productsByIDs             func(ctx context.Context, ids []string) ([]store.Product, error)
 	searchByName              func(ctx context.Context, q string, limit int) ([]store.Product, error)
 	upsertRaw                 func(ctx context.Context, games []igdb.Game, fetchedAt time.Time) error
@@ -111,6 +112,13 @@ func (s *stubStore) ListPriced(ctx context.Context) ([]store.Product, error) {
 		panic("unexpected ListPriced")
 	}
 	return s.listPriced(ctx)
+}
+
+func (s *stubStore) ListUnmatchedGames(ctx context.Context, limit int) ([]store.Product, error) {
+	if s.listUnmatchedGames == nil {
+		panic("unexpected ListUnmatchedGames")
+	}
+	return s.listUnmatchedGames(ctx, limit)
 }
 
 func (s *stubStore) ProductsByIDs(ctx context.Context, ids []string) ([]store.Product, error) {
@@ -953,63 +961,77 @@ func TestResolve_GameManualMatchMintsExactAnchor(t *testing.T) {
 	}
 }
 
-func TestResolve_GameManualMatchFillsMissingAnchor(t *testing.T) {
+// Listing-keyed identity end to end: no-pick resolves converge on the
+// auto-matched member; a manual pick of a DIFFERENT listing is a
+// distinct member of the same family; the same pick converges; and
+// request region/edition/variant are ignored for games.
+func TestResolve_GameConvergesPerListing(t *testing.T) {
 	s := newStack(t)
-	// Terranigma (1018, SNES) auto-misses: stored unmatched, a dead end
-	// the walk skips.
-	first := decodeBody[api.Product](t, s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
-		"type": "game", "igdb_game_id": 1018, "platform_igdb_id": 19,
-	}))
-	if first.Pricecharting != nil {
-		t.Fatalf("precondition: Terranigma must start unmatched: %+v", first.Pricecharting)
+
+	auto1 := s.resolveGame(1005, 4)
+	auto2 := s.resolveGame(1005, 4)
+	if auto1.Id != auto2.Id {
+		t.Fatalf("no-pick resolves must converge: %s vs %s", auto1.Id, auto2.Id)
+	}
+	if auto1.Pricecharting == nil || auto1.Pricecharting.PcProductId != 5005 {
+		t.Fatalf("auto-match must land the base listing: %+v", auto1.Pricecharting)
 	}
 
-	// Same identity with a manual match: the hole fills, once.
 	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
-		"type": "game", "igdb_game_id": 1018, "platform_igdb_id": 19, "pc_product_id": 6001,
+		"type": "game", "igdb_game_id": 1005, "platform_igdb_id": 4,
+		"pc_product_id": 5099, "variant": "players choice cart",
 	})
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("fill resolve: %d", resp.StatusCode)
+		t.Fatalf("picker resolve: %d", resp.StatusCode)
 	}
-	filled := decodeBody[api.Product](t, resp)
-	if filled.Id != first.Id {
-		t.Fatalf("fill must converge on the same product: %s vs %s", filled.Id, first.Id)
+	picked := decodeBody[api.Product](t, resp)
+	if picked.Id == auto1.Id {
+		t.Fatal("a different listing must be a distinct member")
 	}
-	if filled.Pricecharting == nil || filled.Pricecharting.PcProductId != 6001 ||
-		filled.Pricecharting.MatchConfidence != 1.0 || filled.Pricecharting.Verified {
-		t.Fatalf("filled mapping: %+v", filled.Pricecharting)
+	if picked.Pricecharting == nil || picked.Pricecharting.PcProductId != 5099 ||
+		picked.Pricecharting.MatchConfidence != 1.0 || picked.Pricecharting.Verified {
+		t.Fatalf("picked member mapping: %+v", picked.Pricecharting)
 	}
-	n, err := s.mdb.Collection("price_snapshots").CountDocuments(context.Background(), map[string]any{"product_id": first.Id.String()})
-	if err != nil || n != 1 {
-		t.Fatalf("fill must snapshot once: %d, %v", n, err)
+	if picked.Igdb == nil || auto1.Igdb == nil || picked.Igdb.GameId != auto1.Igdb.GameId {
+		t.Fatal("members must share the igdb family")
 	}
 
-	// The fill is immediately visible on the read path (cache included).
-	got := decodeBody[api.Product](t, s.do(http.MethodGet, "/products/"+first.Id.String(), s.userToken(), nil))
-	if got.Pricecharting == nil || got.Pricecharting.PcProductId != 6001 {
-		t.Fatalf("read-after-fill: %+v", got.Pricecharting)
+	resp = s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
+		"type": "game", "igdb_game_id": 1005, "platform_igdb_id": 4, "pc_product_id": 5099,
+	})
+	again := decodeBody[api.Product](t, resp)
+	if again.Id != picked.Id {
+		t.Fatalf("same pick must converge: %s vs %s", again.Id, picked.Id)
 	}
 }
 
-func TestResolve_GameManualMatchNeverOverwrites(t *testing.T) {
+// A hint the candidates cannot carry keeps the resolve conservative:
+// it lands on the family's single unmatched member (both times), and
+// the plain resolve still lands on the matched member beside it.
+func TestResolve_MatchHintBelowThresholdLandsUnmatchedMember(t *testing.T) {
 	s := newStack(t)
-	p := s.resolveGame(1011, 19) // auto-matches to 5011 with one snapshot
-	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
-		"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19, "pc_product_id": 6001,
-	})
+
+	body := map[string]any{
+		"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19,
+		"match_hint": "grey cart brick serial",
+	}
+	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), body)
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("resolve: %d", resp.StatusCode)
+		t.Fatalf("hinted resolve: %d", resp.StatusCode)
 	}
-	same := decodeBody[api.Product](t, resp)
-	if same.Id != p.Id {
-		t.Fatalf("must converge: %s vs %s", same.Id, p.Id)
+	miss1 := decodeBody[api.Product](t, resp)
+	if miss1.Pricecharting != nil {
+		t.Fatalf("junk hint must not guess: %+v", miss1.Pricecharting)
 	}
-	if same.Pricecharting == nil || same.Pricecharting.PcProductId != 5011 {
-		t.Fatalf("existing mapping must survive a manual match: %+v", same.Pricecharting)
+	resp = s.do(http.MethodPost, "/products/resolve", s.userToken(), body)
+	miss2 := decodeBody[api.Product](t, resp)
+	if miss2.Id != miss1.Id {
+		t.Fatalf("unmatched member must be the family singleton: %s vs %s", miss2.Id, miss1.Id)
 	}
-	n, _ := s.mdb.Collection("price_snapshots").CountDocuments(context.Background(), map[string]any{"product_id": p.Id.String()})
-	if n != 1 {
-		t.Fatalf("no new snapshot on an untouched mapping, got %d", n)
+
+	matched := s.resolveGame(1011, 19)
+	if matched.Id == miss1.Id || matched.Pricecharting == nil || matched.Pricecharting.PcProductId != 5011 {
+		t.Fatalf("plain resolve must land the matched member beside it: %+v", matched)
 	}
 }
 
@@ -1031,21 +1053,6 @@ func TestResolve_UnmatchedFixtureStaysUnmatched(t *testing.T) {
 	n, _ := s.mdb.Collection("price_snapshots").CountDocuments(context.Background(), map[string]any{"product_id": p.Id.String()})
 	if n != 0 {
 		t.Fatalf("unmatched products must not snapshot, got %d", n)
-	}
-}
-
-func TestResolve_VariantsAreDistinctProducts(t *testing.T) {
-	s := newStack(t)
-	plain := s.resolveGame(1011, 19)
-	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
-		"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19, "region": "pal",
-	})
-	pal := decodeBody[api.Product](t, resp)
-	if pal.Id == plain.Id {
-		t.Fatal("region must split identity")
-	}
-	if pal.Region == nil || *pal.Region != "pal" {
-		t.Fatalf("region round-trip: %+v", pal.Region)
 	}
 }
 
@@ -1101,9 +1108,14 @@ func TestResolve_ErrorTaxonomy(t *testing.T) {
 func TestUnitResolve_UpstreamDown(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
-	st := &stubStore{findProduct: func(context.Context, store.ProductKey) (store.Product, error) {
-		return store.Product{}, store.ErrNotFound
-	}}
+	st := &stubStore{
+		findProduct: func(context.Context, store.ProductKey) (store.Product, error) {
+			return store.Product{}, store.ErrNotFound
+		},
+		// gamePayloadFor checks igdb_raw first; an empty read falls
+		// through to the provider, which is the one erroring here.
+		rawByIDs: func(context.Context, []int64) ([]store.RawGame, error) { return nil, nil },
+	}
 	games := &stubGames{gamesByIDs: func(context.Context, []int64) ([]igdb.Game, error) {
 		return nil, errors.New("igdb down")
 	}}
@@ -1123,6 +1135,7 @@ func TestUnitResolve_PriceProviderDownStillCreatesUnmatched(t *testing.T) {
 		findProduct: func(context.Context, store.ProductKey) (store.Product, error) {
 			return store.Product{}, store.ErrNotFound
 		},
+		rawByIDs:  func(context.Context, []int64) ([]store.RawGame, error) { return nil, nil },
 		upsertRaw: func(context.Context, []igdb.Game, time.Time) error { return nil },
 		createProduct: func(_ context.Context, p store.Product) (store.Product, error) {
 			p.ID = "66666666-6666-6666-6666-666666666666"
@@ -1148,6 +1161,11 @@ func TestUnitResolve_PriceProviderDownStillCreatesUnmatched(t *testing.T) {
 	}
 	if created.PriceCharting != nil {
 		t.Fatal("pricing outage must store unmatched, not guess")
+	}
+	// The null member carries no region/edition/variant: those are
+	// vestigial on games, not part of the (game, platform, listing) key.
+	if created.Region != "" || created.Edition != "" || created.Variant != "" {
+		t.Fatalf("unmatched member must not be a variant-keyed tuple: %+v", created)
 	}
 	// The platform ref picks up the catalog logo at create.
 	if created.Platform == nil || created.Platform.LogoURL != "https://images.igdb.com/igdb/image/upload/t_logo_med/pl4k.jpg" {
@@ -1188,11 +1206,17 @@ func TestUnitResolve_LostRaceDoesNotDoubleSnapshot(t *testing.T) {
 		findProduct: func(context.Context, store.ProductKey) (store.Product, error) {
 			return store.Product{}, store.ErrNotFound
 		},
+		rawByIDs:  func(context.Context, []int64) ([]store.RawGame, error) { return nil, nil },
 		upsertRaw: func(context.Context, []igdb.Game, time.Time) error { return nil },
 		createProduct: func(_ context.Context, p store.Product) (store.Product, error) {
 			passedID = p.ID
-			p.ID = "77777777-7777-7777-7777-777777777777"
-			return p, nil
+			// Lost race: the winner's doc comes back under another id.
+			// Listing-keyed identity means the loser and the winner
+			// scored the same auto-match before racing to create, so
+			// the winner's doc already carries that same mapping.
+			winner := p
+			winner.ID = "77777777-7777-7777-7777-777777777777"
+			return winner, nil
 		},
 		appendSnapshot: func(context.Context, store.Snapshot) error {
 			snapshotCalls++
@@ -1227,6 +1251,7 @@ func TestUnitResolve_LostRaceDoesNotDoubleSnapshot(t *testing.T) {
 		findProduct: func(context.Context, store.ProductKey) (store.Product, error) {
 			return store.Product{}, store.ErrNotFound
 		},
+		rawByIDs:      func(context.Context, []int64) ([]store.RawGame, error) { return nil, nil },
 		upsertRaw:     func(context.Context, []igdb.Game, time.Time) error { return nil },
 		createProduct: func(_ context.Context, p store.Product) (store.Product, error) { return p, nil },
 		appendSnapshot: func(context.Context, store.Snapshot) error {
@@ -1267,6 +1292,7 @@ func TestUnitResolve_GameManualMatchMintsExactAnchor(t *testing.T) {
 		findProduct: func(context.Context, store.ProductKey) (store.Product, error) {
 			return store.Product{}, store.ErrNotFound
 		},
+		rawByIDs:      func(context.Context, []int64) ([]store.RawGame, error) { return nil, nil },
 		upsertRaw:     func(context.Context, []igdb.Game, time.Time) error { return nil },
 		createProduct: func(_ context.Context, p store.Product) (store.Product, error) { created = p; return p, nil },
 		appendSnapshot: func(context.Context, store.Snapshot) error {
@@ -1314,7 +1340,9 @@ func TestUnitResolve_GameManualMatchErrors(t *testing.T) {
 	body := map[string]any{"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19, "pc_product_id": 7042}
 
 	// Unknown listing -> 404 unknown_pc_product.
-	st := &stubStore{findProduct: notFound, upsertRaw: func(context.Context, []igdb.Game, time.Time) error { return nil },
+	st := &stubStore{findProduct: notFound,
+		rawByIDs:           func(context.Context, []int64) ([]store.RawGame, error) { return nil, nil },
+		upsertRaw:          func(context.Context, []igdb.Game, time.Time) error { return nil },
 		platformsFetchedAt: fetchedOK, listPlatforms: catalogOK}
 	prices := &stubPrices{product: func(context.Context, int64) (pricecharting.Product, error) {
 		return pricecharting.Product{}, pricecharting.ErrNotFound
@@ -1336,7 +1364,9 @@ func TestUnitResolve_GameManualMatchErrors(t *testing.T) {
 	// Bogus game id + manual match -> 404 unknown_game: the IGDB fetch
 	// runs first, and the listing is never fetched (unset = panic).
 	noGames := &stubGames{gamesByIDs: func(context.Context, []int64) ([]igdb.Game, error) { return nil, nil }}
-	rec = serveUnit(t, newUnitHandlers(&stubStore{findProduct: notFound}, noGames, &stubPrices{}, newStubCache()),
+	noRaw := &stubStore{findProduct: notFound,
+		rawByIDs: func(context.Context, []int64) ([]store.RawGame, error) { return nil, nil }}
+	rec = serveUnit(t, newUnitHandlers(noRaw, noGames, &stubPrices{}, newStubCache()),
 		env, http.MethodPost, "/products/resolve", tok,
 		map[string]any{"type": "game", "igdb_game_id": 999999, "platform_igdb_id": 19, "pc_product_id": 7042})
 	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "unknown_game") {
@@ -1344,186 +1374,103 @@ func TestUnitResolve_GameManualMatchErrors(t *testing.T) {
 	}
 }
 
-func TestUnitResolve_GameManualMatchFillsAndGatesSnapshot(t *testing.T) {
+// The hint reweights scoring (score-only): with unbracketed variant
+// candidates, the hint flips the winner and the stored confidence is
+// the score, not 1.0. The variant candidate carries an extra token
+// ("cartridge") the hint alone does not cover, so the winning score
+// is a genuine partial match rather than a coincidental 1.0 - unlike
+// a manual match, which always stores exactly 1.0 by construction.
+func TestUnitResolve_MatchHintFlipsTheWinner(t *testing.T) {
 	env := newAuthEnv(t)
-	tok := env.token(t, "u1", []string{"user"})
-	loose := int64(9800)
-	prices := &stubPrices{product: func(_ context.Context, id int64) (pricecharting.Product, error) {
-		return pricecharting.Product{ID: id, Name: "Terranigma [PAL]", ConsoleName: "PAL Super Nintendo", LoosePriceCents: &loose}, nil
+	game := igdb.Game{ID: 1005, Name: "Super Mario 64", Platforms: []igdb.Named{{ID: 4, Name: "Nintendo 64"}}}
+	loose := int64(3500)
+	prices := &stubPrices{search: func(context.Context, string) ([]pricecharting.Product, error) {
+		return []pricecharting.Product{
+			{ID: 901, Name: "Super Mario 64", ConsoleName: "Nintendo 64", LoosePriceCents: &loose},
+			{ID: 902, Name: "Super Mario 64 Players Choice Cartridge", ConsoleName: "Nintendo 64", LoosePriceCents: &loose},
+		}, nil
 	}}
-	unmatched := store.Product{ID: "11111111-1111-1111-1111-111111111111", Type: "game", Name: "Terranigma"}
-	body := map[string]any{"type": "game", "igdb_game_id": 1018, "platform_igdb_id": 19, "pc_product_id": 7042}
-
-	// Fill lands: mapping set, snapshot appended, filled doc served.
-	var snapshots int
+	games := &stubGames{gamesByIDs: func(context.Context, []int64) ([]igdb.Game, error) { return []igdb.Game{game}, nil }}
+	var created store.Product
 	st := &stubStore{
-		findProduct: func(context.Context, store.ProductKey) (store.Product, error) { return unmatched, nil },
-		setPriceChartingIfMissing: func(_ context.Context, id string, m *store.PCMeta) (bool, error) {
-			if id != unmatched.ID || m == nil || m.PCProductID != 7042 || m.Verified {
-				t.Errorf("fill args: id=%s meta=%+v", id, m)
-			}
-			return true, nil
-		},
-		appendSnapshot: func(_ context.Context, snap store.Snapshot) error {
-			if snap.ProductID != unmatched.ID {
-				t.Errorf("snapshot product: %s", snap.ProductID)
-			}
-			snapshots++
-			return nil
-		},
-		getProduct: func(context.Context, string) (store.Product, error) {
-			filled := unmatched
-			filled.PriceCharting = &store.PCMeta{PCProductID: 7042, MatchConfidence: 1.0}
-			return filled, nil
-		},
-	}
-	// games is zero-valued: the found path must make no IGDB call.
-	h := newUnitHandlers(st, &stubGames{}, prices, newStubCache())
-	rec := serveUnit(t, h, env, http.MethodPost, "/products/resolve", tok, body)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("fill resolve: %d %s", rec.Code, rec.Body.String())
-	}
-	var p api.Product
-	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
-		t.Fatal(err)
-	}
-	if p.Pricecharting == nil || p.Pricecharting.PcProductId != 7042 {
-		t.Fatalf("response must serve the filled doc: %+v", p.Pricecharting)
-	}
-	if snapshots != 1 {
-		t.Fatalf("a landed fill snapshots once, got %d", snapshots)
-	}
-
-	// Fill lost the race: no snapshot (appendSnapshot unset would
-	// panic), current doc served.
-	st2 := &stubStore{
-		findProduct: func(context.Context, store.ProductKey) (store.Product, error) { return unmatched, nil },
-		setPriceChartingIfMissing: func(context.Context, string, *store.PCMeta) (bool, error) {
-			return false, nil
-		},
-		getProduct: func(context.Context, string) (store.Product, error) {
-			winner := unmatched
-			winner.PriceCharting = &store.PCMeta{PCProductID: 5011, MatchConfidence: 0.9}
-			return winner, nil
-		},
-	}
-	rec = serveUnit(t, newUnitHandlers(st2, &stubGames{}, prices, newStubCache()), env, http.MethodPost, "/products/resolve", tok, body)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("lost fill race: %d %s", rec.Code, rec.Body.String())
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
-		t.Fatal(err)
-	}
-	if p.Pricecharting == nil || p.Pricecharting.PcProductId != 5011 {
-		t.Fatalf("lost race must serve the winner's mapping: %+v", p.Pricecharting)
-	}
-}
-
-func TestUnitResolve_GameManualMatchAnchoredIsUntouched(t *testing.T) {
-	env := newAuthEnv(t)
-	tok := env.token(t, "u1", []string{"user"})
-	mapped := store.Product{ID: "22222222-2222-2222-2222-222222222222", Type: "game", Name: "Chrono Trigger",
-		PriceCharting: &store.PCMeta{PCProductID: 5011, MatchConfidence: 0.93}}
-	// prices and every store mutator are unset: ANY provider call or
-	// write on this path panics - the mapped product returns as-is.
-	st := &stubStore{
-		findProduct: func(context.Context, store.ProductKey) (store.Product, error) { return mapped, nil },
-	}
-	h := newUnitHandlers(st, &stubGames{}, &stubPrices{}, newStubCache())
-	rec := serveUnit(t, h, env, http.MethodPost, "/products/resolve", tok,
-		map[string]any{"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19, "pc_product_id": 7042})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("resolve: %d %s", rec.Code, rec.Body.String())
-	}
-	var p api.Product
-	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
-		t.Fatal(err)
-	}
-	if p.Pricecharting == nil || p.Pricecharting.PcProductId != 5011 {
-		t.Fatalf("existing mapping must be served untouched: %+v", p.Pricecharting)
-	}
-}
-
-func TestUnitResolve_GameManualMatchLostCreateRaceFills(t *testing.T) {
-	env := newAuthEnv(t)
-	tok := env.token(t, "u1", []string{"user"})
-	games := &stubGames{gamesByIDs: func(context.Context, []int64) ([]igdb.Game, error) {
-		return []igdb.Game{{ID: 1011, Name: "Chrono Trigger", Platforms: []igdb.Named{{ID: 19, Name: "Super Nintendo Entertainment System"}}}}, nil
-	}}
-	loose := int64(12500)
-	prices := &stubPrices{product: func(_ context.Context, id int64) (pricecharting.Product, error) {
-		return pricecharting.Product{ID: id, Name: "Chrono Trigger [PAL]", ConsoleName: "PAL Super Nintendo", LoosePriceCents: &loose}, nil
-	}}
-	winnerID := "77777777-7777-7777-7777-777777777777"
-	var filledID string
-	var snapshots int
-	st := &stubStore{
+		rawByIDs:           func(context.Context, []int64) ([]store.RawGame, error) { return nil, nil },
+		upsertRaw:          func(context.Context, []igdb.Game, time.Time) error { return nil },
+		platformsFetchedAt: func(context.Context) (time.Time, error) { return time.Now(), nil },
+		listPlatforms:      func(context.Context) ([]store.CatalogPlatform, error) { return nil, nil },
 		findProduct: func(context.Context, store.ProductKey) (store.Product, error) {
 			return store.Product{}, store.ErrNotFound
 		},
-		upsertRaw: func(context.Context, []igdb.Game, time.Time) error { return nil },
 		createProduct: func(_ context.Context, p store.Product) (store.Product, error) {
-			// Lost race: the winner's doc comes back under another id,
-			// and the winner (a plain resolve whose auto-match missed)
-			// carries no mapping.
-			return store.Product{ID: winnerID, Type: "game", Name: p.Name}, nil
+			created = p
+			return p, nil
 		},
-		setPriceChartingIfMissing: func(_ context.Context, id string, m *store.PCMeta) (bool, error) {
-			filledID = id
-			if m == nil || m.PCProductID != 7042 {
-				t.Errorf("must reuse the already-fetched meta: %+v", m)
-			}
-			return true, nil
-		},
-		appendSnapshot: func(context.Context, store.Snapshot) error { snapshots++; return nil },
-		getProduct: func(context.Context, string) (store.Product, error) {
-			return store.Product{ID: winnerID, Type: "game", Name: "Chrono Trigger",
-				PriceCharting: &store.PCMeta{PCProductID: 7042, MatchConfidence: 1.0}}, nil
-		},
-		platformsFetchedAt: func(context.Context) (time.Time, error) { return time.Now(), nil },
-		listPlatforms: func(context.Context) ([]store.CatalogPlatform, error) {
-			return []store.CatalogPlatform{{ID: 19, Name: "Super Nintendo Entertainment System"}}, nil
-		},
+		appendSnapshot: func(context.Context, store.Snapshot) error { return nil },
 	}
 	h := newUnitHandlers(st, games, prices, newStubCache())
-	rec := serveUnit(t, h, env, http.MethodPost, "/products/resolve", tok,
-		map[string]any{"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19, "pc_product_id": 7042})
+	tok := env.token(t, "u1", []string{"user"})
+
+	rec := serveUnit(t, h, env, http.MethodPost, "/products/resolve", tok, map[string]any{
+		"type": "game", "igdb_game_id": 1005, "platform_igdb_id": 4,
+		"match_hint": "players choice",
+	})
 	if rec.Code != http.StatusOK {
-		t.Fatalf("resolve: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.Bytes())
 	}
-	if filledID != winnerID {
-		t.Fatalf("the winner's doc must be filled, got %q", filledID)
+	if created.PriceCharting == nil || created.PriceCharting.PCProductID != 902 {
+		t.Fatalf("hint must flip the winner: %+v", created.PriceCharting)
 	}
-	// Exactly one snapshot: the fill's. The create-path snapshot gate
-	// (created.ID == p.ID) correctly does not fire on a lost race.
-	if snapshots != 1 {
-		t.Fatalf("want exactly the fill snapshot, got %d", snapshots)
-	}
-	var p api.Product
-	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
-		t.Fatal(err)
-	}
-	if p.Id.String() != winnerID || p.Pricecharting == nil || p.Pricecharting.PcProductId != 7042 {
-		t.Fatalf("response must serve the filled winner: %s %+v", p.Id, p.Pricecharting)
+	if created.PriceCharting.MatchConfidence >= 1.0 || created.PriceCharting.Verified {
+		t.Fatalf("score-only hint must store the score unverified: %+v", created.PriceCharting)
 	}
 }
 
-func TestUnitResolve_GameManualMatchFillUnknownListing404(t *testing.T) {
+// The resolve reads and populates the SAME cache entries the
+// pc_listing search endpoint serves: one provider search feeds both.
+func TestUnitResolve_SharesThePCListingSearchCache(t *testing.T) {
 	env := newAuthEnv(t)
-	tok := env.token(t, "u1", []string{"user"})
-	unmatched := store.Product{ID: "11111111-1111-1111-1111-111111111111", Type: "game", Name: "Terranigma"}
-	// setPriceChartingIfMissing is unset: a 404 must abort before any
-	// store write.
-	st := &stubStore{
-		findProduct: func(context.Context, store.ProductKey) (store.Product, error) { return unmatched, nil },
-	}
-	prices := &stubPrices{product: func(context.Context, int64) (pricecharting.Product, error) {
-		return pricecharting.Product{}, pricecharting.ErrNotFound
+	game := igdb.Game{ID: 1005, Name: "Super Mario 64", Platforms: []igdb.Named{{ID: 4, Name: "Nintendo 64"}}}
+	loose := int64(3500)
+	var searchCalls int
+	prices := &stubPrices{search: func(context.Context, string) ([]pricecharting.Product, error) {
+		searchCalls++
+		return []pricecharting.Product{{ID: 5005, Name: "Super Mario 64", ConsoleName: "Nintendo 64", LoosePriceCents: &loose}}, nil
 	}}
-	rec := serveUnit(t, newUnitHandlers(st, &stubGames{}, prices, newStubCache()), env, http.MethodPost, "/products/resolve", tok,
-		map[string]any{"type": "game", "igdb_game_id": 1018, "platform_igdb_id": 19, "pc_product_id": 999999})
-	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "unknown_pc_product") {
-		t.Fatalf("fill with unknown listing: %d %s", rec.Code, rec.Body.String())
+	games := &stubGames{gamesByIDs: func(context.Context, []int64) ([]igdb.Game, error) { return []igdb.Game{game}, nil }}
+	st := &stubStore{
+		rawByIDs:           func(context.Context, []int64) ([]store.RawGame, error) { return nil, nil },
+		upsertRaw:          func(context.Context, []igdb.Game, time.Time) error { return nil },
+		platformsFetchedAt: func(context.Context) (time.Time, error) { return time.Now(), nil },
+		listPlatforms:      func(context.Context) ([]store.CatalogPlatform, error) { return nil, nil },
+		findProduct: func(context.Context, store.ProductKey) (store.Product, error) {
+			return store.Product{}, store.ErrNotFound
+		},
+		createProduct:  func(_ context.Context, p store.Product) (store.Product, error) { return p, nil },
+		appendSnapshot: func(context.Context, store.Snapshot) error { return nil },
+	}
+	c := newStubCache()
+	h := newUnitHandlers(st, games, prices, c)
+	tok := env.token(t, "u1", []string{"user"})
+
+	rec := serveUnit(t, h, env, http.MethodPost, "/products/resolve", tok, map[string]any{
+		"type": "game", "igdb_game_id": 1005, "platform_igdb_id": 4,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.Bytes())
+	}
+	if searchCalls != 1 {
+		t.Fatalf("resolve must search the provider once, got %d", searchCalls)
+	}
+	if c.search["pc_listing:super mario 64"] == nil {
+		t.Fatal("resolve must populate the pc_listing search cache")
+	}
+
+	// The search endpoint now serves the resolve-populated entry.
+	rec = serveUnit(t, h, env, http.MethodGet, "/search?type=pc_listing&q=Super%20Mario%2064", tok, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search status %d", rec.Code)
+	}
+	if searchCalls != 1 {
+		t.Fatalf("search endpoint must hit the shared cache, provider calls %d", searchCalls)
 	}
 }
 
@@ -2115,9 +2062,82 @@ func TestRefresh_AdminRBACAndConflict(t *testing.T) {
 	waitFor(t, 10*time.Second, func() bool { return !s.h.refreshing.Load() })
 }
 
+// End to end: the refresh walk upgrades an unmatched member in place
+// (entries light up through live reads - no repointing) and never
+// touches a held product.
+func TestRefresh_RematchUpgradesUnmatchedMembersInPlace(t *testing.T) {
+	s := newStack(t)
+	ctx := context.Background()
+
+	unmatched, err := s.store.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Super Mario 64",
+		Platform: &store.Platform{IGDBID: 4, Name: "Nintendo 64"},
+		IGDB:     &store.IGDBMeta{GameID: 1005, Name: "Super Mario 64", Genres: []store.Genre{}, Themes: []string{}, Franchises: []string{}, SimilarGames: []int64{}, Companies: []store.Company{}, FetchedAt: time.Now().UTC()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := s.store.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Chrono Trigger",
+		Platform: &store.Platform{IGDBID: 19, Name: "Super Nintendo Entertainment System"},
+		IGDB:     &store.IGDBMeta{GameID: 1011, Name: "Chrono Trigger", Genres: []store.Genre{}, Themes: []string{}, Franchises: []string{}, SimilarGames: []int64{}, Companies: []store.Company{}, FetchedAt: time.Now().UTC()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.SetPriceCharting(ctx, held.ID, nil); err != nil { // deliberate clear = hold
+		t.Fatal(err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, s.srv.URL+"/internal/refresh", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Internal-Token", testInternalToken)
+	resp, err := s.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("trigger: %d", resp.StatusCode)
+	}
+
+	// Poll until the walk lands the upgrade.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		got, err := s.store.GetProduct(ctx, unmatched.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.PriceCharting != nil {
+			if got.PriceCharting.PCProductID != 5005 || got.PriceCharting.Verified {
+				t.Fatalf("upgrade mapping: %+v", got.PriceCharting)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("re-match never landed")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	snaps, err := s.store.SnapshotsSince(ctx, []string{unmatched.ID}, time.Time{})
+	if err != nil || len(snaps[unmatched.ID]) != 1 {
+		t.Fatalf("landed upgrade must snapshot once: %+v, %v", snaps, err)
+	}
+	gotHeld, err := s.store.GetProduct(ctx, held.ID)
+	if err != nil || gotHeld.PriceCharting != nil || !gotHeld.MatchHold {
+		t.Fatalf("held product must stay unmatched: %+v, %v", gotHeld, err)
+	}
+}
+
 func TestUnitInternalRefresh_TokenGuard(t *testing.T) {
 	env := newAuthEnv(t)
-	h := New(&stubStore{listPriced: func(context.Context) ([]store.Product, error) { return nil, nil }},
+	h := New(&stubStore{
+		listPriced:         func(context.Context) ([]store.Product, error) { return nil, nil },
+		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
+	},
 		nil, nil, nil, newStubCache(), Options{
 			// An A/B pair mid-rotation: both must be accepted.
 			InternalRefreshSecrets: []string{"new-token", "old-token"},
@@ -2145,11 +2165,14 @@ func TestUnitRefresh_ConflictWhileRunning(t *testing.T) {
 	env := newAuthEnv(t)
 	release := make(chan struct{})
 	started := make(chan struct{})
-	st := &stubStore{listPriced: func(context.Context) ([]store.Product, error) {
-		close(started)
-		<-release
-		return nil, nil
-	}}
+	st := &stubStore{
+		listPriced: func(context.Context) ([]store.Product, error) {
+			close(started)
+			<-release
+			return nil, nil
+		},
+		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
+	}
 	h := newUnitHandlers(st, nil, nil, newStubCache())
 
 	rec := serveInternal(t, h, env, testInternalToken)
@@ -2182,7 +2205,8 @@ func TestUnitRefresh_WalkSurvivesPerProductFailures(t *testing.T) {
 	}
 	var snaps int
 	st := &stubStore{
-		listPriced: func(context.Context) ([]store.Product, error) { return prods, nil },
+		listPriced:         func(context.Context) ([]store.Product, error) { return prods, nil },
+		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
 		setCurrentPrices: func(_ context.Context, id string, _ store.PriceQuote, _ time.Time) error {
 			return nil
 		},
@@ -2240,9 +2264,12 @@ func TestUnitRunRefresh_StopsEarlyOnContextCancellation(t *testing.T) {
 
 func TestUnitRefresh_WalkPanicIsContained(t *testing.T) {
 	env := newAuthEnv(t)
-	st := &stubStore{listPriced: func(context.Context) ([]store.Product, error) {
-		panic("boom")
-	}}
+	st := &stubStore{
+		listPriced: func(context.Context) ([]store.Product, error) {
+			panic("boom")
+		},
+		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
+	}
 	h := newUnitHandlers(st, nil, nil, newStubCache())
 
 	rec := serveInternal(t, h, env, testInternalToken)
@@ -2262,6 +2289,66 @@ func TestUnitRefresh_WalkPanicIsContained(t *testing.T) {
 		t.Fatalf("post-panic trigger: %d", rec.Code)
 	}
 	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
+}
+
+// The re-match step upgrades unmatched members in place: a landed
+// mapping snapshots once and invalidates the cache; a taken slot or
+// an auto-miss skips without side effects; the worklist is capped.
+func TestUnitRefresh_RematchWalksUnmatchedGames(t *testing.T) {
+	loose := int64(3500)
+	prices := &stubPrices{
+		search: func(_ context.Context, q string) ([]pricecharting.Product, error) {
+			switch q {
+			case "Super Mario 64":
+				return []pricecharting.Product{{ID: 5005, Name: "Super Mario 64", ConsoleName: "Nintendo 64", LoosePriceCents: &loose}}, nil
+			case "Chrono Trigger":
+				return []pricecharting.Product{{ID: 5011, Name: "Chrono Trigger", ConsoleName: "Super Nintendo", LoosePriceCents: &loose}}, nil
+			default:
+				return nil, nil
+			}
+		},
+	}
+	unmatchedSM64 := store.Product{ID: "p-sm64", Type: "game", Name: "Super Mario 64",
+		Platform: &store.Platform{IGDBID: 4, Name: "Nintendo 64"}}
+	unmatchedCT := store.Product{ID: "p-ct", Type: "game", Name: "Chrono Trigger",
+		Platform: &store.Platform{IGDBID: 19, Name: "Super Nintendo Entertainment System"}}
+	unmatchedNothing := store.Product{ID: "p-none", Type: "game", Name: "Totally Unknown Homebrew",
+		Platform: &store.Platform{IGDBID: 19, Name: "Super Nintendo Entertainment System"}}
+
+	var gotLimit int
+	var snapshots []store.Snapshot
+	var setCalls []string
+	st := &stubStore{
+		listPriced: func(context.Context) ([]store.Product, error) { return nil, nil },
+		listUnmatchedGames: func(_ context.Context, limit int) ([]store.Product, error) {
+			gotLimit = limit
+			return []store.Product{unmatchedSM64, unmatchedCT, unmatchedNothing}, nil
+		},
+		setPriceChartingIfMissing: func(_ context.Context, id string, m *store.PCMeta) (bool, error) {
+			setCalls = append(setCalls, id)
+			if id == "p-ct" {
+				return false, store.ErrIdentityTaken // slot taken: skip, never merge
+			}
+			return true, nil
+		},
+		appendSnapshot: func(_ context.Context, s store.Snapshot) error {
+			snapshots = append(snapshots, s)
+			return nil
+		},
+	}
+	h := newUnitHandlers(st, &stubGames{}, prices, newStubCache())
+	h.runRefresh(context.Background())
+	h.runRematch(context.Background())
+
+	if gotLimit != 50 {
+		t.Fatalf("worklist cap must be rematchPerWalk (50), got %d", gotLimit)
+	}
+	if len(setCalls) != 2 { // the auto-miss product never reaches the store
+		t.Fatalf("set calls: %v", setCalls)
+	}
+	if len(snapshots) != 1 || snapshots[0].ProductID != "p-sm64" {
+		t.Fatalf("only the landed upgrade snapshots: %+v", snapshots)
+	}
 }
 
 func TestAdminMapping_CorrectVerifyClearAndErrors(t *testing.T) {
@@ -2324,6 +2411,67 @@ func TestAdminMapping_CorrectVerifyClearAndErrors(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound || !bytes.Contains(body, []byte("product_not_found")) {
 		t.Fatalf("ghost product: %d %s", resp.StatusCode, body)
+	}
+}
+
+// Mapping changes are identity moves: a taken listing answers 409 on
+// set, a clear that would collide with the family's unmatched member
+// answers 409 too, and a successful clear sets the walk hold.
+func TestAdminMapping_IdentityTakenAndHold(t *testing.T) {
+	s := newStack(t)
+	ctx := context.Background()
+
+	matched := s.resolveGame(1005, 4) // auto-lands listing 5005
+	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
+		"type": "game", "igdb_game_id": 1005, "platform_igdb_id": 4,
+		"match_hint": "grey cart brick serial",
+	})
+	unmatched := decodeBody[api.Product](t, resp)
+
+	// Set: the target listing is already carried by the matched member.
+	resp = s.do(http.MethodPut, "/admin/products/"+unmatched.Id.String()+"/pricecharting",
+		s.adminToken(), map[string]any{"pc_product_id": 5005})
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict || !bytes.Contains(body, []byte("identity_taken")) ||
+		!bytes.Contains(body, []byte("already carries that listing")) {
+		t.Fatalf("taken listing: want 409 identity_taken with the set-collision detail, got %d %s", resp.StatusCode, body)
+	}
+
+	// Clear: the family already has an unmatched member.
+	resp = s.do(http.MethodPut, "/admin/products/"+matched.Id.String()+"/pricecharting",
+		s.adminToken(), map[string]any{"pc_product_id": nil})
+	body, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict || !bytes.Contains(body, []byte("identity_taken")) ||
+		!bytes.Contains(body, []byte("clearing would collide")) {
+		t.Fatalf("colliding clear: want 409 identity_taken with the clear-collision detail, got %d %s", resp.StatusCode, body)
+	}
+
+	// A collision-free clear lands, unmaps, and holds.
+	resp = s.do(http.MethodPut, "/admin/products/"+unmatched.Id.String()+"/pricecharting",
+		s.adminToken(), map[string]any{"pc_product_id": 5099})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("free set: %d", resp.StatusCode)
+	}
+	resp = s.do(http.MethodPut, "/admin/products/"+matched.Id.String()+"/pricecharting",
+		s.adminToken(), map[string]any{"pc_product_id": nil})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("free clear: %d", resp.StatusCode)
+	}
+	got, err := s.store.GetProduct(ctx, matched.Id.String())
+	if err != nil || got.PriceCharting != nil || !got.MatchHold {
+		t.Fatalf("clear must unmap and hold: %+v, %v", got, err)
+	}
+	// Setting a mapping lifts the hold and stays admin-verified.
+	resp = s.do(http.MethodPut, "/admin/products/"+matched.Id.String()+"/pricecharting",
+		s.adminToken(), map[string]any{"pc_product_id": 5005})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("re-set: %d", resp.StatusCode)
+	}
+	got, err = s.store.GetProduct(ctx, matched.Id.String())
+	if err != nil || got.PriceCharting == nil || !got.PriceCharting.Verified || got.MatchHold {
+		t.Fatalf("re-set must map verified and lift the hold: %+v, %v", got, err)
 	}
 }
 

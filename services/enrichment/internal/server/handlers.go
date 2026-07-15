@@ -426,14 +426,13 @@ func quoteOf(p pricecharting.Product) store.PriceQuote {
 	return q
 }
 
-// ResolveProduct is find-or-create for a search selection. Existing
-// identity: returned as-is, no provider calls. Create (game): full
-// IGDB payload into igdb_raw + projection + scored PriceCharting
-// auto-match with an initial snapshot when matched. Create (hardware):
-// PriceCharting product + borrowed IGDB platform metadata where a
-// console mapping exists. A game resolve carrying pc_product_id is a
-// manual match: the exact listing is fetched by id and auto-match is
-// skipped.
+// ResolveProduct is find-or-create for a search selection. Game
+// identity is listing-keyed - (igdb game, platform, PriceCharting
+// listing) - so game resolves route through resolveGame, which picks
+// the listing (the user's manual match, or auto-match by plain name)
+// BEFORE the lookup. Hardware identity is unchanged: an existing
+// identity returns as-is; a miss fetches the PriceCharting product
+// and borrows IGDB platform metadata where a console mapping exists.
 func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req api.ResolveRequest
@@ -443,29 +442,19 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	typ := string(req.Type)
-	region, edition, variant := deref(req.Region), deref(req.Edition), deref(req.Variant)
 
 	var key store.ProductKey
-	var manualPCID *int64
 	switch typ {
 	case "game":
-		if req.IgdbGameId == nil || req.PlatformIgdbId == nil {
-			problem(w, r, http.StatusBadRequest, "invalid_body", "type game requires igdb_game_id and platform_igdb_id")
-			return
-		}
-		key = store.ProductKey{Type: typ, IGDBGameID: *req.IgdbGameId, PlatformIGDBID: *req.PlatformIgdbId,
-			Region: region, Edition: edition, Variant: variant}
-		// A manual match is the user's exact listing choice. It is not
-		// identity - two users choosing differently must still converge
-		// on one product - so it rides beside the key, never on it.
-		manualPCID = req.PcProductId
+		h.resolveGame(w, r, req)
+		return
 	case "console", "accessory":
 		if req.PcProductId == nil {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "type "+typ+" requires pc_product_id")
 			return
 		}
 		key = store.ProductKey{Type: typ, PCProductID: *req.PcProductId,
-			Region: region, Edition: edition, Variant: variant}
+			Region: deref(req.Region), Edition: deref(req.Edition), Variant: deref(req.Variant)}
 	case "pc_listing":
 		if req.PcProductId == nil {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "type pc_listing requires pc_product_id")
@@ -481,25 +470,6 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 
 	existing, err := h.store.FindProduct(ctx, key)
 	if err == nil {
-		// A manual match may fill a missing mapping on an existing
-		// product (unmatched products are dead ends: the walk skips
-		// them and resolve never re-matches). It never overwrites -
-		// corrections stay admin-only - so a mapped product returns
-		// as-is with no provider call.
-		if manualPCID != nil && existing.PriceCharting == nil {
-			meta, merr := h.manualMatch(ctx, *manualPCID)
-			if merr != nil {
-				h.resolveError(w, r, merr)
-				return
-			}
-			filled, ferr := h.fillManualMatch(ctx, existing.ID, meta)
-			if ferr != nil {
-				h.resolveError(w, r, ferr)
-				return
-			}
-			h.writeProduct(ctx, w, r, filled)
-			return
-		}
 		h.writeProduct(ctx, w, r, existing)
 		return
 	}
@@ -507,62 +477,79 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 		problem(w, r, http.StatusInternalServerError, "internal", "lookup failed")
 		return
 	}
-
-	var p store.Product
-	if typ == "game" {
-		p, err = h.buildGameProduct(ctx, key, manualPCID)
-	} else {
-		p, err = h.buildHardwareProduct(ctx, typ, key)
-	}
+	p, err := h.buildHardwareProduct(ctx, typ, key)
 	if err != nil {
 		h.resolveError(w, r, err)
 		return
 	}
-	// Pre-mint the id at this single create call site: CreateProduct
-	// (store.go) mints an id only when p.ID == "", otherwise it
-	// preserves the caller-supplied one. Setting it here up front means
-	// a duplicate-key convergence (a concurrent resolve already won)
-	// is detectable below by an id mismatch, since the winner's
-	// document it returns instead never carries this id.
-	p.ID = uuid.NewString()
-	created, err := h.store.CreateProduct(ctx, p)
-	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "create failed")
+	h.createAndServe(ctx, w, r, p)
+}
+
+// resolveGame picks the listing, then finds-or-creates the (game,
+// platform, listing) member. Request region/edition/variant are
+// ignored: they are entry-level facts, not game identity.
+func (h *Handlers) resolveGame(w http.ResponseWriter, r *http.Request, req api.ResolveRequest) {
+	ctx := r.Context()
+	if req.IgdbGameId == nil || req.PlatformIgdbId == nil {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "type game requires igdb_game_id and platform_igdb_id")
 		return
 	}
-	// Manual match on a lost create race: the winner's document may be
-	// unmatched (a concurrent plain resolve whose auto-match missed).
-	// Fill it like the found path does - arrival order must not decide
-	// whether the user's choice applies. p.PriceCharting was already
-	// fetched while building the losing document, so no second
-	// provider call.
-	if manualPCID != nil && created.ID != p.ID && created.PriceCharting == nil {
-		filled, ferr := h.fillManualMatch(ctx, created.ID, p.PriceCharting)
-		if ferr != nil {
-			h.resolveError(w, r, ferr)
+	key := store.ProductKey{Type: "game", IGDBGameID: *req.IgdbGameId, PlatformIGDBID: *req.PlatformIgdbId}
+
+	// Manual match: the chosen listing IS the member, so the lookup
+	// needs no metadata or scoring work first.
+	if req.PcProductId != nil {
+		key.PCProductID = *req.PcProductId
+		existing, err := h.store.FindProduct(ctx, key)
+		if err == nil {
+			h.writeProduct(ctx, w, r, existing)
 			return
 		}
-		created = filled
-	}
-	// First price point for a freshly matched product: the walk takes
-	// over from tomorrow. Losing this snapshot is tolerable (warn).
-	// created.ID == p.ID proves this call won the create race; on a
-	// lost race (duplicate-key convergence) CreateProduct returns the
-	// winner's document under a different id, and the winner already
-	// appended its own initial snapshot, so this call must not append
-	// a second one for the same product.
-	if created.PriceCharting != nil && created.ID == p.ID {
-		snap := store.Snapshot{
-			ProductID: created.ID, CapturedAt: h.now(),
-			LooseCents: created.PriceCharting.Current.LooseCents,
-			CIBCents:   created.PriceCharting.Current.CIBCents,
-			NewCents:   created.PriceCharting.Current.NewCents,
+		if !errors.Is(err, store.ErrNotFound) {
+			problem(w, r, http.StatusInternalServerError, "internal", "lookup failed")
+			return
 		}
-		if err := h.store.AppendSnapshot(ctx, snap); err != nil {
-			h.logger.WarnContext(ctx, "initial snapshot failed", "product", created.ID, "err", err)
+		p, berr := h.buildGameProduct(ctx, key)
+		if berr != nil {
+			h.resolveError(w, r, berr)
+			return
 		}
+		h.createAndServe(ctx, w, r, p)
+		return
 	}
-	h.writeProduct(ctx, w, r, created)
+
+	// No pick: the auto-match winner (or the auto-miss null) is part
+	// of the lookup key, so scoring runs before the find.
+	g, fetchedAt, err := h.gamePayloadFor(ctx, key.IGDBGameID)
+	if err != nil {
+		h.resolveError(w, r, err)
+		return
+	}
+	platform, err := platformOf(g, key.PlatformIGDBID)
+	if err != nil {
+		h.resolveError(w, r, err)
+		return
+	}
+	meta := h.autoMatchGame(ctx, g.Name, deref(req.MatchHint), platform.Name)
+	if meta != nil {
+		key.PCProductID = meta.PCProductID
+	}
+	existing, ferr := h.store.FindProduct(ctx, key)
+	if ferr == nil {
+		h.writeProduct(ctx, w, r, existing)
+		return
+	}
+	if !errors.Is(ferr, store.ErrNotFound) {
+		problem(w, r, http.StatusInternalServerError, "internal", "lookup failed")
+		return
+	}
+	platform.LogoURL = h.platformLogoFor(ctx, platform.IGDBID)
+	igdbMeta := store.NewIGDBMeta(g, fetchedAt)
+	h.createAndServe(ctx, w, r, store.Product{
+		Type: "game", Name: g.Name, Platform: platform,
+		IGDB:          &igdbMeta,
+		PriceCharting: meta,
+	})
 }
 
 func deref(s *string) string {
@@ -590,56 +577,65 @@ func (h *Handlers) resolveError(w http.ResponseWriter, r *http.Request, err erro
 	problem(w, r, http.StatusInternalServerError, "internal", "resolve failed")
 }
 
-func (h *Handlers) buildGameProduct(ctx context.Context, key store.ProductKey, manualPCID *int64) (store.Product, error) {
-	games, err := h.games.GamesByIDs(ctx, []int64{key.IGDBGameID})
-	if err != nil {
-		return store.Product{}, &resolveErr{http.StatusBadGateway, "upstream_unavailable", "game metadata provider unavailable"}
-	}
-	if len(games) == 0 {
-		return store.Product{}, &resolveErr{http.StatusNotFound, "unknown_game", "no such igdb game"}
-	}
-	g := games[0]
-	var platform *store.Platform
-	for _, pl := range g.Platforms {
-		if pl.ID == key.PlatformIGDBID {
-			platform = &store.Platform{IGDBID: pl.ID, Name: pl.Name}
-			break
-		}
-	}
-	if platform == nil {
-		return store.Product{}, &resolveErr{http.StatusBadRequest, "invalid_body", "the game did not release on that platform"}
-	}
-	// The game payload's platform list carries names only; the logo
-	// lives in the platform catalog.
-	platform.LogoURL = h.platformLogoFor(ctx, platform.IGDBID)
-	now := h.now()
-	if err := h.store.UpsertRaw(ctx, games, now); err != nil {
-		return store.Product{}, fmt.Errorf("raw upsert: %w", err)
-	}
-	pcMeta, err := h.gameMatch(ctx, g.Name, key.Edition, platform.Name, manualPCID)
+func (h *Handlers) buildGameProduct(ctx context.Context, key store.ProductKey) (store.Product, error) {
+	g, fetchedAt, err := h.gamePayloadFor(ctx, key.IGDBGameID)
 	if err != nil {
 		return store.Product{}, err
 	}
-	meta := store.NewIGDBMeta(g, now)
+	platform, err := platformOf(g, key.PlatformIGDBID)
+	if err != nil {
+		return store.Product{}, err
+	}
+	platform.LogoURL = h.platformLogoFor(ctx, platform.IGDBID)
+	pcMeta, err := h.manualMatch(ctx, key.PCProductID)
+	if err != nil {
+		return store.Product{}, err
+	}
+	meta := store.NewIGDBMeta(g, fetchedAt)
 	return store.Product{
 		Type: "game", Name: g.Name, Platform: platform,
-		Region: key.Region, Edition: key.Edition, Variant: key.Variant,
 		IGDB:          &meta,
 		PriceCharting: pcMeta,
 	}, nil
 }
 
-// gameMatch picks a game product's price mapping: the user's manual
-// match when one was sent, otherwise the scored auto-match. Auto-match
-// stores nil on a provider outage or a below-threshold score (never
-// guessed, correctable via the admin mapping endpoint); a manual match
-// instead fails the resolve - the user asked for that listing
-// specifically, so silently storing something else would misreport.
-func (h *Handlers) gameMatch(ctx context.Context, name, edition, platformName string, manualPCID *int64) (*store.PCMeta, error) {
-	if manualPCID == nil {
-		return h.autoMatch(ctx, name, edition, platformName), nil
+// gamePayloadFor returns the game payload for scoring and projection:
+// igdb_raw when present (no provider call - names are stable), else a
+// GamesByIDs fetch populated backwards into igdb_raw. The returned
+// time is the payload's fetch stamp, so a raw-sourced product keeps
+// an honest IGDBMeta.FetchedAt for the read path's staleness refresh.
+func (h *Handlers) gamePayloadFor(ctx context.Context, gameID int64) (igdb.Game, time.Time, error) {
+	raws, err := h.store.RawByIDs(ctx, []int64{gameID})
+	if err != nil {
+		return igdb.Game{}, time.Time{}, fmt.Errorf("raw read: %w", err)
 	}
-	return h.manualMatch(ctx, *manualPCID)
+	if len(raws) == 1 {
+		return raws[0].Game, raws[0].FetchedAt, nil
+	}
+	games, err := h.games.GamesByIDs(ctx, []int64{gameID})
+	if err != nil {
+		return igdb.Game{}, time.Time{}, &resolveErr{http.StatusBadGateway, "upstream_unavailable", "game metadata provider unavailable"}
+	}
+	if len(games) == 0 {
+		return igdb.Game{}, time.Time{}, &resolveErr{http.StatusNotFound, "unknown_game", "no such igdb game"}
+	}
+	now := h.now()
+	if err := h.store.UpsertRaw(ctx, games, now); err != nil {
+		return igdb.Game{}, time.Time{}, fmt.Errorf("raw upsert: %w", err)
+	}
+	return games[0], now, nil
+}
+
+// platformOf checks the release-platform membership a game resolve
+// promises (the payload's platform list carries names only; logos
+// come from the platform catalog at create time).
+func platformOf(g igdb.Game, platformID int64) (*store.Platform, error) {
+	for _, pl := range g.Platforms {
+		if pl.ID == platformID {
+			return &store.Platform{IGDBID: pl.ID, Name: pl.Name}, nil
+		}
+	}
+	return nil, &resolveErr{http.StatusBadRequest, "invalid_body", "the game did not release on that platform"}
 }
 
 // manualMatch fetches the exact listing the user chose, with the same
@@ -661,68 +657,104 @@ func (h *Handlers) manualMatch(ctx context.Context, pcID int64) (*store.PCMeta, 
 	}, nil
 }
 
-// fillManualMatch sets an unmatched product's mapping to the user's
-// exact listing. The conditional update lands only while the mapping
-// is still missing, so a concurrent filler or admin remap is never
-// overwritten, and only the call that landed appends the snapshot -
-// the fill-path analogue of the create path's created.ID == p.ID
-// gate. Either way the persisted document is re-read and served.
-func (h *Handlers) fillManualMatch(ctx context.Context, id string, meta *store.PCMeta) (store.Product, error) {
-	landed, err := h.store.SetPriceChartingIfMissing(ctx, id, meta)
+// searchPCListingsCached is the resolve-side twin of the pc_listing
+// search endpoint: same cache key, same cached body shape, same
+// degraded discipline (a provider failure answers the caller and is
+// never cached). Auto-match runs on every no-pick game resolve, so
+// repeat adds of a family are a cache hit instead of a provider call.
+func (h *Handlers) searchPCListingsCached(ctx context.Context, q string) ([]api.SearchResult, error) {
+	nq := normQuery(q)
+	if body, err := h.cache.GetSearch(ctx, "pc_listing", nq); err != nil {
+		h.failOpen(ctx, "search_get", err)
+	} else if body != nil {
+		var res api.SearchResults
+		if err := json.Unmarshal(body, &res); err == nil {
+			return res.Results, nil
+		}
+		// A malformed cache entry reads as a miss.
+	}
+	results, err := h.searchPCListings(ctx, q)
 	if err != nil {
-		return store.Product{}, fmt.Errorf("fill manual match: %w", err)
+		return nil, err
 	}
-	if landed {
-		// A landed fill is a fresh price point, like the admin
-		// correction. Losing the snapshot is tolerable (warn).
-		if err := h.store.AppendSnapshot(ctx, store.Snapshot{
-			ProductID: id, CapturedAt: meta.AsOf,
-			LooseCents: meta.Current.LooseCents,
-			CIBCents:   meta.Current.CIBCents,
-			NewCents:   meta.Current.NewCents,
-		}); err != nil {
-			h.logger.WarnContext(ctx, "manual match snapshot failed", "product", id, "err", err)
-		}
-		// Mirror the admin mapping path: the fill must be visible
-		// immediately even if the response's re-cache below fails
-		// open, not after the product TTL.
-		if err := h.cache.InvalidateProduct(ctx, id); err != nil {
-			h.failOpen(ctx, "manual_match_invalidate", err)
-		}
+	if results == nil {
+		results = []api.SearchResult{}
 	}
-	return h.store.GetProduct(ctx, id)
+	body, err := json.Marshal(api.SearchResults{Degraded: false, Results: results})
+	if err != nil {
+		return results, nil // still usable for scoring; just not cached
+	}
+	if err := h.cache.PutSearch(ctx, "pc_listing", nq, body, h.searchTTL); err != nil {
+		h.failOpen(ctx, "search_put", err)
+	}
+	return results, nil
 }
 
-// autoMatch searches PriceCharting and scores candidates; nil when
-// nothing clears the threshold or the provider is down (logged).
-func (h *Handlers) autoMatch(ctx context.Context, name, edition, platformName string) *store.PCMeta {
-	hits, err := h.prices.Search(ctx, name)
+// autoMatchGame scores the family's listing candidates; nil when the
+// provider is degraded or nothing same-console clears the threshold
+// (never guessed - the resolve then lands on the unmatched member).
+// The winner's prices ride from the search row (cache-aged at worst;
+// the daily walk refreshes them).
+func (h *Handlers) autoMatchGame(ctx context.Context, name, hint, platformName string) *store.PCMeta {
+	results, err := h.searchPCListingsCached(ctx, name)
 	if err != nil {
 		h.logger.WarnContext(ctx, "auto-match skipped: price provider unavailable", "name", name, "err", err)
 		return nil
 	}
-	cands := make([]match.Candidate, 0, len(hits))
-	for _, hit := range hits {
-		cands = append(cands, match.Candidate{PCProductID: hit.ID, Name: hit.Name, ConsoleName: hit.ConsoleName})
+	cands := make([]match.Candidate, 0, len(results))
+	for _, r := range results {
+		if r.PcProductId == nil || r.ConsoleName == nil {
+			continue
+		}
+		cands = append(cands, match.Candidate{PCProductID: *r.PcProductId, Name: r.Name, ConsoleName: *r.ConsoleName})
 	}
-	res := match.Best(name, edition, platformName, cands)
+	res := match.Best(name, hint, platformName, cands)
 	if !res.OK {
-		h.logger.InfoContext(ctx, "auto-match below threshold; storing unmatched",
-			"name", name, "platform", platformName, "best_confidence", res.Confidence, "threshold", matchThreshold)
+		h.logger.InfoContext(ctx, "auto-match below threshold; landing on the unmatched member",
+			"name", name, "platform", platformName, "hint", hint,
+			"best_confidence", res.Confidence, "threshold", matchThreshold)
 		return nil
 	}
-	var winner pricecharting.Product
-	for _, hit := range hits {
-		if hit.ID == res.PCProductID {
-			winner = hit
-			break
+	for _, r := range results {
+		if r.PcProductId != nil && *r.PcProductId == res.PCProductID {
+			return &store.PCMeta{
+				PCProductID: res.PCProductID, PCName: res.PCName, ConsoleName: res.ConsoleName,
+				MatchConfidence: res.Confidence, Verified: false,
+				Current: store.PriceQuote{LooseCents: r.LooseCents, CIBCents: r.CibCents, NewCents: r.NewCents},
+				AsOf:    h.now(),
+			}
 		}
 	}
-	return &store.PCMeta{
-		PCProductID: res.PCProductID, PCName: res.PCName, ConsoleName: res.ConsoleName,
-		MatchConfidence: res.Confidence, Verified: false,
-		Current: quoteOf(winner), AsOf: h.now(),
+	return nil // unreachable: the winner came from results
+}
+
+// createAndServe inserts the built product and serves the outcome.
+// The id is pre-minted at this single call site: CreateProduct mints
+// only when p.ID == "", so a duplicate-key convergence (a concurrent
+// resolve already won the identity) is detectable by an id mismatch -
+// the winner's document never carries this id, and the winner already
+// appended its own initial snapshot, so only the winning create
+// snapshots. There is no fill step: every path that reaches here
+// already carries its full identity, mapping included.
+func (h *Handlers) createAndServe(ctx context.Context, w http.ResponseWriter, r *http.Request, p store.Product) {
+	p.ID = uuid.NewString()
+	created, err := h.store.CreateProduct(ctx, p)
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "create failed")
+		return
 	}
+	if created.PriceCharting != nil && created.ID == p.ID {
+		snap := store.Snapshot{
+			ProductID: created.ID, CapturedAt: h.now(),
+			LooseCents: created.PriceCharting.Current.LooseCents,
+			CIBCents:   created.PriceCharting.Current.CIBCents,
+			NewCents:   created.PriceCharting.Current.NewCents,
+		}
+		if err := h.store.AppendSnapshot(ctx, snap); err != nil {
+			h.logger.WarnContext(ctx, "initial snapshot failed", "product", created.ID, "err", err)
+		}
+	}
+	h.writeProduct(ctx, w, r, created)
 }
 
 // buildHardwareProduct builds any PC-anchored product (console,
@@ -1154,6 +1186,9 @@ func (h *Handlers) startRefresh(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 		h.runRefresh(ctx)
+		// Price freshness for matched members takes budget priority;
+		// the re-match step runs on what remains.
+		h.runRematch(ctx)
 	}()
 	writeJSON(w, http.StatusAccepted, api.RefreshAccepted{Status: api.RefreshAcceptedStatus("started")})
 }
@@ -1210,6 +1245,73 @@ func (h *Handlers) runRefresh(ctx context.Context) {
 		"failures", failures, "duration_ms", h.now().Sub(start).Milliseconds())
 }
 
+// rematchPerWalk caps the nightly re-match step; the worklist rotates
+// oldest-first, so a larger backlog upgrades across runs without
+// starving the priced walk's provider budget.
+const rematchPerWalk = 50
+
+// runRematch walks unmatched game products (admin-held ones are
+// filtered out by the store) and auto-matches each by its plain name
+// through the shared search cache. A landed upgrade snapshots once
+// and invalidates the product cache; a duplicate-key means another
+// member already carries the listing - logged and skipped, never
+// merged. Detached-walk conventions match runRefresh.
+func (h *Handlers) runRematch(ctx context.Context) {
+	start := h.now()
+	prods, err := h.store.ListUnmatchedGames(ctx, rematchPerWalk)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "re-match walk aborted", "err", err)
+		return
+	}
+	var matched, skipped, failures, walked int
+	for _, p := range prods {
+		if err := ctx.Err(); err != nil {
+			h.logger.WarnContext(ctx, "re-match walk stopped early: context done",
+				"walked", walked, "remaining", len(prods)-walked, "err", err)
+			break
+		}
+		walked++
+		if p.Platform == nil {
+			skipped++
+			continue
+		}
+		meta := h.autoMatchGame(ctx, p.Name, "", p.Platform.Name)
+		if meta == nil {
+			skipped++
+			continue
+		}
+		landed, err := h.store.SetPriceChartingIfMissing(ctx, p.ID, meta)
+		if errors.Is(err, store.ErrIdentityTaken) {
+			skipped++
+			h.logger.InfoContext(ctx, "re-match: listing already carried by another member; skipping",
+				"product", p.ID, "pc_product", meta.PCProductID)
+			continue
+		}
+		if err != nil {
+			failures++
+			h.logger.WarnContext(ctx, "re-match: mapping update failed", "product", p.ID, "err", err)
+			continue
+		}
+		if !landed {
+			skipped++ // matched by something else since the list read
+			continue
+		}
+		matched++
+		if err := h.store.AppendSnapshot(ctx, store.Snapshot{
+			ProductID: p.ID, CapturedAt: meta.AsOf,
+			LooseCents: meta.Current.LooseCents, CIBCents: meta.Current.CIBCents, NewCents: meta.Current.NewCents,
+		}); err != nil {
+			h.logger.WarnContext(ctx, "re-match: snapshot failed", "product", p.ID, "err", err)
+		}
+		if err := h.cache.InvalidateProduct(ctx, p.ID); err != nil {
+			h.failOpen(ctx, "rematch_invalidate", err)
+		}
+	}
+	h.logger.InfoContext(ctx, "re-match walk finished",
+		"walked", walked, "matched", matched, "skipped", skipped,
+		"failures", failures, "duration_ms", h.now().Sub(start).Milliseconds())
+}
+
 // SetProductMapping is the moderated correction: validate the mapping
 // against the provider, fetch prices, snapshot, mark verified.
 func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
@@ -1235,7 +1337,10 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 	}
 
 	if req.PcProductId == nil {
-		if err := h.store.SetPriceCharting(ctx, id, nil); err != nil {
+		if err := h.store.SetPriceCharting(ctx, id, nil); errors.Is(err, store.ErrIdentityTaken) {
+			problem(w, r, http.StatusConflict, "identity_taken", "clearing would collide with an existing unmatched product of the same identity")
+			return
+		} else if err != nil {
 			problem(w, r, http.StatusInternalServerError, "internal", "mapping clear failed")
 			return
 		}
@@ -1256,7 +1361,10 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 			MatchConfidence: 1.0, Verified: true,
 			Current: q, AsOf: asOf,
 		}
-		if err := h.store.SetPriceCharting(ctx, id, meta); err != nil {
+		if err := h.store.SetPriceCharting(ctx, id, meta); errors.Is(err, store.ErrIdentityTaken) {
+			problem(w, r, http.StatusConflict, "identity_taken", "another product with the same identity already carries that listing")
+			return
+		} else if err != nil {
 			problem(w, r, http.StatusInternalServerError, "internal", "mapping update failed")
 			return
 		}
