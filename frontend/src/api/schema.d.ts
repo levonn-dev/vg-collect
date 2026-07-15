@@ -559,7 +559,7 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
-        /** @description type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on); console/accessory require pc_product_id. region/edition/variant distinguish physical variants and are part of the product identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant). For type game, optional pc_product_id is a manual match: the exact listing the user chose. Auto-match is skipped and the product mints mapped to that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. On an existing game product a manual match fills a missing mapping (with a price snapshot) and never overwrites one; corrections stay on the admin mapping endpoint. */
+        /** @description type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so region/edition/variant on a game resolve are ignored (entry-level facts, like pc_listing). Without pc_product_id the resolve auto-matches by the plain game name through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant). */
         ResolveRequest: {
             /** @enum {string} */
             type: "game" | "console" | "accessory" | "pc_listing";
@@ -569,6 +569,7 @@ export interface components {
             platform_igdb_id?: number;
             /** Format: int64 */
             pc_product_id?: number;
+            match_hint?: string;
             region?: string;
             edition?: string;
             variant?: string;
@@ -763,7 +764,7 @@ export interface components {
             pinned: boolean;
             tag_ids?: string[];
         };
-        /** @description Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). product_id, media_type, and custom-ness are immutable. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom. */
+        /** @description Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom. */
         EntryUpdate: {
             /** @description Custom entries only (required there). */
             display_name?: string;
@@ -774,6 +775,11 @@ export interface components {
              * @description Custom entries only.
              */
             first_release_date?: string;
+            /**
+             * Format: uuid
+             * @description Narrow re-match. Accepted only when the entry is product-backed with pricing_mode auto, its current product is a game with no price mapping, and the new product is a game of the same family (same igdb game and platform); the same id as the entry already has is a no-op. Anything else answers 400 code invalid_product_change; enrichment unreachable answers 502 code enrichment_unavailable and leaves the entry unchanged. Snapshotted display fields stay as they are.
+             */
+            product_id?: string;
             /** @enum {string} */
             region: "ntsc_u" | "ntsc_j" | "pal" | "region_free";
             /** @description Per-copy variant note; the idiom for variants of cataloged items. */

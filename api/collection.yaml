@@ -183,9 +183,12 @@ paths:
       summary: Replace an entry's mutable state (the edit form submits everything)
       description: >
         Full replacement of the mutable fields; an absent optional
-        field is cleared. product_id, media_type, and the entry's
-        custom-ness are immutable (a different product is a different
-        item - delete and re-add). On CUSTOM entries the user-owned
+        field is cleared. media_type and the entry's custom-ness are
+        immutable. product_id accepts one narrow change - re-matching
+        an auto-priced entry off an unmatched game product onto a
+        product of the same game and platform (see EntryUpdate);
+        anything else answers 400 code invalid_product_change. On
+        CUSTOM entries the user-owned
         display fields are part of the mutable state: display_name is
         required and platform_name/first_release_date replace like any
         optional field; on product-backed entries those fields are
@@ -785,8 +788,12 @@ components:
     EntryUpdate:
       description: >
         Full replacement of the mutable state; an absent optional field
-        is cleared (the edit form holds the whole entry). product_id,
-        media_type, and custom-ness are immutable. On custom entries
+        is cleared (the edit form holds the whole entry). media_type
+        and custom-ness are immutable. product_id accepts one narrow
+        change - re-matching an auto-priced entry off an unmatched
+        game product onto a product of the same game and platform
+        (see the field description); anything else answers 400 code
+        invalid_product_change. On custom entries
         display_name is required and platform_name/first_release_date
         replace like any optional field; on product-backed entries all
         three are rejected. tag_ids replaces the tag set; absent means
@@ -807,6 +814,19 @@ components:
           type: string
           format: date
           description: Custom entries only.
+        product_id:
+          type: string
+          format: uuid
+          description: >
+            Narrow re-match. Accepted only when the entry is
+            product-backed with pricing_mode auto, its current product
+            is a game with no price mapping, and the new product is a
+            game of the same family (same igdb game and platform);
+            the same id as the entry already has is a no-op. Anything
+            else answers 400 code invalid_product_change; enrichment
+            unreachable answers 502 code enrichment_unavailable and
+            leaves the entry unchanged. Snapshotted display fields
+            stay as they are.
         region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
         edition:
           type: string

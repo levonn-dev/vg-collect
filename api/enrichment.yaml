@@ -52,17 +52,15 @@ paths:
       operationId: resolveProduct
       summary: Find-or-create the canonical product for a search selection
       description: >
-        Idempotent: an existing product with the same identity (type,
-        provider id, platform, region, edition, variant) is returned
-        as-is. Creating a game product pulls the full IGDB payload into
-        igdb_raw, projects it onto the product, and runs the scored
-        PriceCharting auto-match (below the confidence threshold the
-        product is stored unmatched rather than guessed). Creating a
-        hardware product fetches the PriceCharting product and borrows
-        IGDB platform metadata where a console mapping exists.
-        A game resolve may instead carry a manual match (see
-        ResolveRequest): the chosen listing is fetched by id and
-        auto-match is skipped.
+        Idempotent: an existing product with the same identity is
+        returned as-is. Game identity is (igdb game, platform,
+        PriceCharting listing) - see ResolveRequest for the no-pick
+        auto-match, the match_hint reweighting, and the manual-match
+        pick. Creating a game product pulls the full IGDB payload into
+        igdb_raw (reusing an already-cached payload without a provider
+        call) and projects it onto the product. Creating a hardware
+        product fetches the PriceCharting product and borrows IGDB
+        platform metadata where a console mapping exists.
         Errors: 404 code unknown_game (IGDB id not found) or
         unknown_pc_product; 502 code upstream_unavailable when the
         needed provider cannot be reached.
@@ -231,8 +229,17 @@ paths:
         against the provider, current prices are fetched, a snapshot is
         appended, and the mapping is stored verified with confidence
         1.0. A null pc_product_id clears the mapping (the product
-        becomes unmatched). Errors: 404 code product_not_found or
-        unknown_pc_product; 502 code upstream_unavailable.
+        becomes unmatched) and sets match_hold, so the nightly re-match
+        walk never undoes a deliberate clear; setting any mapping lifts
+        match_hold. Identity indexes make a mapping change an identity
+        move: when another product of the same identity (for games,
+        the same game and platform; for hardware, the same
+        region/edition/variant) already carries the target listing, or
+        a clear would collide with an existing unmatched product of
+        that identity, the answer is 409 code identity_taken. Errors:
+        404 code
+        product_not_found or unknown_pc_product; 409 code
+        identity_taken; 502 code upstream_unavailable.
       parameters:
         - name: productId
           in: path
@@ -254,6 +261,11 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404":
           description: No such product, or the provider does not know the mapping id
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Another product already carries that identity (code identity_taken)
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -412,20 +424,31 @@ components:
     ResolveRequest:
       description: >
         type game requires igdb_game_id + platform_igdb_id (the
-        platform must be one the game released on); console/accessory
-        require pc_product_id. region/edition/variant distinguish
-        physical variants and are part of the product identity.
-        type pc_listing requires pc_product_id and mints a price-anchor
-        product for that exact listing; region/edition/variant are
-        ignored (the listing IS the exact variant).
-        For type game, optional pc_product_id is a manual match: the
-        exact listing the user chose. Auto-match is skipped and the
-        product mints mapped to that listing (match_confidence 1.0,
+        platform must be one the game released on). Game identity is
+        listing-keyed - (game, platform, PriceCharting listing) - so
+        region/edition/variant on a game resolve are ignored
+        (entry-level facts, like pc_listing). Without pc_product_id
+        the resolve auto-matches by the plain game name through the
+        shared listing-search cache and lands on the winning listing's
+        product; below the confidence threshold, or with the provider
+        down, it lands on the game+platform's single unmatched product
+        instead - never guessed. Optional match_hint (game only,
+        ignored elsewhere) reweights the scoring toward variant text
+        without changing the search query; a hint nothing matches
+        makes the resolve conservative (unmatched).
+        With pc_product_id (a manual match: the exact listing the user
+        chose) auto-match is skipped and the resolve finds or mints
+        the product carrying that listing (match_confidence 1.0,
         verified false); unknown id answers 404 unknown_pc_product,
-        provider failure 502 upstream_unavailable. On an existing game
-        product a manual match fills a missing mapping (with a price
-        snapshot) and never overwrites one; corrections stay on the
+        provider failure 502 upstream_unavailable. Resolves never
+        touch an existing product's mapping; corrections stay on the
         admin mapping endpoint.
+        console/accessory require pc_product_id;
+        region/edition/variant distinguish physical variants and are
+        part of hardware identity. type pc_listing requires
+        pc_product_id and mints a price-anchor product for that exact
+        listing; region/edition/variant are ignored (the listing IS
+        the exact variant).
       type: object
       required: [type]
       properties:
@@ -433,6 +456,7 @@ components:
         igdb_game_id: { type: integer, format: int64 }
         platform_igdb_id: { type: integer, format: int64 }
         pc_product_id: { type: integer, format: int64 }
+        match_hint: { type: string, maxLength: 128 }
         region: { type: string, maxLength: 32 }
         edition: { type: string, maxLength: 128 }
         variant: { type: string, maxLength: 128 }

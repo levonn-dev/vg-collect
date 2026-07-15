@@ -577,7 +577,7 @@ type EntryPlatform struct {
 	Name           string `json:"name"`
 }
 
-// EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). product_id, media_type, and custom-ness are immutable. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
+// EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
 type EntryUpdate struct {
 	BoxCondition               *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
 	Currency                   *string                  `json:"currency,omitempty"`
@@ -606,13 +606,16 @@ type EntryUpdate struct {
 	PricePaidCents   *int64                 `json:"price_paid_cents,omitempty"`
 	PricingMode      EntryUpdatePricingMode `json:"pricing_mode"`
 	PricingProductId *openapi_types.UUID    `json:"pricing_product_id,omitempty"`
-	PurchasedAt      *openapi_types.Date    `json:"purchased_at,omitempty"`
-	PurchasedFrom    *string                `json:"purchased_from,omitempty"`
-	Rating           *int                   `json:"rating,omitempty"`
-	Region           EntryUpdateRegion      `json:"region"`
-	Status           EntryUpdateStatus      `json:"status"`
-	StorageLocation  *string                `json:"storage_location,omitempty"`
-	TagIds           *[]openapi_types.UUID  `json:"tag_ids,omitempty"`
+
+	// ProductId Narrow re-match. Accepted only when the entry is product-backed with pricing_mode auto, its current product is a game with no price mapping, and the new product is a game of the same family (same igdb game and platform); the same id as the entry already has is a no-op. Anything else answers 400 code invalid_product_change; enrichment unreachable answers 502 code enrichment_unavailable and leaves the entry unchanged. Snapshotted display fields stay as they are.
+	ProductId       *openapi_types.UUID   `json:"product_id,omitempty"`
+	PurchasedAt     *openapi_types.Date   `json:"purchased_at,omitempty"`
+	PurchasedFrom   *string               `json:"purchased_from,omitempty"`
+	Rating          *int                  `json:"rating,omitempty"`
+	Region          EntryUpdateRegion     `json:"region"`
+	Status          EntryUpdateStatus     `json:"status"`
+	StorageLocation *string               `json:"storage_location,omitempty"`
+	TagIds          *[]openapi_types.UUID `json:"tag_ids,omitempty"`
 }
 
 // EntryUpdateBoxCondition defines model for EntryUpdate.BoxCondition.
