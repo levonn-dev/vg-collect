@@ -17,8 +17,9 @@ interface ConfirmStepProps {
   pick: CatalogPick
   details: DetailsValues
   // The user's exact listing choice, when one was made; rides the
-  // resolve. onManualMatch reports a choice made HERE (the no-listing
-  // card's remedy) so the wizard state owns it either way.
+  // resolve and lands on that listing's own product. onManualMatch
+  // reports a choice made HERE (either card's picker) so the wizard
+  // state owns it either way.
   manualMatch?: ManualMatch
   onManualMatch: (m: ManualMatch) => void
   onBack: () => void
@@ -33,7 +34,7 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
   const queryClient = useQueryClient()
   const money = useDisplayMoney()
   const [matchOpen, setMatchOpen] = useState(false)
-  const req = resolveRequestFor(pick, manualMatch)
+  const req = resolveRequestFor(pick, manualMatch, details.edition)
   const product = useQuery({
     queryKey: ['resolve', JSON.stringify(req)],
     queryFn: () => resolveProduct(req),
@@ -87,18 +88,21 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
         submitPending={create.isPending}
       >
         {pc ? (
-          <>
-            <p className="rounded bg-green-50 p-3 text-sm text-green-800">
+          <div className="rounded bg-green-50 p-3 text-sm text-green-800">
+            <p>
               Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%
               {pc.verified ? ', verified' : ''}.
             </p>
-            {manualMatch && pc.pc_product_id !== manualMatch.pcProductId && (
-              <p className="rounded bg-amber-50 p-3 text-sm text-amber-800">
-                Already matched to a different listing in the shared catalog. Changing an existing match
-                needs an admin.
-              </p>
+            {pick.kind === 'game' && (
+              <button
+                type="button"
+                onClick={() => setMatchOpen(true)}
+                className="mt-2 rounded border border-green-300 px-2 py-1 text-sm hover:border-green-400 hover:bg-white"
+              >
+                Change listing
+              </button>
             )}
-          </>
+          </div>
         ) : (
           <div className="rounded bg-gray-50 p-3 text-sm text-gray-600">
             <p>No confirmed price listing yet - market value stays empty until a match is made.</p>

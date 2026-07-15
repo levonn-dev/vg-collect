@@ -13,8 +13,8 @@ interface ManualMatchPickerProps {
 
 // ManualMatchPicker chooses the exact PriceCharting listing for a game
 // being added. Search only - no resolve here; the choice rides the
-// game resolve so the product mints (or fills) with that mapping.
-// Same dialog conventions as ProxyPicker.
+// game resolve, which lands on that listing's own product (game
+// identity is listing-keyed). Same dialog conventions as ProxyPicker.
 export default function ManualMatchPicker({ initialQuery, onPick, onClose }: ManualMatchPickerProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
 

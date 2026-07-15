@@ -2,9 +2,8 @@ import type { ResolveRequest } from '../api/catalog'
 import type { CatalogPick } from '../components/catalog/SearchPicker'
 
 // A manual match is the user's exact PriceCharting listing choice for
-// a game being added: it rides the resolve so the product mints with
-// that mapping (or fills an existing product's missing one) instead
-// of auto-match.
+// a game being added: it rides the resolve, and because game identity
+// is listing-keyed, the resolve lands on that listing's own product.
 export interface ManualMatch {
   pcProductId: number
   name: string
@@ -13,14 +12,18 @@ export interface ManualMatch {
 // resolveRequestFor turns a catalog pick into the request that finds
 // or creates its canonical product. PriceCharting's Systems category
 // maps to console; everything else it lists for hardware
-// (controllers, accessories) is an accessory.
-export function resolveRequestFor(pick: CatalogPick, manualMatch?: ManualMatch | null): ResolveRequest {
+// (controllers, accessories) is an accessory. For games, matchHint is
+// the typed edition-or-variant text: score-only, reweighting the
+// auto-match without changing the search (omitted when blank).
+export function resolveRequestFor(pick: CatalogPick, manualMatch?: ManualMatch | null, matchHint?: string): ResolveRequest {
   if (pick.kind === 'game') {
+    const hint = matchHint?.trim() ?? ''
     return {
       type: 'game',
       igdb_game_id: pick.igdbGameId,
       platform_igdb_id: pick.platformId,
       ...(manualMatch ? { pc_product_id: manualMatch.pcProductId } : {}),
+      ...(hint !== '' ? { match_hint: hint } : {}),
     }
   }
   if (pick.kind === 'pc_listing') {

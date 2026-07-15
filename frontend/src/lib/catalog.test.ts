@@ -1,3 +1,4 @@
+import type { CatalogPick } from '../components/catalog/SearchPicker'
 import { resolveRequestFor } from './catalog'
 
 it('builds a plain game resolve without a manual match', () => {
@@ -22,4 +23,22 @@ it('ignores a manual match for non-game picks', () => {
   expect(
     resolveRequestFor({ kind: 'hardware', pcProductId: 6001, name: 'SNES', category: 'Systems' }, { pcProductId: 7042, name: 'Y' }),
   ).toEqual({ type: 'console', pc_product_id: 6001 })
+})
+
+const gamePick: CatalogPick = { kind: 'game', igdbGameId: 1011, name: 'Chrono Trigger', platformId: 19, platformName: 'SNES' }
+const listingPick: CatalogPick = { kind: 'pc_listing', pcProductId: 5099, name: 'X' }
+
+it('threads a trimmed match hint on game picks', () => {
+  const req = resolveRequestFor(gamePick, null, '  players choice  ')
+  expect(req).toMatchObject({ type: 'game', match_hint: 'players choice' })
+})
+
+it('omits an empty or whitespace hint', () => {
+  expect(resolveRequestFor(gamePick, null, '')).not.toHaveProperty('match_hint')
+  expect(resolveRequestFor(gamePick, null, '   ')).not.toHaveProperty('match_hint')
+  expect(resolveRequestFor(gamePick)).not.toHaveProperty('match_hint')
+})
+
+it('ignores the hint on non-game picks', () => {
+  expect(resolveRequestFor(listingPick, null, 'players choice')).not.toHaveProperty('match_hint')
 })
