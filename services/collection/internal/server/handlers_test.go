@@ -1415,6 +1415,125 @@ func TestUnitUpdateEntry(t *testing.T) {
 			updateBody(nil))
 		wantProblem(t, resp, http.StatusNotFound, "entry_not_found")
 	})
+
+	t.Run("narrow product re-match", func(t *testing.T) {
+		gameProd := func(id uuid.UUID, gameID, platformID int64, matched bool) enrichapi.Product {
+			p := enrichapi.Product{Id: id, Type: enrichapi.ProductType("game"),
+				Igdb:     &enrichapi.IgdbMeta{GameId: gameID},
+				Platform: &enrichapi.PlatformRef{IgdbPlatformId: platformID, Name: "SNES"}}
+			if matched {
+				p.Pricecharting = &enrichapi.PricechartingMeta{PcProductId: 5011}
+			}
+			return p
+		}
+		target := uuid.New()
+		catalog := func(cur enrichapi.Product) *stubEnrichment {
+			return &stubEnrichment{
+				getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+					if id == *e.ProductID {
+						return cur, nil
+					}
+					if id == target {
+						return gameProd(target, 1011, 19, true), nil
+					}
+					return enrichapi.Product{}, enrichmentclient.ErrUnknownProduct
+				},
+				batchPrices: pricedAs(1500, 4200, 9900),
+			}
+		}
+		repointBody := func(productID string, tweak func(map[string]any)) *bytes.Reader {
+			return updateBody(func(m map[string]any) {
+				m["product_id"] = productID
+				if tweak != nil {
+					tweak(m)
+				}
+			})
+		}
+		okStore := func(updated *store.Entry) *stubStore {
+			return &stubStore{
+				getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return e, nil },
+				updateEntry: func(_ context.Context, in store.Entry, _ []uuid.UUID) (store.Entry, error) {
+					if updated != nil {
+						*updated = in
+					}
+					in.Tags = []store.TagRef{}
+					return in, nil
+				},
+			}
+		}
+
+		t.Run("happy path repoints and keeps snapshots", func(t *testing.T) {
+			var updated store.Entry
+			srv, a := newUnitServer(t, okStore(&updated), catalog(gameProd(*e.ProductID, 1011, 19, false)), newStubCache())
+			resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+				repointBody(target.String(), nil))
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status %d", resp.StatusCode)
+			}
+			if updated.ProductID == nil || *updated.ProductID != target {
+				t.Fatalf("must repoint: %+v", updated.ProductID)
+			}
+			if updated.DisplayName != e.DisplayName {
+				t.Fatal("snapshotted display fields must stay")
+			}
+		})
+		t.Run("same id is a no-op, no catalog calls", func(t *testing.T) {
+			srv, a := newUnitServer(t, okStore(nil), &stubEnrichment{batchPrices: pricedAs(1, 2, 3)}, newStubCache())
+			resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+				repointBody(e.ProductID.String(), nil))
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status %d", resp.StatusCode)
+			}
+		})
+		t.Run("non-auto pricing mode is refused", func(t *testing.T) {
+			srv, a := newUnitServer(t, okStore(nil), catalog(gameProd(*e.ProductID, 1011, 19, false)), newStubCache())
+			resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+				repointBody(target.String(), func(m map[string]any) { m["pricing_mode"] = "disabled" }))
+			wantProblem(t, resp, http.StatusBadRequest, "invalid_product_change")
+		})
+		t.Run("matched current product is refused", func(t *testing.T) {
+			srv, a := newUnitServer(t, okStore(nil), catalog(gameProd(*e.ProductID, 1011, 19, true)), newStubCache())
+			resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+				repointBody(target.String(), nil))
+			wantProblem(t, resp, http.StatusBadRequest, "invalid_product_change")
+		})
+		t.Run("cross-family target is refused", func(t *testing.T) {
+			enrich := catalog(gameProd(*e.ProductID, 1005, 4, false)) // different family than the target
+			srv, a := newUnitServer(t, okStore(nil), enrich, newStubCache())
+			resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+				repointBody(target.String(), nil))
+			wantProblem(t, resp, http.StatusBadRequest, "invalid_product_change")
+		})
+		t.Run("unknown target is refused", func(t *testing.T) {
+			srv, a := newUnitServer(t, okStore(nil), catalog(gameProd(*e.ProductID, 1011, 19, false)), newStubCache())
+			resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+				repointBody(uuid.NewString(), nil))
+			wantProblem(t, resp, http.StatusBadRequest, "invalid_product_change")
+		})
+		t.Run("enrichment down answers 502, entry unchanged", func(t *testing.T) {
+			enrich := &stubEnrichment{getProduct: func(context.Context, string, uuid.UUID) (enrichapi.Product, error) {
+				return enrichapi.Product{}, enrichmentclient.ErrUnavailable
+			}}
+			srv, a := newUnitServer(t, okStore(nil), enrich, newStubCache())
+			resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+				repointBody(target.String(), nil))
+			wantProblem(t, resp, http.StatusBadGateway, "enrichment_unavailable")
+		})
+		t.Run("custom entries are refused", func(t *testing.T) {
+			ce := storedGameEntry(user)
+			ce.ProductID = nil
+			ce.PricingMode = "disabled"
+			st := &stubStore{getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return ce, nil }}
+			srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+			resp := do(t, http.MethodPut, srv.URL+"/entries/"+ce.ID.String(), a.token(t, user.String()),
+				updateBody(func(m map[string]any) {
+					m["product_id"] = uuid.NewString()
+					m["display_name"] = ce.DisplayName
+					m["pricing_mode"] = "disabled"
+				}))
+			wantProblem(t, resp, http.StatusBadRequest, "invalid_product_change")
+		})
+	})
 }
 
 func TestUnitDeleteEntry(t *testing.T) {

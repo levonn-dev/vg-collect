@@ -299,6 +299,31 @@ func TestUpdateReplacesTagsAndIsScoped(t *testing.T) {
 	}
 }
 
+// TestUpdateEntry_PersistsProductRepoint guards the narrow re-match:
+// the UPDATE must write product_id, both in the row it returns and on
+// a fresh reload (the RETURNING clause and the stored column must
+// agree).
+func TestUpdateEntry_PersistsProductRepoint(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	userID := uuid.New()
+	e := mustCreate(t, s, baseEntry(userID), nil)
+
+	newProduct := uuid.New()
+	e.ProductID = &newProduct
+	updated, err := s.UpdateEntry(ctx, e, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.ProductID == nil || *updated.ProductID != newProduct {
+		t.Fatalf("product_id must persist: %+v", updated.ProductID)
+	}
+	got, err := s.GetEntry(ctx, userID, e.ID)
+	if err != nil || got.ProductID == nil || *got.ProductID != newProduct {
+		t.Fatalf("reload: %+v, %v", got, err)
+	}
+}
+
 func TestDeleteEntry(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

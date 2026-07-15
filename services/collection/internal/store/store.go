@@ -347,7 +347,7 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			 status = $17, rating = $18, notes = $19, storage_location = $20,
 			 pinned = $21, backlog_rank = $22,
 			 display_name = $23, platform_name = $24, first_release_date = $25,
-			 igdb_game_id = $26,
+			 igdb_game_id = $26, product_id = $30,
 			 custom_value_cents = $27,
 			 custom_value_set_at = CASE
 			   WHEN $27::bigint IS NOT DISTINCT FROM custom_value_cents THEN custom_value_set_at
@@ -367,7 +367,8 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			e.Pinned, e.BacklogRank,
 			e.DisplayName, e.PlatformName, e.FirstReleaseDate,
 			e.IGDBGameID, e.CustomValueCents,
-			e.CustomValueEnteredCents, e.CustomValueEnteredCurrency)
+			e.CustomValueEnteredCents, e.CustomValueEnteredCurrency,
+			e.ProductID)
 		updated, err := scanEntry(row)
 		if err != nil {
 			return fmt.Errorf("store: update entry: %w", err)

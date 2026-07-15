@@ -527,8 +527,9 @@ func (h *Handlers) GetEntry(w http.ResponseWriter, r *http.Request, entryId open
 }
 
 // UpdateEntry replaces the mutable state (the edit form submits the
-// whole entry; absent optional fields clear). product_id, media_type,
-// and the catalog snapshot are immutable.
+// whole entry; absent optional fields clear). media_type and the
+// catalog snapshot are immutable; product_id accepts only the narrow
+// re-match documented on EntryUpdate.
 func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
 	userID, bearer, ok := h.caller(w, r)
 	if !ok {
@@ -579,6 +580,56 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		}
 	}
 
+	// Narrow re-match: product_id may move an auto-priced entry off an
+	// unmatched game product onto a product of the same family (same
+	// igdb game and platform). Anything else is invalid_product_change;
+	// the same id as stored is a no-op so full-state resends stay
+	// idempotent. Snapshotted display fields stay: the family shares
+	// name, platform, and cover.
+	repoint := false
+	if body.ProductId != nil {
+		if custom {
+			problem(w, r, http.StatusBadRequest, "invalid_product_change", "custom entries have no catalog product")
+			return
+		}
+		repoint = *body.ProductId != *current.ProductID
+	}
+	if repoint {
+		if in.PricingMode != "auto" {
+			problem(w, r, http.StatusBadRequest, "invalid_product_change", "product_id can only re-match an auto-priced entry")
+			return
+		}
+		curProd, err := h.enrichment.GetProduct(r.Context(), bearer, *current.ProductID)
+		if errors.Is(err, enrichmentclient.ErrUnknownProduct) {
+			problem(w, r, http.StatusBadRequest, "invalid_product_change", "the entry's current product is not in the catalog")
+			return
+		}
+		if err != nil {
+			problem(w, r, http.StatusBadGateway, "enrichment_unavailable", "the catalog cannot be reached")
+			return
+		}
+		if curProd.Type != "game" || curProd.Pricecharting != nil {
+			problem(w, r, http.StatusBadRequest, "invalid_product_change", "product_id can only re-match an entry whose product is an unmatched game")
+			return
+		}
+		newProd, err := h.enrichment.GetProduct(r.Context(), bearer, *body.ProductId)
+		if errors.Is(err, enrichmentclient.ErrUnknownProduct) {
+			problem(w, r, http.StatusBadRequest, "invalid_product_change", "the new product does not exist in the catalog")
+			return
+		}
+		if err != nil {
+			problem(w, r, http.StatusBadGateway, "enrichment_unavailable", "the catalog cannot be reached")
+			return
+		}
+		if newProd.Type != "game" || newProd.Igdb == nil || curProd.Igdb == nil ||
+			newProd.Igdb.GameId != curProd.Igdb.GameId ||
+			newProd.Platform == nil || curProd.Platform == nil ||
+			newProd.Platform.IgdbPlatformId != curProd.Platform.IgdbPlatformId {
+			problem(w, r, http.StatusBadRequest, "invalid_product_change", "the new product must be the same game and platform")
+			return
+		}
+	}
+
 	// A NEW proxy reference must exist in the catalog; proxying to the
 	// entry's own product needs no round-trip (a product-backed entry's
 	// product_id is already known-good). Otherwise, re-validate unless
@@ -604,6 +655,9 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 
 	e := current
 	applyInput(&e, in)
+	if repoint {
+		e.ProductID = body.ProductId
+	}
 	if custom {
 		e.DisplayName = *body.DisplayName
 		e.PlatformName = body.PlatformName
