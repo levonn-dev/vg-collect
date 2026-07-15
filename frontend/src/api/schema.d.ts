@@ -559,7 +559,7 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
-        /** @description type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on); console/accessory require pc_product_id. region/edition/variant distinguish physical variants and are part of the product identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant). */
+        /** @description type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on); console/accessory require pc_product_id. region/edition/variant distinguish physical variants and are part of the product identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant). For type game, optional pc_product_id is a manual match: the exact listing the user chose. Auto-match is skipped and the product mints mapped to that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. On an existing game product a manual match fills a missing mapping (with a price snapshot) and never overwrites one; corrections stay on the admin mapping endpoint. */
         ResolveRequest: {
             /** @enum {string} */
             type: "game" | "console" | "accessory" | "pc_listing";
