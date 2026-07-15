@@ -431,7 +431,9 @@ func quoteOf(p pricecharting.Product) store.PriceQuote {
 // IGDB payload into igdb_raw + projection + scored PriceCharting
 // auto-match with an initial snapshot when matched. Create (hardware):
 // PriceCharting product + borrowed IGDB platform metadata where a
-// console mapping exists.
+// console mapping exists. A game resolve carrying pc_product_id is a
+// manual match: the exact listing is fetched by id and auto-match is
+// skipped.
 func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req api.ResolveRequest
@@ -444,6 +446,7 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 	region, edition, variant := deref(req.Region), deref(req.Edition), deref(req.Variant)
 
 	var key store.ProductKey
+	var manualPCID *int64
 	switch typ {
 	case "game":
 		if req.IgdbGameId == nil || req.PlatformIgdbId == nil {
@@ -452,6 +455,10 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 		}
 		key = store.ProductKey{Type: typ, IGDBGameID: *req.IgdbGameId, PlatformIGDBID: *req.PlatformIgdbId,
 			Region: region, Edition: edition, Variant: variant}
+		// A manual match is the user's exact listing choice. It is not
+		// identity - two users choosing differently must still converge
+		// on one product - so it rides beside the key, never on it.
+		manualPCID = req.PcProductId
 	case "console", "accessory":
 		if req.PcProductId == nil {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "type "+typ+" requires pc_product_id")
@@ -474,6 +481,25 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 
 	existing, err := h.store.FindProduct(ctx, key)
 	if err == nil {
+		// A manual match may fill a missing mapping on an existing
+		// product (unmatched products are dead ends: the walk skips
+		// them and resolve never re-matches). It never overwrites -
+		// corrections stay admin-only - so a mapped product returns
+		// as-is with no provider call.
+		if manualPCID != nil && existing.PriceCharting == nil {
+			meta, merr := h.manualMatch(ctx, *manualPCID)
+			if merr != nil {
+				h.resolveError(w, r, merr)
+				return
+			}
+			filled, ferr := h.fillManualMatch(ctx, existing.ID, meta)
+			if ferr != nil {
+				h.resolveError(w, r, ferr)
+				return
+			}
+			h.writeProduct(ctx, w, r, filled)
+			return
+		}
 		h.writeProduct(ctx, w, r, existing)
 		return
 	}
@@ -484,7 +510,7 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 
 	var p store.Product
 	if typ == "game" {
-		p, err = h.buildGameProduct(ctx, key)
+		p, err = h.buildGameProduct(ctx, key, manualPCID)
 	} else {
 		p, err = h.buildHardwareProduct(ctx, typ, key)
 	}
@@ -503,6 +529,20 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		problem(w, r, http.StatusInternalServerError, "internal", "create failed")
 		return
+	}
+	// Manual match on a lost create race: the winner's document may be
+	// unmatched (a concurrent plain resolve whose auto-match missed).
+	// Fill it like the found path does - arrival order must not decide
+	// whether the user's choice applies. p.PriceCharting was already
+	// fetched while building the losing document, so no second
+	// provider call.
+	if manualPCID != nil && created.ID != p.ID && created.PriceCharting == nil {
+		filled, ferr := h.fillManualMatch(ctx, created.ID, p.PriceCharting)
+		if ferr != nil {
+			h.resolveError(w, r, ferr)
+			return
+		}
+		created = filled
 	}
 	// First price point for a freshly matched product: the walk takes
 	// over from tomorrow. Losing this snapshot is tolerable (warn).
@@ -550,7 +590,7 @@ func (h *Handlers) resolveError(w http.ResponseWriter, r *http.Request, err erro
 	problem(w, r, http.StatusInternalServerError, "internal", "resolve failed")
 }
 
-func (h *Handlers) buildGameProduct(ctx context.Context, key store.ProductKey) (store.Product, error) {
+func (h *Handlers) buildGameProduct(ctx context.Context, key store.ProductKey, manualPCID *int64) (store.Product, error) {
 	games, err := h.games.GamesByIDs(ctx, []int64{key.IGDBGameID})
 	if err != nil {
 		return store.Product{}, &resolveErr{http.StatusBadGateway, "upstream_unavailable", "game metadata provider unavailable"}
@@ -576,16 +616,81 @@ func (h *Handlers) buildGameProduct(ctx context.Context, key store.ProductKey) (
 	if err := h.store.UpsertRaw(ctx, games, now); err != nil {
 		return store.Product{}, fmt.Errorf("raw upsert: %w", err)
 	}
+	pcMeta, err := h.gameMatch(ctx, g.Name, key.Edition, platform.Name, manualPCID)
+	if err != nil {
+		return store.Product{}, err
+	}
 	meta := store.NewIGDBMeta(g, now)
 	return store.Product{
 		Type: "game", Name: g.Name, Platform: platform,
 		Region: key.Region, Edition: key.Edition, Variant: key.Variant,
-		IGDB: &meta,
-		// A provider outage or a below-threshold score both land here
-		// as nil: stored unmatched, correctable via the admin mapping
-		// endpoint. Never guessed.
-		PriceCharting: h.autoMatch(ctx, g.Name, key.Edition, platform.Name),
+		IGDB:          &meta,
+		PriceCharting: pcMeta,
 	}, nil
+}
+
+// gameMatch picks a game product's price mapping: the user's manual
+// match when one was sent, otherwise the scored auto-match. Auto-match
+// stores nil on a provider outage or a below-threshold score (never
+// guessed, correctable via the admin mapping endpoint); a manual match
+// instead fails the resolve - the user asked for that listing
+// specifically, so silently storing something else would misreport.
+func (h *Handlers) gameMatch(ctx context.Context, name, edition, platformName string, manualPCID *int64) (*store.PCMeta, error) {
+	if manualPCID == nil {
+		return h.autoMatch(ctx, name, edition, platformName), nil
+	}
+	return h.manualMatch(ctx, *manualPCID)
+}
+
+// manualMatch fetches the exact listing the user chose, with the same
+// error taxonomy as hardware resolve.
+func (h *Handlers) manualMatch(ctx context.Context, pcID int64) (*store.PCMeta, error) {
+	pc, err := h.prices.Product(ctx, pcID)
+	if errors.Is(err, pricecharting.ErrNotFound) {
+		return nil, &resolveErr{http.StatusNotFound, "unknown_pc_product", "no such pricecharting product"}
+	}
+	if err != nil {
+		return nil, &resolveErr{http.StatusBadGateway, "upstream_unavailable", "price provider unavailable"}
+	}
+	return &store.PCMeta{
+		PCProductID: pc.ID, PCName: pc.Name, ConsoleName: pc.ConsoleName,
+		// Exact by construction (the user chose the listing) but still
+		// machine-made: verified stays admin-only.
+		MatchConfidence: 1.0, Verified: false,
+		Current: quoteOf(pc), AsOf: h.now(),
+	}, nil
+}
+
+// fillManualMatch sets an unmatched product's mapping to the user's
+// exact listing. The conditional update lands only while the mapping
+// is still missing, so a concurrent filler or admin remap is never
+// overwritten, and only the call that landed appends the snapshot -
+// the fill-path analogue of the create path's created.ID == p.ID
+// gate. Either way the persisted document is re-read and served.
+func (h *Handlers) fillManualMatch(ctx context.Context, id string, meta *store.PCMeta) (store.Product, error) {
+	landed, err := h.store.SetPriceChartingIfMissing(ctx, id, meta)
+	if err != nil {
+		return store.Product{}, fmt.Errorf("fill manual match: %w", err)
+	}
+	if landed {
+		// A landed fill is a fresh price point, like the admin
+		// correction. Losing the snapshot is tolerable (warn).
+		if err := h.store.AppendSnapshot(ctx, store.Snapshot{
+			ProductID: id, CapturedAt: meta.AsOf,
+			LooseCents: meta.Current.LooseCents,
+			CIBCents:   meta.Current.CIBCents,
+			NewCents:   meta.Current.NewCents,
+		}); err != nil {
+			h.logger.WarnContext(ctx, "manual match snapshot failed", "product", id, "err", err)
+		}
+		// Mirror the admin mapping path: the fill must be visible
+		// immediately even if the response's re-cache below fails
+		// open, not after the product TTL.
+		if err := h.cache.InvalidateProduct(ctx, id); err != nil {
+			h.failOpen(ctx, "manual_match_invalidate", err)
+		}
+	}
+	return h.store.GetProduct(ctx, id)
 }
 
 // autoMatch searches PriceCharting and scores candidates; nil when
