@@ -1,18 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ApiError } from '../../api/client'
 import { resolveProduct } from '../../api/catalog'
 import { createEntry } from '../../api/collection'
+import type { ManualMatch } from '../../lib/catalog'
 import { resolveRequestFor } from '../../lib/catalog'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import type { CatalogPick } from '../catalog/SearchPicker'
 import type { DetailsValues } from './DetailsStep'
 import { detailsToCreate } from './DetailsStep'
 import ConfirmShell from './ConfirmShell'
+import ManualMatchPicker from './ManualMatchPicker'
 
 interface ConfirmStepProps {
   pick: CatalogPick
   details: DetailsValues
+  // The user's exact listing choice, when one was made; rides the
+  // resolve. onManualMatch reports a choice made HERE (the no-listing
+  // card's remedy) so the wizard state owns it either way.
+  manualMatch?: ManualMatch
+  onManualMatch: (m: ManualMatch) => void
   onBack: () => void
 }
 
@@ -20,11 +28,12 @@ interface ConfirmStepProps {
 // idempotent by contract, so a query fits despite the POST) and shows
 // its price-match status before the entry is created: the user sees
 // what "market value" will mean for this copy.
-export default function ConfirmStep({ pick, details, onBack }: ConfirmStepProps) {
+export default function ConfirmStep({ pick, details, manualMatch, onManualMatch, onBack }: ConfirmStepProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const money = useDisplayMoney()
-  const req = resolveRequestFor(pick)
+  const [matchOpen, setMatchOpen] = useState(false)
+  const req = resolveRequestFor(pick, manualMatch)
   const product = useQuery({
     queryKey: ['resolve', JSON.stringify(req)],
     queryFn: () => resolveProduct(req),
@@ -51,9 +60,11 @@ export default function ConfirmStep({ pick, details, onBack }: ConfirmStepProps)
     return (
       <div className="py-4">
         <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">
-          {notFound
-            ? 'This item is no longer available; try searching again.'
-            : 'The lookup failed; your details are kept - try again in a moment.'}
+          {manualMatch
+            ? 'That listing cannot be matched right now. Go back to change or clear the manual match.'
+            : notFound
+              ? 'This item is no longer available; try searching again.'
+              : 'The lookup failed; your details are kept - try again in a moment.'}
         </p>
         <button onClick={onBack} className="mt-3 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
           Back
@@ -65,25 +76,54 @@ export default function ConfirmStep({ pick, details, onBack }: ConfirmStepProps)
   const p = product.data
   const pc = p.pricecharting
   return (
-    <ConfirmShell
-      ariaLabel="Confirm"
-      title={p.name}
-      subtitle={[p.platform?.name, p.type].filter(Boolean).join(' - ')}
-      errorMessage={create.isError ? create.error.message || 'The entry could not be created.' : undefined}
-      onBack={onBack}
-      onSubmit={() => create.mutate()}
-      submitPending={create.isPending}
-    >
-      {pc ? (
-        <p className="rounded bg-green-50 p-3 text-sm text-green-800">
-          Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%
-          {pc.verified ? ', verified' : ''}.
-        </p>
-      ) : (
-        <p className="rounded bg-gray-50 p-3 text-sm text-gray-600">
-          No confirmed price listing yet - market value stays empty until a match is made.
-        </p>
+    <>
+      <ConfirmShell
+        ariaLabel="Confirm"
+        title={p.name}
+        subtitle={[p.platform?.name, p.type].filter(Boolean).join(' - ')}
+        errorMessage={create.isError ? create.error.message || 'The entry could not be created.' : undefined}
+        onBack={onBack}
+        onSubmit={() => create.mutate()}
+        submitPending={create.isPending}
+      >
+        {pc ? (
+          <>
+            <p className="rounded bg-green-50 p-3 text-sm text-green-800">
+              Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%
+              {pc.verified ? ', verified' : ''}.
+            </p>
+            {manualMatch && pc.pc_product_id !== manualMatch.pcProductId && (
+              <p className="rounded bg-amber-50 p-3 text-sm text-amber-800">
+                Already matched to a different listing in the shared catalog. Changing an existing match
+                needs an admin.
+              </p>
+            )}
+          </>
+        ) : (
+          <div className="rounded bg-gray-50 p-3 text-sm text-gray-600">
+            <p>No confirmed price listing yet - market value stays empty until a match is made.</p>
+            {pick.kind === 'game' && (
+              <button
+                type="button"
+                onClick={() => setMatchOpen(true)}
+                className="mt-2 rounded border border-gray-300 px-2 py-1 text-sm hover:border-gray-400 hover:bg-white"
+              >
+                Match manually
+              </button>
+            )}
+          </div>
+        )}
+      </ConfirmShell>
+      {matchOpen && (
+        <ManualMatchPicker
+          initialQuery={pick.name}
+          onPick={(m) => {
+            onManualMatch(m)
+            setMatchOpen(false)
+          }}
+          onClose={() => setMatchOpen(false)}
+        />
       )}
-    </ConfirmShell>
+    </>
   )
 }
