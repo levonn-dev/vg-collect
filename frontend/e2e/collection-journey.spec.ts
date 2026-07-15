@@ -51,7 +51,9 @@ test('collection journey: add, edit, price, pin, reorder, views, insights, recom
   await page.getByRole('button', { name: /Chrono Trigger on Super Nintendo Entertainment System/ }).first().click()
 
   await expect(page.getByRole('heading', { name: /your copy of chrono trigger/i })).toBeVisible()
-  await page.getByLabel('Edition or variant').fill(stamp)
+  // The stamp lives in notes: typed edition text is a match hint now,
+  // and a unique stamp would (correctly) land the add unmatched.
+  await page.getByLabel('Notes').fill(stamp)
   await page.getByLabel('Status').selectOption('beaten')
   await page.getByLabel('Rating').selectOption('9')
   await page.getByRole('button', { name: 'Continue' }).click()
@@ -66,45 +68,40 @@ test('collection journey: add, edit, price, pin, reorder, views, insights, recom
   await expect(page).toHaveURL(/\/entries\//)
   createdEntryURLs.push(page.url())
 
-  // --- Add a second copy of the same game, choosing its price listing
-  // manually. The wizard resolve carries only game+platform identity
-  // (typed edition stays entry-level), so this converges on the product
-  // the first add minted; picking the name-exact SNES listing - the
-  // same one auto-match stores in both provider modes - keeps the walk
-  // deterministic against fresh AND long-lived stacks: the card must
-  // name that listing at match 100% with no admin note. Manual-vs-auto
-  // semantics (mint, fill, never-overwrite) are pinned by the
-  // enrichment suites and the bruno flow; this walk proves the browser
-  // flow end to end.
+  // --- Add a second game, choosing its price listing manually.
+  // Identity is listing-keyed: the picked listing lands the add on
+  // that listing's OWN product, distinct from the auto-matched one -
+  // no conflict, no admin note. Super Mario 64 carries a bracketed
+  // variant listing in both provider modes, so the pick is name-exact
+  // and deterministic against fresh AND long-lived stacks.
   await page.getByRole('link', { name: 'Add', exact: true }).click()
-  await page.getByRole('searchbox', { name: /search for games and hardware/i }).fill('chrono trigger')
+  await page.getByRole('searchbox', { name: /search for games and hardware/i }).fill('super mario 64')
   await page.getByRole('button', { name: 'Search', exact: true }).click()
-  await page.getByRole('button', { name: /Chrono Trigger on Super Nintendo Entertainment System/ }).first().click()
+  await page.getByRole('button', { name: /Super Mario 64 on Nintendo 64/ }).first().click()
 
-  await expect(page.getByRole('heading', { name: /your copy of chrono trigger/i })).toBeVisible()
-  await page.getByLabel('Edition or variant').fill(`${stamp} manual`)
+  await expect(page.getByRole('heading', { name: /your copy of super mario 64/i })).toBeVisible()
+  await page.getByLabel('Notes').fill(`${stamp} manual`)
   await page.getByRole('button', { name: 'Match manually' }).click()
   const matchDialog = page.getByRole('dialog', { name: 'Match a price listing' })
   await expect(matchDialog).toBeVisible()
-  await matchDialog.getByRole('searchbox', { name: 'Search for PriceCharting' }).fill('chrono trigger')
+  await matchDialog.getByRole('searchbox', { name: 'Search for PriceCharting' }).fill('super mario 64')
   await matchDialog.getByRole('button', { name: 'Search', exact: true }).click()
-  // Name-exact + console-scoped: several consoles carry a listing named
-  // exactly "Chrono Trigger"; the SNES row is the auto-match invariant.
-  // The console cell is matched exact ("Super Nintendo", never a "PAL
-  // Super Nintendo" row) so this pattern stays deterministic for games
-  // that do have PAL SNES prints.
+  // Name-exact + console-scoped (never a regional "PAL Nintendo 64"
+  // row): the bracketed variant is present in both provider modes.
   await matchDialog
     .locator('li')
-    .filter({ has: page.getByText('Super Nintendo', { exact: true }) })
-    .getByRole('button', { name: 'Use Chrono Trigger', exact: true })
+    .filter({ has: page.getByText('Nintendo 64', { exact: true }) })
+    .getByRole('button', { name: "Use Super Mario 64 [Player's Choice]", exact: true })
     .first()
     .click()
   await expect(page.getByRole('button', { name: 'Clear' })).toBeVisible()
   await page.getByRole('button', { name: 'Continue' }).click()
 
-  await expect(page.getByText('Priced as "Chrono Trigger"', { exact: false })).toBeVisible()
+  // The confirm card names the picked listing's member: a manual pick
+  // is exact by construction (match 100%), and picking a different
+  // listing than auto-match is just a different product now.
+  await expect(page.getByText('Priced as "Super Mario 64 [Player\'s Choice]"', { exact: false })).toBeVisible()
   await expect(page.getByText(/match 100%/i)).toBeVisible()
-  await expect(page.getByText(/already matched to a different listing/i)).not.toBeVisible()
   await page.getByRole('button', { name: 'Add to collection' }).click()
   await expect(page.getByRole('region', { name: 'Pricing' })).toBeVisible()
   await expect(page).toHaveURL(/\/entries\//)
@@ -295,4 +292,10 @@ test('collection journey: add, edit, price, pin, reorder, views, insights, recom
   }
   await page.goto(`/?item_type=game&item_type=console`)
   await expect(page.getByText(new RegExp(stamp))).toHaveCount(0)
+  // The list views do not render notes, so the UI scan above cannot
+  // see a notes-stamped orphan; sweep the entries API for the stamp
+  // across every field (the request rides the session cookie).
+  const residue = await page.request.get('/api/entries?limit=500')
+  expect(residue.ok()).toBeTruthy()
+  expect(JSON.stringify(await residue.json())).not.toContain(stamp)
 })
