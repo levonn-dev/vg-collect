@@ -1,0 +1,45 @@
+meta {
+  name: resolve game with manual match (via gateway)
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{bff_url}}/api/products/resolve
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "type": "game",
+    "igdb_game_id": {{bff_manual_igdb_game_id}},
+    "platform_igdb_id": {{bff_manual_platform_igdb_id}},
+    "pc_product_id": {{bff_pc_product_id}},
+    "variant": "{{bff_manual_variant}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.type: eq game
+  res.body.igdb: isDefined
+  res.body.pricecharting.pc_product_id: eq {{bff_pc_product_id}}
+  res.body.pricecharting.match_confidence: eq 1
+  res.body.pricecharting.verified: eq false
+}
+
+script:pre-request {
+  bru.setEnvVar("bff_manual_variant", "bruno-mm-" + Date.now());
+}
+
+docs {
+  Run search-games and search-pc-listings first (they store the ids).
+  The variant is stamped per run so every execution mints a fresh
+  product: the resolve must map it to the SENT listing (manual match
+  wins over auto-match) at confidence 1 and verified false. The manual
+  listing is unrelated to the game on purpose - manual match trusts
+  the user's choice and applies no console filter. Residue: one game
+  product per run in enrichment-mongo, same class as the pc_listing
+  flows' products.
+}

@@ -140,7 +140,10 @@ against AWS Secrets Manager in the documented production path.
 Everything is complete and verified: auth (OIDC + dev-provider login),
 user, the edge and SPA shell (APISIX gateway, session cookies, the bff
 serving the built bundle), enrichment (catalog search and resolve
-against IGDB/PriceCharting with scored auto-matching, a daily pricing
+against IGDB/PriceCharting with scored auto-matching, an optional
+manual match that lets a game resolve carry an exact PriceCharting
+listing at mint time (fills a still-unmatched product, never overwrites
+an existing mapping; auto-match stays the default), a daily pricing
 walk plus its CronJob, heuristic recommendations scoring, and
 credential-less stub-mode fixtures), collection (granular entries,
 tags, saved views, and filter-aware dashboard composition with live

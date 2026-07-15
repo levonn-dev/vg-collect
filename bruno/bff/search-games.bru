@@ -1,0 +1,32 @@
+meta {
+  name: search games (via gateway)
+  type: http
+  seq: 15
+}
+
+get {
+  url: {{bff_url}}/api/search?type=game&q=chrono trigger
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.results: isDefined
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const hit = res.body.results.find(r => r.type === 'game' && r.platforms && r.platforms.length > 0);
+    if (hit) {
+      bru.setEnvVar("bff_manual_igdb_game_id", hit.igdb_game_id);
+      bru.setEnvVar("bff_manual_platform_igdb_id", hit.platforms[0].igdb_platform_id);
+    }
+  }
+}
+
+docs {
+  Captures a real game id + one of its platforms for the manual-match
+  resolve that follows. Provider-agnostic: whatever game the search
+  returns first with platforms is used.
+}
