@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import type { Entry } from '../../api/collection'
 import { centsToDollars } from '../../lib/format'
-import { entryFixture, fxRatesFixture, jsonResponse } from '../../test/fixtures'
+import { entryFixture, fxRatesFixture, jsonResponse, putBody } from '../../test/fixtures'
 import { renderWithMoney } from '../../test/money'
 import type { PricingValue } from './PricingPanel'
 import PricingPanel from './PricingPanel'
@@ -14,6 +14,16 @@ const matchedProduct = {
     match_confidence: 0.93, verified: true,
     loose_cents: 1500, cib_cents: 4200, new_cents: 9900, as_of: '2026-07-01T00:00:00Z',
   },
+  created_at: 'x', updated_at: 'x',
+}
+
+// A game product with no PriceCharting mapping yet, but a full
+// identity (igdb + platform) - the shape the "Match listing" gate
+// needs to consider the entry a re-match candidate.
+const unmatchedGameProduct = {
+  id: 'p1', type: 'game', name: 'Chrono Trigger',
+  igdb: { game_id: 1000 },
+  platform: { igdb_platform_id: 6, name: 'SNES' },
   created_at: 'x', updated_at: 'x',
 }
 
@@ -279,4 +289,133 @@ it('labels the custom input and the memory row in the input currency', () => {
   const entry = entryFixture({ pricing_mode: 'custom', product_id: undefined })
   renderPanel(entry, { mode: 'custom', productId: undefined, customValue: '60' }, 'EUR')
   expect(screen.getByLabelText(/custom price \(eur\)/i)).toBeInTheDocument()
+})
+
+it('shows Match listing only for auto mode on an unmatched game product', async () => {
+  // auto + unmatched game (igdb + platform present, no pricecharting) -> visible
+  stubFetch({ '/api/products/': unmatchedGameProduct })
+  renderPanel(entryFixture({ pricing_mode: 'auto' }))
+  expect(await screen.findByRole('button', { name: 'Match listing' })).toBeInTheDocument()
+  cleanup()
+
+  // stored mode proxy, draft flipped to auto, same unmatched game with
+  // full identity -> absent. The immediate PUT resends the STORED
+  // entry, so the affordance needs the saved mode to already be auto,
+  // not just the draft (a stored non-auto entry with a draft flipped
+  // to auto would otherwise show a button that can only 400).
+  stubFetch({ '/api/products/': unmatchedGameProduct })
+  renderPanel(entryFixture({ pricing_mode: 'proxy' }), { mode: 'auto', productId: undefined, customValue: '' })
+  expect(await screen.findByText(/no confirmed price listing yet/i)).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Match listing' })).not.toBeInTheDocument()
+  cleanup()
+
+  // auto + matched game -> absent (already has a confirmed listing)
+  stubFetch({ '/api/products/': matchedProduct })
+  renderPanel(entryFixture({ pricing_mode: 'auto' }))
+  expect(await screen.findByText(/match 93%/i)).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Match listing' })).not.toBeInTheDocument()
+  cleanup()
+
+  // auto + unmatched product missing igdb/platform -> absent (identity incomplete)
+  stubFetch({ '/api/products/': { ...unmatchedGameProduct, igdb: undefined, platform: undefined } })
+  renderPanel(entryFixture({ pricing_mode: 'auto' }))
+  expect(await screen.findByText(/no confirmed price listing yet/i)).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Match listing' })).not.toBeInTheDocument()
+  cleanup()
+
+  // proxy mode -> absent (the auto block never renders outside auto)
+  stubFetch({ '/api/products/': unmatchedGameProduct })
+  renderPanel(entryFixture({ pricing_mode: 'proxy', pricing_product_id: 'p9' }))
+  expect(screen.queryByRole('button', { name: 'Match listing' })).not.toBeInTheDocument()
+  cleanup()
+
+  // custom entry (no product_id) -> absent, even with mode forced to auto in the draft
+  stubFetch({})
+  renderPanel(
+    entryFixture({ product_id: undefined, pricing_mode: 'disabled', pricing_product_id: undefined }),
+    { mode: 'auto', productId: undefined, customValue: '' },
+  )
+  expect(screen.queryByRole('button', { name: 'Match listing' })).not.toBeInTheDocument()
+})
+
+it('resolves the picked listing and PUTs the entry onto the member', async () => {
+  const entry = entryFixture({ pricing_mode: 'auto' })
+  const member = {
+    id: 'm7', type: 'game', name: 'Chrono Trigger',
+    pricecharting: {
+      pc_product_id: 7042, pc_name: 'Chrono Trigger [PAL]', console_name: 'PAL Super Nintendo',
+      match_confidence: 1.0, verified: false, as_of: 'x',
+    },
+    created_at: 'x', updated_at: 'x',
+  }
+  const updatedEntry = { ...entry, product_id: 'm7' }
+  const fetchMock = stubFetch({
+    // More specific prefixes first: stubFetch matches by URL prefix, and
+    // '/api/products/resolve' also starts with '/api/products/'.
+    '/api/products/resolve': member,
+    '/api/search': {
+      degraded: false,
+      results: [{
+        type: 'pc_listing', name: 'Chrono Trigger [PAL]', pc_product_id: 7042,
+        console_name: 'PAL Super Nintendo', loose_cents: 9800,
+      }],
+    },
+    '/api/products/': unmatchedGameProduct,
+    [`/api/entries/${entry.id}`]: updatedEntry,
+  })
+  renderPanel(entry)
+  await userEvent.click(await screen.findByRole('button', { name: 'Match listing' }))
+  expect(await screen.findByRole('dialog', { name: 'Match a price listing' })).toBeInTheDocument()
+  await userEvent.click(await screen.findByRole('button', { name: /use chrono trigger/i }))
+
+  await waitFor(() => {
+    expect(
+      fetchMock.mock.calls.some(
+        (c) => c[0] === `/api/entries/${entry.id}` && (c[1] as RequestInit | undefined)?.method === 'PUT',
+      ),
+    ).toBe(true)
+  })
+
+  const resolveCall = fetchMock.mock.calls.find((c) => c[0] === '/api/products/resolve')
+  expect(putBody(resolveCall?.[1] as RequestInit)).toEqual({
+    type: 'game', igdb_game_id: 1000, platform_igdb_id: 6, pc_product_id: 7042,
+  })
+
+  const putCall = fetchMock.mock.calls.find(
+    (c) => c[0] === `/api/entries/${entry.id}` && (c[1] as RequestInit | undefined)?.method === 'PUT',
+  )
+  const body = putBody<{ product_id?: string; pricing_mode?: string }>(putCall?.[1] as RequestInit)
+  expect(body.product_id).toBe('m7')
+  expect(body.pricing_mode).toBe('auto')
+})
+
+it('surfaces a failed match', async () => {
+  const entry = entryFixture({ pricing_mode: 'auto' })
+  const member = { id: 'm7', type: 'game', name: 'Chrono Trigger', created_at: 'x', updated_at: 'x' }
+  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    const u = String(url)
+    if (u === '/api/products/resolve') return Promise.resolve(jsonResponse(200, member))
+    if (u.startsWith('/api/search')) {
+      return Promise.resolve(jsonResponse(200, {
+        degraded: false,
+        results: [{
+          type: 'pc_listing', name: 'Chrono Trigger [PAL]', pc_product_id: 7042,
+          console_name: 'PAL Super Nintendo', loose_cents: 9800,
+        }],
+      }))
+    }
+    if (u === `/api/entries/${entry.id}` && init?.method === 'PUT') {
+      return Promise.resolve(jsonResponse(400, { code: 'invalid_product_change', detail: 'not eligible' }))
+    }
+    if (u.startsWith('/api/products/')) return Promise.resolve(jsonResponse(200, unmatchedGameProduct))
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderPanel(entry)
+  await userEvent.click(await screen.findByRole('button', { name: 'Match listing' }))
+  expect(await screen.findByRole('dialog', { name: 'Match a price listing' })).toBeInTheDocument()
+  await userEvent.click(await screen.findByRole('button', { name: /use chrono trigger/i }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'The listing match failed; try again in a moment.',
+  )
 })

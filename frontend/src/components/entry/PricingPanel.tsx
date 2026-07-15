@@ -1,10 +1,14 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { Product } from '../../api/catalog'
-import { fetchProduct } from '../../api/catalog'
+import { fetchProduct, resolveProduct } from '../../api/catalog'
 import type { Entry } from '../../api/collection'
+import { updateEntry } from '../../api/collection'
+import type { ManualMatch } from '../../lib/catalog'
+import { entryToUpdate } from '../../lib/entryUpdate'
 import { dollarsToCents, formatCents } from '../../lib/format'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
+import ManualMatchPicker from '../wizard/ManualMatchPicker'
 import ProxyPicker from './ProxyPicker'
 
 function MatchCard({ product }: { product: Product }) {
@@ -57,6 +61,37 @@ interface PricingPanelProps {
 // server on save (a vanished target answers 404).
 export default function PricingPanel({ entry, value, onChange, inputCurrency }: PricingPanelProps) {
   const [picking, setPicking] = useState(false)
+  const [matching, setMatching] = useState(false)
+  const queryClient = useQueryClient()
+  // Narrow re-match: an auto-priced entry on an unmatched game product
+  // may move onto the listing the user picks. The resolve lands on
+  // that listing's product (same game and platform - identity is
+  // listing-keyed) and the entry repoints to it. Unlike every other
+  // control here, this saves immediately: it is a catalog identity
+  // action, not a draft field, and the server validates the narrow
+  // conditions again. The button below gates on entry.pricing_mode
+  // (the SAVED mode), not value.mode (the draft), because this
+  // immediate PUT resends the stored entry, not the draft.
+  const rematch = useMutation({
+    mutationFn: async (m: ManualMatch) => {
+      const p = ownProduct.data
+      if (!p?.igdb || !p.platform) throw new Error('product identity unavailable')
+      const member = await resolveProduct({
+        type: 'game',
+        igdb_game_id: p.igdb.game_id,
+        platform_igdb_id: p.platform.igdb_platform_id,
+        pc_product_id: m.pcProductId,
+      })
+      return updateEntry(entry.id, { ...entryToUpdate(entry), product_id: member.id })
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['entry', entry.id] })
+      void queryClient.invalidateQueries({ queryKey: ['entries'] })
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      void queryClient.invalidateQueries({ queryKey: ['recommendations'] })
+      void queryClient.invalidateQueries({ queryKey: ['product', entry.product_id] })
+    },
+  })
   const money = useDisplayMoney()
 
   const ownProduct = useQuery({
@@ -123,7 +158,25 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
       {value.mode === 'auto' && entry.product_id && (
         <div className="mt-3">
           {ownProduct.isSuccess ? (
-            <MatchCard product={ownProduct.data} />
+            <>
+              <MatchCard product={ownProduct.data} />
+              {entry.pricing_mode === 'auto' && ownProduct.data.type === 'game' && !ownProduct.data.pricecharting &&
+                ownProduct.data.igdb && ownProduct.data.platform && (
+                  <button
+                    type="button"
+                    onClick={() => setMatching(true)}
+                    disabled={rematch.isPending}
+                    className="mt-2 rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Match listing
+                  </button>
+                )}
+              {rematch.isError && (
+                <p role="alert" className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
+                  The listing match failed; try again in a moment.
+                </p>
+              )}
+            </>
           ) : ownProduct.isError ? (
             <p className="text-sm text-gray-500">The price listing cannot be loaded right now.</p>
           ) : (
@@ -222,6 +275,17 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
             onChange({ mode: 'proxy', productId: product.id, customValue: value.customValue })
             setPicking(false)
           }}
+        />
+      )}
+
+      {matching && (
+        <ManualMatchPicker
+          initialQuery={entry.display_name}
+          onPick={(m) => {
+            setMatching(false)
+            rematch.mutate(m)
+          }}
+          onClose={() => setMatching(false)}
         />
       )}
     </section>
