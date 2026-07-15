@@ -180,6 +180,39 @@ it('keeps typed details across a Confirm Back, and each Back returns to the prev
   expect(await screen.findByRole('searchbox', { name: /search/i })).toBeInTheDocument()
 })
 
+it('keeps a manual match across Continue and Back', async () => {
+  const listingAnswer = {
+    degraded: false,
+    results: [{ type: 'pc_listing', name: 'Chrono Trigger [PAL]', pc_product_id: 7042, console_name: 'PAL Super Nintendo', loose_cents: 9800 }],
+  }
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    const u = String(url)
+    if (u.startsWith('/api/search')) {
+      return Promise.resolve(jsonResponse(200, u.includes('type=pc_listing') ? listingAnswer : searchAnswer))
+    }
+    if (u === '/api/products/resolve') return Promise.resolve(jsonResponse(200, product))
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWizard()
+
+  await userEvent.type(screen.getByRole('searchbox', { name: /search for games and hardware/i }), 'chrono')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
+
+  expect(await screen.findByText(/your copy of chrono trigger/i)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Match manually' }))
+  await userEvent.click(await screen.findByRole('button', { name: /use chrono trigger \[pal\]/i }))
+  expect(screen.getByText('Chrono Trigger [PAL]')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+
+  // Confirm renders; Back returns to Details with the chip intact,
+  // exactly like the typed-details retention.
+  expect(await screen.findByText(/match \d+%/i)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+  expect(await screen.findByText('Chrono Trigger [PAL]')).toBeInTheDocument()
+})
+
 it('shows the match-pending state for an unmatched product', async () => {
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
     const u = String(url)
@@ -195,6 +228,46 @@ it('shows the match-pending state for an unmatched product', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
   expect(await screen.findByText(/no confirmed price listing yet/i)).toBeInTheDocument()
+})
+
+it('fills a missing match from the confirm step', async () => {
+  const listingAnswer = {
+    degraded: false,
+    results: [{ type: 'pc_listing', name: 'Chrono Trigger [PAL]', pc_product_id: 7042, console_name: 'PAL Super Nintendo', loose_cents: 9800 }],
+  }
+  const unanchored = { ...product, pricecharting: undefined }
+  const filled = {
+    ...product,
+    pricecharting: { ...product.pricecharting, pc_product_id: 7042, pc_name: 'Chrono Trigger [PAL]', match_confidence: 1.0 },
+  }
+  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    const u = String(url)
+    if (u.startsWith('/api/search')) {
+      return Promise.resolve(jsonResponse(200, u.includes('type=pc_listing') ? listingAnswer : searchAnswer))
+    }
+    if (u === '/api/products/resolve') {
+      const body = putBody<{ pc_product_id?: number }>(init)
+      return Promise.resolve(jsonResponse(200, body.pc_product_id ? filled : unanchored))
+    }
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWizard()
+
+  await userEvent.type(screen.getByRole('searchbox', { name: /search for games and hardware/i }), 'chrono')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
+  expect(await screen.findByText(/your copy of chrono trigger/i)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+
+  // Auto-match missed; the card offers the remedy.
+  expect(await screen.findByText(/no confirmed price listing yet/i)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Match manually' }))
+  await userEvent.click(await screen.findByRole('button', { name: /use chrono trigger \[pal\]/i }))
+
+  // The re-resolve rides the choice and the card flips green.
+  expect(await screen.findByText(/match 100%/i)).toBeInTheDocument()
+  expect(screen.getByText(/priced as "chrono trigger \[pal\]"/i)).toBeInTheDocument()
 })
 
 it('pre-runs the q parameter (the recommendations add path)', async () => {

@@ -10,12 +10,13 @@ import type { CustomValues } from '../components/wizard/CustomStep'
 import CustomStep from '../components/wizard/CustomStep'
 import type { DetailsValues } from '../components/wizard/DetailsStep'
 import DetailsStep, { detailsToCreate } from '../components/wizard/DetailsStep'
+import type { ManualMatch } from '../lib/catalog'
 import { useDisplayMoney } from '../lib/useDisplayMoney'
 
 type WizardStep =
   | { step: 'search' }
-  | { step: 'details'; pick: CatalogPick; details?: DetailsValues }
-  | { step: 'confirm'; pick: CatalogPick; details: DetailsValues }
+  | { step: 'details'; pick: CatalogPick; details?: DetailsValues; manualMatch?: ManualMatch }
+  | { step: 'confirm'; pick: CatalogPick; details: DetailsValues; manualMatch?: ManualMatch }
   | { step: 'custom'; custom?: CustomValues; details?: DetailsValues }
   | { step: 'custom-details'; custom: CustomValues; details?: DetailsValues }
   | { step: 'custom-confirm'; custom: CustomValues; details: DetailsValues }
@@ -50,6 +51,11 @@ export default function AddWizard() {
           heading={`Your copy of ${state.pick.name}`}
           currency={money.profileCurrency}
           initialValues={state.details}
+          manualMatch={state.pick.kind === 'game' ? state.manualMatch : undefined}
+          onManualMatchChange={
+            state.pick.kind === 'game' ? (m) => setState({ ...state, manualMatch: m ?? undefined }) : undefined
+          }
+          manualMatchQuery={state.pick.kind === 'game' ? state.pick.name : undefined}
           onBack={() => setState({ step: 'search' })}
           onNext={(details) => setState({ ...state, step: 'confirm', details })}
         />
@@ -58,7 +64,9 @@ export default function AddWizard() {
         <ConfirmStep
           pick={state.pick}
           details={state.details}
-          onBack={() => setState({ step: 'details', pick: state.pick, details: state.details })}
+          manualMatch={state.manualMatch}
+          onManualMatch={(m) => setState({ ...state, manualMatch: m })}
+          onBack={() => setState({ step: 'details', pick: state.pick, details: state.details, manualMatch: state.manualMatch })}
         />
       )}
       {state.step === 'custom' && (
