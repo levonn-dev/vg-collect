@@ -151,15 +151,18 @@ type Result struct {
 	OK          bool
 }
 
-// Best picks the highest-scoring same-console candidate. When an
-// edition qualifies the product, it is part of the identity being
-// priced, so the target is "name edition" strictly (a plain listing
-// must not price a collector's edition). Deterministic tie-break:
-// lower pc id.
-func Best(name, edition, platformName string, cands []Candidate) Result {
+// Best picks the highest-scoring same-console candidate. A non-empty
+// hint is variant text qualifying the target: scoring compares
+// "name hint" strictly, so candidates without the hinted tokens lose
+// score, and a hint nothing carries keeps the product unmatched
+// rather than guessing the plain listing (bracketed candidate
+// segments are stripped by Normalize, so bracket-only variants stay
+// reachable through the picker, not the hint). Deterministic
+// tie-break: lower pc id.
+func Best(name, hint, platformName string, cands []Candidate) Result {
 	target := Normalize(name)
-	if edition != "" {
-		target = Normalize(name + " " + edition)
+	if hint != "" {
+		target = Normalize(name + " " + hint)
 	}
 	best := Result{}
 	for _, c := range cands {

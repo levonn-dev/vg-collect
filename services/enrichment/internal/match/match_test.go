@@ -150,3 +150,23 @@ func TestBest_BaseListingBeatsVariantRow(t *testing.T) {
 		t.Fatalf("base listing must win for a plain resolve, got %+v", res)
 	}
 }
+
+func TestBest_HintFlipsAnUnbracketedVariant(t *testing.T) {
+	cands := []Candidate{
+		{PCProductID: 901, Name: "Super Mario 64", ConsoleName: "Nintendo 64"},
+		{PCProductID: 902, Name: "Super Mario 64 Players Choice", ConsoleName: "Nintendo 64"},
+	}
+	plain := Best("Super Mario 64", "", "Nintendo 64", cands)
+	if !plain.OK || plain.PCProductID != 901 {
+		t.Fatalf("plain name must pick the base listing: %+v", plain)
+	}
+	hinted := Best("Super Mario 64", "players choice", "Nintendo 64", cands)
+	if !hinted.OK || hinted.PCProductID != 902 {
+		t.Fatalf("hint must flip to the variant listing: %+v", hinted)
+	}
+	// A hint no candidate carries makes the match conservative.
+	junk := Best("Super Mario 64", "grey cart brick", "Nintendo 64", cands)
+	if junk.OK {
+		t.Fatalf("unmatched hint must stay below threshold: %+v", junk)
+	}
+}
