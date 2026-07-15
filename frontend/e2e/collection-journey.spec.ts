@@ -66,6 +66,50 @@ test('collection journey: add, edit, price, pin, reorder, views, insights, recom
   await expect(page).toHaveURL(/\/entries\//)
   createdEntryURLs.push(page.url())
 
+  // --- Add a second copy of the same game, choosing its price listing
+  // manually. The wizard resolve carries only game+platform identity
+  // (typed edition stays entry-level), so this converges on the product
+  // the first add minted; picking the name-exact SNES listing - the
+  // same one auto-match stores in both provider modes - keeps the walk
+  // deterministic against fresh AND long-lived stacks: the card must
+  // name that listing at match 100% with no admin note. Manual-vs-auto
+  // semantics (mint, fill, never-overwrite) are pinned by the
+  // enrichment suites and the bruno flow; this walk proves the browser
+  // flow end to end.
+  await page.getByRole('link', { name: 'Add', exact: true }).click()
+  await page.getByRole('searchbox', { name: /search for games and hardware/i }).fill('chrono trigger')
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
+  await page.getByRole('button', { name: /Chrono Trigger on Super Nintendo Entertainment System/ }).first().click()
+
+  await expect(page.getByRole('heading', { name: /your copy of chrono trigger/i })).toBeVisible()
+  await page.getByLabel('Edition or variant').fill(`${stamp} manual`)
+  await page.getByRole('button', { name: 'Match manually' }).click()
+  const matchDialog = page.getByRole('dialog', { name: 'Match a price listing' })
+  await expect(matchDialog).toBeVisible()
+  await matchDialog.getByRole('searchbox', { name: 'Search for PriceCharting' }).fill('chrono trigger')
+  await matchDialog.getByRole('button', { name: 'Search', exact: true }).click()
+  // Name-exact + console-scoped: several consoles carry a listing named
+  // exactly "Chrono Trigger"; the SNES row is the auto-match invariant.
+  // The console cell is matched exact ("Super Nintendo", never a "PAL
+  // Super Nintendo" row) so this pattern stays deterministic for games
+  // that do have PAL SNES prints.
+  await matchDialog
+    .locator('li')
+    .filter({ has: page.getByText('Super Nintendo', { exact: true }) })
+    .getByRole('button', { name: 'Use Chrono Trigger', exact: true })
+    .first()
+    .click()
+  await expect(page.getByRole('button', { name: 'Clear' })).toBeVisible()
+  await page.getByRole('button', { name: 'Continue' }).click()
+
+  await expect(page.getByText('Priced as "Chrono Trigger"', { exact: false })).toBeVisible()
+  await expect(page.getByText(/match 100%/i)).toBeVisible()
+  await expect(page.getByText(/already matched to a different listing/i)).not.toBeVisible()
+  await page.getByRole('button', { name: 'Add to collection' }).click()
+  await expect(page.getByRole('region', { name: 'Pricing' })).toBeVisible()
+  await expect(page).toHaveURL(/\/entries\//)
+  createdEntryURLs.push(page.url())
+
   // --- Add a console through hardware search.
   await page.getByRole('link', { name: 'Add', exact: true }).click()
   await page.getByRole('radio', { name: /hardware/i }).check()
@@ -107,7 +151,7 @@ test('collection journey: add, edit, price, pin, reorder, views, insights, recom
 
   // --- Proxy pricing on the custom entry (the page is customB's; go
   // back to customA via its captured URL).
-  await page.goto(createdEntryURLs[2])
+  await page.goto(createdEntryURLs[3])
   // Selecting proxy flips the radio at once and opens the source
   // picker; nothing reaches the server until the form is saved.
   await page.getByRole('radio', { name: /proxy/i }).click()
