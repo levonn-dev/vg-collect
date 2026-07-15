@@ -91,15 +91,12 @@ sequence with the `local` environment selected:
    and stores its id, and `create proxy entry (priced by a pc
    listing)` creates an entry whose `value_cents` comes from that
    listing.
-7. The manual-match path shows the add wizard's other pricing option: a
-   game resolve that carries an exact PriceCharting listing instead of
-   relying on auto-match. `search games (via gateway)` finds a real IGDB
-   game and one of its platforms, and `resolve game with manual match
-   (via gateway)` sends that game plus the pc_product_id `search pc
-   listings` already captured, asserting the product's pricecharting
-   subdoc lands on the sent listing at match_confidence 1 and verified
-   false. Auto-match stays the default; manual match only fills a
-   missing mapping and never overwrites an existing one.
+7. `search games (via gateway)` stores an igdb game and one of its platforms, and
+   `resolve game with manual match (via gateway)` resolves it carrying
+   the stored pc listing: game identity is listing-keyed, so the
+   resolve lands on the product for exactly that listing (confidence
+   1, verified false), minting it once and converging on every re-run.
+   Auto-match stays the default for picks without a listing.
 8. Teardown, in order: `delete me` deletes the whole account in
    self-healing order (collection purge, auth wipe, user row, session
    teardown) - fixture accounts are disposable, the next dev login

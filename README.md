@@ -140,17 +140,20 @@ against AWS Secrets Manager in the documented production path.
 Everything is complete and verified: auth (OIDC + dev-provider login),
 user, the edge and SPA shell (APISIX gateway, session cookies, the bff
 serving the built bundle), enrichment (catalog search and resolve
-against IGDB/PriceCharting with scored auto-matching, an optional
-manual match that lets a game resolve carry an exact PriceCharting
-listing at mint time (fills a still-unmatched product, never overwrites
-an existing mapping; auto-match stays the default), a daily pricing
-walk plus its CronJob, heuristic recommendations scoring, and
-credential-less stub-mode fixtures), collection (granular entries,
+against IGDB/PriceCharting with listing-keyed game identity - a game
+product is (game, platform, PriceCharting listing), so picking a
+different listing is simply a different product - scored auto-matching
+with an optional score-only match hint, an optional manual match that
+picks the exact listing, a daily pricing walk plus a capped nightly
+re-match of unmatched products (admin mapping clears hold them out),
+heuristic recommendations scoring, and credential-less stub-mode
+fixtures), collection (granular entries,
 tags, saved views, and filter-aware dashboard composition with live
 enrichment pricing), the frontend (collection views in table, cover
 grid, and compact list over the full filter/sort/group matrix, saved
 views, a drag-orderable backlog, an add wizard with match confirmation
 and a custom-item path, entry editing with pricing affordances,
+re-matching an unmatched game entry to its exact listing,
 pricing sources that can proxy any PriceCharting listing (exact
 variant rows included) or take a user-set custom price, an account
 page (profile editing, linking multiple provider logins to

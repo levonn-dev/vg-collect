@@ -15,8 +15,7 @@ body:json {
     "type": "game",
     "igdb_game_id": {{bff_manual_igdb_game_id}},
     "platform_igdb_id": {{bff_manual_platform_igdb_id}},
-    "pc_product_id": {{bff_pc_product_id}},
-    "variant": "{{bff_manual_variant}}"
+    "pc_product_id": {{bff_pc_product_id}}
   }
 }
 
@@ -29,17 +28,14 @@ assert {
   res.body.pricecharting.verified: eq false
 }
 
-script:pre-request {
-  bru.setEnvVar("bff_manual_variant", "bruno-mm-" + Date.now());
-}
-
 docs {
   Run search-games and search-pc-listings first (they store the ids).
-  The variant is stamped per run so every execution mints a fresh
-  product: the resolve must map it to the SENT listing (manual match
-  wins over auto-match) at confidence 1 and verified false. The manual
-  listing is unrelated to the game on purpose - manual match trusts
-  the user's choice and applies no console filter. Residue: one game
-  product per run in enrichment-mongo, same class as the pc_listing
-  flows' products.
+  Game identity is listing-keyed: the resolve lands on the product
+  that carries the SENT listing for this game and platform, minting
+  it on the first run and converging on it ever after - re-runs
+  return the same product (the pc-id equality assert holds every
+  time). The manual listing is unrelated to the game on purpose -
+  manual match trusts the user's choice and applies no console
+  filter. Residue: at most one game product per listing in
+  enrichment-mongo, shared across runs.
 }
