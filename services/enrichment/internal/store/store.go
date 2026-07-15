@@ -23,6 +23,12 @@ import (
 // on it via errors.Is.
 var ErrNotFound = errors.New("store: not found")
 
+// ErrIdentityTaken is the sentinel for a mapping write the unique
+// identity indexes refuse: another product already carries the
+// resulting identity (a taken listing, or a clear that would mint a
+// second unmatched member for one family).
+var ErrIdentityTaken = errors.New("store: identity taken")
+
 const (
 	colProducts  = "products"
 	colRaw       = "igdb_raw"
@@ -106,8 +112,11 @@ type PCMeta struct {
 }
 
 // Product is the canonical catalog document, lazily created on user
-// selection. Region/edition/variant are always present (empty string =
-// unspecified) so the unique identity indexes compare consistently.
+// selection. Game identity is listing-keyed (igdb game, platform,
+// PriceCharting listing; a missing mapping is the family's single
+// unmatched member). Region/edition/variant are always present
+// (empty string = unspecified): they are part of hardware identity
+// and vestigial on games (kept for document-shape stability).
 type Product struct {
 	ID            string    `bson:"_id"`
 	Type          string    `bson:"type"`
@@ -118,13 +127,17 @@ type Product struct {
 	Variant       string    `bson:"variant"`
 	IGDB          *IGDBMeta `bson:"igdb,omitempty"`
 	PriceCharting *PCMeta   `bson:"pricecharting,omitempty"`
-	CreatedAt     time.Time `bson:"created_at"`
-	UpdatedAt     time.Time `bson:"updated_at"`
+	// MatchHold marks a deliberate admin mapping clear: the nightly
+	// re-match walk skips held products. Any mapping set lifts it.
+	MatchHold bool      `bson:"match_hold,omitempty"`
+	CreatedAt time.Time `bson:"created_at"`
+	UpdatedAt time.Time `bson:"updated_at"`
 }
 
 // ProductKey is the identity a resolve request maps to: games key on
-// (igdb_game_id, platform); console/accessory key on pc_product_id;
-// region/edition/variant always participate.
+// (igdb_game_id, platform, pc listing - 0 means the unmatched
+// member); console/accessory key on pc_product_id with
+// region/edition/variant; pc_listing keys on pc_product_id alone.
 type ProductKey struct {
 	Type           string
 	IGDBGameID     int64
@@ -145,13 +158,20 @@ func (k ProductKey) filter() bson.D {
 		}
 	}
 	if k.Type == "game" {
+		// The listing is the member differentiator; a zero PCProductID
+		// addresses the family's unmatched member (bson null matches a
+		// missing subdocument, which is also how the unique index sees
+		// it). Region/edition/variant are entry-level facts, not game
+		// identity.
+		pcID := any(k.PCProductID)
+		if k.PCProductID == 0 {
+			pcID = nil
+		}
 		return bson.D{
 			{Key: "type", Value: "game"},
 			{Key: "igdb.game_id", Value: k.IGDBGameID},
 			{Key: "platform.igdb_id", Value: k.PlatformIGDBID},
-			{Key: "region", Value: k.Region},
-			{Key: "edition", Value: k.Edition},
-			{Key: "variant", Value: k.Variant},
+			{Key: "pricecharting.pc_product_id", Value: pcID},
 		}
 	}
 	return bson.D{
@@ -276,7 +296,10 @@ func (s *Store) SetIGDB(ctx context.Context, id string, m IGDBMeta) error {
 }
 
 // SetPriceCharting replaces the product's mapping; nil clears it (the
-// product becomes unmatched).
+// product becomes unmatched). A mapping change is an identity move
+// for games, so a write the unique index refuses surfaces
+// ErrIdentityTaken. Clearing sets match_hold - the nightly re-match
+// walk must not undo a deliberate clear - and any set lifts it.
 func (s *Store) SetPriceCharting(ctx context.Context, id string, m *PCMeta) error {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	update := bson.D{
@@ -284,14 +307,21 @@ func (s *Store) SetPriceCharting(ctx context.Context, id string, m *PCMeta) erro
 			{Key: "pricecharting", Value: m},
 			{Key: "updated_at", Value: now},
 		}},
+		{Key: "$unset", Value: bson.D{{Key: "match_hold", Value: ""}}},
 	}
 	if m == nil {
 		update = bson.D{
 			{Key: "$unset", Value: bson.D{{Key: "pricecharting", Value: ""}}},
-			{Key: "$set", Value: bson.D{{Key: "updated_at", Value: now}}},
+			{Key: "$set", Value: bson.D{
+				{Key: "match_hold", Value: true},
+				{Key: "updated_at", Value: now},
+			}},
 		}
 	}
 	res, err := s.db.Collection(colProducts).UpdateByID(ctx, id, update)
+	if mongo.IsDuplicateKeyError(err) {
+		return ErrIdentityTaken
+	}
 	if err != nil {
 		return fmt.Errorf("store: set pricecharting: %w", err)
 	}
@@ -302,22 +332,32 @@ func (s *Store) SetPriceCharting(ctx context.Context, id string, m *PCMeta) erro
 }
 
 // SetPriceChartingIfMissing sets the mapping only while the product
-// has none (the bson nil filter matches a missing or null subdocument)
-// and reports whether this call landed it. Fill-only by design: a
-// user's manual match must never overwrite an existing mapping, and
-// racing fillers converge on exactly one winner - the caller gates its
-// side effects (snapshot) on the returned bool.
+// is unmatched (the bson nil filter matches a missing or null
+// subdocument) AND not admin-held, and reports whether this call
+// landed it. This is the re-match walk's write: a deliberate clear
+// landing between the walk's worklist read and this write sets
+// match_hold, so the filter excludes it and the clear is never
+// overwritten. Racing fillers still converge on one winner (the
+// caller gates side effects on the bool), and a taken (game,
+// platform, listing) slot still surfaces ErrIdentityTaken so the walk
+// skips - never merges.
 func (s *Store) SetPriceChartingIfMissing(ctx context.Context, id string, m *PCMeta) (bool, error) {
 	res, err := s.db.Collection(colProducts).UpdateOne(ctx,
 		bson.D{
 			{Key: "_id", Value: id},
 			{Key: "pricecharting", Value: nil},
+			{Key: "match_hold", Value: bson.D{{Key: "$ne", Value: true}}},
 		},
-		bson.D{{Key: "$set", Value: bson.D{
-			{Key: "pricecharting", Value: m},
-			{Key: "updated_at", Value: time.Now().UTC().Truncate(time.Millisecond)},
-		}}},
+		bson.D{
+			{Key: "$set", Value: bson.D{
+				{Key: "pricecharting", Value: m},
+				{Key: "updated_at", Value: time.Now().UTC().Truncate(time.Millisecond)},
+			}},
+		},
 	)
+	if mongo.IsDuplicateKeyError(err) {
+		return false, ErrIdentityTaken
+	}
 	if err != nil {
 		return false, fmt.Errorf("store: set pricecharting if missing: %w", err)
 	}
@@ -360,6 +400,27 @@ func (s *Store) ListPriced(ctx context.Context) ([]Product, error) {
 	var out []Product
 	if err := cur.All(ctx, &out); err != nil {
 		return nil, fmt.Errorf("store: list priced: %w", err)
+	}
+	return out, nil
+}
+
+// ListUnmatchedGames returns game products with no mapping and no
+// match_hold, oldest updated_at first, capped at limit (the re-match
+// walk's rotating worklist).
+func (s *Store) ListUnmatchedGames(ctx context.Context, limit int) ([]Product, error) {
+	filter := bson.D{
+		{Key: "type", Value: "game"},
+		{Key: "pricecharting", Value: nil},
+		{Key: "match_hold", Value: bson.D{{Key: "$ne", Value: true}}},
+	}
+	cur, err := s.db.Collection(colProducts).Find(ctx, filter,
+		options.Find().SetSort(bson.D{{Key: "updated_at", Value: 1}}).SetLimit(int64(limit)))
+	if err != nil {
+		return nil, fmt.Errorf("store: list unmatched games: %w", err)
+	}
+	var out []Product
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, fmt.Errorf("store: list unmatched games: %w", err)
 	}
 	return out, nil
 }

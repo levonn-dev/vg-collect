@@ -7,7 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	mongodriver "github.com/golang-migrate/migrate/v4/database/mongodb"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/db"
@@ -95,19 +99,64 @@ func TestProduct_FindCreateGet(t *testing.T) {
 	}
 }
 
-func TestProduct_VariantIsDistinctIdentity(t *testing.T) {
+// Game identity is listing-keyed: members converge per (game,
+// platform, listing), the unmatched member (no mapping) is the
+// family's singleton, and variant text plays no identity role.
+func TestProduct_GameMembersAreListingKeyed(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
-	a, err := s.CreateProduct(ctx, gameProduct(1011, 19, "Chrono Trigger", "SNES", ""))
+
+	matched := func(pcID int64) store.Product {
+		p := gameProduct(1005, 4, "Super Mario 64", "Nintendo 64", "")
+		p.PriceCharting = &store.PCMeta{
+			PCProductID: pcID, PCName: "Super Mario 64", ConsoleName: "Nintendo 64",
+			MatchConfidence: 1.0, Verified: false,
+			AsOf: time.Now().UTC().Truncate(time.Millisecond),
+		}
+		return p
+	}
+
+	// One unmatched member per family, variant text ignored.
+	u1, err := s.CreateProduct(ctx, gameProduct(1005, 4, "Super Mario 64", "Nintendo 64", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := s.CreateProduct(ctx, gameProduct(1011, 19, "Chrono Trigger", "SNES", "cart only repro sticker"))
+	u2, err := s.CreateProduct(ctx, gameProduct(1005, 4, "Super Mario 64", "Nintendo 64", "not for resale"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.ID == b.ID {
-		t.Fatal("distinct variants must be distinct products")
+	if u1.ID != u2.ID {
+		t.Fatalf("unmatched members must converge: %s vs %s", u1.ID, u2.ID)
+	}
+
+	// Same listing converges; a different listing is a different member.
+	m1, err := s.CreateProduct(ctx, matched(5005))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m1again, err := s.CreateProduct(ctx, matched(5005))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m1.ID != m1again.ID {
+		t.Fatalf("same-listing members must converge: %s vs %s", m1.ID, m1again.ID)
+	}
+	m2, err := s.CreateProduct(ctx, matched(5099))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m2.ID == m1.ID || m2.ID == u1.ID {
+		t.Fatal("a different listing must be a distinct member")
+	}
+
+	// FindProduct addresses each member through the key.
+	got, err := s.FindProduct(ctx, store.ProductKey{Type: "game", IGDBGameID: 1005, PlatformIGDBID: 4})
+	if err != nil || got.ID != u1.ID {
+		t.Fatalf("null key must find the unmatched member: %+v, %v", got, err)
+	}
+	got, err = s.FindProduct(ctx, store.ProductKey{Type: "game", IGDBGameID: 1005, PlatformIGDBID: 4, PCProductID: 5099})
+	if err != nil || got.ID != m2.ID {
+		t.Fatalf("listing key must find its member: %+v, %v", got, err)
 	}
 }
 
@@ -255,20 +304,151 @@ func TestProduct_SetPriceChartingIfMissing_FillsExactlyOnce(t *testing.T) {
 		t.Fatalf("existing mapping must be untouched: %+v, %v", got.PriceCharting, err)
 	}
 
-	// A mapping cleared by the admin path ($unset) is missing again:
-	// fillable.
+	// A mapping cleared by the admin path is missing again, but the
+	// clear also holds it (SetPriceCharting's own $unset/$set pair,
+	// untouched by this method): the fill must not land. The hold-lift
+	// walkthrough lives in TestProduct_MappingWritesHoldAndIdentityTaken.
 	if err := s.SetPriceCharting(ctx, created.ID, nil); err != nil {
 		t.Fatal(err)
 	}
 	landed, err = s.SetPriceChartingIfMissing(ctx, created.ID, other)
-	if err != nil || !landed {
-		t.Fatalf("cleared mapping must be fillable: landed=%v err=%v", landed, err)
+	if err != nil || landed {
+		t.Fatalf("a held clear must not be fillable: landed=%v err=%v", landed, err)
 	}
 
 	// Unknown product id: no landing, no error.
 	landed, err = s.SetPriceChartingIfMissing(ctx, "00000000-0000-0000-0000-000000000000", meta)
 	if err != nil || landed {
 		t.Fatalf("unknown id: landed=%v err=%v", landed, err)
+	}
+}
+
+// Mapping writes are identity moves now: a taken (game, platform,
+// listing) slot surfaces ErrIdentityTaken instead of a generic error,
+// clears set the walk hold, and any set lifts it.
+func TestProduct_MappingWritesHoldAndIdentityTaken(t *testing.T) {
+	s, mdb := newTestStore(t)
+	ctx := context.Background()
+
+	meta := func(pcID int64) *store.PCMeta {
+		return &store.PCMeta{
+			PCProductID: pcID, PCName: "Super Mario 64", ConsoleName: "Nintendo 64",
+			MatchConfidence: 0.9, Verified: false,
+			AsOf: time.Now().UTC().Truncate(time.Millisecond),
+		}
+	}
+
+	unmatched, err := s.CreateProduct(ctx, gameProduct(1005, 4, "Super Mario 64", "Nintendo 64", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := gameProduct(1005, 4, "Super Mario 64", "Nintendo 64", "")
+	m.PriceCharting = meta(5005)
+	matched, err := s.CreateProduct(ctx, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Filling the unmatched member with a taken listing is refused.
+	landed, err := s.SetPriceChartingIfMissing(ctx, unmatched.ID, meta(5005))
+	if landed || !errors.Is(err, store.ErrIdentityTaken) {
+		t.Fatalf("want ErrIdentityTaken, got landed=%v err=%v", landed, err)
+	}
+
+	// Clearing the matched member collides with the existing unmatched
+	// member (two null keys in one family).
+	if err := s.SetPriceCharting(ctx, matched.ID, nil); !errors.Is(err, store.ErrIdentityTaken) {
+		t.Fatalf("clear onto an occupied null slot: want ErrIdentityTaken, got %v", err)
+	}
+
+	// A held product is skipped by the fill: the walk must never undo
+	// a deliberate admin clear that lands mid-walk, even one landing
+	// after the walk already holds this product in its worklist.
+	if _, err := mdb.Collection("products").UpdateByID(ctx, unmatched.ID,
+		bson.D{{Key: "$set", Value: bson.D{{Key: "match_hold", Value: true}}}}); err != nil {
+		t.Fatal(err)
+	}
+	landed, err = s.SetPriceChartingIfMissing(ctx, unmatched.ID, meta(5099))
+	if err != nil || landed {
+		t.Fatalf("held product must not be filled: landed=%v err=%v", landed, err)
+	}
+	got, err := s.GetProduct(ctx, unmatched.ID)
+	if err != nil || got.PriceCharting != nil || !got.MatchHold {
+		t.Fatalf("held product must stay unmatched and held: %+v, %v", got, err)
+	}
+
+	// Lifting the hold (as the admin's own set path would) makes the
+	// same fill land.
+	if _, err := mdb.Collection("products").UpdateByID(ctx, unmatched.ID,
+		bson.D{{Key: "$unset", Value: bson.D{{Key: "match_hold", Value: ""}}}}); err != nil {
+		t.Fatal(err)
+	}
+	landed, err = s.SetPriceChartingIfMissing(ctx, unmatched.ID, meta(5099))
+	if err != nil || !landed {
+		t.Fatalf("fill must land once the hold lifts: landed=%v err=%v", landed, err)
+	}
+	got, err = s.GetProduct(ctx, unmatched.ID)
+	if err != nil || got.PriceCharting == nil || got.PriceCharting.PCProductID != 5099 || got.MatchHold {
+		t.Fatalf("fill must persist: %+v, %v", got, err)
+	}
+
+	// The admin clear is now free (the family's null slot emptied when
+	// the fill landed) and sets the hold; a following set lifts it.
+	if err := s.SetPriceCharting(ctx, matched.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.GetProduct(ctx, matched.ID)
+	if err != nil || got.PriceCharting != nil || !got.MatchHold {
+		t.Fatalf("clear must unmap and hold: %+v, %v", got, err)
+	}
+	if err := s.SetPriceCharting(ctx, matched.ID, meta(5005)); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.GetProduct(ctx, matched.ID)
+	if err != nil || got.PriceCharting == nil || got.MatchHold {
+		t.Fatalf("set must map and lift the hold: %+v, %v", got, err)
+	}
+}
+
+// The walk's worklist: unmatched games only, holds excluded, oldest
+// updated_at first, capped.
+func TestProduct_ListUnmatchedGames(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+
+	oldest, err := s.CreateProduct(ctx, gameProduct(1011, 19, "Chrono Trigger", "Super Nintendo Entertainment System", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	newest, err := s.CreateProduct(ctx, gameProduct(1005, 4, "Super Mario 64", "Nintendo 64", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	held, err := s.CreateProduct(ctx, gameProduct(1014, 19, "Final Fantasy VI", "Super Nintendo Entertainment System", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetPriceCharting(ctx, held.ID, nil); err != nil { // clear = hold
+		t.Fatal(err)
+	}
+	m := gameProduct(1013, 7, "Final Fantasy VII", "PlayStation", "")
+	m.PriceCharting = &store.PCMeta{PCProductID: 5013, PCName: "Final Fantasy VII", ConsoleName: "Playstation", MatchConfidence: 1, AsOf: time.Now().UTC()}
+	if _, err := s.CreateProduct(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.ListUnmatchedGames(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != oldest.ID || got[1].ID != newest.ID {
+		t.Fatalf("want [oldest newest] without held/matched, got %+v", got)
+	}
+	capped, err := s.ListUnmatchedGames(ctx, 1)
+	if err != nil || len(capped) != 1 || capped[0].ID != oldest.ID {
+		t.Fatalf("cap must keep the oldest: %+v, %v", capped, err)
 	}
 }
 
@@ -384,5 +564,100 @@ func TestNewIGDBMeta_Projection(t *testing.T) {
 	}
 	if !m.FetchedAt.Equal(at) {
 		t.Fatalf("fetched_at: %v", m.FetchedAt)
+	}
+}
+
+// The listing-keyed migration deletes only game products whose
+// region/edition/variant forked identity (raw-API dev residue);
+// clean game products and hardware survive with their ids, and the
+// rebuilt index enforces the family singleton.
+func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires docker")
+	}
+	ctx := context.Background()
+	mc, err := tcmongo.Run(ctx, "mongo:8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mc.Terminate(ctx) })
+	url, err := mc.ConnectionString(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := db.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
+
+	driver, err := mongodriver.WithInstance(client, &mongodriver.Config{
+		DatabaseName: "enrichment",
+		Locking:      mongodriver.Locking{Enabled: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := migrate.NewWithInstance("iofs", src, "enrichment", driver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Migrate(3); err != nil {
+		t.Fatalf("migrate to pre-listing-keyed state: %v", err)
+	}
+
+	col := client.Database("enrichment").Collection("products")
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	seed := func(id, typ, region, edition, variant string, gameID, platformID int64) {
+		t.Helper()
+		_, err := col.InsertOne(ctx, bson.D{
+			{Key: "_id", Value: id}, {Key: "type", Value: typ},
+			{Key: "name", Value: "Seed " + id},
+			{Key: "platform", Value: bson.D{{Key: "igdb_id", Value: platformID}, {Key: "name", Value: "Seed"}}},
+			{Key: "region", Value: region}, {Key: "edition", Value: edition}, {Key: "variant", Value: variant},
+			{Key: "igdb", Value: bson.D{{Key: "game_id", Value: gameID}, {Key: "name", Value: "Seed " + id}}},
+			{Key: "created_at", Value: now}, {Key: "updated_at", Value: now},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed("keeper-game", "game", "", "", "", 1011, 19)
+	seed("residue-variant", "game", "", "", "not for resale", 1011, 19)
+	seed("residue-region", "game", "pal", "", "", 1005, 4)
+	seed("keeper-hardware", "console", "pal", "", "", 0, 19)
+
+	if err := m.Up(); err != nil {
+		t.Fatalf("migrate up: %v", err)
+	}
+
+	for id, want := range map[string]int64{
+		"keeper-game": 1, "keeper-hardware": 1,
+		"residue-variant": 0, "residue-region": 0,
+	} {
+		n, err := col.CountDocuments(ctx, bson.D{{Key: "_id", Value: id}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != want {
+			t.Fatalf("%s: want %d docs, got %d", id, want, n)
+		}
+	}
+
+	// The rebuilt index enforces the null singleton per family.
+	_, err = col.InsertOne(ctx, bson.D{
+		{Key: "_id", Value: "second-unmatched"}, {Key: "type", Value: "game"},
+		{Key: "name", Value: "Seed dup"},
+		{Key: "platform", Value: bson.D{{Key: "igdb_id", Value: int64(19)}, {Key: "name", Value: "Seed"}}},
+		{Key: "region", Value: ""}, {Key: "edition", Value: ""}, {Key: "variant", Value: ""},
+		{Key: "igdb", Value: bson.D{{Key: "game_id", Value: int64(1011)}, {Key: "name", Value: "Seed dup"}}},
+		{Key: "created_at", Value: now}, {Key: "updated_at", Value: now},
+	})
+	if !mongo.IsDuplicateKeyError(err) {
+		t.Fatalf("want duplicate-key on the second unmatched member, got %v", err)
 	}
 }
