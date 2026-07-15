@@ -29,6 +29,7 @@ type Store interface {
 	GetProduct(ctx context.Context, id string) (store.Product, error)
 	SetIGDB(ctx context.Context, id string, m store.IGDBMeta) error
 	SetPriceCharting(ctx context.Context, id string, m *store.PCMeta) error
+	SetPriceChartingIfMissing(ctx context.Context, id string, m *store.PCMeta) (bool, error)
 	SetCurrentPrices(ctx context.Context, id string, q store.PriceQuote, asOf time.Time) error
 	ListPriced(ctx context.Context) ([]store.Product, error)
 	ProductsByIDs(ctx context.Context, ids []string) ([]store.Product, error)
