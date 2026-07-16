@@ -205,3 +205,18 @@ func TestPlatform_LogoURL(t *testing.T) {
 		t.Fatalf("empty logo should be empty URL, got %q", got)
 	}
 }
+
+func TestStub_FixturesCarryReleaseDates(t *testing.T) {
+	s, err := NewStub()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GamesByIDs(context.Background(), []int64{1011})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("fixture fetch: %v", err)
+	}
+	rds := got[0].ReleaseDates
+	if len(rds) != 2 || rds[0].Region != 5 || rds[1].Date != 809049600 {
+		t.Fatalf("chrono trigger fixture release_dates: %+v", rds)
+	}
+}

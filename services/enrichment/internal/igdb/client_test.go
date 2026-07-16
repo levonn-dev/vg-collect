@@ -2,6 +2,7 @@ package igdb
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -58,6 +59,9 @@ func TestClient_QueryShapeAndTokenReuse(t *testing.T) {
 	if !strings.Contains(bodies[0], `search "zelda \"special\"";`) || !strings.Contains(bodies[0], "fields name,cover.image_id") ||
 		!strings.Contains(bodies[0], "total_rating_count") {
 		t.Fatalf("bad search body: %s", bodies[0])
+	}
+	if !strings.Contains(bodies[0], "release_dates.date,release_dates.platform,release_dates.release_region") {
+		t.Fatalf("search body must request the release table: %s", bodies[0])
 	}
 	if !strings.Contains(bodies[1], "where id = (1011,1012);") {
 		t.Fatalf("bad where body: %s", bodies[1])
@@ -198,5 +202,81 @@ func TestClient_TokenFailureSurfaces(t *testing.T) {
 
 	if _, err := c.SearchGames(context.Background(), "zelda", 5); err == nil || !strings.Contains(err.Error(), "token") {
 		t.Fatalf("want token error, got %v", err)
+	}
+}
+
+func TestClient_GameDecodesReleaseDates(t *testing.T) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`[{"id":1011,"name":"Chrono Trigger","release_dates":[
+			{"id":9,"date":794880000,"platform":19,"release_region":5},
+			{"id":10,"date":809049600,"platform":19,"release_region":2},
+			{"id":11,"platform":19,"release_region":1}]}]`))
+	})
+	got, err := c.GamesByIDs(context.Background(), []int64{1011})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("fetch: %+v, %v", got, err)
+	}
+	rds := got[0].ReleaseDates
+	if len(rds) != 3 || rds[0].Date != 794880000 || rds[0].Platform != 19 || rds[0].Region != 5 {
+		t.Fatalf("release_dates decode: %+v", rds)
+	}
+	if rds[2].Date != 0 {
+		t.Fatalf("dateless row must decode with zero date: %+v", rds[2])
+	}
+}
+
+// TestGame_ReleaseDatesSentinel pins the fetched-but-none sentinel at
+// the plain decode boundary (no client involved): an explicit empty
+// array decodes to a non-nil empty slice, while an absent key decodes
+// to nil. gamePayloadFor and NewIGDBMeta rely on telling these two
+// states apart ("IGDB listed no dated rows" vs "this raw doc predates
+// the feature").
+func TestGame_ReleaseDatesSentinel(t *testing.T) {
+	var withEmpty Game
+	if err := json.Unmarshal([]byte(`{"id":1,"name":"A","release_dates":[]}`), &withEmpty); err != nil {
+		t.Fatal(err)
+	}
+	if withEmpty.ReleaseDates == nil || len(withEmpty.ReleaseDates) != 0 {
+		t.Fatalf("release_dates:[] must decode to a non-nil empty slice, got %#v", withEmpty.ReleaseDates)
+	}
+
+	var withoutKey Game
+	if err := json.Unmarshal([]byte(`{"id":1,"name":"A"}`), &withoutKey); err != nil {
+		t.Fatal(err)
+	}
+	if withoutKey.ReleaseDates != nil {
+		t.Fatalf("a missing release_dates key must decode to nil, got %#v", withoutKey.ReleaseDates)
+	}
+}
+
+func TestRegionName_MapsKnownAndDropsUnknown(t *testing.T) {
+	for want, id := range map[string]int{
+		"europe": 1, "north_america": 2, "australia": 3, "new_zealand": 4,
+		"japan": 5, "china": 6, "asia": 7, "worldwide": 8, "korea": 9, "brazil": 10,
+	} {
+		got, ok := RegionName(id)
+		if !ok || got != want {
+			t.Fatalf("RegionName(%d) = %q, %v; want %q", id, got, ok, want)
+		}
+	}
+	if _, ok := RegionName(11); ok {
+		t.Fatal("unknown region enum must not map")
+	}
+}
+
+func TestTwinPlatformID_MapsJPTwinsAndDropsOthers(t *testing.T) {
+	for id, want := range map[int64]int64{
+		19: 58, 58: 19, // SNES <-> Super Famicom
+		18: 99, 99: 18, // NES  <-> Family Computer
+	} {
+		if got := TwinPlatformID(id); got != want {
+			t.Fatalf("TwinPlatformID(%d) = %d; want %d", id, got, want)
+		}
+	}
+	// A platform with no JP twin (and the zero id) returns 0: no fold.
+	for _, id := range []int64{0, 4, 130, 8} {
+		if got := TwinPlatformID(id); got != 0 {
+			t.Fatalf("TwinPlatformID(%d) = %d; want 0 (no twin)", id, got)
+		}
 	}
 }
