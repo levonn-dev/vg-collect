@@ -324,6 +324,144 @@ func TestUpdateEntry_PersistsProductRepoint(t *testing.T) {
 	}
 }
 
+// TestListGameBackedRefs seeds a product-backed game, a product-backed
+// hardware entry, and a custom entry for TWO different users, plus a
+// second game-backed entry sharing userA's product_id (a second copy
+// of the same cart, different region), then asserts the resnapshot
+// walk sees exactly the game-backed rows from BOTH users (the method
+// is deliberately unscoped) and nothing else, ordered product_id then
+// id (the shared product_id pair exercises the id tie-break), with
+// each row's own region read back correctly.
+func TestListGameBackedRefs(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	userA, userB := uuid.New(), uuid.New()
+
+	// seedTrio mirrors the brief's (a)/(b)/(c) shapes for one user and
+	// returns the (a) game entry so the assertions below can key off it.
+	seedTrio := func(user uuid.UUID, released time.Time) store.Entry {
+		game := baseEntry(user)
+		game.IGDBGameID = ptr(int64(1000))
+		game.FirstReleaseDate = &released
+		gameEntry := mustCreate(t, s, game, nil)
+
+		hardware := baseEntry(user)
+		hardware.ItemType = "console" // product-backed; igdb_game_id stays nil (baseEntry default)
+		mustCreate(t, s, hardware, nil)
+
+		mustCreate(t, s, customEntry(user), nil) // product_id nil
+
+		return gameEntry
+	}
+
+	dateA := time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC)
+	dateA2 := time.Date(1996, time.January, 1, 0, 0, 0, 0, time.UTC)
+	dateB := time.Date(1998, time.November, 21, 0, 0, 0, 0, time.UTC)
+	gameA := seedTrio(userA, dateA)
+	gameB := seedTrio(userB, dateB)
+
+	// A second game-backed entry on gameA's SAME product_id (a second
+	// copy of the same cart), with a different region (pal). This gives
+	// two rows an identical product_id, so the id tie-break in the
+	// ORDER BY actually gets exercised, and it doubles as coverage that
+	// per-entry regions come back correctly rather than just per-product.
+	gameA2 := baseEntry(userA)
+	gameA2.ProductID = gameA.ProductID
+	gameA2.Region = "pal"
+	gameA2.IGDBGameID = ptr(int64(1000))
+	gameA2.FirstReleaseDate = &dateA2
+	gameA2Entry := mustCreate(t, s, gameA2, nil)
+
+	refs, err := s.ListGameBackedRefs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 3 {
+		t.Fatalf("expected exactly the 3 game-backed rows (hardware/custom excluded), got %d: %+v", len(refs), refs)
+	}
+
+	// Ordering: product_id then id, checked across every consecutive
+	// pair so the gameA/gameA2 pair (same product_id) actually exercises
+	// the id tie-break instead of only the product_id sort. Postgres
+	// orders uuid by raw bytes, which agrees with the canonical
+	// hyphenated string's byte order (the hyphens sit at the same fixed
+	// positions in every UUID), so comparing the String() form is a
+	// faithful proxy for SQL order.
+	for i := 1; i < len(refs); i++ {
+		prev, cur := refs[i-1], refs[i]
+		if prev.ProductID.String() > cur.ProductID.String() {
+			t.Fatalf("not ordered by product_id: %+v", refs)
+		}
+		if prev.ProductID == cur.ProductID && prev.EntryID.String() > cur.EntryID.String() {
+			t.Fatalf("rows sharing a product_id must tie-break by id: %+v", refs)
+		}
+	}
+
+	want := map[uuid.UUID]struct {
+		productID uuid.UUID
+		region    string
+		release   time.Time
+	}{
+		gameA.ID:       {*gameA.ProductID, "ntsc_u", dateA},
+		gameA2Entry.ID: {*gameA.ProductID, "pal", dateA2},
+		gameB.ID:       {*gameB.ProductID, "ntsc_u", dateB},
+	}
+	for _, r := range refs {
+		w, ok := want[r.EntryID]
+		if !ok {
+			t.Fatalf("unexpected entry in refs: %+v", r)
+		}
+		if r.ProductID != w.productID {
+			t.Fatalf("product_id for %s: got %s, want %s", r.EntryID, r.ProductID, w.productID)
+		}
+		if r.Region != w.region {
+			t.Fatalf("region for %s: got %q, want %q", r.EntryID, r.Region, w.region)
+		}
+		if r.FirstReleaseDate == nil || !r.FirstReleaseDate.Equal(w.release) {
+			t.Fatalf("first_release_date for %s: got %v, want %v", r.EntryID, r.FirstReleaseDate, w.release)
+		}
+	}
+}
+
+// TestSetFirstReleaseDate covers the resnapshot walk's only write: it
+// rewrites the date and bumps updated_at, and a nil argument clears the
+// column back to NULL.
+func TestSetFirstReleaseDate(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	user := uuid.New()
+	e := baseEntry(user)
+	e.IGDBGameID = ptr(int64(1000))
+	e.FirstReleaseDate = ptr(time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC))
+	created := mustCreate(t, s, e, nil)
+
+	newDate := time.Date(1995, time.August, 22, 0, 0, 0, 0, time.UTC)
+	if err := s.SetFirstReleaseDate(ctx, created.ID, &newDate); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetEntry(ctx, user, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FirstReleaseDate == nil || !got.FirstReleaseDate.Equal(newDate) {
+		t.Fatalf("date: got %v, want %v", got.FirstReleaseDate, newDate)
+	}
+	if !got.UpdatedAt.After(created.UpdatedAt) {
+		t.Fatalf("updated_at must move: %v -> %v", created.UpdatedAt, got.UpdatedAt)
+	}
+
+	if err := s.SetFirstReleaseDate(ctx, created.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := s.GetEntry(ctx, user, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.FirstReleaseDate != nil {
+		t.Fatalf("date must clear to NULL, got %v", cleared.FirstReleaseDate)
+	}
+}
+
 func TestDeleteEntry(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

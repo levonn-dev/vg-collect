@@ -390,6 +390,54 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 	return out, nil
 }
 
+// GameEntryRef is the resnapshot walk's row: just enough to recompute
+// one game-backed entry's date pick.
+type GameEntryRef struct {
+	EntryID          uuid.UUID
+	ProductID        uuid.UUID
+	Region           string
+	FirstReleaseDate *time.Time
+}
+
+// ListGameBackedRefs lists every user's game-backed entries (product
+// and igdb game both present) for the one-shot release-date
+// resnapshot; deliberately unscoped - the pick derives from product +
+// entry region, nothing user-private.
+func (s *Store) ListGameBackedRefs(ctx context.Context) ([]GameEntryRef, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, product_id, region, first_release_date FROM entries
+		WHERE product_id IS NOT NULL AND igdb_game_id IS NOT NULL
+		ORDER BY product_id, id`)
+	if err != nil {
+		return nil, fmt.Errorf("store: list game-backed refs: %w", err)
+	}
+	defer rows.Close()
+	var out []GameEntryRef
+	for rows.Next() {
+		var r GameEntryRef
+		if err := rows.Scan(&r.EntryID, &r.ProductID, &r.Region, &r.FirstReleaseDate); err != nil {
+			return nil, fmt.Errorf("store: list game-backed refs: %w", err)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: list game-backed refs: %w", err)
+	}
+	return out, nil
+}
+
+// SetFirstReleaseDate narrowly rewrites one entry's snapshotted date
+// (the resnapshot walk's only write).
+func (s *Store) SetFirstReleaseDate(ctx context.Context, entryID uuid.UUID, d *time.Time) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE entries SET first_release_date = $2, updated_at = now() WHERE id = $1`,
+		entryID, d)
+	if err != nil {
+		return fmt.Errorf("store: set first release date: %w", err)
+	}
+	return nil
+}
+
 // DeleteEntry removes one of the user's entries (tag links cascade).
 func (s *Store) DeleteEntry(ctx context.Context, userID, id uuid.UUID) error {
 	tag, err := s.pool.Exec(ctx,
