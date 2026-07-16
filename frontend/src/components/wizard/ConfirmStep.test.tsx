@@ -104,8 +104,12 @@ it('offers Match manually on the no-listing card and reports the pick', async ()
   renderConfirm(vi.fn(), { onManualMatch })
   expect(await screen.findByText(/no confirmed price listing yet/i)).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Match manually' }))
+  // The picker takes the status card's place; the step actions stay.
+  expect(screen.queryByText(/no confirmed price listing yet/i)).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Add to collection' })).toBeInTheDocument()
   await userEvent.click(await screen.findByRole('button', { name: /use chrono trigger \[pal\]/i }))
   expect(onManualMatch).toHaveBeenCalledWith({ pcProductId: 7042, name: 'Chrono Trigger [PAL]' })
+  expect(await screen.findByText(/no confirmed price listing yet/i)).toBeInTheDocument()
 })
 
 it('explains a failed listing resolve with the manual-match copy', async () => {
@@ -155,6 +159,8 @@ it('offers Change listing on the matched card and reports the pick', async () =>
   expect(await screen.findByText(/match 100%/i)).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Change listing' }))
   expect(await screen.findByRole('dialog', { name: 'Match a price listing' })).toBeInTheDocument()
+  // The matched card is swapped out while the picker is open.
+  expect(screen.queryByText(/match 100%/i)).not.toBeInTheDocument()
   await userEvent.click(await screen.findByRole('button', { name: /use chrono trigger \[ntsc\]/i }))
   expect(onManualMatch).toHaveBeenCalledWith({ pcProductId: 8055, name: 'Chrono Trigger [NTSC]' })
 })

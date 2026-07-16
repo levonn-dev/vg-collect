@@ -77,48 +77,18 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
   const p = product.data
   const pc = p.pricecharting
   return (
-    <>
-      <ConfirmShell
-        ariaLabel="Confirm"
-        title={p.name}
-        subtitle={[p.platform?.name, p.type].filter(Boolean).join(' - ')}
-        errorMessage={create.isError ? create.error.message || 'The entry could not be created.' : undefined}
-        onBack={onBack}
-        onSubmit={() => create.mutate()}
-        submitPending={create.isPending}
-      >
-        {pc ? (
-          <div className="rounded bg-green-50 p-3 text-sm text-green-800">
-            <p>
-              Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%
-              {pc.verified ? ', verified' : ''}.
-            </p>
-            {pick.kind === 'game' && (
-              <button
-                type="button"
-                onClick={() => setMatchOpen(true)}
-                className="mt-2 rounded border border-green-300 px-2 py-1 text-sm hover:border-green-400 hover:bg-white"
-              >
-                Change listing
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="rounded bg-gray-50 p-3 text-sm text-gray-600">
-            <p>No confirmed price listing yet - market value stays empty until a match is made.</p>
-            {pick.kind === 'game' && (
-              <button
-                type="button"
-                onClick={() => setMatchOpen(true)}
-                className="mt-2 rounded border border-gray-300 px-2 py-1 text-sm hover:border-gray-400 hover:bg-white"
-              >
-                Match manually
-              </button>
-            )}
-          </div>
-        )}
-      </ConfirmShell>
-      {matchOpen && (
+    <ConfirmShell
+      ariaLabel="Confirm"
+      title={p.name}
+      subtitle={[p.platform?.name, p.type].filter(Boolean).join(' - ')}
+      errorMessage={create.isError ? create.error.message || 'The entry could not be created.' : undefined}
+      onBack={onBack}
+      onSubmit={() => create.mutate()}
+      submitPending={create.isPending}
+    >
+      {matchOpen ? (
+        // The picker takes the status card's place while open; the
+        // Back and Add actions stay put below it.
         <ManualMatchPicker
           initialQuery={pick.name}
           onPick={(m) => {
@@ -127,7 +97,36 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
           }}
           onClose={() => setMatchOpen(false)}
         />
+      ) : pc ? (
+        <div className="rounded bg-green-50 p-3 text-sm text-green-800">
+          <p>
+            Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%
+            {pc.verified ? ', verified' : ''}.
+          </p>
+          {pick.kind === 'game' && (
+            <button
+              type="button"
+              onClick={() => setMatchOpen(true)}
+              className="mt-2 rounded border border-green-300 px-2 py-1 text-sm hover:border-green-400 hover:bg-white"
+            >
+              Change listing
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="rounded bg-gray-50 p-3 text-sm text-gray-600">
+          <p>No confirmed price listing yet - market value stays empty until a match is made.</p>
+          {pick.kind === 'game' && (
+            <button
+              type="button"
+              onClick={() => setMatchOpen(true)}
+              className="mt-2 rounded border border-gray-300 px-2 py-1 text-sm hover:border-gray-400 hover:bg-white"
+            >
+              Match manually
+            </button>
+          )}
+        </div>
       )}
-    </>
+    </ConfirmShell>
   )
 }
