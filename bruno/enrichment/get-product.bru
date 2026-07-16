@@ -14,6 +14,28 @@ auth:bearer {
   token: {{access_token}}
 }
 
+assert {
+  res.status: eq 200
+}
+
+tests {
+  test("igdb.release_dates, when present, is region+date rows", function () {
+    const igdb = res.body && res.body.igdb;
+    if (!igdb || igdb.release_dates === undefined) {
+      return;
+    }
+    expect(igdb.release_dates).to.be.an("array");
+    igdb.release_dates.forEach(function (rd) {
+      expect(rd.region).to.be.a("string");
+      expect(rd.date).to.match(/^\d{4}-\d{2}-\d{2}$/);
+    });
+  });
+}
+
 docs {
   Expect 200 with the full product document for the id resolved earlier.
+  The tests block tolerantly checks the igdb release_dates projection:
+  when the product has an igdb block and carries release_dates, every row
+  is {region: string, date: YYYY-MM-DD}. Old cached bodies that predate
+  the feature omit the field and pass untouched.
 }

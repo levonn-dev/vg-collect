@@ -1,0 +1,30 @@
+meta {
+  name: resnapshot release dates
+  type: http
+  seq: 18
+}
+
+post {
+  url: {{collection_url}}/internal/resnapshot
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.products_seen: isNumber
+  res.body.products_failed: isNumber
+  res.body.entries_updated: isNumber
+}
+
+docs {
+  One-shot operator backfill: recomputes every game-backed entry's
+  first_release_date from its product's per-region dates. Idempotent;
+  expect 200 with products_seen/products_failed/entries_updated. Run it
+  once after the release-dates deploy (and after enrichment's refresh
+  walk has healed the products); a second run reports entries_updated 0.
+}
