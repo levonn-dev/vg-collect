@@ -33,6 +33,7 @@ type Store interface {
 	SetCurrentPrices(ctx context.Context, id string, q store.PriceQuote, asOf time.Time) error
 	ListPriced(ctx context.Context) ([]store.Product, error)
 	ListUnmatchedGames(ctx context.Context, limit int) ([]store.Product, error)
+	ListIGDBProducts(ctx context.Context) ([]store.Product, error)
 	ProductsByIDs(ctx context.Context, ids []string) ([]store.Product, error)
 	SearchByName(ctx context.Context, q string, limit int) ([]store.Product, error)
 	UpsertRaw(ctx context.Context, games []igdb.Game, fetchedAt time.Time) error

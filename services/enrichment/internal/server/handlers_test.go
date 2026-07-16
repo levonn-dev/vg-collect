@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
 	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
@@ -46,6 +47,7 @@ type stubStore struct {
 	setCurrentPrices          func(ctx context.Context, id string, q store.PriceQuote, asOf time.Time) error
 	listPriced                func(ctx context.Context) ([]store.Product, error)
 	listUnmatchedGames        func(ctx context.Context, limit int) ([]store.Product, error)
+	listIGDBProducts          func(ctx context.Context) ([]store.Product, error)
 	productsByIDs             func(ctx context.Context, ids []string) ([]store.Product, error)
 	searchByName              func(ctx context.Context, q string, limit int) ([]store.Product, error)
 	upsertRaw                 func(ctx context.Context, games []igdb.Game, fetchedAt time.Time) error
@@ -120,6 +122,13 @@ func (s *stubStore) ListUnmatchedGames(ctx context.Context, limit int) ([]store.
 		panic("unexpected ListUnmatchedGames")
 	}
 	return s.listUnmatchedGames(ctx, limit)
+}
+
+func (s *stubStore) ListIGDBProducts(ctx context.Context) ([]store.Product, error) {
+	if s.listIGDBProducts == nil {
+		panic("unexpected ListIGDBProducts")
+	}
+	return s.listIGDBProducts(ctx)
 }
 
 func (s *stubStore) ProductsByIDs(ctx context.Context, ids []string) ([]store.Product, error) {
@@ -934,6 +943,60 @@ func TestUnitGetProduct_StaleIGDBRefetchAndStaleServeOnError(t *testing.T) {
 	}
 }
 
+// TestUnitGetProduct_StaleRefetchNilPlatformRebuildsAtPlatformZero pins
+// refreshIGDBIfStale's defensive nil-Platform branch: a stale
+// igdb-bearing product somehow missing its platform ref (games always
+// carry one today; this documents the fallback rather than a reachable
+// state) still refetches and rebuilds instead of panicking on a nil
+// dereference, scoping the platform-id-0 release table to nothing and
+// falling back to the game-level scalar.
+func TestUnitGetProduct_StaleRefetchNilPlatformRebuildsAtPlatformZero(t *testing.T) {
+	env := newAuthEnv(t)
+	tok := env.token(t, "u1", []string{"user"})
+	old := time.Now().Add(-1000 * time.Hour)
+	scalar := time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC)
+	prod := store.Product{
+		ID: "99999999-9999-9999-9999-999999999999", Type: "game", Name: "Chrono Trigger",
+		// Platform deliberately nil.
+		IGDB: &store.IGDBMeta{GameID: 1011, Name: "Chrono Trigger (stale)", FetchedAt: old},
+	}
+
+	var setCalled bool
+	var setMeta store.IGDBMeta
+	st := &stubStore{
+		getProduct: func(context.Context, string) (store.Product, error) { return prod, nil },
+		upsertRaw:  func(context.Context, []igdb.Game, time.Time) error { return nil },
+		setIGDB: func(_ context.Context, id string, m store.IGDBMeta) error {
+			setCalled = true
+			setMeta = m
+			return nil
+		},
+	}
+	games := &stubGames{gamesByIDs: func(context.Context, []int64) ([]igdb.Game, error) {
+		return []igdb.Game{{
+			ID: 1011, Name: "Chrono Trigger", FirstReleaseDate: scalar.Unix(),
+			// A dated row for a real platform (19); platform id 0 (the
+			// nil-Platform fallback) matches none of it.
+			ReleaseDates: []igdb.ReleaseDate{{Date: scalar.Unix(), Platform: 19, Region: 5}},
+		}}, nil
+	}}
+	h := newUnitHandlers(st, games, nil, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodGet, "/products/"+prod.ID, tok, nil)
+	if rec.Code != http.StatusOK || !setCalled {
+		t.Fatalf("nil-platform stale refetch: %d setCalled=%v %s", rec.Code, setCalled, rec.Body.String())
+	}
+	if setMeta.Name != "Chrono Trigger" {
+		t.Fatalf("refetched projection must land: %+v", setMeta)
+	}
+	if setMeta.ReleaseDates == nil || len(setMeta.ReleaseDates) != 0 {
+		t.Fatalf("platform id 0 must scope to an empty, non-nil release table: %#v", setMeta.ReleaseDates)
+	}
+	if !setMeta.FirstReleaseDate.Equal(scalar) {
+		t.Fatalf("game-level scalar must survive with no platform rows: %v", setMeta.FirstReleaseDate)
+	}
+}
+
 func TestUnitGetProduct_FreshIGDBSkipsProviderRefetch(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
@@ -953,6 +1016,64 @@ func TestUnitGetProduct_FreshIGDBSkipsProviderRefetch(t *testing.T) {
 	rec := serveUnit(t, h, env, http.MethodGet, "/products/"+prod.ID, tok, nil)
 	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte("Chrono Trigger")) {
 		t.Fatalf("fresh serve: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestUnitGetProduct_ReleaseDatesMapped pins toAPIProduct's release_dates
+// projection: a populated per-region table serves as rows on the wire,
+// and an empty table (fetched, but IGDB listed no dated rows for the
+// platform) serves the field absent rather than an empty array.
+func TestUnitGetProduct_ReleaseDatesMapped(t *testing.T) {
+	env := newAuthEnv(t)
+	tok := env.token(t, "u1", []string{"user"})
+	fresh := time.Now().Add(-1 * time.Hour) // well inside the 720h window
+	day := time.Date(2003, time.September, 12, 0, 0, 0, 0, time.UTC)
+
+	dated := store.Product{
+		ID: "77777777-7777-7777-7777-777777777777", Type: "game", Name: "Chrono Trigger",
+		IGDB: &store.IGDBMeta{GameID: 1011, Name: "Chrono Trigger", FetchedAt: fresh,
+			ReleaseDates: []store.MetaReleaseDate{{Region: "japan", Date: day}}},
+	}
+	st := &stubStore{getProduct: func(context.Context, string) (store.Product, error) { return dated, nil }}
+	// gamesByIDs is left nil: FetchedAt is fresh, so a correct mapping
+	// test never touches the provider.
+	h := newUnitHandlers(st, &stubGames{}, nil, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodGet, "/products/"+dated.ID, tok, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get product: %d %s", rec.Code, rec.Body.String())
+	}
+	var p api.Product
+	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Igdb == nil || p.Igdb.ReleaseDates == nil || len(*p.Igdb.ReleaseDates) != 1 {
+		t.Fatalf("release_dates not mapped: %+v", p.Igdb)
+	}
+	rd := (*p.Igdb.ReleaseDates)[0]
+	if rd.Region != "japan" || !rd.Date.Equal(day) {
+		t.Fatalf("release_dates row: %+v", rd)
+	}
+
+	// An empty table (fetched, IGDB lists no dated rows for the
+	// platform) must serve the field absent, not an empty array.
+	none := dated
+	none.ID = "88888888-8888-8888-8888-888888888888"
+	none.IGDB = &store.IGDBMeta{GameID: 1011, Name: "Chrono Trigger", FetchedAt: fresh, ReleaseDates: []store.MetaReleaseDate{}}
+	st.getProduct = func(context.Context, string) (store.Product, error) { return none, nil }
+	rec = serveUnit(t, h, env, http.MethodGet, "/products/"+none.ID, tok, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get product: %d %s", rec.Code, rec.Body.String())
+	}
+	var p2 api.Product
+	if err := json.Unmarshal(rec.Body.Bytes(), &p2); err != nil {
+		t.Fatal(err)
+	}
+	if p2.Igdb == nil {
+		t.Fatal("igdb projection missing entirely")
+	}
+	if p2.Igdb.ReleaseDates != nil {
+		t.Fatalf("empty release_dates must serve absent, got %+v", *p2.Igdb.ReleaseDates)
 	}
 }
 
@@ -1001,6 +1122,104 @@ func TestResolve_GameCreatesMatchedProductIdempotently(t *testing.T) {
 	raws, err := s.store.RawByIDs(ctx, []int64{1011})
 	if err != nil || len(raws) != 1 {
 		t.Fatalf("igdb_raw: %d, %v", len(raws), err)
+	}
+}
+
+// TestResolve_HealsPreFeatureRawReleaseDates pins gamePayloadFor's
+// self-heal: a raw doc predating this feature (no release_dates key on
+// the stored game subdocument at all, decoding to a nil Go slice) does
+// not satisfy the read, so one provider refetch repairs it and the
+// healed rows reach the resolved product. A raw doc UpsertRaw already
+// normalized to the empty-but-fetched marker satisfies the read and
+// skips the provider entirely.
+func TestResolve_HealsPreFeatureRawReleaseDates(t *testing.T) {
+	s := newStack(t)
+	ctx := context.Background()
+	const platformID = 8801
+
+	// Bypass UpsertRaw's normalization: insert the raw doc through the
+	// Mongo handle directly, omitting release_dates so it decodes as
+	// nil rather than the empty-array fetched-but-none marker. Every
+	// other field (platforms included) is what a real pre-feature
+	// payload would already carry - release_dates is the only new one.
+	const staleGameID = 93340
+	if _, err := s.mdb.Collection("igdb_raw").InsertOne(ctx, bson.M{
+		"_id": staleGameID,
+		"game": bson.M{
+			"id":        staleGameID,
+			"name":      "Pre-Feature Game",
+			"platforms": []bson.M{{"id": platformID, "name": "Test Platform"}},
+		},
+		"fetched_at": time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var calls int
+	healedDate := time.Date(2001, time.June, 20, 0, 0, 0, 0, time.UTC)
+	s.h.games = &stubGames{
+		gamesByIDs: func(context.Context, []int64) ([]igdb.Game, error) {
+			calls++
+			return []igdb.Game{{
+				ID:        staleGameID,
+				Name:      "Pre-Feature Game",
+				Platforms: []igdb.Named{{ID: platformID, Name: "Test Platform"}},
+				ReleaseDates: []igdb.ReleaseDate{
+					{Date: healedDate.Unix(), Platform: platformID, Region: 5}, // japan
+				},
+			}}, nil
+		},
+		// The stack's platform catalog is cold on a fresh container;
+		// resolve's platformLogoFor triggers one refresh (best-effort,
+		// unrelated to this test). A non-empty answer lets UpsertPlatforms
+		// stamp fetched_at so the catalog reads warm from then on -
+		// otherwise every resolve call re-triggers this same provider
+		// call, and the counter-case below overrides games with a stub
+		// that has no platforms field.
+		platforms: func(context.Context) ([]igdb.Platform, error) {
+			return []igdb.Platform{{ID: platformID, Name: "Test Platform"}}, nil
+		},
+	}
+
+	p := s.resolveGame(staleGameID, platformID)
+	if calls != 1 {
+		t.Fatalf("nil-table raw must trigger exactly one refetch, got %d calls", calls)
+	}
+	if p.Igdb == nil || p.Igdb.ReleaseDates == nil || len(*p.Igdb.ReleaseDates) != 1 {
+		t.Fatalf("healed release_dates missing: %+v", p.Igdb)
+	}
+	rd := (*p.Igdb.ReleaseDates)[0]
+	if rd.Region != "japan" || !rd.Date.Equal(healedDate) {
+		t.Fatalf("healed release_date row: %+v", rd)
+	}
+
+	// Counter-case: a raw doc UpsertRaw already normalized (fetched,
+	// IGDB listed no dated rows for the platform) must NOT refetch.
+	const freshGameID = 93341
+	if err := s.store.UpsertRaw(ctx, []igdb.Game{{
+		ID:           freshGameID,
+		Name:         "Fetched But None",
+		Platforms:    []igdb.Named{{ID: platformID, Name: "Test Platform"}},
+		ReleaseDates: []igdb.ReleaseDate{},
+	}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// Seed the platform catalog directly instead of leaning on the
+	// healed case above having already warmed it through its
+	// games.platforms stub: this case must hold on its own (e.g. if it
+	// were the only one to run), and resolveGame's platformLogoFor call
+	// would otherwise hit a cold catalog and reach for h.games.Platforms
+	// below, which panics.
+	if err := s.store.UpsertPlatforms(ctx, []igdb.Platform{{ID: platformID, Name: "Test Platform"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	s.h.games = &stubGames{} // panics if GamesByIDs or Platforms is called
+	p2 := s.resolveGame(freshGameID, platformID)
+	if p2.Igdb == nil || p2.Igdb.GameId != freshGameID {
+		t.Fatalf("fetched-but-none raw must resolve without a refetch: %+v", p2.Igdb)
+	}
+	if p2.Igdb.ReleaseDates != nil {
+		t.Fatalf("no dated rows for the platform must serve release_dates absent: %+v", *p2.Igdb.ReleaseDates)
 	}
 }
 
@@ -1204,6 +1423,63 @@ func TestUnitResolve_UpstreamDown(t *testing.T) {
 		map[string]any{"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19})
 	if rec.Code != http.StatusBadGateway || !bytes.Contains(rec.Body.Bytes(), []byte("upstream_unavailable")) {
 		t.Fatalf("igdb down: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// A pre-feature raw (present, nil release table) with the provider down
+// is a usable stale payload: gamePayloadFor serves it - the projection
+// just misses per-region dates - rather than erroring, matching the
+// read path's serve-stale posture. The nightly reprojection refetches
+// nil-table raws, so the minted product heals on the next walk. This is
+// the counterpart to TestUnitResolve_UpstreamDown (no raw -> the error
+// stands).
+func TestUnitResolve_PreFeatureRawServesStaleWhenProviderDown(t *testing.T) {
+	env := newAuthEnv(t)
+	tok := env.token(t, "u1", []string{"user"})
+	stale := igdb.Game{
+		ID: 1011, Name: "Chrono Trigger",
+		Platforms: []igdb.Named{{ID: 19, Name: "Super Nintendo Entertainment System"}},
+		// ReleaseDates nil: the pre-feature sentinel.
+	}
+	var created store.Product
+	st := &stubStore{
+		findProduct: func(context.Context, store.ProductKey) (store.Product, error) {
+			return store.Product{}, store.ErrNotFound
+		},
+		rawByIDs: func(context.Context, []int64) ([]store.RawGame, error) {
+			return []store.RawGame{{GameID: 1011, Game: stale, FetchedAt: time.Unix(1000, 0).UTC()}}, nil
+		},
+		// upsertRaw left nil: serving stale must not refetch or re-upsert.
+		createProduct: func(_ context.Context, p store.Product) (store.Product, error) {
+			p.ID = "77777777-7777-7777-7777-777777777777"
+			created = p
+			return p, nil
+		},
+		platformsFetchedAt: func(context.Context) (time.Time, error) { return time.Now(), nil },
+		listPlatforms: func(context.Context) ([]store.CatalogPlatform, error) {
+			return []store.CatalogPlatform{{ID: 19, Name: "Super Nintendo Entertainment System"}}, nil
+		},
+	}
+	games := &stubGames{gamesByIDs: func(context.Context, []int64) ([]igdb.Game, error) {
+		return nil, errors.New("igdb down") // refetch fails; the stale raw must be served
+	}}
+	prices := &stubPrices{search: func(context.Context, string) ([]pricecharting.Product, error) {
+		return nil, errors.New("pricecharting down") // auto-match lands on the unmatched member
+	}}
+	h := newUnitHandlers(st, games, prices, newStubCache())
+	rec := serveUnit(t, h, env, http.MethodPost, "/products/resolve", tok,
+		map[string]any{"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("pre-feature raw must resolve from the stale payload when the provider is down: %d %s", rec.Code, rec.Body.String())
+	}
+	if created.IGDB == nil || created.IGDB.GameID != 1011 {
+		t.Fatalf("stale payload must build the projection: %+v", created.IGDB)
+	}
+	if !created.IGDB.FetchedAt.Equal(time.Unix(1000, 0).UTC()) {
+		t.Fatalf("stale projection must keep the raw's own stamp: %v", created.IGDB.FetchedAt)
+	}
+	if len(created.IGDB.ReleaseDates) != 0 {
+		t.Fatalf("a pre-feature stale payload has no dated rows: %+v", created.IGDB.ReleaseDates)
 	}
 }
 
@@ -2217,6 +2493,7 @@ func TestUnitInternalRefresh_TokenGuard(t *testing.T) {
 	h := New(&stubStore{
 		listPriced:         func(context.Context) ([]store.Product, error) { return nil, nil },
 		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
+		listIGDBProducts:   func(context.Context) ([]store.Product, error) { return nil, nil },
 	},
 		nil, nil, nil, newStubCache(), Options{
 			// An A/B pair mid-rotation: both must be accepted.
@@ -2252,6 +2529,7 @@ func TestUnitRefresh_ConflictWhileRunning(t *testing.T) {
 			return nil, nil
 		},
 		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
+		listIGDBProducts:   func(context.Context) ([]store.Product, error) { return nil, nil },
 	}
 	h := newUnitHandlers(st, nil, nil, newStubCache())
 
@@ -2287,6 +2565,7 @@ func TestUnitRefresh_WalkSurvivesPerProductFailures(t *testing.T) {
 	st := &stubStore{
 		listPriced:         func(context.Context) ([]store.Product, error) { return prods, nil },
 		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
+		listIGDBProducts:   func(context.Context) ([]store.Product, error) { return nil, nil },
 		setCurrentPrices: func(_ context.Context, id string, _ store.PriceQuote, _ time.Time) error {
 			return nil
 		},
@@ -2349,6 +2628,7 @@ func TestUnitRefresh_WalkPanicIsContained(t *testing.T) {
 			panic("boom")
 		},
 		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
+		listIGDBProducts:   func(context.Context) ([]store.Product, error) { return nil, nil },
 	}
 	h := newUnitHandlers(st, nil, nil, newStubCache())
 
@@ -2428,6 +2708,260 @@ func TestUnitRefresh_RematchWalksUnmatchedGames(t *testing.T) {
 	}
 	if len(snapshots) != 1 || snapshots[0].ProductID != "p-sm64" {
 		t.Fatalf("only the landed upgrade snapshots: %+v", snapshots)
+	}
+}
+
+// The reprojection walk's core repair: a pre-feature product (no raw
+// held yet) is healed via a nil-table-raw refetch. Its SetIGDB call
+// carries a non-nil release table whose scalar is the folded earliest
+// date, the refetched game lands in igdb_raw via UpsertRaw, the rebuilt
+// product's cache entry is invalidated immediately, and - because the
+// data was freshly fetched - the projection carries `now` as its stamp.
+func TestUnitReprojection_HealsPreFeatureProduct(t *testing.T) {
+	prod := store.Product{
+		ID: "p-preheal", Type: "game", Name: "Chrono Trigger",
+		Platform: &store.Platform{IGDBID: 19, Name: "Super Nintendo Entertainment System"},
+		IGDB:     &store.IGDBMeta{GameID: 1011, Name: "Chrono Trigger"},
+	}
+	var upsertCalled bool
+	var setID string
+	var setMeta store.IGDBMeta
+	st := &stubStore{
+		listIGDBProducts: func(context.Context) ([]store.Product, error) {
+			return []store.Product{prod}, nil
+		},
+		// Pre-feature: no raw held yet, so the game lands in fetchIDs.
+		rawByIDs:  func(context.Context, []int64) ([]store.RawGame, error) { return nil, nil },
+		upsertRaw: func(context.Context, []igdb.Game, time.Time) error { upsertCalled = true; return nil },
+		setIGDB: func(_ context.Context, id string, m store.IGDBMeta) error {
+			setID, setMeta = id, m
+			return nil
+		},
+	}
+	games := &stubGames{gamesByIDs: func(_ context.Context, ids []int64) ([]igdb.Game, error) {
+		if len(ids) != 1 || ids[0] != 1011 {
+			t.Fatalf("unexpected refetch ids: %v", ids)
+		}
+		return []igdb.Game{{
+			ID: 1011, Name: "Chrono Trigger",
+			ReleaseDates: []igdb.ReleaseDate{
+				{Date: 794880000, Platform: 58, Region: 5}, // Super Famicom japan: earliest, folds into SNES
+				{Date: 809049600, Platform: 19, Region: 2}, // SNES north_america
+			},
+		}}, nil
+	}}
+	c := newStubCache()
+	c.prods[prod.ID] = []byte(`{"stale":true}`)
+	h := newUnitHandlers(st, games, nil, c)
+	nowT := time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)
+	h.now = func() time.Time { return nowT }
+
+	h.runReprojection(context.Background())
+
+	if setID != prod.ID {
+		t.Fatalf("SetIGDB must be called for the healed product, got id %q", setID)
+	}
+	if len(setMeta.ReleaseDates) == 0 {
+		t.Fatalf("healed meta must carry a non-empty release table: %+v", setMeta)
+	}
+	wantEarliest := time.Unix(794880000, 0).UTC().Truncate(24 * time.Hour)
+	if !setMeta.FirstReleaseDate.Equal(wantEarliest) {
+		t.Fatalf("healed scalar must be the folded earliest date: %v", setMeta.FirstReleaseDate)
+	}
+	if !setMeta.FetchedAt.Equal(nowT) {
+		t.Fatalf("a freshly fetched rebuild must carry now as its stamp: %v", setMeta.FetchedAt)
+	}
+	if !upsertCalled {
+		t.Fatal("UpsertRaw must be called with the refetched game")
+	}
+	if _, cached := c.prods[prod.ID]; cached {
+		t.Fatal("the rebuilt product's cache entry must be invalidated, not left to age out via TTL")
+	}
+}
+
+// Three products sharing one game id, none with a raw yet, must cost
+// exactly one GamesByIDs call (the distinct-ids batching), and all
+// three must still get their projection rebuilt.
+func TestUnitReprojection_BatchesSharedGameID(t *testing.T) {
+	const shared = int64(1011)
+	prods := []store.Product{
+		{ID: "p1", Type: "game", Platform: &store.Platform{IGDBID: 19}, IGDB: &store.IGDBMeta{GameID: shared}},
+		{ID: "p2", Type: "game", Platform: &store.Platform{IGDBID: 4}, IGDB: &store.IGDBMeta{GameID: shared}},
+		{ID: "p3", Type: "game", Platform: &store.Platform{IGDBID: 7}, IGDB: &store.IGDBMeta{GameID: shared}},
+	}
+	var calls int
+	var gotIDs []int64
+	var setCalls int
+	st := &stubStore{
+		listIGDBProducts: func(context.Context) ([]store.Product, error) { return prods, nil },
+		rawByIDs:         func(context.Context, []int64) ([]store.RawGame, error) { return nil, nil },
+		upsertRaw:        func(context.Context, []igdb.Game, time.Time) error { return nil },
+		setIGDB:          func(context.Context, string, store.IGDBMeta) error { setCalls++; return nil },
+	}
+	games := &stubGames{gamesByIDs: func(_ context.Context, ids []int64) ([]igdb.Game, error) {
+		calls++
+		gotIDs = append([]int64{}, ids...)
+		return []igdb.Game{{ID: shared, Name: "Shared Game"}}, nil
+	}}
+	h := newUnitHandlers(st, games, nil, newStubCache())
+
+	h.runReprojection(context.Background())
+
+	if calls != 1 {
+		t.Fatalf("want exactly one GamesByIDs call for the shared game id, got %d", calls)
+	}
+	if len(gotIDs) != 1 || gotIDs[0] != shared {
+		t.Fatalf("want a single distinct id in the batch, got %v", gotIDs)
+	}
+	if setCalls != 3 {
+		t.Fatalf("all three sharing products must get a projection rebuild, got %d", setCalls)
+	}
+}
+
+// A product whose game the provider no longer knows is skipped, not
+// failed: no SetIGDB call (a nil stub field panics if it is), and the
+// walk still finishes cleanly.
+func TestUnitReprojection_MissingGameSkipsWithoutSetIGDB(t *testing.T) {
+	prod := store.Product{ID: "p-missing", Type: "game", Platform: &store.Platform{IGDBID: 19}, IGDB: &store.IGDBMeta{GameID: 9999}}
+	st := &stubStore{
+		listIGDBProducts: func(context.Context) ([]store.Product, error) {
+			return []store.Product{prod}, nil
+		},
+		rawByIDs:  func(context.Context, []int64) ([]store.RawGame, error) { return nil, nil },
+		upsertRaw: func(context.Context, []igdb.Game, time.Time) error { return nil },
+		// setIGDB is left nil: any call panics loudly, proving the
+		// missing-game product never reaches it.
+	}
+	games := &stubGames{gamesByIDs: func(context.Context, []int64) ([]igdb.Game, error) {
+		return nil, nil // the provider no longer knows this game
+	}}
+	h := newUnitHandlers(st, games, nil, newStubCache())
+
+	h.runReprojection(context.Background()) // must return, not panic
+}
+
+// The diff gate: a product whose stored projection already equals the
+// one rebuilt from its raw is left untouched - no SetIGDB, no cache
+// invalidation - so a steady-state walk (raw unchanged) writes nothing.
+func TestUnitReprojection_DiffGateSkipsUnchangedProjection(t *testing.T) {
+	rawStamp := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	g := igdb.Game{
+		ID: 1011, Name: "Chrono Trigger",
+		ReleaseDates: []igdb.ReleaseDate{
+			{Date: 794880000, Platform: 58, Region: 5},
+			{Date: 809049600, Platform: 19, Region: 2},
+		},
+	}
+	// The stored projection is exactly what the walk will rebuild.
+	current := store.NewIGDBMeta(g, 19, rawStamp)
+	prod := store.Product{ID: "p-steady", Type: "game", Platform: &store.Platform{IGDBID: 19}, IGDB: &current}
+	st := &stubStore{
+		listIGDBProducts: func(context.Context) ([]store.Product, error) { return []store.Product{prod}, nil },
+		rawByIDs: func(context.Context, []int64) ([]store.RawGame, error) {
+			return []store.RawGame{{GameID: 1011, Game: g, FetchedAt: rawStamp}}, nil
+		},
+		// setIGDB and upsertRaw left nil: a call to either panics, proving
+		// the gate wrote nothing.
+	}
+	c := newStubCache()
+	c.prods[prod.ID] = []byte(`{"cached":true}`)
+	// games passed but its raw is non-nil, so no refetch is attempted.
+	h := newUnitHandlers(st, &stubGames{}, nil, c)
+	h.now = func() time.Time { return time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC) }
+
+	h.runReprojection(context.Background())
+
+	if _, cached := c.prods[prod.ID]; !cached {
+		t.Fatal("an unchanged projection must not invalidate the product cache")
+	}
+}
+
+// The fold reproject: a product healed before the twin fold carries an
+// unfolded projection (its japan date rides the Super Famicom platform,
+// invisible then). The walk rebuilds it from the raw - now folding the
+// twin row in - and, because the raw was not refetched, keeps the raw's
+// own fetch stamp rather than bumping freshness the provider did not
+// earn.
+func TestUnitReprojection_FoldsTwinRowKeepingRawStamp(t *testing.T) {
+	rawStamp := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	japanDate := time.Unix(794880000, 0).UTC().Truncate(24 * time.Hour)
+
+	// The stored (unfolded) projection: only the SNES north_america row
+	// was visible when this product was healed.
+	unfolded := store.NewIGDBMeta(igdb.Game{
+		ID: 1011, Name: "Chrono Trigger", FirstReleaseDate: 809049600,
+		ReleaseDates: []igdb.ReleaseDate{{Date: 809049600, Platform: 19, Region: 2}},
+	}, 19, rawStamp)
+	// The raw holds the full table, japan riding the Super Famicom twin.
+	full := igdb.Game{
+		ID: 1011, Name: "Chrono Trigger", FirstReleaseDate: 794880000,
+		ReleaseDates: []igdb.ReleaseDate{
+			{Date: 794880000, Platform: 58, Region: 5}, // Super Famicom japan
+			{Date: 809049600, Platform: 19, Region: 2}, // SNES north_america
+		},
+	}
+	prod := store.Product{ID: "p-fold", Type: "game", Platform: &store.Platform{IGDBID: 19}, IGDB: &unfolded}
+
+	var setCalled bool
+	var setMeta store.IGDBMeta
+	st := &stubStore{
+		listIGDBProducts: func(context.Context) ([]store.Product, error) { return []store.Product{prod}, nil },
+		rawByIDs: func(context.Context, []int64) ([]store.RawGame, error) {
+			return []store.RawGame{{GameID: 1011, Game: full, FetchedAt: rawStamp}}, nil
+		},
+		setIGDB: func(_ context.Context, _ string, m store.IGDBMeta) error { setCalled, setMeta = true, m; return nil },
+	}
+	h := newUnitHandlers(st, &stubGames{}, nil, newStubCache())
+	h.now = func() time.Time { return time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC) }
+
+	h.runReprojection(context.Background())
+
+	if !setCalled {
+		t.Fatal("a projection that gained the folded twin row must be rewritten")
+	}
+	if len(setMeta.ReleaseDates) != 2 {
+		t.Fatalf("rebuilt projection must fold japan in beside north_america: %+v", setMeta.ReleaseDates)
+	}
+	var haveJapan bool
+	for _, rd := range setMeta.ReleaseDates {
+		if rd.Region == "japan" && rd.Date.Equal(japanDate) {
+			haveJapan = true
+		}
+	}
+	if !haveJapan {
+		t.Fatalf("rebuilt projection must include the folded japan row: %+v", setMeta.ReleaseDates)
+	}
+	if !setMeta.FirstReleaseDate.Equal(japanDate) {
+		t.Fatalf("scalar must be the folded earliest (japan): %v", setMeta.FirstReleaseDate)
+	}
+	if !setMeta.FetchedAt.Equal(rawStamp) {
+		t.Fatalf("a raw-sourced rebuild must keep the raw's stamp, not bump it: got %v want %v", setMeta.FetchedAt, rawStamp)
+	}
+}
+
+// The nightly walk's third pass is wired into startRefresh: an internal
+// refresh trigger must reach ListIGDBProducts, not just the price and
+// re-match passes.
+func TestUnitRefresh_InternalTriggerRunsReprojection(t *testing.T) {
+	env := newAuthEnv(t)
+	var called bool
+	st := &stubStore{
+		listPriced:         func(context.Context) ([]store.Product, error) { return nil, nil },
+		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
+		listIGDBProducts: func(context.Context) ([]store.Product, error) {
+			called = true
+			return nil, nil
+		},
+	}
+	h := newUnitHandlers(st, nil, nil, newStubCache())
+
+	rec := serveInternal(t, h, env, testInternalToken)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("trigger: %d", rec.Code)
+	}
+	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
+	if !called {
+		t.Fatal("startRefresh must run the reprojection pass")
 	}
 }
 

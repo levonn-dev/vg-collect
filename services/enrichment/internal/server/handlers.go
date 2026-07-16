@@ -344,7 +344,11 @@ func (h *Handlers) refreshIGDBIfStale(ctx context.Context, p store.Product) stor
 	if err := h.store.UpsertRaw(ctx, games, now); err != nil {
 		h.logger.WarnContext(ctx, "raw upsert failed", "product", p.ID, "err", err)
 	}
-	meta := store.NewIGDBMeta(games[0], now)
+	var pid int64
+	if p.Platform != nil {
+		pid = p.Platform.IGDBID
+	}
+	meta := store.NewIGDBMeta(games[0], pid, now)
 	if err := h.store.SetIGDB(ctx, p.ID, meta); err != nil {
 		h.logger.WarnContext(ctx, "igdb projection update failed; serving stale", "product", p.ID, "err", err)
 		return p
@@ -413,6 +417,13 @@ func toAPIProduct(p store.Product) api.Product {
 		if !p.IGDB.FirstReleaseDate.IsZero() {
 			fd := openapi_types.Date{Time: p.IGDB.FirstReleaseDate}
 			m.FirstReleaseDate = &fd
+		}
+		if len(p.IGDB.ReleaseDates) > 0 {
+			rds := make([]api.ReleaseDate, 0, len(p.IGDB.ReleaseDates))
+			for _, rd := range p.IGDB.ReleaseDates {
+				rds = append(rds, api.ReleaseDate{Region: rd.Region, Date: openapi_types.Date{Time: rd.Date}})
+			}
+			m.ReleaseDates = &rds
 		}
 		out.Igdb = &m
 	}
@@ -570,7 +581,7 @@ func (h *Handlers) resolveGame(w http.ResponseWriter, r *http.Request, req api.R
 		return
 	}
 	platform.LogoURL = h.platformLogoFor(ctx, platform.IGDBID)
-	igdbMeta := store.NewIGDBMeta(g, fetchedAt)
+	igdbMeta := store.NewIGDBMeta(g, key.PlatformIGDBID, fetchedAt)
 	h.createAndServe(ctx, w, r, store.Product{
 		Type: "game", Name: g.Name, Platform: platform,
 		IGDB:          &igdbMeta,
@@ -617,7 +628,7 @@ func (h *Handlers) buildGameProduct(ctx context.Context, key store.ProductKey) (
 	if err != nil {
 		return store.Product{}, err
 	}
-	meta := store.NewIGDBMeta(g, fetchedAt)
+	meta := store.NewIGDBMeta(g, key.PlatformIGDBID, fetchedAt)
 	return store.Product{
 		Type: "game", Name: g.Name, Platform: platform,
 		IGDB:          &meta,
@@ -635,11 +646,25 @@ func (h *Handlers) gamePayloadFor(ctx context.Context, gameID int64) (igdb.Game,
 	if err != nil {
 		return igdb.Game{}, time.Time{}, fmt.Errorf("raw read: %w", err)
 	}
-	if len(raws) == 1 {
+	// A raw doc without a release table predates this feature; one
+	// refetch repairs it (UpsertRaw stamps the empty array from then
+	// on, so fetched-but-none does not refetch forever).
+	if len(raws) == 1 && raws[0].Game.ReleaseDates != nil {
 		return raws[0].Game, raws[0].FetchedAt, nil
 	}
 	games, err := h.games.GamesByIDs(ctx, []int64{gameID})
 	if err != nil {
+		// Provider down. A pre-feature raw (present, nil release table)
+		// is still a usable stale payload - its projection just misses
+		// the per-region dates - so serve it, matching
+		// refreshIGDBIfStale's serve-stale degrade. This is safe because
+		// the nightly reprojection refetches nil-table raws, so a product
+		// minted from this stale copy is repaired on the next walk. With
+		// no raw at all there is nothing to serve, so the error stands.
+		if len(raws) == 1 {
+			h.logger.WarnContext(ctx, "pre-feature raw refetch failed; serving stale payload", "game", gameID, "err", err)
+			return raws[0].Game, raws[0].FetchedAt, nil
+		}
 		return igdb.Game{}, time.Time{}, &resolveErr{http.StatusBadGateway, "upstream_unavailable", "game metadata provider unavailable"}
 	}
 	if len(games) == 0 {
@@ -1215,6 +1240,11 @@ func (h *Handlers) startRefresh(w http.ResponseWriter, r *http.Request) {
 		// Price freshness for matched members takes budget priority;
 		// the re-match step runs on what remains.
 		h.runRematch(ctx)
+		// Every igdb-bearing product's projection is rebuilt from its
+		// raw payload on what remains of the budget; only changed
+		// projections are written, so steady state costs no provider
+		// calls and any future projection-logic change self-deploys.
+		h.runReprojection(ctx)
 	}()
 	writeJSON(w, http.StatusAccepted, api.RefreshAccepted{Status: api.RefreshAcceptedStatus("started")})
 }
@@ -1336,6 +1366,136 @@ func (h *Handlers) runRematch(ctx context.Context) {
 	h.logger.InfoContext(ctx, "re-match walk finished",
 		"walked", walked, "matched", matched, "skipped", skipped,
 		"failures", failures, "duration_ms", h.now().Sub(start).Milliseconds())
+}
+
+// runReprojection sweeps every igdb-bearing product nightly (an
+// uncapped ListIGDBProducts read, mirroring the price walk's posture)
+// and rebuilds each one's projection from its raw payload, writing only
+// the ones that actually changed. The raws hold the full unfiltered
+// release table, so a projection-logic change (like the JP-twin fold)
+// redeploys here with zero provider calls; only pre-feature raws (nil
+// release table) or ids with no raw at all are refetched - a set that
+// drains to zero as the catalog heals, which bounds the provider cost of
+// a full sweep. A rebuild sourced from an existing raw keeps that raw's
+// fetch stamp - the projection changed, not the provider data - so
+// read-path staleness math stays honest. The diff gate (SameProjection)
+// makes steady state write-free: once every raw is healed and every
+// projection matches, the nightly sweep reads Mongo and writes nothing.
+// Detached-walk conventions match runRefresh.
+func (h *Handlers) runReprojection(ctx context.Context) {
+	start := h.now()
+	prods, err := h.store.ListIGDBProducts(ctx)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "reprojection walk aborted", "err", err)
+		return
+	}
+	if len(prods) == 0 {
+		return
+	}
+
+	// Distinct game ids, then the raws we already hold. A raw with a nil
+	// release table predates the feature and must be refetched (never
+	// reprojected as fetched-none); an id with no raw at all is fetched
+	// too.
+	ids := make([]int64, 0, len(prods))
+	seen := make(map[int64]bool, len(prods))
+	for _, p := range prods {
+		if p.IGDB != nil && !seen[p.IGDB.GameID] {
+			seen[p.IGDB.GameID] = true
+			ids = append(ids, p.IGDB.GameID)
+		}
+	}
+	raws, err := h.store.RawByIDs(ctx, ids)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "reprojection walk aborted: raw read failed", "err", err)
+		return
+	}
+	rawByID := make(map[int64]store.RawGame, len(raws))
+	for _, rg := range raws {
+		rawByID[rg.GameID] = rg
+	}
+	var fetchIDs []int64
+	for _, id := range ids {
+		if rg, ok := rawByID[id]; !ok || rg.Game.ReleaseDates == nil {
+			fetchIDs = append(fetchIDs, id)
+		}
+	}
+	now := h.now()
+	var fetched int
+	if len(fetchIDs) > 0 {
+		games, gerr := h.games.GamesByIDs(ctx, fetchIDs)
+		if gerr != nil {
+			h.logger.ErrorContext(ctx, "reprojection walk aborted: refetch failed", "err", gerr)
+			return
+		}
+		fetched = len(games)
+		if err := h.store.UpsertRaw(ctx, games, now); err != nil {
+			h.logger.ErrorContext(ctx, "reprojection walk aborted: raw upsert failed", "err", err)
+			return
+		}
+		for _, g := range games {
+			// Match UpsertRaw's persisted shape: a fetched game listing no
+			// rows is fetched-none ([]), not pre-feature (nil), so the
+			// loop below reprojects rather than re-skips it.
+			if g.ReleaseDates == nil {
+				g.ReleaseDates = []igdb.ReleaseDate{}
+			}
+			rawByID[g.ID] = store.RawGame{GameID: g.ID, Game: g, FetchedAt: now}
+		}
+	}
+
+	var walked, rebuilt, missing, failures int
+	for _, p := range prods {
+		if err := ctx.Err(); err != nil {
+			h.logger.WarnContext(ctx, "reprojection walk stopped early: context done",
+				"walked", walked, "remaining", len(prods)-walked, "err", err)
+			break
+		}
+		walked++
+		// Defensive: ListIGDBProducts filters on the igdb subdoc, so a
+		// nil projection here should not happen - skip it rather than
+		// deref, for loop-consistency.
+		if p.IGDB == nil {
+			missing++
+			h.logger.WarnContext(ctx, "reprojection walk: product matched the igdb filter but carries a nil projection",
+				"product", p.ID)
+			continue
+		}
+		// A missing raw (provider never returned it) or one still on the
+		// pre-feature nil table (a refetch the provider could not honor)
+		// carries no honest release data: skip rather than reproject a
+		// nil table as a fetched-none empty. The next walk retries.
+		raw, ok := rawByID[p.IGDB.GameID]
+		if !ok || raw.Game.ReleaseDates == nil {
+			missing++
+			h.logger.WarnContext(ctx, "reprojection walk: no usable raw for product",
+				"product", p.ID, "game", p.IGDB.GameID)
+			continue
+		}
+		var pid int64
+		if p.Platform != nil {
+			pid = p.Platform.IGDBID
+		}
+		// raw.FetchedAt is the honest stamp: freshly fetched raws carry
+		// `now` (set at merge above); existing raws keep their stored
+		// stamp, so a projection-only rebuild does not fake freshness.
+		meta := store.NewIGDBMeta(raw.Game, pid, raw.FetchedAt)
+		if meta.SameProjection(*p.IGDB) {
+			continue // diff gate: nothing changed, no write, no invalidate
+		}
+		if err := h.store.SetIGDB(ctx, p.ID, meta); err != nil {
+			failures++
+			h.logger.WarnContext(ctx, "reprojection walk: projection update failed", "product", p.ID, "err", err)
+			continue
+		}
+		rebuilt++
+		if err := h.cache.InvalidateProduct(ctx, p.ID); err != nil {
+			h.failOpen(ctx, "reprojection_invalidate", err)
+		}
+	}
+	h.logger.InfoContext(ctx, "reprojection walk finished",
+		"walked", walked, "rebuilt", rebuilt, "fetched", fetched,
+		"missing", missing, "failures", failures, "duration_ms", h.now().Sub(start).Milliseconds())
 }
 
 // SetProductMapping is the moderated correction: validate the mapping

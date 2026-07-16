@@ -8,7 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,19 +77,27 @@ type Company struct {
 	Publisher bool   `bson:"publisher"`
 }
 
+// MetaReleaseDate is one per-region date for the product's own
+// platform (canonical IGDB region name, day-truncated date).
+type MetaReleaseDate struct {
+	Region string    `bson:"region"`
+	Date   time.Time `bson:"date"`
+}
+
 // IGDBMeta is the game-metadata projection embedded in a product; it
 // refreshes on its own cadence via SetIGDB (partial update).
 type IGDBMeta struct {
-	GameID           int64     `bson:"game_id"`
-	Name             string    `bson:"name"`
-	CoverURL         string    `bson:"cover_url,omitempty"`
-	Genres           []Genre   `bson:"genres"`
-	Themes           []string  `bson:"themes"`
-	Franchises       []string  `bson:"franchises"`
-	SimilarGames     []int64   `bson:"similar_games"`
-	Companies        []Company `bson:"companies"`
-	FirstReleaseDate time.Time `bson:"first_release_date,omitempty"`
-	FetchedAt        time.Time `bson:"fetched_at"`
+	GameID           int64             `bson:"game_id"`
+	Name             string            `bson:"name"`
+	CoverURL         string            `bson:"cover_url,omitempty"`
+	Genres           []Genre           `bson:"genres"`
+	Themes           []string          `bson:"themes"`
+	Franchises       []string          `bson:"franchises"`
+	SimilarGames     []int64           `bson:"similar_games"`
+	Companies        []Company         `bson:"companies"`
+	FirstReleaseDate time.Time         `bson:"first_release_date,omitempty"`
+	ReleaseDates     []MetaReleaseDate `bson:"release_dates"`
+	FetchedAt        time.Time         `bson:"fetched_at"`
 }
 
 // PriceQuote holds one condition triple in integer cents; nil means
@@ -197,8 +207,11 @@ func keyOf(p Product) ProductKey {
 	return k
 }
 
-// NewIGDBMeta projects a raw IGDB payload onto the product subdocument.
-func NewIGDBMeta(g igdb.Game, fetchedAt time.Time) IGDBMeta {
+// NewIGDBMeta projects a raw IGDB payload onto the product
+// subdocument, scoping the release table to the product's platform:
+// the scalar becomes the platform's earliest date (game-level when the
+// platform has no dated rows).
+func NewIGDBMeta(g igdb.Game, platformIGDBID int64, fetchedAt time.Time) IGDBMeta {
 	m := IGDBMeta{
 		GameID:           g.ID,
 		Name:             g.Name,
@@ -226,7 +239,66 @@ func NewIGDBMeta(g igdb.Game, fetchedAt time.Time) IGDBMeta {
 	for _, ic := range g.InvolvedCompanies {
 		m.Companies = append(m.Companies, Company{Name: ic.Company.Name, Developer: ic.Developer, Publisher: ic.Publisher})
 	}
+	m.ReleaseDates = platformReleaseDates(g, platformIGDBID)
+	if len(m.ReleaseDates) > 0 {
+		m.FirstReleaseDate = m.ReleaseDates[0].Date // sorted ascending: [0] is the earliest
+	}
 	return m
+}
+
+// SameProjection reports whether two projections are identical ignoring
+// FetchedAt: the reprojection walk's diff gate, so a rebuild that only
+// re-stamps the fetch time is not a write. A nil ReleaseDates compares
+// UNEQUAL to an empty one - that exact difference is a pre-feature
+// projection (one that never carried a release table) which must be
+// rebuilt, not skipped.
+func (m IGDBMeta) SameProjection(o IGDBMeta) bool {
+	m.FetchedAt, o.FetchedAt = time.Time{}, time.Time{}
+	return reflect.DeepEqual(m, o)
+}
+
+// platformReleaseDates keeps one platform's concrete-dated rows, the
+// earliest per region, sorted by date then region so the stored
+// document shape is deterministic. It also folds in the platform's JP
+// regional twin: IGDB models Super Nintendo (19) and Super Famicom (58)
+// as separate platforms (likewise NES/Family Computer), so a SNES
+// product's japan date rides the Super Famicom platform id and would
+// otherwise never appear here.
+func platformReleaseDates(g igdb.Game, platformIGDBID int64) []MetaReleaseDate {
+	twin := igdb.TwinPlatformID(platformIGDBID)
+	earliest := map[string]time.Time{}
+	for _, rd := range g.ReleaseDates {
+		// A platform-0 row matches no real platform; skipping it also
+		// defends the pid=0 (no-platform) product, where a bare equality
+		// check would otherwise fold every dateless-platform row in.
+		if rd.Platform == 0 || rd.Date == 0 {
+			continue
+		}
+		// The product's own platform, or its JP twin folded in.
+		matchesPlatform := rd.Platform == platformIGDBID || (twin != 0 && rd.Platform == twin)
+		if !matchesPlatform {
+			continue
+		}
+		name, ok := igdb.RegionName(rd.Region)
+		if !ok {
+			continue
+		}
+		d := time.Unix(rd.Date, 0).UTC().Truncate(24 * time.Hour)
+		if cur, seen := earliest[name]; !seen || d.Before(cur) {
+			earliest[name] = d
+		}
+	}
+	out := make([]MetaReleaseDate, 0, len(earliest))
+	for name, d := range earliest {
+		out = append(out, MetaReleaseDate{Region: name, Date: d})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].Date.Equal(out[j].Date) {
+			return out[i].Date.Before(out[j].Date)
+		}
+		return out[i].Region < out[j].Region
+	})
+	return out
 }
 
 // FindProduct returns the product with the given identity, or
@@ -421,6 +493,32 @@ func (s *Store) ListUnmatchedGames(ctx context.Context, limit int) ([]Product, e
 	var out []Product
 	if err := cur.All(ctx, &out); err != nil {
 		return nil, fmt.Errorf("store: list unmatched games: %w", err)
+	}
+	return out, nil
+}
+
+// ListIGDBProducts returns every product carrying an IGDB projection,
+// in stable _id order: the reprojection walk's worklist. Uncapped, like
+// ListPriced - a full nightly sweep rather than a capped window, because
+// the walk is read-cheap (Mongo reads plus a DeepEqual diff gate; a
+// provider call fires only for the missing/nil-table raw set, which
+// drains to zero) so sweeping the whole catalog is the honest shape.
+// Unlike the retired missing-release-dates query it does not filter on
+// the release table - the walk rebuilds each projection from the raw
+// payload and writes only when it actually changed, so already-healed
+// products must still be revisited (any future projection-logic change
+// then self-deploys on the very next walk, instead of waiting for a
+// capped window to drain past them).
+func (s *Store) ListIGDBProducts(ctx context.Context) ([]Product, error) {
+	cur, err := s.db.Collection(colProducts).Find(ctx,
+		bson.D{{Key: "igdb", Value: bson.D{{Key: "$exists", Value: true}}}},
+		options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}))
+	if err != nil {
+		return nil, fmt.Errorf("store: list igdb products: %w", err)
+	}
+	var out []Product
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, fmt.Errorf("store: list igdb products: %w", err)
 	}
 	return out, nil
 }

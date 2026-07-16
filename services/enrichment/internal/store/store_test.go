@@ -452,6 +452,93 @@ func TestProduct_ListUnmatchedGames(t *testing.T) {
 	}
 }
 
+// The reprojection walk's worklist: ListIGDBProducts returns every
+// igdb-bearing product - including ones that already carry a release
+// table (the walk reprojects them from raw and writes only on a diff,
+// so a pre-feature filter would wrongly skip an already-healed product
+// that a projection-logic change now needs to revisit) - excludes
+// hardware (no igdb subdoc), sorts by _id ascending, and is uncapped: a
+// full nightly sweep, mirroring ListPriced's posture.
+func TestProduct_ListIGDBProducts(t *testing.T) {
+	s, mdb := newTestStore(t)
+	ctx := context.Background()
+
+	withDates := func(id string, gameID int64) {
+		t.Helper()
+		now := time.Now().UTC().Truncate(time.Millisecond)
+		_, err := mdb.Collection("products").InsertOne(ctx, bson.D{
+			{Key: "_id", Value: id}, {Key: "type", Value: "game"},
+			{Key: "name", Value: "Game " + id},
+			{Key: "platform", Value: bson.D{{Key: "igdb_id", Value: int64(19)}, {Key: "name", Value: "SNES"}}},
+			{Key: "region", Value: ""}, {Key: "edition", Value: ""}, {Key: "variant", Value: ""},
+			{Key: "igdb", Value: bson.D{
+				{Key: "game_id", Value: gameID}, {Key: "name", Value: "Game " + id},
+				{Key: "fetched_at", Value: now},
+				// A populated release table: the retired missing-dates
+				// query skipped this shape; the reprojection walk must not.
+				{Key: "release_dates", Value: bson.A{
+					bson.D{{Key: "region", Value: "japan"}, {Key: "date", Value: now}},
+				}},
+			}},
+			{Key: "created_at", Value: now}, {Key: "updated_at", Value: now},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Two products already carrying a release table, one pre-feature
+	// (release_dates absent), one hardware product with no igdb subdoc.
+	withDates("id-1-withdates", 3001)
+	seedPreFeatureProduct(t, mdb, "id-2-prefeature", 3002, 4, time.Now().UTC().Add(-time.Hour))
+	withDates("id-3-withdates", 3003)
+	if _, err := s.CreateProduct(ctx, store.Product{Type: "console", Name: "Nintendo 64 Console"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.ListIGDBProducts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantIDs := []string{"id-1-withdates", "id-2-prefeature", "id-3-withdates"}
+	if len(got) != len(wantIDs) {
+		t.Fatalf("want %d igdb-bearing products (hardware excluded), got %d: %+v", len(wantIDs), len(got), got)
+	}
+	for i, id := range wantIDs {
+		if got[i].ID != id {
+			t.Fatalf("position %d: want _id %s, got %s", i, id, got[i].ID)
+		}
+	}
+}
+
+// seedPreFeatureProduct inserts a game product whose igdb subdoc
+// predates the release-dates feature: the release_dates key is
+// entirely absent (not null, not an empty array). SetIGDB cannot
+// produce this shape anymore (it always writes the field post-feature),
+// so this bypasses the store's write path via the raw collection
+// handle, following the same direct-insert pattern as
+// TestMigration_ListingKeyedIdentityDeletesTupleResidue's seed helper.
+func seedPreFeatureProduct(t *testing.T, mdb *mongo.Database, id string, gameID, platformID int64, fetchedAt time.Time) {
+	t.Helper()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	_, err := mdb.Collection("products").InsertOne(context.Background(), bson.D{
+		{Key: "_id", Value: id}, {Key: "type", Value: "game"},
+		{Key: "name", Value: "Pre-Feature " + id},
+		{Key: "platform", Value: bson.D{{Key: "igdb_id", Value: platformID}, {Key: "name", Value: "Seed Platform"}}},
+		{Key: "region", Value: ""}, {Key: "edition", Value: ""}, {Key: "variant", Value: ""},
+		{Key: "igdb", Value: bson.D{
+			{Key: "game_id", Value: gameID},
+			{Key: "name", Value: "Pre-Feature " + id},
+			{Key: "fetched_at", Value: fetchedAt},
+			// release_dates deliberately absent: the pre-feature sentinel.
+		}},
+		{Key: "created_at", Value: now}, {Key: "updated_at", Value: now},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestProduct_ByIDsAndSearch(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
@@ -542,7 +629,7 @@ func TestNewIGDBMeta_Projection(t *testing.T) {
 		Platforms:         []igdb.Named{{ID: 19, Name: "Super Nintendo Entertainment System"}},
 	}
 	at := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	m := store.NewIGDBMeta(g, at)
+	m := store.NewIGDBMeta(g, 19, at)
 	wantDate := time.Date(1995, 1, 1, 0, 0, 0, 0, time.UTC)
 	if m.GameID != 1011 || m.Name != "Chrono Trigger" || !m.FirstReleaseDate.Equal(wantDate) {
 		t.Fatalf("core fields: %+v", m)
@@ -564,6 +651,137 @@ func TestNewIGDBMeta_Projection(t *testing.T) {
 	}
 	if !m.FetchedAt.Equal(at) {
 		t.Fatalf("fetched_at: %v", m.FetchedAt)
+	}
+}
+
+func TestNewIGDBMeta_PlatformScopedReleaseDates(t *testing.T) {
+	g := igdb.Game{
+		ID: 1011, Name: "Chrono Trigger", FirstReleaseDate: 794880000,
+		ReleaseDates: []igdb.ReleaseDate{
+			{Date: 794880000, Platform: 19, Region: 5},  // SNES japan
+			{Date: 809049600, Platform: 19, Region: 2},  // SNES north_america
+			{Date: 809049600, Platform: 19, Region: 2},  // duplicate region: keep earliest
+			{Date: 1200000000, Platform: 20, Region: 2}, // other platform: dropped
+			{Platform: 19, Region: 1},                   // dateless: dropped
+			{Date: 794880000, Platform: 19, Region: 99}, // unknown region enum: dropped
+		},
+	}
+	m := store.NewIGDBMeta(g, 19, time.Now())
+	want := []store.MetaReleaseDate{
+		{Region: "japan", Date: time.Unix(794880000, 0).UTC().Truncate(24 * time.Hour)},
+		{Region: "north_america", Date: time.Unix(809049600, 0).UTC().Truncate(24 * time.Hour)},
+	}
+	if len(m.ReleaseDates) != 2 || m.ReleaseDates[0] != want[0] || m.ReleaseDates[1] != want[1] {
+		t.Fatalf("release dates: %+v", m.ReleaseDates)
+	}
+	if !m.FirstReleaseDate.Equal(want[0].Date) {
+		t.Fatalf("scalar must be the platform's earliest: %v", m.FirstReleaseDate)
+	}
+}
+
+func TestNewIGDBMeta_NoPlatformRowsFallsBackToGameLevel(t *testing.T) {
+	g := igdb.Game{
+		ID: 1, Name: "X", FirstReleaseDate: 794880000,
+		ReleaseDates: []igdb.ReleaseDate{{Date: 900000000, Platform: 7, Region: 2}},
+	}
+	m := store.NewIGDBMeta(g, 19, time.Now())
+	if len(m.ReleaseDates) != 0 || m.ReleaseDates == nil {
+		t.Fatalf("want empty non-nil list, got %+v", m.ReleaseDates)
+	}
+	if !m.FirstReleaseDate.Equal(g.ReleaseDate()) {
+		t.Fatalf("scalar must fall back to game level: %v", m.FirstReleaseDate)
+	}
+}
+
+// The JP-twin fold: a Super Famicom (58) row is visible on a SNES (19)
+// product and vice versa; Family Computer (99) folds into NES (18) both
+// ways; an unrelated platform's row never folds; a platform-0 row is
+// dropped even when it would be the earliest; and the scalar is the
+// earliest across the folded set.
+func TestNewIGDBMeta_FoldsTwinPlatformRows(t *testing.T) {
+	japan := time.Unix(794880000, 0).UTC().Truncate(24 * time.Hour)
+	na := time.Unix(809049600, 0).UTC().Truncate(24 * time.Hour)
+	twin := igdb.Game{
+		ID: 1, Name: "Chrono Trigger", FirstReleaseDate: 794880000,
+		ReleaseDates: []igdb.ReleaseDate{
+			{Date: 794880000, Platform: 58, Region: 5}, // Super Famicom japan (earliest)
+			{Date: 809049600, Platform: 19, Region: 2}, // SNES north_america
+			{Date: 900000000, Platform: 7, Region: 1},  // PlayStation: unrelated, never folds
+			{Date: 700000000, Platform: 0, Region: 8},  // platform 0: dropped though earliest
+		},
+	}
+	wantFold := []store.MetaReleaseDate{{Region: "japan", Date: japan}, {Region: "north_america", Date: na}}
+
+	// Either side of the SNES/Super Famicom pair sees the same folded set.
+	for _, pid := range []int64{19, 58} {
+		m := store.NewIGDBMeta(twin, pid, time.Now())
+		if len(m.ReleaseDates) != 2 || m.ReleaseDates[0] != wantFold[0] || m.ReleaseDates[1] != wantFold[1] {
+			t.Fatalf("pid %d fold: %+v", pid, m.ReleaseDates)
+		}
+		if !m.FirstReleaseDate.Equal(japan) {
+			t.Fatalf("pid %d scalar must be the folded earliest (japan): %v", pid, m.FirstReleaseDate)
+		}
+	}
+
+	// The NES/Family Computer pair folds both ways too.
+	fc := time.Unix(500000000, 0).UTC().Truncate(24 * time.Hour)
+	nesNA := time.Unix(520000000, 0).UTC().Truncate(24 * time.Hour)
+	nesTwin := igdb.Game{
+		ID: 2, Name: "Twin NES", FirstReleaseDate: 500000000,
+		ReleaseDates: []igdb.ReleaseDate{
+			{Date: 500000000, Platform: 99, Region: 5}, // Family Computer japan
+			{Date: 520000000, Platform: 18, Region: 2}, // NES north_america
+		},
+	}
+	wantNES := []store.MetaReleaseDate{{Region: "japan", Date: fc}, {Region: "north_america", Date: nesNA}}
+	for _, pid := range []int64{18, 99} {
+		m := store.NewIGDBMeta(nesTwin, pid, time.Now())
+		if len(m.ReleaseDates) != 2 || m.ReleaseDates[0] != wantNES[0] || m.ReleaseDates[1] != wantNES[1] {
+			t.Fatalf("pid %d NES fold: %+v", pid, m.ReleaseDates)
+		}
+	}
+
+	// A platform-0 product (no platform ref) folds nothing and keeps no
+	// rows: the platform-0 guard drops the row on its own terms.
+	zero := store.NewIGDBMeta(twin, 0, time.Now())
+	if len(zero.ReleaseDates) != 0 || zero.ReleaseDates == nil {
+		t.Fatalf("platform 0 must scope to an empty, non-nil release table: %#v", zero.ReleaseDates)
+	}
+}
+
+// SameProjection is the reprojection walk's diff gate: two projections
+// that differ only by FetchedAt are the same; differing rows are not;
+// and a nil release table is NOT the same as an empty one (that exact
+// difference is a pre-feature projection due for a rebuild).
+func TestIGDBMeta_SameProjection(t *testing.T) {
+	base := store.IGDBMeta{
+		GameID: 1011, Name: "Chrono Trigger",
+		Genres:       []store.Genre{{ID: 12, Name: "Role-playing (RPG)"}},
+		Themes:       []string{"Fantasy"},
+		Franchises:   []string{"Chrono"},
+		SimilarGames: []int64{1012},
+		Companies:    []store.Company{{Name: "Square", Developer: true, Publisher: true}},
+		ReleaseDates: []store.MetaReleaseDate{{Region: "japan", Date: time.Unix(794880000, 0).UTC()}},
+		FetchedAt:    time.Unix(1000, 0).UTC(),
+	}
+	sameButNewer := base
+	sameButNewer.FetchedAt = time.Unix(9_999_999, 0).UTC() // provider stamp differs only
+	if !base.SameProjection(sameButNewer) {
+		t.Fatal("projections identical apart from FetchedAt must compare equal")
+	}
+
+	differing := base
+	differing.ReleaseDates = []store.MetaReleaseDate{{Region: "europe", Date: time.Unix(1, 0).UTC()}}
+	if base.SameProjection(differing) {
+		t.Fatal("differing release rows must compare unequal")
+	}
+
+	nilTable := base
+	nilTable.ReleaseDates = nil
+	emptyTable := base
+	emptyTable.ReleaseDates = []store.MetaReleaseDate{}
+	if nilTable.SameProjection(emptyTable) {
+		t.Fatal("nil vs empty release table must compare unequal (pre-feature vs fetched-none)")
 	}
 }
 
