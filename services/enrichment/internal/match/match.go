@@ -75,6 +75,18 @@ func Normalize(name string) string {
 	return strings.Join(tokens, " ")
 }
 
+// keepBracketContent turns bracket characters into spaces so bracketed
+// segments survive Normalize as plain tokens instead of being stripped.
+func keepBracketContent(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '(', ')', '[', ']':
+			return ' '
+		}
+		return r
+	}, s)
+}
+
 func stripBrackets(s string) string {
 	var b strings.Builder
 	depth := 0
@@ -153,23 +165,31 @@ type Result struct {
 
 // Best picks the highest-scoring same-console candidate. A non-empty
 // hint is variant text qualifying the target: scoring compares
-// "name hint" strictly, so candidates without the hinted tokens lose
-// score, and a hint nothing carries keeps the product unmatched
-// rather than guessing the plain listing (bracketed candidate
-// segments are stripped by Normalize, so bracket-only variants stay
-// reachable through the picker, not the hint). Deterministic
-// tie-break: lower pc id.
+// "name hint" strictly, and candidate names keep their bracketed
+// segments as plain tokens (PriceCharting brackets its variants), so
+// the hinted listing can win while candidates without the hinted
+// tokens lose score; a hint nothing carries keeps the product
+// unmatched rather than guessing the plain listing. Brackets in the
+// hint read as their words ("[not for resale]" hints exactly like
+// "not for resale"). Without a hint, bracketed segments stay stripped
+// on both sides, so a plain resolve prices the base listing.
+// Deterministic tie-break: lower pc id.
 func Best(name, hint, platformName string, cands []Candidate) Result {
 	target := Normalize(name)
-	if hint != "" {
-		target = Normalize(name + " " + hint)
+	hinted := Normalize(keepBracketContent(hint)) != ""
+	if hinted {
+		target = Normalize(keepBracketContent(name + " " + hint))
 	}
 	best := Result{}
 	for _, c := range cands {
 		if !ConsoleMatches(platformName, c.ConsoleName) {
 			continue
 		}
-		score := dice(target, Normalize(c.Name))
+		cn := c.Name
+		if hinted {
+			cn = keepBracketContent(cn)
+		}
+		score := dice(target, Normalize(cn))
 		better := score > best.Confidence ||
 			(score == best.Confidence && best.OK && c.PCProductID < best.PCProductID)
 		if score > 0 && better {

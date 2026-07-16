@@ -170,3 +170,31 @@ func TestBest_HintFlipsAnUnbracketedVariant(t *testing.T) {
 		t.Fatalf("unmatched hint must stay below threshold: %+v", junk)
 	}
 }
+
+func TestBest_HintReachesBracketedVariant(t *testing.T) {
+	cands := []Candidate{
+		{PCProductID: 5005, Name: "Super Mario 64", ConsoleName: "Nintendo 64"},
+		{PCProductID: 5099, Name: "Super Mario 64 [Not for Resale]", ConsoleName: "Nintendo 64"},
+	}
+	hinted := Best("Super Mario 64", "not for resale", "Nintendo 64", cands)
+	if !hinted.OK || hinted.PCProductID != 5099 || hinted.Confidence != 1.0 {
+		t.Fatalf("hint must reach the bracketed variant listing: %+v", hinted)
+	}
+	// Brackets in the hint read as their words, not as a segment to
+	// strip: "[not for resale]" must not degrade to a plain resolve.
+	bracketed := Best("Super Mario 64", "[not for resale]", "Nintendo 64", cands)
+	if !bracketed.OK || bracketed.PCProductID != 5099 || bracketed.Confidence != 1.0 {
+		t.Fatalf("bracketed hint must reach the variant listing: %+v", bracketed)
+	}
+	// A hint no listing carries still lands unmatched, bracketed or not.
+	junk := Best("Super Mario 64", "[gray cart brick]", "Nintendo 64", cands)
+	if junk.OK {
+		t.Fatalf("unmatched bracketed hint must stay below threshold: %+v", junk)
+	}
+	// A bracket-only hint normalizes to nothing and reads as no hint:
+	// the plain resolve behavior, base listing wins.
+	empty := Best("Super Mario 64", "[]", "Nintendo 64", cands)
+	if !empty.OK || empty.PCProductID != 5005 {
+		t.Fatalf("empty bracket hint must behave as no hint: %+v", empty)
+	}
+}
