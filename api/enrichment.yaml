@@ -379,7 +379,23 @@ components:
         companies:
           type: array
           items: { $ref: "#/components/schemas/CompanyCredit" }
-        first_release_date: { type: string, format: date }
+        first_release_date:
+          type: string
+          format: date
+          description: >
+            Earliest date for the product's platform; the game-level
+            first release when IGDB lists no dated rows for the
+            platform.
+        release_dates:
+          description: >
+            Per-region release dates for the product's platform, the
+            earliest concrete date per region. Region values are
+            canonical IGDB names (europe, north_america, australia,
+            new_zealand, japan, china, asia, worldwide, korea, brazil).
+            JP twin platforms fold into their sibling (SNES/Super Famicom,
+            NES/Famicom).
+          type: array
+          items: { $ref: "#/components/schemas/ReleaseDate" }
         fetched_at: { type: string, format: date-time }
     CompanyCredit:
       type: object
@@ -388,6 +404,12 @@ components:
         name: { type: string }
         developer: { type: boolean }
         publisher: { type: boolean }
+    ReleaseDate:
+      type: object
+      required: [region, date]
+      properties:
+        region: { type: string }
+        date: { type: string, format: date }
     PricechartingMeta:
       description: >
         The PriceCharting mapping and current prices; refreshed daily.

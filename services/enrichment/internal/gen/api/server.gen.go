@@ -75,16 +75,21 @@ type FXRates struct {
 
 // IgdbMeta Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
 type IgdbMeta struct {
-	Companies        []CompanyCredit     `json:"companies"`
-	CoverUrl         *string             `json:"cover_url,omitempty"`
-	FetchedAt        time.Time           `json:"fetched_at"`
+	Companies []CompanyCredit `json:"companies"`
+	CoverUrl  *string         `json:"cover_url,omitempty"`
+	FetchedAt time.Time       `json:"fetched_at"`
+
+	// FirstReleaseDate Earliest date for the product's platform; the game-level first release when IGDB lists no dated rows for the platform.
 	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
 	Franchises       []string            `json:"franchises"`
 	GameId           int64               `json:"game_id"`
 	Genres           []string            `json:"genres"`
 	Name             string              `json:"name"`
-	SimilarGames     []int64             `json:"similar_games"`
-	Themes           []string            `json:"themes"`
+
+	// ReleaseDates Per-region release dates for the product's platform, the earliest concrete date per region. Region values are canonical IGDB names (europe, north_america, australia, new_zealand, japan, china, asia, worldwide, korea, brazil). JP twin platforms fold into their sibling (SNES/Super Famicom, NES/Famicom).
+	ReleaseDates *[]ReleaseDate `json:"release_dates,omitempty"`
+	SimilarGames []int64        `json:"similar_games"`
+	Themes       []string       `json:"themes"`
 }
 
 // LibraryEntry defines model for LibraryEntry.
@@ -212,6 +217,12 @@ type RefreshAccepted struct {
 
 // RefreshAcceptedStatus defines model for RefreshAccepted.Status.
 type RefreshAcceptedStatus string
+
+// ReleaseDate defines model for ReleaseDate.
+type ReleaseDate struct {
+	Date   openapi_types.Date `json:"date"`
+	Region string             `json:"region"`
+}
 
 // ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so region/edition/variant on a game resolve are ignored (entry-level facts, like pc_listing). Without pc_product_id the resolve auto-matches by the plain game name through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
 type ResolveRequest struct {

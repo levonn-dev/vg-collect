@@ -514,8 +514,13 @@ export interface components {
             franchises: string[];
             similar_games: number[];
             companies: components["schemas"]["CompanyCredit"][];
-            /** Format: date */
+            /**
+             * Format: date
+             * @description Earliest date for the product's platform; the game-level first release when IGDB lists no dated rows for the platform.
+             */
             first_release_date?: string;
+            /** @description Per-region release dates for the product's platform, the earliest concrete date per region. Region values are canonical IGDB names (europe, north_america, australia, new_zealand, japan, china, asia, worldwide, korea, brazil). JP twin platforms fold into their sibling (SNES/Super Famicom, NES/Famicom). */
+            release_dates?: components["schemas"]["ReleaseDate"][];
             /** Format: date-time */
             fetched_at: string;
         };
@@ -523,6 +528,11 @@ export interface components {
             name: string;
             developer: boolean;
             publisher: boolean;
+        };
+        ReleaseDate: {
+            region: string;
+            /** Format: date */
+            date: string;
         };
         /** @description The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin. */
         PricechartingMeta: {

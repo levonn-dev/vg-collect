@@ -345,14 +345,14 @@ const (
 
 // Defines values for ListEntriesParamsSort.
 const (
-	BacklogRank ListEntriesParamsSort = "backlog_rank"
-	CreatedAt   ListEntriesParamsSort = "created_at"
-	Name        ListEntriesParamsSort = "name"
-	Paid        ListEntriesParamsSort = "paid"
-	PurchasedAt ListEntriesParamsSort = "purchased_at"
-	Rating      ListEntriesParamsSort = "rating"
-	ReleaseDate ListEntriesParamsSort = "release_date"
-	Value       ListEntriesParamsSort = "value"
+	ListEntriesParamsSortBacklogRank ListEntriesParamsSort = "backlog_rank"
+	ListEntriesParamsSortCreatedAt   ListEntriesParamsSort = "created_at"
+	ListEntriesParamsSortName        ListEntriesParamsSort = "name"
+	ListEntriesParamsSortPaid        ListEntriesParamsSort = "paid"
+	ListEntriesParamsSortPurchasedAt ListEntriesParamsSort = "purchased_at"
+	ListEntriesParamsSortRating      ListEntriesParamsSort = "rating"
+	ListEntriesParamsSortReleaseDate ListEntriesParamsSort = "release_date"
+	ListEntriesParamsSortValue       ListEntriesParamsSort = "value"
 )
 
 // Defines values for ListEntriesParamsOrder.
@@ -697,16 +697,21 @@ type Identity struct {
 
 // IgdbMeta Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
 type IgdbMeta struct {
-	Companies        []CompanyCredit     `json:"companies"`
-	CoverUrl         *string             `json:"cover_url,omitempty"`
-	FetchedAt        time.Time           `json:"fetched_at"`
+	Companies []CompanyCredit `json:"companies"`
+	CoverUrl  *string         `json:"cover_url,omitempty"`
+	FetchedAt time.Time       `json:"fetched_at"`
+
+	// FirstReleaseDate Earliest date for the product's platform; the game-level first release when IGDB lists no dated rows for the platform.
 	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
 	Franchises       []string            `json:"franchises"`
 	GameId           int64               `json:"game_id"`
 	Genres           []string            `json:"genres"`
 	Name             string              `json:"name"`
-	SimilarGames     []int64             `json:"similar_games"`
-	Themes           []string            `json:"themes"`
+
+	// ReleaseDates Per-region release dates for the product's platform, the earliest concrete date per region. Region values are canonical IGDB names (europe, north_america, australia, new_zealand, japan, china, asia, worldwide, korea, brazil). JP twin platforms fold into their sibling (SNES/Super Famicom, NES/Famicom).
+	ReleaseDates *[]ReleaseDate `json:"release_dates,omitempty"`
+	SimilarGames []int64        `json:"similar_games"`
+	Themes       []string       `json:"themes"`
 }
 
 // Me Browser-facing projection of the user service's User. Timestamps are intentionally omitted; add fields only when the SPA has a concrete use for them.
@@ -795,6 +800,12 @@ type Recommendation struct {
 	IgdbGameId       int64               `json:"igdb_game_id"`
 	Name             string              `json:"name"`
 	Score            float64             `json:"score"`
+}
+
+// ReleaseDate defines model for ReleaseDate.
+type ReleaseDate struct {
+	Date   openapi_types.Date `json:"date"`
+	Region string             `json:"region"`
 }
 
 // ReorderRequest Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid.
