@@ -52,6 +52,31 @@ func TestRaw_UpsertReplaceAndMissingAbsent(t *testing.T) {
 	}
 }
 
+// The release_dates sentinel is load-bearing: bson-absent reads as
+// pre-feature "never fetched", so a nil table must normalize to an
+// explicit empty list (fetched-but-none) before it is persisted.
+func TestRaw_UpsertNormalizesNilReleaseDatesToEmpty(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 7, 1, 6, 0, 0, 0, time.UTC)
+
+	g := igdb.Game{ID: 2001, Name: "Chrono Cross", ReleaseDates: nil}
+	if err := s.UpsertRaw(ctx, []igdb.Game{g}, at); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.RawByIDs(ctx, []int64{2001})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("want 1 raw payload, got %d", len(got))
+	}
+	if got[0].Game.ReleaseDates == nil || len(got[0].Game.ReleaseDates) != 0 {
+		t.Fatalf("want a non-nil empty release_dates list, got %+v", got[0].Game.ReleaseDates)
+	}
+}
+
 func TestRaw_UpsertReplaceDropsFieldsAbsentFromReplacement(t *testing.T) {
 	s, mdb := newTestStore(t)
 	ctx := context.Background()

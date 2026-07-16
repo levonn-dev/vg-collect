@@ -30,6 +30,12 @@ func (s *Store) UpsertRaw(ctx context.Context, games []igdb.Game, fetchedAt time
 	}
 	models := make([]mongo.WriteModel, 0, len(games))
 	for _, g := range games {
+		// A nil table would persist as bson null and read back as
+		// pre-feature "never fetched"; the empty array is the honest
+		// fetched-but-none marker the heal paths key on.
+		if g.ReleaseDates == nil {
+			g.ReleaseDates = []igdb.ReleaseDate{}
+		}
 		doc := RawGame{GameID: g.ID, Game: g, FetchedAt: fetchedAt.UTC().Truncate(time.Millisecond)}
 		models = append(models, mongo.NewReplaceOneModel().
 			SetFilter(bson.D{{Key: "_id", Value: g.ID}}).
