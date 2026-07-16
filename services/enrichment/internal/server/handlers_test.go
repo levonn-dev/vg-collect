@@ -669,6 +669,50 @@ func TestUnitSearch_ExactNameRanksFirst(t *testing.T) {
 	}
 }
 
+// The provider's tokenizer misses possessive-less listing names when
+// the query carries the possessive; the outgoing query drops it
+// (evidence: /api/products probes, 2026-07-15).
+func TestUnitSearch_PCQueryDropsPossessive(t *testing.T) {
+	env := newAuthEnv(t)
+	var gotQ string
+	prices := &stubPrices{search: func(_ context.Context, q string) ([]pricecharting.Product, error) {
+		gotQ = q
+		return nil, nil
+	}}
+	h := newUnitHandlers(nil, nil, prices, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=pc_listing&q=Michael+Jackson's+Moonwalker", env.token(t, "u1", []string{"user"}), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotQ != "Michael Jackson Moonwalker" {
+		t.Fatalf("provider query must drop the possessive, got %q", gotQ)
+	}
+}
+
+func TestUnitSearch_PossessiveNamesRankExact(t *testing.T) {
+	env := newAuthEnv(t)
+	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
+		return []igdb.Game{
+			{ID: 1, Name: "Moonwalker"},
+			{ID: 2, Name: "Michael Jackson's Moonwalker"},
+		}, nil
+	}}
+	h := newUnitHandlers(nil, games, nil, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=game&q=Michael+Jackson+Moonwalker", env.token(t, "u1", []string{"user"}), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search: %d %s", rec.Code, rec.Body.String())
+	}
+	var res api.SearchResults
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Results) != 2 || *res.Results[0].IgdbGameId != 2 {
+		t.Fatalf("possessive name must rank exact for the bare query: %+v", res.Results)
+	}
+}
+
 func TestUnitSearch_BadParams(t *testing.T) {
 	env := newAuthEnv(t)
 	h := newUnitHandlers(nil, nil, nil, newStubCache())

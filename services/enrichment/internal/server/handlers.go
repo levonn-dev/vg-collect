@@ -113,17 +113,16 @@ func (h *Handlers) searchGames(ctx context.Context, q string) ([]api.SearchResul
 	return out, nil
 }
 
-// rankExactFirst floats exact-name matches (normalized, so brackets
-// and articles fold) to the top of the provider's relevance order -
-// IGDB ranks loosely on exactness - with the rating count ordering
-// the exacts so the widely known release leads. Everything else keeps
-// provider order.
+// rankExactFirst floats exact-name matches (normalized, so brackets,
+// articles and possessives fold) to the top of the provider's
+// relevance order - IGDB ranks loosely on exactness - with the rating
+// count ordering the exacts so the widely known release leads.
+// Everything else keeps provider order.
 func rankExactFirst(q string, games []igdb.Game) []igdb.Game {
-	nq := match.Normalize(q)
 	exact := make([]igdb.Game, 0, len(games))
 	rest := make([]igdb.Game, 0, len(games))
 	for _, g := range games {
-		if match.Normalize(g.Name) == nq {
+		if match.SameName(g.Name, q) {
 			exact = append(exact, g)
 		} else {
 			rest = append(rest, g)
@@ -191,7 +190,10 @@ func (h *Handlers) searchHardware(ctx context.Context, q string) ([]api.SearchRe
 // point is variant rows IGDB does not separate), with the provider's
 // per-listing prices passed through so prints are tellable apart.
 func (h *Handlers) searchPCListings(ctx context.Context, q string) ([]api.SearchResult, error) {
-	prods, err := h.prices.Search(ctx, q)
+	// The provider's tokenizer misses possessive-less listing names
+	// when the query keeps the possessive; the bare form returns the
+	// superset, so every pc_listing query drops it.
+	prods, err := h.prices.Search(ctx, match.ProviderQuery(q))
 	if err != nil {
 		return nil, err
 	}
