@@ -75,6 +75,72 @@ func Normalize(name string) string {
 	return strings.Join(tokens, " ")
 }
 
+// dropPossessive removes apostrophe-s suffixes ("Jackson's" ->
+// "Jackson"). PriceCharting is inconsistent about possessives across
+// listings (Demons Souls keeps the s, Michael Jackson Moonwalker
+// drops it), so both the scorer and the provider query need the
+// dropped form available.
+func dropPossessive(s string) string {
+	r := []rune(s)
+	var b strings.Builder
+	for i := 0; i < len(r); i++ {
+		if (r[i] == '\'' || r[i] == '’') && i+1 < len(r) && (r[i+1] == 's' || r[i+1] == 'S') &&
+			(i+2 == len(r) || (!unicode.IsLetter(r[i+2]) && !unicode.IsDigit(r[i+2]))) {
+			i++
+			continue
+		}
+		b.WriteRune(r[i])
+	}
+	return b.String()
+}
+
+// ProviderQuery rewrites a catalog name for the provider's search
+// engine: possessive suffixes drop to the bare token, which
+// PriceCharting's tokenizer matches under both of its naming
+// conventions (a possessive query misses listings named without the
+// possessive; the bare query returns the superset).
+func ProviderQuery(name string) string {
+	return dropPossessive(name)
+}
+
+// forms returns the normalized name in its apostrophe-join form and,
+// when the raw text carries a possessive, the possessive-dropped form
+// too, so scoring can meet either provider convention.
+func forms(s string) []string {
+	joined := Normalize(s)
+	if dropped := Normalize(dropPossessive(s)); dropped != joined {
+		return []string{joined, dropped}
+	}
+	return []string{joined}
+}
+
+// SameName reports whether two raw names agree after normalization,
+// counting a possessive and its dropped form as the same name.
+func SameName(a, b string) bool {
+	for _, x := range forms(a) {
+		for _, y := range forms(b) {
+			if x == y {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// maxDice scores every form pair and keeps the best: either side may
+// carry the possessive the other dropped.
+func maxDice(as, bs []string) float64 {
+	m := 0.0
+	for _, a := range as {
+		for _, b := range bs {
+			if d := dice(a, b); d > m {
+				m = d
+			}
+		}
+	}
+	return m
+}
+
 // keepBracketContent turns bracket characters into spaces so bracketed
 // segments survive Normalize as plain tokens instead of being stripped.
 func keepBracketContent(s string) string {
@@ -172,14 +238,17 @@ type Result struct {
 // unmatched rather than guessing the plain listing. Brackets in the
 // hint read as their words ("[not for resale]" hints exactly like
 // "not for resale"). Without a hint, bracketed segments stay stripped
-// on both sides, so a plain resolve prices the base listing.
+// on both sides, so a plain resolve prices the base listing. Both
+// sides score in their possessive AND possessive-dropped forms (best
+// pair wins), meeting whichever convention the listing's name uses.
 // Deterministic tie-break: lower pc id.
 func Best(name, hint, platformName string, cands []Candidate) Result {
-	target := Normalize(name)
+	raw := name
 	hinted := Normalize(keepBracketContent(hint)) != ""
 	if hinted {
-		target = Normalize(keepBracketContent(name + " " + hint))
+		raw = keepBracketContent(name + " " + hint)
 	}
+	targets := forms(raw)
 	best := Result{}
 	for _, c := range cands {
 		if !ConsoleMatches(platformName, c.ConsoleName) {
@@ -189,7 +258,7 @@ func Best(name, hint, platformName string, cands []Candidate) Result {
 		if hinted {
 			cn = keepBracketContent(cn)
 		}
-		score := dice(target, Normalize(cn))
+		score := maxDice(targets, forms(cn))
 		better := score > best.Confidence ||
 			(score == best.Confidence && best.OK && c.PCProductID < best.PCProductID)
 		if score > 0 && better {

@@ -198,3 +198,54 @@ func TestBest_HintReachesBracketedVariant(t *testing.T) {
 		t.Fatalf("empty bracket hint must behave as no hint: %+v", empty)
 	}
 }
+
+func TestBest_PossessiveMatchesDroppedForm(t *testing.T) {
+	// PriceCharting's NA listing drops the possessive entirely
+	// (evidence: /api/products, 2026-07-15 - "Michael Jackson
+	// Moonwalker" on Sega Genesis, id 9334).
+	got := Best("Michael Jackson's Moonwalker", "", "Sega Mega Drive/Genesis",
+		[]Candidate{{PCProductID: 9334, Name: "Michael Jackson Moonwalker", ConsoleName: "Sega Genesis"}})
+	if !got.OK || got.PCProductID != 9334 || got.Confidence != 1.0 {
+		t.Fatalf("possessive name must match the dropped-form listing: %+v", got)
+	}
+	// The reverse convention: bare name, possessive listing.
+	got = Best("Michael Jackson Moonwalker", "", "Sega Mega Drive/Genesis",
+		[]Candidate{{PCProductID: 46074, Name: "Michael Jackson's Moonwalker", ConsoleName: "Sega Genesis"}})
+	if !got.OK || got.Confidence != 1.0 {
+		t.Fatalf("bare name must match the possessive listing: %+v", got)
+	}
+	// The joined convention keeps working (pinned above in TestBest);
+	// a possessive must not fold further than its own s.
+	got = Best("Demon's Souls", "", "PlayStation",
+		[]Candidate{{PCProductID: 43, Name: "Demons Souls", ConsoleName: "PlayStation"}})
+	if !got.OK || got.Confidence != 1.0 {
+		t.Fatalf("joined-form listing must still match: %+v", got)
+	}
+}
+
+func TestProviderQuery_DropsPossessives(t *testing.T) {
+	cases := map[string]string{
+		"Michael Jackson's Moonwalker": "Michael Jackson Moonwalker",
+		"Michael Jackson’s Moonwalker": "Michael Jackson Moonwalker",
+		"Demon's Souls":                "Demon Souls",
+		"Super Mario 64":               "Super Mario 64",
+		"Let's Go Pikachu":             "Let Go Pikachu",
+	}
+	for in, want := range cases {
+		if got := ProviderQuery(in); got != want {
+			t.Errorf("ProviderQuery(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSameName_FoldsPossessives(t *testing.T) {
+	if !SameName("Michael Jackson's Moonwalker", "michael jackson moonwalker") {
+		t.Fatal("possessive and bare form must count as the same name")
+	}
+	if !SameName("Demon's Souls", "Demons Souls") {
+		t.Fatal("possessive and joined form must count as the same name")
+	}
+	if SameName("Mega Man X", "Mega Man") {
+		t.Fatal("distinct names must not fold")
+	}
+}
