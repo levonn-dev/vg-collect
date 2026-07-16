@@ -38,6 +38,11 @@ func NewRouter(h *Handlers, v *jwtauth.Validator, logger *slog.Logger, ready fun
 			problem(w, r, http.StatusBadRequest, "invalid_param", err.Error())
 		},
 	})
+	// The one-shot release-date resnapshot: operator-invoked, so it
+	// rides the normal JWT guard rather than a CronJob secret; not in
+	// the contract (enrichment's /internal/refresh precedent).
+	mux.Handle("POST /internal/resnapshot", jwtauth.Middleware(v, problemEW)(http.HandlerFunc(h.InternalResnapshot)))
+
 	mux.Handle("/", jwtauth.Middleware(v, problemEW)(apiRoutes))
 
 	handler := httpkit.RequestLogger(logger)(mux)

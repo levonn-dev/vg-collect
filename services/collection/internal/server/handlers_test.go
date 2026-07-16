@@ -54,6 +54,9 @@ type stubStore struct {
 	dashboardCounts func(ctx context.Context, userID uuid.UUID, f store.Filters) (store.DashboardCounts, error)
 	pricingRows     func(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.PricingRow, error)
 	purgeUserData   func(ctx context.Context, userID uuid.UUID) error
+
+	listGameBackedRefs  func(ctx context.Context) ([]store.GameEntryRef, error)
+	setFirstReleaseDate func(ctx context.Context, entryID uuid.UUID, d *time.Time) error
 }
 
 var _ server.Store = (*stubStore)(nil)
@@ -165,6 +168,18 @@ func (s *stubStore) PurgeUserData(ctx context.Context, userID uuid.UUID) error {
 		panic("unexpected PurgeUserData")
 	}
 	return s.purgeUserData(ctx, userID)
+}
+func (s *stubStore) ListGameBackedRefs(ctx context.Context) ([]store.GameEntryRef, error) {
+	if s.listGameBackedRefs == nil {
+		panic("unexpected ListGameBackedRefs")
+	}
+	return s.listGameBackedRefs(ctx)
+}
+func (s *stubStore) SetFirstReleaseDate(ctx context.Context, entryID uuid.UUID, d *time.Time) error {
+	if s.setFirstReleaseDate == nil {
+		panic("unexpected SetFirstReleaseDate")
+	}
+	return s.setFirstReleaseDate(ctx, entryID, d)
 }
 
 // stubEnrichment implements server.Enrichment via function fields.
@@ -752,6 +767,73 @@ func TestUnitCreateEntry_HardwareProxyGrantsNoGameIdentity(t *testing.T) {
 	if stored.IGDBGameID != nil {
 		t.Fatalf("hardware proxy target must grant no game identity: %v", *stored.IGDBGameID)
 	}
+}
+
+// TestUnitCreateEntry_SnapshotsRegionScopedReleaseDate pins the create
+// snapshot to the region-scoped pick over the platform scalar: a
+// chain hit for the entry's region wins, and a region with no chain
+// (region_free) falls back to the scalar exactly like a product with
+// no per-region dates at all.
+func TestUnitCreateEntry_SnapshotsRegionScopedReleaseDate(t *testing.T) {
+	productID := uuid.New()
+	dated := func(id uuid.UUID) enrichapi.Product {
+		p := gameProduct(id)
+		// The scalar is deliberately distinct from every row date below,
+		// so a test asserting the scalar (region_free) cannot pass by
+		// accident on a row's date instead.
+		scalar := openapi_types.Date{Time: time.Date(1994, time.December, 25, 0, 0, 0, 0, time.UTC)}
+		p.Igdb.FirstReleaseDate = &scalar
+		p.Igdb.ReleaseDates = &[]enrichapi.ReleaseDate{
+			{Region: "japan", Date: openapi_types.Date{Time: time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC)}},
+			{Region: "north_america", Date: openapi_types.Date{Time: time.Date(1995, time.August, 22, 0, 0, 0, 0, time.UTC)}},
+		}
+		return p
+	}
+	newStore := func(stored *store.Entry) *stubStore {
+		return &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			*stored = e
+			e.ID = uuid.New()
+			r := "n"
+			e.BacklogRank = &r
+			e.Tags = []store.TagRef{}
+			return e, nil
+		}}
+	}
+
+	t.Run("chain hit for the entry's region wins over the scalar", func(t *testing.T) {
+		var stored store.Entry
+		enrich := &stubEnrichment{
+			getProduct:  func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) { return dated(id), nil },
+			batchPrices: pricedAs(1500, 4200, 9900),
+		}
+		srv, a := newUnitServer(t, newStore(&stored), enrich, newStubCache())
+		resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()), createBody(productID, nil)) // region ntsc_u
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("status %d", resp.StatusCode)
+		}
+		want := time.Date(1995, time.August, 22, 0, 0, 0, 0, time.UTC)
+		if stored.FirstReleaseDate == nil || !stored.FirstReleaseDate.Equal(want) {
+			t.Fatalf("region-scoped pick: %v", stored.FirstReleaseDate)
+		}
+	})
+
+	t.Run("region_free has no chain, falls back to the scalar", func(t *testing.T) {
+		var stored store.Entry
+		enrich := &stubEnrichment{
+			getProduct:  func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) { return dated(id), nil },
+			batchPrices: pricedAs(1500, 4200, 9900),
+		}
+		srv, a := newUnitServer(t, newStore(&stored), enrich, newStubCache())
+		resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()),
+			createBody(productID, func(m map[string]any) { m["region"] = "region_free" }))
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("status %d", resp.StatusCode)
+		}
+		want := time.Date(1994, time.December, 25, 0, 0, 0, 0, time.UTC) // the scalar; region_free chains nowhere
+		if stored.FirstReleaseDate == nil || !stored.FirstReleaseDate.Equal(want) {
+			t.Fatalf("scalar fallback: %v", stored.FirstReleaseDate)
+		}
+	})
 }
 
 // ---- integration stack (real Postgres + real Valkey + fake enrichment) ----
@@ -1477,6 +1559,45 @@ func TestUnitUpdateEntry(t *testing.T) {
 				t.Fatal("snapshotted display fields must stay")
 			}
 		})
+		t.Run("repoint re-picks the date from the new product's release dates", func(t *testing.T) {
+			// A repoint always re-fetches the new product (needed for
+			// the family check); the date pick reuses that same fetch
+			// rather than triggering a second GetProduct call.
+			releaseDates := []enrichapi.ReleaseDate{
+				{Region: "japan", Date: openapi_types.Date{Time: time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC)}},
+				{Region: "north_america", Date: openapi_types.Date{Time: time.Date(1995, time.August, 22, 0, 0, 0, 0, time.UTC)}},
+			}
+			var productCalls int
+			enrich := &stubEnrichment{
+				getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+					productCalls++
+					if id == *e.ProductID {
+						return gameProd(*e.ProductID, 1011, 19, false), nil
+					}
+					if id == target {
+						p := gameProd(target, 1011, 19, true)
+						p.Igdb.ReleaseDates = &releaseDates
+						return p, nil
+					}
+					return enrichapi.Product{}, enrichmentclient.ErrUnknownProduct
+				},
+				batchPrices: pricedAs(1500, 4200, 9900),
+			}
+			var updated store.Entry
+			srv, a := newUnitServer(t, okStore(&updated), enrich, newStubCache())
+			resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+				repointBody(target.String(), nil)) // region stays ntsc_u
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status %d", resp.StatusCode)
+			}
+			want := time.Date(1995, time.August, 22, 0, 0, 0, 0, time.UTC) // north_america: the ntsc_u chain's first hit
+			if updated.FirstReleaseDate == nil || !updated.FirstReleaseDate.Equal(want) {
+				t.Fatalf("repoint must re-pick from the new product: %v", updated.FirstReleaseDate)
+			}
+			if productCalls != 2 {
+				t.Fatalf("GetProduct calls: got %d, want 2 (current product + new product)", productCalls)
+			}
+		})
 		t.Run("same id is a no-op, no catalog calls", func(t *testing.T) {
 			srv, a := newUnitServer(t, okStore(nil), &stubEnrichment{batchPrices: pricedAs(1, 2, 3)}, newStubCache())
 			resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
@@ -1533,6 +1654,156 @@ func TestUnitUpdateEntry(t *testing.T) {
 				}))
 			wantProblem(t, resp, http.StatusBadRequest, "invalid_product_change")
 		})
+	})
+}
+
+// TestUnitUpdateEntry_RegionScopedReleaseDate covers the snapshot
+// re-pick triggers introduced for region-scoped dates: a region edit
+// on a game-backed entry re-fetches its product and re-picks, an
+// unchanged region never fetches, a fetch failure on a region-only
+// edit is a hard 502 (products are never deleted, so any failure here
+// reads as an availability problem), and hardware (no igdb_game_id)
+// never fetches on a region edit even though it is product-backed.
+func TestUnitUpdateEntry_RegionScopedReleaseDate(t *testing.T) {
+	user := uuid.New()
+	naDate := time.Date(1995, time.August, 22, 0, 0, 0, 0, time.UTC)
+	euDate := time.Date(1995, time.November, 24, 0, 0, 0, 0, time.UTC)
+	dated := func(id uuid.UUID) enrichapi.Product {
+		p := gameProduct(id)
+		p.Igdb.ReleaseDates = &[]enrichapi.ReleaseDate{
+			{Region: "north_america", Date: openapi_types.Date{Time: naDate}},
+			{Region: "europe", Date: openapi_types.Date{Time: euDate}},
+		}
+		return p
+	}
+	// gameBacked carries an igdb game id and an already-picked date -
+	// the precondition for a region edit to be fetch-eligible at all.
+	gameBacked := func() store.Entry {
+		e := storedGameEntry(user)
+		e.IGDBGameID = ptr(int64(1000))
+		d := naDate
+		e.FirstReleaseDate = &d
+		return e
+	}
+
+	t.Run("region-only change fetches exactly once and re-picks", func(t *testing.T) {
+		e := gameBacked()
+		var calls int
+		var updated store.Entry
+		st := &stubStore{
+			getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return e, nil },
+			updateEntry: func(_ context.Context, in store.Entry, _ []uuid.UUID) (store.Entry, error) {
+				updated = in
+				in.Tags = []store.TagRef{}
+				return in, nil
+			},
+		}
+		enrich := &stubEnrichment{
+			getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+				calls++
+				return dated(id), nil
+			},
+			batchPrices: pricedAs(1500, 4200, 9900),
+		}
+		srv, a := newUnitServer(t, st, enrich, newStubCache())
+		resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+			updateBody(func(m map[string]any) { m["region"] = "pal" }))
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status %d: %s", resp.StatusCode, body)
+		}
+		if calls != 1 {
+			t.Fatalf("GetProduct calls: %d", calls)
+		}
+		if updated.FirstReleaseDate == nil || !updated.FirstReleaseDate.Equal(euDate) {
+			t.Fatalf("re-picked date: %v", updated.FirstReleaseDate)
+		}
+	})
+
+	t.Run("region unchanged makes no fetch, date carries through", func(t *testing.T) {
+		e := gameBacked()
+		var calls int
+		var updated store.Entry
+		st := &stubStore{
+			getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return e, nil },
+			updateEntry: func(_ context.Context, in store.Entry, _ []uuid.UUID) (store.Entry, error) {
+				updated = in
+				in.Tags = []store.TagRef{}
+				return in, nil
+			},
+		}
+		enrich := &stubEnrichment{
+			getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+				calls++
+				return dated(id), nil
+			},
+			batchPrices: pricedAs(1500, 4200, 9900),
+		}
+		srv, a := newUnitServer(t, st, enrich, newStubCache())
+		resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+			updateBody(nil)) // region defaults to ntsc_u, same as stored
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status %d", resp.StatusCode)
+		}
+		if calls != 0 {
+			t.Fatalf("GetProduct calls: %d", calls)
+		}
+		if updated.FirstReleaseDate == nil || !updated.FirstReleaseDate.Equal(naDate) {
+			t.Fatalf("date must carry through unchanged: %v", updated.FirstReleaseDate)
+		}
+	})
+
+	t.Run("region change with enrichment down is 502, entry unchanged", func(t *testing.T) {
+		e := gameBacked()
+		st := &stubStore{
+			getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return e, nil },
+			// updateEntry deliberately nil: a fetch failure on the
+			// region-only trigger must return before any store write.
+		}
+		enrich := &stubEnrichment{getProduct: func(context.Context, string, uuid.UUID) (enrichapi.Product, error) {
+			return enrichapi.Product{}, enrichmentclient.ErrUnavailable
+		}}
+		srv, a := newUnitServer(t, st, enrich, newStubCache())
+		resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+			updateBody(func(m map[string]any) { m["region"] = "pal" }))
+		wantProblem(t, resp, http.StatusBadGateway, "enrichment_unavailable")
+	})
+
+	t.Run("hardware region edit never fetches", func(t *testing.T) {
+		hw := storedGameEntry(user)
+		hw.ItemType = "console"
+		hw.DisplayName = "Super NES Console"
+		// IGDBGameID stays nil: hardware has no igdb identity, so a
+		// region edit must not depend on enrichment being up.
+		var calls int
+		var updated store.Entry
+		st := &stubStore{
+			getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return hw, nil },
+			updateEntry: func(_ context.Context, in store.Entry, _ []uuid.UUID) (store.Entry, error) {
+				updated = in
+				in.Tags = []store.TagRef{}
+				return in, nil
+			},
+		}
+		enrich := &stubEnrichment{
+			getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+				calls++
+				return dated(id), nil
+			},
+			batchPrices: pricedAs(1500, 4200, 9900),
+		}
+		srv, a := newUnitServer(t, st, enrich, newStubCache())
+		resp := do(t, http.MethodPut, srv.URL+"/entries/"+hw.ID.String(), a.token(t, user.String()),
+			updateBody(func(m map[string]any) { m["region"] = "pal" }))
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status %d", resp.StatusCode)
+		}
+		if calls != 0 {
+			t.Fatalf("GetProduct calls: %d", calls)
+		}
+		if updated.FirstReleaseDate != nil {
+			t.Fatalf("hardware date must stay untouched: %v", updated.FirstReleaseDate)
+		}
 	})
 }
 
@@ -3616,4 +3887,226 @@ func TestUnitCreateEntry_CustomOffCatalogWithCustomModeAndPCListingProxyBorrowsN
 			t.Fatalf("response igdb_game_id must be absent: %v", *got.IgdbGameId)
 		}
 	})
+}
+
+// ---- InternalResnapshot ----
+
+// gameProductWithDates builds a game product carrying the given scalar
+// first_release_date plus optional per-region IGDB dates, driving
+// pickReleaseDate's region-chain resolution in the tests below.
+func gameProductWithDates(id uuid.UUID, scalar time.Time, perRegion map[string]time.Time) enrichapi.Product {
+	p := gameProduct(id)
+	sc := openapi_types.Date{Time: scalar}
+	p.Igdb.FirstReleaseDate = &sc
+	if len(perRegion) > 0 {
+		rows := make([]enrichapi.ReleaseDate, 0, len(perRegion))
+		for region, when := range perRegion {
+			rows = append(rows, enrichapi.ReleaseDate{Region: region, Date: openapi_types.Date{Time: when}})
+		}
+		p.Igdb.ReleaseDates = &rows
+	}
+	return p
+}
+
+// TestUnitInternalResnapshot_HappyPath covers three entries across two
+// products: one product carries two entries (regions ntsc_u and pal),
+// the other carries one (region_free, no per-region rows so it falls
+// back to the scalar). Only the rows whose recomputed pick differs
+// from the stored date are written, and GetProduct is called exactly
+// once per DISTINCT product, not once per entry.
+func TestUnitInternalResnapshot_HappyPath(t *testing.T) {
+	productA, productB := uuid.New(), uuid.New()
+	entry1, entry2, entry3 := uuid.New(), uuid.New(), uuid.New()
+
+	naDate := time.Date(1998, time.November, 21, 0, 0, 0, 0, time.UTC)
+	euDate := time.Date(1998, time.December, 4, 0, 0, 0, 0, time.UTC)
+	scalarB := time.Date(2001, time.June, 15, 0, 0, 0, 0, time.UTC)
+
+	refs := []store.GameEntryRef{
+		// stale stored date -> the ntsc_u chain hit (north_america) differs, must update.
+		{EntryID: entry1, ProductID: productA, Region: "ntsc_u", FirstReleaseDate: ptr(time.Date(1990, time.January, 1, 0, 0, 0, 0, time.UTC))},
+		// stored date already matches the pal chain hit (europe) -> no write.
+		{EntryID: entry2, ProductID: productA, Region: "pal", FirstReleaseDate: ptr(euDate)},
+		// region_free has no chain, falls back to the scalar; unset -> must update.
+		{EntryID: entry3, ProductID: productB, Region: "region_free", FirstReleaseDate: nil},
+	}
+
+	var mu sync.Mutex
+	productCalls := map[uuid.UUID]int{}
+	updated := map[uuid.UUID]*time.Time{}
+
+	st := &stubStore{
+		listGameBackedRefs: func(context.Context) ([]store.GameEntryRef, error) { return refs, nil },
+		setFirstReleaseDate: func(_ context.Context, entryID uuid.UUID, d *time.Time) error {
+			mu.Lock()
+			defer mu.Unlock()
+			updated[entryID] = d
+			return nil
+		},
+	}
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			mu.Lock()
+			productCalls[id]++
+			mu.Unlock()
+			switch id {
+			case productA:
+				return gameProductWithDates(id, time.Date(1998, time.January, 1, 0, 0, 0, 0, time.UTC),
+					map[string]time.Time{"north_america": naDate, "europe": euDate}), nil
+			case productB:
+				return gameProductWithDates(id, scalarB, nil), nil
+			default:
+				t.Fatalf("unexpected product id %s", id)
+				return enrichapi.Product{}, nil
+			}
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+
+	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", a.token(t, uuid.NewString()), nil)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	var got struct {
+		ProductsSeen   int `json:"products_seen"`
+		ProductsFailed int `json:"products_failed"`
+		EntriesUpdated int `json:"entries_updated"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ProductsSeen != 2 || got.ProductsFailed != 0 || got.EntriesUpdated != 2 {
+		t.Fatalf("counts: %+v", got)
+	}
+	if len(productCalls) != 2 || productCalls[productA] != 1 || productCalls[productB] != 1 {
+		t.Fatalf("GetProduct must be called exactly once per distinct product: %v", productCalls)
+	}
+	if len(updated) != 2 {
+		t.Fatalf("only changed rows must be written: %v", updated)
+	}
+	if d := updated[entry1]; d == nil || !d.Equal(naDate) {
+		t.Fatalf("entry1 pick: %v", d)
+	}
+	if _, ok := updated[entry2]; ok {
+		t.Fatal("entry2's pick is unchanged and must not be rewritten")
+	}
+	if d := updated[entry3]; d == nil || !d.Equal(scalarB) {
+		t.Fatalf("entry3 pick: %v", d)
+	}
+}
+
+// TestUnitInternalResnapshot_FailedProductIsPartialProgress covers a
+// product fetch failure: the failed product counts against
+// products_failed and its entries are left untouched, while the other
+// product's entries still update (partial progress, not an
+// all-or-nothing walk).
+func TestUnitInternalResnapshot_FailedProductIsPartialProgress(t *testing.T) {
+	productC, productD := uuid.New(), uuid.New()
+	entry4, entry5 := uuid.New(), uuid.New()
+	dDate := time.Date(2002, time.May, 3, 0, 0, 0, 0, time.UTC)
+
+	refs := []store.GameEntryRef{
+		{EntryID: entry4, ProductID: productC, Region: "ntsc_u", FirstReleaseDate: nil},
+		{EntryID: entry5, ProductID: productD, Region: "region_free", FirstReleaseDate: nil},
+	}
+	var mu sync.Mutex
+	updated := map[uuid.UUID]bool{}
+	st := &stubStore{
+		listGameBackedRefs: func(context.Context) ([]store.GameEntryRef, error) { return refs, nil },
+		setFirstReleaseDate: func(_ context.Context, entryID uuid.UUID, _ *time.Time) error {
+			mu.Lock()
+			updated[entryID] = true
+			mu.Unlock()
+			return nil
+		},
+	}
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			if id == productC {
+				return enrichapi.Product{}, enrichmentclient.ErrUnavailable
+			}
+			return gameProductWithDates(id, dDate, nil), nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", a.token(t, uuid.NewString()), nil)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	var got struct {
+		ProductsSeen   int `json:"products_seen"`
+		ProductsFailed int `json:"products_failed"`
+		EntriesUpdated int `json:"entries_updated"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ProductsSeen != 2 || got.ProductsFailed != 1 || got.EntriesUpdated != 1 {
+		t.Fatalf("counts: %+v", got)
+	}
+	if updated[entry4] {
+		t.Fatal("the failed product's entry must not be written")
+	}
+	if !updated[entry5] {
+		t.Fatal("the other product's entry must still be updated (partial progress)")
+	}
+}
+
+// TestUnitInternalResnapshot_Idempotent runs the handler twice against
+// a stub whose stored state reflects the first run's write: the
+// second run must recompute the identical pick and write nothing.
+func TestUnitInternalResnapshot_Idempotent(t *testing.T) {
+	productE := uuid.New()
+	entry6 := uuid.New()
+	eDate := time.Date(2003, time.September, 9, 0, 0, 0, 0, time.UTC)
+
+	var mu sync.Mutex
+	var stored *time.Time // starts unset; the walk fills it on the first run
+	st := &stubStore{
+		listGameBackedRefs: func(context.Context) ([]store.GameEntryRef, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			return []store.GameEntryRef{{EntryID: entry6, ProductID: productE, Region: "ntsc_u", FirstReleaseDate: stored}}, nil
+		},
+		setFirstReleaseDate: func(_ context.Context, entryID uuid.UUID, d *time.Time) error {
+			mu.Lock()
+			defer mu.Unlock()
+			if entryID != entry6 {
+				t.Fatalf("unexpected entry %s", entryID)
+			}
+			stored = d
+			return nil
+		},
+	}
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			return gameProductWithDates(id, eDate, nil), nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	tok := a.token(t, uuid.NewString())
+
+	first := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", tok, nil)
+	var got1 struct {
+		EntriesUpdated int `json:"entries_updated"`
+	}
+	if err := json.NewDecoder(first.Body).Decode(&got1); err != nil {
+		t.Fatal(err)
+	}
+	if got1.EntriesUpdated != 1 {
+		t.Fatalf("first run must write the unset row: %+v", got1)
+	}
+
+	second := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", tok, nil)
+	var got2 struct {
+		EntriesUpdated int `json:"entries_updated"`
+	}
+	if err := json.NewDecoder(second.Body).Decode(&got2); err != nil {
+		t.Fatal(err)
+	}
+	if got2.EntriesUpdated != 0 {
+		t.Fatalf("second run must be a no-op once the stored date reflects the pick: %+v", got2)
+	}
 }

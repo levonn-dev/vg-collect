@@ -45,6 +45,8 @@ type Store interface {
 	DashboardCounts(ctx context.Context, userID uuid.UUID, f store.Filters) (store.DashboardCounts, error)
 	PricingRows(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.PricingRow, error)
 	PurgeUserData(ctx context.Context, userID uuid.UUID) error
+	ListGameBackedRefs(ctx context.Context) ([]store.GameEntryRef, error)
+	SetFirstReleaseDate(ctx context.Context, entryID uuid.UUID, d *time.Time) error
 }
 
 // Enrichment is the catalog surface (typed reads with the caller's

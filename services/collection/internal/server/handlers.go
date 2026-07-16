@@ -84,6 +84,53 @@ func dateToTime(d *openapi_types.Date) *time.Time {
 	return &t
 }
 
+// regionChains orders IGDB regions per entry region: the TV-standard
+// territory first, its siblings, then worldwide. Language-market
+// regions (china, korea, brazil) are deliberately in no chain - their
+// dates reflect localization, not the territory standard.
+var regionChains = map[string][]string{
+	"ntsc_u": {"north_america", "worldwide"},
+	"ntsc_j": {"japan", "asia", "worldwide"},
+	"pal":    {"europe", "australia", "new_zealand", "worldwide"},
+}
+
+// pickReleaseDate resolves an entry's snapshotted date: the first
+// chain hit for its region among the product's per-region dates, else
+// the platform-level scalar. nil (nothing known) stores NULL, exactly
+// today's no-date behavior.
+func pickReleaseDate(meta *enrichapi.IgdbMeta, region string) *time.Time {
+	if meta == nil {
+		return nil
+	}
+	if meta.ReleaseDates != nil {
+		byRegion := make(map[string]time.Time, len(*meta.ReleaseDates))
+		for _, rd := range *meta.ReleaseDates {
+			// Self-defense: keep the earliest date per region rather than
+			// whichever row happens to build last. Enrichment's own
+			// projection already guarantees one earliest-per-region row
+			// today (platformReleaseDates dedupes), but nothing here
+			// enforces that contract against a future producer emitting
+			// duplicate region rows.
+			if cur, ok := byRegion[rd.Region]; !ok || rd.Date.Before(cur) {
+				byRegion[rd.Region] = rd.Date.Time
+			}
+		}
+		for _, want := range regionChains[region] {
+			if d, ok := byRegion[want]; ok {
+				return &d
+			}
+		}
+	}
+	return dateToTime(meta.FirstReleaseDate)
+}
+
+func datesEqual(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(*b)
+}
+
 func uuidsFrom(ids *[]openapi_types.UUID) []uuid.UUID {
 	if ids == nil {
 		return nil
@@ -466,7 +513,7 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		}
 		if product.Igdb != nil {
 			e.IGDBGameID = &product.Igdb.GameId
-			e.FirstReleaseDate = dateToTime(product.Igdb.FirstReleaseDate)
+			e.FirstReleaseDate = pickReleaseDate(product.Igdb, in.Region)
 			e.CoverURL = product.Igdb.CoverUrl
 		}
 		// Hardware has no igdb block and some games ship no cover;
@@ -580,6 +627,12 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		}
 	}
 
+	// The snapshotted date is region-scoped: a repoint or a region
+	// change re-picks it from the product. Game-backed entries only -
+	// hardware has no igdb dates, and a console's region edit must not
+	// depend on enrichment being up.
+	var pickProd *enrichapi.Product
+
 	// Narrow re-match: product_id may move an auto-priced entry off an
 	// unmatched game product onto a product of the same family (same
 	// igdb game and platform). Anything else is invalid_product_change;
@@ -628,6 +681,22 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 			problem(w, r, http.StatusBadRequest, "invalid_product_change", "the new product must be the same game and platform")
 			return
 		}
+		pickProd = &newProd
+	}
+
+	// A region-only change (no repoint) still needs a fresh date pick:
+	// the same product's dates are keyed by region. Game-backed only -
+	// current.IGDBGameID is nil for hardware and for any product-backed
+	// entry with no igdb block.
+	if pickProd == nil && current.ProductID != nil && current.IGDBGameID != nil && in.Region != current.Region {
+		prod, err := h.enrichment.GetProduct(r.Context(), bearer, *current.ProductID)
+		if err != nil {
+			// Products are never deleted, so any failure here reads as
+			// an availability problem, same as the repoint arm.
+			problem(w, r, http.StatusBadGateway, "enrichment_unavailable", "the catalog cannot be reached")
+			return
+		}
+		pickProd = &prod
 	}
 
 	// A NEW proxy reference must exist in the catalog; proxying to the
@@ -657,6 +726,9 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 	applyInput(&e, in)
 	if repoint {
 		e.ProductID = body.ProductId
+	}
+	if pickProd != nil {
+		e.FirstReleaseDate = pickReleaseDate(pickProd.Igdb, e.Region)
 	}
 	if custom {
 		e.DisplayName = *body.DisplayName
@@ -1593,4 +1665,50 @@ func (h *Handlers) GetLibrarySummary(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, api.LibrarySummary{Library: games})
+}
+
+// InternalResnapshot recomputes every game-backed entry's snapshotted
+// first_release_date from its product's current per-region dates: the
+// operator's one-shot backfill after the release-dates deploy.
+// Hand-routed outside the contract but behind the normal JWT guard;
+// the caller's bearer rides the enrichment hops. Idempotent - rows are
+// written only when the recomputed pick differs.
+func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
+	_, bearer, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
+	refs, err := h.store.ListGameBackedRefs(r.Context())
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		return
+	}
+	byProduct := make(map[uuid.UUID][]store.GameEntryRef)
+	for _, ref := range refs {
+		byProduct[ref.ProductID] = append(byProduct[ref.ProductID], ref)
+	}
+	var seen, failed, updated int
+	for pid, group := range byProduct {
+		seen++
+		prod, err := h.enrichment.GetProduct(r.Context(), bearer, pid)
+		if err != nil {
+			failed++
+			h.logger.WarnContext(r.Context(), "resnapshot: product fetch failed", "product", pid, "err", err)
+			continue
+		}
+		for _, ref := range group {
+			pick := pickReleaseDate(prod.Igdb, ref.Region)
+			if datesEqual(pick, ref.FirstReleaseDate) {
+				continue
+			}
+			if err := h.store.SetFirstReleaseDate(r.Context(), ref.EntryID, pick); err != nil {
+				h.logger.WarnContext(r.Context(), "resnapshot: entry update failed", "entry", ref.EntryID, "err", err)
+				continue
+			}
+			updated++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]int{
+		"products_seen": seen, "products_failed": failed, "entries_updated": updated,
+	})
 }

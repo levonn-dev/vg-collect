@@ -190,3 +190,14 @@ func TestUnitBadParamIsProblemJSON(t *testing.T) {
 	resp := do(t, http.MethodGet, srv.URL+"/entries/not-a-uuid", a.token(t, uuid.NewString()), nil)
 	wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 }
+
+// TestUnitInternalResnapshotRequiresJWT pins that the one-shot
+// resnapshot route rides the SAME jwtauth guard as the API routes -
+// the inverse of enrichment's /internal/refresh, which is deliberately
+// JWT-exempt behind its own internal-token guard. A bearer-less
+// request here must 401 like every other route in this file.
+func TestUnitInternalResnapshotRequiresJWT(t *testing.T) {
+	srv, _ := newUnitServer(t, nil, nil, nil)
+	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", "", nil)
+	wantProblem(t, resp, http.StatusUnauthorized, "missing_token")
+}
