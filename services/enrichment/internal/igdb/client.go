@@ -21,7 +21,7 @@ const (
 	defaultTokenURL = "https://id.twitch.tv/oauth2/token" //nolint:gosec // G101: public OAuth token endpoint URL, not a credential
 	// Expanded references always include ids, so genres.name yields
 	// {id, name} pairs without asking for genres.id.
-	gameFields     = "name,cover.image_id,genres.name,themes.name,franchises.name,similar_games,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,first_release_date,platforms.name,total_rating"
+	gameFields     = "name,cover.image_id,genres.name,themes.name,franchises.name,similar_games,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,first_release_date,platforms.name,total_rating,total_rating_count"
 	platformFields = "name,abbreviation,generation,platform_logo.image_id"
 )
 

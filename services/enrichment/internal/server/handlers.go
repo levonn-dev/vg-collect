@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -104,11 +105,34 @@ func (h *Handlers) searchGames(ctx context.Context, q string) ([]api.SearchResul
 	if err != nil {
 		return nil, err
 	}
+	games = rankExactFirst(q, games)
 	out := make([]api.SearchResult, 0, len(games))
 	for _, g := range games {
 		out = append(out, gameResult(g))
 	}
 	return out, nil
+}
+
+// rankExactFirst floats exact-name matches (normalized, so brackets
+// and articles fold) to the top of the provider's relevance order -
+// IGDB ranks loosely on exactness - with the rating count ordering
+// the exacts so the widely known release leads. Everything else keeps
+// provider order.
+func rankExactFirst(q string, games []igdb.Game) []igdb.Game {
+	nq := match.Normalize(q)
+	exact := make([]igdb.Game, 0, len(games))
+	rest := make([]igdb.Game, 0, len(games))
+	for _, g := range games {
+		if match.Normalize(g.Name) == nq {
+			exact = append(exact, g)
+		} else {
+			rest = append(rest, g)
+		}
+	}
+	sort.SliceStable(exact, func(i, j int) bool {
+		return exact[i].TotalRatingCount > exact[j].TotalRatingCount
+	})
+	return append(exact, rest...)
 }
 
 func gameResult(g igdb.Game) api.SearchResult {

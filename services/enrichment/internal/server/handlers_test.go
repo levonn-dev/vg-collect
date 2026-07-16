@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -630,6 +631,41 @@ func TestUnitSearch_CacheFailureFailsOpen(t *testing.T) {
 	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=game&q=chrono", env.token(t, "u1", []string{"user"}), nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("cache outage must not fail search: %d", rec.Code)
+	}
+}
+
+// The provider's relevance order is loose about exactness: an exact
+// name must lead, the most-rated exact first, everything else in
+// provider order.
+func TestUnitSearch_ExactNameRanksFirst(t *testing.T) {
+	env := newAuthEnv(t)
+	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
+		return []igdb.Game{
+			{ID: 1, Name: "Super Mario 64 DS"},
+			{ID: 2, Name: "Super Mario Odyssey"},
+			{ID: 3, Name: "Super Mario 64 (Shindou Pak Taiou Version)", TotalRatingCount: 12},
+			{ID: 4, Name: "Super Mario 64", TotalRatingCount: 908},
+		}, nil
+	}}
+	h := newUnitHandlers(nil, games, nil, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=game&q=Super+Mario+64", env.token(t, "u1", []string{"user"}), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search: %d %s", rec.Code, rec.Body.String())
+	}
+	var res api.SearchResults
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	got := make([]int64, 0, len(res.Results))
+	for _, r := range res.Results {
+		got = append(got, *r.IgdbGameId)
+	}
+	// 4 and 3 both normalize to the query (brackets strip); the rating
+	// count puts the widely known release first. 1 and 2 keep provider
+	// order.
+	if want := []int64{4, 3, 1, 2}; !slices.Equal(got, want) {
+		t.Fatalf("rank order: got %v, want %v", got, want)
 	}
 }
 

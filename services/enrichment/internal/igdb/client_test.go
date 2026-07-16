@@ -45,17 +45,18 @@ func TestClient_QueryShapeAndTokenReuse(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		_, _ = w.Write([]byte(`[{"id":1011,"name":"Chrono Trigger","genres":[{"id":12,"name":"Role-playing (RPG)"}],"first_release_date":788918400}]`))
+		_, _ = w.Write([]byte(`[{"id":1011,"name":"Chrono Trigger","genres":[{"id":12,"name":"Role-playing (RPG)"}],"first_release_date":788918400,"total_rating_count":812}]`))
 	})
 
 	got, err := c.SearchGames(context.Background(), `zelda "special"`, 20)
-	if err != nil || len(got) != 1 || got[0].ID != 1011 {
+	if err != nil || len(got) != 1 || got[0].ID != 1011 || got[0].TotalRatingCount != 812 {
 		t.Fatalf("search: %+v, %v", got, err)
 	}
 	if _, err := c.GamesByIDs(context.Background(), []int64{1011, 1012}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(bodies[0], `search "zelda \"special\"";`) || !strings.Contains(bodies[0], "fields name,cover.image_id") {
+	if !strings.Contains(bodies[0], `search "zelda \"special\"";`) || !strings.Contains(bodies[0], "fields name,cover.image_id") ||
+		!strings.Contains(bodies[0], "total_rating_count") {
 		t.Fatalf("bad search body: %s", bodies[0])
 	}
 	if !strings.Contains(bodies[1], "where id = (1011,1012);") {

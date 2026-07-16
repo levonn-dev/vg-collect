@@ -39,6 +39,7 @@ type Game struct {
 	FirstReleaseDate  int64             `json:"first_release_date,omitempty" bson:"first_release_date,omitempty"`
 	Platforms         []Named           `json:"platforms,omitempty" bson:"platforms,omitempty"`
 	TotalRating       float64           `json:"total_rating,omitempty" bson:"total_rating,omitempty"`
+	TotalRatingCount  int               `json:"total_rating_count,omitempty" bson:"total_rating_count,omitempty"`
 }
 
 // Platform is the /v4/platforms projection, persisted as-is into the
