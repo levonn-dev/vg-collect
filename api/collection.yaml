@@ -8,8 +8,9 @@ info:
     fractional-index backlog ordering, and a dashboard composing SQL
     aggregates with batched enrichment prices. Every operation requires
     a Bearer access JWT validated against the auth service's JWKS and
-    is scoped to the token's subject; there are no admin operations
-    here. Catalog facts (item type, display name, platform, release
+    is scoped to the token's subject - except the one admin read, the
+    product-references count backing the catalog's guarded product
+    delete (role admin). Catalog facts (item type, display name, platform, release
     date) are snapshotted onto an entry at creation from the enrichment
     product; current prices are composed at read time and never stored.
 security:
@@ -575,6 +576,32 @@ paths:
         "204":
           description: Purged (also when there was nothing to purge)
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /admin/products/{productId}/references:
+    get:
+      operationId: countProductReferences
+      summary: Count entries referencing a product, across all users (role admin)
+      description: >
+        The admin delete's safety read: a shared catalog product is
+        deletable only when no entry would dangle, and only this
+        service can see entries. Counts every user's entries for the
+        product; serves only the count.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The reference count
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entry_count]
+                properties:
+                  entry_count: { type: integer, format: int64 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -586,6 +613,11 @@ components:
           schema: { $ref: "#/components/schemas/Problem" }
     Unauthorized:
       description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: Insufficient role
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }

@@ -399,6 +399,19 @@ type GameEntryRef struct {
 	FirstReleaseDate *time.Time
 }
 
+// CountEntriesByProduct counts entries referencing the product across
+// ALL users - the admin delete's safety read (a shared catalog product
+// is deletable only when nobody's entry would dangle). Deliberately
+// unscoped like ListGameBackedRefs; the count is the only fact served.
+func (s *Store) CountEntriesByProduct(ctx context.Context, productID uuid.UUID) (int64, error) {
+	var n int64
+	if err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM entries WHERE product_id = $1`, productID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("store: count entries by product: %w", err)
+	}
+	return n, nil
+}
+
 // ListGameBackedRefs lists every user's game-backed entries (product
 // and igdb game both present) for the one-shot release-date
 // resnapshot; deliberately unscoped - the pick derives from product +

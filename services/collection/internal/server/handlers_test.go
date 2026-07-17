@@ -55,8 +55,9 @@ type stubStore struct {
 	pricingRows     func(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.PricingRow, error)
 	purgeUserData   func(ctx context.Context, userID uuid.UUID) error
 
-	listGameBackedRefs  func(ctx context.Context) ([]store.GameEntryRef, error)
-	setFirstReleaseDate func(ctx context.Context, entryID uuid.UUID, d *time.Time) error
+	listGameBackedRefs    func(ctx context.Context) ([]store.GameEntryRef, error)
+	setFirstReleaseDate   func(ctx context.Context, entryID uuid.UUID, d *time.Time) error
+	countEntriesByProduct func(ctx context.Context, productID uuid.UUID) (int64, error)
 }
 
 var _ server.Store = (*stubStore)(nil)
@@ -174,6 +175,12 @@ func (s *stubStore) ListGameBackedRefs(ctx context.Context) ([]store.GameEntryRe
 		panic("unexpected ListGameBackedRefs")
 	}
 	return s.listGameBackedRefs(ctx)
+}
+func (s *stubStore) CountEntriesByProduct(ctx context.Context, productID uuid.UUID) (int64, error) {
+	if s.countEntriesByProduct == nil {
+		panic("unexpected CountEntriesByProduct")
+	}
+	return s.countEntriesByProduct(ctx, productID)
 }
 func (s *stubStore) SetFirstReleaseDate(ctx context.Context, entryID uuid.UUID, d *time.Time) error {
 	if s.setFirstReleaseDate == nil {
@@ -4108,5 +4115,38 @@ func TestUnitInternalResnapshot_Idempotent(t *testing.T) {
 	}
 	if got2.EntriesUpdated != 0 {
 		t.Fatalf("second run must be a no-op once the stored date reflects the pick: %+v", got2)
+	}
+}
+
+func TestCountProductReferences_AdminGateAndCount(t *testing.T) {
+	var counted *uuid.UUID
+	st := &stubStore{countEntriesByProduct: func(_ context.Context, productID uuid.UUID) (int64, error) {
+		counted = &productID
+		return 3, nil
+	}}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	pid := uuid.New()
+	url := srv.URL + "/admin/products/" + pid.String() + "/references"
+
+	// Non-admin: 403 with the forbidden code, count never served.
+	resp := do(t, http.MethodGet, url, a.token(t, uuid.NewString()), nil)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden || !bytes.Contains(body, []byte("forbidden")) {
+		t.Fatalf("non-admin: %d %s", resp.StatusCode, body)
+	}
+	if counted != nil {
+		t.Fatal("the count must not run for a non-admin")
+	}
+
+	// Admin: the cross-user count for exactly the asked product.
+	resp = do(t, http.MethodGet, url, a.token(t, uuid.NewString(), "admin"), nil)
+	body, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !bytes.Contains(body, []byte(`"entry_count":3`)) {
+		t.Fatalf("admin count: %d %s", resp.StatusCode, body)
+	}
+	if counted == nil || *counted != pid {
+		t.Fatalf("counted product = %v, want %s", counted, pid)
 	}
 }

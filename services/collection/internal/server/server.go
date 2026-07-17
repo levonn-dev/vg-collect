@@ -1,7 +1,8 @@
 // Package server maps HTTP (generated ServerInterface) onto the
 // store, the enrichment client, and the dashboard cache, enforcing
 // per-user scoping from JWT claims. Every route is own-scoped by the
-// token subject; there are no admin operations in this service.
+// token subject except the one admin read: the product-references
+// count backing the catalog's guarded product delete.
 package server
 
 import (
@@ -47,6 +48,7 @@ type Store interface {
 	PurgeUserData(ctx context.Context, userID uuid.UUID) error
 	ListGameBackedRefs(ctx context.Context) ([]store.GameEntryRef, error)
 	SetFirstReleaseDate(ctx context.Context, entryID uuid.UUID, d *time.Time) error
+	CountEntriesByProduct(ctx context.Context, productID uuid.UUID) (int64, error)
 }
 
 // Enrichment is the catalog surface (typed reads with the caller's

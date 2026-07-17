@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
 	"github.com/levonn-dev/vg-collect/services/collection/internal/enrichmentclient"
 	"github.com/levonn-dev/vg-collect/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vg-collect/services/collection/internal/gen/enrichapi"
@@ -1628,6 +1629,25 @@ func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeRawJSON(w, body)
+}
+
+// CountProductReferences is the admin delete's safety read: only this
+// service can see entries, so the bff asks here - across all users -
+// before asking enrichment to delete a product.
+func (h *Handlers) CountProductReferences(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
+	claims, _ := jwtauth.FromContext(r.Context())
+	if !claims.HasRole("admin") {
+		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+		return
+	}
+	n, err := h.store.CountEntriesByProduct(r.Context(), uuid.UUID(productId))
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "count failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		EntryCount int64 `json:"entry_count"`
+	}{n})
 }
 
 // PurgeUserData is the collection leg of account deletion.

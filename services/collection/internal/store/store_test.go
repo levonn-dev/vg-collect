@@ -1139,3 +1139,36 @@ func TestEntryCustomValueSetAtLifecycle(t *testing.T) {
 		t.Fatal("clearing the value must clear the pair")
 	}
 }
+
+func TestCountEntriesByProduct(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	productID := uuid.New()
+
+	// Two entries on the counted product across DIFFERENT users - the
+	// count is catalog-wide, not caller-scoped - plus unrelated noise
+	// (another product, a custom entry) that must not count.
+	for _, user := range []uuid.UUID{uuid.New(), uuid.New()} {
+		e := baseEntry(user)
+		e.ProductID = ptr(productID)
+		mustCreate(t, s, e, nil)
+	}
+	mustCreate(t, s, baseEntry(uuid.New()), nil)
+	mustCreate(t, s, customEntry(uuid.New()), nil)
+
+	n, err := s.CountEntriesByProduct(ctx, productID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("count = %d, want 2", n)
+	}
+
+	none, err := s.CountEntriesByProduct(ctx, uuid.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if none != 0 {
+		t.Fatalf("unreferenced product count = %d, want 0", none)
+	}
+}

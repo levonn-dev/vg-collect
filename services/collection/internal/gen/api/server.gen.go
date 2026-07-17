@@ -723,6 +723,9 @@ type ViewCreate struct {
 // BadRequest defines model for BadRequest.
 type BadRequest = Problem
 
+// Forbidden defines model for Forbidden.
+type Forbidden = Problem
+
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Problem
 
@@ -826,6 +829,9 @@ type UpdateViewJSONRequestBody = ViewCreate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Count entries referencing a product, across all users (role admin)
+	// (GET /admin/products/{productId}/references)
+	CountProductReferences(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
 	// Collection dashboard (SQL aggregates + one batched enrichment price call)
 	// (GET /dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request, params GetDashboardParams)
@@ -890,6 +896,37 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// CountProductReferences operation middleware
+func (siw *ServerInterfaceWrapper) CountProductReferences(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "productId" -------------
+	var productId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "productId", r.PathValue("productId"), &productId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "productId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CountProductReferences(w, r, productId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetDashboard operation middleware
 func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.Request) {
@@ -1621,6 +1658,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc("GET "+options.BaseURL+"/admin/products/{productId}/references", wrapper.CountProductReferences)
 	m.HandleFunc("GET "+options.BaseURL+"/dashboard", wrapper.GetDashboard)
 	m.HandleFunc("GET "+options.BaseURL+"/dashboard/value-history", wrapper.GetValueHistory)
 	m.HandleFunc("GET "+options.BaseURL+"/entries", wrapper.ListEntries)
