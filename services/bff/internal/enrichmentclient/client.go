@@ -112,6 +112,54 @@ func (c *Client) FX(ctx context.Context, bearer string) (Result, error) {
 		http.StatusOK, http.StatusBadGateway)
 }
 
+// UnmatchedProducts relays GET /admin/products/unmatched. Enrichment
+// enforces the admin role, so its 403 is a relayable user answer
+// here, not an infrastructure fault.
+func (c *Client) UnmatchedProducts(ctx context.Context, bearer string, params *enrichapi.ListUnmatchedProductsParams) (Result, error) {
+	resp, err := c.api.ListUnmatchedProductsWithResponse(ctx, params, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("enrichmentclient: unmatched products: %w", err)
+	}
+	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
+		http.StatusOK, http.StatusForbidden)
+}
+
+// SetProductMapping relays PUT /admin/products/{id}/pricecharting
+// with the browser's body untouched; every contract answer (identity
+// conflicts included) passes through.
+func (c *Client) SetProductMapping(ctx context.Context, bearer string, id uuid.UUID, body []byte) (Result, error) {
+	resp, err := c.api.SetProductMappingWithBodyWithResponse(ctx, id, "application/json", bytes.NewReader(body), bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("enrichmentclient: set product mapping: %w", err)
+	}
+	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
+		http.StatusOK, http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound,
+		http.StatusConflict, http.StatusBadGateway)
+}
+
+// DeleteProduct relays DELETE /admin/products/{id} - the guarded
+// residue mop (204; 409 product_matched for matched products). The
+// bff ran the entry-reference check before calling.
+func (c *Client) DeleteProduct(ctx context.Context, bearer string, id uuid.UUID) (Result, error) {
+	resp, err := c.api.DeleteProductWithResponse(ctx, id, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("enrichmentclient: delete product: %w", err)
+	}
+	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
+		http.StatusNoContent, http.StatusForbidden, http.StatusNotFound, http.StatusConflict)
+}
+
+// TriggerRefresh relays POST /admin/refresh (202 started, 403, 409
+// refresh_in_progress).
+func (c *Client) TriggerRefresh(ctx context.Context, bearer string) (Result, error) {
+	resp, err := c.api.TriggerRefreshWithResponse(ctx, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("enrichmentclient: trigger refresh: %w", err)
+	}
+	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
+		http.StatusAccepted, http.StatusForbidden, http.StatusConflict)
+}
+
 // Score calls the recommendation scorer with the user's own token,
 // returning the raw 200 body plus its decoded degraded flag (the
 // caller caches only non-degraded results). Any other answer is an

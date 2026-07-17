@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -422,6 +423,99 @@ func (h *Handlers) GetProduct(w http.ResponseWriter, r *http.Request, productId 
 		return
 	}
 	res, err := h.enrichment.Product(r.Context(), sess.AccessToken, productId)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// ListUnmatchedProducts relays the admin worklist. The bff holds no
+// role logic for admin routes: enrichment enforces, problems relay.
+func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request, params api.ListUnmatchedProductsParams) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	up := &enrichapi.ListUnmatchedProductsParams{Limit: params.Limit, Offset: params.Offset}
+	res, err := h.enrichment.UnmatchedProducts(r.Context(), sess.AccessToken, up)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// SetProductMapping relays the moderated mapping correction.
+func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.enrichment.SetProductMapping(r.Context(), sess.AccessToken, productId, body)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// DeleteProduct is the one orchestrated admin call: only collection
+// can see entries, so the bff runs the reference check there before
+// relaying enrichment's guarded delete. Collection's 403 relays
+// first, which keeps the role gate ahead of any cross-user fact.
+func (h *Handlers) DeleteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	refs, err := h.collection.CountProductReferences(r.Context(), sess.AccessToken, productId)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection service unavailable")
+		return
+	}
+	if refs.Status != http.StatusOK {
+		writeRelay(w, refs.Status, refs.ContentType, refs.Body)
+		return
+	}
+	var count struct {
+		EntryCount int64 `json:"entry_count"`
+	}
+	if err := json.Unmarshal(refs.Body, &count); err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection answered malformed")
+		return
+	}
+	if count.EntryCount > 0 {
+		detail := fmt.Sprintf("%d entries reference this product - repoint or delete those entries first", count.EntryCount)
+		if count.EntryCount == 1 {
+			detail = "1 entry references this product - repoint or delete it first"
+		}
+		writeProblem(w, r, http.StatusConflict, "product_referenced", detail)
+		return
+	}
+	res, err := h.enrichment.DeleteProduct(r.Context(), sess.AccessToken, productId)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// TriggerRefresh relays the admin's immediate-walk trigger.
+func (h *Handlers) TriggerRefresh(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.enrichment.TriggerRefresh(r.Context(), sess.AccessToken)
 	if err != nil {
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
 		return

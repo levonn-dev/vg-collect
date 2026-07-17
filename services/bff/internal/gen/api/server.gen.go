@@ -244,6 +244,11 @@ const (
 	ProductTypePcListing ProductType = "pc_listing"
 )
 
+// Defines values for RefreshAcceptedStatus.
+const (
+	Started RefreshAcceptedStatus = "started"
+)
+
 // Defines values for ResolveRequestType.
 const (
 	ResolveRequestTypeAccessory ResolveRequestType = "accessory"
@@ -714,6 +719,12 @@ type IgdbMeta struct {
 	Themes       []string       `json:"themes"`
 }
 
+// MappingRequest defines model for MappingRequest.
+type MappingRequest struct {
+	// PcProductId Null clears the mapping (the product becomes unmatched and held).
+	PcProductId *int64 `json:"pc_product_id"`
+}
+
 // Me Browser-facing projection of the user service's User. Timestamps are intentionally omitted; add fields only when the SPA has a concrete use for them.
 type Me struct {
 	AvatarUrl   *string            `json:"avatar_url,omitempty"`
@@ -771,9 +782,12 @@ type Product struct {
 	Id        openapi_types.UUID `json:"id"`
 
 	// Igdb Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
-	Igdb     *IgdbMeta    `json:"igdb,omitempty"`
-	Name     string       `json:"name"`
-	Platform *PlatformRef `json:"platform,omitempty"`
+	Igdb *IgdbMeta `json:"igdb,omitempty"`
+
+	// MatchHold Present true when an admin clear holds this product out of the nightly re-match walk.
+	MatchHold *bool        `json:"match_hold,omitempty"`
+	Name      string       `json:"name"`
+	Platform  *PlatformRef `json:"platform,omitempty"`
 
 	// Pricecharting The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
 	Pricecharting *PricechartingMeta `json:"pricecharting,omitempty"`
@@ -801,6 +815,14 @@ type Recommendation struct {
 	Name             string              `json:"name"`
 	Score            float64             `json:"score"`
 }
+
+// RefreshAccepted defines model for RefreshAccepted.
+type RefreshAccepted struct {
+	Status RefreshAcceptedStatus `json:"status"`
+}
+
+// RefreshAcceptedStatus defines model for RefreshAccepted.Status.
+type RefreshAcceptedStatus string
 
 // ReleaseDate defines model for ReleaseDate.
 type ReleaseDate struct {
@@ -889,6 +911,14 @@ type TagRef struct {
 	Name string             `json:"name"`
 }
 
+// UnmatchedProductsPage defines model for UnmatchedProductsPage.
+type UnmatchedProductsPage struct {
+	Products []Product `json:"products"`
+
+	// TotalCount Full count of unmatched products, beyond this page.
+	TotalCount int64 `json:"total_count"`
+}
+
 // UpdateMeRequest Absent fields keep their value; an empty avatar_url clears it.
 type UpdateMeRequest struct {
 	AvatarUrl         *string `json:"avatar_url,omitempty"`
@@ -925,6 +955,12 @@ type Unauthenticated = Problem
 
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
+
+// ListUnmatchedProductsParams defines parameters for ListUnmatchedProducts.
+type ListUnmatchedProductsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
 
 // CallbackParams defines parameters for Callback.
 type CallbackParams struct {
@@ -1036,6 +1072,9 @@ type SearchCatalogParams struct {
 // SearchCatalogParamsType defines parameters for SearchCatalog.
 type SearchCatalogParamsType string
 
+// SetProductMappingJSONRequestBody defines body for SetProductMapping for application/json ContentType.
+type SetProductMappingJSONRequestBody = MappingRequest
+
 // CreateEntryJSONRequestBody defines body for CreateEntry for application/json ContentType.
 type CreateEntryJSONRequestBody = EntryCreate
 
@@ -1068,6 +1107,18 @@ type UpdateViewJSONRequestBody = ViewCreate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Admin worklist of unmatched products (relay; enrichment enforces role admin)
+	// (GET /api/admin/products/unmatched)
+	ListUnmatchedProducts(w http.ResponseWriter, r *http.Request, params ListUnmatchedProductsParams)
+	// Delete an unreferenced, unmatched product (orchestrated; enrichment enforces role admin)
+	// (DELETE /api/admin/products/{productId})
+	DeleteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
+	// Correct or clear a product's PriceCharting mapping (relay; enrichment enforces role admin)
+	// (PUT /api/admin/products/{productId}/pricecharting)
+	SetProductMapping(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
+	// Trigger an immediate price refresh walk (relay; enrichment enforces role admin)
+	// (POST /api/admin/refresh)
+	TriggerRefresh(w http.ResponseWriter, r *http.Request)
 	// The provider redirect URI; completes login and seals the session cookie
 	// (GET /api/auth/callback)
 	Callback(w http.ResponseWriter, r *http.Request, params CallbackParams)
@@ -1174,6 +1225,105 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListUnmatchedProducts operation middleware
+func (siw *ServerInterfaceWrapper) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListUnmatchedProductsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListUnmatchedProducts(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProduct operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProduct(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "productId" -------------
+	var productId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "productId", r.PathValue("productId"), &productId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "productId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProduct(w, r, productId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProductMapping operation middleware
+func (siw *ServerInterfaceWrapper) SetProductMapping(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "productId" -------------
+	var productId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "productId", r.PathValue("productId"), &productId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "productId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProductMapping(w, r, productId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TriggerRefresh operation middleware
+func (siw *ServerInterfaceWrapper) TriggerRefresh(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TriggerRefresh(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // Callback operation middleware
 func (siw *ServerInterfaceWrapper) Callback(w http.ResponseWriter, r *http.Request) {
@@ -2127,6 +2277,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc("GET "+options.BaseURL+"/api/admin/products/unmatched", wrapper.ListUnmatchedProducts)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/admin/products/{productId}", wrapper.DeleteProduct)
+	m.HandleFunc("PUT "+options.BaseURL+"/api/admin/products/{productId}/pricecharting", wrapper.SetProductMapping)
+	m.HandleFunc("POST "+options.BaseURL+"/api/admin/refresh", wrapper.TriggerRefresh)
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/callback", wrapper.Callback)
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/link", wrapper.LinkLogin)
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/login", wrapper.Login)

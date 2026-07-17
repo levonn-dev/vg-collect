@@ -77,6 +77,10 @@ type EnrichmentAPI interface {
 	Product(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error)
 	Score(ctx context.Context, bearer string, req enrichapi.ScoreRequest) ([]byte, bool, error)
 	FX(ctx context.Context, bearer string) (enrichmentclient.Result, error)
+	UnmatchedProducts(ctx context.Context, bearer string, params *enrichapi.ListUnmatchedProductsParams) (enrichmentclient.Result, error)
+	SetProductMapping(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error)
+	DeleteProduct(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error)
+	TriggerRefresh(ctx context.Context, bearer string) (enrichmentclient.Result, error)
 }
 
 // CollectionAPI is the collection service surface (implemented by
@@ -101,6 +105,7 @@ type CollectionAPI interface {
 	GetValueHistory(ctx context.Context, bearer string) (collectionclient.Result, error)
 	LibrarySummary(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error)
 	PurgeUserData(ctx context.Context, bearer string) (collectionclient.Result, error)
+	CountProductReferences(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
 }
 
 const (

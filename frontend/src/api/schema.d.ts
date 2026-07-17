@@ -422,6 +422,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/products/unmatched": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin worklist of unmatched products (relay; enrichment enforces role admin)
+         * @description Relays enrichment's admin worklist verbatim: every product with no PriceCharting mapping, held ones included and flagged with match_hold. The bff adds no role logic; a non-admin caller receives enrichment's 403 problem unchanged.
+         */
+        get: operations["listUnmatchedProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/products/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete an unreferenced, unmatched product (orchestrated; enrichment enforces role admin)
+         * @description The one orchestrated admin call: the bff first asks collection how many entries reference the product (collection enforces role admin on that read; its 403 relays verbatim). Any references answer 409 code product_referenced with the count in the detail - repoint or delete those entries first. Unreferenced products relay enrichment's guarded delete: 204 on success, 404 product_not_found, 409 product_matched for matched products (clear the mapping first). Small disclosed race: an entry created between the check and the delete is not re-checked; a later resolve re-mints the family slot regardless, so delete is cleanup, not prevention.
+         */
+        delete: operations["deleteProduct"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/products/{productId}/pricecharting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Correct or clear a product's PriceCharting mapping (relay; enrichment enforces role admin)
+         * @description Relays enrichment's moderated correction verbatim. A null pc_product_id clears the mapping (the product becomes unmatched and held out of the nightly re-match walk); setting any mapping stores it verified and lifts the hold. 409 code identity_taken when another product of the same identity already carries the target listing, or a clear would collide with an existing unmatched product of that identity; the 409 detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it (sets match_hold, idempotently) - the admin lever for silencing permanent worklist residue.
+         */
+        put: operations["setProductMapping"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trigger an immediate price refresh walk (relay; enrichment enforces role admin) */
+        post: operations["triggerRefresh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -564,6 +641,8 @@ export interface components {
             variant?: string;
             igdb?: components["schemas"]["IgdbMeta"];
             pricecharting?: components["schemas"]["PricechartingMeta"];
+            /** @description Present true when an admin clear holds this product out of the nightly re-match walk. */
+            match_hold?: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -599,6 +678,25 @@ export interface components {
             /** @description True when candidate metadata fetches failed and some candidates were skipped. */
             degraded: boolean;
             recommendations: components["schemas"]["Recommendation"][];
+        };
+        UnmatchedProductsPage: {
+            products: components["schemas"]["Product"][];
+            /**
+             * Format: int64
+             * @description Full count of unmatched products, beyond this page.
+             */
+            total_count: number;
+        };
+        MappingRequest: {
+            /**
+             * Format: int64
+             * @description Null clears the mapping (the product becomes unmatched and held).
+             */
+            pc_product_id: number | null;
+        };
+        RefreshAccepted: {
+            /** @enum {string} */
+            status: "started";
         };
         Problem: {
             type: string;
@@ -2051,6 +2149,193 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    listUnmatchedProducts: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One worklist page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnmatchedProductsPage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    deleteProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product (code product_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Entries reference the product (code product_referenced) or it carries a mapping (code product_matched) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    setProductMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MappingRequest"];
+            };
+        };
+        responses: {
+            /** @description The product with its corrected mapping */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            /** @description Invalid body (code invalid_body or invalid_param) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product, or the provider does not know the mapping id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Another product already carries that identity (code identity_taken) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    triggerRefresh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Walk started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefreshAccepted"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A walk is already running (code refresh_in_progress) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             502: components["responses"]["UpstreamError"];
         };
     };

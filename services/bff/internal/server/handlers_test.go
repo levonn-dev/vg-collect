@@ -149,6 +149,11 @@ type stubEnrichment struct {
 	product func(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error)
 	score   func(ctx context.Context, bearer string, req enrichapi.ScoreRequest) ([]byte, bool, error)
 	fx      func(ctx context.Context, bearer string) (enrichmentclient.Result, error)
+
+	unmatchedProducts func(ctx context.Context, bearer string, params *enrichapi.ListUnmatchedProductsParams) (enrichmentclient.Result, error)
+	setProductMapping func(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error)
+	triggerRefresh    func(ctx context.Context, bearer string) (enrichmentclient.Result, error)
+	deleteProduct     func(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error)
 }
 
 var _ EnrichmentAPI = (*stubEnrichment)(nil)
@@ -186,6 +191,34 @@ func (s *stubEnrichment) FX(ctx context.Context, bearer string) (enrichmentclien
 		panic("unexpected FX")
 	}
 	return s.fx(ctx, bearer)
+}
+
+func (s *stubEnrichment) UnmatchedProducts(ctx context.Context, bearer string, params *enrichapi.ListUnmatchedProductsParams) (enrichmentclient.Result, error) {
+	if s.unmatchedProducts == nil {
+		panic("unexpected UnmatchedProducts")
+	}
+	return s.unmatchedProducts(ctx, bearer, params)
+}
+
+func (s *stubEnrichment) SetProductMapping(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error) {
+	if s.setProductMapping == nil {
+		panic("unexpected SetProductMapping")
+	}
+	return s.setProductMapping(ctx, bearer, id, body)
+}
+
+func (s *stubEnrichment) TriggerRefresh(ctx context.Context, bearer string) (enrichmentclient.Result, error) {
+	if s.triggerRefresh == nil {
+		panic("unexpected TriggerRefresh")
+	}
+	return s.triggerRefresh(ctx, bearer)
+}
+
+func (s *stubEnrichment) DeleteProduct(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error) {
+	if s.deleteProduct == nil {
+		panic("unexpected DeleteProduct")
+	}
+	return s.deleteProduct(ctx, bearer, id)
 }
 
 func testLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
@@ -1325,6 +1358,10 @@ func (s *stubCollection) PurgeUserData(_ context.Context, bearer string) (collec
 	return s.call("purge_user_data", bearer)
 }
 
+func (s *stubCollection) CountProductReferences(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
+	return s.call("count_product_references", bearer)
+}
+
 var _ CollectionAPI = (*stubCollection)(nil)
 
 // newTestHandlersWithCollection wires a session-ready Handlers around
@@ -1848,5 +1885,159 @@ func TestUnitProxyTraces_OversizeBodyAnswers400(t *testing.T) {
 	newRouterFor(t, h).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("oversize body: code = %d", rec.Code)
+	}
+}
+
+func TestUnitAdminWorklist_RelaysAndForwardsParams(t *testing.T) {
+	const page = `{"products":[],"total_count":0}`
+	var gotBearer string
+	var gotParams *enrichapi.ListUnmatchedProductsParams
+	enrich := &stubEnrichment{unmatchedProducts: func(_ context.Context, bearer string, params *enrichapi.ListUnmatchedProductsParams) (enrichmentclient.Result, error) {
+		gotBearer, gotParams = bearer, params
+		return enrichmentclient.Result{Status: 200, ContentType: "application/json", Body: []byte(page)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/admin/products/unmatched?limit=5&offset=10")
+	if rec.Code != 200 || rec.Body.String() != page {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer != env.sessionAccessToken {
+		t.Fatalf("bearer: %q", gotBearer)
+	}
+	if gotParams == nil || gotParams.Limit == nil || *gotParams.Limit != 5 || gotParams.Offset == nil || *gotParams.Offset != 10 {
+		t.Fatalf("params passthrough: %+v", gotParams)
+	}
+}
+
+func TestUnitAdminWorklist_Forbidden403RelaysVerbatim(t *testing.T) {
+	const problem = `{"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden","detail":"role admin required"}`
+	enrich := &stubEnrichment{unmatchedProducts: func(context.Context, string, *enrichapi.ListUnmatchedProductsParams) (enrichmentclient.Result, error) {
+		return enrichmentclient.Result{Status: 403, ContentType: "application/problem+json", Body: []byte(problem)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/admin/products/unmatched")
+	if rec.Code != 403 || rec.Body.String() != problem {
+		t.Fatalf("403 must relay verbatim: %d %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
+		t.Fatalf("content type: %q", ct)
+	}
+}
+
+func TestUnitAdminMapping_RelaysBodyAndConflict(t *testing.T) {
+	const problem = `{"type":"about:blank","title":"Conflict","status":409,"code":"identity_taken","detail":"another product with the same identity already carries that listing"}`
+	id := uuid.New()
+	var gotBody []byte
+	enrich := &stubEnrichment{setProductMapping: func(_ context.Context, _ string, gotID uuid.UUID, body []byte) (enrichmentclient.Result, error) {
+		if gotID != id {
+			t.Errorf("id = %v", gotID)
+		}
+		gotBody = body
+		return enrichmentclient.Result{Status: 409, ContentType: "application/problem+json", Body: []byte(problem)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	r := httptest.NewRequest(http.MethodPut, "/api/admin/products/"+id.String()+"/pricecharting", strings.NewReader(`{"pc_product_id":5005}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.AddCookie(env.cookie)
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, r)
+	if rec.Code != 409 || rec.Body.String() != problem {
+		t.Fatalf("409 must relay verbatim: %d %s", rec.Code, rec.Body.String())
+	}
+	if string(gotBody) != `{"pc_product_id":5005}` {
+		t.Fatalf("body passthrough: %s", gotBody)
+	}
+}
+
+func TestUnitAdminRefresh_Relays202(t *testing.T) {
+	const accepted = `{"status":"started"}`
+	enrich := &stubEnrichment{triggerRefresh: func(_ context.Context, bearer string) (enrichmentclient.Result, error) {
+		return enrichmentclient.Result{Status: 202, ContentType: "application/json", Body: []byte(accepted)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthed(t, h, env, http.MethodPost, "/api/admin/refresh")
+	if rec.Code != 202 || rec.Body.String() != accepted {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUnitAdminRoutes_NoSession401(t *testing.T) {
+	h, env := newTestHandlersWithEnrichment(t, &stubEnrichment{})
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/admin/products/unmatched"},
+		{http.MethodPut, "/api/admin/products/" + uuid.NewString() + "/pricecharting"},
+		{http.MethodPost, "/api/admin/refresh"},
+	} {
+		rec := doUnauthed(t, h, env, tc.method, tc.path)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s: %d", tc.method, tc.path, rec.Code)
+		}
+	}
+}
+
+func TestUnitAdminDelete_ReferencedAnswers409BeforeEnrichment(t *testing.T) {
+	col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+		return collectionclient.Result{Status: 200, ContentType: "application/json", Body: []byte(`{"entry_count":3}`)}, nil
+	}}
+	// deleteProduct stays nil: reaching enrichment would panic, which
+	// is the ordering assertion.
+	h, env := newTestHandlersWithEnrichment(t, &stubEnrichment{})
+	h.collection = col
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/api/admin/products/"+uuid.NewString(), nil)
+	r.AddCookie(env.cookie)
+	newRouterFor(t, h).ServeHTTP(rec, r)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("referenced delete: %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "product_referenced") || !strings.Contains(rec.Body.String(), "3 entries") {
+		t.Fatalf("problem must carry the code and count: %s", rec.Body.String())
+	}
+}
+
+func TestUnitAdminDelete_UnreferencedRelaysEnrichment(t *testing.T) {
+	col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+		return collectionclient.Result{Status: 200, ContentType: "application/json", Body: []byte(`{"entry_count":0}`)}, nil
+	}}
+	var gotBearer string
+	enrich := &stubEnrichment{deleteProduct: func(_ context.Context, bearer string, _ uuid.UUID) (enrichmentclient.Result, error) {
+		gotBearer = bearer
+		return enrichmentclient.Result{Status: http.StatusNoContent}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	h.collection = col
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/api/admin/products/"+uuid.NewString(), nil)
+	r.AddCookie(env.cookie)
+	newRouterFor(t, h).ServeHTTP(rec, r)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("unreferenced delete: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer != env.sessionAccessToken {
+		t.Fatalf("bearer reaching enrichment: %q", gotBearer)
+	}
+}
+
+func TestUnitAdminDelete_Collection403RelaysVerbatim(t *testing.T) {
+	const problem = `{"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden","detail":"role admin required"}`
+	col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+		return collectionclient.Result{Status: 403, ContentType: "application/problem+json", Body: []byte(problem)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, &stubEnrichment{})
+	h.collection = col
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/api/admin/products/"+uuid.NewString(), nil)
+	r.AddCookie(env.cookie)
+	newRouterFor(t, h).ServeHTTP(rec, r)
+	if rec.Code != 403 || rec.Body.String() != problem {
+		t.Fatalf("collection 403 must relay verbatim: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUnitAdminDelete_NoSession401(t *testing.T) {
+	h, env := newTestHandlersWithEnrichment(t, &stubEnrichment{})
+	rec := doUnauthed(t, h, env, http.MethodDelete, "/api/admin/products/"+uuid.NewString())
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", rec.Code)
 	}
 }

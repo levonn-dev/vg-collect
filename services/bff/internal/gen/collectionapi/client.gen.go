@@ -726,6 +726,9 @@ type ViewCreate struct {
 // BadRequest defines model for BadRequest.
 type BadRequest = Problem
 
+// Forbidden defines model for Forbidden.
+type Forbidden = Problem
+
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Problem
 
@@ -900,6 +903,9 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// CountProductReferences request
+	CountProductReferences(ctx context.Context, productId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetDashboard request
 	GetDashboard(ctx context.Context, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -967,6 +973,18 @@ type ClientInterface interface {
 	UpdateViewWithBody(ctx context.Context, viewId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	UpdateView(ctx context.Context, viewId openapi_types.UUID, body UpdateViewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+func (c *Client) CountProductReferences(ctx context.Context, productId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCountProductReferencesRequest(c.Server, productId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 func (c *Client) GetDashboard(ctx context.Context, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1267,6 +1285,40 @@ func (c *Client) UpdateView(ctx context.Context, viewId openapi_types.UUID, body
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewCountProductReferencesRequest generates requests for CountProductReferences
+func NewCountProductReferencesRequest(server string, productId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "productId", runtime.ParamLocationPath, productId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/products/%s/references", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewGetDashboardRequest generates requests for GetDashboard
@@ -2261,6 +2313,9 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// CountProductReferencesWithResponse request
+	CountProductReferencesWithResponse(ctx context.Context, productId openapi_types.UUID, reqEditors ...RequestEditorFn) (*CountProductReferencesResponse, error)
+
 	// GetDashboardWithResponse request
 	GetDashboardWithResponse(ctx context.Context, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*GetDashboardResponse, error)
 
@@ -2328,6 +2383,32 @@ type ClientWithResponsesInterface interface {
 	UpdateViewWithBodyWithResponse(ctx context.Context, viewId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateViewResponse, error)
 
 	UpdateViewWithResponse(ctx context.Context, viewId openapi_types.UUID, body UpdateViewJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateViewResponse, error)
+}
+
+type CountProductReferencesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		EntryCount int64 `json:"entry_count"`
+	}
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r CountProductReferencesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CountProductReferencesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
 }
 
 type GetDashboardResponse struct {
@@ -2769,6 +2850,15 @@ func (r UpdateViewResponse) StatusCode() int {
 	return 0
 }
 
+// CountProductReferencesWithResponse request returning *CountProductReferencesResponse
+func (c *ClientWithResponses) CountProductReferencesWithResponse(ctx context.Context, productId openapi_types.UUID, reqEditors ...RequestEditorFn) (*CountProductReferencesResponse, error) {
+	rsp, err := c.CountProductReferences(ctx, productId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCountProductReferencesResponse(rsp)
+}
+
 // GetDashboardWithResponse request returning *GetDashboardResponse
 func (c *ClientWithResponses) GetDashboardWithResponse(ctx context.Context, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*GetDashboardResponse, error) {
 	rsp, err := c.GetDashboard(ctx, params, reqEditors...)
@@ -2985,6 +3075,48 @@ func (c *ClientWithResponses) UpdateViewWithResponse(ctx context.Context, viewId
 		return nil, err
 	}
 	return ParseUpdateViewResponse(rsp)
+}
+
+// ParseCountProductReferencesResponse parses an HTTP response from a CountProductReferencesWithResponse call
+func ParseCountProductReferencesResponse(rsp *http.Response) (*CountProductReferencesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CountProductReferencesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			EntryCount int64 `json:"entry_count"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseGetDashboardResponse parses an HTTP response from a GetDashboardWithResponse call

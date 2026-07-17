@@ -834,6 +834,155 @@ paths:
               schema: { $ref: "#/components/schemas/ScoreResponse" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/products/unmatched:
+    get:
+      operationId: listUnmatchedProducts
+      summary: Admin worklist of unmatched products (relay; enrichment enforces role admin)
+      description: >
+        Relays enrichment's admin worklist verbatim: every product
+        with no PriceCharting mapping, held ones included and flagged
+        with match_hold. The bff adds no role logic; a non-admin
+        caller receives enrichment's 403 problem unchanged.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: One worklist page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UnmatchedProductsPage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/products/{productId}:
+    delete:
+      operationId: deleteProduct
+      summary: Delete an unreferenced, unmatched product (orchestrated; enrichment enforces role admin)
+      description: >
+        The one orchestrated admin call: the bff first asks collection
+        how many entries reference the product (collection enforces
+        role admin on that read; its 403 relays verbatim). Any
+        references answer 409 code product_referenced with the count
+        in the detail - repoint or delete those entries first.
+        Unreferenced products relay enrichment's guarded delete: 204
+        on success, 404 product_not_found, 409 product_matched for
+        matched products (clear the mapping first). Small disclosed
+        race: an entry created between the check and the delete is not
+        re-checked; a later resolve re-mints the family slot
+        regardless, so delete is cleanup, not prevention.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Deleted
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          description: No such product (code product_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Entries reference the product (code product_referenced) or it carries a mapping (code product_matched)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/products/{productId}/pricecharting:
+    put:
+      operationId: setProductMapping
+      summary: Correct or clear a product's PriceCharting mapping (relay; enrichment enforces role admin)
+      description: >
+        Relays enrichment's moderated correction verbatim. A null
+        pc_product_id clears the mapping (the product becomes
+        unmatched and held out of the nightly re-match walk); setting
+        any mapping stores it verified and lifts the hold. 409 code
+        identity_taken when another product of the same identity
+        already carries the target listing, or a clear would collide
+        with an existing unmatched product of that identity; the 409
+        detail names the holding product (id and name) when the holder
+        can be resolved. Clearing an already-unmatched product collides
+        with nothing and simply parks it (sets match_hold,
+        idempotently) - the admin lever for silencing permanent
+        worklist residue.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MappingRequest" }
+      responses:
+        "200":
+          description: The product with its corrected mapping
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400":
+          description: Invalid body (code invalid_body or invalid_param)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          description: No such product, or the provider does not know the mapping id
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Another product already carries that identity (code identity_taken)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/refresh:
+    post:
+      operationId: triggerRefresh
+      summary: Trigger an immediate price refresh walk (relay; enrichment enforces role admin)
+      responses:
+        "202":
+          description: Walk started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RefreshAccepted" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: A walk is already running (code refresh_in_progress)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
 components:
   responses:
     Unauthenticated:
@@ -1049,6 +1198,11 @@ components:
         variant: { type: string }
         igdb: { $ref: "#/components/schemas/IgdbMeta" }
         pricecharting: { $ref: "#/components/schemas/PricechartingMeta" }
+        match_hold:
+          type: boolean
+          description: >
+            Present true when an admin clear holds this product out of
+            the nightly re-match walk.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     ResolveRequest:
@@ -1112,6 +1266,31 @@ components:
         recommendations:
           type: array
           items: { $ref: "#/components/schemas/Recommendation" }
+    UnmatchedProductsPage:
+      type: object
+      required: [products, total_count]
+      properties:
+        products:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of unmatched products, beyond this page.
+    MappingRequest:
+      type: object
+      required: [pc_product_id]
+      properties:
+        pc_product_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Null clears the mapping (the product becomes unmatched and held).
+    RefreshAccepted:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [started] }
     Problem:
       type: object
       required: [type, title, status]

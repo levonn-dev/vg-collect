@@ -51,6 +51,18 @@ func New(baseURL string) (*Client, error) {
 	return &Client{api: api}, nil
 }
 
+// CountProductReferences asks collection for a product's entry
+// reference count - the admin delete's safety read. Collection
+// enforces role admin, so its 403 is a relayable user answer.
+func (c *Client) CountProductReferences(ctx context.Context, bearer string, id uuid.UUID) (Result, error) {
+	resp, err := c.api.CountProductReferencesWithResponse(ctx, id, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: count product references: %w", err)
+	}
+	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
+		http.StatusOK, http.StatusForbidden)
+}
+
 func bearerEditor(bearer string) collectionapi.RequestEditorFn {
 	return func(_ context.Context, req *http.Request) error {
 		req.Header.Set("Authorization", "Bearer "+bearer)
