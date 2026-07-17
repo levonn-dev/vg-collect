@@ -4,6 +4,7 @@ import { ApiError } from './api/client'
 import Layout from './components/Layout'
 import Account from './pages/Account'
 import AddWizard from './pages/AddWizard'
+import Admin from './pages/Admin'
 import Collection from './pages/Collection'
 import EntryDetail from './pages/EntryDetail'
 import Login from './pages/Login'
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="/add" element={<AddWizard />} />
             <Route path="/entries/:id" element={<EntryDetail />} />
             <Route path="/recommendations" element={<Recommendations />} />
+            <Route path="/admin" element={<Admin />} />
             <Route path="/account" element={<Account />} />
           </Route>
         </Routes>

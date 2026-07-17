@@ -98,3 +98,17 @@ it('logs out and navigates to login', async () => {
   expect(await screen.findByText('login-page')).toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalledWith('/api/auth/logout', { method: 'POST' })
 })
+
+it('shows the Admin nav link only for the admin role', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { ...me, roles: ['user', 'admin'] })))
+  renderLayout()
+  await screen.findByText('page-content')
+  expect(screen.getByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin')
+})
+
+it('hides the Admin nav link without the admin role', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, me)))
+  renderLayout()
+  await screen.findByText('page-content')
+  expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
+})

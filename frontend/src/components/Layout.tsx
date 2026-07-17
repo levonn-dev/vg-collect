@@ -89,6 +89,11 @@ export default function Layout() {
             <NavLink to="/recommendations" className={navClass}>
               Recommendations
             </NavLink>
+            {me.data.roles.includes('admin') && (
+              <NavLink to="/admin" className={navClass}>
+                Admin
+              </NavLink>
+            )}
           </nav>
         </div>
         <div className="flex items-center gap-3">
