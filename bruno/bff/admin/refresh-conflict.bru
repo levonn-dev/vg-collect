@@ -1,0 +1,23 @@
+meta {
+  name: admin - second trigger answers the lock
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{bff_url}}/api/admin/refresh
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 409
+  res.body.code: eq refresh_in_progress
+}
+
+docs {
+  Runs immediately after the 202: the walk outlives the request by
+  design, so the second trigger observes the in-flight lock. If the
+  stack's catalog were empty the walk could in principle finish
+  first; the dev stack seeds products long before this flow runs.
+}

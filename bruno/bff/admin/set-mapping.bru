@@ -1,0 +1,31 @@
+meta {
+  name: admin - re-set the fixture mapping (lifts hold, verifies)
+  type: http
+  seq: 6
+}
+
+put {
+  url: {{bff_url}}/api/admin/products/{{admin_product_id}}/pricecharting
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "pc_product_id": {{admin_pc_product_id}}
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.pricecharting.pc_product_id: eq {{admin_pc_product_id}}
+  res.body.pricecharting.verified: eq true
+  res.body.match_hold: isUndefined
+}
+
+docs {
+  A moderated set validates against the provider, snapshots a price
+  point, stores verified with confidence 1.0, and lifts match_hold -
+  the flow ends with the fixture product matched again, which is what
+  keeps re-runs deterministic.
+}

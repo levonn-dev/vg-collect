@@ -137,41 +137,14 @@ against AWS Secrets Manager in the documented production path.
 
 ## Status
 
-Everything is complete and verified: auth (OIDC + dev-provider login),
-user, the edge and SPA shell (APISIX gateway, session cookies, the bff
-serving the built bundle), enrichment (catalog search and resolve
-against IGDB/PriceCharting with listing-keyed game identity - a game
-product is (game, platform, PriceCharting listing), so picking a
-different listing is simply a different product - scored auto-matching
-with an optional score-only match hint, an optional manual match that
-picks the exact listing, a daily pricing walk plus a capped nightly
-re-match of unmatched products (admin mapping clears hold them out),
-heuristic recommendations scoring, and credential-less stub-mode
-fixtures), collection (granular entries,
-tags, saved views, and filter-aware dashboard composition with live
-enrichment pricing), the frontend (collection views in table, cover
-grid, and compact list over the full filter/sort/group matrix, saved
-views, a drag-orderable backlog, an add wizard with match confirmation
-and a custom-item path, entry editing with pricing affordances,
-re-matching an unmatched game entry to its exact listing,
-pricing sources that can proxy any PriceCharting listing (exact
-variant rows included) or take a user-set custom price, an account
-page (profile editing, linking multiple provider logins to
-one account with conflict-safe identity-first sign-in, unlinking, and
-full account deletion), a header
-display-currency selector (saved to the profile, converting every
-market value client-side while price-paid records keep their stamped
-currency), an
-insights strip on the homepage whose stats follow the active filters
-(with expandable breakdowns, value-over-time, and recommendations),
-and a dark-default theme with a light toggle, all covered end to end
-by the Playwright journey), and observability plus docs (five
-Grafana dashboards, ten alert rules with runbooks, and traces stitched
-from browser to database). Stub provider mode remains the credential-less default;
-real IGDB and PriceCharting keys have been exercised live in dev, and FX rates
-drive the SPA's client-side currency conversion (frankfurter.dev live, embedded
-fixtures in stub mode). Frontend still needs a lot of style work and cleaning
-user flows.
+All services and features to date are complete and verified end to end
+by Playwright journeys, per-service test suites, and bruno flows: auth
+and user, the APISIX/bff edge, enrichment (catalog, matching, pricing,
+per-region release dates), the role-gated admin page, collection, the
+full SPA, and observability with runbooks. Stub provider mode remains
+the credential-less default; real IGDB and PriceCharting keys have been
+exercised live in dev. Frontend still needs style work and cleaner user
+flows.
 
 ## License
 

@@ -1,0 +1,28 @@
+meta {
+  name: admin - clear the fixture mapping (sets hold)
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{bff_url}}/api/admin/products/{{admin_product_id}}/pricecharting
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "pc_product_id": null
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.match_hold: eq true
+  res.body.pricecharting: isUndefined
+}
+
+docs {
+  The clear makes the fixture product unmatched and held: it now
+  appears in the worklist and the nightly re-match walk skips it.
+}

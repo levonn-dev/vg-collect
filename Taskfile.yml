@@ -207,7 +207,20 @@ tasks:
   e2e:
     desc: Browser smoke (Playwright) against the running stack
     cmds:
+      - task: grant-fixture-admin
       - task: frontend:e2e
+
+  grant-fixture-admin:
+    desc: 'Grant the admin role to the dev admin fixture (dev stack only; fixture-scoped, takes no arguments)'
+    cmds:
+      # A dev login first: the grant inserts by email, so the fixture's
+      # user row must exist (the login upserts it). Idempotent end to end.
+      - curl -sf -o /dev/null "http://localhost:8090/api/auth/login?provider=dev&user=admin"
+      - >-
+        kubectl -n vg-collect exec statefulset/user-pg -- psql -U user -d user -c
+        "INSERT INTO user_roles (user_id, role)
+         SELECT id, 'admin' FROM users WHERE email = 'admin@example.com'
+         ON CONFLICT DO NOTHING;"
 
 includes:
   user:

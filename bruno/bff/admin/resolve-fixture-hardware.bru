@@ -1,0 +1,39 @@
+meta {
+  name: admin - resolve the fixture hardware (reserved variant)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{bff_url}}/api/products/resolve
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "type": "console",
+    "pc_product_id": {{admin_pc_product_id}},
+    "variant": "bruno-admin-fixture"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: isDefined
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setEnvVar("admin_product_id", res.body.id);
+  }
+}
+
+docs {
+  Hardware identity is (region, edition, variant), and the variant
+  "bruno-admin-fixture" is reserved for this flow - its family can
+  never collide with journeys or user data, so the clear/set round
+  trip below is deterministic on any stack, forever. Find-or-create
+  converges on the same product every run (verified flips true after
+  the first full run; deliberately not asserted here).
+}

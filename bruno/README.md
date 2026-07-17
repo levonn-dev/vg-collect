@@ -124,6 +124,12 @@ is a manual, visible step:
 
 Roles land in the JWT at the next login or refresh.
 
+`task grant-fixture-admin` runs exactly this insert (preceded by a dev
+login so the fixture's user row exists); the manual psql above stays
+documented as what the target does. The target is fixture-scoped by
+design: it takes no arguments and can only ever grant
+admin@example.com.
+
 Enrichment's two `admin -` requests need this same grant: run the
 `psql` insert above, then run `auth / dev token` again as `admin` (a
 fresh login is what puts the role in the JWT) before `admin - trigger
@@ -133,6 +139,18 @@ answer 403.
 
 This holds for both dev paths: `bff/`'s `dev login` and `auth/`'s `dev
 token` resolve the same fixture handles and never a real account.
+
+## BFF admin flows
+
+The `bff/admin/` folder exercises the browser-facing admin surface
+through the gateway: run `task grant-fixture-admin`, then the folder
+in seq order. It logs in as the `admin` fixture (a fresh login is
+what puts the granted role in the JWT), lists the unmatched worklist,
+and walks a clear/re-set round trip on a fixture hardware product
+whose variant is reserved for this flow, so re-runs never collide
+with other data. The final pair triggers a refresh walk and asserts
+the second call observes the in-flight lock (409
+refresh_in_progress).
 
 ## Enrichment flows
 

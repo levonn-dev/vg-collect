@@ -1,0 +1,29 @@
+meta {
+  name: admin - search the fixture listing
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{bff_url}}/api/search?type=pc_listing&q=gamecube system
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const hit = res.body.results.find(r => r.type === 'pc_listing' && r.pc_product_id);
+    if (hit) {
+      bru.setEnvVar("admin_pc_product_id", hit.pc_product_id);
+    }
+  }
+}
+
+docs {
+  Captures a real listing id for the fixture hardware product below.
+  Provider-agnostic: the first pc_listing hit is used.
+}

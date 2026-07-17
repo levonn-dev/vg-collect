@@ -1,0 +1,22 @@
+meta {
+  name: admin - list unmatched worklist
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{bff_url}}/api/admin/products/unmatched
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.products: isDefined
+  res.body.total_count: isDefined
+}
+
+docs {
+  The envelope shape is the assert; contents vary by stack history.
+  403 forbidden here means the grant or a fresh login is missing.
+}

@@ -1,0 +1,16 @@
+meta {
+  name: admin - trigger refresh walk
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{bff_url}}/api/admin/refresh
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 202
+  res.body.status: eq started
+}
