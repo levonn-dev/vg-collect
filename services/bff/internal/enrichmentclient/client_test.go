@@ -70,6 +70,83 @@ func TestRelay_DeclaredProblemPassesUndeclaredFails(t *testing.T) {
 	}
 }
 
+// TestAdminAndFxRelays_RouteBearerStatusAndBody drives the fx and admin
+// relay methods against a stub that answers each method's happy status,
+// proving each reaches the right verb+path, forwards the caller's own
+// bearer, and relays the upstream status, content type, and body verbatim.
+func TestAdminAndFxRelays_RouteBearerStatusAndBody(t *testing.T) {
+	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	var status int
+	var gotMethod, gotPath, gotAuth string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath, gotAuth = r.Method, r.URL.Path, r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		if status != http.StatusNoContent {
+			_, _ = w.Write([]byte(`{"echo":true}`))
+		}
+	})
+
+	cases := []struct {
+		name         string
+		call         func() (Result, error)
+		method, path string
+		okStatus     int
+	}{
+		{"FX", func() (Result, error) {
+			return c.FX(context.Background(), "tok")
+		}, "GET", "/fx/latest", http.StatusOK},
+		{"UnmatchedProducts", func() (Result, error) {
+			return c.UnmatchedProducts(context.Background(), "tok", &enrichapi.ListUnmatchedProductsParams{})
+		}, "GET", "/admin/products/unmatched", http.StatusOK},
+		{"SetProductMapping", func() (Result, error) {
+			return c.SetProductMapping(context.Background(), "tok", id, []byte(`{}`))
+		}, "PUT", "/admin/products/" + id.String() + "/pricecharting", http.StatusOK},
+		{"DeleteProduct", func() (Result, error) {
+			return c.DeleteProduct(context.Background(), "tok", id)
+		}, "DELETE", "/admin/products/" + id.String(), http.StatusNoContent},
+		{"TriggerRefresh", func() (Result, error) {
+			return c.TriggerRefresh(context.Background(), "tok")
+		}, "POST", "/admin/refresh", http.StatusAccepted},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			status = tc.okStatus
+			res, err := tc.call()
+			if err != nil {
+				t.Fatalf("%s: %v", tc.name, err)
+			}
+			if gotMethod != tc.method || gotPath != tc.path {
+				t.Fatalf("%s: routed %s %s, want %s %s", tc.name, gotMethod, gotPath, tc.method, tc.path)
+			}
+			if gotAuth != "Bearer tok" {
+				t.Fatalf("%s: bearer = %q", tc.name, gotAuth)
+			}
+			if res.Status != tc.okStatus || res.ContentType != "application/json" {
+				t.Fatalf("%s: relay = %+v", tc.name, res)
+			}
+			if tc.okStatus != http.StatusNoContent && string(res.Body) != `{"echo":true}` {
+				t.Fatalf("%s: body = %s", tc.name, res.Body)
+			}
+		})
+	}
+}
+
+// TestAdminRelays_ForbiddenIsRelayed proves the admin nuance: enrichment
+// enforces the admin role itself, so its 403 is a relayable user answer
+// on admin routes, not an infrastructure fault.
+func TestAdminRelays_ForbiddenIsRelayed(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"status":403,"code":"forbidden"}`))
+	})
+	res, err := c.TriggerRefresh(context.Background(), "tok")
+	if err != nil || res.Status != http.StatusForbidden {
+		t.Fatalf("admin 403 must relay: %+v, %v", res, err)
+	}
+}
+
 func TestScore_RelaysBodyAndDegradedFlag(t *testing.T) {
 	var gotAuth string
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +187,30 @@ func TestTransportErrorSurfaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Search(context.Background(), "tok", "game", "zelda"); err == nil {
-		t.Fatal("want transport error")
+	id := uuid.New()
+	cases := map[string]func() error{
+		"Search": func() error { _, err := c.Search(context.Background(), "tok", "game", "zelda"); return err },
+		"FX":     func() error { _, err := c.FX(context.Background(), "tok"); return err },
+		"UnmatchedProducts": func() error {
+			_, err := c.UnmatchedProducts(context.Background(), "tok", &enrichapi.ListUnmatchedProductsParams{})
+			return err
+		},
+		"SetProductMapping": func() error {
+			_, err := c.SetProductMapping(context.Background(), "tok", id, nil)
+			return err
+		},
+		"DeleteProduct":  func() error { _, err := c.DeleteProduct(context.Background(), "tok", id); return err },
+		"TriggerRefresh": func() error { _, err := c.TriggerRefresh(context.Background(), "tok"); return err },
+	}
+	for name, call := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := call()
+			if err == nil {
+				t.Fatal("want transport error")
+			}
+			if errors.Is(err, ErrUpstream) {
+				t.Fatal("a transport failure is not ErrUpstream")
+			}
+		})
 	}
 }

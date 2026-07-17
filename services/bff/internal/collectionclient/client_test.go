@@ -98,6 +98,9 @@ func TestRelayMethods_RouteBearerStatusAndBody(t *testing.T) {
 		{"PurgeUserData", func() (Result, error) {
 			return c.PurgeUserData(context.Background(), "tok")
 		}, "DELETE", "/user-data", http.StatusNoContent},
+		{"CountProductReferences", func() (Result, error) {
+			return c.CountProductReferences(context.Background(), "tok", id)
+		}, "GET", "/admin/products/" + id.String() + "/references", http.StatusOK},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -202,6 +205,10 @@ func TestTransportErrorSurfaces(t *testing.T) {
 		"GetValueHistory": func() error { _, err := c.GetValueHistory(context.Background(), "tok"); return err },
 		"LibrarySummary":  func() error { _, err := c.LibrarySummary(context.Background(), "tok"); return err },
 		"PurgeUserData":   func() error { _, err := c.PurgeUserData(context.Background(), "tok"); return err },
+		"CountProductReferences": func() error {
+			_, err := c.CountProductReferences(context.Background(), "tok", id)
+			return err
+		},
 	}
 	for name, call := range cases {
 		t.Run(name, func(t *testing.T) {

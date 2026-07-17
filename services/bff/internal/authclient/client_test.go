@@ -72,6 +72,9 @@ func TestRefreshReused(t *testing.T) {
 	if len(reused.RevokeJTIs) != 2 || reused.RevokeJTIs[0] != "j1" {
 		t.Fatalf("jtis = %v", reused.RevokeJTIs)
 	}
+	if reused.Error() != "authclient: refresh token reuse detected" {
+		t.Fatalf("message = %q", reused.Error())
+	}
 }
 
 func TestRefreshInvalid(t *testing.T) {
