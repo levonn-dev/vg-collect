@@ -879,3 +879,108 @@ func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
 		t.Fatalf("want duplicate-key on the second unmatched member, got %v", err)
 	}
 }
+
+func TestListUnmatchedProducts(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+
+	// Creation order fixes updated_at order: unmatchedA is oldest.
+	unmatchedA, err := s.CreateProduct(ctx, gameProduct(9001, 6, "Worklist Alpha", "SNES", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	heldConsole, err := s.CreateProduct(ctx, store.Product{
+		Type: "console", Name: "Worklist Console", Region: "pal", Variant: "wl",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	matched, err := s.CreateProduct(ctx, gameProduct(9002, 6, "Worklist Matched", "SNES", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetPriceCharting(ctx, matched.ID, &store.PCMeta{
+		PCProductID: 9101, PCName: "Worklist Matched", ConsoleName: "Super Nintendo",
+		MatchConfidence: 1, AsOf: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A deliberate clear sets match_hold; held products MUST appear in
+	// the admin worklist (the walk's exclusion does not apply here).
+	if err := s.SetPriceCharting(ctx, heldConsole.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	page, total, err := s.ListUnmatchedProducts(ctx, 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 {
+		t.Fatalf("total = %d, want 2 (matched product excluded)", total)
+	}
+	if len(page) != 2 || page[0].ID != unmatchedA.ID || page[1].ID != heldConsole.ID {
+		t.Fatalf("page order/content wrong: %+v", page)
+	}
+	if !page[1].MatchHold {
+		t.Fatal("held console must carry MatchHold in the worklist")
+	}
+
+	// Offset paging slices the same deterministic order.
+	page2, total2, err := s.ListUnmatchedProducts(ctx, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total2 != 2 || len(page2) != 1 || page2[0].ID != heldConsole.ID {
+		t.Fatalf("offset page wrong: total=%d page=%+v", total2, page2)
+	}
+}
+
+func TestDeleteUnmatchedProduct(t *testing.T) {
+	s, mdb := newTestStore(t)
+	ctx := context.Background()
+
+	orphan, err := s.CreateProduct(ctx, gameProduct(9401, 6, "Delete Me", "SNES", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := s.AppendSnapshot(ctx, store.Snapshot{ProductID: orphan.ID, CapturedAt: time.Now().UTC()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	matched, err := s.CreateProduct(ctx, gameProduct(9402, 6, "Keep Me", "SNES", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetPriceCharting(ctx, matched.ID, &store.PCMeta{
+		PCProductID: 9410, PCName: "Keep Me", ConsoleName: "Super Nintendo",
+		MatchConfidence: 1, AsOf: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	deleted, err := s.DeleteUnmatchedProduct(ctx, orphan.ID)
+	if err != nil || !deleted {
+		t.Fatalf("orphan delete: deleted=%v err=%v", deleted, err)
+	}
+	if _, err := s.GetProduct(ctx, orphan.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("orphan must be gone, got %v", err)
+	}
+	n, err := mdb.Collection("price_snapshots").CountDocuments(ctx, map[string]any{"product_id": orphan.ID})
+	if err != nil || n != 0 {
+		t.Fatalf("orphan snapshots must be gone: n=%d err=%v", n, err)
+	}
+
+	// A matched product never deletes; a missing id reports the same.
+	deleted, err = s.DeleteUnmatchedProduct(ctx, matched.ID)
+	if err != nil || deleted {
+		t.Fatalf("matched delete must refuse: deleted=%v err=%v", deleted, err)
+	}
+	if _, err := s.GetProduct(ctx, matched.ID); err != nil {
+		t.Fatalf("matched product must survive: %v", err)
+	}
+	deleted, err = s.DeleteUnmatchedProduct(ctx, orphan.ID)
+	if err != nil || deleted {
+		t.Fatalf("missing delete must report false: deleted=%v err=%v", deleted, err)
+	}
+}

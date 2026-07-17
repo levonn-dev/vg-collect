@@ -497,6 +497,58 @@ func (s *Store) ListUnmatchedGames(ctx context.Context, limit int) ([]Product, e
 	return out, nil
 }
 
+// DeleteUnmatchedProduct permanently removes a product and its price
+// snapshots, but only while it is unmatched - a priced identity can
+// never vanish out from under the catalog (clear first). The deleted
+// bool reports whether the conditional delete landed; false means the
+// product is missing or matched, and the caller classifies. Entry
+// references are the caller's problem: this service cannot see them.
+func (s *Store) DeleteUnmatchedProduct(ctx context.Context, id string) (bool, error) {
+	res, err := s.db.Collection(colProducts).DeleteOne(ctx, bson.D{
+		{Key: "_id", Value: id},
+		{Key: "pricecharting", Value: nil},
+	})
+	if err != nil {
+		return false, fmt.Errorf("store: delete unmatched product: %w", err)
+	}
+	if res.DeletedCount == 0 {
+		return false, nil
+	}
+	if _, err := s.db.Collection(colSnapshots).DeleteMany(ctx,
+		bson.D{{Key: "product_id", Value: id}}); err != nil {
+		return true, fmt.Errorf("store: delete product snapshots: %w", err)
+	}
+	return true, nil
+}
+
+// ListUnmatchedProducts returns one page of the admin worklist: every
+// product with no PriceCharting mapping, regardless of type and
+// INCLUDING match_hold products (the walk's exclusion is deliberate
+// there; an admin revisiting a deliberate clear is deliberate here).
+// Sorted oldest updated_at first with _id as the tiebreak so offset
+// pages stay deterministic; the second return is the full filtered
+// count.
+func (s *Store) ListUnmatchedProducts(ctx context.Context, limit, offset int) ([]Product, int64, error) {
+	filter := bson.D{{Key: "pricecharting", Value: nil}}
+	col := s.db.Collection(colProducts)
+	total, err := col.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: list unmatched products: %w", err)
+	}
+	cur, err := col.Find(ctx, filter, options.Find().
+		SetSort(bson.D{{Key: "updated_at", Value: 1}, {Key: "_id", Value: 1}}).
+		SetSkip(int64(offset)).
+		SetLimit(int64(limit)))
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: list unmatched products: %w", err)
+	}
+	var out []Product
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, 0, fmt.Errorf("store: list unmatched products: %w", err)
+	}
+	return out, total, nil
+}
+
 // ListIGDBProducts returns every product carrying an IGDB projection,
 // in stable _id order: the reprojection walk's worklist. Uncapped, like
 // ListPriced - a full nightly sweep rather than a capped window, because
