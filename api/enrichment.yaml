@@ -236,7 +236,12 @@ paths:
         the same game and platform; for hardware, the same
         region/edition/variant) already carries the target listing, or
         a clear would collide with an existing unmatched product of
-        that identity, the answer is 409 code identity_taken. Errors:
+        that identity, the answer is 409 code identity_taken, whose
+        detail names the holding product (id and name) when the holder
+        can be resolved. Clearing an already-unmatched product collides
+        with nothing and simply parks it: match_hold is set,
+        idempotently, which is the admin lever for silencing permanent
+        worklist residue. Errors:
         404 code
         product_not_found or unknown_pc_product; 409 code
         identity_taken; 502 code upstream_unavailable.
@@ -270,6 +275,67 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /admin/products/{productId}:
+    delete:
+      operationId: deleteProduct
+      summary: Delete an unmatched product and its snapshots (role admin)
+      description: >
+        The residue mop: permanently removes a product that no listing
+        anchors, plus its price snapshots. Only unmatched products
+        qualify - a matched product answers 409 code product_matched
+        (clear the mapping first). This service cannot see entries;
+        the bff verifies no entries reference the product before
+        calling. A later resolve can re-mint the family's unmatched
+        member - delete is cleanup, not prevention.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Deleted (snapshots included)
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such product (code product_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: The product carries a mapping (code product_matched)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /admin/products/unmatched:
+    get:
+      operationId: listUnmatchedProducts
+      summary: List unmatched products, admin-held included (role admin)
+      description: >
+        The admin worklist: every product with no PriceCharting
+        mapping, all types, INCLUDING products held by an admin clear
+        (each held item carries match_hold true; a deliberate clear is
+        exactly what an admin revisits). Ordered oldest updated_at
+        first with _id as the tiebreak so offset pages are
+        deterministic. limit defaults to 200 (max 500), offset slices
+        the sequence, and total_count reports the full filtered count.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: One worklist page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UnmatchedProductsPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -441,6 +507,11 @@ components:
         variant: { type: string }
         igdb: { $ref: "#/components/schemas/IgdbMeta" }
         pricecharting: { $ref: "#/components/schemas/PricechartingMeta" }
+        match_hold:
+          type: boolean
+          description: >
+            Present true when an admin clear holds this product out of
+            the nightly re-match walk.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     ResolveRequest:
@@ -582,6 +653,17 @@ components:
       required: [status]
       properties:
         status: { type: string, enum: [started] }
+    UnmatchedProductsPage:
+      type: object
+      required: [products, total_count]
+      properties:
+        products:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of unmatched products, beyond this page.
     MappingRequest:
       type: object
       required: [pc_product_id]
@@ -590,7 +672,7 @@ components:
           type: integer
           format: int64
           nullable: true
-          description: Null clears the mapping (the product becomes unmatched).
+          description: Null clears the mapping (the product becomes unmatched and held).
     Problem:
       type: object
       required: [type, title, status]

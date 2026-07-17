@@ -386,6 +386,10 @@ func toAPIProduct(p store.Product) api.Product {
 	if p.Variant != "" {
 		out.Variant = &p.Variant
 	}
+	if p.MatchHold {
+		held := true
+		out.MatchHold = &held
+	}
 	if p.Platform != nil {
 		out.Platform = &api.PlatformRef{IgdbPlatformId: p.Platform.IGDBID, Name: p.Platform.Name}
 		if p.Platform.LogoURL != "" {
@@ -1185,6 +1189,41 @@ func (h *Handlers) TriggerRefresh(w http.ResponseWriter, r *http.Request) {
 	h.startRefresh(w, r)
 }
 
+// ListUnmatchedProducts serves the admin worklist. Unlike the walk's
+// ListUnmatchedGames, this read spans all product types and includes
+// held products - surfacing deliberate clears is the point.
+func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request, params api.ListUnmatchedProductsParams) {
+	claims, _ := jwtauth.FromContext(r.Context())
+	if !claims.HasRole("admin") {
+		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+		return
+	}
+	limit := 200
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	offset := 0
+	if params.Offset != nil && *params.Offset > 0 {
+		offset = *params.Offset
+	}
+	prods, total, err := h.store.ListUnmatchedProducts(r.Context(), limit, offset)
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		return
+	}
+	page := api.UnmatchedProductsPage{Products: make([]api.Product, 0, len(prods)), TotalCount: total}
+	for _, p := range prods {
+		page.Products = append(page.Products, toAPIProduct(p))
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
 // InternalRefresh is the CronJob's trigger (hand-routed in routes.go,
 // outside the contract and the JWT guard). It authenticates the
 // static internal-caller token; the NetworkPolicy is the outer layer.
@@ -1500,6 +1539,76 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 
 // SetProductMapping is the moderated correction: validate the mapping
 // against the provider, fetch prices, snapshot, mark verified.
+// DeleteProduct is the residue mop: it permanently removes an
+// unmatched product (and its snapshots) that exploration or stale
+// matching left behind. Matched products refuse - clear first - and
+// the bff verified no entries reference the product before calling,
+// because entries are invisible from here.
+func (h *Handlers) DeleteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
+	ctx := r.Context()
+	claims, _ := jwtauth.FromContext(ctx)
+	if !claims.HasRole("admin") {
+		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+		return
+	}
+	id := productId.String()
+	deleted, err := h.store.DeleteUnmatchedProduct(ctx, id)
+	if err != nil && !deleted {
+		problem(w, r, http.StatusInternalServerError, "internal", "delete failed")
+		return
+	}
+	if err != nil {
+		// The product is gone; orphaned snapshots are cleanup debt, not
+		// a reason to fail the delete.
+		h.logger.WarnContext(ctx, "product snapshots delete failed", "product", id, "err", err)
+	}
+	if !deleted {
+		if _, gerr := h.store.GetProduct(ctx, id); errors.Is(gerr, store.ErrNotFound) {
+			problem(w, r, http.StatusNotFound, "product_not_found", "no such product")
+			return
+		} else if gerr != nil {
+			problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+			return
+		}
+		problem(w, r, http.StatusConflict, "product_matched", "the product carries a mapping - clear it first")
+		return
+	}
+	if err := h.cache.InvalidateProduct(ctx, id); err != nil {
+		h.failOpen(ctx, "delete_invalidate", err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// identityKey addresses the slot in prod's identity family that
+// carries listing pcID (0 = the family's unmatched member, for game
+// products). Identity-conflict holder lookups use it; the hardware
+// filter takes the id literally, so a hardware unmatched slot is not
+// addressable and that lookup simply misses.
+func identityKey(prod store.Product, pcID int64) store.ProductKey {
+	k := store.ProductKey{
+		Type: prod.Type, PCProductID: pcID,
+		Region: prod.Region, Edition: prod.Edition, Variant: prod.Variant,
+	}
+	if prod.IGDB != nil {
+		k.IGDBGameID = prod.IGDB.GameID
+	}
+	if prod.Platform != nil {
+		k.PlatformIGDBID = prod.Platform.IGDBID
+	}
+	return k
+}
+
+// withHolder appends the conflicting identity's current holder to an
+// identity_taken detail so the admin can look it up instead of
+// guessing. Best-effort: a missed lookup leaves the detail as-is.
+func withHolder(ctx context.Context, st Store, detail string, key store.ProductKey) string {
+	holder, err := st.FindProduct(ctx, key)
+	if err != nil {
+		return detail
+	}
+	return fmt.Sprintf("%s (holder: %s %q)", detail, holder.ID, holder.Name)
+}
+
 func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
 	ctx := r.Context()
 	claims, _ := jwtauth.FromContext(ctx)
@@ -1514,7 +1623,8 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 		return
 	}
 	id := productId.String()
-	if _, err := h.store.GetProduct(ctx, id); errors.Is(err, store.ErrNotFound) {
+	prod, err := h.store.GetProduct(ctx, id)
+	if errors.Is(err, store.ErrNotFound) {
 		problem(w, r, http.StatusNotFound, "product_not_found", "no such product")
 		return
 	} else if err != nil {
@@ -1524,7 +1634,8 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 
 	if req.PcProductId == nil {
 		if err := h.store.SetPriceCharting(ctx, id, nil); errors.Is(err, store.ErrIdentityTaken) {
-			problem(w, r, http.StatusConflict, "identity_taken", "clearing would collide with an existing unmatched product of the same identity")
+			problem(w, r, http.StatusConflict, "identity_taken",
+				withHolder(ctx, h.store, "clearing would collide with an existing unmatched product of the same identity", identityKey(prod, 0)))
 			return
 		} else if err != nil {
 			problem(w, r, http.StatusInternalServerError, "internal", "mapping clear failed")
@@ -1548,7 +1659,8 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 			Current: q, AsOf: asOf,
 		}
 		if err := h.store.SetPriceCharting(ctx, id, meta); errors.Is(err, store.ErrIdentityTaken) {
-			problem(w, r, http.StatusConflict, "identity_taken", "another product with the same identity already carries that listing")
+			problem(w, r, http.StatusConflict, "identity_taken",
+				withHolder(ctx, h.store, "another product with the same identity already carries that listing", identityKey(prod, pc.ID)))
 			return
 		} else if err != nil {
 			problem(w, r, http.StatusInternalServerError, "internal", "mapping update failed")

@@ -47,6 +47,8 @@ type stubStore struct {
 	setCurrentPrices          func(ctx context.Context, id string, q store.PriceQuote, asOf time.Time) error
 	listPriced                func(ctx context.Context) ([]store.Product, error)
 	listUnmatchedGames        func(ctx context.Context, limit int) ([]store.Product, error)
+	listUnmatchedProducts     func(ctx context.Context, limit, offset int) ([]store.Product, int64, error)
+	deleteUnmatchedProduct    func(ctx context.Context, id string) (bool, error)
 	listIGDBProducts          func(ctx context.Context) ([]store.Product, error)
 	productsByIDs             func(ctx context.Context, ids []string) ([]store.Product, error)
 	searchByName              func(ctx context.Context, q string, limit int) ([]store.Product, error)
@@ -122,6 +124,20 @@ func (s *stubStore) ListUnmatchedGames(ctx context.Context, limit int) ([]store.
 		panic("unexpected ListUnmatchedGames")
 	}
 	return s.listUnmatchedGames(ctx, limit)
+}
+
+func (s *stubStore) ListUnmatchedProducts(ctx context.Context, limit, offset int) ([]store.Product, int64, error) {
+	if s.listUnmatchedProducts == nil {
+		panic("unexpected ListUnmatchedProducts")
+	}
+	return s.listUnmatchedProducts(ctx, limit, offset)
+}
+
+func (s *stubStore) DeleteUnmatchedProduct(ctx context.Context, id string) (bool, error) {
+	if s.deleteUnmatchedProduct == nil {
+		panic("unexpected DeleteUnmatchedProduct")
+	}
+	return s.deleteUnmatchedProduct(ctx, id)
 }
 
 func (s *stubStore) ListIGDBProducts(ctx context.Context) ([]store.Product, error) {
@@ -3127,5 +3143,222 @@ func TestUnitGetFxLatest_ColdFailureAnswers502(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "upstream_unavailable") {
 		t.Fatalf("problem code missing: %s", rec.Body.String())
+	}
+}
+
+func TestAdminUnmatchedWorklist(t *testing.T) {
+	s := newStack(t)
+	ctx := context.Background()
+
+	oldest, err := s.store.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Worklist Oldest",
+		Platform: &store.Platform{IGDBID: 4, Name: "Nintendo 64"},
+		IGDB:     &store.IGDBMeta{GameID: 9201, Name: "Worklist Oldest", Genres: []store.Genre{}, Themes: []string{}, Franchises: []string{}, SimilarGames: []int64{}, Companies: []store.Company{}, FetchedAt: time.Now().UTC()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := s.store.CreateProduct(ctx, store.Product{
+		Type: "console", Name: "Worklist Held Console", Region: "pal",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.SetPriceCharting(ctx, held.ID, nil); err != nil { // deliberate clear = hold
+		t.Fatal(err)
+	}
+
+	// Non-admin: 403 with the forbidden code.
+	resp := s.do(http.MethodGet, "/admin/products/unmatched", s.userToken(), nil)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden || !bytes.Contains(body, []byte("forbidden")) {
+		t.Fatalf("non-admin: %d %s", resp.StatusCode, body)
+	}
+
+	// Admin: the full envelope, oldest first, held item flagged.
+	page := decodeBody[api.UnmatchedProductsPage](t,
+		s.do(http.MethodGet, "/admin/products/unmatched", s.adminToken(), nil))
+	if page.TotalCount != 2 || len(page.Products) != 2 {
+		t.Fatalf("envelope: total=%d len=%d", page.TotalCount, len(page.Products))
+	}
+	if page.Products[0].Id.String() != oldest.ID || page.Products[1].Id.String() != held.ID {
+		t.Fatalf("order: %v then %v", page.Products[0].Id, page.Products[1].Id)
+	}
+	if page.Products[0].MatchHold != nil {
+		t.Fatal("plain unmatched product must not carry match_hold")
+	}
+	if page.Products[1].MatchHold == nil || !*page.Products[1].MatchHold {
+		t.Fatal("held product must carry match_hold true")
+	}
+
+	// limit/offset slice the same order; total_count stays full.
+	paged := decodeBody[api.UnmatchedProductsPage](t,
+		s.do(http.MethodGet, "/admin/products/unmatched?limit=1&offset=1", s.adminToken(), nil))
+	if paged.TotalCount != 2 || len(paged.Products) != 1 || paged.Products[0].Id.String() != held.ID {
+		t.Fatalf("paged: total=%d %+v", paged.TotalCount, paged.Products)
+	}
+
+	// Out-of-bounds limits clamp instead of erroring: 0 clamps to the
+	// minimum page (one row), an oversized value clamps to the max and
+	// still answers.
+	clampedLow := decodeBody[api.UnmatchedProductsPage](t,
+		s.do(http.MethodGet, "/admin/products/unmatched?limit=0", s.adminToken(), nil))
+	if len(clampedLow.Products) != 1 || clampedLow.TotalCount != 2 {
+		t.Fatalf("limit=0 must clamp to 1: %+v", clampedLow)
+	}
+	clampedHigh := decodeBody[api.UnmatchedProductsPage](t,
+		s.do(http.MethodGet, "/admin/products/unmatched?limit=9999", s.adminToken(), nil))
+	if len(clampedHigh.Products) != 2 {
+		t.Fatalf("limit=9999 must clamp and answer: %+v", clampedHigh)
+	}
+}
+
+// TestAdminMapping_ConflictNamesHolder pins that both identity_taken
+// arms name the product already holding the identity, so an admin can
+// look the holder up instead of guessing which member has the listing.
+func TestAdminMapping_ConflictNamesHolder(t *testing.T) {
+	s := newStack(t)
+	ctx := context.Background()
+
+	matched, err := s.store.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Holder Game",
+		Platform: &store.Platform{IGDBID: 4, Name: "Nintendo 64"},
+		IGDB:     &store.IGDBMeta{GameID: 9301, Name: "Holder Game", Genres: []store.Genre{}, Themes: []string{}, Franchises: []string{}, SimilarGames: []int64{}, Companies: []store.Company{}, FetchedAt: time.Now().UTC()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.SetPriceCharting(ctx, matched.ID, &store.PCMeta{
+		PCProductID: 5005, PCName: "Super Mario 64", ConsoleName: "Nintendo 64",
+		MatchConfidence: 1, AsOf: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	unmatched, err := s.store.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Holder Game",
+		Platform: &store.Platform{IGDBID: 4, Name: "Nintendo 64"},
+		IGDB:     &store.IGDBMeta{GameID: 9301, Name: "Holder Game", Genres: []store.Genre{}, Themes: []string{}, Franchises: []string{}, SimilarGames: []int64{}, Companies: []store.Company{}, FetchedAt: time.Now().UTC()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set collision: fixing the unmatched member to the taken listing
+	// names the matched holder.
+	resp := s.do(http.MethodPut, "/admin/products/"+unmatched.ID+"/pricecharting", s.adminToken(),
+		map[string]any{"pc_product_id": 5005})
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict || !bytes.Contains(body, []byte("identity_taken")) {
+		t.Fatalf("set collision: %d %s", resp.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte(matched.ID)) || !bytes.Contains(body, []byte("Holder Game")) {
+		t.Fatalf("set-collision detail must name the holder: %s", body)
+	}
+
+	// Clear collision: clearing the matched member while the family
+	// already has an unmatched member names that member.
+	resp = s.do(http.MethodPut, "/admin/products/"+matched.ID+"/pricecharting", s.adminToken(),
+		map[string]any{"pc_product_id": nil})
+	body, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("clear collision: %d %s", resp.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte(unmatched.ID)) {
+		t.Fatalf("clear-collision detail must name the unmatched member: %s", body)
+	}
+}
+
+// TestAdminMapping_HoldUnmatched pins the parking lever the admin UI
+// exposes on unmatched residue: PUT null on an already-unmatched
+// product answers 200 with match_hold set, idempotently - no identity
+// collision, because the clear changes nothing the unique index sees.
+func TestAdminMapping_HoldUnmatched(t *testing.T) {
+	s := newStack(t)
+	ctx := context.Background()
+	orphan, err := s.store.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Orphan Game",
+		Platform: &store.Platform{IGDBID: 4, Name: "Nintendo 64"},
+		IGDB:     &store.IGDBMeta{GameID: 9302, Name: "Orphan Game", Genres: []store.Genre{}, Themes: []string{}, Franchises: []string{}, SimilarGames: []int64{}, Companies: []store.Company{}, FetchedAt: time.Now().UTC()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		got := decodeBody[api.Product](t, s.do(http.MethodPut,
+			"/admin/products/"+orphan.ID+"/pricecharting", s.adminToken(),
+			map[string]any{"pc_product_id": nil}))
+		if got.MatchHold == nil || !*got.MatchHold || got.Pricecharting != nil {
+			t.Fatalf("round %d: hold must set and mapping stay absent: %+v", i, got)
+		}
+	}
+}
+
+// TestAdminDeleteProduct pins the guarded mop end to end: RBAC, the
+// unmatched-only guard, snapshot cleanup, and honest status codes.
+func TestAdminDeleteProduct(t *testing.T) {
+	s := newStack(t)
+	ctx := context.Background()
+
+	orphan, err := s.store.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Mop Target",
+		Platform: &store.Platform{IGDBID: 4, Name: "Nintendo 64"},
+		IGDB:     &store.IGDBMeta{GameID: 9501, Name: "Mop Target", Genres: []store.Genre{}, Themes: []string{}, Franchises: []string{}, SimilarGames: []int64{}, Companies: []store.Company{}, FetchedAt: time.Now().UTC()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	matched, err := s.store.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Mop Survivor",
+		Platform: &store.Platform{IGDBID: 4, Name: "Nintendo 64"},
+		IGDB:     &store.IGDBMeta{GameID: 9502, Name: "Mop Survivor", Genres: []store.Genre{}, Themes: []string{}, Franchises: []string{}, SimilarGames: []int64{}, Companies: []store.Company{}, FetchedAt: time.Now().UTC()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.SetPriceCharting(ctx, matched.ID, &store.PCMeta{
+		PCProductID: 9510, PCName: "Mop Survivor", ConsoleName: "Nintendo 64",
+		MatchConfidence: 1, AsOf: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Non-admin: 403, nothing deleted.
+	resp := s.do(http.MethodDelete, "/admin/products/"+orphan.ID, s.userToken(), nil)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden || !bytes.Contains(body, []byte("forbidden")) {
+		t.Fatalf("non-admin: %d %s", resp.StatusCode, body)
+	}
+
+	// Admin on unmatched: 204 and the product is gone.
+	resp = s.do(http.MethodDelete, "/admin/products/"+orphan.ID, s.adminToken(), nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete: %d", resp.StatusCode)
+	}
+	if _, err := s.store.GetProduct(ctx, orphan.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("orphan must be gone, got %v", err)
+	}
+
+	// Repeat: 404 product_not_found.
+	resp = s.do(http.MethodDelete, "/admin/products/"+orphan.ID, s.adminToken(), nil)
+	body, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound || !bytes.Contains(body, []byte("product_not_found")) {
+		t.Fatalf("second delete: %d %s", resp.StatusCode, body)
+	}
+
+	// Matched: 409 product_matched, survives.
+	resp = s.do(http.MethodDelete, "/admin/products/"+matched.ID, s.adminToken(), nil)
+	body, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict || !bytes.Contains(body, []byte("product_matched")) {
+		t.Fatalf("matched delete: %d %s", resp.StatusCode, body)
+	}
+	if _, err := s.store.GetProduct(ctx, matched.ID); err != nil {
+		t.Fatalf("matched product must survive: %v", err)
 	}
 }

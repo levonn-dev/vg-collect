@@ -106,7 +106,7 @@ type LibraryEntry struct {
 
 // MappingRequest defines model for MappingRequest.
 type MappingRequest struct {
-	// PcProductId Null clears the mapping (the product becomes unmatched).
+	// PcProductId Null clears the mapping (the product becomes unmatched and held).
 	PcProductId *int64 `json:"pc_product_id"`
 }
 
@@ -179,9 +179,12 @@ type Product struct {
 	Id        openapi_types.UUID `json:"id"`
 
 	// Igdb Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
-	Igdb     *IgdbMeta    `json:"igdb,omitempty"`
-	Name     string       `json:"name"`
-	Platform *PlatformRef `json:"platform,omitempty"`
+	Igdb *IgdbMeta `json:"igdb,omitempty"`
+
+	// MatchHold Present true when an admin clear holds this product out of the nightly re-match walk.
+	MatchHold *bool        `json:"match_hold,omitempty"`
+	Name      string       `json:"name"`
+	Platform  *PlatformRef `json:"platform,omitempty"`
 
 	// Pricecharting The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
 	Pricecharting *PricechartingMeta `json:"pricecharting,omitempty"`
@@ -281,6 +284,14 @@ type SearchResults struct {
 	Results  []SearchResult `json:"results"`
 }
 
+// UnmatchedProductsPage defines model for UnmatchedProductsPage.
+type UnmatchedProductsPage struct {
+	Products []Product `json:"products"`
+
+	// TotalCount Full count of unmatched products, beyond this page.
+	TotalCount int64 `json:"total_count"`
+}
+
 // BadRequest defines model for BadRequest.
 type BadRequest = Problem
 
@@ -292,6 +303,12 @@ type Unauthorized = Problem
 
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
+
+// ListUnmatchedProductsParams defines parameters for ListUnmatchedProducts.
+type ListUnmatchedProductsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
 
 // SearchCatalogParams defines parameters for SearchCatalog.
 type SearchCatalogParams struct {
@@ -390,6 +407,12 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// ListUnmatchedProducts request
+	ListUnmatchedProducts(ctx context.Context, params *ListUnmatchedProductsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteProduct request
+	DeleteProduct(ctx context.Context, productId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// SetProductMappingWithBody request with any body
 	SetProductMappingWithBody(ctx context.Context, productId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -426,6 +449,30 @@ type ClientInterface interface {
 
 	// SearchCatalog request
 	SearchCatalog(ctx context.Context, params *SearchCatalogParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+func (c *Client) ListUnmatchedProducts(ctx context.Context, params *ListUnmatchedProductsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListUnmatchedProductsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteProduct(ctx context.Context, productId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteProductRequest(c.Server, productId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 func (c *Client) SetProductMappingWithBody(ctx context.Context, productId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -594,6 +641,105 @@ func (c *Client) SearchCatalog(ctx context.Context, params *SearchCatalogParams,
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewListUnmatchedProductsRequest generates requests for ListUnmatchedProducts
+func NewListUnmatchedProductsRequest(server string, params *ListUnmatchedProductsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/products/unmatched")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteProductRequest generates requests for DeleteProduct
+func NewDeleteProductRequest(server string, productId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "productId", runtime.ParamLocationPath, productId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/products/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewSetProductMappingRequest calls the generic SetProductMapping builder with application/json body
@@ -991,6 +1137,12 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// ListUnmatchedProductsWithResponse request
+	ListUnmatchedProductsWithResponse(ctx context.Context, params *ListUnmatchedProductsParams, reqEditors ...RequestEditorFn) (*ListUnmatchedProductsResponse, error)
+
+	// DeleteProductWithResponse request
+	DeleteProductWithResponse(ctx context.Context, productId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteProductResponse, error)
+
 	// SetProductMappingWithBodyWithResponse request with any body
 	SetProductMappingWithBodyWithResponse(ctx context.Context, productId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProductMappingResponse, error)
 
@@ -1027,6 +1179,55 @@ type ClientWithResponsesInterface interface {
 
 	// SearchCatalogWithResponse request
 	SearchCatalogWithResponse(ctx context.Context, params *SearchCatalogParams, reqEditors ...RequestEditorFn) (*SearchCatalogResponse, error)
+}
+
+type ListUnmatchedProductsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *UnmatchedProductsPage
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r ListUnmatchedProductsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListUnmatchedProductsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteProductResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *Problem
+	ApplicationproblemJSON409 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteProductResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteProductResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
 }
 
 type SetProductMappingResponse struct {
@@ -1252,6 +1453,24 @@ func (r SearchCatalogResponse) StatusCode() int {
 	return 0
 }
 
+// ListUnmatchedProductsWithResponse request returning *ListUnmatchedProductsResponse
+func (c *ClientWithResponses) ListUnmatchedProductsWithResponse(ctx context.Context, params *ListUnmatchedProductsParams, reqEditors ...RequestEditorFn) (*ListUnmatchedProductsResponse, error) {
+	rsp, err := c.ListUnmatchedProducts(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListUnmatchedProductsResponse(rsp)
+}
+
+// DeleteProductWithResponse request returning *DeleteProductResponse
+func (c *ClientWithResponses) DeleteProductWithResponse(ctx context.Context, productId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteProductResponse, error) {
+	rsp, err := c.DeleteProduct(ctx, productId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteProductResponse(rsp)
+}
+
 // SetProductMappingWithBodyWithResponse request with arbitrary body returning *SetProductMappingResponse
 func (c *ClientWithResponses) SetProductMappingWithBodyWithResponse(ctx context.Context, productId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProductMappingResponse, error) {
 	rsp, err := c.SetProductMappingWithBody(ctx, productId, contentType, body, reqEditors...)
@@ -1371,6 +1590,93 @@ func (c *ClientWithResponses) SearchCatalogWithResponse(ctx context.Context, par
 		return nil, err
 	}
 	return ParseSearchCatalogResponse(rsp)
+}
+
+// ParseListUnmatchedProductsResponse parses an HTTP response from a ListUnmatchedProductsWithResponse call
+func ParseListUnmatchedProductsResponse(rsp *http.Response) (*ListUnmatchedProductsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListUnmatchedProductsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UnmatchedProductsPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteProductResponse parses an HTTP response from a DeleteProductWithResponse call
+func ParseDeleteProductResponse(rsp *http.Response) (*DeleteProductResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteProductResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseSetProductMappingResponse parses an HTTP response from a SetProductMappingWithResponse call

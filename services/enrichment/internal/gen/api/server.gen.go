@@ -103,7 +103,7 @@ type LibraryEntry struct {
 
 // MappingRequest defines model for MappingRequest.
 type MappingRequest struct {
-	// PcProductId Null clears the mapping (the product becomes unmatched).
+	// PcProductId Null clears the mapping (the product becomes unmatched and held).
 	PcProductId *int64 `json:"pc_product_id"`
 }
 
@@ -176,9 +176,12 @@ type Product struct {
 	Id        openapi_types.UUID `json:"id"`
 
 	// Igdb Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
-	Igdb     *IgdbMeta    `json:"igdb,omitempty"`
-	Name     string       `json:"name"`
-	Platform *PlatformRef `json:"platform,omitempty"`
+	Igdb *IgdbMeta `json:"igdb,omitempty"`
+
+	// MatchHold Present true when an admin clear holds this product out of the nightly re-match walk.
+	MatchHold *bool        `json:"match_hold,omitempty"`
+	Name      string       `json:"name"`
+	Platform  *PlatformRef `json:"platform,omitempty"`
 
 	// Pricecharting The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
 	Pricecharting *PricechartingMeta `json:"pricecharting,omitempty"`
@@ -278,6 +281,14 @@ type SearchResults struct {
 	Results  []SearchResult `json:"results"`
 }
 
+// UnmatchedProductsPage defines model for UnmatchedProductsPage.
+type UnmatchedProductsPage struct {
+	Products []Product `json:"products"`
+
+	// TotalCount Full count of unmatched products, beyond this page.
+	TotalCount int64 `json:"total_count"`
+}
+
 // BadRequest defines model for BadRequest.
 type BadRequest = Problem
 
@@ -289,6 +300,12 @@ type Unauthorized = Problem
 
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
+
+// ListUnmatchedProductsParams defines parameters for ListUnmatchedProducts.
+type ListUnmatchedProductsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
 
 // SearchCatalogParams defines parameters for SearchCatalog.
 type SearchCatalogParams struct {
@@ -316,6 +333,12 @@ type ScoreRecommendationsJSONRequestBody = ScoreRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List unmatched products, admin-held included (role admin)
+	// (GET /admin/products/unmatched)
+	ListUnmatchedProducts(w http.ResponseWriter, r *http.Request, params ListUnmatchedProductsParams)
+	// Delete an unmatched product and its snapshots (role admin)
+	// (DELETE /admin/products/{productId})
+	DeleteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
 	// Correct a product's PriceCharting mapping and mark it verified (role admin)
 	// (PUT /admin/products/{productId}/pricecharting)
 	SetProductMapping(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
@@ -353,6 +376,78 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListUnmatchedProducts operation middleware
+func (siw *ServerInterfaceWrapper) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListUnmatchedProductsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListUnmatchedProducts(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProduct operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProduct(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "productId" -------------
+	var productId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "productId", r.PathValue("productId"), &productId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "productId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProduct(w, r, productId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // SetProductMapping operation middleware
 func (siw *ServerInterfaceWrapper) SetProductMapping(w http.ResponseWriter, r *http.Request) {
@@ -711,6 +806,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc("GET "+options.BaseURL+"/admin/products/unmatched", wrapper.ListUnmatchedProducts)
+	m.HandleFunc("DELETE "+options.BaseURL+"/admin/products/{productId}", wrapper.DeleteProduct)
 	m.HandleFunc("PUT "+options.BaseURL+"/admin/products/{productId}/pricecharting", wrapper.SetProductMapping)
 	m.HandleFunc("POST "+options.BaseURL+"/admin/refresh", wrapper.TriggerRefresh)
 	m.HandleFunc("GET "+options.BaseURL+"/fx/latest", wrapper.GetFxLatest)
