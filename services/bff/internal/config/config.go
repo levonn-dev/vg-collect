@@ -21,7 +21,7 @@ type Config struct {
 
 	// Origins allowed to send mutating requests (the gateway origin and
 	// the Vite dev server origin in dev).
-	PublicOrigins []string `env:"PUBLIC_ORIGINS,required" envSeparator:","`
+	PublicOrigins []string `env:"PUBLIC_ORIGINS,required,notEmpty" envSeparator:","`
 
 	AuthServiceURL       string `env:"AUTH_SERVICE_URL,required"`
 	UserServiceURL       string `env:"USER_SERVICE_URL,required"`

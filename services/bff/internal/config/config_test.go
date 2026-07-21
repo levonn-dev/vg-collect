@@ -56,6 +56,18 @@ func TestLoadMissingRequired(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsEmptyPublicOrigins(t *testing.T) {
+	// "required" alone accepts a present-but-empty value, and the env
+	// library skips slice population on empty strings entirely: an empty
+	// PUBLIC_ORIGINS would boot a bff that rejects every mutating
+	// request. Startup must fail instead.
+	setRequired(t)
+	t.Setenv("PUBLIC_ORIGINS", "")
+	if _, err := config.Load(); err == nil {
+		t.Fatal("want error when PUBLIC_ORIGINS is set but empty")
+	}
+}
+
 func TestLoadRejectsRedissWithoutCA(t *testing.T) {
 	setRequired(t)
 	t.Setenv("VALKEY_URL", "rediss://bff-valkey:6379/0")
