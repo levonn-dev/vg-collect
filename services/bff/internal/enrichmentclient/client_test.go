@@ -96,9 +96,15 @@ func TestAdminAndFxRelays_RouteBearerStatusAndBody(t *testing.T) {
 		{"FX", func() (Result, error) {
 			return c.FX(context.Background(), "tok")
 		}, "GET", "/fx/latest", http.StatusOK},
+		{"ListPlatforms", func() (Result, error) {
+			return c.ListPlatforms(context.Background(), "tok")
+		}, "GET", "/platforms", http.StatusOK},
 		{"UnmatchedProducts", func() (Result, error) {
 			return c.UnmatchedProducts(context.Background(), "tok", &enrichapi.ListUnmatchedProductsParams{})
 		}, "GET", "/admin/products/unmatched", http.StatusOK},
+		{"CommunityProducts", func() (Result, error) {
+			return c.CommunityProducts(context.Background(), "tok", &enrichapi.ListCommunityProductsParams{})
+		}, "GET", "/admin/products/community", http.StatusOK},
 		{"SetProductMapping", func() (Result, error) {
 			return c.SetProductMapping(context.Background(), "tok", id, []byte(`{}`))
 		}, "PUT", "/admin/products/" + id.String() + "/pricecharting", http.StatusOK},
@@ -108,6 +114,18 @@ func TestAdminAndFxRelays_RouteBearerStatusAndBody(t *testing.T) {
 		{"TriggerRefresh", func() (Result, error) {
 			return c.TriggerRefresh(context.Background(), "tok")
 		}, "POST", "/admin/refresh", http.StatusAccepted},
+		{"CreateCommunityProduct", func() (Result, error) {
+			return c.CreateCommunityProduct(context.Background(), "tok", []byte(`{}`))
+		}, "POST", "/admin/products", http.StatusCreated},
+		{"PromoteProduct", func() (Result, error) {
+			return c.PromoteProduct(context.Background(), "tok", id, []byte(`{}`))
+		}, "POST", "/admin/products/" + id.String() + "/promote", http.StatusOK},
+		{"PromoteCandidates", func() (Result, error) {
+			return c.PromoteCandidates(context.Background(), "tok", &enrichapi.ListPromoteCandidatesParams{})
+		}, "GET", "/admin/products/promote-candidates", http.StatusOK},
+		{"DismissPromoteCandidate", func() (Result, error) {
+			return c.DismissPromoteCandidate(context.Background(), "tok", id, []byte(`{}`))
+		}, "POST", "/admin/products/" + id.String() + "/promote-candidates/dismiss", http.StatusNoContent},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -191,8 +209,16 @@ func TestTransportErrorSurfaces(t *testing.T) {
 	cases := map[string]func() error{
 		"Search": func() error { _, err := c.Search(context.Background(), "tok", "game", "zelda"); return err },
 		"FX":     func() error { _, err := c.FX(context.Background(), "tok"); return err },
+		"ListPlatforms": func() error {
+			_, err := c.ListPlatforms(context.Background(), "tok")
+			return err
+		},
 		"UnmatchedProducts": func() error {
 			_, err := c.UnmatchedProducts(context.Background(), "tok", &enrichapi.ListUnmatchedProductsParams{})
+			return err
+		},
+		"CommunityProducts": func() error {
+			_, err := c.CommunityProducts(context.Background(), "tok", &enrichapi.ListCommunityProductsParams{})
 			return err
 		},
 		"SetProductMapping": func() error {
@@ -201,6 +227,19 @@ func TestTransportErrorSurfaces(t *testing.T) {
 		},
 		"DeleteProduct":  func() error { _, err := c.DeleteProduct(context.Background(), "tok", id); return err },
 		"TriggerRefresh": func() error { _, err := c.TriggerRefresh(context.Background(), "tok"); return err },
+		"CreateCommunityProduct": func() error {
+			_, err := c.CreateCommunityProduct(context.Background(), "tok", nil)
+			return err
+		},
+		"PromoteProduct": func() error { _, err := c.PromoteProduct(context.Background(), "tok", id, nil); return err },
+		"PromoteCandidates": func() error {
+			_, err := c.PromoteCandidates(context.Background(), "tok", &enrichapi.ListPromoteCandidatesParams{})
+			return err
+		},
+		"DismissPromoteCandidate": func() error {
+			_, err := c.DismissPromoteCandidate(context.Background(), "tok", id, nil)
+			return err
+		},
 	}
 	for name, call := range cases {
 		t.Run(name, func(t *testing.T) {

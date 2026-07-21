@@ -101,6 +101,24 @@ func TestRelayMethods_RouteBearerStatusAndBody(t *testing.T) {
 		{"CountProductReferences", func() (Result, error) {
 			return c.CountProductReferences(context.Background(), "tok", id)
 		}, "GET", "/admin/products/" + id.String() + "/references", http.StatusOK},
+		{"CreateSubmission", func() (Result, error) {
+			return c.CreateSubmission(context.Background(), "tok", id)
+		}, "POST", "/entries/" + id.String() + "/submission", http.StatusCreated},
+		{"GetSubmission", func() (Result, error) {
+			return c.GetSubmission(context.Background(), "tok", id)
+		}, "GET", "/entries/" + id.String() + "/submission", http.StatusOK},
+		{"CancelSubmission", func() (Result, error) {
+			return c.CancelSubmission(context.Background(), "tok", id)
+		}, "DELETE", "/entries/" + id.String() + "/submission", http.StatusNoContent},
+		{"AckSubmission", func() (Result, error) {
+			return c.AckSubmission(context.Background(), "tok", id)
+		}, "POST", "/entries/" + id.String() + "/submission/ack", http.StatusNoContent},
+		{"ListSubmissions", func() (Result, error) {
+			return c.ListSubmissions(context.Background(), "tok", &collectionapi.ListSubmissionsParams{})
+		}, "GET", "/admin/submissions", http.StatusOK},
+		{"SubmitVerdict", func() (Result, error) {
+			return c.SubmitVerdict(context.Background(), "tok", id, []byte(`{}`))
+		}, "POST", "/admin/submissions/" + id.String() + "/verdict", http.StatusOK},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -209,6 +227,15 @@ func TestTransportErrorSurfaces(t *testing.T) {
 			_, err := c.CountProductReferences(context.Background(), "tok", id)
 			return err
 		},
+		"CreateSubmission": func() error { _, err := c.CreateSubmission(context.Background(), "tok", id); return err },
+		"GetSubmission":    func() error { _, err := c.GetSubmission(context.Background(), "tok", id); return err },
+		"CancelSubmission": func() error { _, err := c.CancelSubmission(context.Background(), "tok", id); return err },
+		"AckSubmission":    func() error { _, err := c.AckSubmission(context.Background(), "tok", id); return err },
+		"ListSubmissions": func() error {
+			_, err := c.ListSubmissions(context.Background(), "tok", &collectionapi.ListSubmissionsParams{})
+			return err
+		},
+		"SubmitVerdict": func() error { _, err := c.SubmitVerdict(context.Background(), "tok", id, nil); return err },
 	}
 	for name, call := range cases {
 		t.Run(name, func(t *testing.T) {
