@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { jsonResponse } from '../test/fixtures'
 import Admin from './Admin'
@@ -35,4 +36,16 @@ it('redirects non-admins home without flashing admin UI', async () => {
   renderAdmin()
   expect(await screen.findByText('home-page')).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Admin' })).not.toBeInTheDocument()
+})
+
+it('renders two tabs and switches to Submissions', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+    if (url === '/api/me') return Promise.resolve(jsonResponse(200, adminMe))
+    if (url.startsWith('/api/admin/submissions')) return Promise.resolve(jsonResponse(200, { submissions: [], total_count: 0 }))
+    return Promise.resolve(jsonResponse(200, { products: [], total_count: 0 }))
+  }))
+  renderAdmin()
+  await userEvent.click(await screen.findByRole('tab', { name: 'Submissions' }))
+  expect(await screen.findByText('0 pending submissions')).toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: 'Unmatched products' })).not.toBeInTheDocument()
 })
