@@ -19,12 +19,36 @@ const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
+// Defines values for CommunityProductCreateType.
+const (
+	CommunityProductCreateTypeAccessory CommunityProductCreateType = "accessory"
+	CommunityProductCreateTypeConsole   CommunityProductCreateType = "console"
+	CommunityProductCreateTypeGame      CommunityProductCreateType = "game"
+)
+
+// Defines values for DismissCandidateRequestProvider.
+const (
+	DismissCandidateRequestProviderIgdb          DismissCandidateRequestProvider = "igdb"
+	DismissCandidateRequestProviderPricecharting DismissCandidateRequestProvider = "pricecharting"
+)
+
+// Defines values for ProductOrigin.
+const (
+	ProductOriginCommunity ProductOrigin = "community"
+)
+
 // Defines values for ProductType.
 const (
 	ProductTypeAccessory ProductType = "accessory"
 	ProductTypeConsole   ProductType = "console"
 	ProductTypeGame      ProductType = "game"
 	ProductTypePcListing ProductType = "pc_listing"
+)
+
+// Defines values for PromoteCandidateProvider.
+const (
+	PromoteCandidateProviderIgdb          PromoteCandidateProvider = "igdb"
+	PromoteCandidateProviderPricecharting PromoteCandidateProvider = "pricecharting"
 )
 
 // Defines values for RefreshAcceptedStatus.
@@ -38,6 +62,18 @@ const (
 	ResolveRequestTypeConsole   ResolveRequestType = "console"
 	ResolveRequestTypeGame      ResolveRequestType = "game"
 	ResolveRequestTypePcListing ResolveRequestType = "pc_listing"
+)
+
+// Defines values for SearchResultItemType.
+const (
+	SearchResultItemTypeAccessory SearchResultItemType = "accessory"
+	SearchResultItemTypeConsole   SearchResultItemType = "console"
+	SearchResultItemTypeGame      SearchResultItemType = "game"
+)
+
+// Defines values for SearchResultOrigin.
+const (
+	SearchResultOriginCommunity SearchResultOrigin = "community"
 )
 
 // Defines values for SearchResultType.
@@ -54,12 +90,62 @@ const (
 	SearchCatalogParamsTypePcListing SearchCatalogParamsType = "pc_listing"
 )
 
+// CatalogPlatform One platform-catalog row with its known aliases.
+type CatalogPlatform struct {
+	// Aliases Alternate spellings and abbreviations (compare case-insensitively).
+	Aliases []string `json:"aliases"`
+	IgdbId  int64    `json:"igdb_id"`
+	Name    string   `json:"name"`
+}
+
+// CommunityMeta Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present).
+type CommunityMeta struct {
+	// CoverUrl User-supplied cover image URL (https, never fetched server-side; the client renders it with a broken-image fallback). Served as the product cover when no provider cover is present; retained after promotion as gap-fill.
+	CoverUrl         *string             `json:"cover_url,omitempty"`
+	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
+	PlatformName     *string             `json:"platform_name,omitempty"`
+}
+
+// CommunityProductCreate defines model for CommunityProductCreate.
+type CommunityProductCreate struct {
+	// CoverUrl Optional https cover image URL (validated by shape only, never fetched).
+	CoverUrl *string `json:"cover_url,omitempty"`
+
+	// Edition The entry idiom's single "Edition or variant" note.
+	Edition          *string                    `json:"edition,omitempty"`
+	FirstReleaseDate *openapi_types.Date        `json:"first_release_date,omitempty"`
+	Name             string                     `json:"name"`
+	PlatformName     *string                    `json:"platform_name,omitempty"`
+	Region           *string                    `json:"region,omitempty"`
+	Type             CommunityProductCreateType `json:"type"`
+}
+
+// CommunityProductCreateType defines model for CommunityProductCreate.Type.
+type CommunityProductCreateType string
+
+// CommunityProductsPage defines model for CommunityProductsPage.
+type CommunityProductsPage struct {
+	Products []Product `json:"products"`
+
+	// TotalCount Full count of community products, beyond this page.
+	TotalCount int64 `json:"total_count"`
+}
+
 // CompanyCredit defines model for CompanyCredit.
 type CompanyCredit struct {
 	Developer bool   `json:"developer"`
 	Name      string `json:"name"`
 	Publisher bool   `json:"publisher"`
 }
+
+// DismissCandidateRequest defines model for DismissCandidateRequest.
+type DismissCandidateRequest struct {
+	Provider   DismissCandidateRequestProvider `json:"provider"`
+	ProviderId int64                           `json:"provider_id"`
+}
+
+// DismissCandidateRequestProvider defines model for DismissCandidateRequest.Provider.
+type DismissCandidateRequestProvider string
 
 // FXRates defines model for FXRates.
 type FXRates struct {
@@ -105,6 +191,11 @@ type LibraryEntry struct {
 type MappingRequest struct {
 	// PcProductId Null clears the mapping (the product becomes unmatched and held).
 	PcProductId *int64 `json:"pc_product_id"`
+}
+
+// PlatformCatalog defines model for PlatformCatalog.
+type PlatformCatalog struct {
+	Platforms []CatalogPlatform `json:"platforms"`
 }
 
 // PlatformRef defines model for PlatformRef.
@@ -171,6 +262,8 @@ type Problem struct {
 
 // Product defines model for Product.
 type Product struct {
+	// Community Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present).
+	Community *CommunityMeta     `json:"community,omitempty"`
 	CreatedAt time.Time          `json:"created_at"`
 	Edition   *string            `json:"edition,omitempty"`
 	Id        openapi_types.UUID `json:"id"`
@@ -179,9 +272,12 @@ type Product struct {
 	Igdb *IgdbMeta `json:"igdb,omitempty"`
 
 	// MatchHold Present true when an admin clear holds this product out of the nightly re-match walk.
-	MatchHold *bool        `json:"match_hold,omitempty"`
-	Name      string       `json:"name"`
-	Platform  *PlatformRef `json:"platform,omitempty"`
+	MatchHold *bool  `json:"match_hold,omitempty"`
+	Name      string `json:"name"`
+
+	// Origin Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity.
+	Origin   *ProductOrigin `json:"origin,omitempty"`
+	Platform *PlatformRef   `json:"platform,omitempty"`
 
 	// Pricecharting The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
 	Pricecharting *PricechartingMeta `json:"pricecharting,omitempty"`
@@ -190,6 +286,9 @@ type Product struct {
 	UpdatedAt     time.Time          `json:"updated_at"`
 	Variant       *string            `json:"variant,omitempty"`
 }
+
+// ProductOrigin Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity.
+type ProductOrigin string
 
 // ProductType defines model for Product.Type.
 type ProductType string
@@ -201,6 +300,39 @@ type ProductPrices struct {
 	LooseCents *int64     `json:"loose_cents,omitempty"`
 	NewCents   *int64     `json:"new_cents,omitempty"`
 	Unmatched  bool       `json:"unmatched"`
+}
+
+// PromoteCandidate defines model for PromoteCandidate.
+type PromoteCandidate struct {
+	FoundAt    time.Time                `json:"found_at"`
+	Name       string                   `json:"name"`
+	Provider   PromoteCandidateProvider `json:"provider"`
+	ProviderId int64                    `json:"provider_id"`
+	Score      float64                  `json:"score"`
+}
+
+// PromoteCandidateProvider defines model for PromoteCandidate.Provider.
+type PromoteCandidateProvider string
+
+// PromoteCandidateProduct defines model for PromoteCandidateProduct.
+type PromoteCandidateProduct struct {
+	Candidates []PromoteCandidate `json:"candidates"`
+	Product    Product            `json:"product"`
+}
+
+// PromoteCandidatesPage defines model for PromoteCandidatesPage.
+type PromoteCandidatesPage struct {
+	Products []PromoteCandidateProduct `json:"products"`
+
+	// TotalCount Full count of flagged community products.
+	TotalCount int64 `json:"total_count"`
+}
+
+// PromoteRequest Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the nightly walk or the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant.
+type PromoteRequest struct {
+	IgdbGameId     *int64 `json:"igdb_game_id,omitempty"`
+	PcProductId    *int64 `json:"pc_product_id,omitempty"`
+	PlatformIgdbId *int64 `json:"platform_igdb_id,omitempty"`
 }
 
 // Recommendation defines model for Recommendation.
@@ -257,19 +389,31 @@ type ScoreResponse struct {
 
 // SearchResult Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). pc_listing results carry the pc_* fields, the PriceCharting category (empty when the provider lists none), and the standard per-listing loose/cib/new prices so variant prints are tellable apart.
 type SearchResult struct {
-	Category         *string             `json:"category,omitempty"`
-	CibCents         *int64              `json:"cib_cents,omitempty"`
-	ConsoleName      *string             `json:"console_name,omitempty"`
-	CoverUrl         *string             `json:"cover_url,omitempty"`
-	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
-	IgdbGameId       *int64              `json:"igdb_game_id,omitempty"`
-	LooseCents       *int64              `json:"loose_cents,omitempty"`
-	Name             string              `json:"name"`
-	NewCents         *int64              `json:"new_cents,omitempty"`
-	PcProductId      *int64              `json:"pc_product_id,omitempty"`
-	Platforms        *[]PlatformRef      `json:"platforms,omitempty"`
-	Type             SearchResultType    `json:"type"`
+	Category         *string               `json:"category,omitempty"`
+	CibCents         *int64                `json:"cib_cents,omitempty"`
+	ConsoleName      *string               `json:"console_name,omitempty"`
+	CoverUrl         *string               `json:"cover_url,omitempty"`
+	FirstReleaseDate *openapi_types.Date   `json:"first_release_date,omitempty"`
+	IgdbGameId       *int64                `json:"igdb_game_id,omitempty"`
+	ItemType         *SearchResultItemType `json:"item_type,omitempty"`
+	LooseCents       *int64                `json:"loose_cents,omitempty"`
+	Name             string                `json:"name"`
+	NewCents         *int64                `json:"new_cents,omitempty"`
+
+	// Origin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick and community.cover_url as cover_url. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
+	Origin       *SearchResultOrigin `json:"origin,omitempty"`
+	PcProductId  *int64              `json:"pc_product_id,omitempty"`
+	PlatformName *string             `json:"platform_name,omitempty"`
+	Platforms    *[]PlatformRef      `json:"platforms,omitempty"`
+	ProductId    *openapi_types.UUID `json:"product_id,omitempty"`
+	Type         SearchResultType    `json:"type"`
 }
+
+// SearchResultItemType defines model for SearchResult.ItemType.
+type SearchResultItemType string
+
+// SearchResultOrigin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick and community.cover_url as cover_url. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
+type SearchResultOrigin string
 
 // SearchResultType defines model for SearchResult.Type.
 type SearchResultType string
@@ -301,6 +445,19 @@ type Unauthorized = Problem
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
 
+// ListCommunityProductsParams defines parameters for ListCommunityProducts.
+type ListCommunityProductsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListPromoteCandidatesParams defines parameters for ListPromoteCandidates.
+type ListPromoteCandidatesParams struct {
+	Limit     *int                `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset    *int                `form:"offset,omitempty" json:"offset,omitempty"`
+	ProductId *openapi_types.UUID `form:"product_id,omitempty" json:"product_id,omitempty"`
+}
+
 // ListUnmatchedProductsParams defines parameters for ListUnmatchedProducts.
 type ListUnmatchedProductsParams struct {
 	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
@@ -316,8 +473,17 @@ type SearchCatalogParams struct {
 // SearchCatalogParamsType defines parameters for SearchCatalog.
 type SearchCatalogParamsType string
 
+// CreateCommunityProductJSONRequestBody defines body for CreateCommunityProduct for application/json ContentType.
+type CreateCommunityProductJSONRequestBody = CommunityProductCreate
+
 // SetProductMappingJSONRequestBody defines body for SetProductMapping for application/json ContentType.
 type SetProductMappingJSONRequestBody = MappingRequest
+
+// PromoteProductJSONRequestBody defines body for PromoteProduct for application/json ContentType.
+type PromoteProductJSONRequestBody = PromoteRequest
+
+// DismissPromoteCandidateJSONRequestBody defines body for DismissPromoteCandidate for application/json ContentType.
+type DismissPromoteCandidateJSONRequestBody = DismissCandidateRequest
 
 // BatchPriceHistoryJSONRequestBody defines body for BatchPriceHistory for application/json ContentType.
 type BatchPriceHistoryJSONRequestBody = PriceHistoryRequest
@@ -333,6 +499,15 @@ type ScoreRecommendationsJSONRequestBody = ScoreRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Mint a community product from an approved submission (role admin)
+	// (POST /admin/products)
+	CreateCommunityProduct(w http.ResponseWriter, r *http.Request)
+	// List community products, un-promoted only (role admin)
+	// (GET /admin/products/community)
+	ListCommunityProducts(w http.ResponseWriter, r *http.Request, params ListCommunityProductsParams)
+	// Community products with plausible provider matches (role admin)
+	// (GET /admin/products/promote-candidates)
+	ListPromoteCandidates(w http.ResponseWriter, r *http.Request, params ListPromoteCandidatesParams)
 	// List unmatched products, admin-held included (role admin)
 	// (GET /admin/products/unmatched)
 	ListUnmatchedProducts(w http.ResponseWriter, r *http.Request, params ListUnmatchedProductsParams)
@@ -342,12 +517,21 @@ type ServerInterface interface {
 	// Correct a product's PriceCharting mapping and mark it verified (role admin)
 	// (PUT /admin/products/{productId}/pricecharting)
 	SetProductMapping(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
+	// Promote a community product to provider identity in place (role admin)
+	// (POST /admin/products/{productId}/promote)
+	PromoteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
+	// Dismiss one promote candidate permanently (role admin)
+	// (POST /admin/products/{productId}/promote-candidates/dismiss)
+	DismissPromoteCandidate(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
 	// Trigger an immediate price refresh walk (role admin)
 	// (POST /admin/refresh)
 	TriggerRefresh(w http.ResponseWriter, r *http.Request)
 	// Latest USD-based exchange rates (cached daily snapshot)
 	// (GET /fx/latest)
 	GetFxLatest(w http.ResponseWriter, r *http.Request)
+	// The canonical platform catalog with alias knowledge
+	// (GET /platforms)
+	ListPlatforms(w http.ResponseWriter, r *http.Request)
 	// Price snapshot series for a set of products (value-over-time composition)
 	// (POST /products/price-history:batch)
 	BatchPriceHistory(w http.ResponseWriter, r *http.Request)
@@ -376,6 +560,116 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// CreateCommunityProduct operation middleware
+func (siw *ServerInterfaceWrapper) CreateCommunityProduct(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCommunityProduct(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCommunityProducts operation middleware
+func (siw *ServerInterfaceWrapper) ListCommunityProducts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCommunityProductsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCommunityProducts(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPromoteCandidates operation middleware
+func (siw *ServerInterfaceWrapper) ListPromoteCandidates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPromoteCandidatesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "product_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "product_id", r.URL.Query(), &params.ProductId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPromoteCandidates(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListUnmatchedProducts operation middleware
 func (siw *ServerInterfaceWrapper) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request) {
@@ -480,6 +774,68 @@ func (siw *ServerInterfaceWrapper) SetProductMapping(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// PromoteProduct operation middleware
+func (siw *ServerInterfaceWrapper) PromoteProduct(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "productId" -------------
+	var productId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "productId", r.PathValue("productId"), &productId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "productId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PromoteProduct(w, r, productId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DismissPromoteCandidate operation middleware
+func (siw *ServerInterfaceWrapper) DismissPromoteCandidate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "productId" -------------
+	var productId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "productId", r.PathValue("productId"), &productId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "productId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DismissPromoteCandidate(w, r, productId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // TriggerRefresh operation middleware
 func (siw *ServerInterfaceWrapper) TriggerRefresh(w http.ResponseWriter, r *http.Request) {
 
@@ -511,6 +867,26 @@ func (siw *ServerInterfaceWrapper) GetFxLatest(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetFxLatest(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPlatforms operation middleware
+func (siw *ServerInterfaceWrapper) ListPlatforms(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPlatforms(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -806,11 +1182,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc("POST "+options.BaseURL+"/admin/products", wrapper.CreateCommunityProduct)
+	m.HandleFunc("GET "+options.BaseURL+"/admin/products/community", wrapper.ListCommunityProducts)
+	m.HandleFunc("GET "+options.BaseURL+"/admin/products/promote-candidates", wrapper.ListPromoteCandidates)
 	m.HandleFunc("GET "+options.BaseURL+"/admin/products/unmatched", wrapper.ListUnmatchedProducts)
 	m.HandleFunc("DELETE "+options.BaseURL+"/admin/products/{productId}", wrapper.DeleteProduct)
 	m.HandleFunc("PUT "+options.BaseURL+"/admin/products/{productId}/pricecharting", wrapper.SetProductMapping)
+	m.HandleFunc("POST "+options.BaseURL+"/admin/products/{productId}/promote", wrapper.PromoteProduct)
+	m.HandleFunc("POST "+options.BaseURL+"/admin/products/{productId}/promote-candidates/dismiss", wrapper.DismissPromoteCandidate)
 	m.HandleFunc("POST "+options.BaseURL+"/admin/refresh", wrapper.TriggerRefresh)
 	m.HandleFunc("GET "+options.BaseURL+"/fx/latest", wrapper.GetFxLatest)
+	m.HandleFunc("GET "+options.BaseURL+"/platforms", wrapper.ListPlatforms)
 	m.HandleFunc("POST "+options.BaseURL+"/products/price-history:batch", wrapper.BatchPriceHistory)
 	m.HandleFunc("POST "+options.BaseURL+"/products/prices:batch", wrapper.BatchPrices)
 	m.HandleFunc("POST "+options.BaseURL+"/products/resolve", wrapper.ResolveProduct)

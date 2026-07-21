@@ -198,6 +198,28 @@ paths:
               schema: { $ref: "#/components/schemas/FXRates" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /platforms:
+    get:
+      operationId: listPlatforms
+      summary: The canonical platform catalog with alias knowledge
+      description: >
+        The IGDB platform catalog (igdb id + name) joined with the alias
+        table - PriceCharting console spellings plus curated
+        abbreviations (SNES, PSX, N64, ...) - sorted by name. Reference
+        data for the custom-entry platform picker and the collection
+        normalize-platforms lever: consumers filter and match against
+        name + aliases and never hard-code aliases themselves. Cached
+        24h (the search-cache idiom); the catalog changes only when the
+        platform sweep lands new rows. A cold catalog with the provider
+        down is the only 502.
+      responses:
+        "200":
+          description: The platform catalog
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlatformCatalog" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
   /admin/refresh:
     post:
       operationId: triggerRefresh
@@ -220,6 +242,38 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /admin/products:
+    post:
+      operationId: createCommunityProduct
+      summary: Mint a community product from an approved submission (role admin)
+      description: >
+        Creates an anchor-less product: no IGDB, no PriceCharting,
+        origin community. Community products live outside the provider
+        identity indexes - their curated name is their identity, and
+        the review panel's embedded search is the dedup check
+        (deliberately no uniqueness machinery). They never join the
+        nightly re-match walk or the unmatched worklist, and they
+        surface to users through the community lane in search. The
+        single edition field follows the entry idiom (one
+        "Edition or variant" note); variant stays empty - the
+        region/edition/variant split exists only for provider hardware
+        identity, which community products are outside of.
+        platform_name and first_release_date store as the community
+        facts block, retained after promotion as gap-fill.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CommunityProductCreate" }
+      responses:
+        "201":
+          description: The minted community product
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /admin/products/{productId}/pricecharting:
     put:
       operationId: setProductMapping
@@ -244,7 +298,9 @@ paths:
         worklist residue. Errors:
         404 code
         product_not_found or unknown_pc_product; 409 code
-        identity_taken; 502 code upstream_unavailable.
+        identity_taken; 502 code upstream_unavailable. 409 code
+        product_not_provider for community products (their one path to
+        a PriceCharting anchor is promote).
       parameters:
         - name: productId
           in: path
@@ -270,11 +326,125 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "409":
-          description: Another product already carries that identity (code identity_taken)
+          description: Another product already carries that identity (code identity_taken), or the product is community-origin (code product_not_provider)
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /admin/products/{productId}/promote:
+    post:
+      operationId: promoteProduct
+      summary: Promote a community product to provider identity in place (role admin)
+      description: >
+        Attaches the provider anchors and flips origin to provider
+        atomically; the product id stays stable, so every adopter's
+        entry upgrades through live reads with no repointing. The
+        re-entry into the identity index adjudicates twins: when a
+        provider product already holds the target identity the answer
+        is 409 code identity_taken with the holder named in the
+        detail, and the community product keeps working unpromoted
+        (the true-merge case is deliberately not automated). The
+        community facts block is retained as gap-fill. After the flip
+        the product is a first-class provider citizen: the nightly
+        walk may auto-match a missing game listing, the unmatched
+        worklist includes it, and the mapping fix applies. Errors:
+        404 code product_not_found, unknown_game or
+        unknown_pc_product; 409 code product_not_community (already
+        provider) or identity_taken; 502 code upstream_unavailable.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PromoteRequest" }
+      responses:
+        "200":
+          description: The promoted product
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such product, or the provider does not know the requested id
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Not community-origin (code product_not_community) or a provider twin holds the identity (code identity_taken)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /admin/products/promote-candidates:
+    get:
+      operationId: listPromoteCandidates
+      summary: Community products with plausible provider matches (role admin)
+      description: >
+        The promote worklist, fed by the nightly flag-never-act sweep
+        (the refresh trigger also refreshes it): community products
+        whose name matched a provider item at or above the never-guess
+        threshold, strongest candidate first with _id as the tiebreak.
+        Dismissed pairs never reappear; a different provider id for
+        the same product still nags. product_id narrows to one
+        product - the lookup panel's per-product view. Promotion is
+        always a human verdict; nothing here attaches anything.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: product_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: One candidates page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PromoteCandidatesPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/products/{productId}/promote-candidates/dismiss:
+    post:
+      operationId: dismissPromoteCandidate
+      summary: Dismiss one promote candidate permanently (role admin)
+      description: >
+        Records the (provider, provider_id) pair as dismissed and
+        drops the matching candidate; the sweep never re-flags a
+        dismissed pair. A different candidate for the same product
+        still nags.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DismissCandidateRequest" }
+      responses:
+        "204":
+          description: Dismissed
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such product (code product_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /admin/products/{productId}:
     delete:
       operationId: deleteProduct
@@ -336,6 +506,34 @@ paths:
               schema: { $ref: "#/components/schemas/UnmatchedProductsPage" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/products/community:
+    get:
+      operationId: listCommunityProducts
+      summary: List community products, un-promoted only (role admin)
+      description: >
+        Every admin-minted community product (origin community): the
+        population promote can flip to a provider identity, and delete
+        can remove once no entry references it. Ordered oldest
+        updated_at first with _id as the tiebreak so offset pages are
+        deterministic. limit defaults to 200 (max 500), offset slices
+        the sequence, and total_count reports the full filtered count.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: One community listing page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommunityProductsPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -370,6 +568,24 @@ components:
         logo_url:
           type: string
           description: IGDB platform logo; the display fallback for products without cover art.
+    CatalogPlatform:
+      description: One platform-catalog row with its known aliases.
+      type: object
+      required: [igdb_id, name, aliases]
+      properties:
+        igdb_id: { type: integer, format: int64 }
+        name: { type: string }
+        aliases:
+          description: Alternate spellings and abbreviations (compare case-insensitively).
+          type: array
+          items: { type: string }
+    PlatformCatalog:
+      type: object
+      required: [platforms]
+      properties:
+        platforms:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogPlatform" }
     SearchResult:
       description: >
         Flat result with a type discriminator. Game results carry the
@@ -396,6 +612,23 @@ components:
         loose_cents: { type: integer, format: int64 }
         cib_cents: { type: integer, format: int64 }
         new_cents: { type: integer, format: int64 }
+        origin:
+          type: string
+          enum: [community]
+          description: >
+            Marks an interleaved community result (admin-minted,
+            anchor-less); absent on provider results. Community results
+            carry product_id + item_type + platform_name for the pick
+            and community.cover_url as cover_url. They are scored against
+            the query by name similarity and merged into results by
+            descending score (a provider result precedes a community
+            result of equal score), capped at 10, for game and hardware
+            searches only (never pc_listing). The provider cache stores
+            provider results only - community items attach fresh on every
+            search.
+        product_id: { type: string, format: uuid }
+        item_type: { type: string, enum: [game, console, accessory] }
+        platform_name: { type: string }
     SearchResults:
       type: object
       required: [degraded, results]
@@ -512,8 +745,97 @@ components:
           description: >
             Present true when an admin clear holds this product out of
             the nightly re-match walk.
+        origin:
+          type: string
+          enum: [community]
+          description: >
+            Emitted only for admin-minted community products (absent
+            means provider-identified). Community products live
+            outside the provider identity indexes; their curated name
+            is their identity.
+        community: { $ref: "#/components/schemas/CommunityMeta" }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    CommunityMeta:
+      description: >
+        Facts curated at community mint time; retained after promotion
+        as gap-fill (provider blocks win per-field where present).
+      type: object
+      properties:
+        platform_name: { type: string }
+        first_release_date: { type: string, format: date }
+        cover_url:
+          type: string
+          description: >
+            User-supplied cover image URL (https, never fetched
+            server-side; the client renders it with a broken-image
+            fallback). Served as the product cover when no provider
+            cover is present; retained after promotion as gap-fill.
+    CommunityProductCreate:
+      type: object
+      required: [type, name]
+      properties:
+        type: { type: string, enum: [game, console, accessory] }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        platform_name: { type: string, maxLength: 100 }
+        region: { type: string, maxLength: 32 }
+        edition:
+          type: string
+          maxLength: 128
+          description: The entry idiom's single "Edition or variant" note.
+        first_release_date: { type: string, format: date }
+        cover_url:
+          type: string
+          maxLength: 512
+          description: Optional https cover image URL (validated by shape only, never fetched).
+    PromoteRequest:
+      description: >
+        Provider identity for an in-place promotion. type game
+        products require igdb_game_id + platform_igdb_id and accept
+        an optional pc_product_id (the listing can also arrive later
+        via the nightly walk or the mapping fix, once provider);
+        console and accessory products require pc_product_id. The
+        identity the product re-enters the index with completes with
+        the doc's stored region/edition/variant.
+      type: object
+      properties:
+        igdb_game_id: { type: integer, format: int64 }
+        platform_igdb_id: { type: integer, format: int64 }
+        pc_product_id: { type: integer, format: int64 }
+    PromoteCandidate:
+      type: object
+      required: [provider, provider_id, name, score, found_at]
+      properties:
+        provider: { type: string, enum: [igdb, pricecharting] }
+        provider_id: { type: integer, format: int64 }
+        name: { type: string }
+        score: { type: number, format: double }
+        found_at: { type: string, format: date-time }
+    PromoteCandidatesPage:
+      type: object
+      required: [products, total_count]
+      properties:
+        products:
+          type: array
+          items: { $ref: "#/components/schemas/PromoteCandidateProduct" }
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of flagged community products.
+    PromoteCandidateProduct:
+      type: object
+      required: [product, candidates]
+      properties:
+        product: { $ref: "#/components/schemas/Product" }
+        candidates:
+          type: array
+          items: { $ref: "#/components/schemas/PromoteCandidate" }
+    DismissCandidateRequest:
+      type: object
+      required: [provider, provider_id]
+      properties:
+        provider: { type: string, enum: [igdb, pricecharting] }
+        provider_id: { type: integer, format: int64 }
     ResolveRequest:
       description: >
         type game requires igdb_game_id + platform_igdb_id (the
@@ -664,6 +986,17 @@ components:
           type: integer
           format: int64
           description: Full count of unmatched products, beyond this page.
+    CommunityProductsPage:
+      type: object
+      required: [products, total_count]
+      properties:
+        products:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of community products, beyond this page.
     MappingRequest:
       type: object
       required: [pc_product_id]

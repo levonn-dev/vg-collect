@@ -27,6 +27,10 @@ var _ api.ServerInterface = (*Handlers)(nil)
 
 const searchLimit = 20
 
+// communityLaneLimit caps the search community lane (the contract's
+// documented cap).
+const communityLaneLimit = 10
+
 // normQuery folds a query for cache keying (the provider gets the
 // trimmed original).
 func normQuery(q string) string {
@@ -52,11 +56,16 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 	}
 	nq := normQuery(q)
 
+	var out api.SearchResults
 	if body, err := h.cache.GetSearch(ctx, kind, nq); err != nil {
 		h.failOpen(ctx, "search_get", err)
 	} else if body != nil {
-		writeRawJSON(w, body)
-		return
+		if err := json.Unmarshal(body, &out); err != nil {
+			h.failOpen(ctx, "search_decode", err)
+		} else {
+			h.interleaveCommunityResults(ctx, w, r, kind, q, out)
+			return
+		}
 	}
 
 	var (
@@ -85,7 +94,8 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 		results = []api.SearchResult{}
 	}
 
-	body, err := json.Marshal(api.SearchResults{Degraded: degraded, Results: results})
+	out = api.SearchResults{Degraded: degraded, Results: results}
+	body, err := json.Marshal(out)
 	if err != nil {
 		problem(w, r, http.StatusInternalServerError, "internal", "encoding failed")
 		return
@@ -97,7 +107,107 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 			h.failOpen(ctx, "search_put", err)
 		}
 	}
-	writeRawJSON(w, body)
+	h.interleaveCommunityResults(ctx, w, r, kind, q, out)
+}
+
+// communityResult maps an admin-minted community product onto the
+// unified search shape. type stays the provider discriminator (game
+// vs hardware); item_type carries the finer community kind for the
+// pick, and origin marks the row so the SPA renders the community tag
+// and builds a CommunityPick.
+func communityResult(p store.Product) api.SearchResult {
+	res := api.SearchResult{Name: p.Name}
+	if p.Type == "game" {
+		res.Type = api.SearchResultType("game")
+	} else {
+		res.Type = api.SearchResultType("hardware")
+	}
+	o := api.SearchResultOrigin("community")
+	res.Origin = &o
+	if id, err := uuid.Parse(p.ID); err == nil {
+		pid := openapi_types.UUID(id)
+		res.ProductId = &pid
+	}
+	it := api.SearchResultItemType(p.Type)
+	res.ItemType = &it
+	if p.Community != nil {
+		if p.Community.PlatformName != "" {
+			pn := p.Community.PlatformName
+			res.PlatformName = &pn
+		}
+		if p.Community.CoverURL != "" {
+			cu := p.Community.CoverURL
+			res.CoverUrl = &cu
+		}
+		if !p.Community.FirstReleaseDate.IsZero() {
+			fd := openapi_types.Date{Time: p.Community.FirstReleaseDate}
+			res.FirstReleaseDate = &fd
+		}
+	}
+	return res
+}
+
+// interleaveCommunityResults merges the community lane into the one
+// results list and writes the answer. Community mints are scored
+// against the query by the same name similarity the provider order
+// uses and merged descending; a provider result precedes a community
+// result of equal score (providers are the canonical catalog). The
+// merge runs on the by-value copy AFTER cache resolution, so the
+// provider cache stays a provider-only unit and a fresh mint still
+// appears immediately. Game and hardware searches only; pc_listing
+// picks price anchors, which community products never have.
+func (h *Handlers) interleaveCommunityResults(ctx context.Context, w http.ResponseWriter, r *http.Request, kind, q string, out api.SearchResults) {
+	var types []string
+	switch kind {
+	case "game":
+		types = []string{"game"}
+	case "hardware":
+		types = []string{"console", "accessory"}
+	default: // pc_listing picks price anchors; community products have none
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	comm, err := h.store.SearchCommunityProducts(ctx, types, q, communityLaneLimit)
+	if err != nil {
+		// Fail open like every other collaborator in this path: the
+		// community lane is an optional overlay on results, so a store
+		// fault degrades to the provider-only answer already in out
+		// rather than discarding it behind a 500.
+		h.failOpen(ctx, "community_search", err)
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	if len(comm) == 0 {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	type scored struct {
+		res      api.SearchResult
+		score    float64
+		provider bool
+	}
+	merged := make([]scored, 0, len(out.Results)+len(comm))
+	for _, res := range out.Results {
+		merged = append(merged, scored{res: res, score: match.Score(q, res.Name), provider: true})
+	}
+	for _, p := range comm {
+		merged = append(merged, scored{res: communityResult(p), score: match.Score(q, p.Name), provider: false})
+	}
+	// Descending score; on a tie the provider row precedes the community
+	// row. SliceStable preserves provider order and the store's name-asc
+	// community order among otherwise-equal rows.
+	sort.SliceStable(merged, func(i, j int) bool {
+		if merged[i].score != merged[j].score {
+			return merged[i].score > merged[j].score
+		}
+		return merged[i].provider && !merged[j].provider
+	})
+	results := make([]api.SearchResult, 0, len(merged))
+	for _, m := range merged {
+		results = append(results, m.res)
+	}
+	out.Results = results
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *Handlers) searchGames(ctx context.Context, q string) ([]api.SearchResult, error) {
@@ -301,6 +411,54 @@ func (h *Handlers) GetFxLatest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, api.FXRates{Base: rates.Base, Date: rates.Date, Rates: rates.Rates})
 }
 
+// ListPlatforms serves the platform catalog joined with alias
+// knowledge, for the custom-entry picker and the normalize lever. The
+// answer is cached 24h (the search-cache idiom): reference data that
+// only changes when the platform sweep lands new rows, so a cold build
+// fetches wholesale through ensurePlatforms and the rest read Valkey.
+func (h *Handlers) ListPlatforms(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if body, err := h.cache.GetPlatforms(ctx); err != nil {
+		h.failOpen(ctx, "platforms_get", err)
+	} else if body != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+		return
+	}
+	cats, err := h.ensurePlatforms(ctx)
+	if err != nil {
+		problem(w, r, http.StatusBadGateway, "upstream_unavailable", "the platform catalog is unavailable")
+		return
+	}
+	out := api.PlatformCatalog{Platforms: make([]api.CatalogPlatform, 0, len(cats))}
+	for _, c := range cats {
+		// PlatformAliases returns nil for a platform with no known
+		// aliases; the contract types aliases a required string[], so
+		// coalesce to [] rather than marshal a null the picker cannot
+		// filter over.
+		al := match.PlatformAliases(c.Name)
+		if al == nil {
+			al = []string{}
+		}
+		out.Platforms = append(out.Platforms, api.CatalogPlatform{
+			IgdbId: c.ID, Name: c.Name, Aliases: al,
+		})
+	}
+	sort.Slice(out.Platforms, func(i, j int) bool { return out.Platforms[i].Name < out.Platforms[j].Name })
+	body, err := json.Marshal(out)
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "encoding failed")
+		return
+	}
+	if err := h.cache.PutPlatforms(ctx, body, h.searchTTL); err != nil {
+		h.failOpen(ctx, "platforms_put", err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
 // GetProduct is the identity lookup: Valkey, then Mongo, refetching a
 // stale IGDB projection inline best-effort (stale serves when the
 // provider is down). Prices refresh on the daily cadence only.
@@ -389,6 +547,26 @@ func toAPIProduct(p store.Product) api.Product {
 	if p.MatchHold {
 		held := true
 		out.MatchHold = &held
+	}
+	if p.Origin == "community" {
+		o := api.ProductOrigin("community")
+		out.Origin = &o
+	}
+	if p.Community != nil {
+		cm := api.CommunityMeta{}
+		if p.Community.PlatformName != "" {
+			pn := p.Community.PlatformName
+			cm.PlatformName = &pn
+		}
+		if !p.Community.FirstReleaseDate.IsZero() {
+			fd := openapi_types.Date{Time: p.Community.FirstReleaseDate}
+			cm.FirstReleaseDate = &fd
+		}
+		if p.Community.CoverURL != "" {
+			cu := p.Community.CoverURL
+			cm.CoverUrl = &cu
+		}
+		out.Community = &cm
 	}
 	if p.Platform != nil {
 		out.Platform = &api.PlatformRef{IgdbPlatformId: p.Platform.IGDBID, Name: p.Platform.Name}
@@ -1189,6 +1367,74 @@ func (h *Handlers) TriggerRefresh(w http.ResponseWriter, r *http.Request) {
 	h.startRefresh(w, r)
 }
 
+// validCoverURL enforces the cover-link shape: https only, at most 512
+// chars. The image is never fetched server-side (SSRF surface); the
+// client renders it with a broken-image fallback.
+func validCoverURL(s string) bool {
+	return len(s) <= 512 && strings.HasPrefix(s, "https://")
+}
+
+// CreateCommunityProduct mints an anchor-less product from an
+// approved catalog submission. Community identity is the curated
+// name: no identity-index membership, no uniqueness machinery - the
+// review panel's search is the dedup check. Variant stays empty (the
+// single edition field carries the entry idiom's note).
+func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request) {
+	claims, _ := jwtauth.FromContext(r.Context())
+	if !claims.HasRole("admin") {
+		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+		return
+	}
+	var req api.CommunityProductCreate
+	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+		return
+	}
+	switch string(req.Type) {
+	case "game", "console", "accessory":
+	default:
+		problem(w, r, http.StatusBadRequest, "invalid_body", "type must be game, console or accessory")
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "name must not be empty")
+		return
+	}
+	if req.CoverUrl != nil && *req.CoverUrl != "" && !validCoverURL(*req.CoverUrl) {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "cover_url must be an https URL up to 512 chars")
+		return
+	}
+	p := store.Product{Type: string(req.Type), Name: name, Origin: "community"}
+	if req.Region != nil {
+		p.Region = *req.Region
+	}
+	if req.Edition != nil {
+		p.Edition = *req.Edition
+	}
+	hasCover := req.CoverUrl != nil && *req.CoverUrl != ""
+	if req.PlatformName != nil || req.FirstReleaseDate != nil || hasCover {
+		cm := &store.CommunityMeta{}
+		if req.PlatformName != nil {
+			cm.PlatformName = *req.PlatformName
+		}
+		if req.FirstReleaseDate != nil {
+			cm.FirstReleaseDate = req.FirstReleaseDate.Time
+		}
+		if hasCover {
+			cm.CoverURL = *req.CoverUrl
+		}
+		p.Community = cm
+	}
+	created, err := h.store.CreateProduct(r.Context(), p)
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "create failed")
+		return
+	}
+	writeJSON(w, http.StatusCreated, toAPIProduct(created))
+}
+
 // ListUnmatchedProducts serves the admin worklist. Unlike the walk's
 // ListUnmatchedGames, this read spans all product types and includes
 // held products - surfacing deliberate clears is the point.
@@ -1222,6 +1468,119 @@ func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request,
 		page.Products = append(page.Products, toAPIProduct(p))
 	}
 	writeJSON(w, http.StatusOK, page)
+}
+
+// ListCommunityProducts serves the admin community listing: every
+// admin-minted, un-promoted community product, so an admin can find
+// and remove ones no entry references. Unlike ListUnmatchedProducts,
+// origin community is the filter (not the absence of a mapping -
+// community products never carry one).
+func (h *Handlers) ListCommunityProducts(w http.ResponseWriter, r *http.Request, params api.ListCommunityProductsParams) {
+	claims, _ := jwtauth.FromContext(r.Context())
+	if !claims.HasRole("admin") {
+		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+		return
+	}
+	limit := 200
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	offset := 0
+	if params.Offset != nil && *params.Offset > 0 {
+		offset = *params.Offset
+	}
+	prods, total, err := h.store.ListCommunityProductsPage(r.Context(), limit, offset)
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		return
+	}
+	page := api.CommunityProductsPage{Products: make([]api.Product, 0, len(prods)), TotalCount: total}
+	for _, p := range prods {
+		page.Products = append(page.Products, toAPIProduct(p))
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+// ListPromoteCandidates pages the sweep's flagged community products,
+// strongest candidate first.
+func (h *Handlers) ListPromoteCandidates(w http.ResponseWriter, r *http.Request, params api.ListPromoteCandidatesParams) {
+	claims, _ := jwtauth.FromContext(r.Context())
+	if !claims.HasRole("admin") {
+		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+		return
+	}
+	limit := 200
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	offset := 0
+	if params.Offset != nil && *params.Offset > 0 {
+		offset = *params.Offset
+	}
+	productID := ""
+	if params.ProductId != nil {
+		productID = params.ProductId.String()
+	}
+	prods, total, err := h.store.ListPromoteCandidateProducts(r.Context(), limit, offset, productID)
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		return
+	}
+	page := api.PromoteCandidatesPage{Products: make([]api.PromoteCandidateProduct, 0, len(prods)), TotalCount: total}
+	for _, p := range prods {
+		row := api.PromoteCandidateProduct{Product: toAPIProduct(p), Candidates: make([]api.PromoteCandidate, 0, len(p.PromoteCandidates))}
+		for _, c := range p.PromoteCandidates {
+			row.Candidates = append(row.Candidates, api.PromoteCandidate{
+				Provider: api.PromoteCandidateProvider(c.Provider), ProviderId: c.ProviderID,
+				Name: c.Name, Score: c.Score, FoundAt: c.FoundAt,
+			})
+		}
+		page.Products = append(page.Products, row)
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+// DismissPromoteCandidate silences one candidate pair permanently.
+func (h *Handlers) DismissPromoteCandidate(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
+	claims, _ := jwtauth.FromContext(r.Context())
+	if !claims.HasRole("admin") {
+		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+		return
+	}
+	var req api.DismissCandidateRequest
+	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+		return
+	}
+	switch string(req.Provider) {
+	case "igdb", "pricecharting":
+	default:
+		problem(w, r, http.StatusBadRequest, "invalid_body", "provider must be igdb or pricecharting")
+		return
+	}
+	err := h.store.DismissPromoteCandidate(r.Context(), productId.String(), string(req.Provider), req.ProviderId)
+	if errors.Is(err, store.ErrNotFound) {
+		problem(w, r, http.StatusNotFound, "product_not_found", "no such product")
+		return
+	}
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "dismiss failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // InternalRefresh is the CronJob's trigger (hand-routed in routes.go,
@@ -1284,6 +1643,7 @@ func (h *Handlers) startRefresh(w http.ResponseWriter, r *http.Request) {
 		// projections are written, so steady state costs no provider
 		// calls and any future projection-logic change self-deploys.
 		h.runReprojection(ctx)
+		h.runCandidateSweep(ctx)
 	}()
 	writeJSON(w, http.StatusAccepted, api.RefreshAccepted{Status: api.RefreshAcceptedStatus("started")})
 }
@@ -1537,6 +1897,78 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 		"missing", missing, "failures", failures, "duration_ms", h.now().Sub(start).Milliseconds())
 }
 
+// runCandidateSweep is the walk's community pass: for each community
+// product, name-search the promote-relevant provider (games need igdb
+// identity to promote, hardware needs a listing) and stash flag-only
+// candidates at the same never-guess threshold. Never attaches: a
+// repro shares its name with the original it reproduces, so a
+// high-scoring match has an elevated false-positive base rate here -
+// providers propose, admins decide. Dismissed pairs stay silent.
+func (h *Handlers) runCandidateSweep(ctx context.Context) {
+	comm, err := h.store.ListCommunityProducts(ctx)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "candidate sweep: list failed", "err", err)
+		return
+	}
+	var swept, flagged, failed int
+	for _, p := range comm {
+		if ctx.Err() != nil {
+			h.logger.WarnContext(ctx, "candidate sweep: budget exhausted", "swept", swept)
+			return
+		}
+		swept++
+		dismissed := make(map[string]bool, len(p.DismissedCandidates))
+		for _, d := range p.DismissedCandidates {
+			dismissed[fmt.Sprintf("%s:%d", d.Provider, d.ProviderID)] = true
+		}
+		var cands []store.PromoteCandidate
+		switch p.Type {
+		case "game":
+			games, gerr := h.games.SearchGames(ctx, p.Name, searchLimit)
+			if gerr != nil {
+				failed++
+				continue
+			}
+			for _, g := range games {
+				if dismissed[fmt.Sprintf("igdb:%d", g.ID)] {
+					continue
+				}
+				if sc := match.Score(p.Name, g.Name); sc >= match.Threshold {
+					cands = append(cands, store.PromoteCandidate{
+						Provider: "igdb", ProviderID: g.ID, Name: g.Name, Score: sc, FoundAt: h.now(),
+					})
+				}
+			}
+		case "console", "accessory":
+			prods, perr := h.prices.Search(ctx, p.Name)
+			if perr != nil {
+				failed++
+				continue
+			}
+			for _, pc := range prods {
+				if dismissed[fmt.Sprintf("pricecharting:%d", pc.ID)] {
+					continue
+				}
+				if sc := match.Score(p.Name, pc.Name); sc >= match.Threshold {
+					cands = append(cands, store.PromoteCandidate{
+						Provider: "pricecharting", ProviderID: pc.ID, Name: pc.Name, Score: sc, FoundAt: h.now(),
+					})
+				}
+			}
+		}
+		sort.SliceStable(cands, func(i, j int) bool { return cands[i].Score > cands[j].Score })
+		if err := h.store.ReplacePromoteCandidates(ctx, p.ID, cands); err != nil {
+			failed++
+			h.logger.WarnContext(ctx, "candidate sweep: store failed", "product", p.ID, "err", err)
+			continue
+		}
+		if len(cands) > 0 {
+			flagged++
+		}
+	}
+	h.logger.InfoContext(ctx, "candidate sweep complete", "swept", swept, "flagged", flagged, "failed", failed)
+}
+
 // SetProductMapping is the moderated correction: validate the mapping
 // against the provider, fetch prices, snapshot, mark verified.
 // DeleteProduct is the residue mop: it permanently removes an
@@ -1631,6 +2063,11 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
 		return
 	}
+	if prod.Origin == "community" {
+		problem(w, r, http.StatusConflict, "product_not_provider",
+			"community products take anchors through promote, not the mapping fix")
+		return
+	}
 
 	if req.PcProductId == nil {
 		if err := h.store.SetPriceCharting(ctx, id, nil); errors.Is(err, store.ErrIdentityTaken) {
@@ -1678,6 +2115,138 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 	// The correction must be visible immediately, not after the TTL.
 	if err := h.cache.InvalidateProduct(ctx, id); err != nil {
 		h.failOpen(ctx, "mapping_invalidate", err)
+	}
+	p, err := h.store.GetProduct(ctx, id)
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "reload failed")
+		return
+	}
+	h.writeProduct(ctx, w, r, p)
+}
+
+// PromoteProduct attaches provider anchors to a community product and
+// flips it to provider origin in place: the id stays stable, so every
+// adopter upgrades through live reads. The identity index adjudicates
+// the re-entry - a twin answers 409 with the holder named and nothing
+// changes (true merge is deliberately not automated).
+func (h *Handlers) PromoteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
+	ctx := r.Context()
+	claims, _ := jwtauth.FromContext(ctx)
+	if !claims.HasRole("admin") {
+		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+		return
+	}
+	var req api.PromoteRequest
+	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+		return
+	}
+	id := productId.String()
+	prod, err := h.store.GetProduct(ctx, id)
+	if errors.Is(err, store.ErrNotFound) {
+		problem(w, r, http.StatusNotFound, "product_not_found", "no such product")
+		return
+	} else if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		return
+	}
+	if prod.Origin != "community" {
+		problem(w, r, http.StatusConflict, "product_not_community",
+			"only community products promote; provider products use the mapping fix")
+		return
+	}
+
+	var (
+		igdbMeta *store.IGDBMeta
+		platform *store.Platform
+		pcMeta   *store.PCMeta
+	)
+	switch prod.Type {
+	case "game":
+		if req.IgdbGameId == nil || req.PlatformIgdbId == nil {
+			problem(w, r, http.StatusBadRequest, "invalid_body", "game promotion requires igdb_game_id and platform_igdb_id")
+			return
+		}
+		g, fetchedAt, gerr := h.gamePayloadFor(ctx, *req.IgdbGameId)
+		if gerr != nil {
+			// Same taxonomy the resolve flow consumes: a *resolveErr
+			// carries unknown_game (404) or upstream_unavailable (502),
+			// while a raw read/upsert fault is an internal DB error, not a
+			// provider outage. resolveError is that exact classifier, so
+			// reuse it rather than re-deriving a mapping that would slot
+			// the DB fault under a misleading 502.
+			h.resolveError(w, r, gerr)
+			return
+		}
+		p, perr := platformOf(g, *req.PlatformIgdbId)
+		if perr != nil {
+			problem(w, r, http.StatusBadRequest, "invalid_body", "the game did not release on that platform")
+			return
+		}
+		platform = p
+		meta := store.NewIGDBMeta(g, *req.PlatformIgdbId, fetchedAt)
+		igdbMeta = &meta
+	case "console", "accessory":
+		if req.PcProductId == nil {
+			problem(w, r, http.StatusBadRequest, "invalid_body", "hardware promotion requires pc_product_id")
+			return
+		}
+	default:
+		problem(w, r, http.StatusBadRequest, "invalid_body", "only game, console and accessory products promote")
+		return
+	}
+	if req.PcProductId != nil {
+		pc, perr := h.prices.Product(ctx, *req.PcProductId)
+		if errors.Is(perr, pricecharting.ErrNotFound) {
+			problem(w, r, http.StatusNotFound, "unknown_pc_product", "no such pricecharting product")
+			return
+		}
+		if perr != nil {
+			problem(w, r, http.StatusBadGateway, "upstream_unavailable", "price provider unavailable")
+			return
+		}
+		pcMeta = &store.PCMeta{
+			PCProductID: pc.ID, PCName: pc.Name, ConsoleName: pc.ConsoleName,
+			MatchConfidence: 1.0, Verified: true,
+			Current: quoteOf(pc), AsOf: h.now(),
+		}
+	}
+
+	err = h.store.PromoteProduct(ctx, id, igdbMeta, platform, pcMeta)
+	if errors.Is(err, store.ErrIdentityTaken) {
+		key := store.ProductKey{Type: prod.Type, Region: prod.Region, Edition: prod.Edition, Variant: prod.Variant}
+		if req.IgdbGameId != nil {
+			key.IGDBGameID = *req.IgdbGameId
+		}
+		if req.PlatformIgdbId != nil {
+			key.PlatformIGDBID = *req.PlatformIgdbId
+		}
+		if req.PcProductId != nil {
+			key.PCProductID = *req.PcProductId
+		}
+		problem(w, r, http.StatusConflict, "identity_taken",
+			withHolder(ctx, h.store, "a provider product already holds that identity", key))
+		return
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		problem(w, r, http.StatusNotFound, "product_not_found", "no such product")
+		return
+	}
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "promote failed")
+		return
+	}
+	if pcMeta != nil {
+		if err := h.store.AppendSnapshot(ctx, store.Snapshot{
+			ProductID: id, CapturedAt: pcMeta.AsOf,
+			LooseCents: pcMeta.Current.LooseCents, CIBCents: pcMeta.Current.CIBCents, NewCents: pcMeta.Current.NewCents,
+		}); err != nil {
+			h.logger.WarnContext(ctx, "promote snapshot failed", "product", id, "err", err)
+		}
+	}
+	if err := h.cache.InvalidateProduct(ctx, id); err != nil {
+		h.failOpen(ctx, "promote_invalidate", err)
 	}
 	p, err := h.store.GetProduct(ctx, id)
 	if err != nil {
