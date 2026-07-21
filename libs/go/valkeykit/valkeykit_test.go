@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -21,6 +22,11 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
 )
@@ -40,6 +46,14 @@ func TestConnectAndRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Pool metrics ride the same global meter the services install;
+	// drain it into a manual reader to see what Connect registered.
+	reader := sdkmetric.NewManualReader()
+	prev := otel.GetMeterProvider()
+	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
+	t.Cleanup(func() { otel.SetMeterProvider(prev) })
+
 	client, err := valkeykit.Connect(ctx, url)
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
@@ -56,6 +70,70 @@ func TestConnectAndRoundtrip(t *testing.T) {
 	if err := valkeykit.Health(ctx, client); err != nil {
 		t.Fatalf("Health: %v", err)
 	}
+
+	// The first command dialed a fresh connection (a miss) and the
+	// roundtrip left it pooled.
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(ctx, &rm); err != nil {
+		t.Fatal(err)
+	}
+	if v := poolMetricInt64(t, rm, "vg.valkeykit.pool.misses"); v < 1 {
+		t.Fatalf("want at least one pool miss, got %d", v)
+	}
+	if v := poolMetricInt64(t, rm, "vg.valkeykit.pool.connections"); v < 1 {
+		t.Fatalf("want at least one pooled connection, got %d", v)
+	}
+
+	// A metric registration failure must fail Connect, not limp on
+	// half-instrumented.
+	otel.SetMeterProvider(stubErrMeterProvider{})
+	if _, err := valkeykit.Connect(ctx, url); err == nil || !strings.Contains(err.Error(), "valkeykit: pool metrics") {
+		t.Fatalf("want pool metrics error, got %v", err)
+	}
+}
+
+func poolMetricInt64(t *testing.T, rm metricdata.ResourceMetrics, name string) int64 {
+	t.Helper()
+	for _, sm := range rm.ScopeMetrics {
+		if sm.Scope.Name != "github.com/levonn-dev/vg-collect/libs/go/valkeykit" {
+			continue
+		}
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			switch data := m.Data.(type) {
+			case metricdata.Sum[int64]:
+				if len(data.DataPoints) != 1 {
+					t.Fatalf("%s: want one series, got %d", name, len(data.DataPoints))
+				}
+				return data.DataPoints[0].Value
+			case metricdata.Gauge[int64]:
+				if len(data.DataPoints) != 1 {
+					t.Fatalf("%s: want one series, got %d", name, len(data.DataPoints))
+				}
+				return data.DataPoints[0].Value
+			default:
+				t.Fatalf("%s: unexpected data type %T", name, m.Data)
+			}
+		}
+	}
+	t.Fatalf("%s not exported", name)
+	return 0
+}
+
+// stubErrMeterProvider fails the first instrument registration so the
+// error leg of Connect is reachable against a live server.
+type stubErrMeterProvider struct{ noop.MeterProvider }
+
+func (stubErrMeterProvider) Meter(string, ...metric.MeterOption) metric.Meter {
+	return stubErrMeter{}
+}
+
+type stubErrMeter struct{ noop.Meter }
+
+func (stubErrMeter) Int64ObservableCounter(string, ...metric.Int64ObservableCounterOption) (metric.Int64ObservableCounter, error) {
+	return nil, errors.New("stubbed instrument failure")
 }
 
 func TestConnect_InvalidURL(t *testing.T) {

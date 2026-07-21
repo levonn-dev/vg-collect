@@ -12,7 +12,12 @@ import (
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 )
+
+// meterName follows the repo convention: meter name = module path.
+const meterName = "github.com/levonn-dev/vg-collect/libs/go/valkeykit"
 
 // Substitution seams for white-box tests: redisotel never errors for
 // *redis.Client today, but the API contract says it can.
@@ -68,7 +73,68 @@ func connect(ctx context.Context, opt *redis.Options) (*redis.Client, error) {
 		_ = client.Close()
 		return nil, fmt.Errorf("valkeykit: ping: %w", err)
 	}
+	if err := registerPoolMetrics(client); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("valkeykit: pool metrics: %w", err)
+	}
 	return client, nil
+}
+
+// registerPoolMetrics reports client.PoolStats() through the global
+// OTel meter, a no-op until an SDK is installed (libs/go/otel Setup
+// with an OTLP endpoint). redisotel above emits semconv connection
+// usage and timings but not pool hits/misses, the signal for whether
+// the pool size fits the load; timeouts and conn gauges join them
+// under the vg prefix so pool panels read one namespace. Instruments
+// are identified by name and therefore shared process-wide while each
+// connect registers its own callback: if one process holds several
+// clients (integration tests; services hold exactly one), counter
+// observations sum across clients and each gauge keeps a single
+// client's value per collection. Callbacks outlive Close, which is
+// safe: PoolStats() reads atomic counters that freeze at their final
+// values.
+func registerPoolMetrics(client *redis.Client) error {
+	m := otel.Meter(meterName)
+	hits, err := m.Int64ObservableCounter("vg.valkeykit.pool.hits",
+		metric.WithDescription("Cumulative pool acquires served by a free connection"),
+		metric.WithUnit("{hit}"))
+	if err != nil {
+		return err
+	}
+	misses, err := m.Int64ObservableCounter("vg.valkeykit.pool.misses",
+		metric.WithDescription("Cumulative pool acquires that found no free connection"),
+		metric.WithUnit("{miss}"))
+	if err != nil {
+		return err
+	}
+	timeouts, err := m.Int64ObservableCounter("vg.valkeykit.pool.timeouts",
+		metric.WithDescription("Cumulative wait timeouts acquiring a connection from the pool"),
+		metric.WithUnit("{timeout}"))
+	if err != nil {
+		return err
+	}
+	conns, err := m.Int64ObservableGauge("vg.valkeykit.pool.connections",
+		metric.WithDescription("Connections currently open in the pool"),
+		metric.WithUnit("{connection}"))
+	if err != nil {
+		return err
+	}
+	idle, err := m.Int64ObservableGauge("vg.valkeykit.pool.connections.idle",
+		metric.WithDescription("Idle connections in the pool"),
+		metric.WithUnit("{connection}"))
+	if err != nil {
+		return err
+	}
+	_, err = m.RegisterCallback(func(_ context.Context, o metric.Observer) error {
+		s := client.PoolStats()
+		o.ObserveInt64(hits, int64(s.Hits))
+		o.ObserveInt64(misses, int64(s.Misses))
+		o.ObserveInt64(timeouts, int64(s.Timeouts))
+		o.ObserveInt64(conns, int64(s.TotalConns))
+		o.ObserveInt64(idle, int64(s.IdleConns))
+		return nil
+	}, hits, misses, timeouts, conns, idle)
+	return err
 }
 
 // Health pings the client to verify liveness.

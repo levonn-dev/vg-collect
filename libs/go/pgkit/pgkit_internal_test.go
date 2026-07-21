@@ -1,13 +1,11 @@
-package valkeykit
+package pgkit
 
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
-	"github.com/redis/go-redis/extra/redisotel/v9"
-	"github.com/redis/go-redis/v9"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -15,37 +13,22 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-func TestConnect_InstrumentErrorsCloseClient(t *testing.T) {
-	t.Cleanup(func() {
-		instrumentTracing = redisotel.InstrumentTracing
-		instrumentMetrics = redisotel.InstrumentMetrics
-	})
-
-	instrumentTracing = func(redis.UniversalClient, ...redisotel.TracingOption) error {
-		return errors.New("boom")
-	}
-	_, err := Connect(context.Background(), "redis://127.0.0.1:1")
-	if err == nil || !strings.Contains(err.Error(), "valkeykit: tracing") {
-		t.Fatalf("want wrapped tracing error, got %v", err)
-	}
-
-	instrumentTracing = redisotel.InstrumentTracing
-	instrumentMetrics = func(redis.UniversalClient, ...redisotel.MetricsOption) error {
-		return errors.New("boom")
-	}
-	_, err = Connect(context.Background(), "redis://127.0.0.1:1")
-	if err == nil || !strings.Contains(err.Error(), "valkeykit: metrics") {
-		t.Fatalf("want wrapped metrics error, got %v", err)
-	}
-}
-
-// newOfflineClient builds a client that only ever fails to dial
-// (port 1 refuses; retries off), so PoolStats() moves without a server.
-func newOfflineClient(t *testing.T) *redis.Client {
+// newOfflinePool builds a pool that never dials: MinConns stays zero so
+// no background connections start, and Stat() serves the configured
+// MaxConns plus all-zero counters.
+func newOfflinePool(t *testing.T, maxConns int32) *pgxpool.Pool {
 	t.Helper()
-	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1})
-	t.Cleanup(func() { _ = client.Close() })
-	return client
+	cfg, err := pgxpool.ParseConfig("postgres://u:p@127.0.0.1:1/db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.MaxConns = maxConns
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
 }
 
 // installManualReader swaps the global meter provider for one draining
@@ -113,49 +96,62 @@ func gaugeInt64(t *testing.T, got map[string]metricdata.Metrics, name string) in
 	return g.DataPoints[0].Value
 }
 
-func TestRegisterPoolMetrics_ReportsPoolStats(t *testing.T) {
+func TestRegisterPoolMetrics_ReportsPoolStat(t *testing.T) {
 	reader := installManualReader(t)
-	client := newOfflineClient(t)
-	if err := registerPoolMetrics(client); err != nil {
+	pool := newOfflinePool(t, 7)
+	if err := registerPoolMetrics(pool); err != nil {
 		t.Fatalf("registerPoolMetrics: %v", err)
 	}
 
-	// One refused command: the pool records a miss (no free
-	// connection existed) and no hit.
-	_ = client.Ping(context.Background()).Err()
-
 	got := collectPoolMetrics(t, reader)
-	if v := sumInt64(t, got, "vg.valkeykit.pool.misses"); v < 1 {
-		t.Fatalf("misses after failed dial: want >= 1, got %d", v)
-	}
-	if v := sumInt64(t, got, "vg.valkeykit.pool.hits"); v != 0 {
-		t.Fatalf("hits: want 0, got %d", v)
-	}
-	if v := sumInt64(t, got, "vg.valkeykit.pool.timeouts"); v != 0 {
-		t.Fatalf("timeouts: want 0, got %d", v)
-	}
-	if v := gaugeInt64(t, got, "vg.valkeykit.pool.connections"); v != 0 {
+	if v := gaugeInt64(t, got, "vg.pgkit.pool.connections"); v != 0 {
 		t.Fatalf("connections: want 0, got %d", v)
 	}
-	if v := gaugeInt64(t, got, "vg.valkeykit.pool.connections.idle"); v != 0 {
+	if v := gaugeInt64(t, got, "vg.pgkit.pool.connections.idle"); v != 0 {
 		t.Fatalf("idle: want 0, got %d", v)
+	}
+	if v := gaugeInt64(t, got, "vg.pgkit.pool.connections.max"); v != 7 {
+		t.Fatalf("max: want 7, got %d", v)
+	}
+	if v := sumInt64(t, got, "vg.pgkit.pool.acquires"); v != 0 {
+		t.Fatalf("acquires: want 0, got %d", v)
+	}
+	if v := sumInt64(t, got, "vg.pgkit.pool.empty_acquires"); v != 0 {
+		t.Fatalf("empty_acquires: want 0, got %d", v)
+	}
+
+	// The wait counter's unit drives its Prometheus name
+	// (vg_pgkit_pool_acquire_wait_seconds_total), so pin it.
+	wait, ok := got["vg.pgkit.pool.acquire_wait"]
+	if !ok {
+		t.Fatal("vg.pgkit.pool.acquire_wait not exported")
+	}
+	if wait.Unit != "s" {
+		t.Fatalf("acquire_wait unit: want s, got %q", wait.Unit)
+	}
+	sum, ok := wait.Data.(metricdata.Sum[float64])
+	if !ok || !sum.IsMonotonic {
+		t.Fatalf("acquire_wait: want monotonic Sum[float64], got %+v", wait.Data)
+	}
+	if len(sum.DataPoints) != 1 || sum.DataPoints[0].Value != 0 {
+		t.Fatalf("acquire_wait: want single zero point, got %+v", sum.DataPoints)
 	}
 }
 
-func TestRegisterPoolMetrics_SecondClientSharesInstruments(t *testing.T) {
+func TestRegisterPoolMetrics_SecondPoolSharesInstruments(t *testing.T) {
 	reader := installManualReader(t)
-	if err := registerPoolMetrics(newOfflineClient(t)); err != nil {
+	if err := registerPoolMetrics(newOfflinePool(t, 4)); err != nil {
 		t.Fatalf("first registration: %v", err)
 	}
-	// A second connect in the same process re-creates instruments with
+	// A second Connect in the same process re-creates instruments with
 	// identical identity; that must not error and must not fork a
 	// second series.
-	if err := registerPoolMetrics(newOfflineClient(t)); err != nil {
+	if err := registerPoolMetrics(newOfflinePool(t, 2)); err != nil {
 		t.Fatalf("second registration: %v", err)
 	}
 	got := collectPoolMetrics(t, reader)
-	if v := sumInt64(t, got, "vg.valkeykit.pool.hits"); v != 0 {
-		t.Fatalf("hits across two idle clients: want 0, got %d", v)
+	if v := sumInt64(t, got, "vg.pgkit.pool.acquires"); v != 0 {
+		t.Fatalf("acquires across two idle pools: want 0, got %d", v)
 	}
 }
 
@@ -163,7 +159,7 @@ func TestRegisterPoolMetrics_NoopMeterIsHarmless(t *testing.T) {
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(noop.NewMeterProvider())
 	t.Cleanup(func() { otel.SetMeterProvider(prev) })
-	if err := registerPoolMetrics(newOfflineClient(t)); err != nil {
+	if err := registerPoolMetrics(newOfflinePool(t, 4)); err != nil {
 		t.Fatalf("noop meter must not error: %v", err)
 	}
 }
@@ -173,7 +169,7 @@ func TestRegisterPoolMetrics_InstrumentError(t *testing.T) {
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(stubMeterProvider{err: errBoom})
 	t.Cleanup(func() { otel.SetMeterProvider(prev) })
-	if err := registerPoolMetrics(newOfflineClient(t)); !errors.Is(err, errBoom) {
+	if err := registerPoolMetrics(newOfflinePool(t, 4)); !errors.Is(err, errBoom) {
 		t.Fatalf("want instrument error, got %v", err)
 	}
 }
@@ -194,6 +190,6 @@ type stubMeter struct {
 	err error
 }
 
-func (m stubMeter) Int64ObservableCounter(string, ...metric.Int64ObservableCounterOption) (metric.Int64ObservableCounter, error) {
+func (m stubMeter) Int64ObservableGauge(string, ...metric.Int64ObservableGaugeOption) (metric.Int64ObservableGauge, error) {
 	return nil, m.err
 }
