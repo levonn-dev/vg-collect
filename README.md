@@ -101,18 +101,24 @@ through a session-gated relay on the bff, so one trace stitches the
 browser through the bff and into whichever service and database
 answered the call.
 
-Five dashboards are provisioned into the `vg-collect` Grafana folder
+Ten dashboards are provisioned into the `vg-collect` Grafana folder
 (localhost:3000, anonymous admin in dev):
 
-- `vg-service-red` - per-service rate/errors/duration
+- `vg-overview` - the application overview pane: edge, services, and
+  datastores on one screen, with per-service rate/errors/duration
 - `vg-apisix-edge` - gateway traffic and status codes
 - `vg-datastores` - Postgres/MongoDB/Valkey health
 - `vg-pod-details` - per-pod CPU/memory/restarts
 - `vg-node-details` - node-level pressure and capacity
+- `vg-auth`, `vg-bff`, `vg-collection`, `vg-enrichment`, `vg-user` -
+  one per service: RED, domain metrics, datastore health from that
+  service's seat, pods, and error logs
 
-Ten alert rules are provisioned alongside them in the same `vg-collect`
-folder; each links a runbook under `docs/runbooks/` via its
-`runbook_url` annotation.
+Twenty alert rules are provisioned alongside them in the same
+`vg-collect` folder; each links a runbook under `docs/runbooks/` via
+its `runbook_url` annotation. The same directory holds an operating
+runbook per service and `docs/runbooks/stack.md` for the application
+as a whole; `docs/runbooks/README.md` indexes them.
 
 See one stitched trace:
 

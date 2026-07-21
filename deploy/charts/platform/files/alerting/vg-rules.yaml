@@ -30,7 +30,7 @@ groups:
         for: 5m
         annotations:
           summary: "{{ $labels.service_name }} is answering more than 5 percent 5xx"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/service-5xx-ratio.md
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#1-service-5xx-ratio-above-5-percent
         labels:
           severity: page
       - uid: vg-service-p99
@@ -58,7 +58,7 @@ groups:
         for: 10m
         annotations:
           summary: "{{ $labels.service_name }} p99 is above the 500ms objective"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/service-p99-latency.md
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#2-service-p99-latency-above-500ms
         labels:
           severity: warn
       - uid: vg-pod-churn
@@ -86,7 +86,7 @@ groups:
         for: 5m
         annotations:
           summary: "{{ $labels.namespace }}/{{ $labels.pod }} is restart-churning or was OOM-killed"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/pod-restart-churn.md
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#4-pod-restart-churn-or-oom-kill
         labels:
           severity: warn
       - uid: vg-node-pressure
@@ -114,7 +114,7 @@ groups:
         for: 5m
         annotations:
           summary: "node pressure condition active or memory nearly exhausted"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/node-pressure.md
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#5-node-under-memory-disk-or-pid-pressure
         labels:
           severity: page
       - uid: vg-pg-saturation
@@ -142,7 +142,7 @@ groups:
         for: 5m
         annotations:
           summary: "{{ $labels.service }} is using more than 80 percent of max_connections"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/pg-connection-saturation.md
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#6-postgres-connections-above-80-percent-of-max
         labels:
           severity: warn
       - uid: vg-valkey-pressure
@@ -170,7 +170,7 @@ groups:
         for: 5m
         annotations:
           summary: "{{ $labels.service }} is evicting keys or holding over 200MiB"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/valkey-memory-evictions.md
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#7-valkey-evicting-keys-or-memory-unusually-high
         labels:
           severity: warn
       - uid: vg-mongo-down
@@ -198,7 +198,7 @@ groups:
         for: 2m
         annotations:
           summary: "enrichment-mongo is down or its exporter cannot reach it"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/mongo-down.md
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/enrichment.md#2-mongo-down
         labels:
           severity: page
       - uid: vg-collector-drops
@@ -226,7 +226,7 @@ groups:
         for: 5m
         annotations:
           summary: "the otel pipeline is failing to deliver spans, metrics or logs"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/collector-queue-drops.md
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#telemetry-pipeline-operations
         labels:
           severity: warn
       - uid: vg-denylist-failopen
@@ -254,7 +254,7 @@ groups:
         for: 0s
         annotations:
           summary: "revoked-token checks are being skipped because Valkey is unreachable"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/denylist-fail-open.md
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/bff.md#1-valkey-unreachable
         labels:
           severity: page
       - uid: vg-loki-errors
@@ -282,6 +282,286 @@ groups:
         for: 5m
         annotations:
           summary: "{{ $labels.service_name }} logged more than 20 errors in 5 minutes"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/loki-error-spike.md
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#3-error-log-spike
         labels:
           severity: warn
+      - uid: vg-auth-jwks-empty
+        title: Auth JWKS has no active signing keys
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: vg_auth_signing_keys_active
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "auth is serving an empty JWKS; every service's token validation fails as consumer caches miss"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/auth.md#6-platform-wide-401s-jwks-trouble
+        labels:
+          severity: page
+      - uid: vg-auth-refresh-reuse
+        title: Auth refresh token reuse detected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(increase(vg_auth_token_refreshes_total{outcome="reuse_detected"}[15m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "a refresh token was replayed and its session family revoked; theft or a client double-refresh regression"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/auth.md#3-refresh-reuse-detections
+        labels:
+          severity: warn
+      - uid: vg-auth-provider-errors
+        title: Auth login provider failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum by (provider) (increase(vg_auth_login_outcomes_total{outcome="provider_error"}[10m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [5] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "{{ $labels.provider }} logins are failing at the identity provider (outage or expired client credentials)"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/auth.md#1-logins-failing-at-the-provider-hop
+        labels:
+          severity: warn
+      - uid: vg-bff-refresh-failures
+        title: BFF session refresh failures spiking
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(increase(vg_bff_session_refreshes_total{outcome=~"rejected|reuse_revoked|failed"}[10m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [10] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "bff session refreshes are failing; users are being logged out"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/bff.md#3-refresh-failure-storm-mass-logout
+        labels:
+          severity: warn
+      - uid: vg-bff-valkey-pool-timeouts
+        title: BFF Valkey client pool exhausted
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(increase(vg_valkeykit_pool_timeouts_total{service_name="bff"}[10m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "bff callers are timing out waiting for a Valkey pool connection"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/bff.md#5-valkey-client-pool-exhaustion
+        labels:
+          severity: warn
+      - uid: vg-collection-pricing-degraded
+        title: Collection pricing composition degraded
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(rate(vg_collection_pricing_compose_total{outcome="degraded"}[5m])) / sum(rate(vg_collection_pricing_compose_total[5m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "collection is composing values without enrichment prices; users see null values and available=false"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/collection.md#1-enrichment-unreachable
+        labels:
+          severity: warn
+      - uid: vg-collection-submissions-backlog
+        title: Collection submission queue not draining
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: max(vg_collection_submissions_pending)
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [25] }
+        noDataState: OK
+        execErrState: Error
+        for: 6h
+        annotations:
+          summary: "the catalog submission review queue has stayed above 25 pending; reviews are not keeping up"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/collection.md#6-submission-queue-not-draining
+        labels:
+          severity: warn
+      - uid: vg-enrichment-refresh-stalled
+        title: Enrichment nightly price walk has not completed in 26h
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 93600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(increase(vg_enrichment_refresh_walk_duration_seconds_count{step="prices"}[26h]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 1h
+        annotations:
+          summary: "enrichment has not finished a price walk in more than 26 hours; catalog prices are going stale"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/enrichment.md#4-nightly-walk-missing
+        labels:
+          severity: warn
+      - uid: vg-enrichment-search-degraded
+        title: Enrichment search serving degraded answers
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(rate(vg_enrichment_search_requests_total{source="degraded"}[15m])) / sum(rate(vg_enrichment_search_requests_total[15m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.1] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: "more than 10 percent of enrichment search answers are degraded local fallbacks; a provider is failing"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/enrichment.md#3-search-degraded
+        labels:
+          severity: warn
+      - uid: vg-user-upsert-5xx
+        title: User profile upsert failing (logins blocked)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert", http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert"}[5m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "the user service is failing profile upserts; every login runs this call, so logins are down while the service-wide 5xx ratio can stay under vg-service-5xx's threshold"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/user.md#1-logins-fail-at-the-upsert-leg
+        labels:
+          severity: page

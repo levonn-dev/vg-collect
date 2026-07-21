@@ -92,7 +92,7 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Restarts last hour",
+      "title": "Restarts last 15m",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
