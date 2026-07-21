@@ -2502,3 +2502,31 @@ func TestUnitAckSubmission_RelaysAndForwardsBearer(t *testing.T) {
 		t.Fatalf("no session: %d", rec.Code)
 	}
 }
+
+// TestUnitHandlers_OwnSessionGuards calls handlers directly, without
+// the Authenticate middleware in front, to prove each one enforces its
+// own session check: the in-handler guard is defense in depth and must
+// hold even if a handler is ever wired up without the middleware.
+func TestUnitHandlers_OwnSessionGuards(t *testing.T) {
+	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	id := uuid.New()
+	calls := map[string]func(w http.ResponseWriter, r *http.Request){
+		"list_platforms":    func(w http.ResponseWriter, r *http.Request) { h.ListPlatforms(w, r) },
+		"get_product":       func(w http.ResponseWriter, r *http.Request) { h.GetProduct(w, r, id) },
+		"trigger_refresh":   func(w http.ResponseWriter, r *http.Request) { h.TriggerRefresh(w, r) },
+		"create_submission": func(w http.ResponseWriter, r *http.Request) { h.CreateSubmission(w, r, id) },
+		"get_submission":    func(w http.ResponseWriter, r *http.Request) { h.GetSubmission(w, r, id) },
+		"ack_submission":    func(w http.ResponseWriter, r *http.Request) { h.AckSubmissionResolution(w, r, id) },
+		"submit_verdict":    func(w http.ResponseWriter, r *http.Request) { h.SubmitVerdict(w, r, id) },
+		"promote_product":   func(w http.ResponseWriter, r *http.Request) { h.PromoteProduct(w, r, id) },
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			call(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("handler must enforce its own session guard, code = %d", rec.Code)
+			}
+		})
+	}
+}

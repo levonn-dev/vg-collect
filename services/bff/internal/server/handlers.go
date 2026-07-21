@@ -39,7 +39,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request, params api.Logi
 			h.redirectLoginError(w, r, err)
 			return
 		}
-		h.completeNavLogin(w, r, pair, "/")
+		h.completeNavLogin(w, r, pair, "login", "/")
 		return
 	}
 	authorizeURL, err := h.auth.Start(r.Context(), params.Provider)
@@ -64,15 +64,18 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request, params api.C
 		state = *params.State
 	}
 	if code == "" || state == "" {
+		h.loginEvent(r.Context(), "login", "failed")
 		http.Redirect(w, r, "/login?error=login_failed", http.StatusFound)
 		return
 	}
 	pair, err := h.auth.Callback(r.Context(), code, state)
 	switch {
 	case errors.Is(err, authclient.ErrLinkConflict):
+		h.loginEvent(r.Context(), "link", "conflict")
 		http.Redirect(w, r, "/account?link_error=conflict", http.StatusFound)
 		return
 	case errors.Is(err, authclient.ErrLinkEmailUnverified):
+		h.loginEvent(r.Context(), "link", "email_unverified")
 		http.Redirect(w, r, "/account?link_error=email_unverified", http.StatusFound)
 		return
 	case err != nil:
@@ -80,36 +83,52 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request, params api.C
 		return
 	}
 	if pair.LinkedProvider != nil {
-		h.completeNavLogin(w, r, pair, "/account?linked="+url.QueryEscape(*pair.LinkedProvider))
+		h.completeNavLogin(w, r, pair, "link", "/account?linked="+url.QueryEscape(*pair.LinkedProvider))
 		return
 	}
-	h.completeNavLogin(w, r, pair, "/")
+	h.completeNavLogin(w, r, pair, "login", "/")
 }
 
 // completeNavLogin seals the pair into the session cookie and sends
 // the browser to target (home after a login, the account page after a
-// link).
-func (h *Handlers) completeNavLogin(w http.ResponseWriter, r *http.Request, pair authclient.TokenPair, target string) {
+// link). flow (login|link) labels the outcome counter: success only on
+// the cookie-set redirect, so a seal failure counts as failed.
+func (h *Handlers) completeNavLogin(w http.ResponseWriter, r *http.Request, pair authclient.TokenPair, flow, target string) {
 	sealed, err := h.codec.Seal(session.Session{
 		AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken,
 	})
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "cookie seal failed", "err", err)
+		h.loginEvent(r.Context(), flow, "failed")
 		http.Redirect(w, r, "/login?error=login_failed", http.StatusFound)
 		return
 	}
 	http.SetCookie(w, h.codec.Cookie(sealed, int(pair.RefreshExpiresIn)))
+	h.loginEvent(r.Context(), flow, "success")
 	http.Redirect(w, r, target, http.StatusFound)
 }
 
-func (h *Handlers) redirectLoginError(w http.ResponseWriter, r *http.Request, err error) {
-	code := "login_failed"
+// loginOutcome maps a login failure onto the outcome vocabulary of
+// vg.bff.auth.logins (the ?error redirect codes differ only in the
+// catch-all, login_failed).
+func loginOutcome(err error) string {
 	switch {
 	case errors.Is(err, authclient.ErrEmailUnverified):
-		code = "email_unverified"
+		return "email_unverified"
 	case errors.Is(err, authclient.ErrProviderError):
-		code = "provider_error"
+		return "provider_error"
+	default:
+		return "failed"
 	}
+}
+
+func (h *Handlers) redirectLoginError(w http.ResponseWriter, r *http.Request, err error) {
+	outcome := loginOutcome(err)
+	code := outcome
+	if code == "failed" {
+		code = "login_failed"
+	}
+	h.loginEvent(r.Context(), "login", outcome)
 	h.logger.WarnContext(r.Context(), "login failed", "err", err)
 	http.Redirect(w, r, "/login?error="+code, http.StatusFound)
 }
@@ -162,9 +181,13 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 	}
 	if body, err := h.cache.GetMe(r.Context(), claims.Sub); err != nil {
 		h.failOpenEvent(r.Context(), "me_get", err)
+		h.cacheLookupEvent(r.Context(), "me", "miss")
 	} else if body != nil {
+		h.cacheLookupEvent(r.Context(), "me", "hit")
 		writeRawJSON(w, body)
 		return
+	} else {
+		h.cacheLookupEvent(r.Context(), "me", "miss")
 	}
 	u, err := h.users.Get(r.Context(), claims.Sub, sess.AccessToken)
 	if errors.Is(err, userclient.ErrUserNotFound) {
@@ -285,29 +308,41 @@ func (h *Handlers) LinkLogin(w http.ResponseWriter, r *http.Request, params api.
 		}
 		pair, err := h.auth.DevLink(r.Context(), user, sess.AccessToken)
 		if err != nil {
+			h.loginEvent(r.Context(), "link", linkOutcome(err))
 			http.Redirect(w, r, "/account?link_error="+linkErrorCode(err), http.StatusFound)
 			return
 		}
-		h.completeNavLogin(w, r, pair, "/account?linked=dev")
+		h.completeNavLogin(w, r, pair, "link", "/account?linked=dev")
 		return
 	}
 	authorizeURL, err := h.auth.LinkStart(r.Context(), params.Provider, sess.AccessToken)
 	if err != nil {
+		h.loginEvent(r.Context(), "link", "failed")
 		http.Redirect(w, r, "/account?link_error=link_failed", http.StatusFound)
 		return
 	}
 	http.Redirect(w, r, authorizeURL, http.StatusFound)
 }
 
-func linkErrorCode(err error) string {
+// linkOutcome maps a link failure onto the outcome vocabulary of
+// vg.bff.auth.logins; linkErrorCode derives the ?link_error redirect
+// code from it (they differ only in the catch-all, link_failed).
+func linkOutcome(err error) string {
 	switch {
 	case errors.Is(err, authclient.ErrLinkConflict):
 		return "conflict"
 	case errors.Is(err, authclient.ErrLinkEmailUnverified):
 		return "email_unverified"
 	default:
-		return "link_failed"
+		return "failed"
 	}
+}
+
+func linkErrorCode(err error) string {
+	if o := linkOutcome(err); o != "failed" {
+		return o
+	}
+	return "link_failed"
 }
 
 // DeleteMe deletes the account everywhere. Order is self-healing:
@@ -813,9 +848,13 @@ func (h *Handlers) GetRecommendations(w http.ResponseWriter, r *http.Request) {
 	}
 	if body, err := h.cache.GetRecs(r.Context(), claims.Sub); err != nil {
 		h.failOpenEvent(r.Context(), "recs_get", err)
+		h.cacheLookupEvent(r.Context(), "recs", "miss")
 	} else if body != nil {
+		h.cacheLookupEvent(r.Context(), "recs", "hit")
 		writeRawJSON(w, body)
 		return
+	} else {
+		h.cacheLookupEvent(r.Context(), "recs", "miss")
 	}
 	lib, err := h.collection.LibrarySummary(r.Context(), sess.AccessToken)
 	if err != nil {
@@ -1087,6 +1126,9 @@ func (h *Handlers) ProxyTraces(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := h.otlpHTTP.Do(req)
 	if err != nil {
+		// The 502 shows in RED metrics; the line carries the cause
+		// (DNS, refused, timeout) that the status alone loses.
+		h.logger.WarnContext(r.Context(), "browser telemetry relay failed", "err", err)
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collector unavailable")
 		return
 	}

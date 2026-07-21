@@ -172,6 +172,9 @@ type Handlers struct {
 	otlpProxyURL  string
 	otlpHTTP      *http.Client
 	failOpen      metric.Int64Counter
+	logins        metric.Int64Counter
+	refreshes     metric.Int64Counter
+	cacheLookups  metric.Int64Counter
 
 	// Test seams: clock and result-adoption pacing.
 	now          func() time.Time
@@ -182,14 +185,24 @@ type Handlers struct {
 // New builds a Handlers. The OTel meter is best-effort: a counter
 // registration failure is logged but does not prevent startup.
 func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, enrichment EnrichmentAPI, collection CollectionAPI, opts Options) *Handlers {
-	failOpen, err := otel.Meter("github.com/levonn-dev/vg-collect/services/bff").
-		Int64Counter("vg.bff.cache.fail_open",
-			metric.WithDescription("Valkey operations that failed and were failed open"))
-	if err != nil {
-		// A telemetry hiccup must not stop logins; failOpenEvent
-		// guards the nil.
-		opts.Logger.Error("fail-open counter unavailable", "err", err)
+	meter := otel.Meter("github.com/levonn-dev/vg-collect/services/bff")
+	counter := func(name, unit, desc string) metric.Int64Counter {
+		c, err := meter.Int64Counter(name, metric.WithUnit(unit), metric.WithDescription(desc))
+		if err != nil {
+			// A telemetry hiccup must not stop logins; every emit
+			// helper guards the nil.
+			opts.Logger.Error("counter unavailable", "name", name, "err", err)
+		}
+		return c
 	}
+	failOpen := counter("vg.bff.cache.fail_open", "",
+		"Valkey operations that failed and were failed open")
+	logins := counter("vg.bff.auth.logins", "{login}",
+		"Completed login and account-link attempts by flow and outcome")
+	refreshes := counter("vg.bff.session.refreshes", "{refresh}",
+		"Session refresh attempts by terminal outcome")
+	cacheLookups := counter("vg.bff.cache.lookups", "{lookup}",
+		"Composition cache lookups (me, recs) by hit or miss")
 	return &Handlers{
 		codec: codec, cache: cache, auth: auth, users: users, enrichment: enrichment, collection: collection,
 		logger:        opts.Logger,
@@ -204,6 +217,9 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 		failOpen:     failOpen,
+		logins:       logins,
+		refreshes:    refreshes,
+		cacheLookups: cacheLookups,
 		now:          time.Now,
 		pollInterval: 100 * time.Millisecond,
 		// pollBudget is deliberately shorter than the auth refresh timeout:
@@ -218,6 +234,35 @@ func (h *Handlers) failOpenEvent(ctx context.Context, op string, err error) {
 	h.logger.ErrorContext(ctx, "valkey unavailable; failing open", "op", op, "err", err)
 	if h.failOpen != nil {
 		h.failOpen.Add(ctx, 1, metric.WithAttributes(attribute.String("op", op)))
+	}
+}
+
+// loginEvent counts one completed login or account-link attempt
+// (flow: login|link; outcome vocabulary in the bff runbook). Redirects
+// to an identity provider are not counted: that attempt completes at
+// the callback.
+func (h *Handlers) loginEvent(ctx context.Context, flow, outcome string) {
+	if h.logins != nil {
+		h.logins.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("flow", flow), attribute.String("outcome", outcome)))
+	}
+}
+
+// refreshEvent counts one session refresh attempt reaching a terminal
+// outcome (vocabulary in the bff runbook).
+func (h *Handlers) refreshEvent(ctx context.Context, outcome string) {
+	if h.refreshes != nil {
+		h.refreshes.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+	}
+}
+
+// cacheLookupEvent counts a composition-cache lookup (cache: me|recs).
+// A Valkey read error counts as miss (the composition runs); the
+// caller fires failOpenEvent for the error itself.
+func (h *Handlers) cacheLookupEvent(ctx context.Context, cache, outcome string) {
+	if h.cacheLookups != nil {
+		h.cacheLookups.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("cache", cache), attribute.String("outcome", outcome)))
 	}
 }
 

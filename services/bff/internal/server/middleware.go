@@ -177,6 +177,7 @@ func (h *Handlers) refreshSession(w http.ResponseWriter, r *http.Request, sess s
 	if raw, gerr := h.cache.GetRefreshResult(ctx, key); gerr == nil && raw != "" {
 		if newSess, newClaims, res, ok := h.decodeResult(raw); ok {
 			http.SetCookie(w, h.codec.Cookie(res.Cookie, res.MaxAge))
+			h.refreshEvent(ctx, "adopted")
 			return newSess, newClaims, nil
 		}
 	}
@@ -189,12 +190,14 @@ func (h *Handlers) refreshSession(w http.ResponseWriter, r *http.Request, sess s
 		newClaims, cerr := session.ParseClaims(newSess.AccessToken)
 		if cerr != nil {
 			h.logger.ErrorContext(ctx, "refresh returned an unparseable access token", "err", cerr)
+			h.refreshEvent(ctx, "failed")
 			h.clearAndUnauthorized(w, r)
 			return session.Session{}, session.Claims{}, cerr
 		}
 		sealed, serr := h.codec.Seal(newSess)
 		if serr != nil {
 			h.logger.ErrorContext(ctx, "cookie seal failed", "err", serr)
+			h.refreshEvent(ctx, "failed")
 			writeProblem(w, r, http.StatusInternalServerError, "internal", "session seal failed")
 			return session.Session{}, session.Claims{}, serr
 		}
@@ -204,18 +207,23 @@ func (h *Handlers) refreshSession(w http.ResponseWriter, r *http.Request, sess s
 			}
 		}
 		http.SetCookie(w, h.codec.Cookie(sealed, int(pair.RefreshExpiresIn)))
+		h.refreshEvent(ctx, "rotated")
 		return newSess, newClaims, nil
 
 	case errors.As(err, &reused):
 		// The chain is dead; denylist any reported still-live jtis so
 		// stolen access tokens die at this edge too.
+		h.logger.WarnContext(ctx, "refresh token reuse detected; session family revoked",
+			"sub", claims.Sub, "revoked_jtis", len(reused.RevokeJTIs))
 		if derr := h.cache.DenylistAdd(ctx, reused.RevokeJTIs, h.accessTTL+time.Minute); derr != nil {
 			h.failOpenEvent(ctx, "denylist_add", derr)
 		}
+		h.refreshEvent(ctx, "reuse_revoked")
 		h.clearAndUnauthorized(w, r)
 		return session.Session{}, session.Claims{}, err
 
 	case errors.Is(err, authclient.ErrRefreshRejected):
+		h.refreshEvent(ctx, "rejected")
 		h.clearAndUnauthorized(w, r)
 		return session.Session{}, session.Claims{}, err
 
@@ -224,16 +232,20 @@ func (h *Handlers) refreshSession(w http.ResponseWriter, r *http.Request, sess s
 		// on the current token if it still has life, else ask the
 		// client to retry.
 		if h.now().Before(claims.Exp) {
+			h.refreshEvent(ctx, "deferred")
 			return sess, claims, nil
 		}
+		h.refreshEvent(ctx, "failed")
 		writeProblem(w, r, http.StatusServiceUnavailable, "user_unavailable", "session refresh blocked on a dependency; retry")
 		return session.Session{}, session.Claims{}, err
 
 	default:
 		h.logger.WarnContext(ctx, "token refresh failed", "err", err)
 		if h.now().Before(claims.Exp) {
+			h.refreshEvent(ctx, "deferred")
 			return sess, claims, nil
 		}
+		h.refreshEvent(ctx, "failed")
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "auth service unavailable")
 		return session.Session{}, session.Claims{}, err
 	}
@@ -282,15 +294,21 @@ func (h *Handlers) adoptRefreshResult(w http.ResponseWriter, r *http.Request, se
 				break
 			}
 			http.SetCookie(w, h.codec.Cookie(res.Cookie, res.MaxAge))
+			h.refreshEvent(r.Context(), "adopted")
 			return newSess, newClaims, nil
 		}
 		select {
 		case <-r.Context().Done():
+			h.refreshEvent(r.Context(), "adopt_timeout")
 			h.unauthorized(w, r)
 			return session.Session{}, session.Claims{}, errAdopt
 		case <-time.After(h.pollInterval):
 		}
 	}
+	// Reached on budget expiry and on the give-up breaks above; every
+	// arrival here is a browser that got a spurious 401.
+	h.logger.WarnContext(r.Context(), "refresh result adoption timed out", "sub", claims.Sub)
+	h.refreshEvent(r.Context(), "adopt_timeout")
 	h.unauthorized(w, r)
 	return session.Session{}, session.Claims{}, errAdopt
 }
