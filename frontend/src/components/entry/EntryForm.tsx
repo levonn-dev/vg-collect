@@ -4,6 +4,7 @@ import { centsToDollars, dollarsToCents, enteredCentsToUsdCents, usdCentsToMajor
 import { entryToUpdate } from '../../lib/entryUpdate'
 import { CONDITIONS, PACKAGINGS, REGIONS, STATUSES } from '../../lib/listParams'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
+import PlatformPicker from '../catalog/PlatformPicker'
 import type { PricingValue } from './PricingPanel'
 import PricingPanel from './PricingPanel'
 import TagPicker from './TagPicker'
@@ -13,7 +14,9 @@ type Condition = NonNullable<Entry['item_condition']>
 interface FormValues {
   displayName: string
   platformName: string
+  platformIgdbId?: number
   firstReleaseDate: string
+  coverUrl: string
   region: Entry['region']
   edition: string
   packaging: Entry['packaging']
@@ -50,7 +53,9 @@ function valuesFrom(e: Entry, inputCurrency: string, rate: number | undefined): 
   return {
     displayName: e.display_name,
     platformName: e.platform?.name ?? '',
+    platformIgdbId: e.platform?.igdb_platform_id,
     firstReleaseDate: e.first_release_date ?? '',
+    coverUrl: e.cover_url ?? '',
     region: e.region,
     edition: e.edition ?? '',
     packaging: e.packaging,
@@ -118,7 +123,9 @@ function toUpdate(e: Entry, v: FormValues, inputCurrency: string, rate: number |
   if (!e.product_id) {
     u.display_name = v.displayName.trim()
     u.platform_name = v.platformName.trim() === '' ? undefined : v.platformName.trim()
+    u.platform_igdb_id = v.platformIgdbId
     u.first_release_date = v.firstReleaseDate === '' ? undefined : v.firstReleaseDate
+    u.cover_url = v.coverUrl.trim() === '' ? undefined : v.coverUrl.trim()
   }
   return u
 }
@@ -239,15 +246,24 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
             <input value={v.displayName} onChange={(e) => set('displayName', e.target.value)} required className={inputClass} />
           </label>
           <div className="flex gap-3">
-            <label className={labelClass}>
-              Platform
-              <input value={v.platformName} onChange={(e) => set('platformName', e.target.value)} className={inputClass} />
-            </label>
+            <PlatformPicker
+              value={{ platformIgdbId: v.platformIgdbId, platformName: v.platformName }}
+              onChange={(pv) => { set('platformName', pv.platformName); set('platformIgdbId', pv.platformIgdbId) }}
+            />
             <label className={labelClass}>
               Release date
               <input type="date" value={v.firstReleaseDate} onChange={(e) => set('firstReleaseDate', e.target.value)} className={inputClass} />
             </label>
           </div>
+          <label className={labelClass}>
+            Cover image link (optional)
+            <input
+              value={v.coverUrl}
+              onChange={(e) => set('coverUrl', e.target.value)}
+              placeholder="https://..."
+              className={inputClass}
+            />
+          </label>
         </section>
       )}
 

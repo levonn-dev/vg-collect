@@ -114,7 +114,9 @@ function CustomConfirm({
         display_name: custom.displayName,
         item_type: custom.itemType,
         platform_name: custom.platformName.trim() === '' ? undefined : custom.platformName.trim(),
+        platform_igdb_id: custom.platformIgdbId,
         first_release_date: custom.firstReleaseDate === '' ? undefined : custom.firstReleaseDate,
+        cover_url: custom.coverUrl.trim() === '' ? undefined : custom.coverUrl.trim(),
       }),
     onSuccess: (entry) => {
       void queryClient.invalidateQueries({ queryKey: ['entries'] })

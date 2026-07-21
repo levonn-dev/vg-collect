@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import type { Product } from '../../api/catalog'
-import { resolveProduct } from '../../api/catalog'
+import { fetchProduct, resolveProduct } from '../../api/catalog'
 import { resolveRequestFor } from '../../lib/catalog'
 import type { CatalogPick } from '../catalog/SearchPicker'
 import SearchPicker from '../catalog/SearchPicker'
@@ -31,7 +31,13 @@ export default function ProxyPicker({ onPick, onClose, initialQuery }: ProxyPick
   }, [])
 
   const resolve = useMutation({
-    mutationFn: (pick: CatalogPick) => resolveProduct(resolveRequestFor(pick)),
+    // The community lane is suppressed here (communityLane="hidden"):
+    // community products are priceless, so they are not price sources.
+    // The community branch stays as a defensive guard - SearchPicker's
+    // onPick type still admits a CommunityPick - and narrows the pick so
+    // resolveRequestFor only ever sees a resolvable kind.
+    mutationFn: (pick: CatalogPick) =>
+      pick.kind === 'community' ? fetchProduct(pick.productId) : resolveProduct(resolveRequestFor(pick)),
     onSuccess: (product) => onPick(product),
   })
 
@@ -51,6 +57,7 @@ export default function ProxyPicker({ onPick, onClose, initialQuery }: ProxyPick
       </div>
       <SearchPicker
         kinds={['game', 'hardware', 'pc_listing']}
+        communityLane="hidden"
         initialQuery={initialQuery}
         onPick={(pick) => resolve.mutate(pick)}
       />

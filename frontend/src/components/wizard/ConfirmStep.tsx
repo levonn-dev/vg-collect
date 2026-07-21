@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ApiError } from '../../api/client'
-import { resolveProduct } from '../../api/catalog'
+import { fetchProduct, resolveProduct } from '../../api/catalog'
 import { createEntry } from '../../api/collection'
 import type { ManualMatch } from '../../lib/catalog'
 import { resolveRequestFor } from '../../lib/catalog'
@@ -34,10 +34,15 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
   const queryClient = useQueryClient()
   const money = useDisplayMoney()
   const [matchOpen, setMatchOpen] = useState(false)
-  const req = resolveRequestFor(pick, manualMatch, details.edition)
+  // Community picks name a product that is already minted: fetch it
+  // directly and skip the resolve. (The req/queryFn branches both
+  // recheck pick.kind, rather than branching on communityId, so each
+  // stays narrowed to the provider-only picks resolveRequestFor takes.)
+  const communityId = pick.kind === 'community' ? pick.productId : null
+  const req = pick.kind === 'community' ? null : resolveRequestFor(pick, manualMatch, details.edition)
   const product = useQuery({
-    queryKey: ['resolve', JSON.stringify(req)],
-    queryFn: () => resolveProduct(req),
+    queryKey: ['resolve', communityId ?? JSON.stringify(req)],
+    queryFn: () => (communityId ? fetchProduct(communityId) : resolveProduct(req!)),
     retry: false,
     staleTime: Infinity,
   })

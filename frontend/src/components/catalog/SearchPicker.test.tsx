@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../test/fixtures'
 import { renderWithMoney } from '../../test/money'
@@ -186,4 +186,66 @@ it('picks a pc_listing result via its Use button', async () => {
   expect(onPick).toHaveBeenCalledWith({
     kind: 'pc_listing', pcProductId: 5099, name: "Super Mario 64 [Player's Choice]",
   })
+})
+
+it('renders a community result matching the provider idiom (name, release, tag) and emits a community pick from its platform chip', async () => {
+  const results = {
+    degraded: false,
+    results: [
+      {
+        type: 'game', name: 'Repro Alpha', origin: 'community',
+        product_id: 'c0ffee00-0000-4000-8000-000000000001', item_type: 'game',
+        platform_name: 'SNES', first_release_date: '1994-01-01', cover_url: 'https://img.example/ra.jpg',
+      },
+    ],
+  }
+  const onPick = vi.fn()
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, results)))
+  renderPicker({ initialQuery: 'repro', onPick })
+  await userEvent.click(await screen.findByRole('button', { name: 'Search' }))
+  const infoLine = (await screen.findByText('Repro Alpha')).closest('p')!
+  // Reads like a provider row now: name, release, tag - no bare platform text.
+  expect(within(infoLine).getByText('1994')).toBeInTheDocument()
+  expect(within(infoLine).getByText('community')).toBeInTheDocument()
+  expect(within(infoLine).queryByText('SNES')).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Repro Alpha on SNES' }))
+  expect(onPick).toHaveBeenCalledWith({
+    kind: 'community', productId: 'c0ffee00-0000-4000-8000-000000000001',
+    name: 'Repro Alpha', itemType: 'game', platformName: 'SNES',
+  })
+})
+
+it('falls back to a plain Add button for a community result with no platform_name', async () => {
+  const results = {
+    degraded: false,
+    results: [
+      {
+        type: 'game', name: 'Repro Beta', origin: 'community',
+        product_id: 'c0ffee00-0000-4000-8000-000000000002', item_type: 'game',
+      },
+    ],
+  }
+  const onPick = vi.fn()
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, results)))
+  renderPicker({ initialQuery: 'repro', onPick })
+  await userEvent.click(await screen.findByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Add Repro Beta' }))
+  expect(onPick).toHaveBeenCalledWith({
+    kind: 'community', productId: 'c0ffee00-0000-4000-8000-000000000002',
+    name: 'Repro Beta', itemType: 'game', platformName: undefined,
+  })
+})
+
+it('hides community results when communityLane is hidden', async () => {
+  const results = {
+    degraded: false,
+    results: [
+      { type: 'game', name: 'Repro Alpha', origin: 'community', product_id: 'c0ffee00-0000-4000-8000-000000000001', item_type: 'game', platform_name: 'SNES' },
+    ],
+  }
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, results)))
+  renderPicker({ initialQuery: 'repro', communityLane: 'hidden' })
+  await userEvent.click(await screen.findByRole('button', { name: 'Search' }))
+  expect(await screen.findByText(/no results for/i)).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Repro Alpha on SNES' })).not.toBeInTheDocument()
 })

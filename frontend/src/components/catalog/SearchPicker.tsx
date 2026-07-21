@@ -28,7 +28,15 @@ export interface PCListingPick {
   name: string
 }
 
-export type CatalogPick = GamePick | HardwarePick | PCListingPick
+export interface CommunityPick {
+  kind: 'community'
+  productId: string
+  name: string
+  itemType: 'game' | 'console' | 'accessory'
+  platformName?: string
+}
+
+export type CatalogPick = GamePick | HardwarePick | PCListingPick | CommunityPick
 
 interface SearchPickerProps {
   initialQuery?: string
@@ -37,6 +45,10 @@ interface SearchPickerProps {
   // Which search kinds to offer; the add wizard keeps the default,
   // the proxy picker adds the all-of-PriceCharting kind.
   kinds?: SearchKind[]
+  // The community lane is shown by default (add wizard + admin adopt
+  // surface it); the price proxy picker hides it, since community
+  // products are priceless and cannot serve as a price source.
+  communityLane?: 'shown' | 'hidden'
 }
 
 const kindLabels: Record<SearchKind, string> = {
@@ -68,7 +80,7 @@ function searchBoxLabel(kinds: SearchKind[]): string {
 // first step and the pricing proxy picker. Picking a game means
 // picking a platform (a product is game-on-platform); hardware and
 // pc_listing picks are the listing itself.
-export default function SearchPicker({ initialQuery = '', onPick, footer, kinds = ['game', 'hardware'] }: SearchPickerProps) {
+export default function SearchPicker({ initialQuery = '', onPick, footer, kinds = ['game', 'hardware'], communityLane = 'shown' }: SearchPickerProps) {
   const money = useDisplayMoney()
   const [kind, setKind] = useState<SearchKind>(kinds[0])
   const [text, setText] = useState(initialQuery)
@@ -79,6 +91,13 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
     queryFn: () => searchCatalog(kind, submitted),
     enabled: submitted !== '',
   })
+  // The hidden-lane filter drops community rows client-side (ProxyPicker's
+  // price-source picker); the "no results" message below must react to
+  // this filtered list too, or an all-community answer would render
+  // neither the message nor any rows.
+  const rows = (search.data?.results ?? []).filter(
+    (r) => communityLane === 'shown' || r.origin !== 'community',
+  )
 
   return (
     <section aria-label="Search" className="flex flex-col gap-3">
@@ -127,30 +146,32 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
           Search is not working right now. Please try again.
         </p>
       )}
-      {search.isSuccess && search.data.results.length === 0 && (
+      {search.isSuccess && rows.length === 0 && (
         <p className="text-sm text-gray-500">No results for "{submitted}".</p>
       )}
 
       <ul className="flex flex-col gap-2">
-        {search.data?.results.map((r, i) => (
-          <li key={i} className="flex items-start gap-3 rounded border border-gray-200 p-2">
+        {rows.map((r, i) => (
+          <li key={r.product_id ?? i} className="flex items-start gap-3 rounded border border-gray-200 p-2">
             {r.cover_url ? (
               <img src={r.cover_url} alt="" className="h-16 w-auto rounded" />
             ) : (
               <div aria-hidden="true" className="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-gray-100 text-gray-400">
                 <ItemTypeIcon
                   type={
-                    r.type === 'game'
-                      ? 'game'
-                      : r.type === 'pc_listing'
-                        ? r.category === 'Systems'
-                          ? 'console'
-                          : r.category === 'Controllers' || r.category === 'Accessories'
-                            ? 'accessory'
-                            : 'game' // no category, or a genre string: a game listing
-                        : r.category === 'Systems'
-                          ? 'console'
-                          : 'accessory'
+                    r.origin === 'community'
+                      ? (r.item_type ?? 'game')
+                      : r.type === 'game'
+                        ? 'game'
+                        : r.type === 'pc_listing'
+                          ? r.category === 'Systems'
+                            ? 'console'
+                            : r.category === 'Controllers' || r.category === 'Accessories'
+                              ? 'accessory'
+                              : 'game' // no category, or a genre string: a game listing
+                          : r.category === 'Systems'
+                            ? 'console'
+                            : 'accessory'
                   }
                   className="h-7 w-7"
                 />
@@ -164,8 +185,53 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
                 )}
                 {r.console_name && <span className="ml-2 text-xs text-gray-400">{r.console_name}</span>}
                 {r.category && <span className="ml-2 text-xs text-gray-400">{r.category}</span>}
+                {r.origin === 'community' && (
+                  <span className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-semibold text-indigo-800">
+                    community
+                  </span>
+                )}
               </p>
-              {r.type === 'game' && r.igdb_game_id !== undefined ? (
+              {r.origin === 'community' ? (
+                r.platform_name ? (
+                  <p className="mt-1 flex flex-wrap items-center gap-1">
+                    {/* Mirrors the provider game row's chip idiom below:
+                        the chip is the pick target, not the row. */}
+                    <span className="text-xs text-gray-500">Add on:</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onPick({
+                          kind: 'community',
+                          productId: r.product_id!,
+                          name: r.name,
+                          itemType: r.item_type ?? 'game',
+                          platformName: r.platform_name,
+                        })
+                      }
+                      aria-label={`${r.name} on ${r.platform_name}`}
+                      className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
+                    >
+                      {r.platform_name}
+                    </button>
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onPick({
+                        kind: 'community',
+                        productId: r.product_id!,
+                        name: r.name,
+                        itemType: r.item_type ?? 'game',
+                        platformName: r.platform_name,
+                      })
+                    }
+                    className="mt-1 rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
+                  >
+                    Add {r.name}
+                  </button>
+                )
+              ) : r.type === 'game' && r.igdb_game_id !== undefined ? (
                 <p className="mt-1 flex flex-wrap items-center gap-1">
                   {/* The chips are the pick targets, not the row; say so. */}
                   <span className="text-xs text-gray-500">Add on:</span>

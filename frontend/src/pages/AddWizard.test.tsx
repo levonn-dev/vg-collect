@@ -287,12 +287,15 @@ it('creates a custom entry with pricing disabled', async () => {
     return Promise.resolve(jsonResponse(404, {}))
   })
   vi.stubGlobal('fetch', fetchMock)
-  renderWizard()
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+  qc.setQueryData(['platforms'], { platforms: [{ igdb_id: 19, name: 'Super Nintendo Entertainment System', aliases: ['snes'] }] })
+  renderWizard('/add', qc)
 
   await userEvent.click(screen.getByRole('button', { name: /add it as a custom item/i }))
   await userEvent.type(screen.getByLabelText(/^name$/i), 'Chrono Trigger Repro')
   await userEvent.selectOptions(screen.getByLabelText(/item type/i), 'game')
-  await userEvent.type(screen.getByLabelText(/platform/i), 'SNES')
+  await userEvent.type(screen.getByLabelText(/platform/i), 'snes')
+  await userEvent.click(await screen.findByRole('button', { name: 'Super Nintendo Entertainment System' }))
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
   await userEvent.click(await screen.findByRole('button', { name: 'Continue' })) // details step, defaults
@@ -306,8 +309,47 @@ it('creates a custom entry with pricing disabled', async () => {
   expect(body.product_id).toBeUndefined()
   expect(body.display_name).toBe('Chrono Trigger Repro')
   expect(body.item_type).toBe('game')
-  expect(body.platform_name).toBe('SNES')
+  expect(body.platform_name).toBe('Super Nintendo Entertainment System')
+  expect(body.platform_igdb_id).toBe(19)
   expect(body.pricing_mode).toBe('disabled')
+  // The cover input was left empty: the wire body must carry no
+  // cover_url key at all, not just an empty-string value.
+  expect(body).not.toHaveProperty('cover_url')
+})
+
+it('sends a cover url on a custom create when the wizard cover input is filled', async () => {
+  const created = entryFixture({
+    display_name: 'Chrono Trigger Repro', product_id: undefined, pricing_mode: 'disabled',
+    cover_url: 'https://img.example/c.jpg',
+  })
+  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    if (String(url) === '/api/entries' && init?.method === 'POST') {
+      return Promise.resolve(jsonResponse(201, created))
+    }
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+  qc.setQueryData(['platforms'], { platforms: [{ igdb_id: 19, name: 'Super Nintendo Entertainment System', aliases: ['snes'] }] })
+  renderWizard('/add', qc)
+
+  await userEvent.click(screen.getByRole('button', { name: /add it as a custom item/i }))
+  await userEvent.type(screen.getByLabelText(/^name$/i), 'Chrono Trigger Repro')
+  await userEvent.selectOptions(screen.getByLabelText(/item type/i), 'game')
+  await userEvent.type(screen.getByLabelText(/platform/i), 'snes')
+  await userEvent.click(await screen.findByRole('button', { name: 'Super Nintendo Entertainment System' }))
+  await userEvent.type(screen.getByLabelText(/cover image link/i), 'https://img.example/c.jpg')
+  await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Continue' })) // details step, defaults
+
+  expect(await screen.findByText(/start without market pricing/i)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
+  expect(await screen.findByText('entry-detail')).toBeInTheDocument()
+
+  const post = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')
+  const body = putBody<Record<string, unknown>>(post?.[1] as RequestInit)
+  expect(body.cover_url).toBe('https://img.example/c.jpg')
 })
 
 it('stamps a custom-created entry with the profile currency', async () => {
@@ -382,6 +424,7 @@ it('keeps typed values across both custom Back hops, in a full round trip', asyn
   await userEvent.click(screen.getByRole('button', { name: /add it as a custom item/i }))
   await userEvent.type(screen.getByLabelText(/^name$/i), 'Chrono Trigger Repro')
   await userEvent.selectOptions(screen.getByLabelText(/item type/i), 'console')
+  await userEvent.click(screen.getByRole('button', { name: /my platform isn't listed/i }))
   await userEvent.type(screen.getByLabelText(/platform/i), 'SNES')
   fireEvent.change(screen.getByLabelText(/release date/i), { target: { value: '1995-03-11' } })
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -413,4 +456,49 @@ it('keeps typed values across both custom Back hops, in a full round trip', asyn
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
   expect(await screen.findByText(/confirm: chrono trigger repro/i)).toBeInTheDocument()
   expect(screen.getByText(/snes - console - custom item/i)).toBeInTheDocument()
+})
+
+it('adds a community pick straight from fetchProduct, never posting a resolve', async () => {
+  const communityProduct = {
+    id: 'c0ffee00-0000-4000-8000-000000000001', type: 'game', name: 'Repro Alpha',
+    origin: 'community', community: { platform_name: 'SNES' },
+    created_at: 'x', updated_at: 'x',
+  }
+  const communitySearchAnswer = {
+    degraded: false,
+    results: [
+      {
+        type: 'game', name: communityProduct.name, origin: 'community',
+        product_id: communityProduct.id, item_type: 'game', platform_name: 'SNES',
+      },
+    ],
+  }
+  const created = entryFixture({ display_name: 'Repro Alpha' })
+  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    const u = String(url)
+    if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, communitySearchAnswer))
+    if (u === `/api/products/${communityProduct.id}`) return Promise.resolve(jsonResponse(200, communityProduct))
+    if (u === '/api/entries' && init?.method === 'POST') return Promise.resolve(jsonResponse(201, created))
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWizard()
+
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'repro')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Repro Alpha on SNES' }))
+
+  expect(await screen.findByText(/your copy of repro alpha/i)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+
+  // The community product is already minted: confirm fetches it
+  // directly, so no auto-match state ever shows for it.
+  expect(await screen.findByText(/no confirmed price listing yet/i)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
+  expect(await screen.findByText('entry-detail')).toBeInTheDocument()
+
+  const post = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST' && c[0] === '/api/entries')
+  const body = putBody<Record<string, unknown>>(post?.[1] as RequestInit)
+  expect(body.product_id).toBe(communityProduct.id)
+  expect(fetchMock.mock.calls.some((c) => String(c[0]) === '/api/products/resolve')).toBe(false)
 })

@@ -93,6 +93,31 @@ it('reports when the resolve fails', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent(/cannot be used right now/i)
 })
 
+it('suppresses the community lane even when the response carries community results', async () => {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    const u = String(url)
+    if (u.startsWith('/api/search'))
+      return Promise.resolve(jsonResponse(200, {
+        degraded: false,
+        results: [
+          { type: 'game', name: 'Chrono Trigger', igdb_game_id: 1000, platforms: [{ igdb_platform_id: 6, name: 'SNES' }] },
+          {
+            type: 'game', name: 'Repro Alpha', origin: 'community',
+            product_id: 'c0ffee00-0000-4000-8000-000000000001', item_type: 'game', platform_name: 'SNES',
+          },
+        ],
+      }))
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWithMoney(<ProxyPicker onPick={vi.fn()} onClose={vi.fn()} initialQuery="repro" />)
+  // The search auto-fires; the game result surfaces but the priceless
+  // community lane must not - community products are not price sources.
+  expect(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' })).toBeInTheDocument()
+  expect(screen.queryByText('Community catalog')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Repro Alpha on SNES' })).not.toBeInTheDocument()
+})
+
 it('is a modal dialog and starts focus inside it', () => {
   vi.stubGlobal('fetch', vi.fn())
   renderWithMoney(<ProxyPicker onPick={vi.fn()} onClose={vi.fn()} />)

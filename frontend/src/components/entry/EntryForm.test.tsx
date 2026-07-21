@@ -10,7 +10,17 @@ function renderForm(
   onSave = vi.fn(),
   moneyOpts: { currency?: string; rates?: boolean } = {},
 ) {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { tags: [] })))
+  // mockImplementation, URL-aware, fresh Response per call: a custom
+  // entry mounts several concurrent fetchers (TagPicker, PlatformPicker,
+  // and - once a price-source picker opens - SearchPicker's auto-fired
+  // search), each needing its own shape and its own Response instance (a
+  // shared instance can only have its body read once).
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+    const u = String(url)
+    if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+    if (u === '/api/platforms') return Promise.resolve(jsonResponse(200, { platforms: [] }))
+    return Promise.resolve(jsonResponse(200, { tags: [] }))
+  }))
   const view = renderWithMoney(
     <EntryForm entry={entry} onSave={onSave} saving={false} saved={false} error={null} />,
     moneyOpts,
@@ -159,7 +169,11 @@ it('preserves the stored paid currency on edit and shows it on the label', async
 // coverage gate holds; it is additional breadth, not new behavior.
 it('carries edits from every remaining field control into the payload', async () => {
   const tags = [{ id: 't1', name: 'rpg', entry_count: 1 }]
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { tags })))
+  const platforms = { platforms: [{ igdb_id: 99, name: 'Famicom', aliases: [] }] }
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+    if (String(url) === '/api/platforms') return Promise.resolve(jsonResponse(200, platforms))
+    return Promise.resolve(jsonResponse(200, { tags }))
+  }))
   const onSave = vi.fn()
   const entry = entryFixture({ product_id: undefined, display_name: 'Repro Cart' })
   renderWithMoney(<EntryForm entry={entry} onSave={onSave} saving={false} saved={false} error={null} />)
@@ -167,9 +181,14 @@ it('carries edits from every remaining field control into the payload', async ()
 
   await userEvent.clear(screen.getByLabelText(/^name$/i))
   await userEvent.type(screen.getByLabelText(/^name$/i), 'Repro Cart II')
-  await userEvent.clear(screen.getByLabelText(/^platform$/i))
+  // The fixture's platform already carries a canonical id, so the picker
+  // opens confirmed (see PlatformPicker's value-driven confirmed state):
+  // Change is required before the input exists to type into.
+  await userEvent.click(screen.getByRole('button', { name: 'Change platform' }))
   await userEvent.type(screen.getByLabelText(/^platform$/i), 'Famicom')
+  await userEvent.click(await screen.findByRole('button', { name: 'Famicom' }))
   fireEvent.change(screen.getByLabelText(/release date/i), { target: { value: '1999-12-31' } })
+  await userEvent.type(screen.getByLabelText(/cover image link/i), 'https://img.example/cover.jpg')
   await userEvent.selectOptions(screen.getByLabelText(/^region/i), 'pal')
   await userEvent.type(screen.getByLabelText(/^edition$/i), 'black label')
   await userEvent.selectOptions(screen.getByLabelText(/^packaging/i), 'loose')
@@ -188,7 +207,9 @@ it('carries edits from every remaining field control into the payload', async ()
   const sent = onSave.mock.calls[0][0] as EntryUpdate
   expect(sent.display_name).toBe('Repro Cart II')
   expect(sent.platform_name).toBe('Famicom')
+  expect(sent.platform_igdb_id).toBe(99)
   expect(sent.first_release_date).toBe('1999-12-31')
+  expect(sent.cover_url).toBe('https://img.example/cover.jpg')
   expect(sent.region).toBe('pal')
   expect(sent.edition).toBe('black label')
   expect(sent.packaging).toBe('loose')
@@ -205,6 +226,23 @@ it('carries edits from every remaining field control into the payload', async ()
   expect(sent.storage_location).toBe('shelf 3')
   expect(sent.pinned).toBe(true)
   expect(sent.tag_ids).toEqual(['t1'])
+})
+
+it('omits cover_url from the payload when the cover input is left empty', async () => {
+  const { onSave } = renderForm(entryFixture({ product_id: undefined, display_name: 'Repro Cart' }))
+  await screen.findByLabelText(/cover image link/i)
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+  expect(onSave).toHaveBeenCalledTimes(1)
+  const sent = onSave.mock.calls[0][0] as EntryUpdate
+  // Value-level: the field carries no cover. Wire-level: cover_url must
+  // be absent from the serialized body, not present-but-undefined - the
+  // two are indistinguishable on the raw object (toUpdate always
+  // assigns the key) but not after JSON.stringify, which is what
+  // actually crosses the network (same wire round-trip idiom as
+  // lib/entryUpdate.test.ts).
+  expect(sent.cover_url).toBeUndefined()
+  const wire = JSON.parse(JSON.stringify(sent)) as Record<string, unknown>
+  expect(wire).not.toHaveProperty('cover_url')
 })
 
 it('carries a stored custom price through an untouched save', async () => {

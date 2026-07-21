@@ -1,5 +1,5 @@
 import type { ResolveRequest } from '../api/catalog'
-import type { CatalogPick } from '../components/catalog/SearchPicker'
+import type { CatalogPick, CommunityPick } from '../components/catalog/SearchPicker'
 
 // A manual match is the user's exact PriceCharting listing choice for
 // a game being added: it rides the resolve, and because game identity
@@ -15,7 +15,9 @@ export interface ManualMatch {
 // (controllers, accessories) is an accessory. For games, matchHint is
 // the typed edition-or-variant text: score-only, reweighting the
 // auto-match without changing the search (omitted when blank).
-export function resolveRequestFor(pick: CatalogPick, manualMatch?: ManualMatch | null, matchHint?: string): ResolveRequest {
+// Community picks are excluded: they name an already-minted product,
+// so callers fetch it directly instead of resolving.
+export function resolveRequestFor(pick: Exclude<CatalogPick, CommunityPick>, manualMatch?: ManualMatch | null, matchHint?: string): ResolveRequest {
   if (pick.kind === 'game') {
     const hint = matchHint?.trim() ?? ''
     return {

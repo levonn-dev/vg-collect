@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import type { EntryCreate } from '../../api/collection'
+import PlatformPicker from '../catalog/PlatformPicker'
 
 export interface CustomValues {
   displayName: string
   itemType: NonNullable<EntryCreate['item_type']>
   platformName: string
+  platformIgdbId?: number
   firstReleaseDate: string
+  coverUrl: string
 }
 
 interface CustomStepProps {
@@ -21,7 +24,7 @@ interface CustomStepProps {
 // These stay user-owned and editable, unlike catalog snapshots.
 export default function CustomStep({ initialValues, onBack, onNext }: CustomStepProps) {
   const [v, setV] = useState<CustomValues>(() => initialValues ?? {
-    displayName: '', itemType: 'game', platformName: '', firstReleaseDate: '',
+    displayName: '', itemType: 'game', platformName: '', platformIgdbId: undefined, firstReleaseDate: '', coverUrl: '',
   })
   const inputClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
   const labelClass = 'flex flex-col gap-1 text-sm font-medium'
@@ -57,13 +60,22 @@ export default function CustomStep({ initialValues, onBack, onNext }: CustomStep
           <option value="accessory">accessory</option>
         </select>
       </label>
-      <label className={labelClass}>
-        Platform
-        <input value={v.platformName} onChange={(e) => setV({ ...v, platformName: e.target.value })} placeholder="SNES, custom..." className={inputClass} />
-      </label>
+      <PlatformPicker
+        value={{ platformIgdbId: v.platformIgdbId, platformName: v.platformName }}
+        onChange={(pv) => setV({ ...v, platformName: pv.platformName, platformIgdbId: pv.platformIgdbId })}
+      />
       <label className={labelClass}>
         Release date
         <input type="date" value={v.firstReleaseDate} onChange={(e) => setV({ ...v, firstReleaseDate: e.target.value })} className={inputClass} />
+      </label>
+      <label className={labelClass}>
+        Cover image link (optional)
+        <input
+          value={v.coverUrl}
+          onChange={(e) => setV({ ...v, coverUrl: e.target.value })}
+          placeholder="https://..."
+          className={inputClass}
+        />
       </label>
       <div className="flex gap-2">
         <button type="button" onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
