@@ -4,6 +4,7 @@
 package match
 
 import (
+	"sort"
 	"strings"
 	"unicode"
 )
@@ -269,4 +270,67 @@ func Best(name, hint, platformName string, cands []Candidate) Result {
 		return Result{Confidence: best.Confidence}
 	}
 	return best
+}
+
+// Score is the plain name-similarity score, with the same
+// normalization Best applies. Exposed for the community candidate
+// sweep, which compares provider names against curated community
+// names without listing or console context; Threshold applies at the
+// call site.
+func Score(a, b string) float64 {
+	return maxDice(forms(a), forms(b))
+}
+
+// platformAbbreviations maps normalized IGDB platform names to the
+// short forms collectors actually type. It complements consoleAliases
+// (which holds PriceCharting console-name spellings); both feed the one
+// exported PlatformAliases, so the platforms endpoint and the
+// collection normalize lever share a single alias source and no call
+// site ever hard-codes an abbreviation.
+var platformAbbreviations = map[string][]string{
+	"nintendo entertainment system":       {"nes"},
+	"super nintendo entertainment system": {"snes"},
+	"super famicom":                       {"sfc"},
+	"nintendo 64":                         {"n64"},
+	"nintendo gamecube":                   {"gcn", "gc"},
+	"game boy":                            {"gb"},
+	"game boy color":                      {"gbc"},
+	"game boy advance":                    {"gba"},
+	"nintendo ds":                         {"nds"},
+	"nintendo 3ds":                        {"3ds"},
+	"playstation":                         {"ps1", "psx"},
+	"playstation 2":                       {"ps2"},
+	"playstation 3":                       {"ps3"},
+	"playstation 4":                       {"ps4"},
+	"playstation 5":                       {"ps5"},
+	"playstation portable":                {"psp"},
+	"playstation vita":                    {"vita", "ps vita"},
+	"sega mega drive genesis":             {"genesis", "mega drive"},
+}
+
+// PlatformAliases returns the known alternate spellings and
+// abbreviations for an IGDB platform name (the caller does the
+// case-insensitive comparison). It unions the PriceCharting console
+// spellings with the curated abbreviation table, both keyed by the
+// normalized name, so alias knowledge lives in exactly one place.
+func PlatformAliases(name string) []string {
+	n := Normalize(name)
+	seen := map[string]bool{}
+	var out []string
+	add := func(a string) {
+		a = strings.TrimSpace(a)
+		if a == "" || seen[a] {
+			return
+		}
+		seen[a] = true
+		out = append(out, a)
+	}
+	for _, a := range consoleAliases[n] {
+		add(a)
+	}
+	for _, a := range platformAbbreviations[n] {
+		add(a)
+	}
+	sort.Strings(out)
+	return out
 }

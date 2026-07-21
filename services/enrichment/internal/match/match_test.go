@@ -1,6 +1,10 @@
 package match
 
-import "testing"
+import (
+	"reflect"
+	"slices"
+	"testing"
+)
 
 func TestNormalize(t *testing.T) {
 	cases := map[string]string{
@@ -247,5 +251,32 @@ func TestSameName_FoldsPossessives(t *testing.T) {
 	}
 	if SameName("Mega Man X", "Mega Man") {
 		t.Fatal("distinct names must not fold")
+	}
+}
+
+func TestScore(t *testing.T) {
+	if s := Score("Chrono Trigger", "Chrono Trigger"); s < Threshold {
+		t.Fatalf("identical names score %v, want >= Threshold", s)
+	}
+	if s := Score("Chrono Trigger", "The Legend of Zelda"); s >= Threshold {
+		t.Fatalf("unrelated names score %v, want < Threshold", s)
+	}
+}
+
+func TestPlatformAliases(t *testing.T) {
+	// SNES unions the curated abbreviation and the PriceCharting spelling.
+	got := PlatformAliases("Super Nintendo Entertainment System")
+	want := []string{"snes", "super nintendo"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("snes aliases = %v, want %v", got, want)
+	}
+	// Case and punctuation fold through Normalize.
+	ps := PlatformAliases("PlayStation")
+	if !slices.Contains(ps, "ps1") || !slices.Contains(ps, "psx") {
+		t.Fatalf("playstation aliases = %v, want ps1 and psx", ps)
+	}
+	// An unknown platform has no aliases and never panics.
+	if a := PlatformAliases("Fairchild Channel F"); len(a) != 0 {
+		t.Fatalf("unknown aliases = %v, want empty", a)
 	}
 }
