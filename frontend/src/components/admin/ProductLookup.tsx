@@ -1,8 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { fetchPromoteCandidates } from '../../api/admin'
 import { fetchProduct } from '../../api/catalog'
 import { ApiError } from '../../api/client'
 import MappingFix from './MappingFix'
+import PromotePanel from './PromotePanel'
 
 // ProductLookup is the remap reach: wrong mappings surface while
 // looking at an entry, where the product id is at hand; pasting it
@@ -16,6 +18,11 @@ export default function ProductLookup() {
     queryFn: () => fetchProduct(id),
     enabled: id !== '',
     retry: false,
+  })
+  const candidates = useQuery({
+    queryKey: ['admin', 'candidates', id],
+    queryFn: () => fetchPromoteCandidates(0, id),
+    enabled: id !== '' && product.isSuccess && product.data.origin === 'community',
   })
 
   const done = () => {
@@ -62,7 +69,25 @@ export default function ProductLookup() {
             {product.data.type}
             {product.data.platform ? ` - ${product.data.platform.name}` : ''}
           </p>
-          <MappingFix product={product.data} onDone={done} />
+          {product.data.origin === 'community' && (
+            <span className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-semibold text-indigo-800">
+              community
+            </span>
+          )}
+          {product.data.origin === 'community' ? (
+            // Key on the product id: switching to another (cached)
+            // community product reconciles this panel in place otherwise,
+            // leaking the attached-listing and picking state across
+            // products. Remounting on id change resets it cleanly.
+            <PromotePanel
+              key={product.data.id}
+              product={product.data}
+              candidates={candidates.data?.products[0]?.candidates ?? []}
+              onDone={done}
+            />
+          ) : (
+            <MappingFix product={product.data} onDone={done} />
+          )}
         </div>
       )}
     </section>
