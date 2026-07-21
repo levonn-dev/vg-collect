@@ -73,6 +73,47 @@ func (c *Client) GetProduct(ctx context.Context, bearer string, id uuid.UUID) (e
 	}
 }
 
+// Platform is one catalog platform with its alias knowledge, for the
+// normalize-platforms lever.
+type Platform struct {
+	IGDBID  int64
+	Name    string
+	Aliases []string
+}
+
+// ListPlatforms fetches the canonical platform catalog (igdb id + name
+// + aliases). The admin's own bearer rides the hop.
+func (c *Client) ListPlatforms(ctx context.Context, bearer string) ([]Platform, error) {
+	resp, err := c.api.ListPlatformsWithResponse(ctx, bearerEditor(bearer))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
+	}
+	if resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
+		return nil, fmt.Errorf("%w: status %d", ErrUnavailable, resp.StatusCode())
+	}
+	out := make([]Platform, 0, len(resp.JSON200.Platforms))
+	for _, p := range resp.JSON200.Platforms {
+		out = append(out, Platform{IGDBID: p.IgdbId, Name: p.Name, Aliases: p.Aliases})
+	}
+	return out, nil
+}
+
+// CreateCommunityProduct asks enrichment to mint an anchor-less
+// community product (approve_new's first phase). The admin's own
+// bearer carries the role; enrichment enforces it again, so an
+// unexpected 403 here is configuration skew and reads as
+// unavailability.
+func (c *Client) CreateCommunityProduct(ctx context.Context, bearer string, req enrichapi.CreateCommunityProductJSONRequestBody) (enrichapi.Product, error) {
+	resp, err := c.api.CreateCommunityProductWithResponse(ctx, req, bearerEditor(bearer))
+	if err != nil {
+		return enrichapi.Product{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
+	}
+	if resp.StatusCode() != http.StatusCreated || resp.JSON201 == nil {
+		return enrichapi.Product{}, fmt.Errorf("%w: status %d", ErrUnavailable, resp.StatusCode())
+	}
+	return *resp.JSON201, nil
+}
+
 // BatchPrices fetches current prices for a set of product ids in one
 // or more contract-sized chunks (ids are deduplicated first) and
 // merges the maps. An empty id set makes no call.

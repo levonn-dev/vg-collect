@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/levonn-dev/vg-collect/services/collection/internal/gen/enrichapi"
 )
 
 // stubEnrichment answers the two consumed endpoints with contract
@@ -24,15 +28,26 @@ type stubEnrichment struct {
 
 	knownProduct uuid.UUID
 	failWith     int // when nonzero, every response is this status
+
+	// createCommunityProduct answers POST /admin/products; a test sets
+	// it before exercising the mint. Dispatched through a closure (not
+	// captured once at mux.HandleFunc time) so a test's reassignment
+	// takes effect on the next request.
+	createCommunityProduct func(w http.ResponseWriter, r *http.Request)
 }
 
 func newStubEnrichment(t *testing.T) *stubEnrichment {
 	t.Helper()
 	f := &stubEnrichment{knownProduct: uuid.New()}
+	f.createCommunityProduct = func(http.ResponseWriter, *http.Request) {
+		panic("unexpected POST /admin/products")
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /products/{id}", f.product)
 	mux.HandleFunc("POST /products/prices:batch", f.batch)
 	mux.HandleFunc("POST /products/price-history:batch", f.history)
+	mux.HandleFunc("GET /platforms", f.platforms)
+	mux.HandleFunc("POST /admin/products", func(w http.ResponseWriter, r *http.Request) { f.createCommunityProduct(w, r) })
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
 	return f
@@ -116,6 +131,20 @@ func (f *stubEnrichment) history(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"series": series})
+}
+
+func (f *stubEnrichment) platforms(w http.ResponseWriter, r *http.Request) {
+	f.record(r)
+	if f.failWith != 0 {
+		w.WriteHeader(f.failWith)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"platforms": []map[string]any{
+			{"igdb_id": 19, "name": "Super Nintendo Entertainment System", "aliases": []string{"snes", "super nintendo"}},
+		},
+	})
 }
 
 func newClient(t *testing.T, f *stubEnrichment) *Client {
@@ -275,5 +304,67 @@ func TestPriceHistoryFailureIsUnavailable(t *testing.T) {
 	_, err := c.PriceHistory(context.Background(), "tok", []uuid.UUID{uuid.New()}, 90)
 	if !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("want ErrUnavailable, got %v", err)
+	}
+}
+
+func TestCreateCommunityProduct(t *testing.T) {
+	f := newStubEnrichment(t)
+	var gotAuth string
+	var gotBody []byte
+	f.createCommunityProduct = func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"6a5f6c68-0000-4000-8000-000000000001","type":"game","name":"Repro Alpha","origin":"community","created_at":"2026-07-17T00:00:00Z","updated_at":"2026-07-17T00:00:00Z"}`))
+	}
+	c := newClient(t, f)
+
+	name := "SNES"
+	p, err := c.CreateCommunityProduct(context.Background(), "tok", enrichapi.CreateCommunityProductJSONRequestBody{
+		Type: "game", Name: "Repro Alpha", PlatformName: &name,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Name != "Repro Alpha" {
+		t.Fatalf("product: %+v", p)
+	}
+	if gotAuth != "Bearer tok" {
+		t.Fatalf("bearer not relayed: %q", gotAuth)
+	}
+	if !strings.Contains(string(gotBody), `"platform_name":"SNES"`) {
+		t.Fatalf("body: %s", gotBody)
+	}
+
+	// Any non-201 answer is unavailability to the verdict handler.
+	f.createCommunityProduct = func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) }
+	if _, err := c.CreateCommunityProduct(context.Background(), "tok", enrichapi.CreateCommunityProductJSONRequestBody{Type: "game", Name: "X"}); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("403 = %v, want ErrUnavailable", err)
+	}
+}
+
+func TestListPlatformsParsesAndForwardsBearer(t *testing.T) {
+	f := newStubEnrichment(t)
+	c := newClient(t, f)
+	platforms, err := c.ListPlatforms(t.Context(), "tok-plat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(platforms) != 1 || platforms[0].IGDBID != 19 || platforms[0].Name != "Super Nintendo Entertainment System" ||
+		len(platforms[0].Aliases) != 2 || platforms[0].Aliases[0] != "snes" {
+		t.Fatalf("platforms: %+v", platforms)
+	}
+	if f.gotAuth[0] != "Bearer tok-plat" {
+		t.Fatalf("bearer not relayed: %q", f.gotAuth[0])
+	}
+}
+
+func TestListPlatformsFailureIsUnavailable(t *testing.T) {
+	f := newStubEnrichment(t)
+	f.failWith = http.StatusInternalServerError
+	c := newClient(t, f)
+	if _, err := c.ListPlatforms(t.Context(), "tok"); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("500 must be ErrUnavailable, got %v", err)
 	}
 }

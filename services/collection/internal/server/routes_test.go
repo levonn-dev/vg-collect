@@ -201,3 +201,11 @@ func TestUnitInternalResnapshotRequiresJWT(t *testing.T) {
 	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", "", nil)
 	wantProblem(t, resp, http.StatusUnauthorized, "missing_token")
 }
+
+func TestUnitInternalNormalizePlatformsRequiresJWT(t *testing.T) {
+	srv, _ := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-platforms", "", nil)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("tokenless normalize: %d, want 401", resp.StatusCode)
+	}
+}
