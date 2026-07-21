@@ -4,6 +4,8 @@ import { ApiError } from '../api/client'
 import type { EntryUpdate } from '../api/collection'
 import { deleteEntry, fetchEntry, updateEntry } from '../api/collection'
 import ItemTypeIcon from '../components/ItemTypeIcon'
+import ApprovalNotice from '../components/entry/ApprovalNotice'
+import CatalogSubmission from '../components/entry/CatalogSubmission'
 import EntryForm from '../components/entry/EntryForm'
 import { releaseYear } from '../lib/format'
 
@@ -91,6 +93,8 @@ export default function EntryDetail() {
           Delete entry
         </button>
       </header>
+      {e.product_id && <ApprovalNotice entryId={e.id} />}
+      {!e.product_id && <CatalogSubmission entryId={e.id} />}
       <EntryForm
         entry={e}
         onSave={(u) => save.mutate(u)}

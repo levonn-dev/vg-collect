@@ -23,12 +23,23 @@ function renderDetail(id: string, qc = new QueryClient({ defaultOptions: { queri
 
 afterEach(() => vi.unstubAllGlobals())
 
+// Every product-backed fixture here also drives ApprovalNotice's own
+// submission fetch; answer it with "no submission" so the banner
+// stays hidden and each test can assert its own concern undisturbed.
+const noSubmission = () =>
+  new Response(
+    JSON.stringify({ type: 'about:blank', title: 'x', status: 404, code: 'submission_not_found', detail: 'x' }),
+    { status: 404, headers: { 'Content-Type': 'application/problem+json' } },
+  )
+
 it('renders the catalog header and the form for a product-backed entry', async () => {
   const e = entryFixture({ display_name: 'Chrono Trigger', value_cents: 4200 })
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
     Promise.resolve(String(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : jsonResponse(200, e))))
+      : String(url).endsWith('/submission')
+        ? noSubmission()
+        : jsonResponse(200, e))))
   renderDetail(e.id)
   expect(await screen.findByRole('heading', { name: 'Chrono Trigger' })).toBeInTheDocument()
   expect(screen.getByText(/SNES/)).toBeInTheDocument()
@@ -40,6 +51,7 @@ it('saves through the form and shows the refreshed entry', async () => {
   const updated = { ...e, notes: 'new note' }
   const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
     if (init?.method === 'PUT') return Promise.resolve(jsonResponse(200, updated))
     return Promise.resolve(jsonResponse(200, e))
   })
@@ -60,7 +72,9 @@ it('shows the just-added banner when arriving from the wizard', async () => {
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
     Promise.resolve(String(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : jsonResponse(200, e))))
+      : String(url).endsWith('/submission')
+        ? noSubmission()
+        : jsonResponse(200, e))))
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={qc}>
@@ -79,6 +93,7 @@ it('invalidates the dashboard and recommendations caches after a save', async ()
   const updated = { ...e, notes: 'new note' }
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
     if (init?.method === 'PUT') return Promise.resolve(jsonResponse(200, updated))
     return Promise.resolve(jsonResponse(200, e))
   }))
@@ -95,6 +110,7 @@ it('surfaces a 404 pricing problem from the save', async () => {
   const e = entryFixture()
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
     if (init?.method === 'PUT') {
       return Promise.resolve(jsonResponse(404, {
         type: 'about:blank', title: 'Not Found', status: 404,
@@ -113,7 +129,9 @@ it('renders the pricing panel', async () => {
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
     Promise.resolve(String(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : jsonResponse(200, e))))
+      : String(url).endsWith('/submission')
+        ? noSubmission()
+        : jsonResponse(200, e))))
   renderDetail(e.id)
   expect(await screen.findByRole('region', { name: 'Pricing' })).toBeInTheDocument()
 })
@@ -123,6 +141,7 @@ it('deletes after confirmation and navigates home', async () => {
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
     if (init?.method === 'DELETE') return Promise.resolve(new Response(null, { status: 204 }))
     return Promise.resolve(jsonResponse(200, e))
   }))
@@ -136,6 +155,7 @@ it('invalidates dashboard/recommendations and drops the entry cache on delete', 
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
     if (init?.method === 'DELETE') return Promise.resolve(new Response(null, { status: 204 }))
     return Promise.resolve(jsonResponse(200, e))
   }))
