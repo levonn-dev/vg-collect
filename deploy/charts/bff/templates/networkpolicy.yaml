@@ -40,8 +40,14 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
+        # Namespace AND pod selector together: only the APISIX data
+        # plane in the gateway namespace, not any pod that happens to
+        # run there.
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ .Values.gateway.namespace }}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: apisix
       ports:
         - { port: 8080, protocol: TCP }

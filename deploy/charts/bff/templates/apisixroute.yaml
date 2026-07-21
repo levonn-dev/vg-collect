@@ -6,6 +6,23 @@ metadata:
 spec:
   ingressClassName: apisix
   http:
+    # /healthz and /readyz are pod-probe surfaces, not public API:
+    # kubelet probes hit the pod directly, so the gateway answers 404
+    # here instead of proxying (fault-injection aborts pre-proxy; the
+    # backend entry is CRD-required boilerplate).
+    - name: internal-probes
+      priority: 20
+      match:
+        paths: ["/healthz", "/readyz"]
+      backends:
+        - serviceName: bff
+          servicePort: 8080
+      plugins:
+        - name: fault-injection
+          enable: true
+          config:
+            abort:
+              http_status: 404
     - name: auth-endpoints
       priority: 10
       match:
