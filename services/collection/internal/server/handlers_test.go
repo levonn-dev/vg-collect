@@ -26,6 +26,7 @@ import (
 	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
 	"github.com/levonn-dev/vg-collect/services/collection/internal/cache"
 	"github.com/levonn-dev/vg-collect/services/collection/internal/enrichmentclient"
+	"github.com/levonn-dev/vg-collect/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vg-collect/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vg-collect/services/collection/internal/server"
 	"github.com/levonn-dev/vg-collect/services/collection/internal/store"
@@ -58,6 +59,22 @@ type stubStore struct {
 	listGameBackedRefs    func(ctx context.Context) ([]store.GameEntryRef, error)
 	setFirstReleaseDate   func(ctx context.Context, entryID uuid.UUID, d *time.Time) error
 	countEntriesByProduct func(ctx context.Context, productID uuid.UUID) (int64, error)
+
+	listNameOnlyPlatformEntries func(ctx context.Context) ([]store.PlatformEntryRef, error)
+	setEntryPlatformIdentity    func(ctx context.Context, entryID uuid.UUID, igdbID int64, name string) error
+
+	createSubmission                 func(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error)
+	latestSubmissionForEntry         func(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error)
+	latestApprovedSubmissionForEntry func(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error)
+	ackSubmissionResolution          func(ctx context.Context, id uuid.UUID) error
+	cancelSubmission                 func(ctx context.Context, userID, entryID uuid.UUID) error
+	getSubmission                    func(ctx context.Context, id uuid.UUID) (store.Submission, error)
+	countPendingSubmissions          func(ctx context.Context, userID uuid.UUID) (int64, error)
+	countSubmissionsSince            func(ctx context.Context, userID uuid.UUID, since time.Time) (int64, error)
+	listPendingSubmissions           func(ctx context.Context, limit, offset int) ([]store.SubmissionProposal, int64, error)
+	rejectSubmission                 func(ctx context.Context, id uuid.UUID, reason string) (store.Submission, error)
+	recordSubmissionProduct          func(ctx context.Context, id, productID uuid.UUID) error
+	approveSubmission                func(ctx context.Context, id uuid.UUID, snap store.CatalogSnapshot) (store.Submission, error)
 }
 
 var _ server.Store = (*stubStore)(nil)
@@ -188,12 +205,98 @@ func (s *stubStore) SetFirstReleaseDate(ctx context.Context, entryID uuid.UUID, 
 	}
 	return s.setFirstReleaseDate(ctx, entryID, d)
 }
+func (s *stubStore) ListNameOnlyPlatformEntries(ctx context.Context) ([]store.PlatformEntryRef, error) {
+	if s.listNameOnlyPlatformEntries == nil {
+		panic("unexpected ListNameOnlyPlatformEntries")
+	}
+	return s.listNameOnlyPlatformEntries(ctx)
+}
+func (s *stubStore) SetEntryPlatformIdentity(ctx context.Context, entryID uuid.UUID, igdbID int64, name string) error {
+	if s.setEntryPlatformIdentity == nil {
+		panic("unexpected SetEntryPlatformIdentity")
+	}
+	return s.setEntryPlatformIdentity(ctx, entryID, igdbID, name)
+}
+func (s *stubStore) CreateSubmission(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error) {
+	if s.createSubmission == nil {
+		panic("unexpected CreateSubmission")
+	}
+	return s.createSubmission(ctx, userID, entryID)
+}
+func (s *stubStore) LatestSubmissionForEntry(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error) {
+	if s.latestSubmissionForEntry == nil {
+		panic("unexpected LatestSubmissionForEntry")
+	}
+	return s.latestSubmissionForEntry(ctx, userID, entryID)
+}
+func (s *stubStore) LatestApprovedSubmissionForEntry(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error) {
+	if s.latestApprovedSubmissionForEntry == nil {
+		panic("unexpected LatestApprovedSubmissionForEntry")
+	}
+	return s.latestApprovedSubmissionForEntry(ctx, userID, entryID)
+}
+func (s *stubStore) AckSubmissionResolution(ctx context.Context, id uuid.UUID) error {
+	if s.ackSubmissionResolution == nil {
+		panic("unexpected AckSubmissionResolution")
+	}
+	return s.ackSubmissionResolution(ctx, id)
+}
+func (s *stubStore) CancelSubmission(ctx context.Context, userID, entryID uuid.UUID) error {
+	if s.cancelSubmission == nil {
+		panic("unexpected CancelSubmission")
+	}
+	return s.cancelSubmission(ctx, userID, entryID)
+}
+func (s *stubStore) GetSubmission(ctx context.Context, id uuid.UUID) (store.Submission, error) {
+	if s.getSubmission == nil {
+		panic("unexpected GetSubmission")
+	}
+	return s.getSubmission(ctx, id)
+}
+func (s *stubStore) CountPendingSubmissions(ctx context.Context, userID uuid.UUID) (int64, error) {
+	if s.countPendingSubmissions == nil {
+		panic("unexpected CountPendingSubmissions")
+	}
+	return s.countPendingSubmissions(ctx, userID)
+}
+func (s *stubStore) CountSubmissionsSince(ctx context.Context, userID uuid.UUID, since time.Time) (int64, error) {
+	if s.countSubmissionsSince == nil {
+		panic("unexpected CountSubmissionsSince")
+	}
+	return s.countSubmissionsSince(ctx, userID, since)
+}
+func (s *stubStore) ListPendingSubmissions(ctx context.Context, limit, offset int) ([]store.SubmissionProposal, int64, error) {
+	if s.listPendingSubmissions == nil {
+		panic("unexpected ListPendingSubmissions")
+	}
+	return s.listPendingSubmissions(ctx, limit, offset)
+}
+func (s *stubStore) RejectSubmission(ctx context.Context, id uuid.UUID, reason string) (store.Submission, error) {
+	if s.rejectSubmission == nil {
+		panic("unexpected RejectSubmission")
+	}
+	return s.rejectSubmission(ctx, id, reason)
+}
+func (s *stubStore) RecordSubmissionProduct(ctx context.Context, id, productID uuid.UUID) error {
+	if s.recordSubmissionProduct == nil {
+		panic("unexpected RecordSubmissionProduct")
+	}
+	return s.recordSubmissionProduct(ctx, id, productID)
+}
+func (s *stubStore) ApproveSubmission(ctx context.Context, id uuid.UUID, snap store.CatalogSnapshot) (store.Submission, error) {
+	if s.approveSubmission == nil {
+		panic("unexpected ApproveSubmission")
+	}
+	return s.approveSubmission(ctx, id, snap)
+}
 
 // stubEnrichment implements server.Enrichment via function fields.
 type stubEnrichment struct {
-	getProduct   func(ctx context.Context, bearer string, id uuid.UUID) (enrichapi.Product, error)
-	batchPrices  func(ctx context.Context, bearer string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error)
-	priceHistory func(ctx context.Context, bearer string, ids []uuid.UUID, days int) (map[string][]enrichapi.PricePoint, error)
+	getProduct             func(ctx context.Context, bearer string, id uuid.UUID) (enrichapi.Product, error)
+	batchPrices            func(ctx context.Context, bearer string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error)
+	priceHistory           func(ctx context.Context, bearer string, ids []uuid.UUID, days int) (map[string][]enrichapi.PricePoint, error)
+	createCommunityProduct func(ctx context.Context, bearer string, req enrichapi.CreateCommunityProductJSONRequestBody) (enrichapi.Product, error)
+	listPlatforms          func(ctx context.Context, bearer string) ([]enrichmentclient.Platform, error)
 }
 
 var _ server.Enrichment = (*stubEnrichment)(nil)
@@ -215,6 +318,18 @@ func (s *stubEnrichment) PriceHistory(ctx context.Context, bearer string, ids []
 		panic("unexpected PriceHistory")
 	}
 	return s.priceHistory(ctx, bearer, ids, days)
+}
+func (s *stubEnrichment) CreateCommunityProduct(ctx context.Context, bearer string, req enrichapi.CreateCommunityProductJSONRequestBody) (enrichapi.Product, error) {
+	if s.createCommunityProduct == nil {
+		panic("unexpected CreateCommunityProduct")
+	}
+	return s.createCommunityProduct(ctx, bearer, req)
+}
+func (s *stubEnrichment) ListPlatforms(ctx context.Context, bearer string) ([]enrichmentclient.Platform, error) {
+	if s.listPlatforms == nil {
+		panic("unexpected ListPlatforms")
+	}
+	return s.listPlatforms(ctx, bearer)
 }
 
 // stubCache implements server.Cache in memory, recording invalidations.
@@ -1485,6 +1600,52 @@ func TestUnitUpdateEntry(t *testing.T) {
 		resp = do(t, http.MethodPut, srv.URL+"/entries/"+cust.ID.String(), a.token(t, owner.String()),
 			updateBody(func(m map[string]any) { m["display_name"] = "x" }))
 		wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
+	})
+
+	t.Run("custom platform_igdb_id requires platform_name", func(t *testing.T) {
+		// Update is full-replacement: the row already carries a valid
+		// pairing, but a body that sets platform_igdb_id while omitting
+		// platform_name would clear the name and keep the id - the same
+		// invalid pairing the DB's CHECK(platform_igdb_id IS NULL OR
+		// platform_name IS NOT NULL) rejects, regardless of current row
+		// state. updateEntry stands in for that constraint: if
+		// validation ever lets this body through, the store answers the
+		// way the real violation would.
+		owner := uuid.New()
+		cust := storedGameEntry(owner)
+		cust.ProductID = nil
+		cust.PricingMode = "disabled"
+		cust.PlatformName = ptr("SNES")
+		cust.PlatformIGDBID = ptr(int64(19))
+		st := &stubStore{
+			getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return cust, nil },
+			updateEntry: func(context.Context, store.Entry, []uuid.UUID) (store.Entry, error) {
+				return store.Entry{}, errors.New(`pq: check constraint "products_platform_pairing" violated`)
+			},
+		}
+		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+		resp := do(t, http.MethodPut, srv.URL+"/entries/"+cust.ID.String(), a.token(t, owner.String()),
+			updateBody(func(m map[string]any) {
+				m["pricing_mode"] = "disabled"
+				m["display_name"] = "Renamed repro"
+				m["platform_igdb_id"] = 19
+			}))
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status: got %d, want 400", resp.StatusCode)
+		}
+		var p struct {
+			Code   string `json:"code"`
+			Detail string `json:"detail"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+			t.Fatal(err)
+		}
+		if p.Code != "invalid_body" {
+			t.Fatalf("code: got %q, want invalid_body", p.Code)
+		}
+		if p.Detail != "platform_igdb_id requires platform_name" {
+			t.Fatalf("detail: got %q", p.Detail)
+		}
 	})
 
 	t.Run("product-backed entries reject catalog fields", func(t *testing.T) {
@@ -4149,4 +4310,654 @@ func TestCountProductReferences_AdminGateAndCount(t *testing.T) {
 	if counted == nil || *counted != pid {
 		t.Fatalf("counted product = %v, want %s", counted, pid)
 	}
+}
+
+func TestCreateSubmission_GuardsCapsAndCreate(t *testing.T) {
+	userID := uuid.New()
+	entryID := uuid.New()
+	customE := store.Entry{ID: entryID, UserID: userID, ItemType: "game", DisplayName: "Repro", Region: "pal"}
+	productBacked := customE
+	pid := uuid.New()
+	productBacked.ProductID = &pid
+
+	pendingCount, windowCount := int64(0), int64(0)
+	var created *store.Submission
+	st := &stubStore{
+		getEntry: func(_ context.Context, u, id uuid.UUID) (store.Entry, error) {
+			if u != userID || id != entryID {
+				return store.Entry{}, store.ErrNotFound
+			}
+			return customE, nil
+		},
+		countPendingSubmissions: func(context.Context, uuid.UUID) (int64, error) { return pendingCount, nil },
+		countSubmissionsSince:   func(context.Context, uuid.UUID, time.Time) (int64, error) { return windowCount, nil },
+		createSubmission: func(_ context.Context, u, id uuid.UUID) (store.Submission, error) {
+			s := store.Submission{ID: uuid.New(), EntryID: id, UserID: u, Status: "pending",
+				CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+			created = &s
+			return s, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	bearer := a.token(t, userID.String())
+
+	// Foreign/missing entry -> 404 entry_not_found.
+	resp := do(t, http.MethodPost, srv.URL+"/entries/"+uuid.NewString()+"/submission", bearer, nil)
+	wantProblem(t, resp, http.StatusNotFound, "entry_not_found")
+
+	// Product-backed -> 400 entry_not_custom.
+	st.getEntry = func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return productBacked, nil }
+	resp = do(t, http.MethodPost, srv.URL+"/entries/"+entryID.String()+"/submission", bearer, nil)
+	wantProblem(t, resp, http.StatusBadRequest, "entry_not_custom")
+	st.getEntry = func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return customE, nil }
+
+	// Caps: pending first, then the rolling window.
+	pendingCount = 10
+	resp = do(t, http.MethodPost, srv.URL+"/entries/"+entryID.String()+"/submission", bearer, nil)
+	wantProblem(t, resp, http.StatusTooManyRequests, "too_many_pending_submissions")
+	pendingCount = 0
+	windowCount = 20
+	resp = do(t, http.MethodPost, srv.URL+"/entries/"+entryID.String()+"/submission", bearer, nil)
+	wantProblem(t, resp, http.StatusTooManyRequests, "submission_rate_limited")
+	windowCount = 0
+
+	// The create.
+	resp = do(t, http.MethodPost, srv.URL+"/entries/"+entryID.String()+"/submission", bearer, nil)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create: %d", resp.StatusCode)
+	}
+	if created == nil || created.EntryID != entryID {
+		t.Fatalf("store create not called correctly: %+v", created)
+	}
+
+	// Double submit relays the store sentinel as 409.
+	st.createSubmission = func(context.Context, uuid.UUID, uuid.UUID) (store.Submission, error) {
+		return store.Submission{}, store.ErrSubmissionPending
+	}
+	resp = do(t, http.MethodPost, srv.URL+"/entries/"+entryID.String()+"/submission", bearer, nil)
+	wantProblem(t, resp, http.StatusConflict, "submission_pending")
+}
+
+func TestSubmission_GetAndCancel(t *testing.T) {
+	userID := uuid.New()
+	entryID := uuid.New()
+	reason := "duplicate of an existing product"
+	st := &stubStore{
+		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) {
+			return store.Entry{ID: entryID, UserID: userID}, nil
+		},
+		latestSubmissionForEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Submission, error) {
+			return store.Submission{ID: uuid.New(), EntryID: entryID, UserID: userID,
+				Status: "rejected", RejectReason: &reason,
+				CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}, nil
+		},
+		cancelSubmission: func(context.Context, uuid.UUID, uuid.UUID) error { return store.ErrNotFound },
+	}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	bearer := a.token(t, userID.String())
+
+	resp := do(t, http.MethodGet, srv.URL+"/entries/"+entryID.String()+"/submission", bearer, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get: %d", resp.StatusCode)
+	}
+	var sub api.Submission
+	if err := json.NewDecoder(resp.Body).Decode(&sub); err != nil {
+		t.Fatal(err)
+	}
+	if string(sub.Status) != "rejected" || sub.RejectReason == nil || *sub.RejectReason != reason {
+		t.Fatalf("submission body wrong: %+v", sub)
+	}
+
+	resp = do(t, http.MethodDelete, srv.URL+"/entries/"+entryID.String()+"/submission", bearer, nil)
+	wantProblem(t, resp, http.StatusNotFound, "submission_not_found")
+
+	st.cancelSubmission = func(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+	resp = do(t, http.MethodDelete, srv.URL+"/entries/"+entryID.String()+"/submission", bearer, nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("cancel: %d", resp.StatusCode)
+	}
+}
+
+func TestCreateEntry_CommunityProductSnapshotFallbacks(t *testing.T) {
+	userID := uuid.New()
+	productID := uuid.New()
+	platName := "SNES"
+	rd := openapi_types.Date{Time: time.Date(1995, 10, 9, 0, 0, 0, 0, time.UTC)}
+	community := enrichapi.Product{
+		Id: productID, Type: "game", Name: "Repro Alpha",
+		Community: &enrichapi.CommunityMeta{PlatformName: &platName, FirstReleaseDate: &rd},
+	}
+	var stored store.Entry
+	st := &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+		stored = e
+		e.ID = uuid.New()
+		return e, nil
+	}}
+	enrich := &stubEnrichment{
+		getProduct: func(context.Context, string, uuid.UUID) (enrichapi.Product, error) {
+			return community, nil
+		},
+		// CreateEntry's response composes a value for the new
+		// auto-priced, product-backed entry.
+		batchPrices: pricedAs(1500, 4200, 9900),
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+
+	resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, userID.String()), jsonBody(map[string]any{
+		"product_id": productID.String(), "region": "pal", "packaging": "loose",
+	}))
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create: %d", resp.StatusCode)
+	}
+	if stored.ProductID == nil || *stored.ProductID != productID {
+		t.Fatalf("product id: %+v", stored.ProductID)
+	}
+	if stored.DisplayName != "Repro Alpha" || stored.ItemType != "game" {
+		t.Fatalf("snapshot basics: %+v", stored)
+	}
+	if stored.PlatformName == nil || *stored.PlatformName != "SNES" || stored.PlatformIGDBID != nil {
+		t.Fatalf("community platform fallback: name=%v id=%v", stored.PlatformName, stored.PlatformIGDBID)
+	}
+	if stored.FirstReleaseDate == nil || !stored.FirstReleaseDate.Equal(rd.Time) {
+		t.Fatalf("community date fallback: %v", stored.FirstReleaseDate)
+	}
+	if stored.CoverURL != nil {
+		t.Fatalf("community products have no cover: %v", stored.CoverURL)
+	}
+	if stored.IGDBGameID != nil {
+		t.Fatalf("no igdb identity on community products: %v", stored.IGDBGameID)
+	}
+}
+
+func TestSubmitVerdict_RejectApproveExistingAndGate(t *testing.T) {
+	adminID := uuid.New()
+	subID := uuid.New()
+	userID := uuid.New()
+	entryID := uuid.New()
+	pending := store.Submission{ID: subID, EntryID: entryID, UserID: userID, Status: "pending",
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	productID := uuid.New()
+	provider := enrichapi.Product{Id: productID, Type: "game", Name: "Chrono Trigger"}
+
+	var approvedSnap *store.CatalogSnapshot
+	st := &stubStore{
+		getSubmission: func(context.Context, uuid.UUID) (store.Submission, error) { return pending, nil },
+		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) {
+			return store.Entry{ID: entryID, UserID: userID, Region: "pal"}, nil
+		},
+		rejectSubmission: func(_ context.Context, id uuid.UUID, reason string) (store.Submission, error) {
+			out := pending
+			out.Status = "rejected"
+			out.RejectReason = &reason
+			return out, nil
+		},
+		approveSubmission: func(_ context.Context, id uuid.UUID, snap store.CatalogSnapshot) (store.Submission, error) {
+			approvedSnap = &snap
+			out := pending
+			out.Status = "approved"
+			out.ProductID = &snap.ProductID
+			return out, nil
+		},
+	}
+	enrich := &stubEnrichment{getProduct: func(context.Context, string, uuid.UUID) (enrichapi.Product, error) {
+		return provider, nil
+	}}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	admin := a.token(t, adminID.String(), "admin")
+
+	// The gate: user role -> 403, store untouched (getSubmission nil
+	// would panic - prove it is never reached with a fresh stub).
+	gateSrv, ga := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodPost, gateSrv.URL+"/admin/submissions/"+subID.String()+"/verdict",
+		ga.token(t, uuid.NewString()), jsonBody(map[string]any{"action": "reject", "reason": "x"}))
+	wantProblem(t, resp, http.StatusForbidden, "forbidden")
+
+	// reject requires a reason.
+	resp = do(t, http.MethodPost, srv.URL+"/admin/submissions/"+subID.String()+"/verdict", admin,
+		jsonBody(map[string]any{"action": "reject", "reason": "  "}))
+	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
+
+	resp = do(t, http.MethodPost, srv.URL+"/admin/submissions/"+subID.String()+"/verdict", admin,
+		jsonBody(map[string]any{"action": "reject", "reason": "not a shared item"}))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reject: %d", resp.StatusCode)
+	}
+
+	// approve_existing validates the target then adopts with the
+	// provider snapshot.
+	resp = do(t, http.MethodPost, srv.URL+"/admin/submissions/"+subID.String()+"/verdict", admin,
+		jsonBody(map[string]any{"action": "approve_existing", "product_id": productID.String()}))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve_existing: %d", resp.StatusCode)
+	}
+	if approvedSnap == nil || approvedSnap.ProductID != productID || approvedSnap.DisplayName != "Chrono Trigger" {
+		t.Fatalf("snapshot: %+v", approvedSnap)
+	}
+
+	// Unknown target -> 404 unknown_product.
+	enrich.getProduct = func(context.Context, string, uuid.UUID) (enrichapi.Product, error) {
+		return enrichapi.Product{}, enrichmentclient.ErrUnknownProduct
+	}
+	resp = do(t, http.MethodPost, srv.URL+"/admin/submissions/"+subID.String()+"/verdict", admin,
+		jsonBody(map[string]any{"action": "approve_existing", "product_id": uuid.NewString()}))
+	wantProblem(t, resp, http.StatusNotFound, "unknown_product")
+
+	// A resolved row answers 409.
+	st.getSubmission = func(context.Context, uuid.UUID) (store.Submission, error) {
+		done := pending
+		done.Status = "approved"
+		return done, nil
+	}
+	resp = do(t, http.MethodPost, srv.URL+"/admin/submissions/"+subID.String()+"/verdict", admin,
+		jsonBody(map[string]any{"action": "reject", "reason": "x"}))
+	wantProblem(t, resp, http.StatusConflict, "submission_resolved")
+}
+
+func TestSubmitVerdict_ApproveNewMintRecordAdoptAndRetry(t *testing.T) {
+	adminID := uuid.New()
+	subID := uuid.New()
+	userID := uuid.New()
+	entryID := uuid.New()
+	minted := uuid.New()
+	pending := store.Submission{ID: subID, EntryID: entryID, UserID: userID, Status: "pending",
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	platName := "SNES"
+	communityProduct := enrichapi.Product{Id: minted, Type: "game", Name: "Repro Alpha",
+		Community: &enrichapi.CommunityMeta{PlatformName: &platName}}
+
+	var mintedReq *enrichapi.CreateCommunityProductJSONRequestBody
+	var recorded, adopted bool
+	st := &stubStore{
+		getSubmission: func(context.Context, uuid.UUID) (store.Submission, error) { return pending, nil },
+		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) {
+			return store.Entry{ID: entryID, UserID: userID, Region: "pal"}, nil
+		},
+		recordSubmissionProduct: func(_ context.Context, id, productID uuid.UUID) error {
+			if productID != minted {
+				t.Fatalf("recorded %s, want %s", productID, minted)
+			}
+			recorded = true
+			return nil
+		},
+		approveSubmission: func(_ context.Context, _ uuid.UUID, snap store.CatalogSnapshot) (store.Submission, error) {
+			if snap.ProductID != minted || snap.PlatformName == nil || *snap.PlatformName != "SNES" {
+				t.Fatalf("adopt snapshot: %+v", snap)
+			}
+			adopted = true
+			out := pending
+			out.Status = "approved"
+			out.ProductID = &snap.ProductID
+			return out, nil
+		},
+	}
+	enrich := &stubEnrichment{
+		createCommunityProduct: func(_ context.Context, _ string, req enrichapi.CreateCommunityProductJSONRequestBody) (enrichapi.Product, error) {
+			mintedReq = &req
+			return communityProduct, nil
+		},
+		getProduct: func(context.Context, string, uuid.UUID) (enrichapi.Product, error) {
+			return communityProduct, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	admin := a.token(t, adminID.String(), "admin")
+
+	body := map[string]any{"action": "approve_new", "product": map[string]any{
+		"type": "game", "name": "Repro Alpha", "platform_name": "SNES", "edition": "glow cart",
+	}}
+	resp := do(t, http.MethodPost, srv.URL+"/admin/submissions/"+subID.String()+"/verdict", admin, jsonBody(body))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve_new: %d", resp.StatusCode)
+	}
+	if mintedReq == nil || mintedReq.Name != "Repro Alpha" || mintedReq.Edition == nil || *mintedReq.Edition != "glow cart" {
+		t.Fatalf("mint request: %+v", mintedReq)
+	}
+	if !recorded || !adopted {
+		t.Fatalf("phases: recorded=%v adopted=%v", recorded, adopted)
+	}
+
+	// Retry with a recorded id: the mint must NOT run again (nil
+	// field would panic), adoption completes.
+	adopted = false
+	withRecord := pending
+	withRecord.ProductID = &minted
+	st.getSubmission = func(context.Context, uuid.UUID) (store.Submission, error) { return withRecord, nil }
+	enrich.createCommunityProduct = nil
+	resp = do(t, http.MethodPost, srv.URL+"/admin/submissions/"+subID.String()+"/verdict", admin, jsonBody(body))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("retry: %d", resp.StatusCode)
+	}
+	if !adopted {
+		t.Fatal("retry must adopt from the recorded id")
+	}
+
+	// Mint failure: 502, nothing recorded, row untouched.
+	st.getSubmission = func(context.Context, uuid.UUID) (store.Submission, error) { return pending, nil }
+	enrich.createCommunityProduct = func(context.Context, string, enrichapi.CreateCommunityProductJSONRequestBody) (enrichapi.Product, error) {
+		return enrichapi.Product{}, enrichmentclient.ErrUnavailable
+	}
+	st.recordSubmissionProduct = nil // reaching it would panic
+	resp = do(t, http.MethodPost, srv.URL+"/admin/submissions/"+subID.String()+"/verdict", admin, jsonBody(body))
+	wantProblem(t, resp, http.StatusBadGateway, "enrichment_unavailable")
+}
+
+// TestSubmitVerdict_ApproveEntryVanishedMidRace guards the adoption
+// tail's GetEntry call against the cascade micro-race: if the
+// submission's entry is deleted between GetSubmission and here (the
+// cascade also removes the submission row, but a verdict already in
+// flight holds its own copy), the caller must get a truthful 404, not
+// a mystery 500. approveSubmission stays nil - reaching it would
+// panic, proving the handler returns before ever calling it.
+func TestSubmitVerdict_ApproveEntryVanishedMidRace(t *testing.T) {
+	adminID := uuid.New()
+	subID := uuid.New()
+	userID := uuid.New()
+	entryID := uuid.New()
+	pending := store.Submission{ID: subID, EntryID: entryID, UserID: userID, Status: "pending",
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	productID := uuid.New()
+	provider := enrichapi.Product{Id: productID, Type: "game", Name: "Chrono Trigger"}
+
+	st := &stubStore{
+		getSubmission: func(context.Context, uuid.UUID) (store.Submission, error) { return pending, nil },
+		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) {
+			return store.Entry{}, store.ErrNotFound
+		},
+	}
+	enrich := &stubEnrichment{getProduct: func(context.Context, string, uuid.UUID) (enrichapi.Product, error) {
+		return provider, nil
+	}}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	admin := a.token(t, adminID.String(), "admin")
+
+	resp := do(t, http.MethodPost, srv.URL+"/admin/submissions/"+subID.String()+"/verdict", admin,
+		jsonBody(map[string]any{"action": "approve_existing", "product_id": productID.String()}))
+	wantProblem(t, resp, http.StatusNotFound, "entry_not_found")
+}
+
+func TestListSubmissions_GateAndEnvelope(t *testing.T) {
+	rowUser := uuid.New()
+	plat := "SNES"
+	st := &stubStore{listPendingSubmissions: func(_ context.Context, limit, offset int) ([]store.SubmissionProposal, int64, error) {
+		if limit != 200 || offset != 0 {
+			t.Fatalf("defaults: limit=%d offset=%d", limit, offset)
+		}
+		return []store.SubmissionProposal{{
+			Submission: store.Submission{ID: uuid.New(), EntryID: uuid.New(), UserID: rowUser,
+				Status: "pending", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
+			DisplayName: "Repro Alpha", ItemType: "game", PlatformName: &plat, Region: "pal",
+		}}, 1, nil
+	}}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+
+	resp := do(t, http.MethodGet, srv.URL+"/admin/submissions", a.token(t, uuid.NewString()), nil)
+	wantProblem(t, resp, http.StatusForbidden, "forbidden")
+
+	resp = do(t, http.MethodGet, srv.URL+"/admin/submissions", a.token(t, uuid.NewString(), "admin"), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list: %d", resp.StatusCode)
+	}
+	var page api.AdminSubmissionsPage
+	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
+		t.Fatal(err)
+	}
+	if page.TotalCount != 1 || len(page.Submissions) != 1 {
+		t.Fatalf("envelope: %+v", page)
+	}
+	row := page.Submissions[0]
+	if row.UserId != rowUser || row.DisplayName != "Repro Alpha" || string(row.Region) != "pal" {
+		t.Fatalf("row: %+v", row)
+	}
+}
+
+func TestSubmissionAck_OwnershipApprovedAndIdempotent(t *testing.T) {
+	userID := uuid.New()
+	entryID := uuid.New()
+	approved := store.Submission{ID: uuid.New(), EntryID: entryID, UserID: userID, Status: "approved"}
+	var stamped int
+	st := &stubStore{
+		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) {
+			return store.Entry{ID: entryID, UserID: userID}, nil
+		},
+		latestApprovedSubmissionForEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Submission, error) { return approved, nil },
+		ackSubmissionResolution:          func(context.Context, uuid.UUID) error { stamped++; return nil },
+	}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	bearer := a.token(t, userID.String())
+
+	resp := do(t, http.MethodPost, srv.URL+"/entries/"+entryID.String()+"/submission/ack", bearer, nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("ack: %d", resp.StatusCode)
+	}
+	if stamped != 1 {
+		t.Fatalf("stamp calls = %d, want 1", stamped)
+	}
+
+	// No approved submission -> 404 submission_not_found.
+	st.latestApprovedSubmissionForEntry = func(context.Context, uuid.UUID, uuid.UUID) (store.Submission, error) {
+		return store.Submission{}, store.ErrNotFound
+	}
+	resp = do(t, http.MethodPost, srv.URL+"/entries/"+entryID.String()+"/submission/ack", bearer, nil)
+	wantProblem(t, resp, http.StatusNotFound, "submission_not_found")
+
+	// Foreign/missing entry -> 404 entry_not_found.
+	st.getEntry = func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) {
+		return store.Entry{}, store.ErrNotFound
+	}
+	resp = do(t, http.MethodPost, srv.URL+"/entries/"+entryID.String()+"/submission/ack", bearer, nil)
+	wantProblem(t, resp, http.StatusNotFound, "entry_not_found")
+
+	// Already acked -> 204 with no stamp call.
+	already := time.Now().UTC()
+	st.getEntry = func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) {
+		return store.Entry{ID: entryID, UserID: userID}, nil
+	}
+	st.latestApprovedSubmissionForEntry = func(context.Context, uuid.UUID, uuid.UUID) (store.Submission, error) {
+		return store.Submission{ID: approved.ID, Status: "approved", ResolutionAckAt: &already}, nil
+	}
+	before := stamped
+	resp = do(t, http.MethodPost, srv.URL+"/entries/"+entryID.String()+"/submission/ack", bearer, nil)
+	if resp.StatusCode != http.StatusNoContent || stamped != before {
+		t.Fatalf("already-acked: %d, stamp calls %d->%d", resp.StatusCode, before, stamped)
+	}
+}
+
+func TestEntryCustomCatalogFields_CoverAndPlatformId(t *testing.T) {
+	userID := uuid.New()
+	var saved store.Entry
+	st := &stubStore{
+		createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			saved = e
+			e.ID = uuid.New()
+			return e, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	bearer := a.token(t, userID.String())
+
+	// Custom create persists both fields.
+	body := `{"display_name":"Repro","item_type":"game","platform_name":"SNES","platform_igdb_id":19,` +
+		`"cover_url":"https://img.example/r.jpg","region":"pal","packaging":"loose","pricing_mode":"disabled"}`
+	resp := do(t, http.MethodPost, srv.URL+"/entries", bearer, strings.NewReader(body))
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("custom create: %d", resp.StatusCode)
+	}
+	if saved.CoverURL == nil || *saved.CoverURL != "https://img.example/r.jpg" ||
+		saved.PlatformIGDBID == nil || *saved.PlatformIGDBID != 19 {
+		t.Fatalf("custom fields not stored: %+v", saved)
+	}
+
+	// A non-https cover is rejected.
+	bad := `{"display_name":"Repro","item_type":"game","cover_url":"http://x/y.jpg","region":"pal","packaging":"loose","pricing_mode":"disabled"}`
+	resp = do(t, http.MethodPost, srv.URL+"/entries", bearer, strings.NewReader(bad))
+	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
+
+	// A product-backed create rejects cover_url / platform_igdb_id.
+	pb := `{"product_id":"` + uuid.NewString() + `","cover_url":"https://img.example/z.jpg","region":"pal","packaging":"loose"}`
+	resp = do(t, http.MethodPost, srv.URL+"/entries", bearer, strings.NewReader(pb))
+	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
+}
+
+// TestUnitCreateEntry_PlatformIgdbIdRequiresPlatformName guards the
+// platform pairing the DB enforces with
+// CHECK(platform_igdb_id IS NULL OR platform_name IS NOT NULL): a
+// custom body carrying platform_igdb_id with no usable platform_name
+// must 400 in application validation, never reach the store to trip
+// that constraint as a 500. createEntry stands in for the constraint
+// itself - if validation ever lets this body through, the store
+// answers the way the real violation would.
+func TestUnitCreateEntry_PlatformIgdbIdRequiresPlatformName(t *testing.T) {
+	st := &stubStore{createEntry: func(context.Context, store.Entry, []uuid.UUID) (store.Entry, error) {
+		return store.Entry{}, errors.New(`pq: check constraint "products_platform_pairing" violated`)
+	}}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	bearer := a.token(t, uuid.NewString())
+
+	body := `{"display_name":"Repro","item_type":"game","platform_igdb_id":19,` +
+		`"region":"pal","packaging":"loose","pricing_mode":"disabled"}`
+	resp := do(t, http.MethodPost, srv.URL+"/entries", bearer, strings.NewReader(body))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", resp.StatusCode)
+	}
+	var p struct {
+		Code   string `json:"code"`
+		Detail string `json:"detail"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Code != "invalid_body" {
+		t.Fatalf("code: got %q, want invalid_body", p.Code)
+	}
+	if p.Detail != "platform_igdb_id requires platform_name" {
+		t.Fatalf("detail: got %q", p.Detail)
+	}
+}
+
+func TestApproveNew_ForwardsCoverToMint(t *testing.T) {
+	adminID := uuid.New()
+	userID := uuid.New()
+	entryID := uuid.New()
+	subID := uuid.New()
+	var mintBody enrichapi.CreateCommunityProductJSONRequestBody
+	st := &stubStore{
+		getSubmission: func(context.Context, uuid.UUID) (store.Submission, error) {
+			return store.Submission{ID: subID, EntryID: entryID, UserID: userID, Status: "pending"}, nil
+		},
+		recordSubmissionProduct: func(context.Context, uuid.UUID, uuid.UUID) error { return nil },
+		approveSubmission: func(_ context.Context, _ uuid.UUID, _ store.CatalogSnapshot) (store.Submission, error) {
+			return store.Submission{ID: subID, EntryID: entryID, Status: "approved"}, nil
+		},
+		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) {
+			return store.Entry{ID: entryID, UserID: userID, Region: "pal"}, nil
+		},
+	}
+	minted := uuid.New()
+	enr := &stubEnrichment{
+		createCommunityProduct: func(_ context.Context, _ string, req enrichapi.CreateCommunityProductJSONRequestBody) (enrichapi.Product, error) {
+			mintBody = req
+			cu := "https://img.example/sub.jpg"
+			return enrichapi.Product{Id: minted, Type: "game", Name: "Repro", Community: &enrichapi.CommunityMeta{CoverUrl: &cu}}, nil
+		},
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			cu := "https://img.example/sub.jpg"
+			return enrichapi.Product{Id: id, Type: "game", Name: "Repro", Community: &enrichapi.CommunityMeta{CoverUrl: &cu}}, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enr, newStubCache())
+	bearer := a.token(t, adminID.String(), "admin")
+
+	body := `{"action":"approve_new","product":{"type":"game","name":"Repro","cover_url":"https://img.example/sub.jpg"}}`
+	resp := do(t, http.MethodPost, srv.URL+"/admin/submissions/"+subID.String()+"/verdict", bearer, strings.NewReader(body))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve_new: %d", resp.StatusCode)
+	}
+	if mintBody.CoverUrl == nil || *mintBody.CoverUrl != "https://img.example/sub.jpg" {
+		t.Fatalf("cover not forwarded to mint: %+v", mintBody.CoverUrl)
+	}
+}
+
+func TestNormalizePlatforms_MatchesAliasesSkipsUnknownAdminOnly(t *testing.T) {
+	adminID := uuid.New()
+	e1, e2, e3 := uuid.New(), uuid.New(), uuid.New()
+	var stamped []uuid.UUID
+	st := &stubStore{
+		listNameOnlyPlatformEntries: func(context.Context) ([]store.PlatformEntryRef, error) {
+			return []store.PlatformEntryRef{
+				{EntryID: e1, PlatformName: "  SNES "},                             // alias match
+				{EntryID: e2, PlatformName: "super nintendo entertainment system"}, // exact match
+				{EntryID: e3, PlatformName: "my homebrew rig"},                     // no match
+			}, nil
+		},
+		setEntryPlatformIdentity: func(_ context.Context, id uuid.UUID, igdbID int64, name string) error {
+			if igdbID != 19 || name != "Super Nintendo Entertainment System" {
+				t.Fatalf("stamp wrong: %d %q", igdbID, name)
+			}
+			stamped = append(stamped, id)
+			return nil
+		},
+	}
+	enr := &stubEnrichment{
+		listPlatforms: func(context.Context, string) ([]enrichmentclient.Platform, error) {
+			return []enrichmentclient.Platform{{IGDBID: 19, Name: "Super Nintendo Entertainment System", Aliases: []string{"snes", "super nintendo"}}}, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enr, newStubCache())
+
+	// Non-admin is 403; the store/enrichment never run.
+	user := a.token(t, uuid.NewString())
+	resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-platforms", user, nil)
+	wantProblem(t, resp, http.StatusForbidden, "forbidden")
+
+	admin := a.token(t, adminID.String(), "admin")
+	resp = do(t, http.MethodPost, srv.URL+"/internal/normalize-platforms", admin, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("normalize: %d", resp.StatusCode)
+	}
+	var counts map[string]int
+	if err := json.NewDecoder(resp.Body).Decode(&counts); err != nil {
+		t.Fatal(err)
+	}
+	if counts["scanned"] != 3 || counts["normalized"] != 2 || counts["skipped"] != 1 {
+		t.Fatalf("counts = %+v, want scanned 3 normalized 2 skipped 1", counts)
+	}
+	if len(stamped) != 2 {
+		t.Fatalf("stamped %d entries, want 2", len(stamped))
+	}
+}
+
+// TestNormalizePlatforms_UpstreamFailures pins that an unreachable
+// enrichment or a failed store list surfaces as a problem+json error,
+// rather than silently reporting 0 matches: an admin trusting the
+// {scanned,normalized,skipped} counts must see 502/500, not a
+// misleadingly clean "nothing matched" 200.
+func TestNormalizePlatforms_UpstreamFailures(t *testing.T) {
+	adminID := uuid.New()
+
+	t.Run("enrichment down is 502", func(t *testing.T) {
+		enr := &stubEnrichment{
+			listPlatforms: func(context.Context, string) ([]enrichmentclient.Platform, error) {
+				return nil, errors.New("enrichment down")
+			},
+		}
+		srv, a := newUnitServer(t, &stubStore{}, enr, newStubCache())
+		resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-platforms", a.token(t, adminID.String(), "admin"), nil)
+		wantProblem(t, resp, http.StatusBadGateway, "enrichment_unavailable")
+	})
+
+	t.Run("store list failure is 500", func(t *testing.T) {
+		st := &stubStore{
+			listNameOnlyPlatformEntries: func(context.Context) ([]store.PlatformEntryRef, error) {
+				return nil, errors.New("db down")
+			},
+		}
+		enr := &stubEnrichment{
+			listPlatforms: func(context.Context, string) ([]enrichmentclient.Platform, error) {
+				return []enrichmentclient.Platform{{IGDBID: 19, Name: "Super Nintendo Entertainment System"}}, nil
+			},
+		}
+		srv, a := newUnitServer(t, st, enr, newStubCache())
+		resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-platforms", a.token(t, adminID.String(), "admin"), nil)
+		wantProblem(t, resp, http.StatusInternalServerError, "internal")
+	})
 }

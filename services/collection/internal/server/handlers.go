@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"sort"
@@ -26,6 +27,15 @@ var _ api.ServerInterface = (*Handlers)(nil)
 // maxBodyBytes caps request bodies; the largest legitimate body is an
 // entry update with long notes, far under this.
 const maxBodyBytes = 64 * 1024
+
+// Submission abuse caps (contract-documented). Cancelled rows persist
+// precisely so the rolling window counts every creation - a
+// cancel/recreate loop cannot evade it.
+const (
+	submissionPendingCap = 10
+	submissionDailyCap   = 20
+	submissionRateWindow = 24 * time.Hour
+)
 
 var (
 	currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
@@ -125,6 +135,45 @@ func pickReleaseDate(meta *enrichapi.IgdbMeta, region string) *time.Time {
 	return dateToTime(meta.FirstReleaseDate)
 }
 
+// catalogSnapshot derives the entry snapshot from a product. The
+// precedence rule: provider blocks (platform, igdb) win per-field
+// where present; community facts fill what providers do not supply.
+// Shared by product-backed creation (community-lane picks included)
+// and submission adoption.
+func catalogSnapshot(product enrichapi.Product, region string) store.CatalogSnapshot {
+	snap := store.CatalogSnapshot{
+		ProductID:   product.Id,
+		ItemType:    string(product.Type),
+		DisplayName: product.Name,
+	}
+	if product.Platform != nil {
+		snap.PlatformIGDBID = &product.Platform.IgdbPlatformId
+		snap.PlatformName = &product.Platform.Name
+	} else if product.Community != nil {
+		snap.PlatformName = product.Community.PlatformName
+	}
+	if product.Igdb != nil {
+		snap.IGDBGameID = &product.Igdb.GameId
+		snap.FirstReleaseDate = pickReleaseDate(product.Igdb, region)
+		snap.CoverURL = product.Igdb.CoverUrl
+	} else if product.Community != nil && product.Community.FirstReleaseDate != nil {
+		d := product.Community.FirstReleaseDate.Time
+		snap.FirstReleaseDate = &d
+	}
+	// Hardware has no igdb block and some games ship no cover; the
+	// platform logo is the next-best entry image.
+	if (snap.CoverURL == nil || *snap.CoverURL == "") && product.Platform != nil {
+		snap.CoverURL = product.Platform.LogoUrl
+	}
+	// A community product's own cover fills in when neither a provider
+	// cover nor a platform logo is present (per-field precedence, same
+	// as platform_name/first_release_date above).
+	if (snap.CoverURL == nil || *snap.CoverURL == "") && product.Community != nil && product.Community.CoverUrl != nil && *product.Community.CoverUrl != "" {
+		snap.CoverURL = product.Community.CoverUrl
+	}
+	return snap
+}
+
 func datesEqual(a, b *time.Time) bool {
 	if a == nil || b == nil {
 		return a == b
@@ -196,6 +245,13 @@ func updateInput(b api.EntryUpdate) entryInput {
 		Pinned:                     b.Pinned,
 		TagIDs:                     uuidsFrom(b.TagIds),
 	}
+}
+
+// validCoverURL enforces the cover-link shape: https only, at most 512
+// chars. The image is never fetched server-side (SSRF surface); the
+// client renders it with a broken-image fallback.
+func validCoverURL(s string) bool {
+	return len(s) <= 512 && strings.HasPrefix(s, "https://")
 }
 
 // validateEntryInput enforces the body rules the generated layer does
@@ -425,8 +481,9 @@ func (h *Handlers) invalidateDashboard(ctx context.Context, userID uuid.UUID) {
 // and custom creation bodies; a non-empty return is the 400 detail.
 func validateCustomFields(body api.EntryCreate) string {
 	if body.ProductId != nil {
-		if body.DisplayName != nil || body.ItemType != nil || body.PlatformName != nil || body.FirstReleaseDate != nil {
-			return "catalog fields are snapshotted from the product; omit display_name/item_type/platform_name/first_release_date when product_id is set"
+		if body.DisplayName != nil || body.ItemType != nil || body.PlatformName != nil ||
+			body.FirstReleaseDate != nil || body.CoverUrl != nil || body.PlatformIgdbId != nil {
+			return "catalog fields are snapshotted from the product; omit display_name/item_type/platform_name/first_release_date/cover_url/platform_igdb_id when product_id is set"
 		}
 		return ""
 	}
@@ -441,6 +498,12 @@ func validateCustomFields(body api.EntryCreate) string {
 	}
 	if body.PlatformName != nil && (strings.TrimSpace(*body.PlatformName) == "" || utf8.RuneCountInString(*body.PlatformName) > 100) {
 		return "platform_name must be 1-100 characters"
+	}
+	if body.PlatformIgdbId != nil && (body.PlatformName == nil || strings.TrimSpace(*body.PlatformName) == "") {
+		return "platform_igdb_id requires platform_name"
+	}
+	if body.CoverUrl != nil && *body.CoverUrl != "" && !validCoverURL(*body.CoverUrl) {
+		return "cover_url must be an https URL up to 512 characters"
 	}
 	return ""
 }
@@ -495,6 +558,8 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		e.DisplayName = *body.DisplayName
 		e.PlatformName = body.PlatformName
 		e.FirstReleaseDate = dateToTime(body.FirstReleaseDate)
+		e.PlatformIGDBID = body.PlatformIgdbId
+		e.CoverURL = body.CoverUrl
 	} else {
 		product, err := h.enrichment.GetProduct(r.Context(), bearer, *body.ProductId)
 		if errors.Is(err, enrichmentclient.ErrUnknownProduct) {
@@ -505,23 +570,15 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 			problem(w, r, http.StatusBadGateway, "enrichment_unavailable", "the catalog cannot be reached")
 			return
 		}
-		e.ProductID = &product.Id
-		e.ItemType = string(product.Type)
-		e.DisplayName = product.Name
-		if product.Platform != nil {
-			e.PlatformIGDBID = &product.Platform.IgdbPlatformId
-			e.PlatformName = &product.Platform.Name
-		}
-		if product.Igdb != nil {
-			e.IGDBGameID = &product.Igdb.GameId
-			e.FirstReleaseDate = pickReleaseDate(product.Igdb, in.Region)
-			e.CoverURL = product.Igdb.CoverUrl
-		}
-		// Hardware has no igdb block and some games ship no cover;
-		// the platform logo is the next-best entry image.
-		if (e.CoverURL == nil || *e.CoverURL == "") && product.Platform != nil {
-			e.CoverURL = product.Platform.LogoUrl
-		}
+		snap := catalogSnapshot(product, in.Region)
+		e.ProductID = &snap.ProductID
+		e.ItemType = snap.ItemType
+		e.DisplayName = snap.DisplayName
+		e.PlatformIGDBID = snap.PlatformIGDBID
+		e.PlatformName = snap.PlatformName
+		e.FirstReleaseDate = snap.FirstReleaseDate
+		e.IGDBGameID = snap.IGDBGameID
+		e.CoverURL = snap.CoverURL
 	}
 	// A NEW proxy reference must exist in the catalog (the entry's own
 	// product was just fetched, so proxying to itself needs no check).
@@ -609,7 +666,8 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 	// every mutable field); product-backed entries must not touch the
 	// catalog snapshot.
 	custom := current.ProductID == nil
-	if !custom && (body.DisplayName != nil || body.PlatformName != nil || body.FirstReleaseDate != nil) {
+	if !custom && (body.DisplayName != nil || body.PlatformName != nil || body.FirstReleaseDate != nil ||
+		body.CoverUrl != nil || body.PlatformIgdbId != nil) {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "catalog fields are immutable on product-backed entries")
 		return
 	}
@@ -620,6 +678,19 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		}
 		if body.PlatformName != nil && (strings.TrimSpace(*body.PlatformName) == "" || utf8.RuneCountInString(*body.PlatformName) > 100) {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "platform_name must be 1-100 characters")
+			return
+		}
+		// Full replacement: platform_igdb_id with no usable
+		// platform_name IN THIS BODY is invalid regardless of the
+		// current row - a nil body.PlatformName would clear the name
+		// while keeping the id, tripping the DB's platform pairing
+		// CHECK.
+		if body.PlatformIgdbId != nil && (body.PlatformName == nil || strings.TrimSpace(*body.PlatformName) == "") {
+			problem(w, r, http.StatusBadRequest, "invalid_body", "platform_igdb_id requires platform_name")
+			return
+		}
+		if body.CoverUrl != nil && *body.CoverUrl != "" && !validCoverURL(*body.CoverUrl) {
+			problem(w, r, http.StatusBadRequest, "invalid_body", "cover_url must be an https URL up to 512 characters")
 			return
 		}
 		if in.PricingMode == "auto" {
@@ -735,6 +806,8 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		e.DisplayName = *body.DisplayName
 		e.PlatformName = body.PlatformName
 		e.FirstReleaseDate = dateToTime(body.FirstReleaseDate)
+		e.PlatformIGDBID = body.PlatformIgdbId
+		e.CoverURL = body.CoverUrl
 		// The recommendation identity follows the pricing proxy:
 		// re-snapshot on a new target, keep it while the target is
 		// unchanged, clear it when the proxy is removed.
@@ -823,6 +896,149 @@ func (h *Handlers) ReorderEntry(w http.ResponseWriter, r *http.Request, entryId 
 	}
 	h.invalidateDashboard(r.Context(), userID)
 	h.respondEntry(w, r, bearer, moved, http.StatusOK)
+}
+
+func toAPISubmission(s store.Submission) api.Submission {
+	out := api.Submission{
+		Id: s.ID, EntryId: s.EntryID, Status: api.SubmissionStatus(s.Status),
+		CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
+	}
+	out.RejectReason = s.RejectReason
+	out.ProductId = s.ProductID
+	out.ReviewedAt = s.ReviewedAt
+	out.ResolutionAckAt = s.ResolutionAckAt
+	return out
+}
+
+// CreateSubmission files a custom entry into the catalog review
+// queue, under the per-user abuse caps.
+func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	userID, _, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
+	entry, err := h.store.GetEntry(r.Context(), userID, uuid.UUID(entryId))
+	if errors.Is(err, store.ErrNotFound) {
+		problem(w, r, http.StatusNotFound, "entry_not_found", "no such entry")
+		return
+	}
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		return
+	}
+	if entry.ProductID != nil {
+		problem(w, r, http.StatusBadRequest, "entry_not_custom", "only custom entries submit to the catalog")
+		return
+	}
+	pending, err := h.store.CountPendingSubmissions(r.Context(), userID)
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "count failed")
+		return
+	}
+	if pending >= submissionPendingCap {
+		problem(w, r, http.StatusTooManyRequests, "too_many_pending_submissions",
+			fmt.Sprintf("at most %d submissions may be pending; wait for review or cancel one", submissionPendingCap))
+		return
+	}
+	recent, err := h.store.CountSubmissionsSince(r.Context(), userID, time.Now().UTC().Add(-submissionRateWindow))
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "count failed")
+		return
+	}
+	if recent >= submissionDailyCap {
+		problem(w, r, http.StatusTooManyRequests, "submission_rate_limited",
+			fmt.Sprintf("at most %d submissions per rolling 24h; try again later", submissionDailyCap))
+		return
+	}
+	sub, err := h.store.CreateSubmission(r.Context(), userID, uuid.UUID(entryId))
+	if errors.Is(err, store.ErrSubmissionPending) {
+		problem(w, r, http.StatusConflict, "submission_pending", "a submission is already pending for this entry")
+		return
+	}
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "create failed")
+		return
+	}
+	writeJSON(w, http.StatusCreated, toAPISubmission(sub))
+}
+
+// GetSubmission serves the entry page's latest-submission read.
+func (h *Handlers) GetSubmission(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	userID, _, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
+	if _, err := h.store.GetEntry(r.Context(), userID, uuid.UUID(entryId)); errors.Is(err, store.ErrNotFound) {
+		problem(w, r, http.StatusNotFound, "entry_not_found", "no such entry")
+		return
+	} else if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		return
+	}
+	sub, err := h.store.LatestSubmissionForEntry(r.Context(), userID, uuid.UUID(entryId))
+	if errors.Is(err, store.ErrNotFound) {
+		problem(w, r, http.StatusNotFound, "submission_not_found", "the entry has no submissions")
+		return
+	}
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, toAPISubmission(sub))
+}
+
+// AckSubmissionResolution stamps the caller's approved submission for
+// the entry so the approval banner stops reappearing. The two-step
+// ownership idiom mirrors GetSubmission: a foreign or missing entry is
+// entry_not_found, an entry with no approved submission is
+// submission_not_found. Idempotent - an already-acked submission is a
+// 204 no-op.
+func (h *Handlers) AckSubmissionResolution(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	userID, _, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
+	if _, err := h.store.GetEntry(r.Context(), userID, uuid.UUID(entryId)); errors.Is(err, store.ErrNotFound) {
+		problem(w, r, http.StatusNotFound, "entry_not_found", "no such entry")
+		return
+	} else if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		return
+	}
+	sub, err := h.store.LatestApprovedSubmissionForEntry(r.Context(), userID, uuid.UUID(entryId))
+	if errors.Is(err, store.ErrNotFound) {
+		problem(w, r, http.StatusNotFound, "submission_not_found", "the entry has no approved submission")
+		return
+	}
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		return
+	}
+	if sub.ResolutionAckAt == nil {
+		if err := h.store.AckSubmissionResolution(r.Context(), sub.ID); err != nil {
+			problem(w, r, http.StatusInternalServerError, "internal", "ack failed")
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// CancelSubmission flips the entry's pending submission to cancelled.
+func (h *Handlers) CancelSubmission(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	userID, _, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
+	err := h.store.CancelSubmission(r.Context(), userID, uuid.UUID(entryId))
+	if errors.Is(err, store.ErrNotFound) {
+		problem(w, r, http.StatusNotFound, "submission_not_found", "nothing is pending for this entry")
+		return
+	}
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "cancel failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // listParams validates and converts the generated query params (the
@@ -1650,6 +1866,192 @@ func (h *Handlers) CountProductReferences(w http.ResponseWriter, r *http.Request
 	}{n})
 }
 
+// ListSubmissions pages the pending queue with live proposals.
+func (h *Handlers) ListSubmissions(w http.ResponseWriter, r *http.Request, params api.ListSubmissionsParams) {
+	claims, _ := jwtauth.FromContext(r.Context())
+	if !claims.HasRole("admin") {
+		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+		return
+	}
+	limit := 200
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	offset := 0
+	if params.Offset != nil && *params.Offset > 0 {
+		offset = *params.Offset
+	}
+	rows, total, err := h.store.ListPendingSubmissions(r.Context(), limit, offset)
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		return
+	}
+	page := api.AdminSubmissionsPage{Submissions: make([]api.AdminSubmission, 0, len(rows)), TotalCount: total}
+	for _, row := range rows {
+		as := api.AdminSubmission{
+			Id: row.ID, EntryId: row.EntryID, UserId: row.UserID,
+			Status:      api.AdminSubmissionStatus(row.Status),
+			DisplayName: row.DisplayName, ItemType: api.AdminSubmissionItemType(row.ItemType),
+			Region:    api.AdminSubmissionRegion(row.Region),
+			CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		}
+		as.PlatformName = row.PlatformName
+		as.Edition = row.Edition
+		as.CoverUrl = row.CoverURL
+		if row.FirstReleaseDate != nil {
+			d := openapi_types.Date{Time: *row.FirstReleaseDate}
+			as.FirstReleaseDate = &d
+		}
+		page.Submissions = append(page.Submissions, as)
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+// SubmitVerdict resolves one pending submission. approve_new is the
+// two-phase orchestration: mint (or reuse a prior attempt's recorded
+// mint), record on the still-pending row, then adopt+approve - a
+// crash between phases retries without twin mints. The only orphan
+// window is mint-succeeds-before-record; the guarded product delete
+// mops it.
+func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submissionId openapi_types.UUID) {
+	claims, _ := jwtauth.FromContext(r.Context())
+	if !claims.HasRole("admin") {
+		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+		return
+	}
+	_, bearer, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
+	var body api.VerdictRequest
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+		return
+	}
+	sub, err := h.store.GetSubmission(r.Context(), uuid.UUID(submissionId))
+	if errors.Is(err, store.ErrNotFound) {
+		problem(w, r, http.StatusNotFound, "submission_not_found", "no such submission")
+		return
+	}
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		return
+	}
+	if sub.Status != "pending" {
+		problem(w, r, http.StatusConflict, "submission_resolved", "another admin already resolved this submission")
+		return
+	}
+
+	switch string(body.Action) {
+	case "reject":
+		if body.Reason == nil || strings.TrimSpace(*body.Reason) == "" {
+			problem(w, r, http.StatusBadRequest, "invalid_body", "reject requires a reason")
+			return
+		}
+		out, err := h.store.RejectSubmission(r.Context(), sub.ID, strings.TrimSpace(*body.Reason))
+		if errors.Is(err, store.ErrSubmissionResolved) {
+			problem(w, r, http.StatusConflict, "submission_resolved", "another admin already resolved this submission")
+			return
+		}
+		if err != nil {
+			problem(w, r, http.StatusInternalServerError, "internal", "reject failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, toAPISubmission(out))
+	case "approve_existing":
+		if body.ProductId == nil {
+			problem(w, r, http.StatusBadRequest, "invalid_body", "approve_existing requires product_id")
+			return
+		}
+		h.adoptAndApprove(w, r, bearer, sub, *body.ProductId)
+	case "approve_new":
+		if body.Product == nil {
+			problem(w, r, http.StatusBadRequest, "invalid_body", "approve_new requires product")
+			return
+		}
+		// Reuse the id a prior approve_new minted and recorded, so a retry
+		// never double-mints. Corner: if that recorded product was deleted
+		// before the retry, approve_new 404s here; reject, or approve_existing
+		// (which overwrites the recorded id), is the escape.
+		productID := sub.ProductID
+		if productID == nil {
+			minted, err := h.enrichment.CreateCommunityProduct(r.Context(), bearer, mintRequest(*body.Product))
+			if err != nil {
+				problem(w, r, http.StatusBadGateway, "enrichment_unavailable", "the catalog cannot be reached")
+				return
+			}
+			if err := h.store.RecordSubmissionProduct(r.Context(), sub.ID, minted.Id); errors.Is(err, store.ErrSubmissionResolved) {
+				problem(w, r, http.StatusConflict, "submission_resolved", "another admin already resolved this submission")
+				return
+			} else if err != nil {
+				problem(w, r, http.StatusInternalServerError, "internal", "record failed")
+				return
+			}
+			productID = &minted.Id
+		}
+		h.adoptAndApprove(w, r, bearer, sub, *productID)
+	default:
+		problem(w, r, http.StatusBadRequest, "invalid_body", "action must be approve_new, approve_existing or reject")
+	}
+}
+
+// adoptAndApprove is the shared verdict tail: fetch the product,
+// snapshot it onto the submitter's entry, resolve the row - one
+// transaction for the last two.
+func (h *Handlers) adoptAndApprove(w http.ResponseWriter, r *http.Request, bearer string, sub store.Submission, productID uuid.UUID) {
+	product, err := h.enrichment.GetProduct(r.Context(), bearer, productID)
+	if errors.Is(err, enrichmentclient.ErrUnknownProduct) {
+		problem(w, r, http.StatusNotFound, "unknown_product", "no such product in the catalog")
+		return
+	}
+	if err != nil {
+		problem(w, r, http.StatusBadGateway, "enrichment_unavailable", "the catalog cannot be reached")
+		return
+	}
+	entry, err := h.store.GetEntry(r.Context(), sub.UserID, sub.EntryID)
+	if errors.Is(err, store.ErrNotFound) {
+		problem(w, r, http.StatusNotFound, "entry_not_found", "no such entry")
+		return
+	}
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "entry load failed")
+		return
+	}
+	out, err := h.store.ApproveSubmission(r.Context(), sub.ID, catalogSnapshot(product, entry.Region))
+	if errors.Is(err, store.ErrSubmissionResolved) {
+		problem(w, r, http.StatusConflict, "submission_resolved", "another admin already resolved this submission")
+		return
+	}
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "approve failed")
+		return
+	}
+	h.invalidateDashboard(r.Context(), sub.UserID)
+	writeJSON(w, http.StatusOK, toAPISubmission(out))
+}
+
+// mintRequest maps the verdict's curated fields onto enrichment's
+// mint request.
+func mintRequest(p api.CommunityProductSpec) enrichapi.CreateCommunityProductJSONRequestBody {
+	out := enrichapi.CreateCommunityProductJSONRequestBody{
+		Type: enrichapi.CommunityProductCreateType(p.Type),
+		Name: p.Name,
+	}
+	out.PlatformName = p.PlatformName
+	out.Region = p.Region
+	out.Edition = p.Edition
+	out.FirstReleaseDate = p.FirstReleaseDate
+	out.CoverUrl = p.CoverUrl
+	return out
+}
+
 // PurgeUserData is the collection leg of account deletion.
 func (h *Handlers) PurgeUserData(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := h.caller(w, r)
@@ -1730,5 +2132,80 @@ func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]int{
 		"products_seen": seen, "products_failed": failed, "entries_updated": updated,
+	})
+}
+
+// InternalNormalizePlatforms canonicalizes free-text custom-entry
+// platforms: every entry with a platform_name but no platform_igdb_id
+// is matched (case-insensitive, trimmed, exact-or-alias - never fuzzy,
+// so nothing is silently misfiled) against the enrichment platform
+// catalog and stamped with the canonical igdb id + name. Re-runnable:
+// stamped rows leave the selection set. Admin-gated - stricter than
+// the resnapshot lever's JWT-only guard, since a mass cross-user write
+// earns the role check (resnapshot is deliberately left as-is). The
+// caller's bearer rides the enrichment hop.
+//
+// Not in the contract and not relayed by the bff, so bruno and the
+// gateway never reach it - run it by hand against the collection
+// service. With the dev stack up and the admin fixture role already
+// granted (task grant-fixture-admin):
+//
+//	kubectl -n vg-collect port-forward svc/collection 8085:8080 &
+//	TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
+//	  -H 'Content-Type: application/json' -d '{"user":"admin"}' \
+//	  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+//	curl -s -X POST http://localhost:8085/internal/normalize-platforms \
+//	  -H "Authorization: Bearer $TOKEN"
+//
+// Answers {"scanned":N,"normalized":N,"skipped":N}.
+func (h *Handlers) InternalNormalizePlatforms(w http.ResponseWriter, r *http.Request) {
+	_, bearer, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
+	claims, _ := jwtauth.FromContext(r.Context())
+	if !claims.HasRole("admin") {
+		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+		return
+	}
+	platforms, err := h.enrichment.ListPlatforms(r.Context(), bearer)
+	if err != nil {
+		problem(w, r, http.StatusBadGateway, "enrichment_unavailable", "the platform catalog cannot be reached")
+		return
+	}
+	type canon struct {
+		igdbID int64
+		name   string
+	}
+	norm := func(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+	byKey := make(map[string]canon, len(platforms)*2)
+	for _, p := range platforms {
+		byKey[norm(p.Name)] = canon{p.IGDBID, p.Name}
+		for _, a := range p.Aliases {
+			if _, taken := byKey[norm(a)]; !taken {
+				byKey[norm(a)] = canon{p.IGDBID, p.Name}
+			}
+		}
+	}
+	refs, err := h.store.ListNameOnlyPlatformEntries(r.Context())
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		return
+	}
+	var normalized, skipped int
+	for _, ref := range refs {
+		c, matched := byKey[norm(ref.PlatformName)]
+		if !matched {
+			skipped++
+			continue
+		}
+		if err := h.store.SetEntryPlatformIdentity(r.Context(), ref.EntryID, c.igdbID, c.name); err != nil {
+			h.logger.WarnContext(r.Context(), "normalize: entry update failed", "entry", ref.EntryID, "err", err)
+			continue
+		}
+		normalized++
+	}
+	writeJSON(w, http.StatusOK, map[string]int{
+		"scanned": len(refs), "normalized": normalized, "skipped": skipped,
 	})
 }

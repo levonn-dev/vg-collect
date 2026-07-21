@@ -280,6 +280,120 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /entries/{entryId}/submission:
+    post:
+      operationId: createSubmission
+      summary: Submit a custom entry as a catalog candidate
+      description: >
+        Files the entry into the admin review queue. Custom entries
+        only (400 code entry_not_custom otherwise); one pending
+        submission per entry (409 code submission_pending). The queue
+        holds a live reference: entry edits flow into what the admin
+        reviews until the verdict. Abuse caps, per user: at most 10
+        pending (429 code too_many_pending_submissions) and at most
+        20 created in any rolling 24h window (429 code
+        submission_rate_limited) - cancelled submissions still count
+        toward the window, so cancel/recreate does not reset it.
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "201":
+          description: The pending submission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Submission" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Not found (code entry_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: A submission is already pending for the entry (code submission_pending)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: A submission cap is exceeded (code too_many_pending_submissions or submission_rate_limited)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+    get:
+      operationId: getSubmission
+      summary: The entry's latest submission, any status
+      description: >
+        The entry page's read: pending shows the wait, rejected shows
+        the reason, cancelled reads as none for resubmit purposes.
+        404 code entry_not_found for a foreign or missing entry;
+        submission_not_found when the entry never had one.
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The latest submission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Submission" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Not found (code entry_not_found or submission_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+    delete:
+      operationId: cancelSubmission
+      summary: Cancel the entry's pending submission
+      description: >
+        Flips the pending submission to cancelled - a status change,
+        not a delete: the row persists and still counts toward the
+        rolling creation cap. 404 code submission_not_found when
+        nothing is pending.
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Cancelled
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Nothing pending (code submission_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /entries/{entryId}/submission/ack:
+    post:
+      operationId: ackSubmissionResolution
+      summary: Acknowledge an approved submission (dismiss the banner)
+      description: >
+        Stamps resolution_ack_at on the caller's latest approved
+        submission for the entry, so the approval banner does not
+        reappear on the next open. Idempotent: 204 on the first stamp
+        and on every repeat. 404 code entry_not_found for a foreign or
+        missing entry; submission_not_found when the entry has no
+        approved submission.
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Acknowledged (or already acknowledged)
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Not found (code entry_not_found or submission_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /tags:
     get:
       operationId: listTags
@@ -602,6 +716,85 @@ paths:
                   entry_count: { type: integer, format: int64 }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/submissions:
+    get:
+      operationId: listSubmissions
+      summary: The pending catalog-submission queue, across all users (role admin)
+      description: >
+        Pending only, oldest first (created_at with id as the
+        tiebreak). Each row carries the submission plus the LIVE
+        proposal joined from the entry - user edits flow through until
+        the verdict. Submitters appear as opaque user ids. limit
+        defaults to 200 (max 500); total_count reports the full
+        pending count.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: One queue page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminSubmissionsPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/submissions/{submissionId}/verdict:
+    post:
+      operationId: submitVerdict
+      summary: Resolve one pending submission (role admin)
+      description: >
+        action reject requires reason (the submitter sees it).
+        action approve_existing requires product_id: the target is
+        validated against enrichment and the submitter's entry adopts
+        it (the product-backed creation snapshot, community facts
+        filling what provider blocks do not supply), preserving every
+        user-owned field. action approve_new requires product (the
+        curated fields; the single edition field follows the entry
+        idiom): enrichment mints a community product with the admin's
+        own bearer, the minted id is recorded on the still-pending
+        row, then adoption runs - a retry after a mid-way failure
+        sees the recorded id and never mints twice. A row that is no
+        longer pending answers 409 code submission_resolved. Errors:
+        404 code submission_not_found, unknown_product, or
+        entry_not_found (the entry vanishes mid-race; cascade delete
+        also removes the submission); 502 code enrichment_unavailable
+        (retryable; the row stays pending).
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerdictRequest" }
+      responses:
+        "200":
+          description: The resolved submission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Submission" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such submission, the adopt target does not exist, or the entry vanished mid-race (code submission_not_found, unknown_product, or entry_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Another admin already resolved it (code submission_resolved)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -631,15 +824,17 @@ components:
       description: >
         The entry's platform: a creation-time snapshot of the product's
         platform (both fields) on product-backed entries, or a
-        user-supplied free-text name (no igdb id) on custom entries.
-        Absent when neither exists.
+        user-supplied platform on custom entries - both fields when
+        picked from the catalog or normalized by the admin lever,
+        name-only for escape-hatch free text. Absent when neither
+        exists.
       type: object
       required: [name]
       properties:
         igdb_platform_id:
           type: integer
           format: int64
-          description: Absent on custom entries.
+          description: Absent on name-only custom entries.
         name: { type: string }
     Entry:
       description: >
@@ -648,9 +843,10 @@ components:
         igdb_game_id) are immutable creation-time snapshots from the
         enrichment product and product_id remains the live join key
         for prices. A CUSTOM entry has no product_id: its display
-        fields are user-owned and editable, platform carries a name
-        without an igdb id when supplied, and igdb_game_id is always
-        absent. value_cents is composed at read time from the
+        fields are user-owned and editable, platform carries the
+        picked or normalized identity - name-only for escape-hatch
+        free text - when supplied, and igdb_game_id is always absent.
+        value_cents is composed at read time from the
         effective pricing product and the packaging-matched price
         field; (or, with pricing_mode custom, taken directly from
         custom_value_cents, packaging-independent); it is null when
@@ -675,9 +871,11 @@ components:
         cover_url:
           type: string
           description: >
-            Cover art URL snapshotted from the product at creation.
-            Absent on custom entries, hardware, and products without
-            art (render a placeholder).
+            Cover art URL. For product-backed entries it is snapshotted
+            from the product at creation (and refreshed on adoption).
+            Custom entries may set their own (https, shape-validated).
+            Absent on hardware and products without art (render a
+            placeholder).
         igdb_game_id:
           type: integer
           format: int64
@@ -747,6 +945,95 @@ components:
         value_cents: { type: integer, format: int64 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    Submission:
+      description: >
+        One catalog-submission lifecycle row for an entry. Rows
+        persist as history (rejected and cancelled included; the
+        rolling creation cap counts every attempt); deleting the entry
+        removes them with it. product_id is the verdict's resolved
+        product - recorded before adoption so an approve_new retry
+        never mints twice.
+      type: object
+      required: [id, entry_id, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        entry_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, approved, rejected, cancelled] }
+        reject_reason: { type: string }
+        product_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        reviewed_at: { type: string, format: date-time }
+        resolution_ack_at:
+          type: string
+          format: date-time
+          description: >
+            When the submitter acknowledged an approved verdict (closed
+            the approval banner). Absent until acknowledged.
+    AdminSubmission:
+      description: >
+        One queue row: the submission plus the live proposal from the
+        entry join (display_name, item_type, platform_name, region,
+        edition, first_release_date pre-fill the curation form;
+        entries carry no variant - the single edition field is the
+        idiom).
+      type: object
+      required: [id, entry_id, user_id, status, display_name, item_type, region, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        entry_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, approved, rejected, cancelled] }
+        display_name: { type: string }
+        item_type: { type: string, enum: [game, console, accessory] }
+        platform_name: { type: string }
+        region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        edition: { type: string }
+        first_release_date: { type: string, format: date }
+        cover_url:
+          type: string
+          description: The entry's cover URL, live from the proposal join; prefills the curation cover field.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AdminSubmissionsPage:
+      type: object
+      required: [submissions, total_count]
+      properties:
+        submissions:
+          type: array
+          items: { $ref: "#/components/schemas/AdminSubmission" }
+        total_count:
+          type: integer
+          format: int64
+          description: Full pending count, beyond this page.
+    CommunityProductSpec:
+      description: >
+        The curated fields for approve_new; mirrors the enrichment
+        mint request (single edition field, no variant).
+      type: object
+      required: [type, name]
+      properties:
+        type: { type: string, enum: [game, console, accessory] }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        platform_name: { type: string, maxLength: 100 }
+        region: { type: string, maxLength: 32 }
+        edition: { type: string, maxLength: 128 }
+        first_release_date: { type: string, format: date }
+        cover_url:
+          type: string
+          maxLength: 512
+          description: Optional https cover image URL for the minted community product.
+    VerdictRequest:
+      description: >
+        One admin verdict. approve_new requires product;
+        approve_existing requires product_id; reject requires reason.
+      type: object
+      required: [action]
+      properties:
+        action: { type: string, enum: [approve_new, approve_existing, reject] }
+        product: { $ref: "#/components/schemas/CommunityProductSpec" }
+        product_id: { type: string, format: uuid }
+        reason: { type: string, maxLength: 1000 }
     EntryCreate:
       description: >
         Product-backed: product_id comes from a prior enrichment
@@ -780,6 +1067,14 @@ components:
           type: string
           maxLength: 100
           description: Custom entries only.
+        platform_igdb_id:
+          type: integer
+          format: int64
+          description: Custom entries only; the canonical platform id from the picker (surfaces the entry in the platform filter).
+        cover_url:
+          type: string
+          maxLength: 512
+          description: Custom entries only; an https cover image URL (validated by shape, never fetched).
         first_release_date:
           type: string
           format: date
@@ -842,6 +1137,14 @@ components:
           type: string
           maxLength: 100
           description: Custom entries only.
+        platform_igdb_id:
+          type: integer
+          format: int64
+          description: Custom entries only; the canonical platform id from the picker.
+        cover_url:
+          type: string
+          maxLength: 512
+          description: Custom entries only; an https cover image URL (validated by shape, never fetched).
         first_release_date:
           type: string
           format: date

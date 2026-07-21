@@ -19,6 +19,36 @@ const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
+// Defines values for AdminSubmissionItemType.
+const (
+	AdminSubmissionItemTypeAccessory AdminSubmissionItemType = "accessory"
+	AdminSubmissionItemTypeConsole   AdminSubmissionItemType = "console"
+	AdminSubmissionItemTypeGame      AdminSubmissionItemType = "game"
+)
+
+// Defines values for AdminSubmissionRegion.
+const (
+	AdminSubmissionRegionNtscJ      AdminSubmissionRegion = "ntsc_j"
+	AdminSubmissionRegionNtscU      AdminSubmissionRegion = "ntsc_u"
+	AdminSubmissionRegionPal        AdminSubmissionRegion = "pal"
+	AdminSubmissionRegionRegionFree AdminSubmissionRegion = "region_free"
+)
+
+// Defines values for AdminSubmissionStatus.
+const (
+	AdminSubmissionStatusApproved  AdminSubmissionStatus = "approved"
+	AdminSubmissionStatusCancelled AdminSubmissionStatus = "cancelled"
+	AdminSubmissionStatusPending   AdminSubmissionStatus = "pending"
+	AdminSubmissionStatusRejected  AdminSubmissionStatus = "rejected"
+)
+
+// Defines values for CommunityProductSpecType.
+const (
+	CommunityProductSpecTypeAccessory CommunityProductSpecType = "accessory"
+	CommunityProductSpecTypeConsole   CommunityProductSpecType = "console"
+	CommunityProductSpecTypeGame      CommunityProductSpecType = "game"
+)
+
 // Defines values for EntryBoxCondition.
 const (
 	EntryBoxConditionAcceptable EntryBoxCondition = "acceptable"
@@ -241,6 +271,21 @@ const (
 	EntryUpdateStatusShelved   EntryUpdateStatus = "shelved"
 )
 
+// Defines values for SubmissionStatus.
+const (
+	SubmissionStatusApproved  SubmissionStatus = "approved"
+	SubmissionStatusCancelled SubmissionStatus = "cancelled"
+	SubmissionStatusPending   SubmissionStatus = "pending"
+	SubmissionStatusRejected  SubmissionStatus = "rejected"
+)
+
+// Defines values for VerdictRequestAction.
+const (
+	ApproveExisting VerdictRequestAction = "approve_existing"
+	ApproveNew      VerdictRequestAction = "approve_new"
+	Reject          VerdictRequestAction = "reject"
+)
+
 // Defines values for GetDashboardParamsItemType.
 const (
 	GetDashboardParamsItemTypeAccessory GetDashboardParamsItemType = "accessory"
@@ -309,10 +354,10 @@ const (
 
 // Defines values for ListEntriesParamsRegion.
 const (
-	NtscJ      ListEntriesParamsRegion = "ntsc_j"
-	NtscU      ListEntriesParamsRegion = "ntsc_u"
-	Pal        ListEntriesParamsRegion = "pal"
-	RegionFree ListEntriesParamsRegion = "region_free"
+	ListEntriesParamsRegionNtscJ      ListEntriesParamsRegion = "ntsc_j"
+	ListEntriesParamsRegionNtscU      ListEntriesParamsRegion = "ntsc_u"
+	ListEntriesParamsRegionPal        ListEntriesParamsRegion = "pal"
+	ListEntriesParamsRegionRegionFree ListEntriesParamsRegion = "region_free"
 )
 
 // Defines values for ListEntriesParamsItemCondition.
@@ -352,6 +397,56 @@ const (
 	ListEntriesParamsGroupByTag      ListEntriesParamsGroupBy = "tag"
 )
 
+// AdminSubmission One queue row: the submission plus the live proposal from the entry join (display_name, item_type, platform_name, region, edition, first_release_date pre-fill the curation form; entries carry no variant - the single edition field is the idiom).
+type AdminSubmission struct {
+	// CoverUrl The entry's cover URL, live from the proposal join; prefills the curation cover field.
+	CoverUrl         *string                 `json:"cover_url,omitempty"`
+	CreatedAt        time.Time               `json:"created_at"`
+	DisplayName      string                  `json:"display_name"`
+	Edition          *string                 `json:"edition,omitempty"`
+	EntryId          openapi_types.UUID      `json:"entry_id"`
+	FirstReleaseDate *openapi_types.Date     `json:"first_release_date,omitempty"`
+	Id               openapi_types.UUID      `json:"id"`
+	ItemType         AdminSubmissionItemType `json:"item_type"`
+	PlatformName     *string                 `json:"platform_name,omitempty"`
+	Region           AdminSubmissionRegion   `json:"region"`
+	Status           AdminSubmissionStatus   `json:"status"`
+	UpdatedAt        time.Time               `json:"updated_at"`
+	UserId           openapi_types.UUID      `json:"user_id"`
+}
+
+// AdminSubmissionItemType defines model for AdminSubmission.ItemType.
+type AdminSubmissionItemType string
+
+// AdminSubmissionRegion defines model for AdminSubmission.Region.
+type AdminSubmissionRegion string
+
+// AdminSubmissionStatus defines model for AdminSubmission.Status.
+type AdminSubmissionStatus string
+
+// AdminSubmissionsPage defines model for AdminSubmissionsPage.
+type AdminSubmissionsPage struct {
+	Submissions []AdminSubmission `json:"submissions"`
+
+	// TotalCount Full pending count, beyond this page.
+	TotalCount int64 `json:"total_count"`
+}
+
+// CommunityProductSpec The curated fields for approve_new; mirrors the enrichment mint request (single edition field, no variant).
+type CommunityProductSpec struct {
+	// CoverUrl Optional https cover image URL for the minted community product.
+	CoverUrl         *string                  `json:"cover_url,omitempty"`
+	Edition          *string                  `json:"edition,omitempty"`
+	FirstReleaseDate *openapi_types.Date      `json:"first_release_date,omitempty"`
+	Name             string                   `json:"name"`
+	PlatformName     *string                  `json:"platform_name,omitempty"`
+	Region           *string                  `json:"region,omitempty"`
+	Type             CommunityProductSpecType `json:"type"`
+}
+
+// CommunityProductSpecType defines model for CommunityProductSpec.Type.
+type CommunityProductSpecType string
+
 // CurrencySpend defines model for CurrencySpend.
 type CurrencySpend struct {
 	Currency   string `json:"currency"`
@@ -384,13 +479,13 @@ type DashboardPricing struct {
 	UnpricedEntries int `json:"unpriced_entries"`
 }
 
-// Entry One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries a name without an igdb id when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; (or, with pricing_mode custom, taken directly from custom_value_cents, packaging-independent); it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable.
+// Entry One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries the picked or normalized identity - name-only for escape-hatch free text - when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; (or, with pricing_mode custom, taken directly from custom_value_cents, packaging-independent); it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable.
 type Entry struct {
 	// BacklogRank Present exactly while status is backlog; server-generated.
 	BacklogRank  *string            `json:"backlog_rank,omitempty"`
 	BoxCondition *EntryBoxCondition `json:"box_condition,omitempty"`
 
-	// CoverUrl Cover art URL snapshotted from the product at creation. Absent on custom entries, hardware, and products without art (render a placeholder).
+	// CoverUrl Cover art URL. For product-backed entries it is snapshotted from the product at creation (and refreshed on adoption). Custom entries may set their own (https, shape-validated). Absent on hardware and products without art (render a placeholder).
 	CoverUrl  *string   `json:"cover_url,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	Currency  string    `json:"currency"`
@@ -426,7 +521,7 @@ type Entry struct {
 	Packaging       EntryPackaging        `json:"packaging"`
 	Pinned          bool                  `json:"pinned"`
 
-	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied free-text name (no igdb id) on custom entries. Absent when neither exists.
+	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
 	Platform         *EntryPlatform      `json:"platform,omitempty"`
 	PricePaidCents   *int64              `json:"price_paid_cents,omitempty"`
 	PricingMode      EntryPricingMode    `json:"pricing_mode"`
@@ -478,11 +573,14 @@ type EntryStatus string
 
 // EntryCreate Product-backed: product_id comes from a prior enrichment resolve and the catalog fields are snapshotted server-side (display_name/item_type/platform_name/first_release_date must NOT be sent). Custom (no product_id): display_name and item_type are required, platform_name and first_release_date optional; pricing_mode defaults to disabled and must not be auto. media_type accepts only physical (the column already allows digital: the API widens when platform sync arrives). source is server-set manual. pricing_product_id is required when pricing_mode is proxy; box_condition requires has_box and manual_condition requires has_manual. custom_value_cents is required when pricing_mode is custom.
 type EntryCreate struct {
-	BoxCondition               *EntryCreateBoxCondition `json:"box_condition,omitempty"`
-	Currency                   *string                  `json:"currency,omitempty"`
-	CustomValueCents           *int64                   `json:"custom_value_cents,omitempty"`
-	CustomValueEnteredCents    *int64                   `json:"custom_value_entered_cents,omitempty"`
-	CustomValueEnteredCurrency *string                  `json:"custom_value_entered_currency,omitempty"`
+	BoxCondition *EntryCreateBoxCondition `json:"box_condition,omitempty"`
+
+	// CoverUrl Custom entries only; an https cover image URL (validated by shape, never fetched).
+	CoverUrl                   *string `json:"cover_url,omitempty"`
+	Currency                   *string `json:"currency,omitempty"`
+	CustomValueCents           *int64  `json:"custom_value_cents,omitempty"`
+	CustomValueEnteredCents    *int64  `json:"custom_value_entered_cents,omitempty"`
+	CustomValueEnteredCurrency *string `json:"custom_value_entered_currency,omitempty"`
 
 	// DisplayName Custom entries only (required there).
 	DisplayName *string `json:"display_name,omitempty"`
@@ -503,6 +601,9 @@ type EntryCreate struct {
 	Notes           *string                     `json:"notes,omitempty"`
 	Packaging       EntryCreatePackaging        `json:"packaging"`
 	Pinned          *bool                       `json:"pinned,omitempty"`
+
+	// PlatformIgdbId Custom entries only; the canonical platform id from the picker (surfaces the entry in the platform filter).
+	PlatformIgdbId *int64 `json:"platform_igdb_id,omitempty"`
 
 	// PlatformName Custom entries only.
 	PlatformName     *string                 `json:"platform_name,omitempty"`
@@ -567,20 +668,23 @@ type EntryList struct {
 	TotalCount int `json:"total_count"`
 }
 
-// EntryPlatform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied free-text name (no igdb id) on custom entries. Absent when neither exists.
+// EntryPlatform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
 type EntryPlatform struct {
-	// IgdbPlatformId Absent on custom entries.
+	// IgdbPlatformId Absent on name-only custom entries.
 	IgdbPlatformId *int64 `json:"igdb_platform_id,omitempty"`
 	Name           string `json:"name"`
 }
 
 // EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
 type EntryUpdate struct {
-	BoxCondition               *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
-	Currency                   *string                  `json:"currency,omitempty"`
-	CustomValueCents           *int64                   `json:"custom_value_cents,omitempty"`
-	CustomValueEnteredCents    *int64                   `json:"custom_value_entered_cents,omitempty"`
-	CustomValueEnteredCurrency *string                  `json:"custom_value_entered_currency,omitempty"`
+	BoxCondition *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
+
+	// CoverUrl Custom entries only; an https cover image URL (validated by shape, never fetched).
+	CoverUrl                   *string `json:"cover_url,omitempty"`
+	Currency                   *string `json:"currency,omitempty"`
+	CustomValueCents           *int64  `json:"custom_value_cents,omitempty"`
+	CustomValueEnteredCents    *int64  `json:"custom_value_entered_cents,omitempty"`
+	CustomValueEnteredCurrency *string `json:"custom_value_entered_currency,omitempty"`
 
 	// DisplayName Custom entries only (required there).
 	DisplayName *string `json:"display_name,omitempty"`
@@ -597,6 +701,9 @@ type EntryUpdate struct {
 	Notes            *string                     `json:"notes,omitempty"`
 	Packaging        EntryUpdatePackaging        `json:"packaging"`
 	Pinned           bool                        `json:"pinned"`
+
+	// PlatformIgdbId Custom entries only; the canonical platform id from the picker.
+	PlatformIgdbId *int64 `json:"platform_igdb_id,omitempty"`
 
 	// PlatformName Custom entries only.
 	PlatformName     *string                `json:"platform_name,omitempty"`
@@ -681,6 +788,24 @@ type SavedView struct {
 	UpdatedAt time.Time              `json:"updated_at"`
 }
 
+// Submission One catalog-submission lifecycle row for an entry. Rows persist as history (rejected and cancelled included; the rolling creation cap counts every attempt); deleting the entry removes them with it. product_id is the verdict's resolved product - recorded before adoption so an approve_new retry never mints twice.
+type Submission struct {
+	CreatedAt    time.Time           `json:"created_at"`
+	EntryId      openapi_types.UUID  `json:"entry_id"`
+	Id           openapi_types.UUID  `json:"id"`
+	ProductId    *openapi_types.UUID `json:"product_id,omitempty"`
+	RejectReason *string             `json:"reject_reason,omitempty"`
+
+	// ResolutionAckAt When the submitter acknowledged an approved verdict (closed the approval banner). Absent until acknowledged.
+	ResolutionAckAt *time.Time       `json:"resolution_ack_at,omitempty"`
+	ReviewedAt      *time.Time       `json:"reviewed_at,omitempty"`
+	Status          SubmissionStatus `json:"status"`
+	UpdatedAt       time.Time        `json:"updated_at"`
+}
+
+// SubmissionStatus defines model for Submission.Status.
+type SubmissionStatus string
+
 // Tag defines model for Tag.
 type Tag struct {
 	EntryCount int                `json:"entry_count"`
@@ -712,6 +837,19 @@ type ValuePoint struct {
 	ValueCents int64              `json:"value_cents"`
 }
 
+// VerdictRequest One admin verdict. approve_new requires product; approve_existing requires product_id; reject requires reason.
+type VerdictRequest struct {
+	Action VerdictRequestAction `json:"action"`
+
+	// Product The curated fields for approve_new; mirrors the enrichment mint request (single edition field, no variant).
+	Product   *CommunityProductSpec `json:"product,omitempty"`
+	ProductId *openapi_types.UUID   `json:"product_id,omitempty"`
+	Reason    *string               `json:"reason,omitempty"`
+}
+
+// VerdictRequestAction defines model for VerdictRequest.Action.
+type VerdictRequestAction string
+
 // ViewCreate defines model for ViewCreate.
 type ViewCreate struct {
 	Name string `json:"name"`
@@ -731,6 +869,12 @@ type Unauthorized = Problem
 
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
+
+// ListSubmissionsParams defines parameters for ListSubmissions.
+type ListSubmissionsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
 
 // GetDashboardParams defines parameters for GetDashboard.
 type GetDashboardParams struct {
@@ -806,6 +950,9 @@ type ListEntriesParamsOrder string
 // ListEntriesParamsGroupBy defines parameters for ListEntries.
 type ListEntriesParamsGroupBy string
 
+// SubmitVerdictJSONRequestBody defines body for SubmitVerdict for application/json ContentType.
+type SubmitVerdictJSONRequestBody = VerdictRequest
+
 // CreateEntryJSONRequestBody defines body for CreateEntry for application/json ContentType.
 type CreateEntryJSONRequestBody = EntryCreate
 
@@ -832,6 +979,12 @@ type ServerInterface interface {
 	// Count entries referencing a product, across all users (role admin)
 	// (GET /admin/products/{productId}/references)
 	CountProductReferences(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
+	// The pending catalog-submission queue, across all users (role admin)
+	// (GET /admin/submissions)
+	ListSubmissions(w http.ResponseWriter, r *http.Request, params ListSubmissionsParams)
+	// Resolve one pending submission (role admin)
+	// (POST /admin/submissions/{submissionId}/verdict)
+	SubmitVerdict(w http.ResponseWriter, r *http.Request, submissionId openapi_types.UUID)
 	// Collection dashboard (SQL aggregates + one batched enrichment price call)
 	// (GET /dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request, params GetDashboardParams)
@@ -856,6 +1009,18 @@ type ServerInterface interface {
 	// Move a backlog entry between two neighbors (single-row fractional-index write)
 	// (POST /entries/{entryId}/reorder)
 	ReorderEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
+	// Cancel the entry's pending submission
+	// (DELETE /entries/{entryId}/submission)
+	CancelSubmission(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
+	// The entry's latest submission, any status
+	// (GET /entries/{entryId}/submission)
+	GetSubmission(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
+	// Submit a custom entry as a catalog candidate
+	// (POST /entries/{entryId}/submission)
+	CreateSubmission(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
+	// Acknowledge an approved submission (dismiss the banner)
+	// (POST /entries/{entryId}/submission/ack)
+	AckSubmissionResolution(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
 	// Deduplicated game-library summary (recommendation scoring input)
 	// (GET /library/summary)
 	GetLibrarySummary(w http.ResponseWriter, r *http.Request)
@@ -919,6 +1084,78 @@ func (siw *ServerInterfaceWrapper) CountProductReferences(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CountProductReferences(w, r, productId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSubmissions operation middleware
+func (siw *ServerInterfaceWrapper) ListSubmissions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSubmissionsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSubmissions(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SubmitVerdict operation middleware
+func (siw *ServerInterfaceWrapper) SubmitVerdict(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "submissionId" -------------
+	var submissionId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "submissionId", r.PathValue("submissionId"), &submissionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "submissionId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitVerdict(w, r, submissionId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1294,6 +1531,130 @@ func (siw *ServerInterfaceWrapper) ReorderEntry(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// CancelSubmission operation middleware
+func (siw *ServerInterfaceWrapper) CancelSubmission(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelSubmission(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSubmission operation middleware
+func (siw *ServerInterfaceWrapper) GetSubmission(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSubmission(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSubmission operation middleware
+func (siw *ServerInterfaceWrapper) CreateSubmission(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSubmission(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AckSubmissionResolution operation middleware
+func (siw *ServerInterfaceWrapper) AckSubmissionResolution(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AckSubmissionResolution(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetLibrarySummary operation middleware
 func (siw *ServerInterfaceWrapper) GetLibrarySummary(w http.ResponseWriter, r *http.Request) {
 
@@ -1659,6 +2020,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc("GET "+options.BaseURL+"/admin/products/{productId}/references", wrapper.CountProductReferences)
+	m.HandleFunc("GET "+options.BaseURL+"/admin/submissions", wrapper.ListSubmissions)
+	m.HandleFunc("POST "+options.BaseURL+"/admin/submissions/{submissionId}/verdict", wrapper.SubmitVerdict)
 	m.HandleFunc("GET "+options.BaseURL+"/dashboard", wrapper.GetDashboard)
 	m.HandleFunc("GET "+options.BaseURL+"/dashboard/value-history", wrapper.GetValueHistory)
 	m.HandleFunc("GET "+options.BaseURL+"/entries", wrapper.ListEntries)
@@ -1667,6 +2030,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/entries/{entryId}", wrapper.GetEntry)
 	m.HandleFunc("PUT "+options.BaseURL+"/entries/{entryId}", wrapper.UpdateEntry)
 	m.HandleFunc("POST "+options.BaseURL+"/entries/{entryId}/reorder", wrapper.ReorderEntry)
+	m.HandleFunc("DELETE "+options.BaseURL+"/entries/{entryId}/submission", wrapper.CancelSubmission)
+	m.HandleFunc("GET "+options.BaseURL+"/entries/{entryId}/submission", wrapper.GetSubmission)
+	m.HandleFunc("POST "+options.BaseURL+"/entries/{entryId}/submission", wrapper.CreateSubmission)
+	m.HandleFunc("POST "+options.BaseURL+"/entries/{entryId}/submission/ack", wrapper.AckSubmissionResolution)
 	m.HandleFunc("GET "+options.BaseURL+"/library/summary", wrapper.GetLibrarySummary)
 	m.HandleFunc("GET "+options.BaseURL+"/tags", wrapper.ListTags)
 	m.HandleFunc("POST "+options.BaseURL+"/tags", wrapper.CreateTag)

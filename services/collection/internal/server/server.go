@@ -48,7 +48,21 @@ type Store interface {
 	PurgeUserData(ctx context.Context, userID uuid.UUID) error
 	ListGameBackedRefs(ctx context.Context) ([]store.GameEntryRef, error)
 	SetFirstReleaseDate(ctx context.Context, entryID uuid.UUID, d *time.Time) error
+	ListNameOnlyPlatformEntries(ctx context.Context) ([]store.PlatformEntryRef, error)
+	SetEntryPlatformIdentity(ctx context.Context, entryID uuid.UUID, igdbID int64, name string) error
 	CountEntriesByProduct(ctx context.Context, productID uuid.UUID) (int64, error)
+	CreateSubmission(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error)
+	LatestSubmissionForEntry(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error)
+	LatestApprovedSubmissionForEntry(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error)
+	AckSubmissionResolution(ctx context.Context, id uuid.UUID) error
+	CancelSubmission(ctx context.Context, userID, entryID uuid.UUID) error
+	GetSubmission(ctx context.Context, id uuid.UUID) (store.Submission, error)
+	CountPendingSubmissions(ctx context.Context, userID uuid.UUID) (int64, error)
+	CountSubmissionsSince(ctx context.Context, userID uuid.UUID, since time.Time) (int64, error)
+	ListPendingSubmissions(ctx context.Context, limit, offset int) ([]store.SubmissionProposal, int64, error)
+	RejectSubmission(ctx context.Context, id uuid.UUID, reason string) (store.Submission, error)
+	RecordSubmissionProduct(ctx context.Context, id, productID uuid.UUID) error
+	ApproveSubmission(ctx context.Context, id uuid.UUID, snap store.CatalogSnapshot) (store.Submission, error)
 }
 
 // Enrichment is the catalog surface (typed reads with the caller's
@@ -57,6 +71,8 @@ type Enrichment interface {
 	GetProduct(ctx context.Context, bearer string, id uuid.UUID) (enrichapi.Product, error)
 	BatchPrices(ctx context.Context, bearer string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error)
 	PriceHistory(ctx context.Context, bearer string, ids []uuid.UUID, days int) (map[string][]enrichapi.PricePoint, error)
+	CreateCommunityProduct(ctx context.Context, bearer string, req enrichapi.CreateCommunityProductJSONRequestBody) (enrichapi.Product, error)
+	ListPlatforms(ctx context.Context, bearer string) ([]enrichmentclient.Platform, error)
 }
 
 // Cache is the Valkey surface. Errors mean "Valkey is having a
