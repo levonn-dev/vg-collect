@@ -1,0 +1,15 @@
+meta {
+  name: submissions - cancel the pending submission
+  type: http
+  seq: 13
+}
+
+delete {
+  url: {{bff_url}}/api/entries/{{sub_entry_id}}/submission
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}

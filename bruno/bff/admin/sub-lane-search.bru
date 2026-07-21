@@ -1,0 +1,24 @@
+meta {
+  name: submissions - bob finds it in the community lane
+  type: http
+  seq: 26
+}
+
+get {
+  url: {{bff_url}}/api/search?type=game&q=bruno community cart
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const hit = (res.body.results || []).find(p => p.product_id === bru.getEnvVar("community_product_id") && p.origin === "community");
+    if (!hit) {
+      throw new Error("interleaved results must carry the minted community product with origin community");
+    }
+  }
+}

@@ -1,0 +1,17 @@
+meta {
+  name: submissions - the minted community product
+  type: http
+  seq: 24
+}
+
+get {
+  url: {{bff_url}}/api/products/{{community_product_id}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.origin: eq community
+  res.body.community.platform_name: eq SNES
+}

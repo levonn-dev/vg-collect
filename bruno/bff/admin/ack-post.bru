@@ -1,0 +1,15 @@
+meta {
+  name: ack - acknowledge the approval
+  type: http
+  seq: 57
+}
+
+post {
+  url: {{bff_url}}/api/entries/{{ack_entry_id}}/submission/ack
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}

@@ -1,0 +1,23 @@
+meta {
+  name: promote - twin identity answers 409
+  type: http
+  seq: 37
+}
+
+post {
+  url: {{bff_url}}/api/admin/products/{{promote_twin_id}}/promote
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "igdb_game_id": {{promote_igdb_game_id}},
+    "platform_igdb_id": 19
+  }
+}
+
+assert {
+  res.status: eq 409
+  res.body.code: eq identity_taken
+}

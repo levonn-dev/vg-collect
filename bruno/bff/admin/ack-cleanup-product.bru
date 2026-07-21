@@ -1,0 +1,15 @@
+meta {
+  name: ack - cleanup delete the community product
+  type: http
+  seq: 63
+}
+
+delete {
+  url: {{bff_url}}/api/admin/products/{{ack_product_id}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}

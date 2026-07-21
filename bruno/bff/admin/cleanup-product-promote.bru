@@ -1,0 +1,15 @@
+meta {
+  name: cleanup - delete the promoted product
+  type: http
+  seq: 45
+}
+
+delete {
+  url: {{bff_url}}/api/admin/products/{{promote_id}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}

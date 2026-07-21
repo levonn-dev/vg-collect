@@ -1,0 +1,38 @@
+meta {
+  name: promote - onto the captured live game identity
+  type: http
+  seq: 35
+}
+
+post {
+  url: {{bff_url}}/api/admin/products/{{promote_id}}/promote
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "igdb_game_id": {{promote_igdb_game_id}},
+    "platform_igdb_id": 19
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.igdb.game_id: eq {{promote_igdb_game_id}}
+  res.body.origin: isUndefined
+  res.body.community.platform_name: eq SNES
+}
+
+docs {
+  The identity is captured at runtime from the live catalog (the
+  preceding search step stored Terranigma's real igdb game id in
+  promote_igdb_game_id); platform 19 (SNES) is a universal IGDB id the
+  live Terranigma released on. No sibling flow resolves this slot, so
+  the promote converges every run. A 409 here names whatever already
+  holds the slot from an aborted prior run - clean that product up via
+  the admin lookup and re-run. After promotion the provider igdb block
+  wins (origin drops, so it is no longer a community product) while the
+  curated community facts are retained as gap-fill, which is why
+  platform_name stays SNES.
+}

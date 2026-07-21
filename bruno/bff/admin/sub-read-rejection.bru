@@ -1,0 +1,17 @@
+meta {
+  name: submissions - alice reads the rejection
+  type: http
+  seq: 19
+}
+
+get {
+  url: {{bff_url}}/api/entries/{{sub_entry_id}}/submission
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq rejected
+  res.body.reject_reason: eq bruno reject leg
+}

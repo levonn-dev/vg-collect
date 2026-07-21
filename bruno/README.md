@@ -152,6 +152,25 @@ with other data. The final pair triggers a refresh walk and asserts
 the second call observes the in-flight lock (409
 refresh_in_progress).
 
+The folder continues (seq 9+) into the catalog-submissions flow:
+alice files a custom entry as a catalog candidate (double-submit 409,
+cancel, resubmit), the admin rejects (alice reads the reason) and
+then approves-new with curated fields, bob finds the minted community
+product through the search community lane and adopts it via
+approve-existing for his own copy, and a promote leg mints a second
+community product, promotes it onto a live game identity captured at
+runtime from the catalog search, and proves the provider-twin 409. Role switches are re-logins (one cookie jar).
+A clean run deletes everything it created. The submission caps and
+the candidate sweep are asserted in the Go suites and e2e, not here
+(the caps need bulk creates; the sweep rides the async walk).
+
+The folder continues (seq 47+) with the submissions-ux polish: it
+reads the platform catalog (/api/platforms, with aliases), then runs
+the approval-acknowledgement round trip - alice submits, the admin
+approves-new with a cover, alice reads the approved submission,
+acknowledges it (idempotent 204 on repeat), and re-reads it stamped.
+A clean run deletes everything it created.
+
 ## Enrichment flows
 
 The `enrichment/` folder exercises the catalog and pricing surface

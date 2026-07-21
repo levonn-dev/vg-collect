@@ -1,0 +1,23 @@
+meta {
+  name: platforms - login admin
+  type: http
+  seq: 47
+}
+
+get {
+  url: {{bff_url}}/api/auth/login?provider=dev&user=admin
+  body: none
+  auth: none
+}
+
+docs {
+  Seq 47+ is the submissions-ux polish leg. It proves the platform
+  catalog (/api/platforms, name + aliases) and the approval-ack
+  round trip: alice submits, the admin approves-new with a cover,
+  and alice reads the submission approved and then acknowledged.
+  Role switches are re-logins over the single cookie jar.
+
+  A clean run leaves zero residue: alice's entry is deleted (its
+  submission rows go with it) and the minted community product is
+  guarded-deleted once unreferenced.
+}

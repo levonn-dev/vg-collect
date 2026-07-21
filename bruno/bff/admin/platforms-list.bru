@@ -1,0 +1,25 @@
+meta {
+  name: platforms - list the catalog
+  type: http
+  seq: 48
+}
+
+get {
+  url: {{bff_url}}/api/platforms
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.platforms: isDefined
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const row = (res.body.platforms || []).find(p => p.name.includes("Nintendo") && (p.aliases || []).length > 0);
+    if (!row) {
+      throw new Error("platform catalog must carry a Nintendo row with aliases");
+    }
+  }
+}

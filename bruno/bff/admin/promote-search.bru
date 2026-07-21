@@ -1,0 +1,38 @@
+meta {
+  name: promote - capture the live game identity
+  type: http
+  seq: 34
+}
+
+get {
+  url: {{bff_url}}/api/search?type=game&q=terranigma
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.results: isDefined
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const hit = (res.body.results || []).find(r => r.type === 'game' && (r.platforms || []).some(p => p.igdb_platform_id === 19));
+    if (!hit) {
+      throw new Error("live catalog must return a Terranigma release on platform 19 (SNES)");
+    }
+    bru.setEnvVar("promote_igdb_game_id", hit.igdb_game_id);
+  }
+}
+
+docs {
+  Runtime identity capture. The deployed stack runs the live IGDB
+  provider, so the promote target cannot be a fixture id (the stub
+  catalog's game 1018 is a different real game). This searches the live
+  catalog for Terranigma and stores the real igdb game id of the first
+  result that released on platform 19 (SNES) in promote_igdb_game_id;
+  the promote and twin-409 legs consume it. Platform 19 stays a literal
+  because IGDB platform ids are universal and the live Terranigma
+  released on SNES. Mirrors search-games.bru: provider-agnostic
+  capture, no fixture ids.
+}

@@ -1,0 +1,15 @@
+meta {
+  name: submissions - resubmit after cancel
+  type: http
+  seq: 14
+}
+
+post {
+  url: {{bff_url}}/api/entries/{{sub_entry_id}}/submission
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 201
+}

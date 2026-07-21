@@ -1,0 +1,15 @@
+meta {
+  name: ack - submit as a catalog candidate
+  type: http
+  seq: 51
+}
+
+post {
+  url: {{bff_url}}/api/entries/{{ack_entry_id}}/submission
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 201
+}

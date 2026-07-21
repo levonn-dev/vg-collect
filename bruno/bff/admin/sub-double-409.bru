@@ -1,0 +1,16 @@
+meta {
+  name: submissions - double submit answers 409
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{bff_url}}/api/entries/{{sub_entry_id}}/submission
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 409
+  res.body.code: eq submission_pending
+}

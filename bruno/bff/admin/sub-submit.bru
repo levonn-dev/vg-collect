@@ -1,0 +1,16 @@
+meta {
+  name: submissions - submit as a catalog candidate
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{bff_url}}/api/entries/{{sub_entry_id}}/submission
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 201
+  res.body.status: eq pending
+}

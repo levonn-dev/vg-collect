@@ -1,0 +1,11 @@
+meta {
+  name: submissions - login admin
+  type: http
+  seq: 15
+}
+
+get {
+  url: {{bff_url}}/api/auth/login?provider=dev&user=admin
+  body: none
+  auth: none
+}

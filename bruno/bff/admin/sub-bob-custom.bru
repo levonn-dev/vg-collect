@@ -1,0 +1,30 @@
+meta {
+  name: submissions - bob files his own custom entry
+  type: http
+  seq: 28
+}
+
+post {
+  url: {{bff_url}}/api/entries
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "display_name": "Bruno Community Cart",
+    "item_type": "game",
+    "region": "pal",
+    "packaging": "loose"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("bob_entry_id", res.body.id);
+  }
+}

@@ -1,0 +1,16 @@
+meta {
+  name: ack - alice reads the acked submission
+  type: http
+  seq: 59
+}
+
+get {
+  url: {{bff_url}}/api/entries/{{ack_entry_id}}/submission
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.resolution_ack_at: isDefined
+}

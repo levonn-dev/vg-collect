@@ -1,0 +1,11 @@
+meta {
+  name: submissions - login alice again
+  type: http
+  seq: 18
+}
+
+get {
+  url: {{bff_url}}/api/auth/login?provider=dev&user=alice
+  body: none
+  auth: none
+}

@@ -1,0 +1,15 @@
+meta {
+  name: cleanup - delete the twin product
+  type: http
+  seq: 46
+}
+
+delete {
+  url: {{bff_url}}/api/admin/products/{{promote_twin_id}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}

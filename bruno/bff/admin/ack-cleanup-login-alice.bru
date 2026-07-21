@@ -1,0 +1,11 @@
+meta {
+  name: ack - cleanup login alice
+  type: http
+  seq: 60
+}
+
+get {
+  url: {{bff_url}}/api/auth/login?provider=dev&user=alice
+  body: none
+  auth: none
+}

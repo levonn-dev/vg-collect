@@ -1,0 +1,15 @@
+meta {
+  name: submissions - bob submits his entry
+  type: http
+  seq: 29
+}
+
+post {
+  url: {{bff_url}}/api/entries/{{bob_entry_id}}/submission
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 201
+}

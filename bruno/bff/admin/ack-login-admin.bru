@@ -1,0 +1,11 @@
+meta {
+  name: ack - login admin
+  type: http
+  seq: 52
+}
+
+get {
+  url: {{bff_url}}/api/auth/login?provider=dev&user=admin
+  body: none
+  auth: none
+}

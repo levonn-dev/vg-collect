@@ -1,0 +1,36 @@
+meta {
+  name: promote - mint a community product
+  type: http
+  seq: 33
+}
+
+post {
+  url: {{bff_url}}/api/admin/products
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "type": "game",
+    "name": "Terranigma",
+    "platform_name": "SNES"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("promote_id", res.body.id);
+  }
+}
+
+docs {
+  The sweep and dismiss legs are deliberately absent from this folder:
+  the nightly walk that stamps promote candidates onto community
+  products is async, and Bruno cannot poll for it. The Go integration
+  suite and the e2e journey own that path.
+}

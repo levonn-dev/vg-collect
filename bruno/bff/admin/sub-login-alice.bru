@@ -1,0 +1,26 @@
+meta {
+  name: submissions - login alice
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{bff_url}}/api/auth/login?provider=dev&user=alice
+  body: none
+  auth: none
+}
+
+docs {
+  The catalog-submissions flow starts here and drives three fixtures
+  through one cookie jar: every role switch below (alice, admin, bob,
+  admin again) is a re-login that replaces the session the jar holds.
+  Run task grant-fixture-admin before the folder so the admin logins
+  land the granted role in their JWT.
+
+  A clean run leaves zero residue: alice's and bob's entries are
+  deleted at the end (which removes their submission rows with them),
+  and the three minted products are guarded-deleted once unreferenced.
+  A mid-run abort can leave the fixed-name community product "Bruno
+  Community Cart" behind - delete it via the admin lookup, or re-run
+  the cleanup legs, before the next run.
+}

@@ -1,0 +1,31 @@
+meta {
+  name: ack - alice files a custom entry
+  type: http
+  seq: 50
+}
+
+post {
+  url: {{bff_url}}/api/entries
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "display_name": "Bruno Ack Cart",
+    "item_type": "game",
+    "platform_name": "SNES",
+    "region": "pal",
+    "packaging": "loose"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("ack_entry_id", res.body.id);
+  }
+}

@@ -1,0 +1,23 @@
+meta {
+  name: submissions - admin approves existing (adopt)
+  type: http
+  seq: 32
+}
+
+post {
+  url: {{bff_url}}/api/admin/submissions/{{bob_sub_id}}/verdict
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "action": "approve_existing",
+    "product_id": "{{community_product_id}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq approved
+}

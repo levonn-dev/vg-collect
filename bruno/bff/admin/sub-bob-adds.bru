@@ -1,0 +1,30 @@
+meta {
+  name: submissions - bob adopts the community product
+  type: http
+  seq: 27
+}
+
+post {
+  url: {{bff_url}}/api/entries
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "product_id": "{{community_product_id}}",
+    "region": "pal",
+    "packaging": "loose"
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.platform.name: eq SNES
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("bob_lane_entry_id", res.body.id);
+  }
+}

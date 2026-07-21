@@ -1,0 +1,23 @@
+meta {
+  name: submissions - admin rejects with a reason
+  type: http
+  seq: 17
+}
+
+post {
+  url: {{bff_url}}/api/admin/submissions/{{sub_id}}/verdict
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "action": "reject",
+    "reason": "bruno reject leg"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq rejected
+}

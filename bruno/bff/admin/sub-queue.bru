@@ -1,0 +1,23 @@
+meta {
+  name: submissions - admin queue (capture the submission id)
+  type: http
+  seq: 16
+}
+
+get {
+  url: {{bff_url}}/api/admin/submissions
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.total_count: isDefined
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const row = res.body.submissions.find(s => s.entry_id === bru.getEnvVar("sub_entry_id"));
+    bru.setEnvVar("sub_id", row.id);
+  }
+}

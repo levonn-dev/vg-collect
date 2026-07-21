@@ -1,0 +1,15 @@
+meta {
+  name: ack - cleanup delete alice's entry
+  type: http
+  seq: 61
+}
+
+delete {
+  url: {{bff_url}}/api/entries/{{ack_entry_id}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}

@@ -1,0 +1,11 @@
+meta {
+  name: ack - login alice again
+  type: http
+  seq: 55
+}
+
+get {
+  url: {{bff_url}}/api/auth/login?provider=dev&user=alice
+  body: none
+  auth: none
+}

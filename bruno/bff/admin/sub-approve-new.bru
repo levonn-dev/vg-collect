@@ -1,0 +1,36 @@
+meta {
+  name: submissions - admin approves new (curated)
+  type: http
+  seq: 23
+}
+
+post {
+  url: {{bff_url}}/api/admin/submissions/{{sub_id}}/verdict
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "action": "approve_new",
+    "product": {
+      "type": "game",
+      "name": "Bruno Community Cart",
+      "platform_name": "SNES",
+      "region": "pal",
+      "edition": "bruno fixture",
+      "first_release_date": "1995-10-09"
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq approved
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setEnvVar("community_product_id", res.body.product_id);
+  }
+}

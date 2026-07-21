@@ -1,0 +1,34 @@
+meta {
+  name: ack - admin approves new (with cover)
+  type: http
+  seq: 54
+}
+
+post {
+  url: {{bff_url}}/api/admin/submissions/{{ack_sub_id}}/verdict
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "action": "approve_new",
+    "product": {
+      "type": "game",
+      "name": "Bruno Ack Cart",
+      "platform_name": "SNES",
+      "cover_url": "https://img.example/ack.jpg"
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq approved
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setEnvVar("ack_product_id", res.body.product_id);
+  }
+}
