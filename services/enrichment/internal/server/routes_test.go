@@ -83,7 +83,9 @@ func TestRoutes_APIRequiresBearer(t *testing.T) {
 	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
 		return []igdb.Game{{ID: 1029, Name: "Zelda"}}, nil
 	}}
-	h := newUnitHandlers(nil, games, nil, newStubCache())
+	// Empty lane: this test is about the JWT boundary, not the lane.
+	st := &stubStore{searchCommunityProducts: func(context.Context, []string, string, int) ([]store.Product, error) { return nil, nil }}
+	h := newUnitHandlers(st, games, nil, newStubCache())
 	tok := env.token(t, "11111111-1111-1111-1111-111111111111", []string{"user"})
 	rec = serveUnit(t, h, env, http.MethodGet, "/search?type=game&q=zelda", tok, nil)
 	if rec.Code != http.StatusOK {
@@ -135,6 +137,15 @@ func TestRoutes_InternalRefreshIsJWTExempt(t *testing.T) {
 		t.Fatalf("internal refresh must not sit behind jwtauth: %s", rec.Body.String())
 	}
 	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
+}
+
+func TestRoutes_PlatformsRequiresBearer(t *testing.T) {
+	router, _ := newBareRouter(t, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/platforms", nil))
+	if rec.Code != http.StatusUnauthorized || rec.Header().Get("Content-Type") != "application/problem+json" {
+		t.Fatalf("tokenless platforms: %d %s", rec.Code, rec.Header().Get("Content-Type"))
+	}
 }
 
 func TestRoutes_ParamBindingIsProblemJSON(t *testing.T) {

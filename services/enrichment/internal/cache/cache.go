@@ -83,3 +83,20 @@ func (c *Cache) InvalidateProduct(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+// platformsKey is the single wholesale key for the platform catalog
+// (no per-query variance, unlike the hashed search keys).
+const platformsKey = "platforms:v1"
+
+// GetPlatforms returns the cached platform-catalog body, or nil.
+func (c *Cache) GetPlatforms(ctx context.Context) ([]byte, error) {
+	return c.get(ctx, platformsKey, "get platforms")
+}
+
+// PutPlatforms caches the platform-catalog body.
+func (c *Cache) PutPlatforms(ctx context.Context, body []byte, ttl time.Duration) error {
+	if err := c.rdb.Set(ctx, platformsKey, body, ttl).Err(); err != nil {
+		return fmt.Errorf("cache: put platforms: %w", err)
+	}
+	return nil
+}

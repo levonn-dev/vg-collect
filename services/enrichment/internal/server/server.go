@@ -30,6 +30,7 @@ type Store interface {
 	SetIGDB(ctx context.Context, id string, m store.IGDBMeta) error
 	SetPriceCharting(ctx context.Context, id string, m *store.PCMeta) error
 	SetPriceChartingIfMissing(ctx context.Context, id string, m *store.PCMeta) (bool, error)
+	PromoteProduct(ctx context.Context, id string, igdbMeta *store.IGDBMeta, platform *store.Platform, pc *store.PCMeta) error
 	SetCurrentPrices(ctx context.Context, id string, q store.PriceQuote, asOf time.Time) error
 	ListPriced(ctx context.Context) ([]store.Product, error)
 	ListUnmatchedGames(ctx context.Context, limit int) ([]store.Product, error)
@@ -38,6 +39,12 @@ type Store interface {
 	ListIGDBProducts(ctx context.Context) ([]store.Product, error)
 	ProductsByIDs(ctx context.Context, ids []string) ([]store.Product, error)
 	SearchByName(ctx context.Context, q string, limit int) ([]store.Product, error)
+	SearchCommunityProducts(ctx context.Context, types []string, q string, limit int) ([]store.Product, error)
+	ListCommunityProducts(ctx context.Context) ([]store.Product, error)
+	ListCommunityProductsPage(ctx context.Context, limit, offset int) ([]store.Product, int64, error)
+	ReplacePromoteCandidates(ctx context.Context, id string, cands []store.PromoteCandidate) error
+	ListPromoteCandidateProducts(ctx context.Context, limit, offset int, productID string) ([]store.Product, int64, error)
+	DismissPromoteCandidate(ctx context.Context, id, provider string, providerID int64) error
 	UpsertRaw(ctx context.Context, games []igdb.Game, fetchedAt time.Time) error
 	RawByIDs(ctx context.Context, ids []int64) ([]store.RawGame, error)
 	UpsertPlatforms(ctx context.Context, ps []igdb.Platform, fetchedAt time.Time) error
@@ -77,6 +84,8 @@ type Cache interface {
 	GetProduct(ctx context.Context, id string) ([]byte, error)
 	PutProduct(ctx context.Context, id string, body []byte, ttl time.Duration) error
 	InvalidateProduct(ctx context.Context, id string) error
+	GetPlatforms(ctx context.Context) ([]byte, error)
+	PutPlatforms(ctx context.Context, body []byte, ttl time.Duration) error
 }
 
 // The concrete types must satisfy the interfaces above; main.go wires
