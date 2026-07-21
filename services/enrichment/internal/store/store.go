@@ -121,6 +121,32 @@ type PCMeta struct {
 	AsOf            time.Time  `bson:"as_of"`
 }
 
+// CommunityMeta carries the facts curated at community mint time.
+// Retained after promotion as gap-fill: provider blocks win per-field
+// where present, these fill what providers do not supply.
+type CommunityMeta struct {
+	PlatformName     string    `bson:"platform_name,omitempty"`
+	FirstReleaseDate time.Time `bson:"first_release_date,omitempty"`
+	CoverURL         string    `bson:"cover_url,omitempty"`
+}
+
+// PromoteCandidate is one sweep hit: a provider item whose name
+// plausibly matches a community product. Flag only - promotion is
+// always a human verdict.
+type PromoteCandidate struct {
+	Provider   string    `bson:"provider"`
+	ProviderID int64     `bson:"provider_id"`
+	Name       string    `bson:"name"`
+	Score      float64   `bson:"score"`
+	FoundAt    time.Time `bson:"found_at"`
+}
+
+// CandidateRef identifies a dismissed candidate pair.
+type CandidateRef struct {
+	Provider   string `bson:"provider"`
+	ProviderID int64  `bson:"provider_id"`
+}
+
 // Product is the canonical catalog document, lazily created on user
 // selection. Game identity is listing-keyed (igdb game, platform,
 // PriceCharting listing; a missing mapping is the family's single
@@ -139,9 +165,21 @@ type Product struct {
 	PriceCharting *PCMeta   `bson:"pricecharting,omitempty"`
 	// MatchHold marks a deliberate admin mapping clear: the nightly
 	// re-match walk skips held products. Any mapping set lifts it.
-	MatchHold bool      `bson:"match_hold,omitempty"`
-	CreatedAt time.Time `bson:"created_at"`
-	UpdatedAt time.Time `bson:"updated_at"`
+	MatchHold bool `bson:"match_hold,omitempty"`
+	// Origin separates provider-identified products from admin-minted
+	// community products. Community docs live outside the identity
+	// indexes (their curated name is their identity), never join the
+	// re-match walk or the admin worklist, and surface via the search
+	// community lane until promoted.
+	Origin    string         `bson:"origin"`
+	Community *CommunityMeta `bson:"community,omitempty"`
+	// PromoteCandidates is the sweep's flag-only output, stored
+	// sorted best-first (index 0 is the worklist sort key).
+	// DismissedCandidates silences pairs permanently.
+	PromoteCandidates   []PromoteCandidate `bson:"promote_candidates,omitempty"`
+	DismissedCandidates []CandidateRef     `bson:"dismissed_candidates,omitempty"`
+	CreatedAt           time.Time          `bson:"created_at"`
+	UpdatedAt           time.Time          `bson:"updated_at"`
 }
 
 // ProductKey is the identity a resolve request maps to: games key on
@@ -324,6 +362,9 @@ func (s *Store) CreateProduct(ctx context.Context, p Product) (Product, error) {
 	if p.ID == "" {
 		p.ID = uuid.NewString()
 	}
+	if p.Origin == "" {
+		p.Origin = "provider"
+	}
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	p.CreatedAt, p.UpdatedAt = now, now
 	_, err := s.db.Collection(colProducts).InsertOne(ctx, p)
@@ -396,6 +437,47 @@ func (s *Store) SetPriceCharting(ctx context.Context, id string, m *PCMeta) erro
 	}
 	if err != nil {
 		return fmt.Errorf("store: set pricecharting: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// PromoteProduct atomically attaches provider anchors and flips a
+// community product to provider origin. The update's re-entry into
+// the identity indexes adjudicates twins: a duplicate key surfaces as
+// ErrIdentityTaken and nothing changes. Candidate bookkeeping is
+// cleared - the walk and the mapping fix own the product from here.
+func (s *Store) PromoteProduct(ctx context.Context, id string, igdbMeta *IGDBMeta, platform *Platform, pc *PCMeta) error {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	set := bson.D{
+		{Key: "origin", Value: "provider"},
+		{Key: "updated_at", Value: now},
+	}
+	if igdbMeta != nil {
+		set = append(set, bson.E{Key: "igdb", Value: igdbMeta})
+	}
+	if platform != nil {
+		set = append(set, bson.E{Key: "platform", Value: platform})
+	}
+	if pc != nil {
+		set = append(set, bson.E{Key: "pricecharting", Value: pc})
+	}
+	res, err := s.db.Collection(colProducts).UpdateOne(ctx,
+		bson.D{{Key: "_id", Value: id}, {Key: "origin", Value: "community"}},
+		bson.D{
+			{Key: "$set", Value: set},
+			{Key: "$unset", Value: bson.D{
+				{Key: "promote_candidates", Value: ""},
+				{Key: "dismissed_candidates", Value: ""},
+			}},
+		})
+	if mongo.IsDuplicateKeyError(err) {
+		return ErrIdentityTaken
+	}
+	if err != nil {
+		return fmt.Errorf("store: promote product: %w", err)
 	}
 	if res.MatchedCount == 0 {
 		return ErrNotFound
@@ -478,10 +560,12 @@ func (s *Store) ListPriced(ctx context.Context) ([]Product, error) {
 
 // ListUnmatchedGames returns game products with no mapping and no
 // match_hold, oldest updated_at first, capped at limit (the re-match
-// walk's rotating worklist).
+// walk's rotating worklist). Provider-origin only: a community game
+// reaches a provider identity through the promote path, not this walk.
 func (s *Store) ListUnmatchedGames(ctx context.Context, limit int) ([]Product, error) {
 	filter := bson.D{
 		{Key: "type", Value: "game"},
+		{Key: "origin", Value: "provider"},
 		{Key: "pricecharting", Value: nil},
 		{Key: "match_hold", Value: bson.D{{Key: "$ne", Value: true}}},
 	}
@@ -522,14 +606,18 @@ func (s *Store) DeleteUnmatchedProduct(ctx context.Context, id string) (bool, er
 }
 
 // ListUnmatchedProducts returns one page of the admin worklist: every
-// product with no PriceCharting mapping, regardless of type and
-// INCLUDING match_hold products (the walk's exclusion is deliberate
-// there; an admin revisiting a deliberate clear is deliberate here).
-// Sorted oldest updated_at first with _id as the tiebreak so offset
-// pages stay deterministic; the second return is the full filtered
-// count.
+// provider-origin product with no PriceCharting mapping, regardless of
+// type and INCLUDING match_hold products (the walk's exclusion is
+// deliberate there; an admin revisiting a deliberate clear is
+// deliberate here). Community products never carry a provider mapping,
+// so they ride the promote worklist, not this one. Sorted oldest
+// updated_at first with _id as the tiebreak so offset pages stay
+// deterministic; the second return is the full filtered count.
 func (s *Store) ListUnmatchedProducts(ctx context.Context, limit, offset int) ([]Product, int64, error) {
-	filter := bson.D{{Key: "pricecharting", Value: nil}}
+	filter := bson.D{
+		{Key: "origin", Value: "provider"},
+		{Key: "pricecharting", Value: nil},
+	}
 	col := s.db.Collection(colProducts)
 	total, err := col.CountDocuments(ctx, filter)
 	if err != nil {
@@ -590,13 +678,19 @@ func (s *Store) ProductsByIDs(ctx context.Context, ids []string) ([]Product, err
 }
 
 // SearchByName is the degraded-mode fallback: a case-insensitive
-// substring match over the local catalog. A collection scan is
-// accepted here (small catalog, cold-cache-and-provider-down only).
+// substring match over the local provider catalog. A collection scan
+// is accepted here (small catalog, cold-cache-and-provider-down only).
+// Provider-origin only: this fallback stands in for provider search,
+// so community docs (which have no provider identity) must not surface
+// here as dead rows.
 func (s *Store) SearchByName(ctx context.Context, q string, limit int) ([]Product, error) {
-	filter := bson.D{{Key: "name", Value: bson.D{
-		{Key: "$regex", Value: regexp.QuoteMeta(q)},
-		{Key: "$options", Value: "i"},
-	}}}
+	filter := bson.D{
+		{Key: "origin", Value: "provider"},
+		{Key: "name", Value: bson.D{
+			{Key: "$regex", Value: regexp.QuoteMeta(q)},
+			{Key: "$options", Value: "i"},
+		}},
+	}
 	cur, err := s.db.Collection(colProducts).Find(ctx, filter,
 		options.Find().SetSort(bson.D{{Key: "name", Value: 1}}).SetLimit(int64(limit)))
 	if err != nil {
@@ -607,4 +701,143 @@ func (s *Store) SearchByName(ctx context.Context, q string, limit int) ([]Produc
 		return nil, fmt.Errorf("store: search by name: %w", err)
 	}
 	return out, nil
+}
+
+// SearchCommunityProducts is the search community lane: a name match
+// over admin-minted community products only (provider products reach
+// search through their providers). Case-insensitive substring; the
+// community population is tiny by construction, so the unindexed
+// regex is fine.
+func (s *Store) SearchCommunityProducts(ctx context.Context, types []string, q string, limit int) ([]Product, error) {
+	filter := bson.D{
+		{Key: "origin", Value: "community"},
+		{Key: "type", Value: bson.D{{Key: "$in", Value: types}}},
+		{Key: "name", Value: bson.D{
+			{Key: "$regex", Value: regexp.QuoteMeta(q)},
+			{Key: "$options", Value: "i"},
+		}},
+	}
+	cur, err := s.db.Collection(colProducts).Find(ctx, filter,
+		options.Find().SetSort(bson.D{{Key: "name", Value: 1}}).SetLimit(int64(limit)))
+	if err != nil {
+		return nil, fmt.Errorf("store: search community: %w", err)
+	}
+	var out []Product
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, fmt.Errorf("store: search community: %w", err)
+	}
+	return out, nil
+}
+
+// ListCommunityProducts returns every community product (the sweep's
+// walk set; tiny by construction - admin-moderated mints only).
+func (s *Store) ListCommunityProducts(ctx context.Context) ([]Product, error) {
+	cur, err := s.db.Collection(colProducts).Find(ctx,
+		bson.D{{Key: "origin", Value: "community"}},
+		options.Find().SetSort(bson.D{{Key: "updated_at", Value: 1}, {Key: "_id", Value: 1}}))
+	if err != nil {
+		return nil, fmt.Errorf("store: list community: %w", err)
+	}
+	var out []Product
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, fmt.Errorf("store: list community: %w", err)
+	}
+	return out, nil
+}
+
+// ListCommunityProductsPage returns one page of the admin community
+// listing: every admin-minted, un-promoted community product (promote
+// flips origin to provider, which is how a product leaves this set).
+// Sorted oldest updated_at first with _id as the tiebreak so offset
+// pages stay deterministic, matching ListUnmatchedProducts; the second
+// return is the full filtered count.
+func (s *Store) ListCommunityProductsPage(ctx context.Context, limit, offset int) ([]Product, int64, error) {
+	filter := bson.D{{Key: "origin", Value: "community"}}
+	col := s.db.Collection(colProducts)
+	total, err := col.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: list community products: %w", err)
+	}
+	cur, err := col.Find(ctx, filter, options.Find().
+		SetSort(bson.D{{Key: "updated_at", Value: 1}, {Key: "_id", Value: 1}}).
+		SetSkip(int64(offset)).
+		SetLimit(int64(limit)))
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: list community products: %w", err)
+	}
+	var out []Product
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, 0, fmt.Errorf("store: list community products: %w", err)
+	}
+	return out, total, nil
+}
+
+// ReplacePromoteCandidates swaps a product's candidate set (caller
+// filters dismissed pairs and sorts best-first). No updated_at bump:
+// sweep bookkeeping is not a product edit. Origin-guarded to community,
+// so a doc promoted mid-sweep is a silent no-op, not an error.
+func (s *Store) ReplacePromoteCandidates(ctx context.Context, id string, cands []PromoteCandidate) error {
+	update := bson.D{{Key: "$set", Value: bson.D{{Key: "promote_candidates", Value: cands}}}}
+	if len(cands) == 0 {
+		update = bson.D{{Key: "$unset", Value: bson.D{{Key: "promote_candidates", Value: ""}}}}
+	}
+	// A promote can flip this doc to provider between the sweep's list
+	// and this write; scoping the filter to community turns that race
+	// into a no-op instead of stamping candidates onto a now-provider
+	// doc as permanent invisible residue (the list query filters origin
+	// community, so nothing would ever surface or clear them).
+	if _, err := s.db.Collection(colProducts).UpdateOne(ctx,
+		bson.D{{Key: "_id", Value: id}, {Key: "origin", Value: "community"}}, update); err != nil {
+		return fmt.Errorf("store: replace candidates: %w", err)
+	}
+	return nil
+}
+
+// ListPromoteCandidateProducts pages community products carrying
+// candidates, strongest top candidate first (candidates are stored
+// sorted, so promote_candidates.0.score sorts the list), _id
+// tiebreak. productID narrows to one product when non-empty.
+func (s *Store) ListPromoteCandidateProducts(ctx context.Context, limit, offset int, productID string) ([]Product, int64, error) {
+	filter := bson.D{
+		{Key: "origin", Value: "community"},
+		{Key: "promote_candidates.0", Value: bson.D{{Key: "$exists", Value: true}}},
+	}
+	if productID != "" {
+		filter = append(filter, bson.E{Key: "_id", Value: productID})
+	}
+	col := s.db.Collection(colProducts)
+	total, err := col.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: count candidates: %w", err)
+	}
+	cur, err := col.Find(ctx, filter, options.Find().
+		SetSort(bson.D{{Key: "promote_candidates.0.score", Value: -1}, {Key: "_id", Value: 1}}).
+		SetSkip(int64(offset)).SetLimit(int64(limit)))
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: list candidates: %w", err)
+	}
+	var out []Product
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, 0, fmt.Errorf("store: list candidates: %w", err)
+	}
+	return out, total, nil
+}
+
+// DismissPromoteCandidate records the pair as dismissed and drops the
+// matching candidate; the sweep never re-flags a dismissed pair.
+func (s *Store) DismissPromoteCandidate(ctx context.Context, id, provider string, providerID int64) error {
+	res, err := s.db.Collection(colProducts).UpdateByID(ctx, id, bson.D{
+		{Key: "$pull", Value: bson.D{{Key: "promote_candidates", Value: bson.D{
+			{Key: "provider", Value: provider},
+			{Key: "provider_id", Value: providerID},
+		}}}},
+		{Key: "$addToSet", Value: bson.D{{Key: "dismissed_candidates", Value: CandidateRef{Provider: provider, ProviderID: providerID}}}},
+	})
+	if err != nil {
+		return fmt.Errorf("store: dismiss candidate: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

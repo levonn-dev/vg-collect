@@ -550,6 +550,11 @@ func TestProduct_ByIDsAndSearch(t *testing.T) {
 		t.Fatalf("by ids: %d, %v", len(got), err)
 	}
 
+	// A community product with a matching name must not leak into the
+	// degraded provider fallback (it has no provider identity to serve).
+	if _, err := s.CreateProduct(ctx, store.Product{Type: "game", Name: "Chrono Repro", Origin: "community"}); err != nil {
+		t.Fatal(err)
+	}
 	hits, err := s.SearchByName(ctx, "chrono", 10)
 	if err != nil || len(hits) != 2 {
 		t.Fatalf("search: %d, %v", len(hits), err)
@@ -849,8 +854,13 @@ func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
 	seed("residue-region", "game", "pal", "", "", 1005, 4)
 	seed("keeper-hardware", "console", "pal", "", "", 0, 19)
 
-	if err := m.Up(); err != nil {
-		t.Fatalf("migrate up: %v", err)
+	// Pinned to version 4, not Up(): this test asserts migration 000004's
+	// behavior specifically, and Up() would silently also run every later
+	// migration (e.g. 000005's origin backfill/index rebuild), which
+	// would change what the final duplicate-key assertion below is
+	// actually exercising.
+	if err := m.Migrate(4); err != nil {
+		t.Fatalf("migrate to listing-keyed state: %v", err)
 	}
 
 	for id, want := range map[string]int64{
@@ -982,5 +992,362 @@ func TestDeleteUnmatchedProduct(t *testing.T) {
 	deleted, err = s.DeleteUnmatchedProduct(ctx, orphan.ID)
 	if err != nil || deleted {
 		t.Fatalf("missing delete must report false: deleted=%v err=%v", deleted, err)
+	}
+}
+
+func TestCommunityOrigin_TwinsInsertAndExclusions(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+
+	// Two anchor-less community games: identical null identity keys.
+	// Outside the identity index they must both insert as distinct
+	// docs (name is community identity; no uniqueness machinery).
+	c1, err := s.CreateProduct(ctx, store.Product{Type: "game", Name: "Repro Alpha", Origin: "community"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c2, err := s.CreateProduct(ctx, store.Product{Type: "game", Name: "Repro Beta", Origin: "community"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c1.ID == c2.ID {
+		t.Fatal("community twins must mint distinct products")
+	}
+	if c1.Origin != "community" {
+		t.Fatalf("origin = %q, want community", c1.Origin)
+	}
+
+	// Same for anchor-less community consoles (empty region/edition/
+	// variant would collide inside the hardware identity index).
+	h1, err := s.CreateProduct(ctx, store.Product{Type: "console", Name: "Handheld Mod A", Origin: "community"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2, err := s.CreateProduct(ctx, store.Product{Type: "console", Name: "Handheld Mod B", Origin: "community"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h1.ID == h2.ID {
+		t.Fatal("community console twins must mint distinct products")
+	}
+
+	// Provider identity is untouched: the same game key still
+	// find-or-mints onto one document.
+	p1, err := s.CreateProduct(ctx, gameProduct(9301, 19, "Origin Provider", "SNES", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p1.Origin != "provider" {
+		t.Fatalf("provider origin = %q, want provider (stamped by CreateProduct)", p1.Origin)
+	}
+	p2, err := s.CreateProduct(ctx, gameProduct(9301, 19, "Origin Provider", "SNES", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p1.ID != p2.ID {
+		t.Fatal("provider identity must still find-or-mint one doc")
+	}
+
+	// Community products are unmatched forever by definition: both
+	// walk and worklist reads exclude them.
+	games, err := s.ListUnmatchedGames(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range games {
+		if g.Origin == "community" {
+			t.Fatalf("walk worklist must exclude community products, got %q", g.Name)
+		}
+	}
+	// The negative loop above would also pass on a vacuously empty or
+	// wholly-wrong result set; p1 (the provider game, unmatched, no
+	// hold) must positively be present so the exclusion is proven
+	// against a real hit, not just an absence of community docs.
+	foundP1 := false
+	for _, g := range games {
+		if g.ID == p1.ID {
+			foundP1 = true
+		}
+	}
+	if !foundP1 {
+		t.Fatalf("walk worklist must include the unmatched provider game p1, got %+v", games)
+	}
+	page, total, err := s.ListUnmatchedProducts(ctx, 100, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range page {
+		if p.Origin == "community" {
+			t.Fatalf("admin worklist must exclude community products, got %q", p.Name)
+		}
+	}
+	// p1 is unmatched (no listing) and provider: it must be counted.
+	if total < 1 {
+		t.Fatalf("total = %d, want >= 1 (provider unmatched still listed)", total)
+	}
+
+	// Community facts round-trip through the doc.
+	rd := time.Date(1995, 10, 9, 0, 0, 0, 0, time.UTC)
+	cf, err := s.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Repro Facts", Origin: "community",
+		Community: &store.CommunityMeta{PlatformName: "SNES", FirstReleaseDate: rd},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetProduct(ctx, cf.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Community == nil || got.Community.PlatformName != "SNES" || !got.Community.FirstReleaseDate.Equal(rd) {
+		t.Fatalf("community facts did not round-trip: %+v", got.Community)
+	}
+}
+
+func TestListCommunityProductsPage(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+
+	// Creation order fixes updated_at order: communityA is oldest. The
+	// sleep guards against a same-millisecond tie (updated_at truncates
+	// to the millisecond; _id is a random UUID, not a real tiebreak for
+	// creation order), matching TestProduct_ListUnmatchedGames.
+	communityA, err := s.CreateProduct(ctx, store.Product{Type: "game", Name: "Community Alpha", Origin: "community"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	communityB, err := s.CreateProduct(ctx, store.Product{Type: "console", Name: "Community Beta", Origin: "community"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A provider product must never surface here: promote (not this
+	// listing) is how a community product becomes provider-origin.
+	if _, err := s.CreateProduct(ctx, gameProduct(9501, 6, "Provider Excluded", "SNES", "")); err != nil {
+		t.Fatal(err)
+	}
+
+	page, total, err := s.ListCommunityProductsPage(ctx, 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 {
+		t.Fatalf("total = %d, want 2 (provider product excluded)", total)
+	}
+	if len(page) != 2 || page[0].ID != communityA.ID || page[1].ID != communityB.ID {
+		t.Fatalf("page order/content wrong: %+v", page)
+	}
+	for _, p := range page {
+		if p.Origin != "community" {
+			t.Fatalf("admin community listing must only carry community origin, got %q", p.Origin)
+		}
+	}
+
+	// Offset paging slices the same deterministic order.
+	page2, total2, err := s.ListCommunityProductsPage(ctx, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total2 != 2 || len(page2) != 1 || page2[0].ID != communityB.ID {
+		t.Fatalf("offset page wrong: total=%d page=%+v", total2, page2)
+	}
+}
+
+func TestSearchCommunityProducts(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	mk := func(typ, name string) {
+		if _, err := s.CreateProduct(ctx, store.Product{Type: typ, Name: name, Origin: "community"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("game", "Repro Alpha")
+	mk("console", "Repro Console")
+	// A provider product with a matching name must stay out of the lane.
+	if _, err := s.CreateProduct(ctx, gameProduct(9310, 19, "Repro Provider", "SNES", "")); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.SearchCommunityProducts(ctx, []string{"game"}, "repro", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Name != "Repro Alpha" {
+		t.Fatalf("game lane = %+v, want only the community game", got)
+	}
+	hw, err := s.SearchCommunityProducts(ctx, []string{"console", "accessory"}, "REPRO", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hw) != 1 || hw[0].Name != "Repro Console" {
+		t.Fatalf("hardware lane (case-insensitive) = %+v", hw)
+	}
+	capped, err := s.SearchCommunityProducts(ctx, []string{"game"}, "repro", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(capped) != 1 {
+		t.Fatalf("cap ignored: %d results", len(capped))
+	}
+}
+
+func TestPromoteProduct_FlipAndTwinGuard(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+
+	c1, err := s.CreateProduct(ctx, store.Product{Type: "game", Name: "Promo A", Origin: "community"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c2, err := s.CreateProduct(ctx, store.Product{Type: "game", Name: "Promo B", Origin: "community"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	meta := store.IGDBMeta{GameID: 9401, Name: "Promo A", FetchedAt: time.Now().UTC()}
+	plat := store.Platform{IGDBID: 19, Name: "SNES"}
+	if err := s.PromoteProduct(ctx, c1.ID, &meta, &plat, nil); err != nil {
+		t.Fatalf("promote: %v", err)
+	}
+	got, err := s.GetProduct(ctx, c1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Origin != "provider" || got.IGDB == nil || got.IGDB.GameID != 9401 {
+		t.Fatalf("flip incomplete: origin=%q igdb=%+v", got.Origin, got.IGDB)
+	}
+
+	// The same unmatched identity slot is taken now: the index
+	// adjudicates the second flip.
+	if err := s.PromoteProduct(ctx, c2.ID, &meta, &plat, nil); !errors.Is(err, store.ErrIdentityTaken) {
+		t.Fatalf("twin promote = %v, want ErrIdentityTaken", err)
+	}
+	// And nothing changed on the loser.
+	still, err := s.GetProduct(ctx, c2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if still.Origin != "community" {
+		t.Fatalf("failed promote must not flip: %q", still.Origin)
+	}
+
+	// A promoted (now provider) product no longer matches the
+	// community guard: promoting it again reports not-found to the
+	// caller (the handler translates via its origin check first).
+	if err := s.PromoteProduct(ctx, c1.ID, &meta, &plat, nil); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("re-promote = %v, want ErrNotFound", err)
+	}
+}
+
+func TestPromoteCandidates_ReplaceListDismiss(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	a, err := s.CreateProduct(ctx, store.Product{Type: "game", Name: "Cand A", Origin: "community"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := s.CreateProduct(ctx, store.Product{Type: "console", Name: "Cand B", Origin: "community"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	quiet, err := s.CreateProduct(ctx, store.Product{Type: "game", Name: "Cand Quiet", Origin: "community"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Stored sorted best-first by the caller; index 0 is the sort key.
+	if err := s.ReplacePromoteCandidates(ctx, a.ID, []store.PromoteCandidate{
+		{Provider: "igdb", ProviderID: 1011, Name: "Chrono Trigger", Score: 0.92, FoundAt: now},
+		{Provider: "igdb", ProviderID: 1018, Name: "Terranigma", Score: 0.80, FoundAt: now},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReplacePromoteCandidates(ctx, b.ID, []store.PromoteCandidate{
+		{Provider: "pricecharting", ProviderID: 5005, Name: "Super Mario 64", Score: 0.99, FoundAt: now},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	page, total, err := s.ListPromoteCandidateProducts(ctx, 10, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || len(page) != 2 {
+		t.Fatalf("total=%d len=%d, want 2/2 (quiet product excluded)", total, len(page))
+	}
+	if page[0].ID != b.ID || page[1].ID != a.ID {
+		t.Fatalf("order must be strongest top candidate first: %s, %s", page[0].Name, page[1].Name)
+	}
+	_ = quiet
+
+	only, total1, err := s.ListPromoteCandidateProducts(ctx, 10, 0, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total1 != 1 || len(only) != 1 || only[0].ID != a.ID {
+		t.Fatalf("product_id filter wrong: %d/%+v", total1, only)
+	}
+
+	// Dismiss drops the candidate and records the pair.
+	if err := s.DismissPromoteCandidate(ctx, a.ID, "igdb", 1011); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetProduct(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.PromoteCandidates) != 1 || got.PromoteCandidates[0].ProviderID != 1018 {
+		t.Fatalf("dismiss must pull the pair: %+v", got.PromoteCandidates)
+	}
+	if len(got.DismissedCandidates) != 1 || got.DismissedCandidates[0].ProviderID != 1011 {
+		t.Fatalf("dismissed set wrong: %+v", got.DismissedCandidates)
+	}
+
+	// Empty replacement unsets the field (the product leaves the list).
+	if err := s.ReplacePromoteCandidates(ctx, a.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, total, err = s.ListPromoteCandidateProducts(ctx, 10, 0, ""); err != nil || total != 1 {
+		t.Fatalf("after unset total=%d err=%v, want 1", total, err)
+	}
+
+	// Origin guard: a provider product (e.g. one promoted mid-sweep) is
+	// a silent no-op - no error, and no candidates land on it.
+	prov, err := s.CreateProduct(ctx, gameProduct(9501, 19, "Prov Cand", "SNES", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReplacePromoteCandidates(ctx, prov.ID, []store.PromoteCandidate{
+		{Provider: "igdb", ProviderID: 7777, Name: "Ghost", Score: 0.99, FoundAt: now},
+	}); err != nil {
+		t.Fatalf("provider-doc replace must be a silent no-op, got %v", err)
+	}
+	provGot, err := s.GetProduct(ctx, prov.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(provGot.PromoteCandidates) != 0 {
+		t.Fatalf("no candidates may land on a provider doc: %+v", provGot.PromoteCandidates)
+	}
+}
+
+func TestCommunityCover_RoundTrips(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	created, err := s.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Repro Cover", Origin: "community",
+		Community: &store.CommunityMeta{PlatformName: "SNES", CoverURL: "https://img.example/rc.jpg"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetProduct(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Community == nil || got.Community.CoverURL != "https://img.example/rc.jpg" {
+		t.Fatalf("community cover did not round-trip: %+v", got.Community)
 	}
 }
