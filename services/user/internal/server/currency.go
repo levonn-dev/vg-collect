@@ -25,17 +25,21 @@ var currencyByRegion = map[string]string{
 // currencyForLocale derives a new account's default currency from a
 // BCP 47 tag ("de-DE" -> EUR; bare "de" infers DE via the likely
 // subtag). Absent, unparseable, or unmapped hints default to USD.
-func currencyForLocale(hint string) string {
+// source reports how the currency was chosen and is the bounded label
+// set of the vg.user.currency.seeds counter: "locale" when the hint
+// parsed and its region mapped (a US hint mapping to USD counts),
+// "fallback" otherwise.
+func currencyForLocale(hint string) (currency, source string) {
 	if hint == "" {
-		return "USD"
+		return "USD", "fallback"
 	}
 	tag, err := language.Parse(hint)
 	if err != nil {
-		return "USD"
+		return "USD", "fallback"
 	}
 	region, _ := tag.Region()
 	if cur, ok := currencyByRegion[region.String()]; ok {
-		return cur
+		return cur, "locale"
 	}
-	return "USD"
+	return "USD", "fallback"
 }

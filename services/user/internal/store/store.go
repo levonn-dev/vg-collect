@@ -58,9 +58,12 @@ func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 // Upsert creates the user on first login; an existing account is
 // returned untouched (the profile belongs to the user once created,
 // so logins never overwrite display name or avatar). The default
-// `user` role is granted idempotently, all in one transaction.
-func (s *Store) Upsert(ctx context.Context, email, displayName string, avatarURL *string, preferredCurrency string) (User, error) {
+// `user` role is granted idempotently, all in one transaction. The
+// created result reports whether this call inserted the row, so the
+// handler can tell a signup from a returning login.
+func (s *Store) Upsert(ctx context.Context, email, displayName string, avatarURL *string, preferredCurrency string) (User, bool, error) {
 	var u User
+	created := true
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, `
 			INSERT INTO users (email, display_name, avatar_url, preferred_currency)
@@ -72,6 +75,7 @@ func (s *Store) Upsert(ctx context.Context, email, displayName string, avatarURL
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Existing account: read it (the conflicting insert, if
 			// concurrent, has committed by the time DO NOTHING returns).
+			created = false
 			err = tx.QueryRow(ctx, `
 				SELECT id, email, display_name, avatar_url, preferred_currency, created_at, updated_at
 				FROM users WHERE email = $1`, email,
@@ -92,9 +96,9 @@ func (s *Store) Upsert(ctx context.Context, email, displayName string, avatarURL
 		return nil
 	})
 	if err != nil {
-		return User{}, err
+		return User{}, false, err
 	}
-	return u, nil
+	return u, created, nil
 }
 
 // Update edits the self-serviceable profile fields. displayName nil
@@ -131,12 +135,15 @@ func (s *Store) Update(ctx context.Context, id uuid.UUID, displayName, avatarURL
 }
 
 // Delete removes the account row (roles cascade). Deleting a missing
-// user is a no-op: account deletion retries must converge.
-func (s *Store) Delete(ctx context.Context, id uuid.UUID) error {
-	if _, err := s.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
-		return fmt.Errorf("store: delete: %w", err)
+// user is a no-op: account deletion retries must converge. The deleted
+// result reports whether a row was removed; false means the account
+// was already gone.
+func (s *Store) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	if err != nil {
+		return false, fmt.Errorf("store: delete: %w", err)
 	}
-	return nil
+	return tag.RowsAffected() > 0, nil
 }
 
 func (s *Store) Get(ctx context.Context, id uuid.UUID) (User, error) {

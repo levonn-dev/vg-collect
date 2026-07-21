@@ -3,12 +3,15 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
 	"github.com/levonn-dev/vg-collect/services/user/internal/gen/api"
@@ -44,10 +47,26 @@ func (h *Handlers) UpsertUser(w http.ResponseWriter, r *http.Request) {
 	if req.LocaleHint != nil {
 		hint = *req.LocaleHint
 	}
-	u, err := h.store.Upsert(r.Context(), req.Email, req.DisplayName, req.AvatarUrl, currencyForLocale(hint))
+	currency, currencySource := currencyForLocale(hint)
+	u, created, err := h.store.Upsert(r.Context(), req.Email, req.DisplayName, req.AvatarUrl, currency)
 	if err != nil {
+		slog.ErrorContext(r.Context(), "store error", "op", "upsert", "err", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "upsert failed")
 		return
+	}
+	outcome := "existing"
+	if created {
+		outcome = "created"
+		// The currency seed happens only when the insert takes; an
+		// existing row keeps its currency regardless of the hint.
+		if h.currencySeeds != nil {
+			h.currencySeeds.Add(r.Context(), 1, metric.WithAttributes(attribute.String("source", currencySource)))
+		}
+		slog.InfoContext(r.Context(), "account created",
+			"user_id", u.ID.String(), "preferred_currency", u.PreferredCurrency, "currency_source", currencySource)
+	}
+	if h.accountUpserts != nil {
+		h.accountUpserts.Add(r.Context(), 1, metric.WithAttributes(attribute.String("outcome", outcome)))
 	}
 	writeJSON(w, http.StatusOK, toAPI(u))
 }
@@ -64,6 +83,7 @@ func (h *Handlers) GetUser(w http.ResponseWriter, r *http.Request, userId openap
 		return
 	}
 	if err != nil {
+		slog.ErrorContext(r.Context(), "store error", "op", "get", "err", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
 		return
 	}
@@ -111,6 +131,7 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request, userId ope
 		return
 	}
 	if err != nil {
+		slog.ErrorContext(r.Context(), "store error", "op", "update", "err", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "update failed")
 		return
 	}
@@ -126,10 +147,21 @@ func (h *Handlers) DeleteUser(w http.ResponseWriter, r *http.Request, userId ope
 		problem(w, r, http.StatusForbidden, "forbidden", "may only delete your own account")
 		return
 	}
-	if err := h.store.Delete(r.Context(), userId); err != nil {
+	deleted, err := h.store.Delete(r.Context(), userId)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "store error", "op", "delete", "err", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "delete failed")
 		return
 	}
+	// noop means a retry converged on an already-deleted row.
+	outcome := "noop"
+	if deleted {
+		outcome = "deleted"
+	}
+	if h.accountDeletes != nil {
+		h.accountDeletes.Add(r.Context(), 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+	}
+	slog.InfoContext(r.Context(), "account deleted", "user_id", userId.String(), "outcome", outcome)
 	w.WriteHeader(http.StatusNoContent)
 }
 

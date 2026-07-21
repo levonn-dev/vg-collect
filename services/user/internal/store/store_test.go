@@ -50,9 +50,12 @@ func TestUpsert_FillsOnCreateOnly(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	u1, err := s.Upsert(ctx, "a@example.com", "Alice", nil, "USD")
+	u1, created, err := s.Upsert(ctx, "a@example.com", "Alice", nil, "USD")
 	if err != nil {
 		t.Fatalf("Upsert: %v", err)
+	}
+	if !created {
+		t.Fatalf("first upsert must report created")
 	}
 	if u1.Email != "a@example.com" || u1.DisplayName != "Alice" {
 		t.Fatalf("created = %+v", u1)
@@ -63,9 +66,12 @@ func TestUpsert_FillsOnCreateOnly(t *testing.T) {
 
 	// A later login must not clobber the profile: same id, same fields.
 	avatar := "https://img.example/a.png"
-	u2, err := s.Upsert(ctx, "a@example.com", "Alice II", &avatar, "USD")
+	u2, created, err := s.Upsert(ctx, "a@example.com", "Alice II", &avatar, "USD")
 	if err != nil {
 		t.Fatalf("Upsert existing: %v", err)
+	}
+	if created {
+		t.Fatalf("existing-account upsert must not report created")
 	}
 	if u2.ID != u1.ID {
 		t.Fatalf("upsert created a duplicate: %s vs %s", u1.ID, u2.ID)
@@ -78,9 +84,12 @@ func TestUpsert_FillsOnCreateOnly(t *testing.T) {
 	}
 
 	// citext: case-insensitive email still resolves the same account.
-	u3, err := s.Upsert(ctx, "A@EXAMPLE.COM", "Alice III", nil, "USD")
+	u3, created, err := s.Upsert(ctx, "A@EXAMPLE.COM", "Alice III", nil, "USD")
 	if err != nil {
 		t.Fatalf("Upsert citext: %v", err)
+	}
+	if created {
+		t.Fatalf("citext-matched upsert must not report created")
 	}
 	if u3.ID != u1.ID {
 		t.Fatalf("citext email uniqueness failed: %s vs %s", u3.ID, u1.ID)
@@ -90,7 +99,7 @@ func TestUpsert_FillsOnCreateOnly(t *testing.T) {
 func TestUpdate_FieldSemantics(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	created, err := s.Upsert(ctx, "c@example.com", "Carol", nil, "USD")
+	created, _, err := s.Upsert(ctx, "c@example.com", "Carol", nil, "USD")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,23 +139,31 @@ func TestUpdate_FieldSemantics(t *testing.T) {
 func TestDelete_IdempotentAndCascades(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	created, err := s.Upsert(ctx, "d@example.com", "Dave", nil, "USD")
+	created, _, err := s.Upsert(ctx, "d@example.com", "Dave", nil, "USD")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Delete(ctx, created.ID); err != nil {
+	deleted, err := s.Delete(ctx, created.ID)
+	if err != nil {
 		t.Fatalf("Delete: %v", err)
+	}
+	if !deleted {
+		t.Fatalf("delete of a live row must report deleted")
 	}
 	if _, err := s.Get(ctx, created.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("user survived: %v", err)
 	}
 	// user_roles cascaded: re-creating by email gets a fresh id + role.
-	again, err := s.Upsert(ctx, "d@example.com", "Dave", nil, "USD")
+	again, _, err := s.Upsert(ctx, "d@example.com", "Dave", nil, "USD")
 	if err != nil || again.ID == created.ID || len(again.Roles) != 1 {
 		t.Fatalf("recreate = %+v %v", again, err)
 	}
-	if err := s.Delete(ctx, created.ID); err != nil {
+	deleted, err = s.Delete(ctx, created.ID)
+	if err != nil {
 		t.Fatalf("second delete: %v", err)
+	}
+	if deleted {
+		t.Fatalf("delete of an already-gone row must report a noop")
 	}
 }
 
@@ -155,7 +172,7 @@ func TestStorePreferredCurrencyLifecycle(t *testing.T) {
 	ctx := context.Background()
 
 	// First login with a hint-derived currency: the insert seeds it.
-	u, err := st.Upsert(ctx, "cur@example.com", "Cur", nil, "EUR")
+	u, _, err := st.Upsert(ctx, "cur@example.com", "Cur", nil, "EUR")
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
@@ -164,7 +181,7 @@ func TestStorePreferredCurrencyLifecycle(t *testing.T) {
 	}
 
 	// A later login with a different hint never overwrites.
-	u, err = st.Upsert(ctx, "cur@example.com", "Cur", nil, "JPY")
+	u, _, err = st.Upsert(ctx, "cur@example.com", "Cur", nil, "JPY")
 	if err != nil {
 		t.Fatalf("second upsert: %v", err)
 	}
@@ -194,7 +211,7 @@ func TestGet(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	created, err := s.Upsert(ctx, "b@example.com", "Bob", nil, "USD")
+	created, _, err := s.Upsert(ctx, "b@example.com", "Bob", nil, "USD")
 	if err != nil {
 		t.Fatal(err)
 	}

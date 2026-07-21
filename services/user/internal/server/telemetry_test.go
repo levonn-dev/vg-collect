@@ -1,0 +1,346 @@
+package server_test
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"sync"
+	"testing"
+
+	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+
+	"github.com/levonn-dev/vg-collect/services/user/internal/store"
+)
+
+// ============================================================================
+// Telemetry unit layer (no Docker, runs under -short)
+//
+// These tests pin the domain counters (vg.user.account.upserts,
+// vg.user.currency.seeds, vg.user.account.deletes) and the log events
+// (store error, account created, account deleted) added for the runbook.
+// server.New registers its instruments against the global meter provider,
+// so captureTelemetry must run BEFORE newUnitServer: it swaps in an SDK
+// provider with a manual reader, plus a record-capturing default slog
+// handler, and restores both on cleanup.
+// ============================================================================
+
+// logCapture is a slog.Handler that records every log record under a
+// mutex (handlers log from the httptest server's goroutine). WithAttrs
+// drops pre-bound attrs; only per-call attrs are asserted here.
+type logCapture struct {
+	mu   sync.Mutex
+	recs []slog.Record
+}
+
+func (c *logCapture) Enabled(context.Context, slog.Level) bool { return true }
+
+func (c *logCapture) Handle(_ context.Context, r slog.Record) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.recs = append(c.recs, r.Clone())
+	return nil
+}
+
+func (c *logCapture) WithAttrs([]slog.Attr) slog.Handler { return c }
+func (c *logCapture) WithGroup(string) slog.Handler      { return c }
+
+// find returns the level and flattened attrs of the first captured
+// record with the given message. String rendering is enough for the
+// bounded field values under test.
+func (c *logCapture) find(msg string) (slog.Level, map[string]string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, r := range c.recs {
+		if r.Message != msg {
+			continue
+		}
+		attrs := map[string]string{}
+		r.Attrs(func(a slog.Attr) bool {
+			attrs[a.Key] = a.Value.String()
+			return true
+		})
+		return r.Level, attrs, true
+	}
+	return 0, nil, false
+}
+
+func captureTelemetry(t *testing.T) (*sdkmetric.ManualReader, *logCapture) {
+	t.Helper()
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	prevMP := otel.GetMeterProvider()
+	otel.SetMeterProvider(mp)
+	logs := &logCapture{}
+	prevLog := slog.Default()
+	slog.SetDefault(slog.New(logs))
+	t.Cleanup(func() {
+		slog.SetDefault(prevLog)
+		otel.SetMeterProvider(prevMP)
+		_ = mp.Shutdown(context.Background())
+	})
+	return reader, logs
+}
+
+// counterPoints collects and returns the data points of the named
+// counter; nil when the counter never incremented (an instrument with
+// no measurements produces no data).
+func counterPoints(t *testing.T, reader *sdkmetric.ManualReader, name string) []metricdata.DataPoint[int64] {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			if !ok {
+				t.Fatalf("%s: data type %T, want Sum[int64]", name, m.Data)
+			}
+			return sum.DataPoints
+		}
+	}
+	return nil
+}
+
+// wantCounterPoint asserts the data point carrying label=value has the
+// wanted count. want 0 asserts the labeled point is absent.
+func wantCounterPoint(t *testing.T, points []metricdata.DataPoint[int64], label, value string, want int64) {
+	t.Helper()
+	for _, dp := range points {
+		if v, ok := dp.Attributes.Value(attribute.Key(label)); ok && v.AsString() == value {
+			if dp.Value != want {
+				t.Fatalf("%s=%s: count = %d, want %d", label, value, dp.Value, want)
+			}
+			return
+		}
+	}
+	if want != 0 {
+		t.Fatalf("%s=%s: no data point, want count %d", label, value, want)
+	}
+}
+
+func TestUpsertTelemetry_Created(t *testing.T) {
+	reader, logs := captureTelemetry(t)
+	wantID := uuid.New()
+	st := &stubStore{
+		upsert: func(_ context.Context, email, name string, _ *string, preferredCurrency string) (store.User, bool, error) {
+			return store.User{ID: wantID, Email: email, DisplayName: name,
+				PreferredCurrency: preferredCurrency, Roles: []string{"user"}}, true, nil
+		},
+	}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc", "service"),
+		map[string]string{"email": "a@example.com", "display_name": "Alice", "locale_hint": "de-DE"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	wantCounterPoint(t, counterPoints(t, reader, "vg.user.account.upserts"), "outcome", "created", 1)
+	wantCounterPoint(t, counterPoints(t, reader, "vg.user.currency.seeds"), "source", "locale", 1)
+
+	level, attrs, ok := logs.find("account created")
+	if !ok {
+		t.Fatal("no account created record")
+	}
+	if level != slog.LevelInfo {
+		t.Fatalf("account created level = %v, want INFO", level)
+	}
+	if attrs["user_id"] != wantID.String() {
+		t.Fatalf("user_id = %q, want %q", attrs["user_id"], wantID.String())
+	}
+	if attrs["preferred_currency"] != "EUR" || attrs["currency_source"] != "locale" {
+		t.Fatalf("currency fields = %q/%q, want EUR/locale", attrs["preferred_currency"], attrs["currency_source"])
+	}
+}
+
+func TestUpsertTelemetry_Existing(t *testing.T) {
+	reader, logs := captureTelemetry(t)
+	st := &stubStore{
+		upsert: func(_ context.Context, email, name string, _ *string, preferredCurrency string) (store.User, bool, error) {
+			return store.User{ID: uuid.New(), Email: email, DisplayName: name,
+				PreferredCurrency: preferredCurrency, Roles: []string{"user"}}, false, nil
+		},
+	}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc", "service"),
+		map[string]string{"email": "a@example.com", "display_name": "Alice", "locale_hint": "de-DE"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	upserts := counterPoints(t, reader, "vg.user.account.upserts")
+	wantCounterPoint(t, upserts, "outcome", "existing", 1)
+	wantCounterPoint(t, upserts, "outcome", "created", 0)
+	// The seed happens only at account creation; a returning login with
+	// a mappable hint must not count.
+	if pts := counterPoints(t, reader, "vg.user.currency.seeds"); len(pts) != 0 {
+		t.Fatalf("currency.seeds incremented on the existing branch: %v", pts)
+	}
+	if _, _, ok := logs.find("account created"); ok {
+		t.Fatal("account created logged on the existing branch")
+	}
+}
+
+func TestUpsertTelemetry_SeedSourceByHintClass(t *testing.T) {
+	cases := []struct {
+		name       string
+		body       map[string]string
+		wantSource string
+	}{
+		{"mapped hint", map[string]string{"email": "a@example.com", "display_name": "A", "locale_hint": "de-DE"}, "locale"},
+		{"absent hint", map[string]string{"email": "a@example.com", "display_name": "A"}, "fallback"},
+		{"unparseable hint", map[string]string{"email": "a@example.com", "display_name": "A", "locale_hint": "not a tag !!!"}, "fallback"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reader, _ := captureTelemetry(t)
+			st := &stubStore{
+				upsert: func(_ context.Context, email, name string, _ *string, preferredCurrency string) (store.User, bool, error) {
+					return store.User{ID: uuid.New(), Email: email, DisplayName: name,
+						PreferredCurrency: preferredCurrency, Roles: []string{"user"}}, true, nil
+				},
+			}
+			srv, a := newUnitServer(t, st)
+			resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc", "service"), tc.body)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, want 200", resp.StatusCode)
+			}
+			wantCounterPoint(t, counterPoints(t, reader, "vg.user.currency.seeds"), "source", tc.wantSource, 1)
+		})
+	}
+}
+
+func TestUpsertTelemetry_StoreErrorLog(t *testing.T) {
+	reader, logs := captureTelemetry(t)
+	st := &stubStore{
+		upsert: func(context.Context, string, string, *string, string) (store.User, bool, error) {
+			return store.User{}, false, errStubUser
+		},
+	}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc", "service"),
+		map[string]string{"email": "a@example.com", "display_name": "Alice"})
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+
+	level, attrs, ok := logs.find("store error")
+	if !ok {
+		t.Fatal("no store error record on the 500 path")
+	}
+	if level != slog.LevelError {
+		t.Fatalf("store error level = %v, want ERROR", level)
+	}
+	if attrs["op"] != "upsert" || attrs["err"] == "" {
+		t.Fatalf("store error attrs = %v, want op=upsert with err", attrs)
+	}
+	// A failed upsert has no outcome; the counter must not move.
+	if pts := counterPoints(t, reader, "vg.user.account.upserts"); len(pts) != 0 {
+		t.Fatalf("account.upserts incremented on the error path: %v", pts)
+	}
+}
+
+func TestGetTelemetry_StoreErrorLog(t *testing.T) {
+	_, logs := captureTelemetry(t)
+	st := &stubStore{
+		get: func(context.Context, uuid.UUID) (store.User, error) { return store.User{}, errStubUser },
+	}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "GET", srv.URL+"/users/"+uuid.NewString(), a.token(t, "svc", "service"), nil)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+	_, attrs, ok := logs.find("store error")
+	if !ok || attrs["op"] != "get" || attrs["err"] == "" {
+		t.Fatalf("store error record = %v (found %v), want op=get with err", attrs, ok)
+	}
+}
+
+func TestUpdateTelemetry_StoreErrorLog(t *testing.T) {
+	_, logs := captureTelemetry(t)
+	st := &stubStore{
+		update: func(context.Context, uuid.UUID, *string, *string, *string) (store.User, error) {
+			return store.User{}, errStubUser
+		},
+	}
+	srv, a := newUnitServer(t, st)
+	uid := uuid.NewString()
+	resp := do(t, "PATCH", srv.URL+"/users/"+uid, a.token(t, uid, "user"),
+		map[string]string{"display_name": "Neo"})
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+	_, attrs, ok := logs.find("store error")
+	if !ok || attrs["op"] != "update" || attrs["err"] == "" {
+		t.Fatalf("store error record = %v (found %v), want op=update with err", attrs, ok)
+	}
+}
+
+func TestDeleteTelemetry_OutcomeAndLog(t *testing.T) {
+	cases := []struct {
+		name        string
+		deleted     bool
+		wantOutcome string
+	}{
+		{"row removed", true, "deleted"},
+		{"already gone", false, "noop"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reader, logs := captureTelemetry(t)
+			st := &stubStore{
+				delete: func(context.Context, uuid.UUID) (bool, error) { return tc.deleted, nil },
+			}
+			srv, a := newUnitServer(t, st)
+			uid := uuid.NewString()
+			resp := do(t, "DELETE", srv.URL+"/users/"+uid, a.token(t, uid, "user"), nil)
+			if resp.StatusCode != http.StatusNoContent {
+				t.Fatalf("status = %d, want 204", resp.StatusCode)
+			}
+
+			points := counterPoints(t, reader, "vg.user.account.deletes")
+			wantCounterPoint(t, points, "outcome", tc.wantOutcome, 1)
+			if len(points) != 1 {
+				t.Fatalf("account.deletes points = %d, want 1", len(points))
+			}
+
+			level, attrs, ok := logs.find("account deleted")
+			if !ok {
+				t.Fatal("no account deleted record")
+			}
+			if level != slog.LevelInfo {
+				t.Fatalf("account deleted level = %v, want INFO", level)
+			}
+			if attrs["user_id"] != uid || attrs["outcome"] != tc.wantOutcome {
+				t.Fatalf("account deleted attrs = %v, want user_id=%s outcome=%s", attrs, uid, tc.wantOutcome)
+			}
+		})
+	}
+}
+
+func TestDeleteTelemetry_StoreErrorLog(t *testing.T) {
+	reader, logs := captureTelemetry(t)
+	st := &stubStore{
+		delete: func(context.Context, uuid.UUID) (bool, error) { return false, errStubUser },
+	}
+	srv, a := newUnitServer(t, st)
+	uid := uuid.NewString()
+	resp := do(t, "DELETE", srv.URL+"/users/"+uid, a.token(t, uid, "user"), nil)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+	_, attrs, ok := logs.find("store error")
+	if !ok || attrs["op"] != "delete" || attrs["err"] == "" {
+		t.Fatalf("store error record = %v (found %v), want op=delete with err", attrs, ok)
+	}
+	if pts := counterPoints(t, reader, "vg.user.account.deletes"); len(pts) != 0 {
+		t.Fatalf("account.deletes incremented on the error path: %v", pts)
+	}
+}

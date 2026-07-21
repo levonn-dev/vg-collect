@@ -432,15 +432,15 @@ func TestDeleteUser_SelfOnlyIdempotent(t *testing.T) {
 // field is nil panics with a clear message -- an unexpected collaborator call
 // is a loud test failure, not a silent zero value.
 type stubStore struct {
-	upsert func(ctx context.Context, email, displayName string, avatarURL *string, preferredCurrency string) (store.User, error)
+	upsert func(ctx context.Context, email, displayName string, avatarURL *string, preferredCurrency string) (store.User, bool, error)
 	get    func(ctx context.Context, id uuid.UUID) (store.User, error)
 	update func(ctx context.Context, id uuid.UUID, displayName, avatarURL, preferredCurrency *string) (store.User, error)
-	delete func(ctx context.Context, id uuid.UUID) error
+	delete func(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
 var _ server.Store = (*stubStore)(nil)
 
-func (s *stubStore) Upsert(ctx context.Context, email, displayName string, avatarURL *string, preferredCurrency string) (store.User, error) {
+func (s *stubStore) Upsert(ctx context.Context, email, displayName string, avatarURL *string, preferredCurrency string) (store.User, bool, error) {
 	if s.upsert == nil {
 		panic("unexpected Upsert")
 	}
@@ -461,7 +461,7 @@ func (s *stubStore) Update(ctx context.Context, id uuid.UUID, displayName, avata
 	return s.update(ctx, id, displayName, avatarURL, preferredCurrency)
 }
 
-func (s *stubStore) Delete(ctx context.Context, id uuid.UUID) error {
+func (s *stubStore) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
 	if s.delete == nil {
 		panic("unexpected Delete")
 	}
@@ -571,8 +571,8 @@ func TestUnitUpsert_EmptyDisplayName_BadRequest(t *testing.T) {
 func TestUnitUpsert_StoreError_InternalServerError(t *testing.T) {
 	// When the store returns a non-nil error, the handler must return 500.
 	st := &stubStore{
-		upsert: func(context.Context, string, string, *string, string) (store.User, error) {
-			return store.User{}, errStubUser
+		upsert: func(context.Context, string, string, *string, string) (store.User, bool, error) {
+			return store.User{}, false, errStubUser
 		},
 	}
 	srv, a := newUnitServer(t, st)
@@ -587,11 +587,11 @@ func TestUnitUpsert_Success_ReturnsAPIUser(t *testing.T) {
 	// the full api.User shape (id, email, display_name, roles).
 	wantID := uuid.New()
 	st := &stubStore{
-		upsert: func(_ context.Context, email, displayName string, _ *string, _ string) (store.User, error) {
+		upsert: func(_ context.Context, email, displayName string, _ *string, _ string) (store.User, bool, error) {
 			return store.User{
 				ID: wantID, Email: email, DisplayName: displayName,
 				Roles: []string{"user"}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
-			}, nil
+			}, true, nil
 		},
 	}
 	srv, a := newUnitServer(t, st)
@@ -629,9 +629,9 @@ func TestUnitUpsert_Success_ReturnsAPIUser(t *testing.T) {
 func TestUnitUpsert_LocaleHintSeedsCurrency(t *testing.T) {
 	var gotCurrency string
 	st := &stubStore{
-		upsert: func(_ context.Context, email, name string, _ *string, preferredCurrency string) (store.User, error) {
+		upsert: func(_ context.Context, email, name string, _ *string, preferredCurrency string) (store.User, bool, error) {
 			gotCurrency = preferredCurrency
-			return store.User{Email: email, DisplayName: name, PreferredCurrency: preferredCurrency, Roles: []string{"user"}}, nil
+			return store.User{Email: email, DisplayName: name, PreferredCurrency: preferredCurrency, Roles: []string{"user"}}, true, nil
 		},
 	}
 	srv, a := newUnitServer(t, st)
@@ -814,7 +814,7 @@ func TestUnitDeleteUser_StoreError_InternalServerError(t *testing.T) {
 	// A generic (non-sentinel) store error must surface as 500 internal.
 	userID := uuid.New()
 	st := &stubStore{
-		delete: func(context.Context, uuid.UUID) error { return errStubUser },
+		delete: func(context.Context, uuid.UUID) (bool, error) { return false, errStubUser },
 	}
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "DELETE", srv.URL+"/users/"+userID.String(),
