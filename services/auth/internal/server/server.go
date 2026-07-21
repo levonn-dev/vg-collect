@@ -6,11 +6,15 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
 	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
@@ -87,15 +91,120 @@ type Handlers struct {
 	verifier   Verifier
 	devEnabled bool
 	refreshTTL time.Duration
+
+	// Domain instruments (best-effort: nil when registration failed,
+	// and the record helpers no-op).
+	loginOutcomes  metric.Int64Counter
+	tokenRefreshes metric.Int64Counter
+	signingKeys    metric.Int64ObservableGauge
 }
 
-// New builds a Handlers wired to the given collaborators.
+// New builds a Handlers wired to the given collaborators. Instruments
+// are best-effort, like the bff cache counter: a registration failure
+// is logged but never prevents startup.
 func New(st Store, m Minter, users UserService, providers map[string]oidc.Provider,
 	verifier Verifier, devEnabled bool, refreshTTL time.Duration) *Handlers {
-	return &Handlers{
+	h := &Handlers{
 		store: st, minter: m, users: users, providers: providers,
 		verifier: verifier, devEnabled: devEnabled, refreshTTL: refreshTTL,
 	}
+	meter := otel.Meter("github.com/levonn-dev/vg-collect/services/auth")
+	var err error
+	h.loginOutcomes, err = meter.Int64Counter("vg.auth.login.outcomes",
+		metric.WithDescription("Terminals of provider login and link dances"),
+		metric.WithUnit("{login}"))
+	if err != nil {
+		slog.Error("login outcomes counter unavailable", "err", err)
+	}
+	h.tokenRefreshes, err = meter.Int64Counter("vg.auth.token.refreshes",
+		metric.WithDescription("Refresh token rotation terminals"),
+		metric.WithUnit("{refresh}"))
+	if err != nil {
+		slog.Error("token refreshes counter unavailable", "err", err)
+	}
+	h.signingKeys, err = meter.Int64ObservableGauge("vg.auth.signing_keys.active",
+		metric.WithDescription("Signing keys the JWKS serves right now"),
+		metric.WithUnit("{key}"))
+	if err != nil {
+		slog.Error("signing keys gauge unavailable", "err", err)
+	} else if _, err := meter.RegisterCallback(h.observeSigningKeys, h.signingKeys); err != nil {
+		slog.Error("signing keys callback unavailable", "err", err)
+	}
+	return h
+}
+
+// observeSigningKeys reports how many keys the JWKS serves. On a store
+// error it observes nothing: a gap in the series, never a false zero
+// (zero is the platform-wide-401 alert condition).
+func (h *Handlers) observeSigningKeys(ctx context.Context, o metric.Observer) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	keys, err := h.store.ActiveSigningKeys(ctx)
+	if err != nil {
+		return err
+	}
+	o.ObserveInt64(h.signingKeys, int64(len(keys)))
+	return nil
+}
+
+// Label values for the outcome counters; all bounded sets, and the
+// dashboards key on these exact spellings. There is deliberately no
+// provider="unknown": terminals without an attributable provider
+// (malformed body, unknown_provider, invalid_state) are not counted
+// and stay visible as 4xx in the RED panels.
+const (
+	flowLogin = "login"
+	flowLink  = "link"
+
+	outcomeSuccess       = "success"
+	outcomeRejected      = "rejected"
+	outcomeProviderError = "provider_error"
+	outcomeUpstreamError = "upstream_error"
+	outcomeInternalError = "internal_error"
+	outcomeReuseDetected = "reuse_detected"
+)
+
+// recordLogin counts one terminal of a provider dance whose provider
+// is known.
+func (h *Handlers) recordLogin(ctx context.Context, provider, flow, outcome string) {
+	if h.loginOutcomes == nil {
+		return
+	}
+	h.loginOutcomes.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("provider", provider),
+		attribute.String("flow", flow),
+		attribute.String("outcome", outcome)))
+}
+
+// recordRefresh counts one RefreshToken terminal.
+func (h *Handlers) recordRefresh(ctx context.Context, outcome string) {
+	if h.tokenRefreshes == nil {
+		return
+	}
+	h.tokenRefreshes.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+}
+
+// Problem responses never echo internal error details to callers, so
+// these events carry them server-side (the shared slog handler
+// attaches trace ids). Never log token material: no refresh tokens,
+// no hashes, no minted JWTs.
+
+// logProviderError reports an identity-provider hop failing behind a
+// 502 (the ProviderError string carries op and status).
+func logProviderError(ctx context.Context, provider string, err error) {
+	slog.ErrorContext(ctx, "provider request failed", "provider", provider, "err", err)
+}
+
+// logStoreError reports the branch detail behind a 500 internal
+// answer; op names the operation that failed.
+func logStoreError(ctx context.Context, op string, err error) {
+	slog.ErrorContext(ctx, "auth store error", "op", op, "err", err)
+}
+
+// logUserServiceError reports the user service failing behind a login
+// 502 or a refresh 503.
+func logUserServiceError(ctx context.Context, op string, err error) {
+	slog.ErrorContext(ctx, "user service unavailable", "op", op, "err", err)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

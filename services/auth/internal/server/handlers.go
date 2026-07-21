@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -43,11 +44,13 @@ func (h *Handlers) OauthStart(w http.ResponseWriter, r *http.Request) {
 		State: state, PKCEVerifier: verifier, Nonce: nonce,
 		Provider: p.Name(), ExpiresAt: time.Now().Add(stateTTL),
 	}); err != nil {
+		logStoreError(r.Context(), "create_state", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "could not persist login state")
 		return
 	}
 	authorizeURL, err := p.AuthorizeURL(r.Context(), state, nonce, challenge)
 	if err != nil {
+		logProviderError(r.Context(), p.Name(), err)
 		problem(w, r, http.StatusBadGateway, "provider_error", "identity provider unavailable")
 		return
 	}
@@ -69,6 +72,7 @@ func (h *Handlers) OauthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		logStoreError(r.Context(), "consume_state", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "state lookup failed")
 		return
 	}
@@ -76,6 +80,10 @@ func (h *Handlers) OauthCallback(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		problem(w, r, http.StatusBadRequest, "invalid_state", "provider no longer enabled")
 		return
+	}
+	flow := flowLogin
+	if st.LinkUserID != nil {
+		flow = flowLink
 	}
 	claims, err := p.Exchange(r.Context(), req.Code, st.PKCEVerifier, st.Nonce)
 	if err != nil {
@@ -86,9 +94,12 @@ func (h *Handlers) OauthCallback(w http.ResponseWriter, r *http.Request) {
 		// attempt, not an outage.
 		var pe *oidc.ProviderError
 		if errors.As(err, &pe) {
+			logProviderError(r.Context(), st.Provider, err)
+			h.recordLogin(r.Context(), st.Provider, flow, outcomeProviderError)
 			problem(w, r, http.StatusBadGateway, "provider_error", "identity provider exchange failed")
 			return
 		}
+		h.recordLogin(r.Context(), st.Provider, flow, outcomeRejected)
 		problem(w, r, http.StatusBadRequest, "invalid_callback", "ID token verification failed")
 		return
 	}
@@ -124,11 +135,13 @@ func (h *Handlers) OauthLinkStart(w http.ResponseWriter, r *http.Request) {
 		State: state, PKCEVerifier: verifier, Nonce: nonce,
 		Provider: p.Name(), ExpiresAt: time.Now().Add(stateTTL), LinkUserID: &userID,
 	}); err != nil {
+		logStoreError(r.Context(), "create_state", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "could not persist link state")
 		return
 	}
 	authorizeURL, err := p.AuthorizeURL(r.Context(), state, nonce, challenge)
 	if err != nil {
+		logProviderError(r.Context(), p.Name(), err)
 		problem(w, r, http.StatusBadGateway, "provider_error", "identity provider unavailable")
 		return
 	}
@@ -152,6 +165,7 @@ func (h *Handlers) DevLink(w http.ResponseWriter, r *http.Request) {
 	}
 	claims, ok := oidc.DevClaims(req.User)
 	if !ok {
+		h.recordLogin(r.Context(), "dev", flowLink, outcomeRejected)
 		problem(w, r, http.StatusBadRequest, "unknown_fixture", "no such fixture user")
 		return
 	}
@@ -172,6 +186,7 @@ func (h *Handlers) ListIdentities(w http.ResponseWriter, r *http.Request, userId
 	}
 	ids, err := h.store.ListIdentities(r.Context(), userId)
 	if err != nil {
+		logStoreError(r.Context(), "list_identities", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "identity list failed")
 		return
 	}
@@ -196,6 +211,7 @@ func (h *Handlers) DeleteIdentity(w http.ResponseWriter, r *http.Request, identi
 	case errors.Is(err, store.ErrLastIdentity):
 		problem(w, r, http.StatusConflict, "last_identity", "an account must keep at least one login")
 	case err != nil:
+		logStoreError(r.Context(), "delete_identity", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "unlink failed")
 	default:
 		w.WriteHeader(http.StatusNoContent)
@@ -215,6 +231,7 @@ func (h *Handlers) DeleteUserAuth(w http.ResponseWriter, r *http.Request, userId
 		return
 	}
 	if err := h.store.DeleteUserAuth(r.Context(), userID); err != nil {
+		logStoreError(r.Context(), "delete_user_auth", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "account auth erase failed")
 		return
 	}
@@ -226,31 +243,42 @@ func (h *Handlers) DeleteUserAuth(w http.ResponseWriter, r *http.Request, userId
 // rejected, never merged) and answer a fresh session for that user.
 func (h *Handlers) completeLink(w http.ResponseWriter, r *http.Request, provider string, claims oidc.IDClaims, linkUserID uuid.UUID) {
 	if claims.Email == "" || !claims.EmailVerified {
+		h.recordLogin(r.Context(), provider, flowLink, outcomeRejected)
 		problem(w, r, http.StatusForbidden, "link_email_unverified", "provider did not assert a verified email")
 		return
 	}
 	u, err := h.users.Get(r.Context(), linkUserID)
 	if errors.Is(err, userclient.ErrUserNotFound) {
+		h.recordLogin(r.Context(), provider, flowLink, outcomeRejected)
 		problem(w, r, http.StatusBadRequest, "link_failed", "linking account no longer exists")
 		return
 	}
 	if err != nil {
+		logUserServiceError(r.Context(), "get", err)
+		h.recordLogin(r.Context(), provider, flowLink, outcomeUpstreamError)
 		problem(w, r, http.StatusBadGateway, "user_service_error", "user lookup failed")
 		return
 	}
 	err = h.store.BindIdentity(r.Context(), provider, claims.Subject, claims.Email, linkUserID)
 	if errors.Is(err, store.ErrIdentityTaken) {
+		h.recordLogin(r.Context(), provider, flowLink, outcomeRejected)
 		problem(w, r, http.StatusConflict, "identity_already_linked", "that login already belongs to another account")
 		return
 	}
 	if err != nil {
+		logStoreError(r.Context(), "bind_identity", err)
+		h.recordLogin(r.Context(), provider, flowLink, outcomeInternalError)
 		problem(w, r, http.StatusInternalServerError, "internal", "identity binding failed")
 		return
 	}
 	pair, ok := h.newSession(w, r, u)
 	if !ok {
+		// newSession answered the problem; both its failure modes
+		// (mint, session insert) are internal faults.
+		h.recordLogin(r.Context(), provider, flowLink, outcomeInternalError)
 		return
 	}
+	h.recordLogin(r.Context(), provider, flowLink, outcomeSuccess)
 	writeJSON(w, http.StatusOK, api.CallbackResponse{
 		AccessToken:      pair.AccessToken,
 		TokenType:        pair.TokenType,
@@ -270,6 +298,7 @@ func (h *Handlers) completeLogin(w http.ResponseWriter, r *http.Request, provide
 	// Accepting an unverified email would let an attacker claim
 	// someone else's future account through the fallback path.
 	if claims.Email == "" || !claims.EmailVerified {
+		h.recordLogin(r.Context(), provider, flowLogin, outcomeRejected)
 		problem(w, r, http.StatusForbidden, "email_unverified", "provider did not assert a verified email")
 		return
 	}
@@ -281,10 +310,12 @@ func (h *Handlers) completeLogin(w http.ResponseWriter, r *http.Request, provide
 	case err == nil:
 		u, gerr := h.users.Get(r.Context(), ident.UserID)
 		if gerr == nil {
-			h.mintLoginSession(w, r, u)
+			h.mintLoginSession(w, r, provider, u)
 			return
 		}
 		if !errors.Is(gerr, userclient.ErrUserNotFound) {
+			logUserServiceError(r.Context(), "get", gerr)
+			h.recordLogin(r.Context(), provider, flowLogin, outcomeUpstreamError)
 			problem(w, r, http.StatusBadGateway, "user_service_error", "user lookup failed")
 			return
 		}
@@ -292,16 +323,22 @@ func (h *Handlers) completeLogin(w http.ResponseWriter, r *http.Request, provide
 		// re-anchor by email and move the identity to the survivor.
 		u, uerr := h.upsertByEmail(r.Context(), claims, localeHint)
 		if uerr != nil {
+			logUserServiceError(r.Context(), "upsert", uerr)
+			h.recordLogin(r.Context(), provider, flowLogin, outcomeUpstreamError)
 			problem(w, r, http.StatusBadGateway, "user_service_error", "profile upsert failed")
 			return
 		}
 		if err := h.store.RebindIdentity(r.Context(), provider, claims.Subject, claims.Email, u.ID); err != nil {
+			logStoreError(r.Context(), "rebind_identity", err)
+			h.recordLogin(r.Context(), provider, flowLogin, outcomeInternalError)
 			problem(w, r, http.StatusInternalServerError, "internal", "identity binding failed")
 			return
 		}
-		h.mintLoginSession(w, r, u)
+		h.mintLoginSession(w, r, provider, u)
 		return
 	case !errors.Is(err, store.ErrIdentityNotFound):
+		logStoreError(r.Context(), "resolve_identity", err)
+		h.recordLogin(r.Context(), provider, flowLogin, outcomeInternalError)
 		problem(w, r, http.StatusInternalServerError, "internal", "identity lookup failed")
 		return
 	}
@@ -309,6 +346,8 @@ func (h *Handlers) completeLogin(w http.ResponseWriter, r *http.Request, provide
 	// First-time identity: find-or-create the account by verified email.
 	u, err := h.upsertByEmail(r.Context(), claims, localeHint)
 	if err != nil {
+		logUserServiceError(r.Context(), "upsert", err)
+		h.recordLogin(r.Context(), provider, flowLogin, outcomeUpstreamError)
 		problem(w, r, http.StatusBadGateway, "user_service_error", "profile upsert failed")
 		return
 	}
@@ -318,22 +357,28 @@ func (h *Handlers) completeLogin(w http.ResponseWriter, r *http.Request, provide
 		// whoever owns it now is who this login is.
 		ident, rerr := h.store.ResolveIdentity(r.Context(), provider, claims.Subject, claims.Email)
 		if rerr != nil {
+			logStoreError(r.Context(), "resolve_identity", rerr)
+			h.recordLogin(r.Context(), provider, flowLogin, outcomeInternalError)
 			problem(w, r, http.StatusInternalServerError, "internal", "identity binding failed")
 			return
 		}
 		owner, gerr := h.users.Get(r.Context(), ident.UserID)
 		if gerr != nil {
+			logUserServiceError(r.Context(), "get", gerr)
+			h.recordLogin(r.Context(), provider, flowLogin, outcomeUpstreamError)
 			problem(w, r, http.StatusBadGateway, "user_service_error", "user lookup failed")
 			return
 		}
-		h.mintLoginSession(w, r, owner)
+		h.mintLoginSession(w, r, provider, owner)
 		return
 	}
 	if err != nil {
+		logStoreError(r.Context(), "bind_identity", err)
+		h.recordLogin(r.Context(), provider, flowLogin, outcomeInternalError)
 		problem(w, r, http.StatusInternalServerError, "internal", "identity binding failed")
 		return
 	}
-	h.mintLoginSession(w, r, u)
+	h.mintLoginSession(w, r, provider, u)
 }
 
 // upsertByEmail funnels the two email-fallback call sites through one
@@ -348,12 +393,16 @@ func (h *Handlers) upsertByEmail(ctx context.Context, claims oidc.IDClaims, loca
 	return h.users.Upsert(ctx, claims.Email, claims.DisplayName, avatar, localeHint)
 }
 
-// mintLoginSession writes the token response for a resolved login.
-func (h *Handlers) mintLoginSession(w http.ResponseWriter, r *http.Request, u userclient.User) {
+// mintLoginSession writes the token response for a resolved login and
+// counts the dance terminal (newSession already answered the problem
+// when it fails; both its failure modes are internal faults).
+func (h *Handlers) mintLoginSession(w http.ResponseWriter, r *http.Request, provider string, u userclient.User) {
 	pair, ok := h.newSession(w, r, u)
 	if !ok {
+		h.recordLogin(r.Context(), provider, flowLogin, outcomeInternalError)
 		return
 	}
+	h.recordLogin(r.Context(), provider, flowLogin, outcomeSuccess)
 	writeJSON(w, http.StatusOK, pair)
 }
 
@@ -366,11 +415,13 @@ func (h *Handlers) newSession(w http.ResponseWriter, r *http.Request, u userclie
 	rawRefresh, hash := token.NewRefreshToken()
 	access, err := h.minter.Mint(u.ID.String(), u.Roles, jti)
 	if err != nil {
+		logStoreError(r.Context(), "mint", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "token mint failed")
 		return api.TokenPair{}, false
 	}
 	expiresAt := time.Now().Add(h.refreshTTL)
 	if err := h.store.CreateSession(r.Context(), hash, u.ID, jti, expiresAt); err != nil {
+		logStoreError(r.Context(), "create_session", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "session creation failed")
 		return api.TokenPair{}, false
 	}
@@ -416,6 +467,7 @@ func (h *Handlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 	sess, err := h.store.PeekSession(r.Context(), hash)
 	if errors.Is(err, store.ErrRefreshNotFound) {
+		h.recordRefresh(r.Context(), outcomeRejected)
 		problem(w, r, http.StatusUnauthorized, "invalid_refresh", "unknown refresh token")
 		return
 	}
@@ -426,10 +478,16 @@ func (h *Handlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		// (logout and account-gone go through direct family revocation);
 		// re-presenting the dead token just re-signals reuse so the BFF
 		// clears the session.
+		// This short-circuit never learns who owned the dead family, so
+		// user_id is empty here (never log the token or its hash).
+		slog.WarnContext(r.Context(), "refresh reuse detected", "user_id", "", "jti_count", 0)
+		h.recordRefresh(r.Context(), outcomeReuseDetected)
 		writeReuseProblem(w, r, []string{})
 		return
 	}
 	if err != nil {
+		logStoreError(r.Context(), "peek_session", err)
+		h.recordRefresh(r.Context(), outcomeInternalError)
 		problem(w, r, http.StatusInternalServerError, "internal", "session lookup failed")
 		return
 	}
@@ -438,10 +496,13 @@ func (h *Handlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, userclient.ErrUserNotFound) {
 		// The account is gone; the session dies with it.
 		_ = h.store.RevokeFamilyByToken(r.Context(), hash)
+		h.recordRefresh(r.Context(), outcomeRejected)
 		problem(w, r, http.StatusUnauthorized, "invalid_refresh", "user no longer exists")
 		return
 	}
 	if err != nil {
+		logUserServiceError(r.Context(), "get", err)
+		h.recordRefresh(r.Context(), outcomeUpstreamError)
 		problem(w, r, http.StatusServiceUnavailable, "user_unavailable", "role source unavailable; retry")
 		return
 	}
@@ -450,6 +511,8 @@ func (h *Handlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	newRaw, newHash := token.NewRefreshToken()
 	access, err := h.minter.Mint(sess.UserID.String(), u.Roles, newJTI)
 	if err != nil {
+		logStoreError(r.Context(), "mint", err)
+		h.recordRefresh(r.Context(), outcomeInternalError)
 		problem(w, r, http.StatusInternalServerError, "internal", "token mint failed")
 		return
 	}
@@ -458,15 +521,22 @@ func (h *Handlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	var reuse *store.ReuseError
 	switch {
 	case errors.As(err, &reuse):
+		slog.WarnContext(r.Context(), "refresh reuse detected",
+			"user_id", sess.UserID.String(), "jti_count", len(reuse.RevokedJTIs))
+		h.recordRefresh(r.Context(), outcomeReuseDetected)
 		writeReuseProblem(w, r, reuse.RevokedJTIs)
 		return
 	case errors.Is(err, store.ErrRefreshNotFound), errors.Is(err, store.ErrRefreshExpired):
+		h.recordRefresh(r.Context(), outcomeRejected)
 		problem(w, r, http.StatusUnauthorized, "invalid_refresh", "refresh token expired or unknown")
 		return
 	case err != nil:
+		logStoreError(r.Context(), "rotate", err)
+		h.recordRefresh(r.Context(), outcomeInternalError)
 		problem(w, r, http.StatusInternalServerError, "internal", "rotation failed")
 		return
 	}
+	h.recordRefresh(r.Context(), outcomeSuccess)
 	writeJSON(w, http.StatusOK, tokenPairResponse(access, newRaw, h.minter.TTL(), res.ExpiresAt))
 }
 
@@ -478,6 +548,7 @@ func (h *Handlers) RevokeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.RevokeFamilyByToken(r.Context(), token.HashRefreshToken(req.RefreshToken)); err != nil {
+		logStoreError(r.Context(), "revoke_family", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "revocation failed")
 		return
 	}
@@ -490,6 +561,7 @@ func (h *Handlers) RevokeToken(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetJwks(w http.ResponseWriter, r *http.Request) {
 	keys, err := h.store.ActiveSigningKeys(r.Context())
 	if err != nil {
+		logStoreError(r.Context(), "active_signing_keys", err)
 		problem(w, r, http.StatusInternalServerError, "internal", "key lookup failed")
 		return
 	}
@@ -514,6 +586,7 @@ func (h *Handlers) DevToken(w http.ResponseWriter, r *http.Request) {
 	}
 	claims, ok := oidc.DevClaims(req.User)
 	if !ok {
+		h.recordLogin(r.Context(), "dev", flowLogin, outcomeRejected)
 		problem(w, r, http.StatusBadRequest, "unknown_fixture", "no such fixture user")
 		return
 	}

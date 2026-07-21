@@ -30,6 +30,7 @@ type fakeIDP struct {
 	// knobs
 	discoveryStatus int           // 0 means 200
 	tokenStatus     int           // 0 means 200
+	jwksStatus      int           // 0 means 200
 	tokenRawBody    string        // non-empty overrides the JSON response
 	tokenDelay      time.Duration // simulate a slow provider
 	serveEmptyJWKS  bool          // serve {"keys":[]} to simulate provider degradation
@@ -69,6 +70,10 @@ func (f *fakeIDP) discovery(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (f *fakeIDP) jwks(w http.ResponseWriter, _ *http.Request) {
+	if f.jwksStatus != 0 {
+		w.WriteHeader(f.jwksStatus)
+		return
+	}
 	if f.serveEmptyJWKS {
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{}})
 		return

@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel/metric"
 )
 
 type rsaJWKSDoc struct {
@@ -28,14 +30,17 @@ type rsaJWKSDoc struct {
 type rsaKeyCache struct {
 	hc         *http.Client
 	minRefetch time.Duration
+	hist       metric.Float64Histogram // shared provider round-trip histogram (nil ok)
+	provider   string
 
 	mu        sync.Mutex
 	keys      map[string]*rsa.PublicKey
 	lastFetch time.Time
 }
 
-func newRSAKeyCache(hc *http.Client, minRefetch time.Duration) *rsaKeyCache {
-	return &rsaKeyCache{hc: hc, minRefetch: minRefetch, keys: map[string]*rsa.PublicKey{}}
+func newRSAKeyCache(hc *http.Client, minRefetch time.Duration, hist metric.Float64Histogram, provider string) *rsaKeyCache {
+	return &rsaKeyCache{hc: hc, minRefetch: minRefetch, hist: hist, provider: provider,
+		keys: map[string]*rsa.PublicKey{}}
 }
 
 func (c *rsaKeyCache) get(ctx context.Context, jwksURL, kid string) (*rsa.PublicKey, error) {
@@ -56,7 +61,16 @@ func (c *rsaKeyCache) get(ctx context.Context, jwksURL, kid string) (*rsa.Public
 	return nil, fmt.Errorf("oidc: unknown provider kid %q after refetch", kid)
 }
 
+// fetchLocked measures the provider JWKS round trip (op=jwks) around
+// the actual fetch.
 func (c *rsaKeyCache) fetchLocked(ctx context.Context, jwksURL string) error {
+	start := time.Now()
+	err := c.refreshLocked(ctx, jwksURL)
+	recordProviderRequest(ctx, c.hist, c.provider, opJWKS, start, err != nil)
+	return err
+}
+
+func (c *rsaKeyCache) refreshLocked(ctx context.Context, jwksURL string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
 	if err != nil {
 		return err
