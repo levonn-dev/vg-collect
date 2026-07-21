@@ -10,9 +10,31 @@ import { expect, test, type Page } from '@playwright/test'
 // residue from earlier runs.
 const entryName = `Currency Journey ${Date.now()}`
 
+// Pace the shared /api/* bucket. The gateway caps /api/* at 300 requests per
+// 60s per IP (deploy/charts/bff/values.yaml apiPerMinute) across the serial
+// suite, a fixed 60s window anchored at its first request. This settle is the
+// larger of the pair: it runs right before login + submissions and, together
+// with the collection journey's settle before it, keeps submissions' own
+// burst out of the collection-journey + currency window (the two heaviest
+// fast specs, which cannot be split apart without a minute-long wait). The
+// worst window then holds only collection-journey + currency and stays under
+// the 300 cap. Seconds-scale, not the old minute-long drains.
+const API_PACE_MS = 30_000
+async function paceApiBucket() {
+  await new Promise((resolve) => setTimeout(resolve, API_PACE_MS))
+}
+// afterAll hooks default to a 30s timeout; lift it so the settle fits.
+test.afterAll(async () => {
+  test.setTimeout(API_PACE_MS + 10_000)
+  await paceApiBucket()
+})
+
+// Programmatic dev-provider login: one GET seals the session cookie and
+// redirects home, a single /api/auth/* hit (the old /login UI helper cost
+// two). The gateway caps /api/auth/* at 20 per 60s per IP across the
+// shared serial suite; one hit per login keeps every window well under it.
 async function login(page: Page) {
-  await page.goto('/login')
-  await page.getByRole('link', { name: 'alice', exact: true }).click()
+  await page.goto('/api/auth/login?provider=dev&user=alice')
   await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
 }
 

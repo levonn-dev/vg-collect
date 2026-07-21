@@ -18,9 +18,12 @@ import type { Page } from '@playwright/test'
 // variant the live search actually returns rather than assuming one.
 const stamp = `e2e-admin-${Date.now()}`
 
+// Programmatic dev-provider login: one GET seals the session cookie and
+// redirects home, a single /api/auth/* hit (the old /login UI helper cost
+// two). The gateway caps /api/auth/* at 20 per 60s per IP across the
+// shared serial suite; one hit per login keeps every window well under it.
 async function login(page: Page, fixture: string) {
-  await page.goto('/login')
-  await page.getByRole('link', { name: fixture, exact: true }).click()
+  await page.goto(`/api/auth/login?provider=dev&user=${fixture}`)
   await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
 }
 
@@ -28,21 +31,6 @@ async function login(page: Page, fixture: string) {
 function acceptNext(page: Page) {
   page.once('dialog', (d) => void d.accept())
 }
-
-// The gateway (APISIX limit-count, deploy/charts/bff) caps /api/auth/*
-// at 20 requests per 60s per remote_addr, and the whole serial suite
-// shares one IP. Each fixture login costs two auth hits (the /login
-// providers fetch plus the login redirect), so this file's two logins
-// burst four into that shared window. Left alone they stack onto the
-// preceding specs and push the ones that follow past the ceiling,
-// which 429s their /login providers fetch and strands them with no
-// fixtures to click. Draining a full window after this file resets the
-// counter so the next spec starts clean. account.spec paces its own
-// auth for the same reason; this is the between-files half of that.
-test.afterAll(async () => {
-  test.setTimeout(90_000)
-  await new Promise((resolve) => setTimeout(resolve, 63_000))
-})
 
 test('non-admin never sees the admin surface', async ({ page }) => {
   await login(page, 'bob')

@@ -6,12 +6,13 @@ import { expect, Page, test } from '@playwright/test'
 // which unbinds dev-bob for the next run.
 
 // The gateway rate-limits /api/auth/* to 20 requests per 60s per IP.
-// This journey drives many auth navigations, and every login/account
-// render also refetches /api/auth/providers (the react-query cache is
-// wiped by each full-page auth redirect), so the raw request count runs
-// past that ceiling. Pace auth traffic by counting real /api/auth/*
-// requests and waiting before an action would breach a safe budget; the
-// margin below 20 absorbs redirect and provider-refetch bursts.
+// Logins here take the programmatic 1-request form, but this journey
+// still drives many auth navigations - the account-link clicks and the
+// logouts each redirect through /login or /account, which refetches
+// /api/auth/providers (a full-page auth redirect wipes the react-query
+// cache) - so the auth request count still bursts. Pace it by counting
+// real /api/auth/* requests and waiting before an action would breach a
+// safe budget; the margin below 20 absorbs those refetch bursts.
 const AUTH_BUDGET = 15
 const authHits: number[] = []
 
@@ -25,10 +26,14 @@ async function throttleAuth(page: Page) {
   }
 }
 
+// Programmatic dev-provider login: one GET seals the session cookie and
+// redirects home, a single /api/auth/* hit (the old /login UI helper cost
+// two). throttleAuth still gates it - the account-link clicks below are
+// UI auth navigations that also hit /api/auth/*, so the budget still
+// earns its keep - and the 1-request login leaves it more headroom.
 async function login(page: Page, user: string) {
   await throttleAuth(page)
-  await page.goto('/login')
-  await page.getByRole('link', { name: user, exact: true }).click()
+  await page.goto(`/api/auth/login?provider=dev&user=${user}`)
   await expect(page).toHaveURL(/\/$/)
 }
 

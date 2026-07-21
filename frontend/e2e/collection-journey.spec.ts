@@ -10,9 +10,34 @@ const customA = `Repro Alpha ${stamp}`
 const customB = `Repro Beta ${stamp}`
 const viewName = `View ${stamp}`
 
+// Pace the shared /api/* bucket. The gateway caps /api/* at 300 requests per
+// 60s per IP (deploy/charts/bff/values.yaml apiPerMinute) and the whole
+// serial suite shares one bucket, a fixed window anchored at its first
+// request (APISIX limit-count, policy local). This is the heaviest single
+// spec (~190 app requests in a few seconds - the full add/price/reorder/
+// insights/delete journey), and with the old 63s drains gone it runs back to
+// back with currency and submissions. collection-journey + currency alone
+// (~190 + ~67) share one 60s window and cannot be separated without a
+// minute-long wait, so that pair is the suite's floor (~260); the pacing here
+// plus currency's keeps submissions out of that window instead, so the worst
+// window holds only collection-journey + currency and never trips the 300
+// cap. Seconds-scale settles, not the old minute-long drains.
+const API_PACE_MS = 26_000
+async function paceApiBucket() {
+  await new Promise((resolve) => setTimeout(resolve, API_PACE_MS))
+}
+// afterAll hooks default to a 30s timeout; lift it so the settle fits.
+test.afterAll(async () => {
+  test.setTimeout(API_PACE_MS + 10_000)
+  await paceApiBucket()
+})
+
+// Programmatic dev-provider login: one GET seals the session cookie and
+// redirects home, a single /api/auth/* hit (the old /login UI helper cost
+// two). The gateway caps /api/auth/* at 20 per 60s per IP across the
+// shared serial suite; one hit per login keeps every window well under it.
 async function login(page: Page) {
-  await page.goto('/login')
-  await page.getByRole('link', { name: 'bob', exact: true }).click()
+  await page.goto('/api/auth/login?provider=dev&user=bob')
   await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
 }
 
@@ -222,7 +247,6 @@ test('collection journey: add, edit, price, pin, reorder, views, insights, recom
   const board = page.getByRole('region', { name: 'Backlog order' })
   await expect(board).toBeVisible()
   const handleA = board.getByRole('button', { name: `Drag ${customA}` })
-  const targetB = board.getByRole('button', { name: `Drag ${customB}` })
   // Pre-drag order: A is above B (backlog rank appends in creation
   // order), so the post-drag check below reflects a real move and not
   // the starting layout. allTextContents does not auto-wait, so gate on
@@ -233,12 +257,27 @@ test('collection journey: add, edit, price, pin, reorder, views, insights, recom
   const beforeB = beforeTexts.findIndex((t) => t.includes(customB))
   expect(beforeA).toBeGreaterThanOrEqual(0)
   expect(beforeA).toBeLessThan(beforeB)
+  // Scroll targetB into view before measuring: an extra backlog row (a
+  // manually-added entry can share bob's backlog on the long-lived dev stack)
+  // can push the last row to the viewport fold, and a drop aimed past a
+  // clipped row lands outside the viewport where the pointer never lands on
+  // it, leaving over==null and a no-op drop.
+  const rowBLoc = board.getByRole('listitem').filter({ hasText: customB })
+  await rowBLoc.scrollIntoViewIfNeeded()
   const from = await handleA.boundingBox()
-  const to = await targetB.boundingBox()
-  if (!from || !to) throw new Error('drag handles not visible')
-  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+  const rowB = await rowBLoc.boundingBox()
+  if (!from || !rowB) throw new Error('drag handles not visible')
+  // Drag handles are left-aligned and closestCenter picks the droppable
+  // nearest the dragged row's center, so stay in the handle column (a
+  // horizontal excursion shoves the row out of the list -> over==null) and
+  // sink past targetB's midpoint. Nudge first to arm the PointerSensor, step
+  // down the column to targetB's lower edge, then settle before release.
+  const dragX = from.x + from.width / 2
+  await page.mouse.move(dragX, from.y + from.height / 2)
   await page.mouse.down()
-  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2 + 10, { steps: 12 })
+  await page.mouse.move(dragX, from.y + from.height / 2 + 8)
+  await page.mouse.move(dragX, rowB.y + rowB.height - 4, { steps: 20 })
+  await page.mouse.move(dragX, rowB.y + rowB.height - 4)
   await page.mouse.up()
   // The write is server-side: reload and the order holds.
   await page.reload()
