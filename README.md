@@ -140,11 +140,15 @@ against AWS Secrets Manager in the documented production path.
 All services and features to date are complete and verified end to end
 by Playwright journeys, per-service test suites, and bruno flows: auth
 and user, the APISIX/bff edge, enrichment (catalog, matching, pricing,
-per-region release dates), the role-gated admin page, collection, the
-full SPA, and observability with runbooks. Stub provider mode remains
-the credential-less default; real IGDB and PriceCharting keys have been
-exercised live in dev. Frontend still needs style work and cleaner user
-flows.
+per-region release dates), the role-gated admin page, catalog
+submissions (user-submitted custom entries reviewed into a shared
+community catalog, with in-place promotion when providers gain the
+item), with submission-approval banners, user cover images,
+unified search results, and alias-aware platform canonicalization,
+collection, the full SPA, and observability with runbooks. Stub
+provider mode remains the credential-less default; real IGDB and
+PriceCharting keys have been exercised live in dev. Frontend still
+needs style work and cleaner user flows.
 
 ## License
 

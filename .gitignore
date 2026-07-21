@@ -3,6 +3,7 @@
 # the bff's committed placeholder bundle, which ships embedded in the
 # binary and is overwritten by the real build inside the image.
 /frontend/dist/
+/frontend/.task/
 /.task/
 
 # Test artifacts (Go coverage profiles written per-module by
