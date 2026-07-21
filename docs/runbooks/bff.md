@@ -110,7 +110,10 @@ return 200 with no dependency checks. That is deliberate: the bff has no hard
 runtime dependencies (denylist and caches fail open, downstream calls degrade
 per-request with 502s), and the only public service must not unpublish itself
 while Valkey is unreachable. There is no migrate mode, no init
-container, and no database.
+container, and no database. The probes are a pod-only surface: kubelet hits
+them directly, and the gateway answers 404 on both paths instead of proxying
+them (the `internal-probes` rule in the bff ApisixRoute), so probing the
+deployed bff means `kubectl`, not `curl :8090/healthz`.
 
 Task targets: `task run` / `task down` for the stack, `task bff:gen` (or root
 `task gen`) to regenerate server stubs and the four typed clients from

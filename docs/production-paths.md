@@ -17,7 +17,10 @@ smoothing.
 
 MongoDB moves to MongoDB Atlas on AWS via PrivateLink, explicitly NOT
 DocumentDB: its Mongo 5.0-subset API has no time-series collections,
-and price_snapshots is one.
+and price_snapshots is one. The enrichment chart already carries the
+seam: `mongo.enabled=false` skips the in-cluster mongo and its CA
+volume and requires `env.mongoUrl` (creds-less; MONGO_USERNAME and
+MONGO_PASSWORD keep riding the secret).
 
 Valkey moves to ElastiCache running the Valkey engine, per service.
 
@@ -75,9 +78,11 @@ be overridden in both apisix.admin.credentials.admin and the
 ingress-controller adminKey together, since the two have to match.
 etcd goes from a single dev replica to 3 replicas for quorum. The
 admission webhook needs APISIX >= 3.17 to validate configs before they
-are admitted. The bff NetworkPolicy's gateway admission should tighten
-from namespace-wide to an APISIX podSelector, so only the gateway's own
-pods can reach the bff.
+are admitted. The bff NetworkPolicy's gateway admission is already
+pod-scoped (namespace plus an APISIX podSelector), and the gateway
+answers 404 on /healthz and /readyz instead of proxying them; note the
+dev cluster's CNI (kindnet) does not enforce NetworkPolicies, so the
+policies are proven by manifest, not by dev-cluster behavior.
 
 ## TLS
 
