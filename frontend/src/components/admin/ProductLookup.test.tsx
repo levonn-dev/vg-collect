@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../test/fixtures'
 import ProductLookup from './ProductLookup'
@@ -32,6 +32,31 @@ it('fetches a product by id and shows its mapping state with fix actions', async
   expect(await screen.findByText('Chrono Trigger')).toBeInTheDocument()
   expect(screen.getByLabelText('Fix mapping for Chrono Trigger')).toBeInTheDocument()
   expect(screen.getByText(/match 90%/i)).toBeInTheDocument()
+})
+
+it('shows a pending line while the lookup is in flight', async () => {
+  const user = userEvent.setup()
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise(() => {})))
+  renderLookup()
+  await user.type(screen.getByRole('textbox', { name: 'Product id' }), '4242')
+  await user.click(screen.getByRole('button', { name: 'Look up' }))
+  expect(await screen.findByText('Looking up...')).toBeInTheDocument()
+})
+
+it('re-running the same id refetches the product', async () => {
+  const user = userEvent.setup()
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
+    id: '4242', type: 'game', name: 'Chrono Trigger',
+    platform: { igdb_platform_id: 6, name: 'SNES' },
+    created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+  }))
+  vi.stubGlobal('fetch', fetchMock)
+  renderLookup()
+  await user.type(screen.getByRole('textbox', { name: 'Product id' }), '4242')
+  await user.click(screen.getByRole('button', { name: 'Look up' }))
+  expect(await screen.findByText('Chrono Trigger')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Look up' }))
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
 })
 
 it('renders a plain message when the id is unknown', async () => {

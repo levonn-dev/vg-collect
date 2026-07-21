@@ -36,7 +36,14 @@ export default function ProductLookup() {
         className="mt-2 flex gap-2"
         onSubmit={(e) => {
           e.preventDefault()
-          setId(input.trim())
+          const next = input.trim()
+          // Resubmitting the id already shown is a refresh request; a
+          // same-value setId would be a no-op and serve stale cache.
+          if (next === id) {
+            void product.refetch()
+          } else {
+            setId(next)
+          }
         }}
       >
         <input
@@ -55,6 +62,7 @@ export default function ProductLookup() {
           Look up
         </button>
       </form>
+      {product.isFetching && <p className="mt-2 text-sm text-gray-500">Looking up...</p>}
       {product.isError && (
         <p role="alert" className="mt-2 text-sm text-red-700">
           {product.error instanceof ApiError && product.error.status === 404

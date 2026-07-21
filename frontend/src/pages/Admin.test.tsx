@@ -19,31 +19,60 @@ function renderAdmin() {
   )
 }
 
-afterEach(() => vi.unstubAllGlobals())
+// Fetch is routed per endpoint (first matching prefix wins) so each
+// test declares exactly the calls it expects; a URL nothing stubbed
+// is recorded and fails the test in afterEach.
+let unstubbed: string[] = []
+function stubFetch(routes: Record<string, unknown>) {
+  const impl = vi.fn().mockImplementation((url: string) => {
+    const hit = Object.entries(routes).find(([prefix]) => String(url).startsWith(prefix))
+    if (!hit) {
+      unstubbed.push(String(url))
+      return Promise.reject(new Error(`unstubbed fetch: ${String(url)}`))
+    }
+    return Promise.resolve(jsonResponse(200, hit[1]))
+  })
+  vi.stubGlobal('fetch', impl)
+  return impl
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  const missed = unstubbed
+  unstubbed = []
+  expect(missed).toEqual([])
+})
 
 const adminMe = {
   id: 'u1', email: 'admin@example.test', display_name: 'admin', roles: ['user', 'admin'],
 }
+const emptyProducts = { products: [], total_count: 0 }
 
 it('renders the admin console for the admin role', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, adminMe)))
+  stubFetch({
+    '/api/me': adminMe,
+    '/api/admin/products/unmatched': emptyProducts,
+    '/api/admin/products/promote-candidates': emptyProducts,
+  })
   renderAdmin()
   expect(await screen.findByRole('heading', { name: 'Admin' })).toBeInTheDocument()
 })
 
-it('redirects non-admins home without flashing admin UI', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { ...adminMe, roles: ['user'] })))
+it('redirects non-admins home without fetching admin data', async () => {
+  stubFetch({ '/api/me': { ...adminMe, roles: ['user'] } })
   renderAdmin()
   expect(await screen.findByText('home-page')).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Admin' })).not.toBeInTheDocument()
 })
 
 it('renders two tabs and switches to Submissions', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    if (url === '/api/me') return Promise.resolve(jsonResponse(200, adminMe))
-    if (url.startsWith('/api/admin/submissions')) return Promise.resolve(jsonResponse(200, { submissions: [], total_count: 0 }))
-    return Promise.resolve(jsonResponse(200, { products: [], total_count: 0 }))
-  }))
+  stubFetch({
+    '/api/me': adminMe,
+    '/api/admin/products/unmatched': emptyProducts,
+    '/api/admin/products/promote-candidates': emptyProducts,
+    '/api/admin/products/community': emptyProducts,
+    '/api/admin/submissions': { submissions: [], total_count: 0 },
+  })
   renderAdmin()
   await userEvent.click(await screen.findByRole('tab', { name: 'Submissions' }))
   expect(await screen.findByText('0 pending submissions')).toBeInTheDocument()
