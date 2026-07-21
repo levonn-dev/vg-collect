@@ -1299,6 +1299,36 @@ func TestSubmissions_LifecycleCapsAndQueue(t *testing.T) {
 	}
 }
 
+// TestCountAllPendingSubmissions pins the review-queue gauge query:
+// pending rows count across users, resolved rows do not.
+func TestCountAllPendingSubmissions(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	userA, userB := uuid.New(), uuid.New()
+
+	if n, err := s.CountAllPendingSubmissions(ctx); err != nil || n != 0 {
+		t.Fatalf("empty = %d (%v), want 0", n, err)
+	}
+	entryA := mustCreate(t, s, customEntry(userA), nil)
+	entryB := mustCreate(t, s, customEntry(userB), nil)
+	if _, err := s.CreateSubmission(ctx, userA, entryA.ID); err != nil {
+		t.Fatal(err)
+	}
+	subB, err := s.CreateSubmission(ctx, userB, entryB.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.CountAllPendingSubmissions(ctx); err != nil || n != 2 {
+		t.Fatalf("two users pending = %d (%v), want 2", n, err)
+	}
+	if _, err := s.RejectSubmission(ctx, subB.ID, "not a shared item"); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.CountAllPendingSubmissions(ctx); err != nil || n != 1 {
+		t.Fatalf("after reject = %d (%v), want 1", n, err)
+	}
+}
+
 // TestApproveSubmission_PreservesUserOwnedFields guards ApproveSubmission's
 // documented contract - "the entry keeps every user-owned field
 // (acquisition, tags, rank, pricing)" - against a regression that widens

@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
 	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
@@ -58,6 +61,7 @@ type Store interface {
 	CancelSubmission(ctx context.Context, userID, entryID uuid.UUID) error
 	GetSubmission(ctx context.Context, id uuid.UUID) (store.Submission, error)
 	CountPendingSubmissions(ctx context.Context, userID uuid.UUID) (int64, error)
+	CountAllPendingSubmissions(ctx context.Context) (int64, error)
 	CountSubmissionsSince(ctx context.Context, userID uuid.UUID, since time.Time) (int64, error)
 	ListPendingSubmissions(ctx context.Context, limit, offset int) ([]store.SubmissionProposal, int64, error)
 	RejectSubmission(ctx context.Context, id uuid.UUID, reason string) (store.Submission, error)
@@ -107,16 +111,73 @@ type Handlers struct {
 	cache        Cache
 	logger       *slog.Logger
 	dashboardTTL time.Duration
+
+	// Domain instruments; nil when registration failed (each emission
+	// site guards the nil).
+	pricingCompose   metric.Int64Counter
+	cacheLookups     metric.Int64Counter
+	cacheFailOpen    metric.Int64Counter
+	submissionEvents metric.Int64Counter
 }
 
-// New builds a Handlers wired to the given collaborators.
+// New builds a Handlers wired to the given collaborators. The OTel
+// meter is best-effort: an instrument registration failure is logged
+// but never prevents startup.
 func New(st Store, enrich Enrichment, c Cache, opts Options) *Handlers {
-	return &Handlers{
+	m := otel.Meter("github.com/levonn-dev/vg-collect/services/collection")
+	counter := func(name, desc, unit string) metric.Int64Counter {
+		ctr, err := m.Int64Counter(name, metric.WithDescription(desc), metric.WithUnit(unit))
+		if err != nil {
+			opts.Logger.Error("counter unavailable", "name", name, "err", err)
+		}
+		return ctr
+	}
+	h := &Handlers{
 		store:        st,
 		enrichment:   enrich,
 		cache:        c,
 		logger:       opts.Logger,
 		dashboardTTL: opts.DashboardCacheTTL,
+		pricingCompose: counter("vg.collection.pricing.compose",
+			"Read-time value compositions that called enrichment for prices, by surface and outcome",
+			"{request}"),
+		cacheLookups: counter("vg.collection.cache.lookups",
+			"Dashboard and value-history cache reads, split hit/miss",
+			"{lookup}"),
+		cacheFailOpen: counter("vg.collection.cache.fail_open",
+			"Valkey operations that failed and were failed open",
+			"{event}"),
+		submissionEvents: counter("vg.collection.submissions.events",
+			"Catalog submission lifecycle transitions",
+			"{event}"),
+	}
+	registerPendingGauge(m, st, opts.Logger)
+	return h
+}
+
+// registerPendingGauge reports the all-users pending submission count
+// (the admin review backlog) on every collection cycle. A nil store
+// (router-only construction) registers nothing.
+func registerPendingGauge(m metric.Meter, st Store, logger *slog.Logger) {
+	if st == nil {
+		return
+	}
+	pending, err := m.Int64ObservableGauge("vg.collection.submissions.pending",
+		metric.WithDescription("Catalog submissions awaiting an admin verdict, across all users"),
+		metric.WithUnit("{submission}"))
+	if err != nil {
+		logger.Error("pending-submissions gauge unavailable", "err", err)
+		return
+	}
+	if _, err := m.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
+		n, err := st.CountAllPendingSubmissions(ctx)
+		if err != nil {
+			return err
+		}
+		o.ObserveInt64(pending, n)
+		return nil
+	}, pending); err != nil {
+		logger.Error("pending-submissions gauge unavailable", "err", err)
 	}
 }
 
@@ -139,9 +200,62 @@ func problem(w http.ResponseWriter, r *http.Request, status int, code, detail st
 }
 
 // failOpen records a Valkey failure the caller is about to treat as a
-// cache miss.
+// cache miss (log + metric; the service dashboard watches the metric).
 func (h *Handlers) failOpen(ctx context.Context, op string, err error) {
 	h.logger.WarnContext(ctx, "valkey unavailable; failing open", "op", op, "err", err)
+	if h.cacheFailOpen != nil {
+		h.cacheFailOpen.Add(ctx, 1, metric.WithAttributes(attribute.String("op", op)))
+	}
+}
+
+// composeEvent counts one read-time value composition that reached
+// enrichment; err classifies the outcome (ok or degraded). Requests
+// that price nothing never get here, keeping degraded/(ok+degraded)
+// a clean enrichment-hop failure rate.
+func (h *Handlers) composeEvent(ctx context.Context, op string, err error) {
+	if h.pricingCompose == nil {
+		return
+	}
+	outcome := "ok"
+	if err != nil {
+		outcome = "degraded"
+	}
+	h.pricingCompose.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("op", op), attribute.String("outcome", outcome)))
+}
+
+// cacheLookup counts a cache GET as hit or miss. The surface label is
+// keyed "cache" (not "op") to match the bff's lookups counter, so one
+// key groups cache hit ratios across services; "op" stays the
+// operation key on the fail-open counter. An errored GET is a miss
+// here and additionally a fail-open event at the failOpen site.
+func (h *Handlers) cacheLookup(ctx context.Context, cache string, hit bool) {
+	if h.cacheLookups == nil {
+		return
+	}
+	outcome := "miss"
+	if hit {
+		outcome = "hit"
+	}
+	h.cacheLookups.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("cache", cache), attribute.String("outcome", outcome)))
+}
+
+// submissionEvent counts one submission lifecycle transition
+// (created, cancelled, approved, rejected).
+func (h *Handlers) submissionEvent(ctx context.Context, event string) {
+	if h.submissionEvents == nil {
+		return
+	}
+	h.submissionEvents.Add(ctx, 1, metric.WithAttributes(attribute.String("event", event)))
+}
+
+// internalError answers a 500 and logs its cause, which the problem
+// body deliberately does not carry; without this line the reason for
+// a 500 exists nowhere.
+func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, detail string, err error) {
+	h.logger.ErrorContext(r.Context(), "internal error", "detail", detail, "err", err)
+	problem(w, r, http.StatusInternalServerError, "internal", detail)
 }
 
 // caller resolves the authenticated caller: the JWT subject as the
@@ -156,7 +270,7 @@ func (h *Handlers) caller(w http.ResponseWriter, r *http.Request) (uuid.UUID, st
 	}
 	id, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "token subject is not a user id")
+		h.internalError(w, r, "token subject is not a user id", err)
 		return uuid.Nil, "", false
 	}
 	return id, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), true

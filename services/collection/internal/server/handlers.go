@@ -460,6 +460,7 @@ func (h *Handlers) respondEntry(w http.ResponseWriter, r *http.Request, bearer s
 		value = e.CustomValueCents
 	} else if id := effectiveProductID(e.PricingMode, e.ProductID, e.PricingProductID); id != nil {
 		prices, err := h.enrichment.BatchPrices(r.Context(), bearer, []uuid.UUID{*id})
+		h.composeEvent(r.Context(), "entry", err)
 		if err != nil {
 			h.logger.WarnContext(r.Context(), "value composition unavailable", "err", err)
 		} else if p, ok := prices[id.String()]; ok {
@@ -606,7 +607,7 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "create failed")
+		h.internalError(w, r, "create failed", err)
 		return
 	}
 	h.invalidateDashboard(r.Context(), userID)
@@ -625,7 +626,7 @@ func (h *Handlers) GetEntry(w http.ResponseWriter, r *http.Request, entryId open
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		h.internalError(w, r, "get failed", err)
 		return
 	}
 	h.respondEntry(w, r, bearer, e, http.StatusOK)
@@ -646,7 +647,7 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		h.internalError(w, r, "get failed", err)
 		return
 	}
 
@@ -831,7 +832,7 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "update failed")
+		h.internalError(w, r, "update failed", err)
 		return
 	}
 	h.invalidateDashboard(r.Context(), userID)
@@ -850,7 +851,7 @@ func (h *Handlers) DeleteEntry(w http.ResponseWriter, r *http.Request, entryId o
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "delete failed")
+		h.internalError(w, r, "delete failed", err)
 		return
 	}
 	h.invalidateDashboard(r.Context(), userID)
@@ -891,7 +892,7 @@ func (h *Handlers) ReorderEntry(w http.ResponseWriter, r *http.Request, entryId 
 		problem(w, r, http.StatusConflict, "conflicting_order", "the neighbors do not straddle; refresh the list and retry")
 		return
 	case err != nil:
-		problem(w, r, http.StatusInternalServerError, "internal", "reorder failed")
+		h.internalError(w, r, "reorder failed", err)
 		return
 	}
 	h.invalidateDashboard(r.Context(), userID)
@@ -923,7 +924,7 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request, entr
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		h.internalError(w, r, "get failed", err)
 		return
 	}
 	if entry.ProductID != nil {
@@ -932,20 +933,22 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request, entr
 	}
 	pending, err := h.store.CountPendingSubmissions(r.Context(), userID)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "count failed")
+		h.internalError(w, r, "count failed", err)
 		return
 	}
 	if pending >= submissionPendingCap {
+		h.logger.WarnContext(r.Context(), "submission cap hit", "user_id", userID, "cap", "pending")
 		problem(w, r, http.StatusTooManyRequests, "too_many_pending_submissions",
 			fmt.Sprintf("at most %d submissions may be pending; wait for review or cancel one", submissionPendingCap))
 		return
 	}
 	recent, err := h.store.CountSubmissionsSince(r.Context(), userID, time.Now().UTC().Add(-submissionRateWindow))
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "count failed")
+		h.internalError(w, r, "count failed", err)
 		return
 	}
 	if recent >= submissionDailyCap {
+		h.logger.WarnContext(r.Context(), "submission cap hit", "user_id", userID, "cap", "rate")
 		problem(w, r, http.StatusTooManyRequests, "submission_rate_limited",
 			fmt.Sprintf("at most %d submissions per rolling 24h; try again later", submissionDailyCap))
 		return
@@ -956,9 +959,11 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request, entr
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "create failed")
+		h.internalError(w, r, "create failed", err)
 		return
 	}
+	h.logger.InfoContext(r.Context(), "submission created", "submission_id", sub.ID, "entry_id", sub.EntryID)
+	h.submissionEvent(r.Context(), "created")
 	writeJSON(w, http.StatusCreated, toAPISubmission(sub))
 }
 
@@ -972,7 +977,7 @@ func (h *Handlers) GetSubmission(w http.ResponseWriter, r *http.Request, entryId
 		problem(w, r, http.StatusNotFound, "entry_not_found", "no such entry")
 		return
 	} else if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		h.internalError(w, r, "get failed", err)
 		return
 	}
 	sub, err := h.store.LatestSubmissionForEntry(r.Context(), userID, uuid.UUID(entryId))
@@ -981,7 +986,7 @@ func (h *Handlers) GetSubmission(w http.ResponseWriter, r *http.Request, entryId
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		h.internalError(w, r, "get failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toAPISubmission(sub))
@@ -1002,7 +1007,7 @@ func (h *Handlers) AckSubmissionResolution(w http.ResponseWriter, r *http.Reques
 		problem(w, r, http.StatusNotFound, "entry_not_found", "no such entry")
 		return
 	} else if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		h.internalError(w, r, "get failed", err)
 		return
 	}
 	sub, err := h.store.LatestApprovedSubmissionForEntry(r.Context(), userID, uuid.UUID(entryId))
@@ -1011,12 +1016,12 @@ func (h *Handlers) AckSubmissionResolution(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		h.internalError(w, r, "get failed", err)
 		return
 	}
 	if sub.ResolutionAckAt == nil {
 		if err := h.store.AckSubmissionResolution(r.Context(), sub.ID); err != nil {
-			problem(w, r, http.StatusInternalServerError, "internal", "ack failed")
+			h.internalError(w, r, "ack failed", err)
 			return
 		}
 	}
@@ -1035,9 +1040,10 @@ func (h *Handlers) CancelSubmission(w http.ResponseWriter, r *http.Request, entr
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "cancel failed")
+		h.internalError(w, r, "cancel failed", err)
 		return
 	}
+	h.submissionEvent(r.Context(), "cancelled")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1266,7 +1272,7 @@ func (h *Handlers) ListEntries(w http.ResponseWriter, r *http.Request, params ap
 	}
 	entries, err := h.store.ListEntries(r.Context(), userID, f)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		h.internalError(w, r, "list failed", err)
 		return
 	}
 
@@ -1287,6 +1293,7 @@ func (h *Handlers) ListEntries(w http.ResponseWriter, r *http.Request, params ap
 			return
 		}
 		prices, err := h.enrichment.BatchPrices(r.Context(), bearer, ids)
+		h.composeEvent(r.Context(), "list", err)
 		if err != nil {
 			pricingAvailable = false
 			h.logger.WarnContext(r.Context(), "list value composition unavailable", "err", err)
@@ -1365,7 +1372,7 @@ func (h *Handlers) ListTags(w http.ResponseWriter, r *http.Request) {
 	}
 	tags, err := h.store.ListTags(r.Context(), userID)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		h.internalError(w, r, "list failed", err)
 		return
 	}
 	out := make([]api.Tag, len(tags))
@@ -1397,7 +1404,7 @@ func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "create failed")
+		h.internalError(w, r, "create failed", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toAPITag(tag))
@@ -1429,7 +1436,7 @@ func (h *Handlers) RenameTag(w http.ResponseWriter, r *http.Request, tagId opena
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "rename failed")
+		h.internalError(w, r, "rename failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toAPITag(tag))
@@ -1447,7 +1454,7 @@ func (h *Handlers) DeleteTag(w http.ResponseWriter, r *http.Request, tagId opena
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "delete failed")
+		h.internalError(w, r, "delete failed", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1481,7 +1488,7 @@ func viewBody(w http.ResponseWriter, r *http.Request) (api.ViewCreate, []byte, b
 func (h *Handlers) respondView(w http.ResponseWriter, r *http.Request, v store.View, status int) {
 	out, err := toAPIView(v)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "view encoding failed")
+		h.internalError(w, r, "view encoding failed", err)
 		return
 	}
 	writeJSON(w, status, out)
@@ -1495,14 +1502,14 @@ func (h *Handlers) ListViews(w http.ResponseWriter, r *http.Request) {
 	}
 	views, err := h.store.ListViews(r.Context(), userID)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		h.internalError(w, r, "list failed", err)
 		return
 	}
 	out := make([]api.SavedView, len(views))
 	for i, v := range views {
 		av, err := toAPIView(v)
 		if err != nil {
-			problem(w, r, http.StatusInternalServerError, "internal", "view encoding failed")
+			h.internalError(w, r, "view encoding failed", err)
 			return
 		}
 		out[i] = av
@@ -1526,7 +1533,7 @@ func (h *Handlers) CreateView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "create failed")
+		h.internalError(w, r, "create failed", err)
 		return
 	}
 	h.respondView(w, r, v, http.StatusCreated)
@@ -1552,7 +1559,7 @@ func (h *Handlers) UpdateView(w http.ResponseWriter, r *http.Request, viewId ope
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "update failed")
+		h.internalError(w, r, "update failed", err)
 		return
 	}
 	h.respondView(w, r, v, http.StatusOK)
@@ -1570,7 +1577,7 @@ func (h *Handlers) DeleteView(w http.ResponseWriter, r *http.Request, viewId ope
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "delete failed")
+		h.internalError(w, r, "delete failed", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1594,9 +1601,12 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params a
 	}
 	sub := userID.String()
 	if !f.Filtered() {
-		if body, err := h.cache.GetDashboard(r.Context(), sub); err != nil {
+		body, err := h.cache.GetDashboard(r.Context(), sub)
+		if err != nil {
 			h.failOpen(r.Context(), "dashboard_get", err)
-		} else if body != nil {
+		}
+		h.cacheLookup(r.Context(), "dashboard", body != nil)
+		if body != nil {
 			writeRawJSON(w, body)
 			return
 		}
@@ -1604,12 +1614,12 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params a
 
 	counts, err := h.store.DashboardCounts(r.Context(), userID, f)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "aggregation failed")
+		h.internalError(w, r, "aggregation failed", err)
 		return
 	}
 	rows, err := h.store.PricingRows(r.Context(), userID, f)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "aggregation failed")
+		h.internalError(w, r, "aggregation failed", err)
 		return
 	}
 
@@ -1633,6 +1643,7 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params a
 	pricing.PricedEntries = customPriced
 	if len(ids) > 0 {
 		prices, err := h.enrichment.BatchPrices(r.Context(), bearer, ids)
+		h.composeEvent(r.Context(), "dashboard", err)
 		if err != nil {
 			pricing.Available = false
 			h.logger.WarnContext(r.Context(), "dashboard pricing unavailable", "err", err)
@@ -1686,7 +1697,7 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params a
 	}
 	body, err := json.Marshal(dash)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "encoding failed")
+		h.internalError(w, r, "encoding failed", err)
 		return
 	}
 	if pricing.Available && !f.Filtered() {
@@ -1797,9 +1808,12 @@ func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sub := userID.String()
-	if body, err := h.cache.GetValueHistory(r.Context(), sub); err != nil {
+	body, err := h.cache.GetValueHistory(r.Context(), sub)
+	if err != nil {
 		h.failOpen(r.Context(), "value_history_get", err)
-	} else if body != nil {
+	}
+	h.cacheLookup(r.Context(), "value_history", body != nil)
+	if body != nil {
 		writeRawJSON(w, body)
 		return
 	}
@@ -1808,7 +1822,7 @@ func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 	// aggregate history, so no filter narrows this composition.
 	rows, err := h.store.PricingRows(r.Context(), userID, store.Filters{})
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "aggregation failed")
+		h.internalError(w, r, "aggregation failed", err)
 		return
 	}
 	var ids []uuid.UUID
@@ -1825,6 +1839,7 @@ func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 	if len(ids) > 0 {
 		var err error
 		series, err = h.enrichment.PriceHistory(r.Context(), bearer, ids, valueHistoryDays)
+		h.composeEvent(r.Context(), "value_history", err)
 		if err != nil {
 			vh.Available = false
 			h.logger.WarnContext(r.Context(), "value history unavailable", "err", err)
@@ -1834,9 +1849,9 @@ func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 		windowStart := time.Now().UTC().AddDate(0, 0, -valueHistoryDays)
 		vh.Points = ComposeValueSeries(rows, series, windowStart)
 	}
-	body, err := json.Marshal(vh)
+	body, err = json.Marshal(vh)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "encoding failed")
+		h.internalError(w, r, "encoding failed", err)
 		return
 	}
 	if vh.Available {
@@ -1858,7 +1873,7 @@ func (h *Handlers) CountProductReferences(w http.ResponseWriter, r *http.Request
 	}
 	n, err := h.store.CountEntriesByProduct(r.Context(), uuid.UUID(productId))
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "count failed")
+		h.internalError(w, r, "count failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, struct {
@@ -1889,7 +1904,7 @@ func (h *Handlers) ListSubmissions(w http.ResponseWriter, r *http.Request, param
 	}
 	rows, total, err := h.store.ListPendingSubmissions(r.Context(), limit, offset)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		h.internalError(w, r, "list failed", err)
 		return
 	}
 	page := api.AdminSubmissionsPage{Submissions: make([]api.AdminSubmission, 0, len(rows)), TotalCount: total}
@@ -1941,7 +1956,7 @@ func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submiss
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		h.internalError(w, r, "get failed", err)
 		return
 	}
 	if sub.Status != "pending" {
@@ -1961,16 +1976,19 @@ func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submiss
 			return
 		}
 		if err != nil {
-			problem(w, r, http.StatusInternalServerError, "internal", "reject failed")
+			h.internalError(w, r, "reject failed", err)
 			return
 		}
+		h.logger.InfoContext(r.Context(), "submission verdict",
+			"submission_id", out.ID, "entry_id", out.EntryID, "action", "reject")
+		h.submissionEvent(r.Context(), "rejected")
 		writeJSON(w, http.StatusOK, toAPISubmission(out))
 	case "approve_existing":
 		if body.ProductId == nil {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "approve_existing requires product_id")
 			return
 		}
-		h.adoptAndApprove(w, r, bearer, sub, *body.ProductId)
+		h.adoptAndApprove(w, r, bearer, sub, *body.ProductId, "approve_existing")
 	case "approve_new":
 		if body.Product == nil {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "approve_new requires product")
@@ -1991,12 +2009,12 @@ func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submiss
 				problem(w, r, http.StatusConflict, "submission_resolved", "another admin already resolved this submission")
 				return
 			} else if err != nil {
-				problem(w, r, http.StatusInternalServerError, "internal", "record failed")
+				h.internalError(w, r, "record failed", err)
 				return
 			}
 			productID = &minted.Id
 		}
-		h.adoptAndApprove(w, r, bearer, sub, *productID)
+		h.adoptAndApprove(w, r, bearer, sub, *productID, "approve_new")
 	default:
 		problem(w, r, http.StatusBadRequest, "invalid_body", "action must be approve_new, approve_existing or reject")
 	}
@@ -2004,8 +2022,9 @@ func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submiss
 
 // adoptAndApprove is the shared verdict tail: fetch the product,
 // snapshot it onto the submitter's entry, resolve the row - one
-// transaction for the last two.
-func (h *Handlers) adoptAndApprove(w http.ResponseWriter, r *http.Request, bearer string, sub store.Submission, productID uuid.UUID) {
+// transaction for the last two. action names the verdict arm for the
+// admin audit log.
+func (h *Handlers) adoptAndApprove(w http.ResponseWriter, r *http.Request, bearer string, sub store.Submission, productID uuid.UUID, action string) {
 	product, err := h.enrichment.GetProduct(r.Context(), bearer, productID)
 	if errors.Is(err, enrichmentclient.ErrUnknownProduct) {
 		problem(w, r, http.StatusNotFound, "unknown_product", "no such product in the catalog")
@@ -2021,7 +2040,7 @@ func (h *Handlers) adoptAndApprove(w http.ResponseWriter, r *http.Request, beare
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "entry load failed")
+		h.internalError(w, r, "entry load failed", err)
 		return
 	}
 	out, err := h.store.ApproveSubmission(r.Context(), sub.ID, catalogSnapshot(product, entry.Region))
@@ -2030,9 +2049,12 @@ func (h *Handlers) adoptAndApprove(w http.ResponseWriter, r *http.Request, beare
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "approve failed")
+		h.internalError(w, r, "approve failed", err)
 		return
 	}
+	h.logger.InfoContext(r.Context(), "submission verdict",
+		"submission_id", out.ID, "entry_id", out.EntryID, "action", action, "product_id", productID)
+	h.submissionEvent(r.Context(), "approved")
 	h.invalidateDashboard(r.Context(), sub.UserID)
 	writeJSON(w, http.StatusOK, toAPISubmission(out))
 }
@@ -2059,7 +2081,7 @@ func (h *Handlers) PurgeUserData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.PurgeUserData(r.Context(), userID); err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "purge failed")
+		h.internalError(w, r, "purge failed", err)
 		return
 	}
 	h.invalidateDashboard(r.Context(), userID)
@@ -2075,7 +2097,7 @@ func (h *Handlers) GetLibrarySummary(w http.ResponseWriter, r *http.Request) {
 	}
 	lib, err := h.store.LibrarySummary(r.Context(), userID)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "summary failed")
+		h.internalError(w, r, "summary failed", err)
 		return
 	}
 	games := make([]api.LibraryGame, len(lib))
@@ -2102,7 +2124,7 @@ func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 	refs, err := h.store.ListGameBackedRefs(r.Context())
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		h.internalError(w, r, "list failed", err)
 		return
 	}
 	byProduct := make(map[uuid.UUID][]store.GameEntryRef)
@@ -2130,6 +2152,8 @@ func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 			updated++
 		}
 	}
+	h.logger.InfoContext(r.Context(), "resnapshot complete",
+		"products_seen", seen, "products_failed", failed, "entries_updated", updated)
 	writeJSON(w, http.StatusOK, map[string]int{
 		"products_seen": seen, "products_failed": failed, "entries_updated": updated,
 	})
@@ -2189,7 +2213,7 @@ func (h *Handlers) InternalNormalizePlatforms(w http.ResponseWriter, r *http.Req
 	}
 	refs, err := h.store.ListNameOnlyPlatformEntries(r.Context())
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		h.internalError(w, r, "list failed", err)
 		return
 	}
 	var normalized, skipped int
@@ -2205,6 +2229,8 @@ func (h *Handlers) InternalNormalizePlatforms(w http.ResponseWriter, r *http.Req
 		}
 		normalized++
 	}
+	h.logger.InfoContext(r.Context(), "normalize-platforms complete",
+		"scanned", len(refs), "normalized", normalized, "skipped", skipped)
 	writeJSON(w, http.StatusOK, map[string]int{
 		"scanned": len(refs), "normalized": normalized, "skipped": skipped,
 	})

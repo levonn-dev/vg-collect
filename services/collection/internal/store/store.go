@@ -1273,6 +1273,18 @@ func (s *Store) CountPendingSubmissions(ctx context.Context, userID uuid.UUID) (
 	return n, nil
 }
 
+// CountAllPendingSubmissions serves the review-queue gauge: pending
+// rows across every user (the (status, created_at) index keeps it an
+// index scan).
+func (s *Store) CountAllPendingSubmissions(ctx context.Context) (int64, error) {
+	var n int64
+	if err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM catalog_submissions WHERE status = 'pending'`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("store: count all pending submissions: %w", err)
+	}
+	return n, nil
+}
+
 // CountSubmissionsSince serves the rolling creation cap; every row
 // counts regardless of current status.
 func (s *Store) CountSubmissionsSince(ctx context.Context, userID uuid.UUID, since time.Time) (int64, error) {

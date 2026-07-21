@@ -70,6 +70,7 @@ type stubStore struct {
 	cancelSubmission                 func(ctx context.Context, userID, entryID uuid.UUID) error
 	getSubmission                    func(ctx context.Context, id uuid.UUID) (store.Submission, error)
 	countPendingSubmissions          func(ctx context.Context, userID uuid.UUID) (int64, error)
+	countAllPendingSubmissions       func(ctx context.Context) (int64, error)
 	countSubmissionsSince            func(ctx context.Context, userID uuid.UUID, since time.Time) (int64, error)
 	listPendingSubmissions           func(ctx context.Context, limit, offset int) ([]store.SubmissionProposal, int64, error)
 	rejectSubmission                 func(ctx context.Context, id uuid.UUID, reason string) (store.Submission, error)
@@ -258,6 +259,12 @@ func (s *stubStore) CountPendingSubmissions(ctx context.Context, userID uuid.UUI
 		panic("unexpected CountPendingSubmissions")
 	}
 	return s.countPendingSubmissions(ctx, userID)
+}
+func (s *stubStore) CountAllPendingSubmissions(ctx context.Context) (int64, error) {
+	if s.countAllPendingSubmissions == nil {
+		panic("unexpected CountAllPendingSubmissions")
+	}
+	return s.countAllPendingSubmissions(ctx)
 }
 func (s *stubStore) CountSubmissionsSince(ctx context.Context, userID uuid.UUID, since time.Time) (int64, error) {
 	if s.countSubmissionsSince == nil {
