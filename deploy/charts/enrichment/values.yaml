@@ -9,6 +9,10 @@ env:
   jwksUrl: http://auth:8080/.well-known/jwks.json
   jwtIssuer: vg-collect-auth
   jwtAudience: vg-collect
+  # External MongoDB URL (creds-less, e.g. mongodb+srv://...); read only
+  # when mongo.enabled is false. Credentials still ride MONGO_USERNAME
+  # (mongo.username) + MONGO_PASSWORD (secret), composed service-side.
+  mongoUrl: ""
   valkeyUrl: rediss://enrichment-valkey:6379/0
   searchCacheTtl: 24h
   productCacheTtl: 5m
@@ -47,7 +51,7 @@ resources:
   limits: { memory: 128Mi }
 
 mongo:
-  enabled: true            # disabling requires a follow-up edit: an env.mongoUrl value and a gated mongo-ca volume do not exist yet
+  enabled: true            # false = bring your own MongoDB (e.g. Atlas): set env.mongoUrl; the in-cluster mongo and its CA volume are not rendered
   image: mongo:8
   database: enrichment
   username: enrichment
