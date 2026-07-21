@@ -12,6 +12,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/cache"
 	"github.com/levonn-dev/vg-collect/services/enrichment/internal/fx"
@@ -131,6 +135,15 @@ type Handlers struct {
 	igdbRefreshAfter time.Duration
 	refreshSecrets   []string
 
+	// Domain instruments, registered best-effort in New; the emission
+	// helpers below guard the nils, so a telemetry hiccup never blocks
+	// serving (the bff cache counter set the pattern).
+	cacheFailOpen  metric.Int64Counter
+	searchRequests metric.Int64Counter
+	matchOutcomes  metric.Int64Counter
+	refreshItems   metric.Int64Counter
+	walkDuration   metric.Float64Histogram
+
 	// refreshing guards the walk: one at a time, concurrent triggers
 	// answer 409.
 	refreshing atomic.Bool
@@ -141,7 +154,7 @@ type Handlers struct {
 
 // New builds a Handlers wired to the given collaborators.
 func New(st Store, games GameProvider, prices PriceProvider, fxRates FXProvider, c Cache, opts Options) *Handlers {
-	return &Handlers{
+	h := &Handlers{
 		store:   st,
 		games:   games,
 		prices:  prices,
@@ -156,6 +169,37 @@ func New(st Store, games GameProvider, prices PriceProvider, fxRates FXProvider,
 
 		now: time.Now,
 	}
+	meter := otel.Meter("github.com/levonn-dev/vg-collect/services/enrichment")
+	var err error
+	if h.cacheFailOpen, err = meter.Int64Counter("vg.enrichment.cache.fail_open",
+		metric.WithDescription("Valkey operations that failed and were failed open"),
+		metric.WithUnit("{event}")); err != nil {
+		opts.Logger.Error("cache fail-open counter unavailable", "err", err)
+	}
+	if h.searchRequests, err = meter.Int64Counter("vg.enrichment.search.requests",
+		metric.WithDescription("Answered catalog searches by kind and answer source"),
+		metric.WithUnit("{request}")); err != nil {
+		opts.Logger.Error("search requests counter unavailable", "err", err)
+	}
+	if h.matchOutcomes, err = meter.Int64Counter("vg.enrichment.match.outcomes",
+		metric.WithDescription("Auto-match attempts by calling flow and outcome"),
+		metric.WithUnit("{attempt}")); err != nil {
+		opts.Logger.Error("match outcomes counter unavailable", "err", err)
+	}
+	if h.refreshItems, err = meter.Int64Counter("vg.enrichment.refresh.items",
+		metric.WithDescription("Nightly walk items by step and outcome"),
+		metric.WithUnit("{item}")); err != nil {
+		opts.Logger.Error("refresh items counter unavailable", "err", err)
+	}
+	// Explicit boundaries: the SDK defaults top out at 10s and would
+	// flatten every multi-minute walk into the last bucket.
+	if h.walkDuration, err = meter.Float64Histogram("vg.enrichment.refresh.walk.duration",
+		metric.WithDescription("Elapsed seconds per nightly walk step"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(1, 5, 15, 60, 300, 900, 1800)); err != nil {
+		opts.Logger.Error("walk duration histogram unavailable", "err", err)
+	}
+	return h
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -177,7 +221,46 @@ func problem(w http.ResponseWriter, r *http.Request, status int, code, detail st
 }
 
 // failOpen records a Valkey failure the caller is about to treat as a
-// cache miss.
+// cache miss (log + metric; the dashboard watches the metric by op).
 func (h *Handlers) failOpen(ctx context.Context, op string, err error) {
 	h.logger.WarnContext(ctx, "valkey unavailable; failing open", "op", op, "err", err)
+	if h.cacheFailOpen != nil {
+		h.cacheFailOpen.Add(ctx, 1, metric.WithAttributes(attribute.String("op", op)))
+	}
+}
+
+// countSearch records one answered user-facing search. SearchCatalog
+// answers only: the resolve-side cached listing search never counts.
+func (h *Handlers) countSearch(ctx context.Context, kind, source string) {
+	if h.searchRequests != nil {
+		h.searchRequests.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("kind", kind), attribute.String("source", source)))
+	}
+}
+
+// countMatch records one auto-match attempt's outcome; source names
+// the calling flow (resolve or rematch).
+func (h *Handlers) countMatch(ctx context.Context, source, outcome string) {
+	if h.matchOutcomes != nil {
+		h.matchOutcomes.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("source", source), attribute.String("outcome", outcome)))
+	}
+}
+
+// countRefreshItem records one walked item's outcome for a nightly
+// walk step.
+func (h *Handlers) countRefreshItem(ctx context.Context, step, outcome string) {
+	if h.refreshItems != nil {
+		h.refreshItems.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("step", step), attribute.String("outcome", outcome)))
+	}
+}
+
+// recordWalkDuration records one walk step's elapsed seconds. Every
+// step defers it, so an aborted or stopped-early step still reports
+// and the count series stays an honest the-step-ran signal.
+func (h *Handlers) recordWalkDuration(ctx context.Context, step string, seconds float64) {
+	if h.walkDuration != nil {
+		h.walkDuration.Record(ctx, seconds, metric.WithAttributes(attribute.String("step", step)))
+	}
 }

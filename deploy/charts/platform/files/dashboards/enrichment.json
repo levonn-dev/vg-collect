@@ -1,0 +1,419 @@
+{
+  "uid": "vg-enrichment",
+  "title": "Enrichment Service",
+  "schemaVersion": 39,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "tags": ["vg-collect"],
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Request rate by route",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name=\"enrichment\"}[$__rate_interval]))",
+          "legendFormat": "{{http_route}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "5xx ratio",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum (rate(http_server_request_duration_seconds_count{service_name=\"enrichment\",http_response_status_code=~\"5..\"}[5m])) / sum (rate(http_server_request_duration_seconds_count{service_name=\"enrichment\"}[5m]))",
+          "legendFormat": "5xx ratio",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Latency by route (p95/p99)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name=\"enrichment\"}[$__rate_interval])))",
+          "legendFormat": "p95 {{http_route}}",
+          "exemplar": true
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name=\"enrichment\"}[$__rate_interval])))",
+          "legendFormat": "p99 {{http_route}}",
+          "exemplar": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Errors by route and status",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name=\"enrichment\",http_response_status_code=~\"4..|5..\"}[$__rate_interval]))",
+          "legendFormat": "{{http_route}} {{http_response_status_code}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Goroutines",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "go_goroutine_count{service_name=\"enrichment\"}",
+          "legendFormat": "goroutines",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Heap used",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "go_memory_used_bytes{service_name=\"enrichment\"}",
+          "legendFormat": "heap",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Search answers by source",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (kind, source) (increase(vg_enrichment_search_requests_total[5m]))",
+          "legendFormat": "{{kind}} {{source}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Auto-match outcomes",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (source, outcome) (increase(vg_enrichment_match_outcomes_total[1h]))",
+          "legendFormat": "{{source}} {{outcome}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Refresh walk items by step and outcome",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (step, outcome) (increase(vg_enrichment_refresh_items_total[1h]))",
+          "legendFormat": "{{step}} {{outcome}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Refresh walk duration by step",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (step) (increase(vg_enrichment_refresh_walk_duration_seconds_sum[1h]))",
+          "legendFormat": "{{step}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Valkey fail-open events",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (op) (increase(vg_enrichment_cache_fail_open_total[5m]))",
+          "legendFormat": "{{op}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Valkey client pool connections",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "vg_valkeykit_pool_connections{service_name=\"enrichment\"}",
+          "legendFormat": "open",
+          "exemplar": false
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "vg_valkeykit_pool_connections_idle{service_name=\"enrichment\"}",
+          "legendFormat": "idle",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Valkey pool reuse ratio",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(vg_valkeykit_pool_hits_total{service_name=\"enrichment\"}[5m]) / (rate(vg_valkeykit_pool_hits_total{service_name=\"enrichment\"}[5m]) + rate(vg_valkeykit_pool_misses_total{service_name=\"enrichment\"}[5m]))",
+          "legendFormat": "reuse ratio",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Valkey pool timeouts",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 56 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "increase(vg_valkeykit_pool_timeouts_total{service_name=\"enrichment\"}[5m])",
+          "legendFormat": "timeouts",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Mongo up",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 56 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "mongodb_up{service=\"enrichment-mongo\"}",
+          "legendFormat": "{{service}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Mongo operations",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 64 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (legacy_op_type) (rate(mongodb_ss_opcounters{service=\"enrichment-mongo\"}[$__rate_interval]))",
+          "legendFormat": "{{legacy_op_type}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Valkey server memory",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 64 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "redis_memory_used_bytes{service=\"enrichment-valkey\"}",
+          "legendFormat": "{{service}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Valkey keyspace hit ratio",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 72 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(redis_keyspace_hits_total{service=\"enrichment-valkey\"}[5m]) / (rate(redis_keyspace_hits_total{service=\"enrichment-valkey\"}[5m]) + rate(redis_keyspace_misses_total{service=\"enrichment-valkey\"}[5m]))",
+          "legendFormat": "{{service}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "CPU by pod",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 80 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"vg-collect\", pod=~\"enrichment.*\", container!=\"\"}[$__rate_interval]))",
+          "legendFormat": "{{pod}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Working-set memory by pod",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 80 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"vg-collect\", pod=~\"enrichment.*\", container!=\"\"})",
+          "legendFormat": "{{pod}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Restarts (15m windows) by pod",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 88 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"vg-collect\", pod=~\"enrichment.*\"}[15m]))",
+          "legendFormat": "{{pod}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "logs",
+      "title": "Recent error logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 96 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{service_name=\"enrichment\"} | severity_text=\"ERROR\""
+        }
+      ]
+    }
+  ]
+}

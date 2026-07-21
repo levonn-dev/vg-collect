@@ -63,6 +63,7 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 		if err := json.Unmarshal(body, &out); err != nil {
 			h.failOpen(ctx, "search_decode", err)
 		} else {
+			h.countSearch(ctx, kind, "cache")
 			h.interleaveCommunityResults(ctx, w, r, kind, q, out)
 			return
 		}
@@ -89,6 +90,9 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 			return
 		}
 		results = localResults(kind, local)
+		h.countSearch(ctx, kind, "degraded")
+	} else {
+		h.countSearch(ctx, kind, "provider")
 	}
 	if results == nil {
 		results = []api.SearchResult{}
@@ -749,7 +753,7 @@ func (h *Handlers) resolveGame(w http.ResponseWriter, r *http.Request, req api.R
 		h.resolveError(w, r, err)
 		return
 	}
-	meta := h.autoMatchGame(ctx, g.Name, deref(req.MatchHint), platform.Name)
+	meta := h.autoMatchGame(ctx, "resolve", g.Name, deref(req.MatchHint), platform.Name)
 	if meta != nil {
 		key.PCProductID = meta.PCProductID
 	}
@@ -927,10 +931,12 @@ func (h *Handlers) searchPCListingsCached(ctx context.Context, q string) ([]api.
 // provider is degraded or nothing same-console clears the threshold
 // (never guessed - the resolve then lands on the unmatched member).
 // The winner's prices ride from the search row (cache-aged at worst;
-// the daily walk refreshes them).
-func (h *Handlers) autoMatchGame(ctx context.Context, name, hint, platformName string) *store.PCMeta {
+// the daily walk refreshes them). source names the calling flow
+// (resolve or rematch) on the outcome counter.
+func (h *Handlers) autoMatchGame(ctx context.Context, source, name, hint, platformName string) *store.PCMeta {
 	results, err := h.searchPCListingsCached(ctx, name)
 	if err != nil {
+		h.countMatch(ctx, source, "provider_down")
 		h.logger.WarnContext(ctx, "auto-match skipped: price provider unavailable", "name", name, "err", err)
 		return nil
 	}
@@ -943,6 +949,7 @@ func (h *Handlers) autoMatchGame(ctx context.Context, name, hint, platformName s
 	}
 	res := match.Best(name, hint, platformName, cands)
 	if !res.OK {
+		h.countMatch(ctx, source, "below_threshold")
 		h.logger.InfoContext(ctx, "auto-match below threshold; landing on the unmatched member",
 			"name", name, "platform", platformName, "hint", hint,
 			"best_confidence", res.Confidence, "threshold", matchThreshold)
@@ -950,6 +957,7 @@ func (h *Handlers) autoMatchGame(ctx context.Context, name, hint, platformName s
 	}
 	for _, r := range results {
 		if r.PcProductId != nil && *r.PcProductId == res.PCProductID {
+			h.countMatch(ctx, source, "matched")
 			return &store.PCMeta{
 				PCProductID: res.PCProductID, PCName: res.PCName, ConsoleName: res.ConsoleName,
 				MatchConfidence: res.Confidence, Verified: false,
@@ -1364,7 +1372,7 @@ func (h *Handlers) TriggerRefresh(w http.ResponseWriter, r *http.Request) {
 		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
 		return
 	}
-	h.startRefresh(w, r)
+	h.startRefresh(w, r, "admin")
 }
 
 // validCoverURL enforces the cover-link shape: https only, at most 512
@@ -1591,7 +1599,7 @@ func (h *Handlers) InternalRefresh(w http.ResponseWriter, r *http.Request) {
 		problem(w, r, http.StatusUnauthorized, "invalid_internal_token", "missing or wrong X-Internal-Token")
 		return
 	}
-	h.startRefresh(w, r)
+	h.startRefresh(w, r, "internal")
 }
 
 // internalCallerOK checks X-Internal-Token against the accepted set in
@@ -1613,12 +1621,15 @@ func (h *Handlers) internalCallerOK(r *http.Request) bool {
 // startRefresh answers 202 and detaches the walk: at polite provider
 // rates a real catalog outlives the server's write timeout, so the
 // summary goes to the log, not the response. One walk at a time.
-func (h *Handlers) startRefresh(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) startRefresh(w http.ResponseWriter, r *http.Request, trigger string) {
 	if !h.refreshing.CompareAndSwap(false, true) {
 		problem(w, r, http.StatusConflict, "refresh_in_progress", "a refresh walk is already running")
 		return
 	}
-	go func() {
+	// The started line pairs with the per-step finished summaries: a
+	// start with no finishes inside the budget marks a hung walk.
+	h.logger.InfoContext(r.Context(), "refresh walk started", "trigger", trigger)
+	go func() { //nolint:gosec // G118: the walk deliberately outlives the trigger request (202 + detach)
 		defer h.refreshing.Store(false)
 		// Detached from the request context: the trigger returns at 202.
 		ctx, cancel := context.WithTimeout(context.Background(), refreshBudget)
@@ -1655,6 +1666,7 @@ func (h *Handlers) startRefresh(w http.ResponseWriter, r *http.Request) {
 // walk instead of burning a failure for every remaining product.
 func (h *Handlers) runRefresh(ctx context.Context) {
 	start := h.now()
+	defer func() { h.recordWalkDuration(ctx, "prices", h.now().Sub(start).Seconds()) }()
 	prods, err := h.store.ListPriced(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "refresh walk aborted", "err", err)
@@ -1671,6 +1683,7 @@ func (h *Handlers) runRefresh(ctx context.Context) {
 		pc, err := h.prices.Product(ctx, p.PriceCharting.PCProductID)
 		if err != nil {
 			failures++
+			h.countRefreshItem(ctx, "prices", "failed")
 			h.logger.WarnContext(ctx, "refresh: price fetch failed", "product", p.ID, "pc_product", p.PriceCharting.PCProductID, "err", err)
 			continue
 		}
@@ -1678,6 +1691,7 @@ func (h *Handlers) runRefresh(ctx context.Context) {
 		asOf := h.now()
 		if err := h.store.SetCurrentPrices(ctx, p.ID, q, asOf); err != nil {
 			failures++
+			h.countRefreshItem(ctx, "prices", "failed")
 			h.logger.WarnContext(ctx, "refresh: price update failed", "product", p.ID, "err", err)
 			continue
 		}
@@ -1687,10 +1701,15 @@ func (h *Handlers) runRefresh(ctx context.Context) {
 			LooseCents: q.LooseCents, CIBCents: q.CIBCents, NewCents: q.NewCents,
 		}); err != nil {
 			failures++
+			h.countRefreshItem(ctx, "prices", "failed")
 			h.logger.WarnContext(ctx, "refresh: snapshot failed", "product", p.ID, "err", err)
 			continue
 		}
 		snapshots++
+		// ok means the full item landed: price written and snapshot
+		// appended (a failed invalidate below is a cache event, not an
+		// item failure).
+		h.countRefreshItem(ctx, "prices", "ok")
 		if err := h.cache.InvalidateProduct(ctx, p.ID); err != nil {
 			h.failOpen(ctx, "refresh_invalidate", err)
 		}
@@ -1713,6 +1732,7 @@ const rematchPerWalk = 50
 // merged. Detached-walk conventions match runRefresh.
 func (h *Handlers) runRematch(ctx context.Context) {
 	start := h.now()
+	defer func() { h.recordWalkDuration(ctx, "rematch", h.now().Sub(start).Seconds()) }()
 	prods, err := h.store.ListUnmatchedGames(ctx, rematchPerWalk)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "re-match walk aborted", "err", err)
@@ -1728,30 +1748,38 @@ func (h *Handlers) runRematch(ctx context.Context) {
 		walked++
 		if p.Platform == nil {
 			skipped++
+			h.countRefreshItem(ctx, "rematch", "skipped")
 			continue
 		}
-		meta := h.autoMatchGame(ctx, p.Name, "", p.Platform.Name)
+		meta := h.autoMatchGame(ctx, "rematch", p.Name, "", p.Platform.Name)
 		if meta == nil {
 			skipped++
+			h.countRefreshItem(ctx, "rematch", "skipped")
 			continue
 		}
 		landed, err := h.store.SetPriceChartingIfMissing(ctx, p.ID, meta)
 		if errors.Is(err, store.ErrIdentityTaken) {
 			skipped++
+			h.countRefreshItem(ctx, "rematch", "skipped")
 			h.logger.InfoContext(ctx, "re-match: listing already carried by another member; skipping",
 				"product", p.ID, "pc_product", meta.PCProductID)
 			continue
 		}
 		if err != nil {
 			failures++
+			h.countRefreshItem(ctx, "rematch", "failed")
 			h.logger.WarnContext(ctx, "re-match: mapping update failed", "product", p.ID, "err", err)
 			continue
 		}
 		if !landed {
 			skipped++ // matched by something else since the list read
+			h.countRefreshItem(ctx, "rematch", "skipped")
 			continue
 		}
 		matched++
+		// ok means the mapping landed; the best-effort snapshot below
+		// does not demote it.
+		h.countRefreshItem(ctx, "rematch", "ok")
 		if err := h.store.AppendSnapshot(ctx, store.Snapshot{
 			ProductID: p.ID, CapturedAt: meta.AsOf,
 			LooseCents: meta.Current.LooseCents, CIBCents: meta.Current.CIBCents, NewCents: meta.Current.NewCents,
@@ -1783,6 +1811,7 @@ func (h *Handlers) runRematch(ctx context.Context) {
 // Detached-walk conventions match runRefresh.
 func (h *Handlers) runReprojection(ctx context.Context) {
 	start := h.now()
+	defer func() { h.recordWalkDuration(ctx, "reprojection", h.now().Sub(start).Seconds()) }()
 	prods, err := h.store.ListIGDBProducts(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "reprojection walk aborted", "err", err)
@@ -1856,6 +1885,7 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 		// deref, for loop-consistency.
 		if p.IGDB == nil {
 			missing++
+			h.countRefreshItem(ctx, "reprojection", "skipped")
 			h.logger.WarnContext(ctx, "reprojection walk: product matched the igdb filter but carries a nil projection",
 				"product", p.ID)
 			continue
@@ -1867,6 +1897,7 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 		raw, ok := rawByID[p.IGDB.GameID]
 		if !ok || raw.Game.ReleaseDates == nil {
 			missing++
+			h.countRefreshItem(ctx, "reprojection", "skipped")
 			h.logger.WarnContext(ctx, "reprojection walk: no usable raw for product",
 				"product", p.ID, "game", p.IGDB.GameID)
 			continue
@@ -1880,14 +1911,18 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 		// stamp, so a projection-only rebuild does not fake freshness.
 		meta := store.NewIGDBMeta(raw.Game, pid, raw.FetchedAt)
 		if meta.SameProjection(*p.IGDB) {
-			continue // diff gate: nothing changed, no write, no invalidate
+			// diff gate: nothing changed, no write, no invalidate
+			h.countRefreshItem(ctx, "reprojection", "skipped")
+			continue
 		}
 		if err := h.store.SetIGDB(ctx, p.ID, meta); err != nil {
 			failures++
+			h.countRefreshItem(ctx, "reprojection", "failed")
 			h.logger.WarnContext(ctx, "reprojection walk: projection update failed", "product", p.ID, "err", err)
 			continue
 		}
 		rebuilt++
+		h.countRefreshItem(ctx, "reprojection", "ok")
 		if err := h.cache.InvalidateProduct(ctx, p.ID); err != nil {
 			h.failOpen(ctx, "reprojection_invalidate", err)
 		}
@@ -1905,6 +1940,8 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 // high-scoring match has an elevated false-positive base rate here -
 // providers propose, admins decide. Dismissed pairs stay silent.
 func (h *Handlers) runCandidateSweep(ctx context.Context) {
+	start := h.now()
+	defer func() { h.recordWalkDuration(ctx, "sweep", h.now().Sub(start).Seconds()) }()
 	comm, err := h.store.ListCommunityProducts(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "candidate sweep: list failed", "err", err)
@@ -1927,6 +1964,7 @@ func (h *Handlers) runCandidateSweep(ctx context.Context) {
 			games, gerr := h.games.SearchGames(ctx, p.Name, searchLimit)
 			if gerr != nil {
 				failed++
+				h.countRefreshItem(ctx, "sweep", "failed")
 				continue
 			}
 			for _, g := range games {
@@ -1943,6 +1981,7 @@ func (h *Handlers) runCandidateSweep(ctx context.Context) {
 			prods, perr := h.prices.Search(ctx, p.Name)
 			if perr != nil {
 				failed++
+				h.countRefreshItem(ctx, "sweep", "failed")
 				continue
 			}
 			for _, pc := range prods {
@@ -1959,11 +1998,15 @@ func (h *Handlers) runCandidateSweep(ctx context.Context) {
 		sort.SliceStable(cands, func(i, j int) bool { return cands[i].Score > cands[j].Score })
 		if err := h.store.ReplacePromoteCandidates(ctx, p.ID, cands); err != nil {
 			failed++
+			h.countRefreshItem(ctx, "sweep", "failed")
 			h.logger.WarnContext(ctx, "candidate sweep: store failed", "product", p.ID, "err", err)
 			continue
 		}
 		if len(cands) > 0 {
 			flagged++
+			h.countRefreshItem(ctx, "sweep", "flagged")
+		} else {
+			h.countRefreshItem(ctx, "sweep", "ok")
 		}
 	}
 	h.logger.InfoContext(ctx, "candidate sweep complete", "swept", swept, "flagged", flagged, "failed", failed)
