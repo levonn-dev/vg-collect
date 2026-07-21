@@ -63,6 +63,69 @@ func (c *Client) CountProductReferences(ctx context.Context, bearer string, id u
 		http.StatusOK, http.StatusForbidden)
 }
 
+// CreateSubmission relays POST /entries/{id}/submission.
+func (c *Client) CreateSubmission(ctx context.Context, bearer string, id uuid.UUID) (Result, error) {
+	resp, err := c.api.CreateSubmissionWithResponse(ctx, id, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: create submission: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body,
+		http.StatusCreated, http.StatusBadRequest, http.StatusNotFound,
+		http.StatusConflict, http.StatusTooManyRequests)
+}
+
+// GetSubmission relays GET /entries/{id}/submission.
+func (c *Client) GetSubmission(ctx context.Context, bearer string, id uuid.UUID) (Result, error) {
+	resp, err := c.api.GetSubmissionWithResponse(ctx, id, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: get submission: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body,
+		http.StatusOK, http.StatusNotFound)
+}
+
+// CancelSubmission relays DELETE /entries/{id}/submission.
+func (c *Client) CancelSubmission(ctx context.Context, bearer string, id uuid.UUID) (Result, error) {
+	resp, err := c.api.CancelSubmissionWithResponse(ctx, id, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: cancel submission: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body,
+		http.StatusNoContent, http.StatusNotFound)
+}
+
+// AckSubmission relays POST /entries/{id}/submission/ack.
+func (c *Client) AckSubmission(ctx context.Context, bearer string, id uuid.UUID) (Result, error) {
+	resp, err := c.api.AckSubmissionResolutionWithResponse(ctx, id, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: ack submission: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body,
+		http.StatusNoContent, http.StatusNotFound)
+}
+
+// ListSubmissions relays the admin queue read.
+func (c *Client) ListSubmissions(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (Result, error) {
+	resp, err := c.api.ListSubmissionsWithResponse(ctx, params, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: list submissions: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body,
+		http.StatusOK, http.StatusForbidden)
+}
+
+// SubmitVerdict relays the admin verdict with the browser's body
+// untouched; every contract answer passes through.
+func (c *Client) SubmitVerdict(ctx context.Context, bearer string, id uuid.UUID, body []byte) (Result, error) {
+	resp, err := c.api.SubmitVerdictWithBodyWithResponse(ctx, id, "application/json", bytes.NewReader(body), bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: submit verdict: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body,
+		http.StatusOK, http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound,
+		http.StatusConflict, http.StatusBadGateway)
+}
+
 func bearerEditor(bearer string) collectionapi.RequestEditorFn {
 	return func(_ context.Context, req *http.Request) error {
 		req.Header.Set("Authorization", "Bearer "+bearer)

@@ -22,12 +22,36 @@ const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
+// Defines values for CommunityProductCreateType.
+const (
+	CommunityProductCreateTypeAccessory CommunityProductCreateType = "accessory"
+	CommunityProductCreateTypeConsole   CommunityProductCreateType = "console"
+	CommunityProductCreateTypeGame      CommunityProductCreateType = "game"
+)
+
+// Defines values for DismissCandidateRequestProvider.
+const (
+	DismissCandidateRequestProviderIgdb          DismissCandidateRequestProvider = "igdb"
+	DismissCandidateRequestProviderPricecharting DismissCandidateRequestProvider = "pricecharting"
+)
+
+// Defines values for ProductOrigin.
+const (
+	ProductOriginCommunity ProductOrigin = "community"
+)
+
 // Defines values for ProductType.
 const (
 	ProductTypeAccessory ProductType = "accessory"
 	ProductTypeConsole   ProductType = "console"
 	ProductTypeGame      ProductType = "game"
 	ProductTypePcListing ProductType = "pc_listing"
+)
+
+// Defines values for PromoteCandidateProvider.
+const (
+	PromoteCandidateProviderIgdb          PromoteCandidateProvider = "igdb"
+	PromoteCandidateProviderPricecharting PromoteCandidateProvider = "pricecharting"
 )
 
 // Defines values for RefreshAcceptedStatus.
@@ -41,6 +65,18 @@ const (
 	ResolveRequestTypeConsole   ResolveRequestType = "console"
 	ResolveRequestTypeGame      ResolveRequestType = "game"
 	ResolveRequestTypePcListing ResolveRequestType = "pc_listing"
+)
+
+// Defines values for SearchResultItemType.
+const (
+	SearchResultItemTypeAccessory SearchResultItemType = "accessory"
+	SearchResultItemTypeConsole   SearchResultItemType = "console"
+	SearchResultItemTypeGame      SearchResultItemType = "game"
+)
+
+// Defines values for SearchResultOrigin.
+const (
+	SearchResultOriginCommunity SearchResultOrigin = "community"
 )
 
 // Defines values for SearchResultType.
@@ -57,12 +93,62 @@ const (
 	SearchCatalogParamsTypePcListing SearchCatalogParamsType = "pc_listing"
 )
 
+// CatalogPlatform One platform-catalog row with its known aliases.
+type CatalogPlatform struct {
+	// Aliases Alternate spellings and abbreviations (compare case-insensitively).
+	Aliases []string `json:"aliases"`
+	IgdbId  int64    `json:"igdb_id"`
+	Name    string   `json:"name"`
+}
+
+// CommunityMeta Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present).
+type CommunityMeta struct {
+	// CoverUrl User-supplied cover image URL (https, never fetched server-side; the client renders it with a broken-image fallback). Served as the product cover when no provider cover is present; retained after promotion as gap-fill.
+	CoverUrl         *string             `json:"cover_url,omitempty"`
+	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
+	PlatformName     *string             `json:"platform_name,omitempty"`
+}
+
+// CommunityProductCreate defines model for CommunityProductCreate.
+type CommunityProductCreate struct {
+	// CoverUrl Optional https cover image URL (validated by shape only, never fetched).
+	CoverUrl *string `json:"cover_url,omitempty"`
+
+	// Edition The entry idiom's single "Edition or variant" note.
+	Edition          *string                    `json:"edition,omitempty"`
+	FirstReleaseDate *openapi_types.Date        `json:"first_release_date,omitempty"`
+	Name             string                     `json:"name"`
+	PlatformName     *string                    `json:"platform_name,omitempty"`
+	Region           *string                    `json:"region,omitempty"`
+	Type             CommunityProductCreateType `json:"type"`
+}
+
+// CommunityProductCreateType defines model for CommunityProductCreate.Type.
+type CommunityProductCreateType string
+
+// CommunityProductsPage defines model for CommunityProductsPage.
+type CommunityProductsPage struct {
+	Products []Product `json:"products"`
+
+	// TotalCount Full count of community products, beyond this page.
+	TotalCount int64 `json:"total_count"`
+}
+
 // CompanyCredit defines model for CompanyCredit.
 type CompanyCredit struct {
 	Developer bool   `json:"developer"`
 	Name      string `json:"name"`
 	Publisher bool   `json:"publisher"`
 }
+
+// DismissCandidateRequest defines model for DismissCandidateRequest.
+type DismissCandidateRequest struct {
+	Provider   DismissCandidateRequestProvider `json:"provider"`
+	ProviderId int64                           `json:"provider_id"`
+}
+
+// DismissCandidateRequestProvider defines model for DismissCandidateRequest.Provider.
+type DismissCandidateRequestProvider string
 
 // FXRates defines model for FXRates.
 type FXRates struct {
@@ -108,6 +194,11 @@ type LibraryEntry struct {
 type MappingRequest struct {
 	// PcProductId Null clears the mapping (the product becomes unmatched and held).
 	PcProductId *int64 `json:"pc_product_id"`
+}
+
+// PlatformCatalog defines model for PlatformCatalog.
+type PlatformCatalog struct {
+	Platforms []CatalogPlatform `json:"platforms"`
 }
 
 // PlatformRef defines model for PlatformRef.
@@ -174,6 +265,8 @@ type Problem struct {
 
 // Product defines model for Product.
 type Product struct {
+	// Community Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present).
+	Community *CommunityMeta     `json:"community,omitempty"`
 	CreatedAt time.Time          `json:"created_at"`
 	Edition   *string            `json:"edition,omitempty"`
 	Id        openapi_types.UUID `json:"id"`
@@ -182,9 +275,12 @@ type Product struct {
 	Igdb *IgdbMeta `json:"igdb,omitempty"`
 
 	// MatchHold Present true when an admin clear holds this product out of the nightly re-match walk.
-	MatchHold *bool        `json:"match_hold,omitempty"`
-	Name      string       `json:"name"`
-	Platform  *PlatformRef `json:"platform,omitempty"`
+	MatchHold *bool  `json:"match_hold,omitempty"`
+	Name      string `json:"name"`
+
+	// Origin Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity.
+	Origin   *ProductOrigin `json:"origin,omitempty"`
+	Platform *PlatformRef   `json:"platform,omitempty"`
 
 	// Pricecharting The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
 	Pricecharting *PricechartingMeta `json:"pricecharting,omitempty"`
@@ -193,6 +289,9 @@ type Product struct {
 	UpdatedAt     time.Time          `json:"updated_at"`
 	Variant       *string            `json:"variant,omitempty"`
 }
+
+// ProductOrigin Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity.
+type ProductOrigin string
 
 // ProductType defines model for Product.Type.
 type ProductType string
@@ -204,6 +303,39 @@ type ProductPrices struct {
 	LooseCents *int64     `json:"loose_cents,omitempty"`
 	NewCents   *int64     `json:"new_cents,omitempty"`
 	Unmatched  bool       `json:"unmatched"`
+}
+
+// PromoteCandidate defines model for PromoteCandidate.
+type PromoteCandidate struct {
+	FoundAt    time.Time                `json:"found_at"`
+	Name       string                   `json:"name"`
+	Provider   PromoteCandidateProvider `json:"provider"`
+	ProviderId int64                    `json:"provider_id"`
+	Score      float64                  `json:"score"`
+}
+
+// PromoteCandidateProvider defines model for PromoteCandidate.Provider.
+type PromoteCandidateProvider string
+
+// PromoteCandidateProduct defines model for PromoteCandidateProduct.
+type PromoteCandidateProduct struct {
+	Candidates []PromoteCandidate `json:"candidates"`
+	Product    Product            `json:"product"`
+}
+
+// PromoteCandidatesPage defines model for PromoteCandidatesPage.
+type PromoteCandidatesPage struct {
+	Products []PromoteCandidateProduct `json:"products"`
+
+	// TotalCount Full count of flagged community products.
+	TotalCount int64 `json:"total_count"`
+}
+
+// PromoteRequest Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the nightly walk or the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant.
+type PromoteRequest struct {
+	IgdbGameId     *int64 `json:"igdb_game_id,omitempty"`
+	PcProductId    *int64 `json:"pc_product_id,omitempty"`
+	PlatformIgdbId *int64 `json:"platform_igdb_id,omitempty"`
 }
 
 // Recommendation defines model for Recommendation.
@@ -260,19 +392,31 @@ type ScoreResponse struct {
 
 // SearchResult Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). pc_listing results carry the pc_* fields, the PriceCharting category (empty when the provider lists none), and the standard per-listing loose/cib/new prices so variant prints are tellable apart.
 type SearchResult struct {
-	Category         *string             `json:"category,omitempty"`
-	CibCents         *int64              `json:"cib_cents,omitempty"`
-	ConsoleName      *string             `json:"console_name,omitempty"`
-	CoverUrl         *string             `json:"cover_url,omitempty"`
-	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
-	IgdbGameId       *int64              `json:"igdb_game_id,omitempty"`
-	LooseCents       *int64              `json:"loose_cents,omitempty"`
-	Name             string              `json:"name"`
-	NewCents         *int64              `json:"new_cents,omitempty"`
-	PcProductId      *int64              `json:"pc_product_id,omitempty"`
-	Platforms        *[]PlatformRef      `json:"platforms,omitempty"`
-	Type             SearchResultType    `json:"type"`
+	Category         *string               `json:"category,omitempty"`
+	CibCents         *int64                `json:"cib_cents,omitempty"`
+	ConsoleName      *string               `json:"console_name,omitempty"`
+	CoverUrl         *string               `json:"cover_url,omitempty"`
+	FirstReleaseDate *openapi_types.Date   `json:"first_release_date,omitempty"`
+	IgdbGameId       *int64                `json:"igdb_game_id,omitempty"`
+	ItemType         *SearchResultItemType `json:"item_type,omitempty"`
+	LooseCents       *int64                `json:"loose_cents,omitempty"`
+	Name             string                `json:"name"`
+	NewCents         *int64                `json:"new_cents,omitempty"`
+
+	// Origin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick and community.cover_url as cover_url. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
+	Origin       *SearchResultOrigin `json:"origin,omitempty"`
+	PcProductId  *int64              `json:"pc_product_id,omitempty"`
+	PlatformName *string             `json:"platform_name,omitempty"`
+	Platforms    *[]PlatformRef      `json:"platforms,omitempty"`
+	ProductId    *openapi_types.UUID `json:"product_id,omitempty"`
+	Type         SearchResultType    `json:"type"`
 }
+
+// SearchResultItemType defines model for SearchResult.ItemType.
+type SearchResultItemType string
+
+// SearchResultOrigin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick and community.cover_url as cover_url. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
+type SearchResultOrigin string
 
 // SearchResultType defines model for SearchResult.Type.
 type SearchResultType string
@@ -304,6 +448,19 @@ type Unauthorized = Problem
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
 
+// ListCommunityProductsParams defines parameters for ListCommunityProducts.
+type ListCommunityProductsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListPromoteCandidatesParams defines parameters for ListPromoteCandidates.
+type ListPromoteCandidatesParams struct {
+	Limit     *int                `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset    *int                `form:"offset,omitempty" json:"offset,omitempty"`
+	ProductId *openapi_types.UUID `form:"product_id,omitempty" json:"product_id,omitempty"`
+}
+
 // ListUnmatchedProductsParams defines parameters for ListUnmatchedProducts.
 type ListUnmatchedProductsParams struct {
 	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
@@ -319,8 +476,17 @@ type SearchCatalogParams struct {
 // SearchCatalogParamsType defines parameters for SearchCatalog.
 type SearchCatalogParamsType string
 
+// CreateCommunityProductJSONRequestBody defines body for CreateCommunityProduct for application/json ContentType.
+type CreateCommunityProductJSONRequestBody = CommunityProductCreate
+
 // SetProductMappingJSONRequestBody defines body for SetProductMapping for application/json ContentType.
 type SetProductMappingJSONRequestBody = MappingRequest
+
+// PromoteProductJSONRequestBody defines body for PromoteProduct for application/json ContentType.
+type PromoteProductJSONRequestBody = PromoteRequest
+
+// DismissPromoteCandidateJSONRequestBody defines body for DismissPromoteCandidate for application/json ContentType.
+type DismissPromoteCandidateJSONRequestBody = DismissCandidateRequest
 
 // BatchPriceHistoryJSONRequestBody defines body for BatchPriceHistory for application/json ContentType.
 type BatchPriceHistoryJSONRequestBody = PriceHistoryRequest
@@ -407,6 +573,17 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// CreateCommunityProductWithBody request with any body
+	CreateCommunityProductWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateCommunityProduct(ctx context.Context, body CreateCommunityProductJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCommunityProducts request
+	ListCommunityProducts(ctx context.Context, params *ListCommunityProductsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPromoteCandidates request
+	ListPromoteCandidates(ctx context.Context, params *ListPromoteCandidatesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListUnmatchedProducts request
 	ListUnmatchedProducts(ctx context.Context, params *ListUnmatchedProductsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -418,11 +595,24 @@ type ClientInterface interface {
 
 	SetProductMapping(ctx context.Context, productId openapi_types.UUID, body SetProductMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PromoteProductWithBody request with any body
+	PromoteProductWithBody(ctx context.Context, productId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PromoteProduct(ctx context.Context, productId openapi_types.UUID, body PromoteProductJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DismissPromoteCandidateWithBody request with any body
+	DismissPromoteCandidateWithBody(ctx context.Context, productId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	DismissPromoteCandidate(ctx context.Context, productId openapi_types.UUID, body DismissPromoteCandidateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// TriggerRefresh request
 	TriggerRefresh(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetFxLatest request
 	GetFxLatest(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPlatforms request
+	ListPlatforms(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// BatchPriceHistoryWithBody request with any body
 	BatchPriceHistoryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -449,6 +639,54 @@ type ClientInterface interface {
 
 	// SearchCatalog request
 	SearchCatalog(ctx context.Context, params *SearchCatalogParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+func (c *Client) CreateCommunityProductWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCommunityProductRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateCommunityProduct(ctx context.Context, body CreateCommunityProductJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCommunityProductRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListCommunityProducts(ctx context.Context, params *ListCommunityProductsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCommunityProductsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListPromoteCandidates(ctx context.Context, params *ListPromoteCandidatesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPromoteCandidatesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 func (c *Client) ListUnmatchedProducts(ctx context.Context, params *ListUnmatchedProductsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -499,6 +737,54 @@ func (c *Client) SetProductMapping(ctx context.Context, productId openapi_types.
 	return c.Client.Do(req)
 }
 
+func (c *Client) PromoteProductWithBody(ctx context.Context, productId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPromoteProductRequestWithBody(c.Server, productId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PromoteProduct(ctx context.Context, productId openapi_types.UUID, body PromoteProductJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPromoteProductRequest(c.Server, productId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DismissPromoteCandidateWithBody(ctx context.Context, productId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDismissPromoteCandidateRequestWithBody(c.Server, productId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DismissPromoteCandidate(ctx context.Context, productId openapi_types.UUID, body DismissPromoteCandidateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDismissPromoteCandidateRequest(c.Server, productId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) TriggerRefresh(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTriggerRefreshRequest(c.Server)
 	if err != nil {
@@ -513,6 +799,18 @@ func (c *Client) TriggerRefresh(ctx context.Context, reqEditors ...RequestEditor
 
 func (c *Client) GetFxLatest(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetFxLatestRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListPlatforms(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPlatformsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -641,6 +939,192 @@ func (c *Client) SearchCatalog(ctx context.Context, params *SearchCatalogParams,
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewCreateCommunityProductRequest calls the generic CreateCommunityProduct builder with application/json body
+func NewCreateCommunityProductRequest(server string, body CreateCommunityProductJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateCommunityProductRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateCommunityProductRequestWithBody generates requests for CreateCommunityProduct with any type of body
+func NewCreateCommunityProductRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/products")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListCommunityProductsRequest generates requests for ListCommunityProducts
+func NewListCommunityProductsRequest(server string, params *ListCommunityProductsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/products/community")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListPromoteCandidatesRequest generates requests for ListPromoteCandidates
+func NewListPromoteCandidatesRequest(server string, params *ListPromoteCandidatesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/products/promote-candidates")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ProductId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "product_id", runtime.ParamLocationQuery, *params.ProductId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewListUnmatchedProductsRequest generates requests for ListUnmatchedProducts
@@ -789,6 +1273,100 @@ func NewSetProductMappingRequestWithBody(server string, productId openapi_types.
 	return req, nil
 }
 
+// NewPromoteProductRequest calls the generic PromoteProduct builder with application/json body
+func NewPromoteProductRequest(server string, productId openapi_types.UUID, body PromoteProductJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPromoteProductRequestWithBody(server, productId, "application/json", bodyReader)
+}
+
+// NewPromoteProductRequestWithBody generates requests for PromoteProduct with any type of body
+func NewPromoteProductRequestWithBody(server string, productId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "productId", runtime.ParamLocationPath, productId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/products/%s/promote", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDismissPromoteCandidateRequest calls the generic DismissPromoteCandidate builder with application/json body
+func NewDismissPromoteCandidateRequest(server string, productId openapi_types.UUID, body DismissPromoteCandidateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDismissPromoteCandidateRequestWithBody(server, productId, "application/json", bodyReader)
+}
+
+// NewDismissPromoteCandidateRequestWithBody generates requests for DismissPromoteCandidate with any type of body
+func NewDismissPromoteCandidateRequestWithBody(server string, productId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "productId", runtime.ParamLocationPath, productId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/products/%s/promote-candidates/dismiss", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewTriggerRefreshRequest generates requests for TriggerRefresh
 func NewTriggerRefreshRequest(server string) (*http.Request, error) {
 	var err error
@@ -826,6 +1404,33 @@ func NewGetFxLatestRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/fx/latest")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListPlatformsRequest generates requests for ListPlatforms
+func NewListPlatformsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/platforms")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1137,6 +1742,17 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// CreateCommunityProductWithBodyWithResponse request with any body
+	CreateCommunityProductWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCommunityProductResponse, error)
+
+	CreateCommunityProductWithResponse(ctx context.Context, body CreateCommunityProductJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCommunityProductResponse, error)
+
+	// ListCommunityProductsWithResponse request
+	ListCommunityProductsWithResponse(ctx context.Context, params *ListCommunityProductsParams, reqEditors ...RequestEditorFn) (*ListCommunityProductsResponse, error)
+
+	// ListPromoteCandidatesWithResponse request
+	ListPromoteCandidatesWithResponse(ctx context.Context, params *ListPromoteCandidatesParams, reqEditors ...RequestEditorFn) (*ListPromoteCandidatesResponse, error)
+
 	// ListUnmatchedProductsWithResponse request
 	ListUnmatchedProductsWithResponse(ctx context.Context, params *ListUnmatchedProductsParams, reqEditors ...RequestEditorFn) (*ListUnmatchedProductsResponse, error)
 
@@ -1148,11 +1764,24 @@ type ClientWithResponsesInterface interface {
 
 	SetProductMappingWithResponse(ctx context.Context, productId openapi_types.UUID, body SetProductMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProductMappingResponse, error)
 
+	// PromoteProductWithBodyWithResponse request with any body
+	PromoteProductWithBodyWithResponse(ctx context.Context, productId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PromoteProductResponse, error)
+
+	PromoteProductWithResponse(ctx context.Context, productId openapi_types.UUID, body PromoteProductJSONRequestBody, reqEditors ...RequestEditorFn) (*PromoteProductResponse, error)
+
+	// DismissPromoteCandidateWithBodyWithResponse request with any body
+	DismissPromoteCandidateWithBodyWithResponse(ctx context.Context, productId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DismissPromoteCandidateResponse, error)
+
+	DismissPromoteCandidateWithResponse(ctx context.Context, productId openapi_types.UUID, body DismissPromoteCandidateJSONRequestBody, reqEditors ...RequestEditorFn) (*DismissPromoteCandidateResponse, error)
+
 	// TriggerRefreshWithResponse request
 	TriggerRefreshWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*TriggerRefreshResponse, error)
 
 	// GetFxLatestWithResponse request
 	GetFxLatestWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetFxLatestResponse, error)
+
+	// ListPlatformsWithResponse request
+	ListPlatformsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListPlatformsResponse, error)
 
 	// BatchPriceHistoryWithBodyWithResponse request with any body
 	BatchPriceHistoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchPriceHistoryResponse, error)
@@ -1179,6 +1808,79 @@ type ClientWithResponsesInterface interface {
 
 	// SearchCatalogWithResponse request
 	SearchCatalogWithResponse(ctx context.Context, params *SearchCatalogParams, reqEditors ...RequestEditorFn) (*SearchCatalogResponse, error)
+}
+
+type CreateCommunityProductResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON201                   *Product
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateCommunityProductResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateCommunityProductResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListCommunityProductsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *CommunityProductsPage
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCommunityProductsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCommunityProductsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListPromoteCandidatesResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *PromoteCandidatesPage
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPromoteCandidatesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPromoteCandidatesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
 }
 
 type ListUnmatchedProductsResponse struct {
@@ -1258,6 +1960,59 @@ func (r SetProductMappingResponse) StatusCode() int {
 	return 0
 }
 
+type PromoteProductResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *Product
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *Problem
+	ApplicationproblemJSON409 *Problem
+	ApplicationproblemJSON502 *UpstreamError
+}
+
+// Status returns HTTPResponse.Status
+func (r PromoteProductResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PromoteProductResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DismissPromoteCandidateResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r DismissPromoteCandidateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DismissPromoteCandidateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type TriggerRefreshResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
@@ -1301,6 +2056,30 @@ func (r GetFxLatestResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetFxLatestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListPlatformsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *PlatformCatalog
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON502 *UpstreamError
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPlatformsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPlatformsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1453,6 +2232,41 @@ func (r SearchCatalogResponse) StatusCode() int {
 	return 0
 }
 
+// CreateCommunityProductWithBodyWithResponse request with arbitrary body returning *CreateCommunityProductResponse
+func (c *ClientWithResponses) CreateCommunityProductWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCommunityProductResponse, error) {
+	rsp, err := c.CreateCommunityProductWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCommunityProductResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateCommunityProductWithResponse(ctx context.Context, body CreateCommunityProductJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCommunityProductResponse, error) {
+	rsp, err := c.CreateCommunityProduct(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCommunityProductResponse(rsp)
+}
+
+// ListCommunityProductsWithResponse request returning *ListCommunityProductsResponse
+func (c *ClientWithResponses) ListCommunityProductsWithResponse(ctx context.Context, params *ListCommunityProductsParams, reqEditors ...RequestEditorFn) (*ListCommunityProductsResponse, error) {
+	rsp, err := c.ListCommunityProducts(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCommunityProductsResponse(rsp)
+}
+
+// ListPromoteCandidatesWithResponse request returning *ListPromoteCandidatesResponse
+func (c *ClientWithResponses) ListPromoteCandidatesWithResponse(ctx context.Context, params *ListPromoteCandidatesParams, reqEditors ...RequestEditorFn) (*ListPromoteCandidatesResponse, error) {
+	rsp, err := c.ListPromoteCandidates(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPromoteCandidatesResponse(rsp)
+}
+
 // ListUnmatchedProductsWithResponse request returning *ListUnmatchedProductsResponse
 func (c *ClientWithResponses) ListUnmatchedProductsWithResponse(ctx context.Context, params *ListUnmatchedProductsParams, reqEditors ...RequestEditorFn) (*ListUnmatchedProductsResponse, error) {
 	rsp, err := c.ListUnmatchedProducts(ctx, params, reqEditors...)
@@ -1488,6 +2302,40 @@ func (c *ClientWithResponses) SetProductMappingWithResponse(ctx context.Context,
 	return ParseSetProductMappingResponse(rsp)
 }
 
+// PromoteProductWithBodyWithResponse request with arbitrary body returning *PromoteProductResponse
+func (c *ClientWithResponses) PromoteProductWithBodyWithResponse(ctx context.Context, productId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PromoteProductResponse, error) {
+	rsp, err := c.PromoteProductWithBody(ctx, productId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePromoteProductResponse(rsp)
+}
+
+func (c *ClientWithResponses) PromoteProductWithResponse(ctx context.Context, productId openapi_types.UUID, body PromoteProductJSONRequestBody, reqEditors ...RequestEditorFn) (*PromoteProductResponse, error) {
+	rsp, err := c.PromoteProduct(ctx, productId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePromoteProductResponse(rsp)
+}
+
+// DismissPromoteCandidateWithBodyWithResponse request with arbitrary body returning *DismissPromoteCandidateResponse
+func (c *ClientWithResponses) DismissPromoteCandidateWithBodyWithResponse(ctx context.Context, productId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DismissPromoteCandidateResponse, error) {
+	rsp, err := c.DismissPromoteCandidateWithBody(ctx, productId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDismissPromoteCandidateResponse(rsp)
+}
+
+func (c *ClientWithResponses) DismissPromoteCandidateWithResponse(ctx context.Context, productId openapi_types.UUID, body DismissPromoteCandidateJSONRequestBody, reqEditors ...RequestEditorFn) (*DismissPromoteCandidateResponse, error) {
+	rsp, err := c.DismissPromoteCandidate(ctx, productId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDismissPromoteCandidateResponse(rsp)
+}
+
 // TriggerRefreshWithResponse request returning *TriggerRefreshResponse
 func (c *ClientWithResponses) TriggerRefreshWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*TriggerRefreshResponse, error) {
 	rsp, err := c.TriggerRefresh(ctx, reqEditors...)
@@ -1504,6 +2352,15 @@ func (c *ClientWithResponses) GetFxLatestWithResponse(ctx context.Context, reqEd
 		return nil, err
 	}
 	return ParseGetFxLatestResponse(rsp)
+}
+
+// ListPlatformsWithResponse request returning *ListPlatformsResponse
+func (c *ClientWithResponses) ListPlatformsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListPlatformsResponse, error) {
+	rsp, err := c.ListPlatforms(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPlatformsResponse(rsp)
 }
 
 // BatchPriceHistoryWithBodyWithResponse request with arbitrary body returning *BatchPriceHistoryResponse
@@ -1590,6 +2447,133 @@ func (c *ClientWithResponses) SearchCatalogWithResponse(ctx context.Context, par
 		return nil, err
 	}
 	return ParseSearchCatalogResponse(rsp)
+}
+
+// ParseCreateCommunityProductResponse parses an HTTP response from a CreateCommunityProductWithResponse call
+func ParseCreateCommunityProductResponse(rsp *http.Response) (*CreateCommunityProductResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateCommunityProductResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Product
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCommunityProductsResponse parses an HTTP response from a ListCommunityProductsWithResponse call
+func ParseListCommunityProductsResponse(rsp *http.Response) (*ListCommunityProductsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCommunityProductsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CommunityProductsPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListPromoteCandidatesResponse parses an HTTP response from a ListPromoteCandidatesWithResponse call
+func ParseListPromoteCandidatesResponse(rsp *http.Response) (*ListPromoteCandidatesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPromoteCandidatesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PromoteCandidatesPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseListUnmatchedProductsResponse parses an HTTP response from a ListUnmatchedProductsWithResponse call
@@ -1747,6 +2731,121 @@ func ParseSetProductMappingResponse(rsp *http.Response) (*SetProductMappingRespo
 	return response, nil
 }
 
+// ParsePromoteProductResponse parses an HTTP response from a PromoteProductWithResponse call
+func ParsePromoteProductResponse(rsp *http.Response) (*PromoteProductResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PromoteProductResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Product
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest UpstreamError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDismissPromoteCandidateResponse parses an HTTP response from a DismissPromoteCandidateWithResponse call
+func ParseDismissPromoteCandidateResponse(rsp *http.Response) (*DismissPromoteCandidateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DismissPromoteCandidateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseTriggerRefreshResponse parses an HTTP response from a TriggerRefreshWithResponse call
 func ParseTriggerRefreshResponse(rsp *http.Response) (*TriggerRefreshResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -1810,6 +2909,46 @@ func ParseGetFxLatestResponse(rsp *http.Response) (*GetFxLatestResponse, error) 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest FXRates
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest UpstreamError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListPlatformsResponse parses an HTTP response from a ListPlatformsWithResponse call
+func ParseListPlatformsResponse(rsp *http.Response) (*ListPlatformsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPlatformsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlatformCatalog
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

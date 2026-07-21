@@ -22,6 +22,36 @@ const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
+// Defines values for AdminSubmissionItemType.
+const (
+	AdminSubmissionItemTypeAccessory AdminSubmissionItemType = "accessory"
+	AdminSubmissionItemTypeConsole   AdminSubmissionItemType = "console"
+	AdminSubmissionItemTypeGame      AdminSubmissionItemType = "game"
+)
+
+// Defines values for AdminSubmissionRegion.
+const (
+	AdminSubmissionRegionNtscJ      AdminSubmissionRegion = "ntsc_j"
+	AdminSubmissionRegionNtscU      AdminSubmissionRegion = "ntsc_u"
+	AdminSubmissionRegionPal        AdminSubmissionRegion = "pal"
+	AdminSubmissionRegionRegionFree AdminSubmissionRegion = "region_free"
+)
+
+// Defines values for AdminSubmissionStatus.
+const (
+	AdminSubmissionStatusApproved  AdminSubmissionStatus = "approved"
+	AdminSubmissionStatusCancelled AdminSubmissionStatus = "cancelled"
+	AdminSubmissionStatusPending   AdminSubmissionStatus = "pending"
+	AdminSubmissionStatusRejected  AdminSubmissionStatus = "rejected"
+)
+
+// Defines values for CommunityProductSpecType.
+const (
+	CommunityProductSpecTypeAccessory CommunityProductSpecType = "accessory"
+	CommunityProductSpecTypeConsole   CommunityProductSpecType = "console"
+	CommunityProductSpecTypeGame      CommunityProductSpecType = "game"
+)
+
 // Defines values for EntryBoxCondition.
 const (
 	EntryBoxConditionAcceptable EntryBoxCondition = "acceptable"
@@ -244,6 +274,21 @@ const (
 	EntryUpdateStatusShelved   EntryUpdateStatus = "shelved"
 )
 
+// Defines values for SubmissionStatus.
+const (
+	SubmissionStatusApproved  SubmissionStatus = "approved"
+	SubmissionStatusCancelled SubmissionStatus = "cancelled"
+	SubmissionStatusPending   SubmissionStatus = "pending"
+	SubmissionStatusRejected  SubmissionStatus = "rejected"
+)
+
+// Defines values for VerdictRequestAction.
+const (
+	ApproveExisting VerdictRequestAction = "approve_existing"
+	ApproveNew      VerdictRequestAction = "approve_new"
+	Reject          VerdictRequestAction = "reject"
+)
+
 // Defines values for GetDashboardParamsItemType.
 const (
 	GetDashboardParamsItemTypeAccessory GetDashboardParamsItemType = "accessory"
@@ -312,10 +357,10 @@ const (
 
 // Defines values for ListEntriesParamsRegion.
 const (
-	NtscJ      ListEntriesParamsRegion = "ntsc_j"
-	NtscU      ListEntriesParamsRegion = "ntsc_u"
-	Pal        ListEntriesParamsRegion = "pal"
-	RegionFree ListEntriesParamsRegion = "region_free"
+	ListEntriesParamsRegionNtscJ      ListEntriesParamsRegion = "ntsc_j"
+	ListEntriesParamsRegionNtscU      ListEntriesParamsRegion = "ntsc_u"
+	ListEntriesParamsRegionPal        ListEntriesParamsRegion = "pal"
+	ListEntriesParamsRegionRegionFree ListEntriesParamsRegion = "region_free"
 )
 
 // Defines values for ListEntriesParamsItemCondition.
@@ -355,6 +400,56 @@ const (
 	ListEntriesParamsGroupByTag      ListEntriesParamsGroupBy = "tag"
 )
 
+// AdminSubmission One queue row: the submission plus the live proposal from the entry join (display_name, item_type, platform_name, region, edition, first_release_date pre-fill the curation form; entries carry no variant - the single edition field is the idiom).
+type AdminSubmission struct {
+	// CoverUrl The entry's cover URL, live from the proposal join; prefills the curation cover field.
+	CoverUrl         *string                 `json:"cover_url,omitempty"`
+	CreatedAt        time.Time               `json:"created_at"`
+	DisplayName      string                  `json:"display_name"`
+	Edition          *string                 `json:"edition,omitempty"`
+	EntryId          openapi_types.UUID      `json:"entry_id"`
+	FirstReleaseDate *openapi_types.Date     `json:"first_release_date,omitempty"`
+	Id               openapi_types.UUID      `json:"id"`
+	ItemType         AdminSubmissionItemType `json:"item_type"`
+	PlatformName     *string                 `json:"platform_name,omitempty"`
+	Region           AdminSubmissionRegion   `json:"region"`
+	Status           AdminSubmissionStatus   `json:"status"`
+	UpdatedAt        time.Time               `json:"updated_at"`
+	UserId           openapi_types.UUID      `json:"user_id"`
+}
+
+// AdminSubmissionItemType defines model for AdminSubmission.ItemType.
+type AdminSubmissionItemType string
+
+// AdminSubmissionRegion defines model for AdminSubmission.Region.
+type AdminSubmissionRegion string
+
+// AdminSubmissionStatus defines model for AdminSubmission.Status.
+type AdminSubmissionStatus string
+
+// AdminSubmissionsPage defines model for AdminSubmissionsPage.
+type AdminSubmissionsPage struct {
+	Submissions []AdminSubmission `json:"submissions"`
+
+	// TotalCount Full pending count, beyond this page.
+	TotalCount int64 `json:"total_count"`
+}
+
+// CommunityProductSpec The curated fields for approve_new; mirrors the enrichment mint request (single edition field, no variant).
+type CommunityProductSpec struct {
+	// CoverUrl Optional https cover image URL for the minted community product.
+	CoverUrl         *string                  `json:"cover_url,omitempty"`
+	Edition          *string                  `json:"edition,omitempty"`
+	FirstReleaseDate *openapi_types.Date      `json:"first_release_date,omitempty"`
+	Name             string                   `json:"name"`
+	PlatformName     *string                  `json:"platform_name,omitempty"`
+	Region           *string                  `json:"region,omitempty"`
+	Type             CommunityProductSpecType `json:"type"`
+}
+
+// CommunityProductSpecType defines model for CommunityProductSpec.Type.
+type CommunityProductSpecType string
+
 // CurrencySpend defines model for CurrencySpend.
 type CurrencySpend struct {
 	Currency   string `json:"currency"`
@@ -387,13 +482,13 @@ type DashboardPricing struct {
 	UnpricedEntries int `json:"unpriced_entries"`
 }
 
-// Entry One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries a name without an igdb id when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; (or, with pricing_mode custom, taken directly from custom_value_cents, packaging-independent); it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable.
+// Entry One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries the picked or normalized identity - name-only for escape-hatch free text - when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; (or, with pricing_mode custom, taken directly from custom_value_cents, packaging-independent); it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable.
 type Entry struct {
 	// BacklogRank Present exactly while status is backlog; server-generated.
 	BacklogRank  *string            `json:"backlog_rank,omitempty"`
 	BoxCondition *EntryBoxCondition `json:"box_condition,omitempty"`
 
-	// CoverUrl Cover art URL snapshotted from the product at creation. Absent on custom entries, hardware, and products without art (render a placeholder).
+	// CoverUrl Cover art URL. For product-backed entries it is snapshotted from the product at creation (and refreshed on adoption). Custom entries may set their own (https, shape-validated). Absent on hardware and products without art (render a placeholder).
 	CoverUrl  *string   `json:"cover_url,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	Currency  string    `json:"currency"`
@@ -429,7 +524,7 @@ type Entry struct {
 	Packaging       EntryPackaging        `json:"packaging"`
 	Pinned          bool                  `json:"pinned"`
 
-	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied free-text name (no igdb id) on custom entries. Absent when neither exists.
+	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
 	Platform         *EntryPlatform      `json:"platform,omitempty"`
 	PricePaidCents   *int64              `json:"price_paid_cents,omitempty"`
 	PricingMode      EntryPricingMode    `json:"pricing_mode"`
@@ -481,11 +576,14 @@ type EntryStatus string
 
 // EntryCreate Product-backed: product_id comes from a prior enrichment resolve and the catalog fields are snapshotted server-side (display_name/item_type/platform_name/first_release_date must NOT be sent). Custom (no product_id): display_name and item_type are required, platform_name and first_release_date optional; pricing_mode defaults to disabled and must not be auto. media_type accepts only physical (the column already allows digital: the API widens when platform sync arrives). source is server-set manual. pricing_product_id is required when pricing_mode is proxy; box_condition requires has_box and manual_condition requires has_manual. custom_value_cents is required when pricing_mode is custom.
 type EntryCreate struct {
-	BoxCondition               *EntryCreateBoxCondition `json:"box_condition,omitempty"`
-	Currency                   *string                  `json:"currency,omitempty"`
-	CustomValueCents           *int64                   `json:"custom_value_cents,omitempty"`
-	CustomValueEnteredCents    *int64                   `json:"custom_value_entered_cents,omitempty"`
-	CustomValueEnteredCurrency *string                  `json:"custom_value_entered_currency,omitempty"`
+	BoxCondition *EntryCreateBoxCondition `json:"box_condition,omitempty"`
+
+	// CoverUrl Custom entries only; an https cover image URL (validated by shape, never fetched).
+	CoverUrl                   *string `json:"cover_url,omitempty"`
+	Currency                   *string `json:"currency,omitempty"`
+	CustomValueCents           *int64  `json:"custom_value_cents,omitempty"`
+	CustomValueEnteredCents    *int64  `json:"custom_value_entered_cents,omitempty"`
+	CustomValueEnteredCurrency *string `json:"custom_value_entered_currency,omitempty"`
 
 	// DisplayName Custom entries only (required there).
 	DisplayName *string `json:"display_name,omitempty"`
@@ -506,6 +604,9 @@ type EntryCreate struct {
 	Notes           *string                     `json:"notes,omitempty"`
 	Packaging       EntryCreatePackaging        `json:"packaging"`
 	Pinned          *bool                       `json:"pinned,omitempty"`
+
+	// PlatformIgdbId Custom entries only; the canonical platform id from the picker (surfaces the entry in the platform filter).
+	PlatformIgdbId *int64 `json:"platform_igdb_id,omitempty"`
 
 	// PlatformName Custom entries only.
 	PlatformName     *string                 `json:"platform_name,omitempty"`
@@ -570,20 +671,23 @@ type EntryList struct {
 	TotalCount int `json:"total_count"`
 }
 
-// EntryPlatform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied free-text name (no igdb id) on custom entries. Absent when neither exists.
+// EntryPlatform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
 type EntryPlatform struct {
-	// IgdbPlatformId Absent on custom entries.
+	// IgdbPlatformId Absent on name-only custom entries.
 	IgdbPlatformId *int64 `json:"igdb_platform_id,omitempty"`
 	Name           string `json:"name"`
 }
 
 // EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
 type EntryUpdate struct {
-	BoxCondition               *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
-	Currency                   *string                  `json:"currency,omitempty"`
-	CustomValueCents           *int64                   `json:"custom_value_cents,omitempty"`
-	CustomValueEnteredCents    *int64                   `json:"custom_value_entered_cents,omitempty"`
-	CustomValueEnteredCurrency *string                  `json:"custom_value_entered_currency,omitempty"`
+	BoxCondition *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
+
+	// CoverUrl Custom entries only; an https cover image URL (validated by shape, never fetched).
+	CoverUrl                   *string `json:"cover_url,omitempty"`
+	Currency                   *string `json:"currency,omitempty"`
+	CustomValueCents           *int64  `json:"custom_value_cents,omitempty"`
+	CustomValueEnteredCents    *int64  `json:"custom_value_entered_cents,omitempty"`
+	CustomValueEnteredCurrency *string `json:"custom_value_entered_currency,omitempty"`
 
 	// DisplayName Custom entries only (required there).
 	DisplayName *string `json:"display_name,omitempty"`
@@ -600,6 +704,9 @@ type EntryUpdate struct {
 	Notes            *string                     `json:"notes,omitempty"`
 	Packaging        EntryUpdatePackaging        `json:"packaging"`
 	Pinned           bool                        `json:"pinned"`
+
+	// PlatformIgdbId Custom entries only; the canonical platform id from the picker.
+	PlatformIgdbId *int64 `json:"platform_igdb_id,omitempty"`
 
 	// PlatformName Custom entries only.
 	PlatformName     *string                `json:"platform_name,omitempty"`
@@ -684,6 +791,24 @@ type SavedView struct {
 	UpdatedAt time.Time              `json:"updated_at"`
 }
 
+// Submission One catalog-submission lifecycle row for an entry. Rows persist as history (rejected and cancelled included; the rolling creation cap counts every attempt); deleting the entry removes them with it. product_id is the verdict's resolved product - recorded before adoption so an approve_new retry never mints twice.
+type Submission struct {
+	CreatedAt    time.Time           `json:"created_at"`
+	EntryId      openapi_types.UUID  `json:"entry_id"`
+	Id           openapi_types.UUID  `json:"id"`
+	ProductId    *openapi_types.UUID `json:"product_id,omitempty"`
+	RejectReason *string             `json:"reject_reason,omitempty"`
+
+	// ResolutionAckAt When the submitter acknowledged an approved verdict (closed the approval banner). Absent until acknowledged.
+	ResolutionAckAt *time.Time       `json:"resolution_ack_at,omitempty"`
+	ReviewedAt      *time.Time       `json:"reviewed_at,omitempty"`
+	Status          SubmissionStatus `json:"status"`
+	UpdatedAt       time.Time        `json:"updated_at"`
+}
+
+// SubmissionStatus defines model for Submission.Status.
+type SubmissionStatus string
+
 // Tag defines model for Tag.
 type Tag struct {
 	EntryCount int                `json:"entry_count"`
@@ -715,6 +840,19 @@ type ValuePoint struct {
 	ValueCents int64              `json:"value_cents"`
 }
 
+// VerdictRequest One admin verdict. approve_new requires product; approve_existing requires product_id; reject requires reason.
+type VerdictRequest struct {
+	Action VerdictRequestAction `json:"action"`
+
+	// Product The curated fields for approve_new; mirrors the enrichment mint request (single edition field, no variant).
+	Product   *CommunityProductSpec `json:"product,omitempty"`
+	ProductId *openapi_types.UUID   `json:"product_id,omitempty"`
+	Reason    *string               `json:"reason,omitempty"`
+}
+
+// VerdictRequestAction defines model for VerdictRequest.Action.
+type VerdictRequestAction string
+
 // ViewCreate defines model for ViewCreate.
 type ViewCreate struct {
 	Name string `json:"name"`
@@ -734,6 +872,12 @@ type Unauthorized = Problem
 
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
+
+// ListSubmissionsParams defines parameters for ListSubmissions.
+type ListSubmissionsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
 
 // GetDashboardParams defines parameters for GetDashboard.
 type GetDashboardParams struct {
@@ -808,6 +952,9 @@ type ListEntriesParamsOrder string
 
 // ListEntriesParamsGroupBy defines parameters for ListEntries.
 type ListEntriesParamsGroupBy string
+
+// SubmitVerdictJSONRequestBody defines body for SubmitVerdict for application/json ContentType.
+type SubmitVerdictJSONRequestBody = VerdictRequest
 
 // CreateEntryJSONRequestBody defines body for CreateEntry for application/json ContentType.
 type CreateEntryJSONRequestBody = EntryCreate
@@ -906,6 +1053,14 @@ type ClientInterface interface {
 	// CountProductReferences request
 	CountProductReferences(ctx context.Context, productId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListSubmissions request
+	ListSubmissions(ctx context.Context, params *ListSubmissionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SubmitVerdictWithBody request with any body
+	SubmitVerdictWithBody(ctx context.Context, submissionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SubmitVerdict(ctx context.Context, submissionId openapi_types.UUID, body SubmitVerdictJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetDashboard request
 	GetDashboard(ctx context.Context, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -935,6 +1090,18 @@ type ClientInterface interface {
 	ReorderEntryWithBody(ctx context.Context, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	ReorderEntry(ctx context.Context, entryId openapi_types.UUID, body ReorderEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CancelSubmission request
+	CancelSubmission(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSubmission request
+	GetSubmission(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSubmission request
+	CreateSubmission(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AckSubmissionResolution request
+	AckSubmissionResolution(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetLibrarySummary request
 	GetLibrarySummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -977,6 +1144,42 @@ type ClientInterface interface {
 
 func (c *Client) CountProductReferences(ctx context.Context, productId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCountProductReferencesRequest(c.Server, productId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListSubmissions(ctx context.Context, params *ListSubmissionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSubmissionsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SubmitVerdictWithBody(ctx context.Context, submissionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSubmitVerdictRequestWithBody(c.Server, submissionId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SubmitVerdict(ctx context.Context, submissionId openapi_types.UUID, body SubmitVerdictJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSubmitVerdictRequest(c.Server, submissionId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1109,6 +1312,54 @@ func (c *Client) ReorderEntryWithBody(ctx context.Context, entryId openapi_types
 
 func (c *Client) ReorderEntry(ctx context.Context, entryId openapi_types.UUID, body ReorderEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReorderEntryRequest(c.Server, entryId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CancelSubmission(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelSubmissionRequest(c.Server, entryId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSubmission(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSubmissionRequest(c.Server, entryId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateSubmission(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSubmissionRequest(c.Server, entryId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AckSubmissionResolution(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAckSubmissionResolutionRequest(c.Server, entryId)
 	if err != nil {
 		return nil, err
 	}
@@ -1317,6 +1568,118 @@ func NewCountProductReferencesRequest(server string, productId openapi_types.UUI
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListSubmissionsRequest generates requests for ListSubmissions
+func NewListSubmissionsRequest(server string, params *ListSubmissionsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/submissions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSubmitVerdictRequest calls the generic SubmitVerdict builder with application/json body
+func NewSubmitVerdictRequest(server string, submissionId openapi_types.UUID, body SubmitVerdictJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSubmitVerdictRequestWithBody(server, submissionId, "application/json", bodyReader)
+}
+
+// NewSubmitVerdictRequestWithBody generates requests for SubmitVerdict with any type of body
+func NewSubmitVerdictRequestWithBody(server string, submissionId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "submissionId", runtime.ParamLocationPath, submissionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/submissions/%s/verdict", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -1920,6 +2283,142 @@ func NewReorderEntryRequestWithBody(server string, entryId openapi_types.UUID, c
 	return req, nil
 }
 
+// NewCancelSubmissionRequest generates requests for CancelSubmission
+func NewCancelSubmissionRequest(server string, entryId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "entryId", runtime.ParamLocationPath, entryId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/entries/%s/submission", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSubmissionRequest generates requests for GetSubmission
+func NewGetSubmissionRequest(server string, entryId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "entryId", runtime.ParamLocationPath, entryId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/entries/%s/submission", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateSubmissionRequest generates requests for CreateSubmission
+func NewCreateSubmissionRequest(server string, entryId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "entryId", runtime.ParamLocationPath, entryId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/entries/%s/submission", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAckSubmissionResolutionRequest generates requests for AckSubmissionResolution
+func NewAckSubmissionResolutionRequest(server string, entryId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "entryId", runtime.ParamLocationPath, entryId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/entries/%s/submission/ack", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetLibrarySummaryRequest generates requests for GetLibrarySummary
 func NewGetLibrarySummaryRequest(server string) (*http.Request, error) {
 	var err error
@@ -2316,6 +2815,14 @@ type ClientWithResponsesInterface interface {
 	// CountProductReferencesWithResponse request
 	CountProductReferencesWithResponse(ctx context.Context, productId openapi_types.UUID, reqEditors ...RequestEditorFn) (*CountProductReferencesResponse, error)
 
+	// ListSubmissionsWithResponse request
+	ListSubmissionsWithResponse(ctx context.Context, params *ListSubmissionsParams, reqEditors ...RequestEditorFn) (*ListSubmissionsResponse, error)
+
+	// SubmitVerdictWithBodyWithResponse request with any body
+	SubmitVerdictWithBodyWithResponse(ctx context.Context, submissionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SubmitVerdictResponse, error)
+
+	SubmitVerdictWithResponse(ctx context.Context, submissionId openapi_types.UUID, body SubmitVerdictJSONRequestBody, reqEditors ...RequestEditorFn) (*SubmitVerdictResponse, error)
+
 	// GetDashboardWithResponse request
 	GetDashboardWithResponse(ctx context.Context, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*GetDashboardResponse, error)
 
@@ -2345,6 +2852,18 @@ type ClientWithResponsesInterface interface {
 	ReorderEntryWithBodyWithResponse(ctx context.Context, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReorderEntryResponse, error)
 
 	ReorderEntryWithResponse(ctx context.Context, entryId openapi_types.UUID, body ReorderEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*ReorderEntryResponse, error)
+
+	// CancelSubmissionWithResponse request
+	CancelSubmissionWithResponse(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*CancelSubmissionResponse, error)
+
+	// GetSubmissionWithResponse request
+	GetSubmissionWithResponse(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSubmissionResponse, error)
+
+	// CreateSubmissionWithResponse request
+	CreateSubmissionWithResponse(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*CreateSubmissionResponse, error)
+
+	// AckSubmissionResolutionWithResponse request
+	AckSubmissionResolutionWithResponse(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AckSubmissionResolutionResponse, error)
 
 	// GetLibrarySummaryWithResponse request
 	GetLibrarySummaryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLibrarySummaryResponse, error)
@@ -2405,6 +2924,58 @@ func (r CountProductReferencesResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CountProductReferencesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListSubmissionsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *AdminSubmissionsPage
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSubmissionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSubmissionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SubmitVerdictResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *Submission
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *Problem
+	ApplicationproblemJSON409 *Problem
+	ApplicationproblemJSON502 *UpstreamError
+}
+
+// Status returns HTTPResponse.Status
+func (r SubmitVerdictResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SubmitVerdictResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2601,6 +3172,103 @@ func (r ReorderEntryResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ReorderEntryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CancelSubmissionResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON404 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelSubmissionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelSubmissionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSubmissionResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *Submission
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON404 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSubmissionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSubmissionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateSubmissionResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON201                   *Submission
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON404 *Problem
+	ApplicationproblemJSON409 *Problem
+	ApplicationproblemJSON429 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSubmissionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSubmissionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AckSubmissionResolutionResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON404 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r AckSubmissionResolutionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AckSubmissionResolutionResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2859,6 +3527,32 @@ func (c *ClientWithResponses) CountProductReferencesWithResponse(ctx context.Con
 	return ParseCountProductReferencesResponse(rsp)
 }
 
+// ListSubmissionsWithResponse request returning *ListSubmissionsResponse
+func (c *ClientWithResponses) ListSubmissionsWithResponse(ctx context.Context, params *ListSubmissionsParams, reqEditors ...RequestEditorFn) (*ListSubmissionsResponse, error) {
+	rsp, err := c.ListSubmissions(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSubmissionsResponse(rsp)
+}
+
+// SubmitVerdictWithBodyWithResponse request with arbitrary body returning *SubmitVerdictResponse
+func (c *ClientWithResponses) SubmitVerdictWithBodyWithResponse(ctx context.Context, submissionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SubmitVerdictResponse, error) {
+	rsp, err := c.SubmitVerdictWithBody(ctx, submissionId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSubmitVerdictResponse(rsp)
+}
+
+func (c *ClientWithResponses) SubmitVerdictWithResponse(ctx context.Context, submissionId openapi_types.UUID, body SubmitVerdictJSONRequestBody, reqEditors ...RequestEditorFn) (*SubmitVerdictResponse, error) {
+	rsp, err := c.SubmitVerdict(ctx, submissionId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSubmitVerdictResponse(rsp)
+}
+
 // GetDashboardWithResponse request returning *GetDashboardResponse
 func (c *ClientWithResponses) GetDashboardWithResponse(ctx context.Context, params *GetDashboardParams, reqEditors ...RequestEditorFn) (*GetDashboardResponse, error) {
 	rsp, err := c.GetDashboard(ctx, params, reqEditors...)
@@ -2953,6 +3647,42 @@ func (c *ClientWithResponses) ReorderEntryWithResponse(ctx context.Context, entr
 		return nil, err
 	}
 	return ParseReorderEntryResponse(rsp)
+}
+
+// CancelSubmissionWithResponse request returning *CancelSubmissionResponse
+func (c *ClientWithResponses) CancelSubmissionWithResponse(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*CancelSubmissionResponse, error) {
+	rsp, err := c.CancelSubmission(ctx, entryId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelSubmissionResponse(rsp)
+}
+
+// GetSubmissionWithResponse request returning *GetSubmissionResponse
+func (c *ClientWithResponses) GetSubmissionWithResponse(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSubmissionResponse, error) {
+	rsp, err := c.GetSubmission(ctx, entryId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSubmissionResponse(rsp)
+}
+
+// CreateSubmissionWithResponse request returning *CreateSubmissionResponse
+func (c *ClientWithResponses) CreateSubmissionWithResponse(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*CreateSubmissionResponse, error) {
+	rsp, err := c.CreateSubmission(ctx, entryId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSubmissionResponse(rsp)
+}
+
+// AckSubmissionResolutionWithResponse request returning *AckSubmissionResolutionResponse
+func (c *ClientWithResponses) AckSubmissionResolutionWithResponse(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AckSubmissionResolutionResponse, error) {
+	rsp, err := c.AckSubmissionResolution(ctx, entryId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAckSubmissionResolutionResponse(rsp)
 }
 
 // GetLibrarySummaryWithResponse request returning *GetLibrarySummaryResponse
@@ -3113,6 +3843,114 @@ func ParseCountProductReferencesResponse(rsp *http.Response) (*CountProductRefer
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSubmissionsResponse parses an HTTP response from a ListSubmissionsWithResponse call
+func ParseListSubmissionsResponse(rsp *http.Response) (*ListSubmissionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSubmissionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminSubmissionsPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSubmitVerdictResponse parses an HTTP response from a SubmitVerdictWithResponse call
+func ParseSubmitVerdictResponse(rsp *http.Response) (*SubmitVerdictResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SubmitVerdictResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Submission
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest UpstreamError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
 
 	}
 
@@ -3461,6 +4299,173 @@ func ParseReorderEntryResponse(rsp *http.Response) (*ReorderEntryResponse, error
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCancelSubmissionResponse parses an HTTP response from a CancelSubmissionWithResponse call
+func ParseCancelSubmissionResponse(rsp *http.Response) (*CancelSubmissionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelSubmissionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSubmissionResponse parses an HTTP response from a GetSubmissionWithResponse call
+func ParseGetSubmissionResponse(rsp *http.Response) (*GetSubmissionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSubmissionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Submission
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateSubmissionResponse parses an HTTP response from a CreateSubmissionWithResponse call
+func ParseCreateSubmissionResponse(rsp *http.Response) (*CreateSubmissionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSubmissionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Submission
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON429 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAckSubmissionResolutionResponse parses an HTTP response from a AckSubmissionResolutionWithResponse call
+func ParseAckSubmissionResolutionResponse(rsp *http.Response) (*AckSubmissionResolutionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AckSubmissionResolutionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	}
 

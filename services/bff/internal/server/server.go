@@ -77,10 +77,16 @@ type EnrichmentAPI interface {
 	Product(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error)
 	Score(ctx context.Context, bearer string, req enrichapi.ScoreRequest) ([]byte, bool, error)
 	FX(ctx context.Context, bearer string) (enrichmentclient.Result, error)
+	ListPlatforms(ctx context.Context, bearer string) (enrichmentclient.Result, error)
 	UnmatchedProducts(ctx context.Context, bearer string, params *enrichapi.ListUnmatchedProductsParams) (enrichmentclient.Result, error)
+	CommunityProducts(ctx context.Context, bearer string, params *enrichapi.ListCommunityProductsParams) (enrichmentclient.Result, error)
 	SetProductMapping(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error)
 	DeleteProduct(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error)
 	TriggerRefresh(ctx context.Context, bearer string) (enrichmentclient.Result, error)
+	CreateCommunityProduct(ctx context.Context, bearer string, body []byte) (enrichmentclient.Result, error)
+	PromoteProduct(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error)
+	PromoteCandidates(ctx context.Context, bearer string, params *enrichapi.ListPromoteCandidatesParams) (enrichmentclient.Result, error)
+	DismissPromoteCandidate(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error)
 }
 
 // CollectionAPI is the collection service surface (implemented by
@@ -106,6 +112,12 @@ type CollectionAPI interface {
 	LibrarySummary(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error)
 	PurgeUserData(ctx context.Context, bearer string) (collectionclient.Result, error)
 	CountProductReferences(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	CreateSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	GetSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	CancelSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	AckSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	ListSubmissions(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error)
+	SubmitVerdict(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
 }
 
 const (

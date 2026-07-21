@@ -273,6 +273,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/entries/{entryId}/submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The entry's latest submission (relay) */
+        get: operations["getSubmission"];
+        put?: never;
+        /**
+         * Submit a custom entry as a catalog candidate (relay)
+         * @description Relays collection verbatim: custom entries only (400 entry_not_custom), one pending per entry (409 submission_pending), per-user caps (429 too_many_pending_submissions / submission_rate_limited).
+         */
+        post: operations["createSubmission"];
+        /** Cancel the entry's pending submission (relay) */
+        delete: operations["cancelSubmission"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entries/{entryId}/submission/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acknowledge an approved submission (relay)
+         * @description Relays collection verbatim: stamps the caller's approved submission for the entry so the approval banner does not reappear. Idempotent (204 on repeat).
+         */
+        post: operations["ackSubmissionResolution"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags": {
         parameters: {
             query?: never;
@@ -402,6 +444,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platforms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The canonical platform catalog with aliases (relayed from enrichment)
+         * @description Reference data for the custom-entry platform picker: igdb id + name + aliases, sorted by name.
+         */
+        get: operations["listPlatforms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recommendations": {
         parameters: {
             query?: never;
@@ -434,6 +496,26 @@ export interface paths {
          * @description Relays enrichment's admin worklist verbatim: every product with no PriceCharting mapping, held ones included and flagged with match_hold. The bff adds no role logic; a non-admin caller receives enrichment's 403 problem unchanged.
          */
         get: operations["listUnmatchedProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/products/community": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin listing of community products (relay; enrichment enforces role admin)
+         * @description Relays enrichment's community listing verbatim: every admin-minted, un-promoted community product. The bff adds no role logic; a non-admin caller receives enrichment's 403 problem unchanged.
+         */
+        get: operations["listCommunityProducts"];
         put?: never;
         post?: never;
         delete?: never;
@@ -499,6 +581,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pending catalog submissions with live proposals (relay; collection enforces role admin) */
+        get: operations["listSubmissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/submissions/{submissionId}/verdict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve one pending submission (relay; collection enforces role admin and orchestrates approve_new) */
+        post: operations["submitVerdict"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mint a community product (relay; enrichment enforces role admin) */
+        post: operations["createCommunityProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/products/{productId}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote a community product to provider identity (relay; enrichment enforces role admin)
+         * @description Relays enrichment's atomic attach+flip verbatim; a provider twin answers 409 identity_taken with the holder named, an already-provider product answers 409 product_not_community.
+         */
+        post: operations["promoteProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/products/promote-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Community products with plausible provider matches (relay; enrichment enforces role admin) */
+        get: operations["listPromoteCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/products/{productId}/promote-candidates/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss one promote candidate (relay; enrichment enforces role admin) */
+        post: operations["dismissPromoteCandidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -553,6 +740,17 @@ export interface components {
             /** @description IGDB platform logo; the display fallback for products without cover art. */
             logo_url?: string;
         };
+        /** @description One platform-catalog row with its known aliases. */
+        CatalogPlatform: {
+            /** Format: int64 */
+            igdb_id: number;
+            name: string;
+            /** @description Alternate spellings and abbreviations (compare case-insensitively). */
+            aliases: string[];
+        };
+        PlatformCatalog: {
+            platforms: components["schemas"]["CatalogPlatform"][];
+        };
         /** @description Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). pc_listing results carry the pc_* fields, the PriceCharting category (empty when the provider lists none), and the standard per-listing loose/cib/new prices so variant prints are tellable apart. */
         SearchResult: {
             /** @enum {string} */
@@ -574,6 +772,16 @@ export interface components {
             cib_cents?: number;
             /** Format: int64 */
             new_cents?: number;
+            /**
+             * @description Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick and community.cover_url as cover_url. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
+             * @enum {string}
+             */
+            origin?: "community";
+            /** Format: uuid */
+            product_id?: string;
+            /** @enum {string} */
+            item_type?: "game" | "console" | "accessory";
+            platform_name?: string;
         };
         SearchResults: {
             /** @description True when the provider was unreachable and the local catalog answered instead. */
@@ -643,10 +851,75 @@ export interface components {
             pricecharting?: components["schemas"]["PricechartingMeta"];
             /** @description Present true when an admin clear holds this product out of the nightly re-match walk. */
             match_hold?: boolean;
+            /**
+             * @description Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity.
+             * @enum {string}
+             */
+            origin?: "community";
+            community?: components["schemas"]["CommunityMeta"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        /** @description Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present). */
+        CommunityMeta: {
+            platform_name?: string;
+            /** Format: date */
+            first_release_date?: string;
+            /** @description User-supplied cover image URL (https, never fetched server-side; the client renders it with a broken-image fallback). Served as the product cover when no provider cover is present; retained after promotion as gap-fill. */
+            cover_url?: string;
+        };
+        CommunityProductCreate: {
+            /** @enum {string} */
+            type: "game" | "console" | "accessory";
+            name: string;
+            platform_name?: string;
+            region?: string;
+            /** @description The entry idiom's single "Edition or variant" note. */
+            edition?: string;
+            /** Format: date */
+            first_release_date?: string;
+            /** @description Optional https cover image URL (validated by shape only, never fetched). */
+            cover_url?: string;
+        };
+        /** @description Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the nightly walk or the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant. */
+        PromoteRequest: {
+            /** Format: int64 */
+            igdb_game_id?: number;
+            /** Format: int64 */
+            platform_igdb_id?: number;
+            /** Format: int64 */
+            pc_product_id?: number;
+        };
+        PromoteCandidate: {
+            /** @enum {string} */
+            provider: "igdb" | "pricecharting";
+            /** Format: int64 */
+            provider_id: number;
+            name: string;
+            /** Format: double */
+            score: number;
+            /** Format: date-time */
+            found_at: string;
+        };
+        PromoteCandidatesPage: {
+            products: components["schemas"]["PromoteCandidateProduct"][];
+            /**
+             * Format: int64
+             * @description Full count of flagged community products.
+             */
+            total_count: number;
+        };
+        PromoteCandidateProduct: {
+            product: components["schemas"]["Product"];
+            candidates: components["schemas"]["PromoteCandidate"][];
+        };
+        DismissCandidateRequest: {
+            /** @enum {string} */
+            provider: "igdb" | "pricecharting";
+            /** Format: int64 */
+            provider_id: number;
         };
         /** @description type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so region/edition/variant on a game resolve are ignored (entry-level facts, like pc_listing). Without pc_product_id the resolve auto-matches by the plain game name through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant). */
         ResolveRequest: {
@@ -687,6 +960,14 @@ export interface components {
              */
             total_count: number;
         };
+        CommunityProductsPage: {
+            products: components["schemas"]["Product"][];
+            /**
+             * Format: int64
+             * @description Full count of community products, beyond this page.
+             */
+            total_count: number;
+        };
         MappingRequest: {
             /**
              * Format: int64
@@ -706,16 +987,16 @@ export interface components {
             instance?: string;
             code?: string;
         };
-        /** @description The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied free-text name (no igdb id) on custom entries. Absent when neither exists. */
+        /** @description The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists. */
         EntryPlatform: {
             /**
              * Format: int64
-             * @description Absent on custom entries.
+             * @description Absent on name-only custom entries.
              */
             igdb_platform_id?: number;
             name: string;
         };
-        /** @description One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries a name without an igdb id when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; (or, with pricing_mode custom, taken directly from custom_value_cents, packaging-independent); it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable. */
+        /** @description One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries the picked or normalized identity - name-only for escape-hatch free text - when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; (or, with pricing_mode custom, taken directly from custom_value_cents, packaging-independent); it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable. */
         Entry: {
             /** Format: uuid */
             id: string;
@@ -732,7 +1013,7 @@ export interface components {
             platform?: components["schemas"]["EntryPlatform"];
             /** Format: date */
             first_release_date?: string;
-            /** @description Cover art URL snapshotted from the product at creation. Absent on custom entries, hardware, and products without art (render a placeholder). */
+            /** @description Cover art URL. For product-backed entries it is snapshotted from the product at creation (and refreshed on adoption). Custom entries may set their own (https, shape-validated). Absent on hardware and products without art (render a placeholder). */
             cover_url?: string;
             /**
              * Format: int64
@@ -799,6 +1080,85 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /** @description One catalog-submission lifecycle row for an entry. Rows persist as history (rejected and cancelled included; the rolling creation cap counts every attempt); deleting the entry removes them with it. product_id is the verdict's resolved product - recorded before adoption so an approve_new retry never mints twice. */
+        Submission: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            entry_id: string;
+            /** @enum {string} */
+            status: "pending" | "approved" | "rejected" | "cancelled";
+            reject_reason?: string;
+            /** Format: uuid */
+            product_id?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            reviewed_at?: string;
+            /**
+             * Format: date-time
+             * @description When the submitter acknowledged an approved verdict (closed the approval banner). Absent until acknowledged.
+             */
+            resolution_ack_at?: string;
+        };
+        /** @description One queue row: the submission plus the live proposal from the entry join (display_name, item_type, platform_name, region, edition, first_release_date pre-fill the curation form; entries carry no variant - the single edition field is the idiom). */
+        AdminSubmission: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            entry_id: string;
+            /** Format: uuid */
+            user_id: string;
+            /** @enum {string} */
+            status: "pending" | "approved" | "rejected" | "cancelled";
+            display_name: string;
+            /** @enum {string} */
+            item_type: "game" | "console" | "accessory";
+            platform_name?: string;
+            /** @enum {string} */
+            region: "ntsc_u" | "ntsc_j" | "pal" | "region_free";
+            edition?: string;
+            /** Format: date */
+            first_release_date?: string;
+            /** @description The entry's cover URL, live from the proposal join; prefills the curation cover field. */
+            cover_url?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AdminSubmissionsPage: {
+            submissions: components["schemas"]["AdminSubmission"][];
+            /**
+             * Format: int64
+             * @description Full pending count, beyond this page.
+             */
+            total_count: number;
+        };
+        /** @description The curated fields for approve_new; mirrors the enrichment mint request (single edition field, no variant). */
+        CommunityProductSpec: {
+            /** @enum {string} */
+            type: "game" | "console" | "accessory";
+            name: string;
+            platform_name?: string;
+            region?: string;
+            edition?: string;
+            /** Format: date */
+            first_release_date?: string;
+            /** @description Optional https cover image URL for the minted community product. */
+            cover_url?: string;
+        };
+        /** @description One admin verdict. approve_new requires product; approve_existing requires product_id; reject requires reason. */
+        VerdictRequest: {
+            /** @enum {string} */
+            action: "approve_new" | "approve_existing" | "reject";
+            product?: components["schemas"]["CommunityProductSpec"];
+            /** Format: uuid */
+            product_id?: string;
+            reason?: string;
+        };
         /** @description Product-backed: product_id comes from a prior enrichment resolve and the catalog fields are snapshotted server-side (display_name/item_type/platform_name/first_release_date must NOT be sent). Custom (no product_id): display_name and item_type are required, platform_name and first_release_date optional; pricing_mode defaults to disabled and must not be auto. media_type accepts only physical (the column already allows digital: the API widens when platform sync arrives). source is server-set manual. pricing_product_id is required when pricing_mode is proxy; box_condition requires has_box and manual_condition requires has_manual. custom_value_cents is required when pricing_mode is custom. */
         EntryCreate: {
             /**
@@ -815,6 +1175,13 @@ export interface components {
             item_type?: "game" | "console" | "accessory";
             /** @description Custom entries only. */
             platform_name?: string;
+            /**
+             * Format: int64
+             * @description Custom entries only; the canonical platform id from the picker (surfaces the entry in the platform filter).
+             */
+            platform_igdb_id?: number;
+            /** @description Custom entries only; an https cover image URL (validated by shape, never fetched). */
+            cover_url?: string;
             /**
              * Format: date
              * @description Custom entries only.
@@ -878,6 +1245,13 @@ export interface components {
             display_name?: string;
             /** @description Custom entries only. */
             platform_name?: string;
+            /**
+             * Format: int64
+             * @description Custom entries only; the canonical platform id from the picker.
+             */
+            platform_igdb_id?: number;
+            /** @description Custom entries only; an https cover image URL (validated by shape, never fetched). */
+            cover_url?: string;
             /**
              * Format: date
              * @description Custom entries only.
@@ -1737,6 +2111,161 @@ export interface operations {
             502: components["responses"]["UpstreamError"];
         };
     };
+    getSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The latest submission */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Submission"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Not found (code entry_not_found or submission_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    createSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pending submission */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Submission"];
+                };
+            };
+            /** @description The entry is not custom (code entry_not_custom) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Not found (code entry_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A submission is already pending (code submission_pending) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A submission cap is exceeded (code too_many_pending_submissions or submission_rate_limited) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    cancelSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Nothing pending (code submission_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    ackSubmissionResolution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Acknowledged */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Not found (code entry_not_found or submission_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
     listTags: {
         parameters: {
             query?: never;
@@ -2130,6 +2659,28 @@ export interface operations {
             502: components["responses"]["UpstreamError"];
         };
     };
+    listPlatforms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The platform catalog */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformCatalog"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
     getRecommendations: {
         parameters: {
             query?: never;
@@ -2171,6 +2722,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnmatchedProductsPage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    listCommunityProducts: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One community listing page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunityProductsPage"];
                 };
             };
             401: components["responses"]["Unauthenticated"];
@@ -2329,6 +2914,300 @@ export interface operations {
             };
             /** @description A walk is already running (code refresh_in_progress) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    listSubmissions: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One queue page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSubmissionsPage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    submitVerdict: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                submissionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerdictRequest"];
+            };
+        };
+        responses: {
+            /** @description The resolved submission */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Submission"];
+                };
+            };
+            /** @description Invalid body (code invalid_body or invalid_param) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such submission, the adopt target does not exist, or the entry vanished mid-race (code submission_not_found, unknown_product, or entry_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Another admin already resolved it (code submission_resolved) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    createCommunityProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommunityProductCreate"];
+            };
+        };
+        responses: {
+            /** @description The minted community product */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            /** @description Invalid body (code invalid_body or invalid_param) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    promoteProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromoteRequest"];
+            };
+        };
+        responses: {
+            /** @description The promoted product */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            /** @description Invalid body (code invalid_body or invalid_param) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product, or the provider does not know the requested id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not community-origin (code product_not_community) or a provider twin holds the identity (code identity_taken) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    listPromoteCandidates: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                product_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One candidates page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoteCandidatesPage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    dismissPromoteCandidate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DismissCandidateRequest"];
+            };
+        };
+        responses: {
+            /** @description Dismissed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid body (code invalid_body or invalid_param) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product (code product_not_found) */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

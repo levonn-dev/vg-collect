@@ -523,6 +523,110 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/entries/{entryId}/submission:
+    post:
+      operationId: createSubmission
+      summary: Submit a custom entry as a catalog candidate (relay)
+      description: >
+        Relays collection verbatim: custom entries only (400
+        entry_not_custom), one pending per entry (409
+        submission_pending), per-user caps (429
+        too_many_pending_submissions / submission_rate_limited).
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "201":
+          description: The pending submission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Submission" }
+        "400":
+          description: The entry is not custom (code entry_not_custom)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Not found (code entry_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: A submission is already pending (code submission_pending)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: A submission cap is exceeded (code too_many_pending_submissions or submission_rate_limited)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+    get:
+      operationId: getSubmission
+      summary: The entry's latest submission (relay)
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The latest submission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Submission" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Not found (code entry_not_found or submission_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+    delete:
+      operationId: cancelSubmission
+      summary: Cancel the entry's pending submission (relay)
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Cancelled
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Nothing pending (code submission_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/entries/{entryId}/submission/ack:
+    post:
+      operationId: ackSubmissionResolution
+      summary: Acknowledge an approved submission (relay)
+      description: >
+        Relays collection verbatim: stamps the caller's approved
+        submission for the entry so the approval banner does not
+        reappear. Idempotent (204 on repeat).
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Acknowledged
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Not found (code entry_not_found or submission_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
   /api/tags:
     get:
       operationId: listTags
@@ -815,6 +919,21 @@ paths:
               schema: { $ref: "#/components/schemas/FXRates" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/platforms:
+    get:
+      operationId: listPlatforms
+      summary: The canonical platform catalog with aliases (relayed from enrichment)
+      description: >
+        Reference data for the custom-entry platform picker: igdb id +
+        name + aliases, sorted by name.
+      responses:
+        "200":
+          description: The platform catalog
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlatformCatalog" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
   /api/recommendations:
     get:
       operationId: getRecommendations
@@ -858,6 +977,37 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/UnmatchedProductsPage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/products/community:
+    get:
+      operationId: listCommunityProducts
+      summary: Admin listing of community products (relay; enrichment enforces role admin)
+      description: >
+        Relays enrichment's community listing verbatim: every
+        admin-minted, un-promoted community product. The bff adds no
+        role logic; a non-admin caller receives enrichment's 403
+        problem unchanged.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: One community listing page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommunityProductsPage" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403":
           description: Caller lacks the admin role (code forbidden)
@@ -983,6 +1133,211 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/submissions:
+    get:
+      operationId: listSubmissions
+      summary: Pending catalog submissions with live proposals (relay; collection enforces role admin)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: One queue page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminSubmissionsPage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/submissions/{submissionId}/verdict:
+    post:
+      operationId: submitVerdict
+      summary: Resolve one pending submission (relay; collection enforces role admin and orchestrates approve_new)
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerdictRequest" }
+      responses:
+        "200":
+          description: The resolved submission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Submission" }
+        "400":
+          description: Invalid body (code invalid_body or invalid_param)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          description: No such submission, the adopt target does not exist, or the entry vanished mid-race (code submission_not_found, unknown_product, or entry_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Another admin already resolved it (code submission_resolved)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/products:
+    post:
+      operationId: createCommunityProduct
+      summary: Mint a community product (relay; enrichment enforces role admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CommunityProductCreate" }
+      responses:
+        "201":
+          description: The minted community product
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400":
+          description: Invalid body (code invalid_body or invalid_param)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/products/{productId}/promote:
+    post:
+      operationId: promoteProduct
+      summary: Promote a community product to provider identity (relay; enrichment enforces role admin)
+      description: >
+        Relays enrichment's atomic attach+flip verbatim; a provider
+        twin answers 409 identity_taken with the holder named, an
+        already-provider product answers 409 product_not_community.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PromoteRequest" }
+      responses:
+        "200":
+          description: The promoted product
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400":
+          description: Invalid body (code invalid_body or invalid_param)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          description: No such product, or the provider does not know the requested id
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Not community-origin (code product_not_community) or a provider twin holds the identity (code identity_taken)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/products/promote-candidates:
+    get:
+      operationId: listPromoteCandidates
+      summary: Community products with plausible provider matches (relay; enrichment enforces role admin)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: product_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: One candidates page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PromoteCandidatesPage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/products/{productId}/promote-candidates/dismiss:
+    post:
+      operationId: dismissPromoteCandidate
+      summary: Dismiss one promote candidate (relay; enrichment enforces role admin)
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DismissCandidateRequest" }
+      responses:
+        "204":
+          description: Dismissed
+        "400":
+          description: Invalid body (code invalid_body or invalid_param)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          description: No such product (code product_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
 components:
   responses:
     Unauthenticated:
@@ -1077,6 +1432,24 @@ components:
         logo_url:
           type: string
           description: IGDB platform logo; the display fallback for products without cover art.
+    CatalogPlatform:
+      description: One platform-catalog row with its known aliases.
+      type: object
+      required: [igdb_id, name, aliases]
+      properties:
+        igdb_id: { type: integer, format: int64 }
+        name: { type: string }
+        aliases:
+          description: Alternate spellings and abbreviations (compare case-insensitively).
+          type: array
+          items: { type: string }
+    PlatformCatalog:
+      type: object
+      required: [platforms]
+      properties:
+        platforms:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogPlatform" }
     SearchResult:
       description: >
         Flat result with a type discriminator. Game results carry the
@@ -1103,6 +1476,23 @@ components:
         loose_cents: { type: integer, format: int64 }
         cib_cents: { type: integer, format: int64 }
         new_cents: { type: integer, format: int64 }
+        origin:
+          type: string
+          enum: [community]
+          description: >
+            Marks an interleaved community result (admin-minted,
+            anchor-less); absent on provider results. Community results
+            carry product_id + item_type + platform_name for the pick
+            and community.cover_url as cover_url. They are scored against
+            the query by name similarity and merged into results by
+            descending score (a provider result precedes a community
+            result of equal score), capped at 10, for game and hardware
+            searches only (never pc_listing). The provider cache stores
+            provider results only - community items attach fresh on every
+            search.
+        product_id: { type: string, format: uuid }
+        item_type: { type: string, enum: [game, console, accessory] }
+        platform_name: { type: string }
     SearchResults:
       type: object
       required: [degraded, results]
@@ -1203,8 +1593,97 @@ components:
           description: >
             Present true when an admin clear holds this product out of
             the nightly re-match walk.
+        origin:
+          type: string
+          enum: [community]
+          description: >
+            Emitted only for admin-minted community products (absent
+            means provider-identified). Community products live
+            outside the provider identity indexes; their curated name
+            is their identity.
+        community: { $ref: "#/components/schemas/CommunityMeta" }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    CommunityMeta:
+      description: >
+        Facts curated at community mint time; retained after promotion
+        as gap-fill (provider blocks win per-field where present).
+      type: object
+      properties:
+        platform_name: { type: string }
+        first_release_date: { type: string, format: date }
+        cover_url:
+          type: string
+          description: >
+            User-supplied cover image URL (https, never fetched
+            server-side; the client renders it with a broken-image
+            fallback). Served as the product cover when no provider
+            cover is present; retained after promotion as gap-fill.
+    CommunityProductCreate:
+      type: object
+      required: [type, name]
+      properties:
+        type: { type: string, enum: [game, console, accessory] }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        platform_name: { type: string, maxLength: 100 }
+        region: { type: string, maxLength: 32 }
+        edition:
+          type: string
+          maxLength: 128
+          description: The entry idiom's single "Edition or variant" note.
+        first_release_date: { type: string, format: date }
+        cover_url:
+          type: string
+          maxLength: 512
+          description: Optional https cover image URL (validated by shape only, never fetched).
+    PromoteRequest:
+      description: >
+        Provider identity for an in-place promotion. type game
+        products require igdb_game_id + platform_igdb_id and accept
+        an optional pc_product_id (the listing can also arrive later
+        via the nightly walk or the mapping fix, once provider);
+        console and accessory products require pc_product_id. The
+        identity the product re-enters the index with completes with
+        the doc's stored region/edition/variant.
+      type: object
+      properties:
+        igdb_game_id: { type: integer, format: int64 }
+        platform_igdb_id: { type: integer, format: int64 }
+        pc_product_id: { type: integer, format: int64 }
+    PromoteCandidate:
+      type: object
+      required: [provider, provider_id, name, score, found_at]
+      properties:
+        provider: { type: string, enum: [igdb, pricecharting] }
+        provider_id: { type: integer, format: int64 }
+        name: { type: string }
+        score: { type: number, format: double }
+        found_at: { type: string, format: date-time }
+    PromoteCandidatesPage:
+      type: object
+      required: [products, total_count]
+      properties:
+        products:
+          type: array
+          items: { $ref: "#/components/schemas/PromoteCandidateProduct" }
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of flagged community products.
+    PromoteCandidateProduct:
+      type: object
+      required: [product, candidates]
+      properties:
+        product: { $ref: "#/components/schemas/Product" }
+        candidates:
+          type: array
+          items: { $ref: "#/components/schemas/PromoteCandidate" }
+    DismissCandidateRequest:
+      type: object
+      required: [provider, provider_id]
+      properties:
+        provider: { type: string, enum: [igdb, pricecharting] }
+        provider_id: { type: integer, format: int64 }
     ResolveRequest:
       description: >
         type game requires igdb_game_id + platform_igdb_id (the
@@ -1277,6 +1756,17 @@ components:
           type: integer
           format: int64
           description: Full count of unmatched products, beyond this page.
+    CommunityProductsPage:
+      type: object
+      required: [products, total_count]
+      properties:
+        products:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of community products, beyond this page.
     MappingRequest:
       type: object
       required: [pc_product_id]
@@ -1309,15 +1799,17 @@ components:
       description: >
         The entry's platform: a creation-time snapshot of the product's
         platform (both fields) on product-backed entries, or a
-        user-supplied free-text name (no igdb id) on custom entries.
-        Absent when neither exists.
+        user-supplied platform on custom entries - both fields when
+        picked from the catalog or normalized by the admin lever,
+        name-only for escape-hatch free text. Absent when neither
+        exists.
       type: object
       required: [name]
       properties:
         igdb_platform_id:
           type: integer
           format: int64
-          description: Absent on custom entries.
+          description: Absent on name-only custom entries.
         name: { type: string }
     Entry:
       description: >
@@ -1326,9 +1818,10 @@ components:
         igdb_game_id) are immutable creation-time snapshots from the
         enrichment product and product_id remains the live join key
         for prices. A CUSTOM entry has no product_id: its display
-        fields are user-owned and editable, platform carries a name
-        without an igdb id when supplied, and igdb_game_id is always
-        absent. value_cents is composed at read time from the
+        fields are user-owned and editable, platform carries the
+        picked or normalized identity - name-only for escape-hatch
+        free text - when supplied, and igdb_game_id is always absent.
+        value_cents is composed at read time from the
         effective pricing product and the packaging-matched price
         field; (or, with pricing_mode custom, taken directly from
         custom_value_cents, packaging-independent); it is null when
@@ -1353,9 +1846,11 @@ components:
         cover_url:
           type: string
           description: >
-            Cover art URL snapshotted from the product at creation.
-            Absent on custom entries, hardware, and products without
-            art (render a placeholder).
+            Cover art URL. For product-backed entries it is snapshotted
+            from the product at creation (and refreshed on adoption).
+            Custom entries may set their own (https, shape-validated).
+            Absent on hardware and products without art (render a
+            placeholder).
         igdb_game_id:
           type: integer
           format: int64
@@ -1425,6 +1920,95 @@ components:
         value_cents: { type: integer, format: int64 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    Submission:
+      description: >
+        One catalog-submission lifecycle row for an entry. Rows
+        persist as history (rejected and cancelled included; the
+        rolling creation cap counts every attempt); deleting the entry
+        removes them with it. product_id is the verdict's resolved
+        product - recorded before adoption so an approve_new retry
+        never mints twice.
+      type: object
+      required: [id, entry_id, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        entry_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, approved, rejected, cancelled] }
+        reject_reason: { type: string }
+        product_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        reviewed_at: { type: string, format: date-time }
+        resolution_ack_at:
+          type: string
+          format: date-time
+          description: >
+            When the submitter acknowledged an approved verdict (closed
+            the approval banner). Absent until acknowledged.
+    AdminSubmission:
+      description: >
+        One queue row: the submission plus the live proposal from the
+        entry join (display_name, item_type, platform_name, region,
+        edition, first_release_date pre-fill the curation form;
+        entries carry no variant - the single edition field is the
+        idiom).
+      type: object
+      required: [id, entry_id, user_id, status, display_name, item_type, region, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        entry_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, approved, rejected, cancelled] }
+        display_name: { type: string }
+        item_type: { type: string, enum: [game, console, accessory] }
+        platform_name: { type: string }
+        region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        edition: { type: string }
+        first_release_date: { type: string, format: date }
+        cover_url:
+          type: string
+          description: The entry's cover URL, live from the proposal join; prefills the curation cover field.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AdminSubmissionsPage:
+      type: object
+      required: [submissions, total_count]
+      properties:
+        submissions:
+          type: array
+          items: { $ref: "#/components/schemas/AdminSubmission" }
+        total_count:
+          type: integer
+          format: int64
+          description: Full pending count, beyond this page.
+    CommunityProductSpec:
+      description: >
+        The curated fields for approve_new; mirrors the enrichment
+        mint request (single edition field, no variant).
+      type: object
+      required: [type, name]
+      properties:
+        type: { type: string, enum: [game, console, accessory] }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        platform_name: { type: string, maxLength: 100 }
+        region: { type: string, maxLength: 32 }
+        edition: { type: string, maxLength: 128 }
+        first_release_date: { type: string, format: date }
+        cover_url:
+          type: string
+          maxLength: 512
+          description: Optional https cover image URL for the minted community product.
+    VerdictRequest:
+      description: >
+        One admin verdict. approve_new requires product;
+        approve_existing requires product_id; reject requires reason.
+      type: object
+      required: [action]
+      properties:
+        action: { type: string, enum: [approve_new, approve_existing, reject] }
+        product: { $ref: "#/components/schemas/CommunityProductSpec" }
+        product_id: { type: string, format: uuid }
+        reason: { type: string, maxLength: 1000 }
     EntryCreate:
       description: >
         Product-backed: product_id comes from a prior enrichment
@@ -1458,6 +2042,14 @@ components:
           type: string
           maxLength: 100
           description: Custom entries only.
+        platform_igdb_id:
+          type: integer
+          format: int64
+          description: Custom entries only; the canonical platform id from the picker (surfaces the entry in the platform filter).
+        cover_url:
+          type: string
+          maxLength: 512
+          description: Custom entries only; an https cover image URL (validated by shape, never fetched).
         first_release_date:
           type: string
           format: date
@@ -1520,6 +2112,14 @@ components:
           type: string
           maxLength: 100
           description: Custom entries only.
+        platform_igdb_id:
+          type: integer
+          format: int64
+          description: Custom entries only; the canonical platform id from the picker.
+        cover_url:
+          type: string
+          maxLength: 512
+          description: Custom entries only; an https cover image URL (validated by shape, never fetched).
         first_release_date:
           type: string
           format: date

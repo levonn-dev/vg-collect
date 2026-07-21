@@ -150,10 +150,18 @@ type stubEnrichment struct {
 	score   func(ctx context.Context, bearer string, req enrichapi.ScoreRequest) ([]byte, bool, error)
 	fx      func(ctx context.Context, bearer string) (enrichmentclient.Result, error)
 
+	listPlatforms func(ctx context.Context, bearer string) (enrichmentclient.Result, error)
+
 	unmatchedProducts func(ctx context.Context, bearer string, params *enrichapi.ListUnmatchedProductsParams) (enrichmentclient.Result, error)
+	communityProducts func(ctx context.Context, bearer string, params *enrichapi.ListCommunityProductsParams) (enrichmentclient.Result, error)
 	setProductMapping func(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error)
 	triggerRefresh    func(ctx context.Context, bearer string) (enrichmentclient.Result, error)
 	deleteProduct     func(ctx context.Context, bearer string, id uuid.UUID) (enrichmentclient.Result, error)
+
+	createCommunityProduct  func(ctx context.Context, bearer string, body []byte) (enrichmentclient.Result, error)
+	promoteProduct          func(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error)
+	promoteCandidates       func(ctx context.Context, bearer string, params *enrichapi.ListPromoteCandidatesParams) (enrichmentclient.Result, error)
+	dismissPromoteCandidate func(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error)
 }
 
 var _ EnrichmentAPI = (*stubEnrichment)(nil)
@@ -193,11 +201,25 @@ func (s *stubEnrichment) FX(ctx context.Context, bearer string) (enrichmentclien
 	return s.fx(ctx, bearer)
 }
 
+func (s *stubEnrichment) ListPlatforms(ctx context.Context, bearer string) (enrichmentclient.Result, error) {
+	if s.listPlatforms == nil {
+		panic("unexpected ListPlatforms")
+	}
+	return s.listPlatforms(ctx, bearer)
+}
+
 func (s *stubEnrichment) UnmatchedProducts(ctx context.Context, bearer string, params *enrichapi.ListUnmatchedProductsParams) (enrichmentclient.Result, error) {
 	if s.unmatchedProducts == nil {
 		panic("unexpected UnmatchedProducts")
 	}
 	return s.unmatchedProducts(ctx, bearer, params)
+}
+
+func (s *stubEnrichment) CommunityProducts(ctx context.Context, bearer string, params *enrichapi.ListCommunityProductsParams) (enrichmentclient.Result, error) {
+	if s.communityProducts == nil {
+		panic("unexpected CommunityProducts")
+	}
+	return s.communityProducts(ctx, bearer, params)
 }
 
 func (s *stubEnrichment) SetProductMapping(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error) {
@@ -219,6 +241,34 @@ func (s *stubEnrichment) DeleteProduct(ctx context.Context, bearer string, id uu
 		panic("unexpected DeleteProduct")
 	}
 	return s.deleteProduct(ctx, bearer, id)
+}
+
+func (s *stubEnrichment) CreateCommunityProduct(ctx context.Context, bearer string, body []byte) (enrichmentclient.Result, error) {
+	if s.createCommunityProduct == nil {
+		panic("unexpected CreateCommunityProduct")
+	}
+	return s.createCommunityProduct(ctx, bearer, body)
+}
+
+func (s *stubEnrichment) PromoteProduct(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error) {
+	if s.promoteProduct == nil {
+		panic("unexpected PromoteProduct")
+	}
+	return s.promoteProduct(ctx, bearer, id, body)
+}
+
+func (s *stubEnrichment) PromoteCandidates(ctx context.Context, bearer string, params *enrichapi.ListPromoteCandidatesParams) (enrichmentclient.Result, error) {
+	if s.promoteCandidates == nil {
+		panic("unexpected PromoteCandidates")
+	}
+	return s.promoteCandidates(ctx, bearer, params)
+}
+
+func (s *stubEnrichment) DismissPromoteCandidate(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error) {
+	if s.dismissPromoteCandidate == nil {
+		panic("unexpected DismissPromoteCandidate")
+	}
+	return s.dismissPromoteCandidate(ctx, bearer, id, body)
 }
 
 func testLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
@@ -265,6 +315,20 @@ func doUnauthed(t *testing.T, h *Handlers, env *testEnv, method, path string) *h
 	_ = env
 	rec := httptest.NewRecorder()
 	newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(method, path, nil))
+	return rec
+}
+
+// doAuthedBody mirrors doAuthed for a mutating request: env's sealed
+// session cookie, an allowed Origin (CheckOrigin runs ahead of the
+// handler), and body as the JSON request body.
+func doAuthedBody(t *testing.T, h *Handlers, env *testEnv, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := httptest.NewRequest(method, path, strings.NewReader(body))
+	r.AddCookie(env.cookie)
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Origin", "http://localhost:8090")
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, r)
 	return rec
 }
 
@@ -1284,6 +1348,13 @@ type stubCollection struct {
 	answer  func(op string) (collectionclient.Result, error)
 	library func(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error)
 
+	createSubmission func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	getSubmission    func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	cancelSubmission func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	ackSubmission    func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	listSubmissions  func(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error)
+	submitVerdict    func(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
+
 	mu        sync.Mutex
 	gotBearer []string
 	gotOps    []string
@@ -1360,6 +1431,48 @@ func (s *stubCollection) PurgeUserData(_ context.Context, bearer string) (collec
 
 func (s *stubCollection) CountProductReferences(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
 	return s.call("count_product_references", bearer)
+}
+
+func (s *stubCollection) CreateSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error) {
+	if s.createSubmission == nil {
+		panic("unexpected CreateSubmission")
+	}
+	return s.createSubmission(ctx, bearer, id)
+}
+
+func (s *stubCollection) GetSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error) {
+	if s.getSubmission == nil {
+		panic("unexpected GetSubmission")
+	}
+	return s.getSubmission(ctx, bearer, id)
+}
+
+func (s *stubCollection) CancelSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error) {
+	if s.cancelSubmission == nil {
+		panic("unexpected CancelSubmission")
+	}
+	return s.cancelSubmission(ctx, bearer, id)
+}
+
+func (s *stubCollection) AckSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error) {
+	if s.ackSubmission == nil {
+		panic("unexpected AckSubmission")
+	}
+	return s.ackSubmission(ctx, bearer, id)
+}
+
+func (s *stubCollection) ListSubmissions(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error) {
+	if s.listSubmissions == nil {
+		panic("unexpected ListSubmissions")
+	}
+	return s.listSubmissions(ctx, bearer, params)
+}
+
+func (s *stubCollection) SubmitVerdict(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error) {
+	if s.submitVerdict == nil {
+		panic("unexpected SubmitVerdict")
+	}
+	return s.submitVerdict(ctx, bearer, id, body)
 }
 
 var _ CollectionAPI = (*stubCollection)(nil)
@@ -1924,6 +2037,56 @@ func TestUnitAdminWorklist_Forbidden403RelaysVerbatim(t *testing.T) {
 	}
 }
 
+func TestUnitCommunityWorklist_RelaysAndForwardsParams(t *testing.T) {
+	const page = `{"products":[],"total_count":0}`
+	var gotBearer string
+	var gotParams *enrichapi.ListCommunityProductsParams
+	enrich := &stubEnrichment{communityProducts: func(_ context.Context, bearer string, params *enrichapi.ListCommunityProductsParams) (enrichmentclient.Result, error) {
+		gotBearer, gotParams = bearer, params
+		return enrichmentclient.Result{Status: 200, ContentType: "application/json", Body: []byte(page)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/admin/products/community?limit=5&offset=10")
+	if rec.Code != 200 || rec.Body.String() != page {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer != env.sessionAccessToken {
+		t.Fatalf("bearer: %q", gotBearer)
+	}
+	if gotParams == nil || gotParams.Limit == nil || *gotParams.Limit != 5 || gotParams.Offset == nil || *gotParams.Offset != 10 {
+		t.Fatalf("params passthrough: %+v", gotParams)
+	}
+}
+
+func TestUnitCommunityWorklist_Forbidden403RelaysVerbatim(t *testing.T) {
+	const problem = `{"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden","detail":"role admin required"}`
+	enrich := &stubEnrichment{communityProducts: func(context.Context, string, *enrichapi.ListCommunityProductsParams) (enrichmentclient.Result, error) {
+		return enrichmentclient.Result{Status: 403, ContentType: "application/problem+json", Body: []byte(problem)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/admin/products/community")
+	if rec.Code != 403 || rec.Body.String() != problem {
+		t.Fatalf("403 must relay verbatim: %d %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
+		t.Fatalf("content type: %q", ct)
+	}
+}
+
+func TestUnitCommunityWorklist_ClientErrorAnswers502(t *testing.T) {
+	enrich := &stubEnrichment{communityProducts: func(context.Context, string, *enrichapi.ListCommunityProductsParams) (enrichmentclient.Result, error) {
+		return enrichmentclient.Result{}, enrichmentclient.ErrUpstream
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/admin/products/community")
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status: %d, want 502", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "upstream_error") {
+		t.Fatalf("problem code missing: %s", rec.Body.String())
+	}
+}
+
 func TestUnitAdminMapping_RelaysBodyAndConflict(t *testing.T) {
 	const problem = `{"type":"about:blank","title":"Conflict","status":409,"code":"identity_taken","detail":"another product with the same identity already carries that listing"}`
 	id := uuid.New()
@@ -1965,6 +2128,7 @@ func TestUnitAdminRoutes_NoSession401(t *testing.T) {
 	h, env := newTestHandlersWithEnrichment(t, &stubEnrichment{})
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/api/admin/products/unmatched"},
+		{http.MethodGet, "/api/admin/products/community"},
 		{http.MethodPut, "/api/admin/products/" + uuid.NewString() + "/pricecharting"},
 		{http.MethodPost, "/api/admin/refresh"},
 	} {
@@ -2037,6 +2201,303 @@ func TestUnitAdminDelete_Collection403RelaysVerbatim(t *testing.T) {
 func TestUnitAdminDelete_NoSession401(t *testing.T) {
 	h, env := newTestHandlersWithEnrichment(t, &stubEnrichment{})
 	rec := doUnauthed(t, h, env, http.MethodDelete, "/api/admin/products/"+uuid.NewString())
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", rec.Code)
+	}
+}
+
+// TestUnitSubmissionRelays_FidelityAndNoSession covers the three user
+// submission ops: a create relays the 201 body verbatim and forwards
+// the session's own bearer, a read relays a problem body verbatim,
+// and a mutation with no session answers 401 before the handler runs.
+func TestUnitSubmissionRelays_FidelityAndNoSession(t *testing.T) {
+	const sub = `{"id":"s1","entry_id":"e1","status":"pending","created_at":"2026-07-17T00:00:00Z","updated_at":"2026-07-17T00:00:00Z"}`
+	var gotBearer string
+	coll := &stubCollection{
+		createSubmission: func(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
+			gotBearer = bearer
+			return collectionclient.Result{Status: 201, ContentType: "application/json", Body: []byte(sub)}, nil
+		},
+		getSubmission: func(context.Context, string, uuid.UUID) (collectionclient.Result, error) {
+			return collectionclient.Result{Status: 404, ContentType: "application/problem+json",
+				Body: []byte(`{"type":"about:blank","title":"Not Found","status":404,"code":"submission_not_found"}`)}, nil
+		},
+	}
+	h, env := newTestHandlersWithCollection(t, coll)
+	entry := uuid.NewString()
+
+	rec := doAuthedBody(t, h, env, http.MethodPost, "/api/entries/"+entry+"/submission", "")
+	if rec.Code != 201 || rec.Body.String() != sub {
+		t.Fatalf("create relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer != env.sessionAccessToken {
+		t.Fatalf("bearer: %q", gotBearer)
+	}
+
+	rec = doAuthed(t, h, env, http.MethodGet, "/api/entries/"+entry+"/submission")
+	if rec.Code != 404 || !strings.Contains(rec.Body.String(), "submission_not_found") {
+		t.Fatalf("problem relay: %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec = doUnauthed(t, h, env, http.MethodPost, "/api/entries/"+entry+"/submission")
+	if rec.Code != 401 {
+		t.Fatalf("no session: %d", rec.Code)
+	}
+}
+
+// TestUnitVerdictRelay_BodyPassthroughAnd409 proves the admin verdict
+// forwards the browser's body untouched and relays a conflict
+// (another admin already resolved the row) verbatim.
+func TestUnitVerdictRelay_BodyPassthroughAnd409(t *testing.T) {
+	var gotBody []byte
+	coll := &stubCollection{submitVerdict: func(_ context.Context, _ string, _ uuid.UUID, body []byte) (collectionclient.Result, error) {
+		gotBody = body
+		return collectionclient.Result{Status: 409, ContentType: "application/problem+json",
+			Body: []byte(`{"type":"about:blank","title":"Conflict","status":409,"code":"submission_resolved"}`)}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, coll)
+
+	payload := `{"action":"reject","reason":"not shared"}`
+	rec := doAuthedBody(t, h, env, http.MethodPost, "/api/admin/submissions/"+uuid.NewString()+"/verdict", payload)
+	if rec.Code != 409 || !strings.Contains(rec.Body.String(), "submission_resolved") {
+		t.Fatalf("verdict relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if string(gotBody) != payload {
+		t.Fatalf("body must pass through untouched: %s", gotBody)
+	}
+}
+
+// TestUnitPromoteRelays_ParamsAndConflict proves the candidates read
+// forwards its query params (limit/offset/product_id) and the promote
+// mutation relays a conflict (a provider twin already holds the
+// identity) verbatim.
+func TestUnitPromoteRelays_ParamsAndConflict(t *testing.T) {
+	var gotParams *enrichapi.ListPromoteCandidatesParams
+	enrich := &stubEnrichment{
+		promoteCandidates: func(_ context.Context, _ string, params *enrichapi.ListPromoteCandidatesParams) (enrichmentclient.Result, error) {
+			gotParams = params
+			return enrichmentclient.Result{Status: 200, ContentType: "application/json",
+				Body: []byte(`{"products":[],"total_count":0}`)}, nil
+		},
+		promoteProduct: func(context.Context, string, uuid.UUID, []byte) (enrichmentclient.Result, error) {
+			return enrichmentclient.Result{Status: 409, ContentType: "application/problem+json",
+				Body: []byte(`{"type":"about:blank","title":"Conflict","status":409,"code":"identity_taken"}`)}, nil
+		},
+	}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+
+	pid := uuid.NewString()
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/admin/products/promote-candidates?limit=5&offset=10&product_id="+pid)
+	if rec.Code != 200 {
+		t.Fatalf("candidates relay: %d", rec.Code)
+	}
+	if gotParams == nil || gotParams.Limit == nil || *gotParams.Limit != 5 || gotParams.ProductId == nil {
+		t.Fatalf("params passthrough: %+v", gotParams)
+	}
+
+	rec = doAuthedBody(t, h, env, http.MethodPost, "/api/admin/products/"+pid+"/promote", `{"igdb_game_id":1011,"platform_igdb_id":19}`)
+	if rec.Code != 409 || !strings.Contains(rec.Body.String(), "identity_taken") {
+		t.Fatalf("promote conflict relay: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestUnitCancelSubmission_RelaysAndForwardsBearer proves the pending-
+// submission cancel forwards the session's own bearer and relays the
+// upstream's answer verbatim; a request with no session never reaches
+// the handler.
+func TestUnitCancelSubmission_RelaysAndForwardsBearer(t *testing.T) {
+	var gotBearer string
+	coll := &stubCollection{cancelSubmission: func(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
+		gotBearer = bearer
+		return collectionclient.Result{Status: http.StatusNoContent}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, coll)
+	entry := uuid.NewString()
+
+	rec := doAuthed(t, h, env, http.MethodDelete, "/api/entries/"+entry+"/submission")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("cancel relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer != env.sessionAccessToken {
+		t.Fatalf("bearer: %q", gotBearer)
+	}
+
+	rec = doUnauthed(t, h, env, http.MethodDelete, "/api/entries/"+entry+"/submission")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", rec.Code)
+	}
+}
+
+// TestUnitListSubmissions_RelaysAndForwardsParams proves the admin
+// queue read forwards its query params (limit/offset) and relays the
+// upstream body verbatim; collection enforces the role, so the bff
+// holds no gate of its own here beyond the session.
+func TestUnitListSubmissions_RelaysAndForwardsParams(t *testing.T) {
+	const page = `{"submissions":[],"total_count":0}`
+	var gotBearer string
+	var gotParams *collectionapi.ListSubmissionsParams
+	coll := &stubCollection{listSubmissions: func(_ context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error) {
+		gotBearer, gotParams = bearer, params
+		return collectionclient.Result{Status: 200, ContentType: "application/json", Body: []byte(page)}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, coll)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/admin/submissions?limit=5&offset=10")
+	if rec.Code != 200 || rec.Body.String() != page {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer != env.sessionAccessToken {
+		t.Fatalf("bearer: %q", gotBearer)
+	}
+	if gotParams == nil || gotParams.Limit == nil || *gotParams.Limit != 5 || gotParams.Offset == nil || *gotParams.Offset != 10 {
+		t.Fatalf("params passthrough: %+v", gotParams)
+	}
+}
+
+// TestUnitCreateCommunityProduct_RelaysBodyAndForbidden proves the
+// admin mint forwards the browser's body untouched and relays
+// enrichment's role refusal verbatim (enrichment enforces admin, the
+// bff holds no role logic of its own on admin routes).
+func TestUnitCreateCommunityProduct_RelaysBodyAndForbidden(t *testing.T) {
+	const problem = `{"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden","detail":"role admin required"}`
+	var gotBody []byte
+	enrich := &stubEnrichment{createCommunityProduct: func(_ context.Context, _ string, body []byte) (enrichmentclient.Result, error) {
+		gotBody = body
+		return enrichmentclient.Result{Status: 403, ContentType: "application/problem+json", Body: []byte(problem)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	payload := `{"name":"Homebrew Cart","type":"game"}`
+	rec := doAuthedBody(t, h, env, http.MethodPost, "/api/admin/products", payload)
+	if rec.Code != 403 || rec.Body.String() != problem {
+		t.Fatalf("403 must relay verbatim: %d %s", rec.Code, rec.Body.String())
+	}
+	if string(gotBody) != payload {
+		t.Fatalf("body passthrough: %s", gotBody)
+	}
+}
+
+// TestUnitDismissPromoteCandidate_RelaysBodyAndNotFound proves the
+// candidate dismissal forwards the target id and the browser's body
+// untouched, and relays a not-found verbatim (the candidate left the
+// sweep worklist between page load and dismiss).
+func TestUnitDismissPromoteCandidate_RelaysBodyAndNotFound(t *testing.T) {
+	const problem = `{"type":"about:blank","title":"Not Found","status":404,"code":"not_found"}`
+	pid := uuid.New()
+	var gotID uuid.UUID
+	var gotBody []byte
+	enrich := &stubEnrichment{dismissPromoteCandidate: func(_ context.Context, _ string, id uuid.UUID, body []byte) (enrichmentclient.Result, error) {
+		gotID, gotBody = id, body
+		return enrichmentclient.Result{Status: 404, ContentType: "application/problem+json", Body: []byte(problem)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	payload := `{"provider":"pricecharting","provider_id":5005}`
+	rec := doAuthedBody(t, h, env, http.MethodPost, "/api/admin/products/"+pid.String()+"/promote-candidates/dismiss", payload)
+	if rec.Code != 404 || rec.Body.String() != problem {
+		t.Fatalf("404 must relay verbatim: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotID != pid || string(gotBody) != payload {
+		t.Fatalf("id/body passthrough: id=%s body=%s", gotID, gotBody)
+	}
+}
+
+// The four tests below mirror TestUnitFxRelay_ClientErrorAnswers502: each
+// covers one new handler's own upstream-failure branch (a dead client,
+// not an upstream answer) which no other test above happens to exercise.
+
+func TestUnitCancelSubmission_ClientErrorAnswers502(t *testing.T) {
+	coll := &stubCollection{cancelSubmission: func(context.Context, string, uuid.UUID) (collectionclient.Result, error) {
+		return collectionclient.Result{}, collectionclient.ErrUpstream
+	}}
+	h, env := newTestHandlersWithCollection(t, coll)
+	rec := doAuthed(t, h, env, http.MethodDelete, "/api/entries/"+uuid.NewString()+"/submission")
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status: %d, want 502", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "upstream_error") {
+		t.Fatalf("problem code missing: %s", rec.Body.String())
+	}
+}
+
+func TestUnitListSubmissions_ClientErrorAnswers502(t *testing.T) {
+	coll := &stubCollection{listSubmissions: func(context.Context, string, *collectionapi.ListSubmissionsParams) (collectionclient.Result, error) {
+		return collectionclient.Result{}, collectionclient.ErrUpstream
+	}}
+	h, env := newTestHandlersWithCollection(t, coll)
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/admin/submissions")
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status: %d, want 502", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "upstream_error") {
+		t.Fatalf("problem code missing: %s", rec.Body.String())
+	}
+}
+
+func TestUnitCreateCommunityProduct_ClientErrorAnswers502(t *testing.T) {
+	enrich := &stubEnrichment{createCommunityProduct: func(context.Context, string, []byte) (enrichmentclient.Result, error) {
+		return enrichmentclient.Result{}, enrichmentclient.ErrUpstream
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthedBody(t, h, env, http.MethodPost, "/api/admin/products", `{"name":"Homebrew Cart","type":"game"}`)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status: %d, want 502", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "upstream_error") {
+		t.Fatalf("problem code missing: %s", rec.Body.String())
+	}
+}
+
+func TestUnitDismissPromoteCandidate_ClientErrorAnswers502(t *testing.T) {
+	enrich := &stubEnrichment{dismissPromoteCandidate: func(context.Context, string, uuid.UUID, []byte) (enrichmentclient.Result, error) {
+		return enrichmentclient.Result{}, enrichmentclient.ErrUpstream
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+	rec := doAuthedBody(t, h, env, http.MethodPost, "/api/admin/products/"+uuid.NewString()+"/promote-candidates/dismiss", `{"provider":"pricecharting","provider_id":5005}`)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status: %d, want 502", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "upstream_error") {
+		t.Fatalf("problem code missing: %s", rec.Body.String())
+	}
+}
+
+func TestUnitListPlatforms_RelaysAndForwardsBearer(t *testing.T) {
+	const body = `{"platforms":[{"igdb_id":19,"name":"Super Nintendo Entertainment System","aliases":["snes"]}]}`
+	var gotBearer string
+	enr := &stubEnrichment{listPlatforms: func(_ context.Context, bearer string) (enrichmentclient.Result, error) {
+		gotBearer = bearer
+		return enrichmentclient.Result{Status: 200, ContentType: "application/json", Body: []byte(body)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enr)
+
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/platforms")
+	if rec.Code != 200 || rec.Body.String() != body {
+		t.Fatalf("platforms relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer != env.sessionAccessToken {
+		t.Fatalf("bearer: %q", gotBearer)
+	}
+	rec = doUnauthed(t, h, env, http.MethodGet, "/api/platforms")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", rec.Code)
+	}
+}
+
+func TestUnitAckSubmission_RelaysAndForwardsBearer(t *testing.T) {
+	var gotBearer string
+	coll := &stubCollection{ackSubmission: func(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
+		gotBearer = bearer
+		return collectionclient.Result{Status: http.StatusNoContent}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, coll)
+	entry := uuid.NewString()
+
+	rec := doAuthedBody(t, h, env, http.MethodPost, "/api/entries/"+entry+"/submission/ack", "")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("ack relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer != env.sessionAccessToken {
+		t.Fatalf("bearer: %q", gotBearer)
+	}
+	rec = doUnauthed(t, h, env, http.MethodPost, "/api/entries/"+entry+"/submission/ack")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("no session: %d", rec.Code)
 	}

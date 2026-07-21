@@ -393,6 +393,21 @@ func (h *Handlers) GetFx(w http.ResponseWriter, r *http.Request) {
 	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
 
+// ListPlatforms relays the platform catalog for the custom-entry picker.
+func (h *Handlers) ListPlatforms(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.enrichment.ListPlatforms(r.Context(), sess.AccessToken)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
 // ResolveProduct proxies find-or-create; the body passes through
 // untouched (enrichment owns its validation).
 func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
@@ -440,6 +455,24 @@ func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request,
 	}
 	up := &enrichapi.ListUnmatchedProductsParams{Limit: params.Limit, Offset: params.Offset}
 	res, err := h.enrichment.UnmatchedProducts(r.Context(), sess.AccessToken, up)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// ListCommunityProducts relays the admin community listing. The bff
+// holds no role logic for admin routes: enrichment enforces, problems
+// relay.
+func (h *Handlers) ListCommunityProducts(w http.ResponseWriter, r *http.Request, params api.ListCommunityProductsParams) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	cp := &enrichapi.ListCommunityProductsParams{Limit: params.Limit, Offset: params.Offset}
+	res, err := h.enrichment.CommunityProducts(r.Context(), sess.AccessToken, cp)
 	if err != nil {
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
 		return
@@ -516,6 +549,176 @@ func (h *Handlers) TriggerRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := h.enrichment.TriggerRefresh(r.Context(), sess.AccessToken)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// CreateSubmission relays a catalog-candidate filing.
+func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.CreateSubmission(r.Context(), sess.AccessToken, entryId)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// GetSubmission relays the latest-submission read.
+func (h *Handlers) GetSubmission(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.GetSubmission(r.Context(), sess.AccessToken, entryId)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// CancelSubmission relays a pending-submission cancel.
+func (h *Handlers) CancelSubmission(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.CancelSubmission(r.Context(), sess.AccessToken, entryId)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// AckSubmissionResolution relays the approval-banner acknowledgement.
+func (h *Handlers) AckSubmissionResolution(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.AckSubmission(r.Context(), sess.AccessToken, entryId)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// ListSubmissions relays the admin queue; collection enforces the role.
+func (h *Handlers) ListSubmissions(w http.ResponseWriter, r *http.Request, params api.ListSubmissionsParams) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	up := &collectionapi.ListSubmissionsParams{Limit: params.Limit, Offset: params.Offset}
+	res, err := h.collection.ListSubmissions(r.Context(), sess.AccessToken, up)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// SubmitVerdict relays an admin verdict; collection enforces the role
+// and orchestrates approve_new.
+func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submissionId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.collection.SubmitVerdict(r.Context(), sess.AccessToken, submissionId, body)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// CreateCommunityProduct relays the admin mint; enrichment enforces
+// the role.
+func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.enrichment.CreateCommunityProduct(r.Context(), sess.AccessToken, body)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// PromoteProduct relays the in-place promotion.
+func (h *Handlers) PromoteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.enrichment.PromoteProduct(r.Context(), sess.AccessToken, productId, body)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// ListPromoteCandidates relays the sweep worklist.
+func (h *Handlers) ListPromoteCandidates(w http.ResponseWriter, r *http.Request, params api.ListPromoteCandidatesParams) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	up := &enrichapi.ListPromoteCandidatesParams{Limit: params.Limit, Offset: params.Offset, ProductId: params.ProductId}
+	res, err := h.enrichment.PromoteCandidates(r.Context(), sess.AccessToken, up)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// DismissPromoteCandidate relays a candidate dismissal.
+func (h *Handlers) DismissPromoteCandidate(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.enrichment.DismissPromoteCandidate(r.Context(), sess.AccessToken, productId, body)
 	if err != nil {
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
 		return

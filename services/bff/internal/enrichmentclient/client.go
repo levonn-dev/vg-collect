@@ -112,6 +112,17 @@ func (c *Client) FX(ctx context.Context, bearer string) (Result, error) {
 		http.StatusOK, http.StatusBadGateway)
 }
 
+// ListPlatforms relays GET /platforms. A 502 is a relayable answer
+// (cold platform catalog upstream), not a client failure.
+func (c *Client) ListPlatforms(ctx context.Context, bearer string) (Result, error) {
+	resp, err := c.api.ListPlatformsWithResponse(ctx, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("enrichmentclient: platforms: %w", err)
+	}
+	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
+		http.StatusOK, http.StatusBadGateway)
+}
+
 // UnmatchedProducts relays GET /admin/products/unmatched. Enrichment
 // enforces the admin role, so its 403 is a relayable user answer
 // here, not an infrastructure fault.
@@ -119,6 +130,18 @@ func (c *Client) UnmatchedProducts(ctx context.Context, bearer string, params *e
 	resp, err := c.api.ListUnmatchedProductsWithResponse(ctx, params, bearerEditor(bearer))
 	if err != nil {
 		return Result{}, fmt.Errorf("enrichmentclient: unmatched products: %w", err)
+	}
+	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
+		http.StatusOK, http.StatusForbidden)
+}
+
+// CommunityProducts relays GET /admin/products/community. Enrichment
+// enforces the admin role, so its 403 is a relayable user answer
+// here, not an infrastructure fault.
+func (c *Client) CommunityProducts(ctx context.Context, bearer string, params *enrichapi.ListCommunityProductsParams) (Result, error) {
+	resp, err := c.api.ListCommunityProductsWithResponse(ctx, params, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("enrichmentclient: community products: %w", err)
 	}
 	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
 		http.StatusOK, http.StatusForbidden)
@@ -147,6 +170,47 @@ func (c *Client) DeleteProduct(ctx context.Context, bearer string, id uuid.UUID)
 	}
 	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
 		http.StatusNoContent, http.StatusForbidden, http.StatusNotFound, http.StatusConflict)
+}
+
+// CreateCommunityProduct relays the admin community mint.
+func (c *Client) CreateCommunityProduct(ctx context.Context, bearer string, body []byte) (Result, error) {
+	resp, err := c.api.CreateCommunityProductWithBodyWithResponse(ctx, "application/json", bytes.NewReader(body), bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("enrichmentclient: create community product: %w", err)
+	}
+	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
+		http.StatusCreated, http.StatusBadRequest, http.StatusForbidden)
+}
+
+// PromoteProduct relays the in-place promotion.
+func (c *Client) PromoteProduct(ctx context.Context, bearer string, id uuid.UUID, body []byte) (Result, error) {
+	resp, err := c.api.PromoteProductWithBodyWithResponse(ctx, id, "application/json", bytes.NewReader(body), bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("enrichmentclient: promote product: %w", err)
+	}
+	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
+		http.StatusOK, http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound,
+		http.StatusConflict, http.StatusBadGateway)
+}
+
+// PromoteCandidates relays the sweep worklist read.
+func (c *Client) PromoteCandidates(ctx context.Context, bearer string, params *enrichapi.ListPromoteCandidatesParams) (Result, error) {
+	resp, err := c.api.ListPromoteCandidatesWithResponse(ctx, params, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("enrichmentclient: promote candidates: %w", err)
+	}
+	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
+		http.StatusOK, http.StatusForbidden)
+}
+
+// DismissPromoteCandidate relays a candidate dismissal.
+func (c *Client) DismissPromoteCandidate(ctx context.Context, bearer string, id uuid.UUID, body []byte) (Result, error) {
+	resp, err := c.api.DismissPromoteCandidateWithBodyWithResponse(ctx, id, "application/json", bytes.NewReader(body), bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("enrichmentclient: dismiss candidate: %w", err)
+	}
+	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
+		http.StatusNoContent, http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound)
 }
 
 // TriggerRefresh relays POST /admin/refresh (202 started, 403, 409
