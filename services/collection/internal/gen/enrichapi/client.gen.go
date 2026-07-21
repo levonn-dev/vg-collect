@@ -126,6 +126,14 @@ type CommunityProductCreate struct {
 // CommunityProductCreateType defines model for CommunityProductCreate.Type.
 type CommunityProductCreateType string
 
+// CommunityProductsPage defines model for CommunityProductsPage.
+type CommunityProductsPage struct {
+	Products []Product `json:"products"`
+
+	// TotalCount Full count of community products, beyond this page.
+	TotalCount int64 `json:"total_count"`
+}
+
 // CompanyCredit defines model for CompanyCredit.
 type CompanyCredit struct {
 	Developer bool   `json:"developer"`
@@ -440,6 +448,12 @@ type Unauthorized = Problem
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
 
+// ListCommunityProductsParams defines parameters for ListCommunityProducts.
+type ListCommunityProductsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // ListPromoteCandidatesParams defines parameters for ListPromoteCandidates.
 type ListPromoteCandidatesParams struct {
 	Limit     *int                `form:"limit,omitempty" json:"limit,omitempty"`
@@ -564,6 +578,9 @@ type ClientInterface interface {
 
 	CreateCommunityProduct(ctx context.Context, body CreateCommunityProductJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListCommunityProducts request
+	ListCommunityProducts(ctx context.Context, params *ListCommunityProductsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListPromoteCandidates request
 	ListPromoteCandidates(ctx context.Context, params *ListPromoteCandidatesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -638,6 +655,18 @@ func (c *Client) CreateCommunityProductWithBody(ctx context.Context, contentType
 
 func (c *Client) CreateCommunityProduct(ctx context.Context, body CreateCommunityProductJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateCommunityProductRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListCommunityProducts(ctx context.Context, params *ListCommunityProductsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCommunityProductsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -948,6 +977,71 @@ func NewCreateCommunityProductRequestWithBody(server string, contentType string,
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListCommunityProductsRequest generates requests for ListCommunityProducts
+func NewListCommunityProductsRequest(server string, params *ListCommunityProductsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/products/community")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -1653,6 +1747,9 @@ type ClientWithResponsesInterface interface {
 
 	CreateCommunityProductWithResponse(ctx context.Context, body CreateCommunityProductJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCommunityProductResponse, error)
 
+	// ListCommunityProductsWithResponse request
+	ListCommunityProductsWithResponse(ctx context.Context, params *ListCommunityProductsParams, reqEditors ...RequestEditorFn) (*ListCommunityProductsResponse, error)
+
 	// ListPromoteCandidatesWithResponse request
 	ListPromoteCandidatesWithResponse(ctx context.Context, params *ListPromoteCandidatesParams, reqEditors ...RequestEditorFn) (*ListPromoteCandidatesResponse, error)
 
@@ -1732,6 +1829,30 @@ func (r CreateCommunityProductResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CreateCommunityProductResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListCommunityProductsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *CommunityProductsPage
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCommunityProductsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCommunityProductsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2128,6 +2249,15 @@ func (c *ClientWithResponses) CreateCommunityProductWithResponse(ctx context.Con
 	return ParseCreateCommunityProductResponse(rsp)
 }
 
+// ListCommunityProductsWithResponse request returning *ListCommunityProductsResponse
+func (c *ClientWithResponses) ListCommunityProductsWithResponse(ctx context.Context, params *ListCommunityProductsParams, reqEditors ...RequestEditorFn) (*ListCommunityProductsResponse, error) {
+	rsp, err := c.ListCommunityProducts(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCommunityProductsResponse(rsp)
+}
+
 // ListPromoteCandidatesWithResponse request returning *ListPromoteCandidatesResponse
 func (c *ClientWithResponses) ListPromoteCandidatesWithResponse(ctx context.Context, params *ListPromoteCandidatesParams, reqEditors ...RequestEditorFn) (*ListPromoteCandidatesResponse, error) {
 	rsp, err := c.ListPromoteCandidates(ctx, params, reqEditors...)
@@ -2346,6 +2476,46 @@ func ParseCreateCommunityProductResponse(rsp *http.Response) (*CreateCommunityPr
 			return nil, err
 		}
 		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCommunityProductsResponse parses an HTTP response from a ListCommunityProductsWithResponse call
+func ParseListCommunityProductsResponse(rsp *http.Response) (*ListCommunityProductsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCommunityProductsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CommunityProductsPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
