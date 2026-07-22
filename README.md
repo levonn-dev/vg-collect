@@ -1,5 +1,10 @@
 # vg-collect
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/lockup-dark.png">
+  <img src="docs/brand/lockup-light.png" alt="vg-collect: a pixel VG monogram on an indigo tile" width="440">
+</picture>
+
 Video-game collection tracker with granular per-item detail: OIDC login,
 IGDB metadata enrichment, PriceCharting market pricing, per-service
 Postgres/MongoDB/Valkey datastores, full observability.
@@ -139,7 +144,7 @@ against AWS Secrets Manager in the documented production path.
 - `services/` one Go module per service
 - `frontend/` React SPA (typed against `api/bff.yaml`, served by the bff)
 - `deploy/charts/` Helm (per-service + platform)
-- `docs/` diagrams, runbooks, production paths.
+- `docs/` diagrams, runbooks, production paths, brand assets (`docs/brand/`).
 
 ## Status
 

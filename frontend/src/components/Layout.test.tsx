@@ -36,6 +36,17 @@ it('renders the chrome and the routed page for a signed-in user', async () => {
   expect(screen.getByRole('link', { name: 'Collection' })).toBeInTheDocument()
 })
 
+it('renders the logo mark before the title, decorative only', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, me)))
+  renderLayout()
+  await screen.findByText('page-content')
+  const heading = screen.getByRole('heading', { name: 'vg-collect' })
+  const mark = heading.previousElementSibling
+  expect(mark?.tagName.toLowerCase()).toBe('svg')
+  // The h1 carries the accessible name; the mark must stay silent.
+  expect(mark).toHaveAttribute('aria-hidden', 'true')
+})
+
 it('links the identity block to the account page', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, me)))
   renderLayout()

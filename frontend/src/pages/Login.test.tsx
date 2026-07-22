@@ -35,6 +35,17 @@ it('renders one button per enabled provider, dev as fixture quick-logins', async
   expect(screen.queryByRole('link', { name: 'Continue with Twitch' })).toBeNull()
 })
 
+it('renders the logo mark before the title, decorative only', () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+    jsonResponse(200, { providers: ['dev'] })))
+  renderLogin()
+  const heading = screen.getByRole('heading', { name: 'vg-collect' })
+  const mark = heading.previousElementSibling
+  expect(mark?.tagName.toLowerCase()).toBe('svg')
+  // The h1 carries the accessible name; the mark must stay silent.
+  expect(mark).toHaveAttribute('aria-hidden', 'true')
+})
+
 it('hides dev fixtures when the dev provider is off', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
     jsonResponse(200, { providers: ['google', 'twitch'] })))

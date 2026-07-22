@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Navigate, NavLink, Outlet, useNavigate } from 'react-router'
 import { ApiError, fetchMe, logout } from '../api/client'
 import CurrencySelect from './CurrencySelect'
+import Logo from './Logo'
 import ThemeToggle from './ThemeToggle'
 
 function navClass({ isActive }: { isActive: boolean }): string {
@@ -78,7 +79,10 @@ export default function Layout() {
         aria-label="App bar"
       >
         <div className="flex items-baseline gap-6">
-          <h1 className="text-xl font-bold">vg-collect</h1>
+          <div className="flex items-center gap-2">
+            <Logo />
+            <h1 className="text-xl font-bold">vg-collect</h1>
+          </div>
           <nav className="flex gap-4" aria-label="Primary">
             <NavLink to="/" end className={navClass}>
               Collection
