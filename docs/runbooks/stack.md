@@ -82,6 +82,14 @@ ServiceMonitors; their series carry a `service` target label
 the bff's session-gated relay (1 MiB cap), so one trace stitches
 browser to backend; look up service `frontend` in Jaeger.
 
+Because the feed is push, the metric sample cadence is the SDK's export
+interval, not a scrape interval: services export every 15s (the
+PeriodicReader in `libs/go/otel`), and the Prometheus datasource declares
+`timeInterval: 15s` so Grafana's `$__rate_interval` (4x that) spans several
+samples. Keep the two in lockstep. If they drift so a rate window holds
+fewer than two samples, `rate()` panels read "No Data" while the raw
+counter still resolves through Prometheus's 5m staleness lookback.
+
 ## Bring-up
 
 ```bash

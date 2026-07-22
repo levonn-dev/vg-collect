@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"time"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
@@ -59,7 +60,7 @@ func Setup(ctx context.Context, cfg Config) (func(context.Context) error, error)
 		return noop, err
 	}
 	mp := sdkmetric.NewMeterProvider(
-		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExp)),
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExp, sdkmetric.WithInterval(15*time.Second))),
 		sdkmetric.WithResource(res))
 	otel.SetMeterProvider(mp)
 	if err := runtime.Start(); err != nil {

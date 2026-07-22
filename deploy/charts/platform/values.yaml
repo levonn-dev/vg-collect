@@ -214,6 +214,11 @@ grafana:
           url: http://kps-prometheus:9090
           isDefault: true
           jsonData:
+            # App metrics arrive by remote-write on the OTel SDK's 15s export
+            # cadence, not by scrape. Declaring it here makes $__rate_interval
+            # (4x) span several samples so rate() panels have data; keep this
+            # in lockstep with the PeriodicReader interval in libs/go/otel.
+            timeInterval: "15s"
             # Exemplar dots on histogram panels deep-link to Jaeger.
             exemplarTraceIdDestinations:
               - name: trace_id
