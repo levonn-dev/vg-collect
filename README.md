@@ -31,6 +31,11 @@ task run                # tilt up: builds images, deploys charts, port-forwards
 Works against any local Kubernetes context (docker-desktop, kind, k3d, minikube);
 add yours to `allow_k8s_contexts` in the Tiltfile if it's not listed.
 
+If you need to test admin only features, you can grant admin to the dev fixture to a running cluster by running:
+```bash
+task grant-fixture-admin
+```
+
 ## Dev commands
 
 | Command | What |
