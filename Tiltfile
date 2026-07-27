@@ -57,6 +57,7 @@ SECRET_KEYS = {k: v for k, v in {
     'enrichment/igdb-client-secret': ENV.get('IGDB_CLIENT_SECRET', ''),
     'enrichment/pricecharting-api-key': ENV.get('PRICECHARTING_API_KEY', ''),
     'collection/pg-password': ENV.get('PG_COLLECTION_PASSWORD', ''),
+    'social/pg-password': ENV.get('PG_SOCIAL_PASSWORD', ''),
 }.items() if v != ''}
 
 k8s_yaml(encode_yaml({
@@ -80,7 +81,8 @@ docker_build(
     dockerfile='services/user/Dockerfile',
     only=['libs/go', 'services/user'],
 )
-k8s_yaml(helm('deploy/charts/user', name='user', namespace='vg-collect'))
+k8s_yaml(helm('deploy/charts/user', name='user', namespace='vg-collect',
+              set=['env.handleChangeCooldown=5s']))
 k8s_resource('user', port_forwards=['8081:8080'],
              resource_deps=['secret-store', 'user-pg'], labels=['services'])
 k8s_resource('user-pg', port_forwards=['5433:5432'], labels=['datastores'])
@@ -183,6 +185,18 @@ k8s_resource('collection', port_forwards=['8085:8080'],
              labels=['services'])
 k8s_resource('collection-pg', port_forwards=['5435:5432'], labels=['datastores'])
 k8s_resource('collection-valkey', labels=['datastores'])
+
+# ----- social service -----
+docker_build(
+    'vg-collect/social', '.',
+    dockerfile='services/social/Dockerfile',
+    only=['libs/go', 'services/social'],
+)
+k8s_yaml(helm('deploy/charts/social', name='social', namespace='vg-collect'))
+k8s_resource('social', port_forwards=['8086:8080'],
+             resource_deps=['secret-store', 'social-pg', 'auth', 'user', 'collection'],
+             labels=['services'])
+k8s_resource('social-pg', port_forwards=['5436:5432'], labels=['datastores'])
 
 # ----- frontend dev loop (manual: trigger when iterating on the SPA;
 # the in-cluster bff serves the built bundle either way) -----

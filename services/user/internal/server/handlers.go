@@ -20,10 +20,7 @@ import (
 
 var _ api.ServerInterface = (*Handlers)(nil)
 
-const (
-	maxDisplayName = 100
-	maxAvatarURL   = 2048
-)
+const maxAvatarURL = 2048
 
 var preferredCurrencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
 
@@ -102,13 +99,50 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request, userId ope
 		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
 		return
 	}
-	if req.DisplayName != nil {
-		trimmed := strings.TrimSpace(*req.DisplayName)
-		if trimmed == "" || len(trimmed) > maxDisplayName {
-			problem(w, r, http.StatusBadRequest, "invalid_body", "display_name must be 1-100 characters")
+	if req.Handle != nil {
+		trimmed := strings.TrimSpace(*req.Handle)
+		if !store.ValidHandle(trimmed) {
+			problem(w, r, http.StatusBadRequest, "invalid_body",
+				"handle must be 2-30 characters, alphanumeric plus interior underscores")
 			return
 		}
-		req.DisplayName = &trimmed
+		if store.ReservedHandles[store.NormalizeHandle(trimmed)] {
+			problem(w, r, http.StatusBadRequest, "invalid_body", "that handle is reserved")
+			return
+		}
+		req.Handle = &trimmed
+	}
+	var visibility *string
+	if req.ProfileVisibility != nil {
+		// The generated enum type is a plain string underneath (no
+		// UnmarshalJSON validation), and this body is hand-decoded
+		// rather than routed through the generated param binder, so an
+		// invalid value must be rejected here -- otherwise it reaches
+		// the store and only the DB CHECK constraint catches it,
+		// surfacing as a 500 instead of a 400.
+		switch *req.ProfileVisibility {
+		case api.UpdateUserRequestProfileVisibilityPrivate, api.UpdateUserRequestProfileVisibilityUnlisted, api.UpdateUserRequestProfileVisibilityListed:
+			v := string(*req.ProfileVisibility)
+			visibility = &v
+		default:
+			problem(w, r, http.StatusBadRequest, "invalid_body", "profile_visibility must be one of private, unlisted, listed")
+			return
+		}
+	}
+	var landingPage *string
+	if req.LandingPage != nil {
+		// Same reasoning as profile_visibility above: this body is
+		// hand-decoded, so an out-of-enum value must be rejected here
+		// or it reaches the store and only the DB CHECK catches it,
+		// surfacing as a 500 instead of a 400.
+		switch *req.LandingPage {
+		case api.UpdateUserRequestLandingPageCollection, api.UpdateUserRequestLandingPageFeed, api.UpdateUserRequestLandingPageExplore:
+			v := string(*req.LandingPage)
+			landingPage = &v
+		default:
+			problem(w, r, http.StatusBadRequest, "invalid_body", "landing_page must be one of collection, feed, explore")
+			return
+		}
 	}
 	if req.AvatarUrl != nil && *req.AvatarUrl != "" {
 		if len(*req.AvatarUrl) > maxAvatarURL {
@@ -125,9 +159,17 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request, userId ope
 		problem(w, r, http.StatusBadRequest, "invalid_body", "preferred_currency must be a 3-letter uppercase code")
 		return
 	}
-	u, err := h.store.Update(r.Context(), userId, req.DisplayName, req.AvatarUrl, req.PreferredCurrency)
+	u, err := h.store.Update(r.Context(), userId, req.Handle, req.AvatarUrl, req.PreferredCurrency, visibility, landingPage, h.handleCooldown)
 	if errors.Is(err, store.ErrNotFound) {
 		problem(w, r, http.StatusNotFound, "user_not_found", "no such user")
+		return
+	}
+	if errors.Is(err, store.ErrHandleTaken) {
+		problem(w, r, http.StatusConflict, "handle_taken", "another account already owns that handle")
+		return
+	}
+	if errors.Is(err, store.ErrHandleCooldown) {
+		problem(w, r, http.StatusTooManyRequests, "handle_cooldown", "handle was changed too recently; try again later")
 		return
 	}
 	if err != nil {
@@ -173,9 +215,11 @@ func toAPI(u store.User) api.User {
 	return api.User{
 		Id:                u.ID,
 		Email:             u.Email,
-		DisplayName:       u.DisplayName,
+		Handle:            u.Handle,
 		AvatarUrl:         u.AvatarURL,
+		ProfileVisibility: api.UserProfileVisibility(u.ProfileVisibility),
 		PreferredCurrency: u.PreferredCurrency,
+		LandingPage:       api.UserLandingPage(u.LandingPage),
 		Roles:             roles,
 		CreatedAt:         u.CreatedAt,
 		UpdatedAt:         u.UpdatedAt,

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -131,7 +132,7 @@ func TestUpsertTelemetry_Created(t *testing.T) {
 	wantID := uuid.New()
 	st := &stubStore{
 		upsert: func(_ context.Context, email, name string, _ *string, preferredCurrency string) (store.User, bool, error) {
-			return store.User{ID: wantID, Email: email, DisplayName: name,
+			return store.User{ID: wantID, Email: email, Handle: name,
 				PreferredCurrency: preferredCurrency, Roles: []string{"user"}}, true, nil
 		},
 	}
@@ -164,7 +165,7 @@ func TestUpsertTelemetry_Existing(t *testing.T) {
 	reader, logs := captureTelemetry(t)
 	st := &stubStore{
 		upsert: func(_ context.Context, email, name string, _ *string, preferredCurrency string) (store.User, bool, error) {
-			return store.User{ID: uuid.New(), Email: email, DisplayName: name,
+			return store.User{ID: uuid.New(), Email: email, Handle: name,
 				PreferredCurrency: preferredCurrency, Roles: []string{"user"}}, false, nil
 		},
 	}
@@ -203,7 +204,7 @@ func TestUpsertTelemetry_SeedSourceByHintClass(t *testing.T) {
 			reader, _ := captureTelemetry(t)
 			st := &stubStore{
 				upsert: func(_ context.Context, email, name string, _ *string, preferredCurrency string) (store.User, bool, error) {
-					return store.User{ID: uuid.New(), Email: email, DisplayName: name,
+					return store.User{ID: uuid.New(), Email: email, Handle: name,
 						PreferredCurrency: preferredCurrency, Roles: []string{"user"}}, true, nil
 				},
 			}
@@ -266,14 +267,14 @@ func TestGetTelemetry_StoreErrorLog(t *testing.T) {
 func TestUpdateTelemetry_StoreErrorLog(t *testing.T) {
 	_, logs := captureTelemetry(t)
 	st := &stubStore{
-		update: func(context.Context, uuid.UUID, *string, *string, *string) (store.User, error) {
+		update: func(context.Context, uuid.UUID, *string, *string, *string, *string, *string, time.Duration) (store.User, error) {
 			return store.User{}, errStubUser
 		},
 	}
 	srv, a := newUnitServer(t, st)
 	uid := uuid.NewString()
 	resp := do(t, "PATCH", srv.URL+"/users/"+uid, a.token(t, uid, "user"),
-		map[string]string{"display_name": "Neo"})
+		map[string]string{"handle": "Neo"})
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", resp.StatusCode)
 	}

@@ -34,6 +34,8 @@ spec:
               value: {{ .Values.env.jwtIssuer | quote }}
             - name: JWT_AUDIENCE
               value: {{ .Values.env.jwtAudience | quote }}
+            - name: HANDLE_CHANGE_COOLDOWN
+              value: {{ .Values.env.handleChangeCooldown | quote }}
             # Stamped onto telemetry as service.version; the image tag
             # is the truth of what is running ("dev" locally, a release
             # tag wherever a pipeline sets one).

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -22,10 +23,13 @@ import (
 // whether a row was removed (false: already gone). Both feed the outcome
 // labels on the domain counters.
 type Store interface {
-	Upsert(ctx context.Context, email, displayName string, avatarURL *string, preferredCurrency string) (u store.User, created bool, err error)
+	Upsert(ctx context.Context, email, displayNameSeed string, avatarURL *string, preferredCurrency string) (u store.User, created bool, err error)
 	Get(ctx context.Context, id uuid.UUID) (store.User, error)
-	Update(ctx context.Context, id uuid.UUID, displayName, avatarURL, preferredCurrency *string) (store.User, error)
+	Update(ctx context.Context, id uuid.UUID, handle, avatarURL, preferredCurrency, profileVisibility, landingPage *string, cooldown time.Duration) (store.User, error)
 	Delete(ctx context.Context, id uuid.UUID) (deleted bool, err error)
+	GetByHandle(ctx context.Context, foldedHandle string) (store.User, error)
+	GetByIDs(ctx context.Context, ids []uuid.UUID) ([]store.User, error)
+	SearchListed(ctx context.Context, foldedQuery string, limit int) ([]store.User, error)
 }
 
 // The concrete *store.Store must satisfy the Store interface above. main.go
@@ -37,16 +41,18 @@ var _ Store = (*store.Store)(nil)
 // handler in the user service.
 type Handlers struct {
 	store          Store
+	handleCooldown time.Duration
 	accountUpserts metric.Int64Counter
 	currencySeeds  metric.Int64Counter
 	accountDeletes metric.Int64Counter
 }
 
-// New builds a Handlers wired to the given store. The OTel counters are
-// best-effort: a registration failure is logged but does not prevent
-// startup (every increment site guards the nil).
-func New(st Store) *Handlers {
-	h := &Handlers{store: st}
+// New builds a Handlers wired to the given store; cooldown gates how often
+// a caller may change their handle (passed through to Store.Update). The
+// OTel counters are best-effort: a registration failure is logged but does
+// not prevent startup (every increment site guards the nil).
+func New(st Store, cooldown time.Duration) *Handlers {
+	h := &Handlers{store: st, handleCooldown: cooldown}
 	m := otel.Meter("github.com/levonn-dev/vg-collect/services/user")
 	var err error
 	if h.accountUpserts, err = m.Int64Counter("vg.user.account.upserts",

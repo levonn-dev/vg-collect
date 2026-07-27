@@ -50,7 +50,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
     patch:
       operationId: updateUser
-      summary: Self-service profile update (display name, avatar URL)
+      summary: Self-service profile update (handle, avatar URL, currency, visibility)
       parameters:
         - name: userId
           in: path
@@ -82,6 +82,16 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "409":
+          description: Another account owns that handle's folded key (code handle_taken)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: Handle changed too recently (code handle_cooldown)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
     delete:
       operationId: deleteUser
       summary: Delete a user account (self only); idempotent
@@ -95,6 +105,74 @@ paths:
           description: Deleted (or already gone)
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /shared/profiles/{handle}:
+    get:
+      operationId: getSharedProfile
+      summary: Resolve a handle to its profile card (any authenticated caller; non-private only)
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Profile card
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfileCard" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Unknown or private (deliberately indistinguishable)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /shared/profiles/by-ids:
+    get:
+      operationId: getSharedProfilesByIds
+      summary: Batch profile cards for hydration (returned regardless of visibility - actions are signed; page access stays gated)
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: array
+            maxItems: 100
+            items: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Cards for the ids that exist
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profiles]
+                properties:
+                  profiles:
+                    type: array
+                    items: { $ref: "#/components/schemas/ProfileCard" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /shared/profiles/search:
+    get:
+      operationId: searchSharedProfiles
+      summary: Substring search over listed profiles' folded handles
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 64 }
+      responses:
+        "200":
+          description: Up to 20 listed matches, folded-key order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profiles]
+                properties:
+                  profiles:
+                    type: array
+                    items: { $ref: "#/components/schemas/ProfileCard" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -112,12 +190,20 @@ components:
   schemas:
     User:
       type: object
-      required: [id, email, display_name, roles, preferred_currency, created_at, updated_at]
+      required: [id, email, handle, profile_visibility, roles, preferred_currency, landing_page, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         email: { type: string }
-        display_name: { type: string }
+        handle:
+          type: string
+          description: >
+            The user's single identity. 2-30 chars, alphanumeric plus
+            interior underscores; case and underscores are decoration
+            (uniqueness folds them).
         avatar_url: { type: string }
+        profile_visibility:
+          type: string
+          enum: [private, unlisted, listed]
         roles:
           type: array
           items: { type: string, enum: [user, admin] }
@@ -127,6 +213,12 @@ components:
             The display currency the SPA converts market values into.
             Defaulted from locale_hint at account creation, USD when
             no hint maps.
+        landing_page:
+          type: string
+          enum: [collection, feed, explore]
+          description: >
+            Where the app opens after sign-in. Private preference,
+            defaulted to feed for every account; never on ProfileCard.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     UpsertUserRequest:
@@ -134,7 +226,12 @@ components:
       required: [email, display_name]
       properties:
         email: { type: string }
-        display_name: { type: string }
+        display_name:
+          type: string
+          description: >
+            The provider's display name. Used ONLY as the handle
+            derivation seed when this upsert creates the account; it is
+            not stored and never overwrites an existing handle.
         avatar_url: { type: string }
         locale_hint:
           type: string
@@ -148,11 +245,33 @@ components:
       type: object
       description: Absent fields keep their value; an empty avatar_url clears it.
       properties:
-        display_name: { type: string }
+        handle:
+          type: string
+          description: >
+            New typed form. Decoration-only changes are free renames;
+            one change per cooldown window (429 handle_cooldown);
+            folded-key collisions answer 409 handle_taken.
         avatar_url: { type: string }
         preferred_currency:
           type: string
           pattern: "^[A-Z]{3}$"
+        profile_visibility:
+          type: string
+          enum: [private, unlisted, listed]
+        landing_page:
+          type: string
+          enum: [collection, feed, explore]
+    ProfileCard:
+      type: object
+      description: The cross-user projection of a user. Never email, never roles.
+      required: [user_id, handle, profile_visibility]
+      properties:
+        user_id: { type: string, format: uuid }
+        handle: { type: string }
+        avatar_url: { type: string }
+        profile_visibility:
+          type: string
+          enum: [private, unlisted, listed]
     Problem:
       type: object
       required: [type, title, status]

@@ -19,6 +19,41 @@ const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
+// Defines values for ProfileCardProfileVisibility.
+const (
+	ProfileCardProfileVisibilityListed   ProfileCardProfileVisibility = "listed"
+	ProfileCardProfileVisibilityPrivate  ProfileCardProfileVisibility = "private"
+	ProfileCardProfileVisibilityUnlisted ProfileCardProfileVisibility = "unlisted"
+)
+
+// Defines values for UpdateUserRequestLandingPage.
+const (
+	UpdateUserRequestLandingPageCollection UpdateUserRequestLandingPage = "collection"
+	UpdateUserRequestLandingPageExplore    UpdateUserRequestLandingPage = "explore"
+	UpdateUserRequestLandingPageFeed       UpdateUserRequestLandingPage = "feed"
+)
+
+// Defines values for UpdateUserRequestProfileVisibility.
+const (
+	UpdateUserRequestProfileVisibilityListed   UpdateUserRequestProfileVisibility = "listed"
+	UpdateUserRequestProfileVisibilityPrivate  UpdateUserRequestProfileVisibility = "private"
+	UpdateUserRequestProfileVisibilityUnlisted UpdateUserRequestProfileVisibility = "unlisted"
+)
+
+// Defines values for UserLandingPage.
+const (
+	UserLandingPageCollection UserLandingPage = "collection"
+	UserLandingPageExplore    UserLandingPage = "explore"
+	UserLandingPageFeed       UserLandingPage = "feed"
+)
+
+// Defines values for UserProfileVisibility.
+const (
+	Listed   UserProfileVisibility = "listed"
+	Private  UserProfileVisibility = "private"
+	Unlisted UserProfileVisibility = "unlisted"
+)
+
 // Defines values for UserRoles.
 const (
 	UserRolesAdmin UserRoles = "admin"
@@ -35,18 +70,41 @@ type Problem struct {
 	Type     string  `json:"type"`
 }
 
+// ProfileCard The cross-user projection of a user. Never email, never roles.
+type ProfileCard struct {
+	AvatarUrl         *string                      `json:"avatar_url,omitempty"`
+	Handle            string                       `json:"handle"`
+	ProfileVisibility ProfileCardProfileVisibility `json:"profile_visibility"`
+	UserId            openapi_types.UUID           `json:"user_id"`
+}
+
+// ProfileCardProfileVisibility defines model for ProfileCard.ProfileVisibility.
+type ProfileCardProfileVisibility string
+
 // UpdateUserRequest Absent fields keep their value; an empty avatar_url clears it.
 type UpdateUserRequest struct {
-	AvatarUrl         *string `json:"avatar_url,omitempty"`
-	DisplayName       *string `json:"display_name,omitempty"`
-	PreferredCurrency *string `json:"preferred_currency,omitempty"`
+	AvatarUrl *string `json:"avatar_url,omitempty"`
+
+	// Handle New typed form. Decoration-only changes are free renames; one change per cooldown window (429 handle_cooldown); folded-key collisions answer 409 handle_taken.
+	Handle            *string                             `json:"handle,omitempty"`
+	LandingPage       *UpdateUserRequestLandingPage       `json:"landing_page,omitempty"`
+	PreferredCurrency *string                             `json:"preferred_currency,omitempty"`
+	ProfileVisibility *UpdateUserRequestProfileVisibility `json:"profile_visibility,omitempty"`
 }
+
+// UpdateUserRequestLandingPage defines model for UpdateUserRequest.LandingPage.
+type UpdateUserRequestLandingPage string
+
+// UpdateUserRequestProfileVisibility defines model for UpdateUserRequest.ProfileVisibility.
+type UpdateUserRequestProfileVisibility string
 
 // UpsertUserRequest defines model for UpsertUserRequest.
 type UpsertUserRequest struct {
-	AvatarUrl   *string `json:"avatar_url,omitempty"`
-	DisplayName string  `json:"display_name"`
-	Email       string  `json:"email"`
+	AvatarUrl *string `json:"avatar_url,omitempty"`
+
+	// DisplayName The provider's display name. Used ONLY as the handle derivation seed when this upsert creates the account; it is not stored and never overwrites an existing handle.
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
 
 	// LocaleHint BCP 47 language tag from the login request's Accept-Language header. Applied only when this upsert creates the account: it seeds preferred_currency and never touches an existing user.
 	LocaleHint *string `json:"locale_hint,omitempty"`
@@ -54,17 +112,29 @@ type UpsertUserRequest struct {
 
 // User defines model for User.
 type User struct {
-	AvatarUrl   *string            `json:"avatar_url,omitempty"`
-	CreatedAt   time.Time          `json:"created_at"`
-	DisplayName string             `json:"display_name"`
-	Email       string             `json:"email"`
-	Id          openapi_types.UUID `json:"id"`
+	AvatarUrl *string   `json:"avatar_url,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	Email     string    `json:"email"`
+
+	// Handle The user's single identity. 2-30 chars, alphanumeric plus interior underscores; case and underscores are decoration (uniqueness folds them).
+	Handle string             `json:"handle"`
+	Id     openapi_types.UUID `json:"id"`
+
+	// LandingPage Where the app opens after sign-in. Private preference, defaulted to feed for every account; never on ProfileCard.
+	LandingPage UserLandingPage `json:"landing_page"`
 
 	// PreferredCurrency The display currency the SPA converts market values into. Defaulted from locale_hint at account creation, USD when no hint maps.
-	PreferredCurrency string      `json:"preferred_currency"`
-	Roles             []UserRoles `json:"roles"`
-	UpdatedAt         time.Time   `json:"updated_at"`
+	PreferredCurrency string                `json:"preferred_currency"`
+	ProfileVisibility UserProfileVisibility `json:"profile_visibility"`
+	Roles             []UserRoles           `json:"roles"`
+	UpdatedAt         time.Time             `json:"updated_at"`
 }
+
+// UserLandingPage Where the app opens after sign-in. Private preference, defaulted to feed for every account; never on ProfileCard.
+type UserLandingPage string
+
+// UserProfileVisibility defines model for User.ProfileVisibility.
+type UserProfileVisibility string
 
 // UserRoles defines model for User.Roles.
 type UserRoles string
@@ -74,6 +144,16 @@ type Forbidden = Problem
 
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Problem
+
+// GetSharedProfilesByIdsParams defines parameters for GetSharedProfilesByIds.
+type GetSharedProfilesByIdsParams struct {
+	Ids []openapi_types.UUID `form:"ids" json:"ids"`
+}
+
+// SearchSharedProfilesParams defines parameters for SearchSharedProfiles.
+type SearchSharedProfilesParams struct {
+	Q string `form:"q" json:"q"`
+}
 
 // UpsertUserJSONRequestBody defines body for UpsertUser for application/json ContentType.
 type UpsertUserJSONRequestBody = UpsertUserRequest
@@ -86,13 +166,22 @@ type ServerInterface interface {
 	// Create-or-update a user at login time (auth service only; role `service`)
 	// (POST /internal/users/upsert)
 	UpsertUser(w http.ResponseWriter, r *http.Request)
+	// Batch profile cards for hydration (returned regardless of visibility - actions are signed; page access stays gated)
+	// (GET /shared/profiles/by-ids)
+	GetSharedProfilesByIds(w http.ResponseWriter, r *http.Request, params GetSharedProfilesByIdsParams)
+	// Substring search over listed profiles' folded handles
+	// (GET /shared/profiles/search)
+	SearchSharedProfiles(w http.ResponseWriter, r *http.Request, params SearchSharedProfilesParams)
+	// Resolve a handle to its profile card (any authenticated caller; non-private only)
+	// (GET /shared/profiles/{handle})
+	GetSharedProfile(w http.ResponseWriter, r *http.Request, handle string)
 	// Delete a user account (self only); idempotent
 	// (DELETE /users/{userId})
 	DeleteUser(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
 	// Fetch a user (self, or role `service`/`admin`)
 	// (GET /users/{userId})
 	GetUser(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
-	// Self-service profile update (display name, avatar URL)
+	// Self-service profile update (handle, avatar URL, currency, visibility)
 	// (PATCH /users/{userId})
 	UpdateUser(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
 }
@@ -117,6 +206,117 @@ func (siw *ServerInterfaceWrapper) UpsertUser(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpsertUser(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSharedProfilesByIds operation middleware
+func (siw *ServerInterfaceWrapper) GetSharedProfilesByIds(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSharedProfilesByIdsParams
+
+	// ------------- Required query parameter "ids" -------------
+
+	if paramValue := r.URL.Query().Get("ids"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ids"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "ids", r.URL.Query(), &params.Ids)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ids", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSharedProfilesByIds(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchSharedProfiles operation middleware
+func (siw *ServerInterfaceWrapper) SearchSharedProfiles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchSharedProfilesParams
+
+	// ------------- Required query parameter "q" -------------
+
+	if paramValue := r.URL.Query().Get("q"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "q", r.URL.Query(), &params.Q)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchSharedProfiles(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSharedProfile operation middleware
+func (siw *ServerInterfaceWrapper) GetSharedProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "handle" -------------
+	var handle string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "handle", r.PathValue("handle"), &handle, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "handle", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSharedProfile(w, r, handle)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -340,6 +540,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc("POST "+options.BaseURL+"/internal/users/upsert", wrapper.UpsertUser)
+	m.HandleFunc("GET "+options.BaseURL+"/shared/profiles/by-ids", wrapper.GetSharedProfilesByIds)
+	m.HandleFunc("GET "+options.BaseURL+"/shared/profiles/search", wrapper.SearchSharedProfiles)
+	m.HandleFunc("GET "+options.BaseURL+"/shared/profiles/{handle}", wrapper.GetSharedProfile)
 	m.HandleFunc("DELETE "+options.BaseURL+"/users/{userId}", wrapper.DeleteUser)
 	m.HandleFunc("GET "+options.BaseURL+"/users/{userId}", wrapper.GetUser)
 	m.HandleFunc("PATCH "+options.BaseURL+"/users/{userId}", wrapper.UpdateUser)

@@ -9,6 +9,7 @@ env:
   jwksUrl: http://auth:8080/.well-known/jwks.json  # resolves once the auth service exists
   jwtIssuer: vg-collect-auth
   jwtAudience: vg-collect
+  handleChangeCooldown: 24h
 
 resources:
   requests: { cpu: 50m, memory: 64Mi }

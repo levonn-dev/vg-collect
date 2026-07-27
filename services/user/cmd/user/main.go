@@ -52,7 +52,7 @@ func run() error {
 	defer pool.Close()
 
 	v := jwtauth.NewValidator(cfg.JWKSURL, cfg.JWTIssuer, cfg.JWTAudience)
-	router := server.NewRouter(server.New(store.New(pool)), v, slog.Default(),
+	router := server.NewRouter(server.New(store.New(pool), cfg.HandleChangeCooldown), v, slog.Default(),
 		func(c context.Context) error { return pgkit.Health(c, pool) })
 
 	srv := httpkit.NewServer(cfg.HTTPAddr, router)

@@ -22,6 +22,41 @@ const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
+// Defines values for ProfileCardProfileVisibility.
+const (
+	ProfileCardProfileVisibilityListed   ProfileCardProfileVisibility = "listed"
+	ProfileCardProfileVisibilityPrivate  ProfileCardProfileVisibility = "private"
+	ProfileCardProfileVisibilityUnlisted ProfileCardProfileVisibility = "unlisted"
+)
+
+// Defines values for UpdateUserRequestLandingPage.
+const (
+	UpdateUserRequestLandingPageCollection UpdateUserRequestLandingPage = "collection"
+	UpdateUserRequestLandingPageExplore    UpdateUserRequestLandingPage = "explore"
+	UpdateUserRequestLandingPageFeed       UpdateUserRequestLandingPage = "feed"
+)
+
+// Defines values for UpdateUserRequestProfileVisibility.
+const (
+	UpdateUserRequestProfileVisibilityListed   UpdateUserRequestProfileVisibility = "listed"
+	UpdateUserRequestProfileVisibilityPrivate  UpdateUserRequestProfileVisibility = "private"
+	UpdateUserRequestProfileVisibilityUnlisted UpdateUserRequestProfileVisibility = "unlisted"
+)
+
+// Defines values for UserLandingPage.
+const (
+	UserLandingPageCollection UserLandingPage = "collection"
+	UserLandingPageExplore    UserLandingPage = "explore"
+	UserLandingPageFeed       UserLandingPage = "feed"
+)
+
+// Defines values for UserProfileVisibility.
+const (
+	Listed   UserProfileVisibility = "listed"
+	Private  UserProfileVisibility = "private"
+	Unlisted UserProfileVisibility = "unlisted"
+)
+
 // Defines values for UserRoles.
 const (
 	UserRolesAdmin UserRoles = "admin"
@@ -38,18 +73,41 @@ type Problem struct {
 	Type     string  `json:"type"`
 }
 
+// ProfileCard The cross-user projection of a user. Never email, never roles.
+type ProfileCard struct {
+	AvatarUrl         *string                      `json:"avatar_url,omitempty"`
+	Handle            string                       `json:"handle"`
+	ProfileVisibility ProfileCardProfileVisibility `json:"profile_visibility"`
+	UserId            openapi_types.UUID           `json:"user_id"`
+}
+
+// ProfileCardProfileVisibility defines model for ProfileCard.ProfileVisibility.
+type ProfileCardProfileVisibility string
+
 // UpdateUserRequest Absent fields keep their value; an empty avatar_url clears it.
 type UpdateUserRequest struct {
-	AvatarUrl         *string `json:"avatar_url,omitempty"`
-	DisplayName       *string `json:"display_name,omitempty"`
-	PreferredCurrency *string `json:"preferred_currency,omitempty"`
+	AvatarUrl *string `json:"avatar_url,omitempty"`
+
+	// Handle New typed form. Decoration-only changes are free renames; one change per cooldown window (429 handle_cooldown); folded-key collisions answer 409 handle_taken.
+	Handle            *string                             `json:"handle,omitempty"`
+	LandingPage       *UpdateUserRequestLandingPage       `json:"landing_page,omitempty"`
+	PreferredCurrency *string                             `json:"preferred_currency,omitempty"`
+	ProfileVisibility *UpdateUserRequestProfileVisibility `json:"profile_visibility,omitempty"`
 }
+
+// UpdateUserRequestLandingPage defines model for UpdateUserRequest.LandingPage.
+type UpdateUserRequestLandingPage string
+
+// UpdateUserRequestProfileVisibility defines model for UpdateUserRequest.ProfileVisibility.
+type UpdateUserRequestProfileVisibility string
 
 // UpsertUserRequest defines model for UpsertUserRequest.
 type UpsertUserRequest struct {
-	AvatarUrl   *string `json:"avatar_url,omitempty"`
-	DisplayName string  `json:"display_name"`
-	Email       string  `json:"email"`
+	AvatarUrl *string `json:"avatar_url,omitempty"`
+
+	// DisplayName The provider's display name. Used ONLY as the handle derivation seed when this upsert creates the account; it is not stored and never overwrites an existing handle.
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
 
 	// LocaleHint BCP 47 language tag from the login request's Accept-Language header. Applied only when this upsert creates the account: it seeds preferred_currency and never touches an existing user.
 	LocaleHint *string `json:"locale_hint,omitempty"`
@@ -57,17 +115,29 @@ type UpsertUserRequest struct {
 
 // User defines model for User.
 type User struct {
-	AvatarUrl   *string            `json:"avatar_url,omitempty"`
-	CreatedAt   time.Time          `json:"created_at"`
-	DisplayName string             `json:"display_name"`
-	Email       string             `json:"email"`
-	Id          openapi_types.UUID `json:"id"`
+	AvatarUrl *string   `json:"avatar_url,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	Email     string    `json:"email"`
+
+	// Handle The user's single identity. 2-30 chars, alphanumeric plus interior underscores; case and underscores are decoration (uniqueness folds them).
+	Handle string             `json:"handle"`
+	Id     openapi_types.UUID `json:"id"`
+
+	// LandingPage Where the app opens after sign-in. Private preference, defaulted to feed for every account; never on ProfileCard.
+	LandingPage UserLandingPage `json:"landing_page"`
 
 	// PreferredCurrency The display currency the SPA converts market values into. Defaulted from locale_hint at account creation, USD when no hint maps.
-	PreferredCurrency string      `json:"preferred_currency"`
-	Roles             []UserRoles `json:"roles"`
-	UpdatedAt         time.Time   `json:"updated_at"`
+	PreferredCurrency string                `json:"preferred_currency"`
+	ProfileVisibility UserProfileVisibility `json:"profile_visibility"`
+	Roles             []UserRoles           `json:"roles"`
+	UpdatedAt         time.Time             `json:"updated_at"`
 }
+
+// UserLandingPage Where the app opens after sign-in. Private preference, defaulted to feed for every account; never on ProfileCard.
+type UserLandingPage string
+
+// UserProfileVisibility defines model for User.ProfileVisibility.
+type UserProfileVisibility string
 
 // UserRoles defines model for User.Roles.
 type UserRoles string
@@ -77,6 +147,16 @@ type Forbidden = Problem
 
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Problem
+
+// GetSharedProfilesByIdsParams defines parameters for GetSharedProfilesByIds.
+type GetSharedProfilesByIdsParams struct {
+	Ids []openapi_types.UUID `form:"ids" json:"ids"`
+}
+
+// SearchSharedProfilesParams defines parameters for SearchSharedProfiles.
+type SearchSharedProfilesParams struct {
+	Q string `form:"q" json:"q"`
+}
 
 // UpsertUserJSONRequestBody defines body for UpsertUser for application/json ContentType.
 type UpsertUserJSONRequestBody = UpsertUserRequest
@@ -162,6 +242,15 @@ type ClientInterface interface {
 
 	UpsertUser(ctx context.Context, body UpsertUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetSharedProfilesByIds request
+	GetSharedProfilesByIds(ctx context.Context, params *GetSharedProfilesByIdsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SearchSharedProfiles request
+	SearchSharedProfiles(ctx context.Context, params *SearchSharedProfilesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSharedProfile request
+	GetSharedProfile(ctx context.Context, handle string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DeleteUser request
 	DeleteUser(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -188,6 +277,42 @@ func (c *Client) UpsertUserWithBody(ctx context.Context, contentType string, bod
 
 func (c *Client) UpsertUser(ctx context.Context, body UpsertUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpsertUserRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSharedProfilesByIds(ctx context.Context, params *GetSharedProfilesByIdsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSharedProfilesByIdsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SearchSharedProfiles(ctx context.Context, params *SearchSharedProfilesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSearchSharedProfilesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSharedProfile(ctx context.Context, handle string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSharedProfileRequest(c.Server, handle)
 	if err != nil {
 		return nil, err
 	}
@@ -282,6 +407,130 @@ func NewUpsertUserRequestWithBody(server string, contentType string, body io.Rea
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetSharedProfilesByIdsRequest generates requests for GetSharedProfilesByIds
+func NewGetSharedProfilesByIdsRequest(server string, params *GetSharedProfilesByIdsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/shared/profiles/by-ids")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "ids", runtime.ParamLocationQuery, params.Ids); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSearchSharedProfilesRequest generates requests for SearchSharedProfiles
+func NewSearchSharedProfilesRequest(server string, params *SearchSharedProfilesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/shared/profiles/search")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "q", runtime.ParamLocationQuery, params.Q); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSharedProfileRequest generates requests for GetSharedProfile
+func NewGetSharedProfileRequest(server string, handle string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "handle", runtime.ParamLocationPath, handle)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/shared/profiles/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -449,6 +698,15 @@ type ClientWithResponsesInterface interface {
 
 	UpsertUserWithResponse(ctx context.Context, body UpsertUserJSONRequestBody, reqEditors ...RequestEditorFn) (*UpsertUserResponse, error)
 
+	// GetSharedProfilesByIdsWithResponse request
+	GetSharedProfilesByIdsWithResponse(ctx context.Context, params *GetSharedProfilesByIdsParams, reqEditors ...RequestEditorFn) (*GetSharedProfilesByIdsResponse, error)
+
+	// SearchSharedProfilesWithResponse request
+	SearchSharedProfilesWithResponse(ctx context.Context, params *SearchSharedProfilesParams, reqEditors ...RequestEditorFn) (*SearchSharedProfilesResponse, error)
+
+	// GetSharedProfileWithResponse request
+	GetSharedProfileWithResponse(ctx context.Context, handle string, reqEditors ...RequestEditorFn) (*GetSharedProfileResponse, error)
+
 	// DeleteUserWithResponse request
 	DeleteUserWithResponse(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteUserResponse, error)
 
@@ -479,6 +737,80 @@ func (r UpsertUserResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r UpsertUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSharedProfilesByIdsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Profiles []ProfileCard `json:"profiles"`
+	}
+	ApplicationproblemJSON401 *Unauthorized
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSharedProfilesByIdsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSharedProfilesByIdsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SearchSharedProfilesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Profiles []ProfileCard `json:"profiles"`
+	}
+	ApplicationproblemJSON401 *Unauthorized
+}
+
+// Status returns HTTPResponse.Status
+func (r SearchSharedProfilesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SearchSharedProfilesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSharedProfileResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *ProfileCard
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON404 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSharedProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSharedProfileResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -541,6 +873,8 @@ type UpdateUserResponse struct {
 	ApplicationproblemJSON401 *Unauthorized
 	ApplicationproblemJSON403 *Forbidden
 	ApplicationproblemJSON404 *Problem
+	ApplicationproblemJSON409 *Problem
+	ApplicationproblemJSON429 *Problem
 }
 
 // Status returns HTTPResponse.Status
@@ -574,6 +908,33 @@ func (c *ClientWithResponses) UpsertUserWithResponse(ctx context.Context, body U
 		return nil, err
 	}
 	return ParseUpsertUserResponse(rsp)
+}
+
+// GetSharedProfilesByIdsWithResponse request returning *GetSharedProfilesByIdsResponse
+func (c *ClientWithResponses) GetSharedProfilesByIdsWithResponse(ctx context.Context, params *GetSharedProfilesByIdsParams, reqEditors ...RequestEditorFn) (*GetSharedProfilesByIdsResponse, error) {
+	rsp, err := c.GetSharedProfilesByIds(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSharedProfilesByIdsResponse(rsp)
+}
+
+// SearchSharedProfilesWithResponse request returning *SearchSharedProfilesResponse
+func (c *ClientWithResponses) SearchSharedProfilesWithResponse(ctx context.Context, params *SearchSharedProfilesParams, reqEditors ...RequestEditorFn) (*SearchSharedProfilesResponse, error) {
+	rsp, err := c.SearchSharedProfiles(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSearchSharedProfilesResponse(rsp)
+}
+
+// GetSharedProfileWithResponse request returning *GetSharedProfileResponse
+func (c *ClientWithResponses) GetSharedProfileWithResponse(ctx context.Context, handle string, reqEditors ...RequestEditorFn) (*GetSharedProfileResponse, error) {
+	rsp, err := c.GetSharedProfile(ctx, handle, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSharedProfileResponse(rsp)
 }
 
 // DeleteUserWithResponse request returning *DeleteUserResponse
@@ -645,6 +1006,116 @@ func ParseUpsertUserResponse(rsp *http.Response) (*UpsertUserResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSharedProfilesByIdsResponse parses an HTTP response from a GetSharedProfilesByIdsWithResponse call
+func ParseGetSharedProfilesByIdsResponse(rsp *http.Response) (*GetSharedProfilesByIdsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSharedProfilesByIdsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Profiles []ProfileCard `json:"profiles"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSearchSharedProfilesResponse parses an HTTP response from a SearchSharedProfilesWithResponse call
+func ParseSearchSharedProfilesResponse(rsp *http.Response) (*SearchSharedProfilesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SearchSharedProfilesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Profiles []ProfileCard `json:"profiles"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSharedProfileResponse parses an HTTP response from a GetSharedProfileWithResponse call
+func ParseGetSharedProfileResponse(rsp *http.Response) (*GetSharedProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSharedProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProfileCard
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	}
 
@@ -779,6 +1250,20 @@ func ParseUpdateUserResponse(rsp *http.Response) (*UpdateUserResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON429 = &dest
 
 	}
 
