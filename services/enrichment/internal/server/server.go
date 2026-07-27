@@ -154,6 +154,9 @@ type Handlers struct {
 
 // New builds a Handlers wired to the given collaborators.
 func New(st Store, games GameProvider, prices PriceProvider, fxRates FXProvider, c Cache, opts Options) *Handlers {
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
+	}
 	h := &Handlers{
 		store:   st,
 		games:   games,

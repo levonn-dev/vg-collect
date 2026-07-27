@@ -67,6 +67,9 @@ async function addCustomEntry(page: Page, name: string) {
 test('display currency converts market values and pins the typed custom price', async ({ page }) => {
   test.setTimeout(180_000)
   await login(page)
+  // The dev fixture lands on /feed; the dashboard totals read below
+  // live on the collection page.
+  await page.getByRole('link', { name: 'Collection', exact: true }).click()
 
   const selector = page.getByLabel('Display currency')
   await expect(selector).toBeEnabled()
@@ -130,7 +133,7 @@ test('display currency converts market values and pins the typed custom price', 
   // both have priced, the total has climbed by exactly the two shown
   // values.
   await page.getByRole('link', { name: 'Collection', exact: true }).click()
-  await expect(page).toHaveURL(/\/$/)
+  await expect(page).toHaveURL(/\/collection$/)
   await expect(valueCard.getByText(new RegExp(`\\b${basePriced + 2} priced\\b`))).toBeVisible()
   expect(toCents((await totalValue.textContent()) ?? '') - baseTotal).toBe(customShown + proxyShown)
 
@@ -139,7 +142,7 @@ test('display currency converts market values and pins the typed custom price', 
     await page.goto(url)
     acceptNext(page)
     await page.getByRole('button', { name: 'Delete entry' }).click()
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page).toHaveURL(/\/collection$/)
   }
   await expect(valueCard.getByText(new RegExp(`\\b${basePriced} priced\\b`))).toBeVisible()
   expect(toCents((await totalValue.textContent()) ?? '')).toBe(baseTotal)
@@ -231,7 +234,7 @@ test('display currency converts market values and pins the typed custom price', 
   // USD before the test ends.
   acceptNext(page)
   await page.getByRole('button', { name: 'Delete entry' }).click()
-  await expect(page).toHaveURL(/\/$/)
+  await expect(page).toHaveURL(/\/collection$/)
   await selector.selectOption('USD')
   await expect(page.getByText('Collection value (USD)')).toBeVisible()
   await expect(selector).toBeEnabled()

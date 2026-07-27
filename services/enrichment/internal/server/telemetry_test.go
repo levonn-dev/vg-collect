@@ -612,3 +612,18 @@ func TestUnitTelemetry_RegistrationFailureIsBestEffort(t *testing.T) {
 		}
 	}
 }
+
+// TestUnitTelemetry_NilLoggerDoesNotPanic pins the constructor's
+// tolerate-nil idiom (shared across services): with every registration
+// failing, as above, but Options.Logger left nil this time, New must
+// still complete instead of panicking on the nil logger.
+func TestUnitTelemetry_NilLoggerDoesNotPanic(t *testing.T) {
+	prev := otel.GetMeterProvider()
+	otel.SetMeterProvider(stubErrMeterProvider{})
+	t.Cleanup(func() { otel.SetMeterProvider(prev) })
+
+	h := New(&stubStore{}, nil, nil, &stubFX{}, newStubCache(), Options{})
+	if h == nil {
+		t.Fatal("New returned nil")
+	}
+}

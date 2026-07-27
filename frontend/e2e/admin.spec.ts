@@ -36,9 +36,10 @@ test('non-admin never sees the admin surface', async ({ page }) => {
   await login(page, 'bob')
   await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0)
   // A deep link renders nothing admin-shaped either: the page guard
-  // redirects home (the server would answer 403 regardless).
+  // redirects home (the server would answer 403 regardless), which
+  // then resolves through the landing-page redirect to /feed.
   await page.goto('/admin')
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL('/feed')
 })
 
 test('admin fixes a cleared mapping end to end', async ({ page }) => {
@@ -129,5 +130,5 @@ test('admin fixes a cleared mapping end to end', async ({ page }) => {
   await page.goto(entryURL)
   acceptNext(page)
   await page.getByRole('button', { name: 'Delete entry' }).click()
-  await expect(page).toHaveURL(/\/$/)
+  await expect(page).toHaveURL(/\/collection$/)
 })

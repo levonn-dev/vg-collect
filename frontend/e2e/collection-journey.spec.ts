@@ -14,11 +14,11 @@ const viewName = `View ${stamp}`
 // 60s per IP (deploy/charts/bff/values.yaml apiPerMinute) and the whole
 // serial suite shares one bucket, a fixed window anchored at its first
 // request (APISIX limit-count, policy local). This is the heaviest single
-// spec (~190 app requests in a few seconds - the full add/price/reorder/
+// spec (~209 app requests in a few seconds - the full add/price/reorder/
 // insights/delete journey), and with the old 63s drains gone it runs back to
 // back with currency and submissions. collection-journey + currency alone
-// (~190 + ~67) share one 60s window and cannot be separated without a
-// minute-long wait, so that pair is the suite's floor (~260); the pacing here
+// (~209 + ~67) share one 60s window and cannot be separated without a
+// minute-long wait, so that pair is the suite's floor (~276); the pacing here
 // plus currency's keeps submissions out of that window instead, so the worst
 // window holds only collection-journey + currency and never trips the 300
 // cap. Seconds-scale settles, not the old minute-long drains.
@@ -50,7 +50,7 @@ function acceptNext(page: Page, promptText?: string) {
 // assert the dark default (Playwright's own default is light).
 test.use({ colorScheme: 'dark' })
 
-test('collection journey: add, edit, price, pin, reorder, views, insights, recommendations', async ({ page }) => {
+test('collection journey: add, edit, price, pin, reorder, shelves, insights, recommendations', async ({ page }) => {
   test.setTimeout(180_000)
   const createdEntryURLs: string[] = []
   await login(page)
@@ -241,6 +241,8 @@ test('collection journey: add, edit, price, pin, reorder, views, insights, recom
   // status filter is a controlled checkbox that rewrites the URL, so a
   // plain click drives it (check() races the re-render); the backlog
   // sort option only exists once the filter is exactly the backlog.
+  // The chip is behind the Filters disclosure now; open it first.
+  await page.getByRole('button', { name: /^Filters/ }).click()
   await page.getByRole('checkbox', { name: 'Backlog' }).click()
   await expect(page.getByRole('checkbox', { name: 'Backlog' })).toBeChecked()
   await page.getByLabel('Sort').selectOption('backlog_rank')
@@ -291,19 +293,67 @@ test('collection journey: add, edit, price, pin, reorder, views, insights, recom
   const posB = texts.findIndex((t) => t.includes(customB))
   expect(posA).toBeGreaterThan(posB)
 
-  // --- Saved view round-trip: save this exact state, clear it, restore it.
+  // --- Shelf round-trip: save this exact state, clear it, restore it.
   acceptNext(page, viewName)
-  await page.getByRole('button', { name: 'Save view...' }).click()
-  await expect(page.getByRole('combobox', { name: 'Saved view' })).toHaveValue(/./)
+  await page.getByRole('button', { name: 'Save shelf...' }).click()
+  await expect(page.getByRole('combobox', { name: 'Shelf' })).toHaveValue(/./)
   await page.getByRole('button', { name: 'Clear filters' }).click()
   await expect(page.getByRole('region', { name: 'Backlog order' })).toBeHidden()
-  await page.getByRole('combobox', { name: 'Saved view' }).selectOption({ label: viewName })
+  await page.getByRole('combobox', { name: 'Shelf' }).selectOption({ label: viewName })
+  // Reapplying the shelf restores its filters but never auto-opens the
+  // panel (the Filters count badge is the signal, not a forced reveal);
+  // the earlier reload also closed it, so open it again before the chip
+  // is reachable.
+  await page.getByRole('button', { name: /^Filters/ }).click()
   await expect(page.getByRole('checkbox', { name: 'Backlog' })).toBeChecked()
   await expect(page.getByRole('region', { name: 'Backlog order' })).toBeVisible()
 
-  // --- Insights ride the collection page: the stats strip follows the
-  // active view (backlog only right now) and the panels expand in
-  // place.
+  // --- Bulk edit: create a stamped tag, apply it plus a status change
+  // to both custom rows through the bulk bar, then isolate those same
+  // two rows by filtering on the new tag before cleaning it up (the
+  // create call mirrors the one the journey's own cleanup uses below).
+  const bulkTagName = `bulk ${stamp}`
+  const bulkTagRes = await page.request.post('/api/tags', { data: { name: bulkTagName } })
+  expect(bulkTagRes.ok()).toBeTruthy()
+  const bulkTagId = (await bulkTagRes.json()).id
+
+  // The page's tags list was fetched before this tag existed and never
+  // refetches on its own; reload to pick it up (same tool the drag
+  // reorder above used to see its own server-side write - this also
+  // resets the filter panel and repaints the reapplied shelf's board
+  // from the URL alone).
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'Backlog order' })).toBeVisible()
+  await page.getByRole('button', { name: 'Clear filters' }).click()
+  await expect(page.getByRole('region', { name: 'Backlog order' })).toBeHidden()
+
+  await page.getByRole('button', { name: 'Bulk edit' }).click()
+  await page.getByRole('checkbox', { name: `Select ${customA}` }).click()
+  await page.getByRole('checkbox', { name: `Select ${customB}` }).click()
+  const bulkBar = page.getByRole('region', { name: 'Bulk edit' })
+  await bulkBar.getByRole('group', { name: 'Add tags' }).getByRole('checkbox', { name: bulkTagName }).click()
+  await bulkBar.getByLabel('Status').selectOption('shelved')
+  await bulkBar.getByRole('button', { name: 'Apply' }).click()
+  await expect(page.getByRole('status')).toHaveText('Updated 2 entries.')
+
+  // Filter down to exactly the two custom rows via the new tag.
+  await page.getByRole('button', { name: /^Filters/ }).click()
+  await page.getByRole('checkbox', { name: bulkTagName }).click()
+  await expect(page.getByRole('row', { name: new RegExp(customA) })).toBeVisible()
+  await expect(page.getByRole('row', { name: new RegExp(customB) })).toBeVisible()
+  await expect(page.getByRole('table').getByRole('row')).toHaveCount(3) // header + the two custom rows
+  await expect(page.getByRole('link', { name: 'Chrono Trigger' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Clear filters' }).click()
+
+  // Cleanup: delete the stamped tag now (cascade detaches it from both
+  // entries); their now-shelved status is harmless - the journey's own
+  // entry deletion removes both entries later.
+  const deletedTag = await page.request.delete(`/api/tags/${bulkTagId}`)
+  expect(deletedTag.ok()).toBeTruthy()
+
+  // --- Insights ride the collection page: the stats strip follows
+  // whatever filters are active - none right now, the bulk-edit detour
+  // above cleared them - and the panels expand in place.
   await expect(page.getByRole('region', { name: 'Totals' })).toBeVisible()
   await page.getByRole('button', { name: 'Show insights' }).click()
   await expect(page.getByRole('region', { name: 'By platform' })).toBeVisible()
@@ -317,19 +367,19 @@ test('collection journey: add, edit, price, pin, reorder, views, insights, recom
   await expect(page.getByRole('main', { name: 'Recommendations' })).toBeVisible()
   await expect(page.getByRole('link', { name: /to collection/ }).first()).toBeVisible()
 
-  // --- Cleanup: delete the saved view, then every created entry.
+  // --- Cleanup: delete the shelf, then every created entry.
   await page.getByRole('link', { name: 'Collection', exact: true }).click()
-  await page.getByRole('combobox', { name: 'Saved view' }).selectOption({ label: viewName })
+  await page.getByRole('combobox', { name: 'Shelf' }).selectOption({ label: viewName })
   acceptNext(page)
-  await page.getByRole('button', { name: 'Delete view' }).click()
+  await page.getByRole('button', { name: 'Delete shelf' }).click()
   await expect(page.getByRole('option', { name: viewName })).toHaveCount(0)
   for (const url of createdEntryURLs) {
     await page.goto(url)
     acceptNext(page)
     await page.getByRole('button', { name: 'Delete entry' }).click()
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page).toHaveURL(/\/collection$/)
   }
-  await page.goto(`/?item_type=game&item_type=console`)
+  await page.goto(`/collection?item_type=game&item_type=console`)
   await expect(page.getByText(new RegExp(stamp))).toHaveCount(0)
   // The list views do not render notes, so the UI scan above cannot
   // see a notes-stamped orphan; sweep the entries API for the stamp

@@ -5,7 +5,7 @@ test('dev fixture login round-trip through the gateway', async ({ page }) => {
   await expect(page).toHaveURL(/\/login$/)
 
   await page.getByRole('link', { name: 'alice', exact: true }).click()
-  await expect(page).toHaveURL(/\/$/)
+  await expect(page).toHaveURL(/\/feed$/)
   await expect(page.getByText(/alice/i).first()).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
 

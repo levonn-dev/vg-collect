@@ -187,7 +187,7 @@ test('reject round trip: submit, admin rejects, submitter reads the reason', asy
   await expect(page.getByRole('button', { name: 'Resubmit to catalog' })).toBeVisible()
   acceptNext(page)
   await page.getByRole('button', { name: 'Delete entry' }).click()
-  await expect(page).toHaveURL(/\/$/)
+  await expect(page).toHaveURL(/\/collection$/)
 })
 
 test('approve, community lane, candidate sweep, promote, cleanup', async ({ page }) => {
@@ -327,7 +327,9 @@ test('custom entry via the platform picker lands filterable in the collection fi
   test.setTimeout(120_000)
   await login(page, 'bob')
   const url = await addCustom(page, `Picker Cart ${stamp}`)
-  await page.goto('/')
+  await page.goto('/collection')
+  // The filter panel starts collapsed; the facet chips render only once opened.
+  await page.getByRole('button', { name: /^Filters/ }).click()
   // The SNES facet exists because the picked entry carries platform_igdb_id.
   const filter = page.getByRole('group', { name: /platform/i })
   await expect(filter.getByText('Super Nintendo Entertainment System')).toBeVisible()
@@ -340,6 +342,8 @@ test('custom entry via the platform picker lands filterable in the collection fi
 test('non-admin never sees the submissions surface', async ({ page }) => {
   await login(page, 'bob')
   await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0)
+  // The page guard redirects home, which then resolves through the
+  // landing-page redirect to /feed.
   await page.goto('/admin')
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL('/feed')
 })
