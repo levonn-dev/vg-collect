@@ -10,6 +10,7 @@ env:
   userServiceUrl: http://user:8080
   enrichmentServiceUrl: http://enrichment:8080
   collectionServiceUrl: http://collection:8080
+  socialServiceUrl: http://social:8080
   valkeyUrl: rediss://bff-valkey:6379/0
   # Browser-visible origins allowed to send mutating requests: the
   # gateway port-forward and the Vite dev server.

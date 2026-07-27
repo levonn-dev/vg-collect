@@ -40,6 +40,8 @@ spec:
               value: {{ .Values.env.enrichmentServiceUrl | quote }}
             - name: COLLECTION_SERVICE_URL
               value: {{ .Values.env.collectionServiceUrl | quote }}
+            - name: SOCIAL_SERVICE_URL
+              value: {{ .Values.env.socialServiceUrl | quote }}
             - name: VALKEY_URL
               value: {{ .Values.env.valkeyUrl | quote }}
             {{- if .Values.valkey.enabled }}
