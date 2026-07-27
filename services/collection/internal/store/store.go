@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,6 +32,13 @@ var (
 	// ErrSubmissionResolved: a verdict raced this one; the row is no
 	// longer pending.
 	ErrSubmissionResolved = errors.New("store: submission resolved")
+	// ErrTagCapExceeded: a bulk-update's tag additions would leave a
+	// targeted entry holding more than entryTagCap tags; the whole
+	// transaction rolls back.
+	ErrTagCapExceeded = errors.New("store: entry tag cap exceeded")
+	// ErrUserTagCapExceeded: the caller already holds TagCap distinct
+	// tags; CreateTag rolls back rather than minting one more.
+	ErrUserTagCapExceeded = errors.New("store: user tag cap exceeded")
 )
 
 // Store is the query surface over the collection database.
@@ -396,6 +404,169 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 	return out, nil
 }
 
+// BulkActions is the delta a bulk-update applies across a batch of the
+// caller's own entries. A nil Status or StorageLocation leaves that
+// dimension untouched; a nil/empty AddTagIDs or RemoveTagIDs means no
+// tag change on that side. StorageLocation follows the bulk-update's
+// own clearing rule (a non-nil pointer to "" clears the column) -
+// the OPPOSITE of the full-replacement update, where an ABSENT field
+// clears.
+type BulkActions struct {
+	AddTagIDs       []uuid.UUID
+	RemoveTagIDs    []uuid.UUID
+	Status          *string
+	StorageLocation *string
+}
+
+// entryTagCap is the per-entry tag ceiling every tagging path
+// enforces (mirrors EntryCreate/EntryUpdate's tag_ids maxItems); the
+// bulk delta checks it explicitly here since it does not go through
+// replaceTags' full-replacement shape.
+const entryTagCap = 50
+
+// bulkEnterBacklog is BulkUpdateEntries' status='backlog' arm. A flat
+// `SET status = 'backlog'` cannot stand alone: the entries table
+// CHECKs (status = 'backlog') = (backlog_rank IS NOT NULL), so every
+// entry newly entering needs a rank assigned in the SAME write that
+// flips its status. Entries already in backlog are left untouched
+// entirely (status and rank both already correct - "staying keeps
+// the position", same as UpdateEntry); entries newly entering append
+// at the end, oldest-created first among the batch, each strictly
+// after the last (rank.Between chained off the running max).
+func bulkEnterBacklog(ctx context.Context, tx pgx.Tx, userID uuid.UUID, entryIDs []uuid.UUID) error {
+	rows, err := tx.Query(ctx, `
+		SELECT id FROM entries
+		WHERE id = ANY($1) AND user_id = $2 AND status <> 'backlog'
+		ORDER BY created_at, id FOR UPDATE`,
+		entryIDs, userID)
+	if err != nil {
+		return fmt.Errorf("store: bulk enter backlog: select: %w", err)
+	}
+	var entering []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return fmt.Errorf("store: bulk enter backlog: scan: %w", err)
+		}
+		entering = append(entering, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("store: bulk enter backlog: %w", err)
+	}
+	if len(entering) == 0 {
+		return nil
+	}
+
+	prev, err := maxRank(ctx, tx, userID)
+	if err != nil {
+		return err
+	}
+	for _, id := range entering {
+		r, err := rank.Between(prev, "")
+		if err != nil {
+			return fmt.Errorf("store: bulk enter backlog: assign rank: %w", err)
+		}
+		prev = r
+		if _, err := tx.Exec(ctx,
+			`UPDATE entries SET status = 'backlog', backlog_rank = $2, updated_at = now() WHERE id = $1`,
+			id, r); err != nil {
+			return fmt.Errorf("store: bulk enter backlog: update: %w", err)
+		}
+	}
+	return nil
+}
+
+// BulkUpdateEntries applies actions across the caller's own entries
+// named in entryIDs, in ONE transaction. entryIDs the caller does not
+// own are silently excluded from every write below (the same
+// ownership posture as tag attachment elsewhere in this file); a
+// foreign id in AddTagIDs/RemoveTagIDs matches nothing for the same
+// reason. If any targeted entry would end up holding more than
+// entryTagCap tags, the whole transaction rolls back with
+// ErrTagCapExceeded - a skipped-entry partial apply is never allowed.
+// Returns the count of entryIDs that are the caller's own, whether or
+// not any field they touch actually changed (idempotent re-runs
+// report the same count). A status change manages backlog_rank like
+// UpdateEntry does (entries table CHECKs status='backlog' exactly
+// when backlog_rank is set, so a bare status write cannot skip this):
+// entering backlog appends each newly-entering entry at the end
+// (oldest-created first among the batch); already-backlog entries
+// keep their position; leaving backlog clears it.
+func (s *Store) BulkUpdateEntries(ctx context.Context, userID uuid.UUID, entryIDs []uuid.UUID, actions BulkActions) (int, error) {
+	var count int
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx,
+			`SELECT count(*) FROM entries WHERE id = ANY($1) AND user_id = $2`,
+			entryIDs, userID).Scan(&count); err != nil {
+			return fmt.Errorf("store: bulk update count: %w", err)
+		}
+
+		if actions.StorageLocation != nil {
+			if _, err := tx.Exec(ctx, `
+				UPDATE entries SET storage_location = NULLIF($2, ''), updated_at = now()
+				WHERE id = ANY($1) AND user_id = $3`,
+				entryIDs, *actions.StorageLocation, userID); err != nil {
+				return fmt.Errorf("store: bulk storage location: %w", err)
+			}
+		}
+
+		if actions.Status != nil {
+			if *actions.Status == "backlog" {
+				if err := bulkEnterBacklog(ctx, tx, userID, entryIDs); err != nil {
+					return err
+				}
+			} else if _, err := tx.Exec(ctx, `
+				UPDATE entries SET status = $2, backlog_rank = NULL, updated_at = now()
+				WHERE id = ANY($1) AND user_id = $3`,
+				entryIDs, *actions.Status, userID); err != nil {
+				return fmt.Errorf("store: bulk status: %w", err)
+			}
+		}
+
+		if len(actions.RemoveTagIDs) > 0 {
+			if _, err := tx.Exec(ctx, `
+				DELETE FROM entry_tags
+				WHERE tag_id = ANY($1)
+				  AND entry_id IN (SELECT id FROM entries WHERE id = ANY($2) AND user_id = $3)`,
+				actions.RemoveTagIDs, entryIDs, userID); err != nil {
+				return fmt.Errorf("store: bulk remove tags: %w", err)
+			}
+		}
+
+		if len(actions.AddTagIDs) > 0 {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO entry_tags (entry_id, tag_id)
+				SELECT e.id, t.id FROM entries e, tags t
+				WHERE e.id = ANY($1) AND e.user_id = $3
+				  AND t.id = ANY($2) AND t.user_id = $3
+				ON CONFLICT DO NOTHING`,
+				entryIDs, actions.AddTagIDs, userID); err != nil {
+				return fmt.Errorf("store: bulk add tags: %w", err)
+			}
+			var overCap bool
+			if err := tx.QueryRow(ctx, `
+				SELECT EXISTS (
+					SELECT 1 FROM entry_tags et
+					JOIN entries e ON e.id = et.entry_id
+					WHERE et.entry_id = ANY($1) AND e.user_id = $2
+					GROUP BY et.entry_id HAVING count(*) > $3
+				)`, entryIDs, userID, entryTagCap).Scan(&overCap); err != nil {
+				return fmt.Errorf("store: bulk tag cap check: %w", err)
+			}
+			if overCap {
+				return ErrTagCapExceeded
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // GameEntryRef is the resnapshot walk's row: just enough to recompute
 // one game-backed entry's date pick.
 type GameEntryRef struct {
@@ -602,15 +773,39 @@ func (s *Store) Reorder(ctx context.Context, userID, entryID uuid.UUID, afterID,
 	return out, nil
 }
 
+// TagCap is the per-user distinct-tag ceiling; CreateTag's only
+// uncapped user-writable growth path before this, closed here.
+// Exported so the handler's cap-exceeded detail can name the same
+// number without duplicating the literal.
+const TagCap = 200
+
 // CreateTag creates a user-scoped tag; names are unique per user
-// case-insensitively (citext).
+// case-insensitively (citext). Enforces TagCap distinct tags per
+// user, count-then-insert inside one transaction: not airtight
+// against a genuine race between two concurrent creates from the same
+// user (no explicit lock), the same best-effort shape as the social
+// service's own edge caps - the abuse case this closes (a user far
+// past a modest static ceiling) has no meaningful path through it.
 func (s *Store) CreateTag(ctx context.Context, userID uuid.UUID, name string) (Tag, error) {
 	var t Tag
-	err := s.pool.QueryRow(ctx, `
-		INSERT INTO tags (user_id, name) VALUES ($1, $2)
-		RETURNING id, name`, userID, name).Scan(&t.ID, &t.Name)
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		var n int
+		if err := tx.QueryRow(ctx,
+			`SELECT count(*) FROM tags WHERE user_id = $1`, userID).Scan(&n); err != nil {
+			return fmt.Errorf("store: count tags: %w", err)
+		}
+		if n >= TagCap {
+			return ErrUserTagCapExceeded
+		}
+		return tx.QueryRow(ctx, `
+			INSERT INTO tags (user_id, name) VALUES ($1, $2)
+			RETURNING id, name`, userID, name).Scan(&t.ID, &t.Name)
+	})
 	if isUniqueViolation(err) {
 		return Tag{}, ErrNameTaken
+	}
+	if errors.Is(err, ErrUserTagCapExceeded) {
+		return Tag{}, ErrUserTagCapExceeded
 	}
 	if err != nil {
 		return Tag{}, fmt.Errorf("store: create tag: %w", err)
@@ -878,20 +1073,28 @@ func (s *Store) DeleteTag(ctx context.Context, userID, id uuid.UUID) error {
 }
 
 // View is a saved list configuration; Params is the frontend's opaque
-// JSON document, stored and returned verbatim.
+// JSON document, stored and returned verbatim. Slug/Visibility/
+// PublishedAt are the sharing layer: a view whose effective
+// visibility (min of owner profile and view) is non-private is a
+// "shelf" on the social surface.
 type View struct {
-	ID        uuid.UUID
-	Name      string
-	Params    []byte
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	Name        string
+	Slug        string
+	Visibility  string
+	Params      []byte
+	PublishedAt *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
-const viewCols = `id, name, params, created_at, updated_at`
+const viewCols = `id, user_id, name, slug, visibility, params, published_at, created_at, updated_at`
 
 func scanView(row pgx.Row) (View, error) {
 	var v View
-	err := row.Scan(&v.ID, &v.Name, &v.Params, &v.CreatedAt, &v.UpdatedAt)
+	err := row.Scan(&v.ID, &v.UserID, &v.Name, &v.Slug, &v.Visibility, &v.Params,
+		&v.PublishedAt, &v.CreatedAt, &v.UpdatedAt)
 	return v, err
 }
 
@@ -914,36 +1117,101 @@ func (s *Store) ListViews(ctx context.Context, userID uuid.UUID) ([]View, error)
 	return out, rows.Err()
 }
 
-// CreateView saves a view; names are unique per user case-insensitively.
-func (s *Store) CreateView(ctx context.Context, userID uuid.UUID, name string, params []byte) (View, error) {
-	v, err := scanView(s.pool.QueryRow(ctx, `
-		INSERT INTO saved_views (user_id, name, params) VALUES ($1, $2, $3)
-		RETURNING `+viewCols, userID, name, params))
-	if isUniqueViolation(err) {
-		return View{}, ErrNameTaken
-	}
-	if err != nil {
-		return View{}, fmt.Errorf("store: create view: %w", err)
-	}
-	return v, nil
+// slugConstraint is the per-user folded-slug unique index; a
+// violation there dedupes with a suffix, while a name violation is
+// the user-facing ErrNameTaken.
+const slugConstraint = "saved_views_user_slug_key_idx"
+
+func slugViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation &&
+		pgErr.ConstraintName == slugConstraint
 }
 
-// UpdateView replaces a view's name and params.
-func (s *Store) UpdateView(ctx context.Context, userID, id uuid.UUID, name string, params []byte) (View, error) {
-	v, err := scanView(s.pool.QueryRow(ctx, `
-		UPDATE saved_views SET name = $3, params = $4, updated_at = now()
-		WHERE id = $1 AND user_id = $2
-		RETURNING `+viewCols, id, userID, name, params))
+// CreateView saves a view; names are unique per user
+// case-insensitively, slugs unique per user on the folded key.
+func (s *Store) CreateView(ctx context.Context, userID uuid.UUID, name string, params []byte, visibility string) (View, error) {
+	base := DeriveSlug(name)
+	slug := base
+	for attempt := 2; ; attempt++ {
+		v, err := scanView(s.pool.QueryRow(ctx, `
+			INSERT INTO saved_views (user_id, name, params, slug, visibility, published_at)
+			VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 = 'listed' THEN now() END)
+			RETURNING `+viewCols, userID, name, params, slug, visibility))
+		if slugViolation(err) {
+			suffix := strconv.Itoa(attempt)
+			slug = base
+			if len(slug)+len(suffix) > 30 {
+				slug = strings.TrimRight(slug[:30-len(suffix)], "_")
+			}
+			slug += suffix
+			continue
+		}
+		if isUniqueViolation(err) {
+			return View{}, ErrNameTaken
+		}
+		if err != nil {
+			return View{}, fmt.Errorf("store: create view: %w", err)
+		}
+		return v, nil
+	}
+}
+
+// UpdateView replaces a view's name, params, and visibility. A name
+// change re-derives the slug (old links break; documented trade); an
+// unchanged name keeps the stored slug verbatim, so a params- or
+// visibility-only save can never silently move the row onto a
+// different suffix (e.g. one a sibling's deletion just freed) and
+// break a shared link that the name change never touched. A
+// transition into listed stamps published_at.
+func (s *Store) UpdateView(ctx context.Context, userID, id uuid.UUID, name string, params []byte, visibility string) (View, error) {
+	var currentName, currentSlug string
+	err := s.pool.QueryRow(ctx,
+		`SELECT name, slug FROM saved_views WHERE id = $1 AND user_id = $2`,
+		id, userID).Scan(&currentName, &currentSlug)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return View{}, ErrNotFound
 	}
-	if isUniqueViolation(err) {
-		return View{}, ErrNameTaken
-	}
 	if err != nil {
-		return View{}, fmt.Errorf("store: update view: %w", err)
+		return View{}, fmt.Errorf("store: update view: load current: %w", err)
 	}
-	return v, nil
+
+	rename := name != currentName
+	base, slug := currentSlug, currentSlug
+	if rename {
+		base = DeriveSlug(name)
+		slug = base
+	}
+
+	for attempt := 2; ; attempt++ {
+		v, err := scanView(s.pool.QueryRow(ctx, `
+			UPDATE saved_views SET
+				name = $3, params = $4, slug = $5,
+				published_at = CASE WHEN $6 = 'listed' AND visibility <> 'listed' THEN now() ELSE published_at END,
+				visibility = $6,
+				updated_at = now()
+			WHERE id = $1 AND user_id = $2
+			RETURNING `+viewCols, id, userID, name, params, slug, visibility))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return View{}, ErrNotFound
+		}
+		if rename && slugViolation(err) {
+			suffix := strconv.Itoa(attempt)
+			slug = base
+			if len(slug)+len(suffix) > 30 {
+				slug = strings.TrimRight(slug[:30-len(suffix)], "_")
+			}
+			slug += suffix
+			continue
+		}
+		if isUniqueViolation(err) {
+			return View{}, ErrNameTaken
+		}
+		if err != nil {
+			return View{}, fmt.Errorf("store: update view: %w", err)
+		}
+		return v, nil
+	}
 }
 
 // DeleteView removes one of the user's saved views.
@@ -957,6 +1225,152 @@ func (s *Store) DeleteView(ctx context.Context, userID, id uuid.UUID) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// SeedDefaultViews gives a zero-view user the two starter shelves.
+// ON CONFLICT DO NOTHING makes it safe to race and safe to re-run;
+// the caller triggers it only when ListViews found nothing, so
+// deleting every view brings the defaults back (factory-reset
+// semantics, documented).
+func (s *Store) SeedDefaultViews(ctx context.Context, userID uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO saved_views (user_id, name, params, slug)
+		VALUES
+			($1, 'Full collection', '{"v":1}', 'Full_Collection'),
+			($1, 'Backlog', '{"v":1,"status":["backlog"],"sort":"backlog_rank","order":"asc"}', 'Backlog')
+		ON CONFLICT DO NOTHING`, userID)
+	if err != nil {
+		return fmt.Errorf("store: seed default views: %w", err)
+	}
+	return nil
+}
+
+// GetSharedShelf loads a view by id, any owner, any visibility; the
+// handler applies the gate (unknown == private == 404).
+func (s *Store) GetSharedShelf(ctx context.Context, id uuid.UUID) (View, error) {
+	v, err := scanView(s.pool.QueryRow(ctx,
+		`SELECT `+viewCols+` FROM saved_views WHERE id = $1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return View{}, ErrNotFound
+	}
+	if err != nil {
+		return View{}, fmt.Errorf("store: get shared shelf: %w", err)
+	}
+	return v, nil
+}
+
+// GetSharedShelfBySlug resolves (owner, folded slug) - the URL path.
+func (s *Store) GetSharedShelfBySlug(ctx context.Context, ownerID uuid.UUID, foldedSlug string) (View, error) {
+	v, err := scanView(s.pool.QueryRow(ctx,
+		`SELECT `+viewCols+` FROM saved_views WHERE user_id = $1 AND slug_key = $2`,
+		ownerID, foldedSlug))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return View{}, ErrNotFound
+	}
+	if err != nil {
+		return View{}, fmt.Errorf("store: get shelf by slug: %w", err)
+	}
+	return v, nil
+}
+
+// ListListedShelves pages listed views, newest publish first - the
+// Explore-recent (unfiltered) and profile-page (owner-scoped) reads
+// share this one method on a nil-slice contract: a nil or empty
+// ownerIDs lists across every listed owner; a non-empty one scopes
+// the page to just those owners (the caller passes only owners whose
+// profile is listed, when scoping).
+func (s *Store) ListListedShelves(ctx context.Context, ownerIDs []uuid.UUID, limit, offset int) ([]View, int, error) {
+	where := "visibility = 'listed'"
+	args := []any{}
+	if len(ownerIDs) > 0 {
+		args = append(args, ownerIDs)
+		where += " AND user_id = ANY($1)"
+	}
+
+	var total int
+	if err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM saved_views WHERE `+where, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("store: count listed shelves: %w", err)
+	}
+
+	limitArg := fmt.Sprintf("$%d", len(args)+1)
+	offsetArg := fmt.Sprintf("$%d", len(args)+2)
+	args = append(args, limit, offset)
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+viewCols+` FROM saved_views
+		WHERE `+where+`
+		ORDER BY published_at DESC NULLS LAST, id
+		LIMIT `+limitArg+` OFFSET `+offsetArg, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: list listed shelves: %w", err)
+	}
+	defer rows.Close()
+	out := []View{}
+	for rows.Next() {
+		v, err := scanView(rows)
+		if err != nil {
+			return nil, 0, fmt.Errorf("store: scan shelf: %w", err)
+		}
+		out = append(out, v)
+	}
+	return out, total, rows.Err()
+}
+
+// SharedShelvesByIDs batch-loads non-private views for hydration;
+// private and missing ids are simply absent.
+func (s *Store) SharedShelvesByIDs(ctx context.Context, ids []uuid.UUID) ([]View, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+viewCols+` FROM saved_views
+		WHERE id = ANY($1) AND visibility <> 'private'`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("store: shelves by ids: %w", err)
+	}
+	defer rows.Close()
+	out := []View{}
+	for rows.Next() {
+		v, err := scanView(rows)
+		if err != nil {
+			return nil, fmt.Errorf("store: scan shelf: %w", err)
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// CountEntriesFiltered sizes a shelf (its filtered entry set).
+func (s *Store) CountEntriesFiltered(ctx context.Context, userID uuid.UUID, f Filters) (int, error) {
+	where, args := filterWhere(userID, f)
+	var n int
+	err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM entries WHERE `+strings.Join(where, " AND "), args...).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("store: count filtered: %w", err)
+	}
+	return n, nil
+}
+
+// CoverURLs returns the first non-empty cover urls of a shelf's
+// filtered set in shelf order - the summary card strip.
+func (s *Store) CoverURLs(ctx context.Context, userID uuid.UUID, f Filters, limit int) ([]string, error) {
+	where, args := filterWhere(userID, f)
+	where = append(where, "cover_url IS NOT NULL", "cover_url <> ''")
+	args = append(args, limit)
+	rows, err := s.pool.Query(ctx,
+		`SELECT cover_url FROM entries WHERE `+strings.Join(where, " AND ")+
+			` ORDER BY `+orderClause(f.Sort, f.Order)+` LIMIT $`+strconv.Itoa(len(args)), args...)
+	if err != nil {
+		return nil, fmt.Errorf("store: cover urls: %w", err)
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, fmt.Errorf("store: scan cover: %w", err)
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
 }
 
 // PlatformCount is one dashboard platform bucket ("" = no platform).

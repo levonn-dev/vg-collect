@@ -175,6 +175,192 @@ func TestSchemaGuards(t *testing.T) {
 	}
 }
 
+// TestSlugBackfillCollisionFree drives the schema to just before the
+// slug backfill (000009), seeds three same-user views whose derived
+// slugs collide across dedupe partitions in a way a single-pass
+// suffix pass cannot resolve ("Games", "Games!!!", "Games2" all fold
+// toward "games"/"games2"), then migrates up and checks the backfill
+// lands on unique, deterministic slugs instead of aborting the
+// CREATE UNIQUE INDEX.
+func TestSlugBackfillCollisionFree(t *testing.T) {
+	url := newTestDB(t)
+	src, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pgxURL := strings.Replace(url, "postgres://", "pgx5://", 1)
+	m, err := migrate.NewWithSourceInstance("iofs", src, pgxURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = m.Close() }()
+	if err := m.Migrate(8); err != nil {
+		t.Fatalf("migrate to 8: %v", err)
+	}
+
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+
+	const userID = "11111111-1111-1111-1111-111111111111"
+	const insert = `INSERT INTO saved_views (user_id, name, params, created_at)
+		VALUES ($1, $2, '{"v":1}', $3)`
+	base := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := conn.Exec(ctx, insert, userID, "Games", base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, insert, userID, "Games!!!", base.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, insert, userID, "Games2", base.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := m.Migrate(9); err != nil {
+		t.Fatalf("migrate to 9 (slug backfill): %v", err)
+	}
+
+	rows, err := conn.Query(ctx,
+		`SELECT name, slug, slug_key FROM saved_views WHERE user_id = $1 ORDER BY created_at`, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	type row struct{ name, slug, key string }
+	var got []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.name, &r.slug, &r.key); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, r)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got) != 3 {
+		t.Fatalf("rows = %d, want 3", len(got))
+	}
+	// "Games" keeps its unsuffixed value (oldest, so it claims "games"
+	// first). "Games!!!" also folds to "games", loses the race, and
+	// claims "games2" - which is what "Games2" would have kept
+	// untouched under the old buggy single-pass dedupe. Since "Games2"
+	// is processed last and finds "games2" already claimed, it must
+	// itself probe to "games22". No two rows ever share a fold key.
+	want := []row{
+		{"Games", "Games", "games"},
+		{"Games!!!", "Games2", "games2"},
+		{"Games2", "Games22", "games22"},
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Fatalf("row %d = %+v, want %+v", i, got[i], w)
+		}
+	}
+	keys := map[string]bool{}
+	for _, r := range got {
+		if keys[r.key] {
+			t.Fatalf("duplicate slug_key %q among %+v", r.key, got)
+		}
+		keys[r.key] = true
+	}
+}
+
+// TestSlugBackfillSuffixBoundaryMatchesAppDerivation pins the
+// dedupe-suffix clamp at its exact boundary: a name whose derived
+// slug is exactly 30 characters with an underscore at position 29
+// clamps (for the length-1 suffix "2") right at that underscore.
+// services/collection/internal/store/store.go's CreateView/UpdateView
+// slug dedupe always trims a trailing underscore a clamp exposes
+// before appending the suffix digit; the backfill must land on the
+// identical string ("...A2"), not the pre-fix "...A_2" - the fold is
+// the same either way, but the stored typed form would otherwise
+// diverge from what the app would have minted for the same input.
+func TestSlugBackfillSuffixBoundaryMatchesAppDerivation(t *testing.T) {
+	url := newTestDB(t)
+	src, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pgxURL := strings.Replace(url, "postgres://", "pgx5://", 1)
+	m, err := migrate.NewWithSourceInstance("iofs", src, pgxURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = m.Close() }()
+	if err := m.Migrate(8); err != nil {
+		t.Fatalf("migrate to 8: %v", err)
+	}
+
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+
+	const userID = "11111111-1111-1111-1111-111111111111"
+	base28A := strings.Repeat("A", 28)
+	// Two DISTINCT names (the per-user name uniqueness constraint
+	// forbids literal duplicates) that both derive to the identical
+	// 30-char slug "A...A_Z": name1's doubled underscore collapses to
+	// one in the symbol-run transform, landing on the same text as
+	// name2's single one. Both then clamp(29) exactly on that
+	// underscore.
+	name1 := base28A + "__Z"
+	name2 := base28A + "_Z"
+	const insert = `INSERT INTO saved_views (user_id, name, params, created_at)
+		VALUES ($1, $2, '{"v":1}', $3)`
+	base := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := conn.Exec(ctx, insert, userID, name1, base); err != nil {
+		t.Fatal(err)
+	}
+	// name2 derives the same 30-char slug as name1, so this row
+	// collides with row 1's claimed fold and must probe to a suffixed
+	// value.
+	if _, err := conn.Exec(ctx, insert, userID, name2, base.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := m.Migrate(9); err != nil {
+		t.Fatalf("migrate to 9 (slug backfill): %v", err)
+	}
+
+	rows, err := conn.Query(ctx,
+		`SELECT slug, slug_key FROM saved_views WHERE user_id = $1 ORDER BY created_at`, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	type row struct{ slug, key string }
+	var got []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.slug, &r.key); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, r)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("rows = %d, want 2", len(got))
+	}
+	wantSlug := base28A + "2"
+	if got[1].slug != wantSlug {
+		t.Fatalf("second row slug = %q, want %q (app-parity: rtrim drops the underscore the clamp exposed)", got[1].slug, wantSlug)
+	}
+	wantKey := strings.ToLower(wantSlug)
+	if got[1].key != wantKey {
+		t.Fatalf("second row slug_key = %q, want %q", got[1].key, wantKey)
+	}
+}
+
 func TestCustomPricingConstraints(t *testing.T) {
 	url := newTestDB(t)
 	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
