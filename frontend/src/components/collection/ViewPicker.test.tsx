@@ -7,12 +7,13 @@ import ViewPicker from './ViewPicker'
 
 const savedState = { ...defaultListState(), status: ['backlog' as const], mode: 'grid' as const }
 const view = {
-  id: 'v1', name: 'Backlog wall', params: toViewParams(savedState),
+  id: 'v1', name: 'Backlog wall', slug: 'backlog-wall', visibility: 'private' as const,
+  params: toViewParams(savedState),
   created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
 }
 
 function renderPicker(state = defaultListState(), onApply = vi.fn()) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   render(
     <QueryClientProvider client={qc}>
       <ViewPicker state={state} onApply={onApply} />
@@ -26,14 +27,14 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-it('applies a saved view: decoded state plus the view id', async () => {
+it('applies a shelf: decoded state plus the view id', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { views: [view] })))
   const onApply = renderPicker()
   // The select is present from the first render (its label is static);
   // wait for the fetched option itself before choosing it, otherwise
-  // selectOptions can run before the view list has loaded.
+  // selectOptions can run before the shelf list has loaded.
   await screen.findByRole('option', { name: view.name })
-  await userEvent.selectOptions(screen.getByLabelText('Saved view'), 'v1')
+  await userEvent.selectOptions(screen.getByLabelText('Shelf'), 'v1')
   expect(onApply).toHaveBeenCalledWith({ ...savedState, viewId: 'v1' })
 })
 
@@ -45,7 +46,7 @@ it('saves the current state under a prompted name', async () => {
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(window, 'prompt').mockReturnValue('New view')
   const onApply = renderPicker(savedState)
-  await userEvent.click(await screen.findByRole('button', { name: /save view/i }))
+  await userEvent.click(await screen.findByRole('button', { name: /save shelf/i }))
   const post = fetchMock.mock.calls[1]
   expect(post[0]).toBe('/api/views')
   const body = putBody<{ name: string; params: unknown }>(post[1] as RequestInit)
@@ -54,7 +55,7 @@ it('saves the current state under a prompted name', async () => {
   expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ viewId: 'v2' }))
 })
 
-it('updates the active view with the current state', async () => {
+it('updates the active shelf with the current state', async () => {
   const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
     Promise.resolve(init?.method === 'PUT'
       ? jsonResponse(200, view)
@@ -62,14 +63,14 @@ it('updates the active view with the current state', async () => {
   vi.stubGlobal('fetch', fetchMock)
   const current = { ...savedState, viewId: 'v1', packaging: ['cib' as const] }
   renderPicker(current)
-  await userEvent.click(await screen.findByRole('button', { name: /update view/i }))
+  await userEvent.click(await screen.findByRole('button', { name: /update shelf/i }))
   const put = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'PUT')
   expect(put?.[0]).toBe('/api/views/v1')
   const body = putBody<{ params: Record<string, unknown> }>(put?.[1] as RequestInit)
   expect(body.params.packaging).toEqual(['cib'])
 })
 
-it('deletes the active view and resets the applied id', async () => {
+it('deletes the active shelf and resets the applied id', async () => {
   const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
     Promise.resolve(init?.method === 'DELETE'
       ? new Response(null, { status: 204 })
@@ -77,7 +78,7 @@ it('deletes the active view and resets the applied id', async () => {
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   const onApply = renderPicker({ ...savedState, viewId: 'v1' })
-  await userEvent.click(await screen.findByRole('button', { name: /delete view/i }))
+  await userEvent.click(await screen.findByRole('button', { name: /delete shelf/i }))
   expect(fetchMock.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === 'DELETE')).toBe(true)
   expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ viewId: undefined }))
 })
@@ -91,7 +92,7 @@ it('surfaces a name conflict on save', async () => {
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(window, 'prompt').mockReturnValue('Backlog wall')
   renderPicker(savedState)
-  await userEvent.click(await screen.findByRole('button', { name: /save view/i }))
+  await userEvent.click(await screen.findByRole('button', { name: /save shelf/i }))
   expect(await screen.findByRole('alert')).toHaveTextContent(/already in use/i)
 })
 
@@ -108,10 +109,23 @@ it('clears a stale save error once a later, different action succeeds', async ()
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(window, 'prompt').mockReturnValue('Backlog wall')
   renderPicker({ ...savedState, viewId: 'v1' })
-  await userEvent.click(await screen.findByRole('button', { name: /save view/i }))
+  await userEvent.click(await screen.findByRole('button', { name: /save shelf/i }))
   expect(await screen.findByRole('alert')).toHaveTextContent(/already in use/i)
   // A later, unrelated mutation (update, not save) succeeding must not
   // leave the earlier save failure on screen.
-  await userEvent.click(screen.getByRole('button', { name: /update view/i }))
+  await userEvent.click(screen.getByRole('button', { name: /update shelf/i }))
   await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+})
+
+it('the plain Update shelf button round-trips the active shelf\'s own visibility instead of resetting it', async () => {
+  const listed = { ...view, visibility: 'listed' as const }
+  const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
+    Promise.resolve(init?.method === 'PUT'
+      ? jsonResponse(200, listed)
+      : jsonResponse(200, { views: [listed] })))
+  vi.stubGlobal('fetch', fetchMock)
+  renderPicker({ ...savedState, viewId: listed.id })
+  await userEvent.click(await screen.findByRole('button', { name: /update shelf/i }))
+  const put = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'PUT')
+  expect(putBody<{ visibility: string }>(put?.[1] as RequestInit).visibility).toBe('listed')
 })

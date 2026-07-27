@@ -1,6 +1,7 @@
 import type { Me } from '../api/client'
 import type { Dashboard, Entry, EntryList } from '../api/collection'
 import type { FXRates } from '../api/fx'
+import type { SharedEntry } from '../components/collection/rowMeta'
 
 let seq = 0
 
@@ -36,6 +37,30 @@ export function listFixture(entries: Entry[], overrides: Partial<EntryList> = {}
   return { pricing_available: true, total_count: entries.length, entries, ...overrides }
 }
 
+// sharedEntryFixture builds a minimal valid SharedEntry - the
+// cross-user whitelist projection Entry rows get cut down to for a
+// shared shelf. Deliberately has no status/rating/price fields: a
+// SharedEntry never carries them.
+export function sharedEntryFixture(overrides: Partial<SharedEntry> = {}): SharedEntry {
+  seq++
+  const n = String(seq).padStart(12, '0')
+  return {
+    id: `00000000-0000-0000-0000-${n}`,
+    item_type: 'game',
+    media_type: 'physical',
+    display_name: `Shared Game ${seq}`,
+    platform: { igdb_platform_id: 6, name: 'SNES' },
+    region: 'ntsc_u',
+    packaging: 'cib',
+    has_box: true,
+    has_manual: true,
+    pinned: false,
+    tags: [],
+    created_at: '2026-07-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
 export function dashboardFixture(overrides: Partial<Dashboard> = {}): Dashboard {
   return {
     total_entries: 42,
@@ -58,9 +83,11 @@ export function meFixture(overrides: Partial<Me> = {}): Me {
   return {
     id: '99999999-0000-0000-0000-000000000001',
     email: 'alice@example.com',
-    display_name: 'Alice',
+    handle: 'Alice',
     roles: ['user'],
     preferred_currency: 'USD',
+    profile_visibility: 'private',
+    landing_page: 'feed',
     ...overrides,
   }
 }

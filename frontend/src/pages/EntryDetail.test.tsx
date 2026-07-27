@@ -13,7 +13,7 @@ function renderDetail(id: string, qc = new QueryClient({ defaultOptions: { queri
         <MemoryRouter initialEntries={[`/entries/${id}`]}>
           <Routes>
             <Route path="/entries/:id" element={<EntryDetail />} />
-            <Route path="/" element={<div>collection-page</div>} />
+            <Route path="/collection" element={<div>collection-page</div>} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>,

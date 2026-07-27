@@ -57,7 +57,7 @@ export default function UnmatchedWorklist() {
               <td className="py-1 pr-2">
                 {p.name}
                 {p.match_hold && (
-                  <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800">
+                  <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-semibold text-amber-800">
                     held
                   </span>
                 )}

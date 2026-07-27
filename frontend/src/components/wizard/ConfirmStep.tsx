@@ -112,7 +112,7 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
             <button
               type="button"
               onClick={() => setMatchOpen(true)}
-              className="mt-2 rounded border border-green-300 px-2 py-1 text-sm hover:border-green-400 hover:bg-white"
+              className="mt-2 rounded border border-green-300 px-2 py-1 text-sm hover:border-green-800 hover:bg-white"
             >
               Change listing
             </button>

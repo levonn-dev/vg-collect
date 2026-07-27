@@ -22,7 +22,7 @@ function MatchCard({ product }: { product: Product }) {
     )
   }
   return (
-    <div className="rounded bg-green-50 p-3 text-sm text-green-900">
+    <div className="rounded bg-green-50 p-3 text-sm text-green-800">
       <p>
         Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%
         {pc.verified ? ', verified' : ''}.

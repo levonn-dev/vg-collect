@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
-import { Navigate, NavLink, Outlet, useNavigate } from 'react-router'
+import { useEffect } from 'react'
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { ApiError, fetchMe, logout } from '../api/client'
+import Avatar from './Avatar'
 import CurrencySelect from './CurrencySelect'
 import Logo from './Logo'
 import ThemeToggle from './ThemeToggle'
@@ -12,36 +13,6 @@ function navClass({ isActive }: { isActive: boolean }): string {
     : 'text-sm text-gray-500 hover:text-gray-900'
 }
 
-// Avatar renders the provider profile image with a same-size initial
-// fallback: third-party avatar hosts flake (aborted first loads,
-// referrer-sensitive throttling), and a failed <img> never retries on
-// its own, so a failure must degrade to something stable instead of a
-// stuck blank. no-referrer sidesteps googleusercontent's
-// referrer-based rejections. Callers key the element by the URL so a
-// changed avatar remounts with a fresh attempt.
-function Avatar({ url, name }: { url?: string; name: string }) {
-  const [failed, setFailed] = useState(false)
-  if (!url || failed) {
-    return (
-      <span
-        aria-hidden="true"
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-sm font-bold text-gray-500"
-      >
-        {name.charAt(0)}
-      </span>
-    )
-  }
-  return (
-    <img
-      src={url}
-      alt=""
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-      className="h-8 w-8 rounded-full"
-    />
-  )
-}
-
 // Layout is the authenticated shell: it gates on /api/me (401 bounces
 // to login), then renders the primary nav, the user menu, and the
 // routed page. Every signed-in page nests under it.
@@ -49,6 +20,7 @@ export default function Layout() {
   const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const location = useLocation()
   const signOut = useMutation({
     mutationFn: logout,
     // onSettled fires on both an HTTP error and a network failure:
@@ -60,10 +32,27 @@ export default function Layout() {
     },
   })
 
+  // Login stashes an intended destination to sessionStorage before an
+  // OAuth round trip (the gateway always redirects back to /, so the
+  // SPA has to re-apply it). Consumed once, here, right after the
+  // profile that proves the session landed resolves.
+  useEffect(() => {
+    if (!me.data) return
+    const stashed = sessionStorage.getItem('vg_next')
+    if (stashed) {
+      sessionStorage.removeItem('vg_next')
+      void navigate(stashed, { replace: true })
+    }
+  }, [me.data, navigate])
+
   if (me.isPending) return <main className="p-8">Loading...</main>
   if (me.isError) {
     if (me.error instanceof ApiError && me.error.status === 401) {
-      return <Navigate to="/login" replace />
+      const next =
+        location.pathname === '/'
+          ? ''
+          : `?next=${encodeURIComponent(location.pathname + location.search)}`
+      return <Navigate to={`/login${next}`} replace />
     }
     return (
       <main className="p-8" role="alert">
@@ -84,11 +73,17 @@ export default function Layout() {
             <h1 className="text-xl font-bold">vg-collect</h1>
           </div>
           <nav className="flex gap-4" aria-label="Primary">
-            <NavLink to="/" end className={navClass}>
+            <NavLink to="/collection" end className={navClass}>
               Collection
             </NavLink>
             <NavLink to="/add" className={navClass}>
               Add
+            </NavLink>
+            <NavLink to="/explore" className={navClass}>
+              Explore
+            </NavLink>
+            <NavLink to="/feed" className={navClass}>
+              Feed
             </NavLink>
             <NavLink to="/recommendations" className={navClass}>
               Recommendations
@@ -108,8 +103,8 @@ export default function Layout() {
             aria-label="Account"
             className="flex items-center gap-3 rounded px-1 py-0.5 hover:bg-gray-50"
           >
-            <Avatar key={me.data.avatar_url} url={me.data.avatar_url} name={me.data.display_name} />
-            <span className="text-sm text-gray-700">{me.data.display_name}</span>
+            <Avatar key={me.data.avatar_url} url={me.data.avatar_url} label={me.data.handle} size="md" />
+            <span className="text-sm text-gray-700">@{me.data.handle}</span>
           </NavLink>
           <button
             onClick={() => signOut.mutate()}

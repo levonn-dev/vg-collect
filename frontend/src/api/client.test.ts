@@ -10,10 +10,10 @@ afterEach(() => vi.unstubAllGlobals())
 
 it('fetchMe returns the profile', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
-    id: 'u1', email: 'a@example.test', display_name: 'alice', roles: ['user'],
+    id: 'u1', email: 'a@example.test', handle: 'alice', roles: ['user'],
   })))
   const me = await fetchMe()
-  expect(me.display_name).toBe('alice')
+  expect(me.handle).toBe('alice')
 })
 
 it('maps problem+json onto ApiError', async () => {
@@ -63,6 +63,13 @@ it('sendJSON resolves undefined on 204 and omits the body when absent', async ()
   expect(fetchMock).toHaveBeenCalledWith('/api/entries/e1', { method: 'DELETE' })
 })
 
+it('sendJSON threads the keepalive option into the fetch init', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+  vi.stubGlobal('fetch', fetchMock)
+  await expect(sendJSON<void>('DELETE', '/api/comments/c1', undefined, { keepalive: true })).resolves.toBeUndefined()
+  expect(fetchMock).toHaveBeenCalledWith('/api/comments/c1', { method: 'DELETE', keepalive: true })
+})
+
 it('sendJSON maps problem bodies onto ApiError', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(409, {
     type: 'about:blank', title: 'Conflict', status: 409, code: 'conflicting_order',
@@ -74,11 +81,11 @@ it('sendJSON maps problem bodies onto ApiError', async () => {
 
 it('updateMe PATCHes and returns the profile', async () => {
   const fetchStub = vi.fn().mockResolvedValue(jsonResponse(200, {
-    id: 'u1', email: 'a@example.test', display_name: 'Neo', roles: ['user'],
+    id: 'u1', email: 'a@example.test', handle: 'Neo', roles: ['user'],
   }))
   vi.stubGlobal('fetch', fetchStub)
-  const me = await updateMe({ display_name: 'Neo' })
-  expect(me.display_name).toBe('Neo')
+  const me = await updateMe({ handle: 'Neo' })
+  expect(me.handle).toBe('Neo')
   expect(fetchStub).toHaveBeenCalledWith('/api/me', expect.objectContaining({ method: 'PATCH' }))
 })
 

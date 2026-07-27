@@ -90,7 +90,7 @@ export interface paths {
         delete: operations["deleteMe"];
         options?: never;
         head?: never;
-        /** Edit the signed-in user's profile (display name, avatar URL) */
+        /** Edit the signed-in user's profile (handle, avatar URL) */
         patch: operations["updateMe"];
         trace?: never;
     };
@@ -231,6 +231,26 @@ export interface paths {
         put?: never;
         /** Add an entry (proxied, uncached) */
         post: operations["createEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entries/bulk-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply tag/status/storage-location changes across a batch of entries (proxied, uncached)
+         * @description One transaction, all-or-nothing, on the collection service: tag removal, tag addition, and whichever scalar fields are present all apply in the same transaction; tag ids apply ownership-scoped. A status change to backlog manages backlog_rank like the single-entry update (newly-entering entries append at the end, already-backlog entries keep their position, leaving backlog clears it). If any targeted entry would end up holding more than 50 tags, the WHOLE transaction rolls back (400 code tag_cap_exceeded).
+         */
+        post: operations["bulkUpdateEntries"];
         delete?: never;
         options?: never;
         head?: never;
@@ -686,6 +706,223 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profiles/{handle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A user's public profile: card, listed shelves, and social counts
+         * @description Composes the profile card with up to 50 of the owner's listed shelves and the social follower/like counts. Owners see exactly what visitors see (an honest preview of their own public page). social is absent exactly when social_available is false (the social service degrades open; the page still renders).
+         */
+        get: operations["getProfilePage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{handle}/shelves/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A shared shelf resolved by owner handle and slug
+         * @description Resolves the handle to its owner, then the slug to a shelf under that owner, applying the two-sided effective-visibility rule (the stricter of profile visibility and shelf visibility: both must be non-private). Every miss on this route - unknown handle, private owner, unknown slug, private shelf - answers the same 404 so a probing request cannot tell them apart. The composed payload carries the shelf UUID for all subsequent calls (entries, comments, likes).
+         */
+        get: operations["getProfileShelfPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shelves/{shelfId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A shared shelf's page: meta, owner card, and social counts
+         * @description Applies the two-sided effective-visibility rule (the stricter of profile visibility and shelf visibility: both must be non-private); unknown, private-shelf, and private-owner all answer the same 404. social is absent exactly when social_available is false.
+         */
+        get: operations["getShelfPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shelves/{shelfId}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A shelf's entries, whitelist-projected (proxied)
+         * @description Applies the effective-visibility rule before relaying collection's whitelisted projection verbatim (money and personal fields never appear).
+         */
+        get: operations["listShelfEntries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shelves/{shelfId}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A shelf's live comments, newest first, keyset-paged (composed with batched author cards)
+         * @description Applies the effective-visibility rule, then composes social's page with a batched author ProfileCard per comment (mirrors the feed's actor hydration). A card-fetch failure fails open: the page still serves, just without any author. Anything other than social's 200 (its own 400 on a malformed cursor included) still relays verbatim, unchanged from before.
+         */
+        get: operations["listShelfComments"];
+        put?: never;
+        /**
+         * Comment on a shelf (proxied)
+         * @description Applies the effective-visibility rule before relaying the social service verbatim.
+         */
+        post: operations["createShelfComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/comments/{commentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a comment; author tombstones body-NULL, shelf owner tombstones body-retained (proxied)
+         * @description Relayed verbatim; the bff does not resolve the shelf for this call (social already knows the comment row's shelf and owner and authorizes by row).
+         */
+        delete: operations["deleteComment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/social/follows/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Follow a user (idempotent) (proxied) */
+        put: operations["follow"];
+        post?: never;
+        /** Unfollow a user (idempotent) (proxied) */
+        delete: operations["unfollow"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/social/likes/{shelfId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Like a shelf (idempotent) (proxied) */
+        put: operations["like"];
+        post?: never;
+        /** Remove a like (idempotent) (proxied) */
+        delete: operations["unlike"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Substring search over listed profiles' handles (proxied) */
+        get: operations["searchUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's two-tab activity feed (fill loop, hydrated and gated)
+         * @description Runs a fill loop against the social service: fetch a raw page, hydrate it (actor cards, shelf cards, comment excerpts), gate it by the tab's visibility rule, and repeat until limit survivors accumulate or the raw stream exhausts, capped at feedFillRounds rounds (a rare shortfall yields a slightly short page). Actions are signed, objects are gated: actor cards attach at any visibility; on tab=following a row naming a shelf survives only when the shelf is listed and its owner is listed, and a followed_user row survives only when the followee is listed; tab=you shows every row (the objects are the caller's own shelves). next_cursor is the raw cursor of the last consumed row; absent when the raw stream is exhausted with nothing left to resume from.
+         */
+        get: operations["getFeed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/explore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse shared shelves - newest-published or top-liked, listed-only
+         * @description recent pages collection's listed shelves directly (no owner filter), gates each page's owner for listed-ness at the bff, and fills short pages by re-paging collection, up to a fixed round cap; next_offset carries the raw collection-space resume position and is present only while more rows remain - top is the fixed all-time like-count leaderboard (leaderboard order preserved, no deep paging, no next_offset), dropping anything that is not effectively listed by the time it is read. limit and offset apply to recent only; top always answers its own fixed-size leaderboard.
+         */
+        get: operations["getExplore"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -709,17 +946,28 @@ export interface components {
             /** Format: uuid */
             id: string;
             email: string;
-            display_name: string;
+            handle: string;
             avatar_url?: string;
             roles: string[];
             /** @description Display currency for market values; USD until set. */
             preferred_currency: string;
+            /** @enum {string} */
+            profile_visibility: "private" | "unlisted" | "listed";
+            /**
+             * @description Where the app opens after sign-in.
+             * @enum {string}
+             */
+            landing_page: "collection" | "feed" | "explore";
         };
         /** @description Absent fields keep their value; an empty avatar_url clears it. */
         UpdateMeRequest: {
-            display_name?: string;
+            handle?: string;
             avatar_url?: string;
             preferred_currency?: string;
+            /** @enum {string} */
+            profile_visibility?: "private" | "unlisted" | "listed";
+            /** @enum {string} */
+            landing_page?: "collection" | "feed" | "explore";
         };
         Identity: {
             /** Format: uuid */
@@ -1316,6 +1564,20 @@ export interface components {
             label: string;
             entries: components["schemas"]["Entry"][];
         };
+        /** @description Delta applied across the caller's own entries among entry_ids (foreign or unknown ids are silently not counted, same ownership-filtering posture as tag attachment). At least one of add_tag_ids / remove_tag_ids / status / storage_location must be present, else 400. storage_location's clearing rule is the OPPOSITE of the full-replacement update's: here an ABSENT storage_location leaves the field untouched, and an explicit empty string clears it. */
+        BulkUpdateRequest: {
+            entry_ids: string[];
+            add_tag_ids?: string[];
+            remove_tag_ids?: string[];
+            /** @enum {string} */
+            status?: "backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved";
+            /** @description Empty string clears the field; an absent field leaves it untouched (see the operation description). */
+            storage_location?: string;
+        };
+        BulkUpdateResult: {
+            /** @description Count of the caller's own entries among entry_ids, whether or not any targeted field actually changed. */
+            updated_count: number;
+        };
         /** @description Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid. */
         ReorderRequest: {
             /** Format: uuid */
@@ -1342,6 +1604,15 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+            /** @description URL slug derived from the name (underscore transform); unique per user on its folded key. */
+            slug: string;
+            /** @enum {string} */
+            visibility: "private" | "unlisted" | "listed";
+            /**
+             * Format: date-time
+             * @description Stamped on each transition into listed.
+             */
+            published_at?: string;
             params: {
                 [key: string]: unknown;
             };
@@ -1356,6 +1627,11 @@ export interface components {
             params: {
                 [key: string]: unknown;
             };
+            /**
+             * @default private
+             * @enum {string}
+             */
+            visibility: "private" | "unlisted" | "listed";
         };
         PlatformCount: {
             name: string;
@@ -1400,6 +1676,161 @@ export interface components {
             /** @description False when enrichment was unreachable; points is then empty. */
             available: boolean;
             points: components["schemas"]["ValuePoint"][];
+        };
+        /** @description The cross-user projection of a user. Never email, never roles. */
+        ProfileCard: {
+            /** Format: uuid */
+            user_id: string;
+            handle: string;
+            avatar_url?: string;
+            /** @enum {string} */
+            profile_visibility: "private" | "unlisted" | "listed";
+        };
+        ShelfSocialSummary: {
+            /** Format: uuid */
+            shelf_id: string;
+            like_count: number;
+            /** @description Live comments only. */
+            comment_count: number;
+            viewer_likes: boolean;
+        };
+        ProfileSocialSummary: {
+            follower_count: number;
+            following_count: number;
+            viewer_follows: boolean;
+        };
+        /** @description A shelf card as shown in a profile's shelf list, an activity feed excerpt, or an Explore grid. owner is embedded so a card renders without a second round trip; like_count/comment_count/ viewer_likes are present exactly when the page's social composition succeeded (all three absent together when the page fell back to social_available: false). */
+        ShelfCard: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            slug: string;
+            owner: components["schemas"]["ProfileCard"];
+            /** Format: date-time */
+            published_at?: string;
+            entry_count: number;
+            cover_urls: string[];
+            like_count?: number;
+            comment_count?: number;
+            viewer_likes?: boolean;
+        };
+        /** @description A shelf's own identity and stored view state, without the owner card or social counts (those are ShelfPage's sibling fields). */
+        ShelfMeta: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            slug: string;
+            params: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            published_at?: string;
+        };
+        /** @description A single shared shelf's page composition: the shelf meta, its (non-private, by construction) owner card, and social counts when the social service answered. social is absent exactly when social_available is false (the social service degrades open; the page still renders). */
+        ShelfPage: {
+            shelf: components["schemas"]["ShelfMeta"];
+            owner: components["schemas"]["ProfileCard"];
+            social_available: boolean;
+            social?: components["schemas"]["ShelfSocialSummary"];
+        };
+        /** @description A profile's page composition: the profile card, social counts when the social service answered, and up to 50 of the owner's listed shelves (owners see exactly what visitors see). social is absent exactly when social_available is false (the social service degrades open; the page still renders). */
+        ProfilePage: {
+            profile: components["schemas"]["ProfileCard"];
+            social_available: boolean;
+            social?: components["schemas"]["ProfileSocialSummary"];
+            shelves: components["schemas"]["ShelfCard"][];
+            /** @description The owner's full listed-shelf count, beyond this page. */
+            total_count: number;
+        };
+        /** @description A live comment; tombstones never serialize. author_id is null for a purge-anonymized comment (the row survives with its body; only the account link is severed) and a uuid otherwise - the key is always present, only the value varies. author is the bff's batched ProfileCard hydration of author_id (the same composition FeedItem.actor uses): present on a GET list page when the author resolves, absent for an anonymized comment (there is no id left to hydrate) or when the hydration batch itself fails open; never populated on the POST response (a verbatim create relay). */
+        Comment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            shelf_id: string;
+            /** Format: uuid */
+            author_id: string | null;
+            body: string;
+            /** Format: date-time */
+            created_at: string;
+            author?: components["schemas"]["ProfileCard"];
+        };
+        CommentList: {
+            comments: components["schemas"]["Comment"][];
+            next_cursor?: string;
+        };
+        CreateCommentRequest: {
+            body: string;
+        };
+        /** @description One activity-feed row after the fill loop hydrates and gates it. actor always attaches (actions are signed, any visibility); shelf is present only for the three shelf verbs (liked_shelf, commented_shelf, published_shelf) whose object cleared the tab's gating rule; followed_user is present only for a surviving followed_user row and carries the followee's card; comment_excerpt is present only for a surviving commented_shelf row. */
+        FeedItem: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            verb: "followed_user" | "liked_shelf" | "commented_shelf" | "published_shelf";
+            /** Format: date-time */
+            created_at: string;
+            actor: components["schemas"]["ProfileCard"];
+            shelf?: components["schemas"]["ShelfCard"];
+            followed_user?: components["schemas"]["ProfileCard"];
+            comment_excerpt?: string;
+        };
+        FeedPage: {
+            items: components["schemas"]["FeedItem"][];
+            next_cursor?: string;
+        };
+        /** @description total_count is never sent: top is a fixed leaderboard with no deeper page to count, and recent supersedes it with next_offset (kept in the shape, never populated, for forward compatibility only). */
+        ExplorePage: {
+            total_count?: number;
+            /** @description Present when more listed shelves remain to page through - recent sort only. The raw collection-space offset to resume from; absent once the listed-shelf stream is exhausted. */
+            next_offset?: number;
+            shelves: components["schemas"]["ShelfCard"][];
+        };
+        /** @description The cross-user entry projection - a strict whitelist. No money fields (price paid, values, currency, purchase provenance, pricing mode) and no personal fields (status, rating, notes, location, backlog rank, external refs) may ever be added here without a deliberate privacy decision. */
+        SharedEntry: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            product_id?: string;
+            /** @enum {string} */
+            item_type: "game" | "console" | "accessory";
+            /** @enum {string} */
+            media_type: "physical" | "digital";
+            display_name: string;
+            platform?: components["schemas"]["EntryPlatform"];
+            /** Format: date */
+            first_release_date?: string;
+            cover_url?: string;
+            /** Format: int64 */
+            igdb_game_id?: number;
+            /** @enum {string} */
+            region: "ntsc_u" | "ntsc_j" | "pal" | "region_free";
+            edition?: string;
+            /** @enum {string} */
+            packaging: "sealed" | "cib" | "loose";
+            has_box: boolean;
+            has_manual: boolean;
+            /** @enum {string} */
+            box_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            /** @enum {string} */
+            manual_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            /** @enum {string} */
+            item_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            pinned: boolean;
+            tags: components["schemas"]["TagRef"][];
+            /** Format: date-time */
+            created_at: string;
+        };
+        SharedEntryGroup: {
+            key: string;
+            label: string;
+            entries: components["schemas"]["SharedEntry"][];
+        };
+        /** @description Exactly one of entries/groups is present (groups when the stored params group). */
+        SharedEntryList: {
+            total_count: number;
+            entries?: components["schemas"]["SharedEntry"][];
+            groups?: components["schemas"]["SharedEntryGroup"][];
         };
     };
     responses: {
@@ -1611,6 +2042,24 @@ export interface operations {
             403: components["responses"]["OriginForbidden"];
             /** @description The signed-in account no longer exists (relayed from the user service) */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Another account owns that handle's folded key (code handle_taken; relayed from the user service) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Handle changed too recently (code handle_cooldown; relayed from the user service) */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1943,6 +2392,41 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    bulkUpdateEntries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The count of the caller's own entries among entry_ids */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkUpdateResult"];
+                };
+            };
+            /** @description Bounds violated, no action specified, or the per-entry tag cap exceeded (code invalid_body or tag_cap_exceeded) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -2324,6 +2808,15 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             /** @description Name already taken */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Tag cap reached - at most 200 distinct tags per user (code cap_exceeded) */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3215,6 +3708,502 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getProfilePage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profile page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfilePage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Unknown or private (deliberately indistinguishable; code profile_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getProfileShelfPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                handle: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Shelf page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShelfPage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getShelfPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shelfId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Shelf page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShelfPage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    listShelfEntries: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                shelfId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the shelf's entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedEntryList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    listShelfComments: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                shelfId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentList"];
+                };
+            };
+            /** @description Malformed cursor (code invalid_param) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    createShelfComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shelfId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description The comment */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            /** @description Invalid body (code invalid_body) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Comment cap reached - tombstones count (code cap_exceeded) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    deleteComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                commentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tombstoned */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller is neither author nor shelf owner (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unknown or already tombstoned (code comment_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    follow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Following (already or newly) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Self-follow (code self_follow) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Unknown or private (deliberately indistinguishable; code profile_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Follow cap reached (code cap_exceeded) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    unfollow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not following (already or newly) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    like: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shelfId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liked (already or newly) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Like cap reached (code cap_exceeded) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    unlike: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shelfId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not liked (already or newly) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    searchUsers: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Up to 20 listed matches */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        profiles: components["schemas"]["ProfileCard"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getFeed: {
+        parameters: {
+            query: {
+                tab: "following" | "you";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One filled page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedPage"];
+                };
+            };
+            /** @description Invalid tab or malformed cursor (code invalid_param) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getExplore: {
+        parameters: {
+            query: {
+                sort: "recent" | "top";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of shelf cards */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplorePage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
         };
     };

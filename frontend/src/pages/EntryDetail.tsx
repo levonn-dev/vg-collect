@@ -35,7 +35,7 @@ export default function EntryDetail() {
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       void queryClient.invalidateQueries({ queryKey: ['recommendations'] })
       queryClient.removeQueries({ queryKey: ['entry', id] })
-      void navigate('/')
+      void navigate('/collection')
     },
   })
 

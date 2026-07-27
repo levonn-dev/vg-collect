@@ -45,7 +45,7 @@ export default function ApprovalNotice({ entryId }: { entryId: string }) {
           setDismissed(true)
           ack.mutate()
         }}
-        className="shrink-0 rounded border border-green-300 px-2 py-0.5 hover:bg-green-100"
+        className="shrink-0 rounded border border-green-300 px-2 py-0.5 hover:bg-white"
       >
         Dismiss
       </button>

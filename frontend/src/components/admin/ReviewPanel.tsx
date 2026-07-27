@@ -100,7 +100,7 @@ function PotentialDuplicates({
                 </span>
               )}
               {isExactDuplicate(submission, r) && (
-                <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-950">
+                <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-semibold text-amber-800">
                   exact match
                 </span>
               )}

@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { entryFixture } from '../../test/fixtures'
+import { entryFixture, sharedEntryFixture } from '../../test/fixtures'
 import { renderWithMoney } from '../../test/money'
 import CoverGrid from './CoverGrid'
 
@@ -42,4 +42,50 @@ it('shows value and pin state', () => {
 it('converts the value into the display currency', () => {
   renderGrid([entryFixture({ value_cents: 4200 })], { currency: 'EUR' })
   expect(screen.getByText('€21.00')).toBeInTheDocument()
+})
+
+it('suppresses the card link and renders plain content when linkTo returns null', () => {
+  renderWithMoney(
+    <MemoryRouter>
+      <CoverGrid entries={[entryFixture({ display_name: 'Chrono Trigger' })]} linkTo={() => null} />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('Chrono Trigger')).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: /Chrono Trigger/ })).not.toBeInTheDocument()
+})
+
+it('renders a SharedEntry card read-only (no link, no fabricated value) without crashing', () => {
+  renderWithMoney(
+    <MemoryRouter>
+      <CoverGrid
+        entries={[sharedEntryFixture({ display_name: 'Someone Elses Game', cover_url: undefined })]}
+        linkTo={() => null}
+      />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('Someone Elses Game')).toBeInTheDocument()
+  expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  expect(document.querySelector('svg[data-icon="game"]')).toBeInTheDocument()
+  // The actual "no fabricated value" check: a SharedEntry carries no
+  // price fields, so rowMeta falls back to '-' rather than calling
+  // money.entryValue on a row that has nothing for it to format - a
+  // full Entry row with a price renders a $-prefixed string (see
+  // "shows value and pin state" above), so a $ anywhere here would be
+  // a fabricated figure.
+  expect(screen.queryByText(/\$/)).not.toBeInTheDocument()
+})
+
+it('omits the value line when shared, keeping the platform label', () => {
+  renderWithMoney(
+    <MemoryRouter>
+      <CoverGrid
+        entries={[sharedEntryFixture({ display_name: 'Someone Elses Game', cover_url: undefined })]}
+        linkTo={() => null}
+        shared
+      />
+    </MemoryRouter>,
+  )
+  expect(screen.getByText('Someone Elses Game')).toBeInTheDocument()
+  expect(screen.getByText('SNES')).toBeInTheDocument()
+  expect(screen.queryByText('-')).not.toBeInTheDocument()
 })

@@ -23,7 +23,7 @@ export const SORTS: Sort[] = ['name', 'release_date', 'purchased_at', 'created_a
 export const GROUPS: GroupBy[] = ['platform', 'status', 'item_type', 'location', 'tag']
 
 // ListState is the single source of collection-view state. The URL is
-// its persistence (shareable, back-button friendly) and saved views
+// its persistence (shareable, back-button friendly) and shelves
 // serialize the same shape.
 export interface ListState {
   itemType: ItemType[]
@@ -111,7 +111,7 @@ export function toSearchParams(s: ListState): URLSearchParams {
   if (s.groupBy) sp.set('group_by', s.groupBy)
   if (s.page > 0) sp.set('page', String(s.page))
   if (s.mode !== 'table') sp.set('mode', s.mode)
-  if (s.viewId) sp.set('view', s.viewId)
+  if (s.viewId) sp.set('shelf', s.viewId)
   return sp
 }
 
@@ -134,7 +134,7 @@ export function fromSearchParams(sp: URLSearchParams): ListState {
   if (Number.isInteger(page) && page > 0) s.page = page
   const mode = sp.get('mode')
   if (mode === 'grid' || mode === 'compact') s.mode = mode
-  const view = sp.get('view')
+  const view = sp.get('shelf')
   if (view) s.viewId = view
   // A rank sort outside a pure-backlog filter has no meaning; drop it
   // rather than render an inconsistent board.

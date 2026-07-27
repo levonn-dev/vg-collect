@@ -44,7 +44,7 @@ afterEach(() => {
 })
 
 const adminMe = {
-  id: 'u1', email: 'admin@example.test', display_name: 'admin', roles: ['user', 'admin'],
+  id: 'u1', email: 'admin@example.test', handle: 'admin', roles: ['user', 'admin'],
 }
 const emptyProducts = { products: [], total_count: 0 }
 

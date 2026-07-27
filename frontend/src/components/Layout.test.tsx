@@ -1,39 +1,65 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router'
-import { fxRatesFixture, jsonResponse } from '../test/fixtures'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import Home from '../pages/Home'
+import { fxRatesFixture, jsonResponse, meFixture } from '../test/fixtures'
 import Layout from './Layout'
 
-function renderLayout() {
+// Renders the query string react-router actually landed on so a test
+// can assert the exact ?next= value the 401 branch built.
+function LoginProbe() {
+  const location = useLocation()
+  return <div>login-page{location.search}</div>
+}
+
+function renderLayout(path = '/') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<div>page-content</div>} />
+            <Route path="/entries/:id" element={<div>entry-detail-page</div>} />
           </Route>
-          <Route path="/login" element={<div>login-page</div>} />
+          <Route path="/login" element={<LoginProbe />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   )
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  sessionStorage.clear()
+})
 
 const me = {
-  id: 'u1', email: 'alice@example.test', display_name: 'alice', roles: ['user'],
+  id: 'u1', email: 'alice@example.test', handle: 'alice', roles: ['user'],
 }
 
 it('renders the chrome and the routed page for a signed-in user', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, me)))
   renderLayout()
   expect(await screen.findByText('page-content')).toBeInTheDocument()
-  expect(screen.getByText('alice')).toBeInTheDocument()
+  expect(screen.getByText('@alice')).toBeInTheDocument()
   expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Collection' })).toBeInTheDocument()
+})
+
+it('renders the Explore nav link after Add', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, me)))
+  renderLayout()
+  await screen.findByText('page-content')
+  expect(screen.getByRole('link', { name: 'Explore' })).toHaveAttribute('href', '/explore')
+})
+
+it('renders the Feed nav link after Explore', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, me)))
+  renderLayout()
+  await screen.findByText('page-content')
+  expect(screen.getByRole('link', { name: 'Feed' })).toHaveAttribute('href', '/feed')
 })
 
 it('renders the logo mark before the title, decorative only', async () => {
@@ -84,6 +110,74 @@ it('bounces to login on 401', async () => {
   })))
   renderLayout()
   expect(await screen.findByText('login-page')).toBeInTheDocument()
+})
+
+it('carries the attempted deep path as ?next= on the login redirect', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(401, {
+    type: 'about:blank', title: 'Unauthorized', status: 401, code: 'unauthenticated',
+  })))
+  renderLayout('/entries/abc')
+  expect(await screen.findByText(`login-page?next=${encodeURIComponent('/entries/abc')}`))
+    .toBeInTheDocument()
+})
+
+it('consumes a stashed next path once the profile resolves', async () => {
+  // Per-path responses, freshly built each call: CurrencySelect fetches
+  // /api/fx alongside /api/me, and a shared mockResolvedValue Response
+  // cannot have its body read twice.
+  sessionStorage.setItem('vg_next', '/entries/abc')
+  vi.stubGlobal('fetch', vi.fn((path: string) => {
+    if (path === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
+    return Promise.resolve(jsonResponse(200, me))
+  }))
+  renderLayout()
+  expect(await screen.findByText('entry-detail-page')).toBeInTheDocument()
+  expect(sessionStorage.getItem('vg_next')).toBeNull()
+})
+
+// Home is the real '/' page (not the dummy div renderLayout uses
+// above): it redirects on mount to the user's landing_page
+// preference. The binding requirement is that a stashed next path
+// still wins over that redirect. Today that only holds because
+// Home's <Navigate> effect - a descendant of Layout, nested under it
+// via Outlet - fires before Layout's own stash effect above, so
+// mount the real pair together instead of proving each half alone.
+function renderLayoutWithHome() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+  qc.setQueryData(['me'], meFixture({ landing_page: 'collection' }))
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/collection" element={<div>collection-page</div>} />
+            <Route path="/account" element={<div>account-page</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+it('lets a stashed next path win over the Home landing redirect', async () => {
+  sessionStorage.setItem('vg_next', '/account')
+  vi.stubGlobal('fetch', vi.fn((path: string) => {
+    if (path === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
+    return Promise.resolve(jsonResponse(200, meFixture({ landing_page: 'collection' })))
+  }))
+  renderLayoutWithHome()
+  expect(await screen.findByText('account-page')).toBeInTheDocument()
+  expect(sessionStorage.getItem('vg_next')).toBeNull()
+})
+
+it('falls through to the Home landing redirect with no stash present', async () => {
+  vi.stubGlobal('fetch', vi.fn((path: string) => {
+    if (path === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
+    return Promise.resolve(jsonResponse(200, meFixture({ landing_page: 'collection' })))
+  }))
+  renderLayoutWithHome()
+  expect(await screen.findByText('collection-page')).toBeInTheDocument()
 })
 
 it('shows an error state on non-auth failures', async () => {

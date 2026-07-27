@@ -1,27 +1,6 @@
 import type { PlatformFacet, Tag } from '../../api/collection'
-import type { GroupBy, ListState, Sort } from '../../lib/listParams'
-import {
-  canBacklogSort, CONDITIONS, defaultListState, GROUPS, ITEM_TYPES, PACKAGINGS, REGIONS, SORTS, STATUSES,
-} from '../../lib/listParams'
-
-const sortLabels: Record<Sort, string> = {
-  name: 'Name',
-  release_date: 'Release date',
-  purchased_at: 'Purchase date',
-  created_at: 'Date added',
-  value: 'Value',
-  paid: 'Price paid',
-  rating: 'Rating',
-  backlog_rank: 'Backlog order',
-}
-
-const groupLabels: Record<GroupBy, string> = {
-  platform: 'Platform',
-  status: 'Status',
-  item_type: 'Item type',
-  location: 'Location',
-  tag: 'Tag',
-}
+import type { ListState } from '../../lib/listParams'
+import { CONDITIONS, ITEM_TYPES, PACKAGINGS, REGIONS, STATUSES } from '../../lib/listParams'
 
 const chipLabels: Record<string, string> = {
   backlog: 'Backlog', playing: 'Playing', beaten: 'Beaten', completed: 'Completed',
@@ -40,6 +19,10 @@ interface FilterBarProps {
   onChange: (next: ListState) => void
 }
 
+// FilterBar renders only the seven chip fieldsets now - sort, order,
+// group, and Clear filters moved to ListControls (the always-visible
+// controls row above this disclosure). Collection.tsx mounts this
+// component only while its Filters toggle is open.
 export default function FilterBar({ state, platforms, tags, onChange }: FilterBarProps) {
   function toggled<T>(list: T[], v: T): T[] {
     return list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
@@ -62,8 +45,6 @@ export default function FilterBar({ state, platforms, tags, onChange }: FilterBa
       ))}
     </fieldset>
   )
-
-  const sorts = SORTS.filter((s) => s !== 'backlog_rank' || canBacklogSort(state))
 
   return (
     <section aria-label="Filters" className="mb-4 flex flex-col gap-2 rounded border border-gray-200 p-3">
@@ -104,57 +85,6 @@ export default function FilterBar({ state, platforms, tags, onChange }: FilterBa
         ))}
         {tags.length === 0 && <span className="text-xs text-gray-400">No tags yet</span>}
       </fieldset>
-
-      <div className="flex flex-wrap items-end gap-3 border-t border-gray-100 pt-2">
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          Sort
-          <select
-            value={state.sort ?? ''}
-            onChange={(e) =>
-              onChange({ ...state, sort: e.target.value === '' ? undefined : (e.target.value as Sort) })
-            }
-            className="rounded border border-gray-300 px-2 py-1 text-sm"
-          >
-            <option value="">Date added (default)</option>
-            {sorts.map((s) => (
-              <option key={s} value={s}>
-                {sortLabels[s]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          onClick={() => onChange({ ...state, order: state.order === 'asc' ? 'desc' : 'asc' })}
-          className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
-        >
-          Order: {(state.order ?? 'desc') === 'desc' ? 'descending' : 'ascending'}
-        </button>
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          Group by
-          <select
-            value={state.groupBy ?? ''}
-            onChange={(e) =>
-              onChange({ ...state, groupBy: e.target.value === '' ? undefined : (e.target.value as GroupBy) })
-            }
-            className="rounded border border-gray-300 px-2 py-1 text-sm"
-          >
-            <option value="">Ungrouped</option>
-            {GROUPS.map((g) => (
-              <option key={g} value={g}>
-                {groupLabels[g]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          onClick={() => onChange({ ...defaultListState(), mode: state.mode })}
-          className="ml-auto rounded border border-gray-300 px-2 py-1 text-sm text-gray-600 hover:bg-gray-50"
-        >
-          Clear filters
-        </button>
-      </div>
     </section>
   )
 }

@@ -67,7 +67,7 @@ it('canBacklogSort demands exactly the backlog status filter', () => {
   expect(canBacklogSort(s)).toBe(false)
 })
 
-it('saved-view params round-trip without page or view id', () => {
+it('shelf params round-trip without page or view id', () => {
   const s = defaultListState()
   s.itemType = ['game']
   s.itemCondition = ['mint']

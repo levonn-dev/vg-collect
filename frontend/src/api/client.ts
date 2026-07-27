@@ -41,17 +41,23 @@ export async function getJSON<T>(path: string): Promise<T> {
 }
 
 // sendJSON issues a mutating call. 204 answers resolve to undefined;
-// callers with a body type parameterize T accordingly.
+// callers with a body type parameterize T accordingly. opts is an
+// optional trailing bag (currently just keepalive, for callers that
+// must survive the tab closing mid-request, e.g. a beacon-style
+// commit on pagehide/unmount) - additive so every existing call site
+// keeps compiling unchanged.
 export async function sendJSON<T>(
   method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
+  opts?: { keepalive?: boolean },
 ): Promise<T> {
   const res = await fetch(path, {
     method,
     ...(body === undefined
       ? {}
       : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+    ...(opts?.keepalive === undefined ? {} : { keepalive: opts.keepalive }),
   })
   if (!res.ok) throw await toApiError(res)
   if (res.status === 204) return undefined as T

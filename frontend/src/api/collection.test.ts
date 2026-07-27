@@ -1,5 +1,5 @@
 import {
-  createTag, deleteEntry, fetchEntries, fetchPlatformFacets, fetchTags, fetchViews, reorderEntry,
+  bulkUpdateEntries, createTag, deleteEntry, fetchEntries, fetchPlatformFacets, fetchTags, fetchViews, reorderEntry,
 } from './collection'
 
 const jsonResponse = (status: number, body: unknown) =>
@@ -40,6 +40,17 @@ it('createTag posts the name and reorderEntry posts the neighbor pair', async ()
   await reorderEntry('e1', { after_id: null, before_id: 'e2' })
   expect(fetchMock.mock.calls[1][0]).toBe('/api/entries/e1/reorder')
   expect((fetchMock.mock.calls[1][1] as RequestInit).body).toBe(JSON.stringify({ after_id: null, before_id: 'e2' }))
+})
+
+it('bulkUpdateEntries posts to the batch endpoint and unwraps the count', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { updated_count: 2 })))
+  const result = await bulkUpdateEntries({ entry_ids: ['e1', 'e2'], status: 'shelved' })
+  expect(result).toEqual({ updated_count: 2 })
+  const fetchMock = vi.mocked(fetch)
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/entries/bulk-update')
+  const init = fetchMock.mock.calls[0][1] as RequestInit
+  expect(init.method).toBe('POST')
+  expect(init.body).toBe(JSON.stringify({ entry_ids: ['e1', 'e2'], status: 'shelved' }))
 })
 
 it('deleteEntry tolerates 204', async () => {

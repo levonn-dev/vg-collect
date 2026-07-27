@@ -7,6 +7,8 @@ export type EntryUpdate = components['schemas']['EntryUpdate']
 export type EntryList = components['schemas']['EntryList']
 export type EntryGroup = components['schemas']['EntryGroup']
 export type ReorderRequest = components['schemas']['ReorderRequest']
+export type BulkUpdateRequest = components['schemas']['BulkUpdateRequest']
+export type BulkUpdateResult = components['schemas']['BulkUpdateResult']
 export type Tag = components['schemas']['Tag']
 export type TagRef = components['schemas']['TagRef']
 export type SavedView = components['schemas']['SavedView']
@@ -38,6 +40,14 @@ export function reorderEntry(id: string, body: ReorderRequest): Promise<Entry> {
   return sendJSON<Entry>('POST', `/api/entries/${id}/reorder`, body)
 }
 
+// bulkUpdateEntries applies a tag/status/storage-location delta across
+// a batch of the caller's own entries in one transaction. Absent
+// fields stay untouched; storage_location alone clears on an explicit
+// empty string (the opposite of updateEntry's full-replacement rule).
+export function bulkUpdateEntries(body: BulkUpdateRequest): Promise<BulkUpdateResult> {
+  return sendJSON<BulkUpdateResult>('POST', '/api/entries/bulk-update', body)
+}
+
 export async function fetchTags(): Promise<Tag[]> {
   const body = await getJSON<{ tags: Tag[] }>('/api/tags')
   return body.tags
@@ -56,8 +66,13 @@ export function createView(name: string, params: Record<string, unknown>): Promi
   return sendJSON<SavedView>('POST', '/api/views', { name, params })
 }
 
-export function updateView(id: string, name: string, params: Record<string, unknown>): Promise<SavedView> {
-  return sendJSON<SavedView>('PUT', `/api/views/${id}`, { name, params })
+export function updateView(
+  id: string,
+  name: string,
+  params: Record<string, unknown>,
+  visibility: SavedView['visibility'],
+): Promise<SavedView> {
+  return sendJSON<SavedView>('PUT', `/api/views/${id}`, { name, params, visibility })
 }
 
 export function deleteView(id: string): Promise<void> {

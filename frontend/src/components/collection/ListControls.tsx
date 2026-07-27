@@ -1,0 +1,160 @@
+import type { GroupBy, ListState, Sort } from '../../lib/listParams'
+import { canBacklogSort, defaultListState, GROUPS, SORTS } from '../../lib/listParams'
+
+const sortLabels: Record<Sort, string> = {
+  name: 'Name',
+  release_date: 'Release date',
+  purchased_at: 'Purchase date',
+  created_at: 'Date added',
+  value: 'Value',
+  paid: 'Price paid',
+  rating: 'Rating',
+  backlog_rank: 'Backlog order',
+}
+
+const groupLabels: Record<GroupBy, string> = {
+  platform: 'Platform',
+  status: 'Status',
+  item_type: 'Item type',
+  location: 'Location',
+  tag: 'Tag',
+}
+
+// The seven chip dimensions FilterBar renders behind the Filters
+// disclosure. Sort/order/group/mode/page are list-shape controls, not
+// filters, so they never count toward the badge even though sort and
+// group also drive Clear filters' visibility below.
+const FILTER_DIMENSIONS = [
+  'status', 'itemType', 'packaging', 'region', 'itemCondition', 'platformId', 'tagId',
+] as const satisfies readonly (keyof ListState)[]
+
+function activeFilterCount(state: ListState): number {
+  return FILTER_DIMENSIONS.filter((key) => state[key].length > 0).length
+}
+
+interface ListControlsProps {
+  state: ListState
+  // Mode changes bypass the page reset that filter/sort/group changes
+  // get (mode never changes which entries match), exactly as Collection
+  // wired the standalone mode toggle before this row absorbed it - so
+  // this takes the raw setter, not the page-resetting onChange below.
+  onApply: (next: ListState) => void
+  onChange: (next: ListState) => void
+  filtersOpen: boolean
+  onToggleFilters: () => void
+  // Bulk edit only makes sense over the table view's row furniture
+  // (grid/compact have none, and the backlog drag board is its own
+  // surface with no checkboxes either) - Collection owns the mode
+  // state itself and gates rendering, this row only shows the toggle.
+  bulkMode: boolean
+  onToggleBulk: () => void
+  // Collection passes !boardActive: the backlog drag board takes over
+  // the table's own spot (independent of display mode) and has no row
+  // checkboxes, so a toggle that flips aria-pressed with no visible
+  // bulk UI behind it would be misleading. Bulk mode already active
+  // when the board takes over stays paused underneath, unaffected by
+  // this - the button just disappears along with the bar/checkboxes,
+  // and leaving the board restores all three together.
+  bulkAvailable: boolean
+}
+
+export default function ListControls({
+  state, onApply, onChange, filtersOpen, onToggleFilters, bulkMode, onToggleBulk, bulkAvailable,
+}: ListControlsProps) {
+  const sorts = SORTS.filter((s) => s !== 'backlog_rank' || canBacklogSort(state))
+  const filterCount = activeFilterCount(state)
+  const canClear = filterCount > 0 || !!state.sort || !!state.order || !!state.groupBy
+
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-3">
+      <div className="flex gap-1" role="group" aria-label="Display mode">
+        {(['table', 'grid', 'compact'] as const).map((m) => (
+          <button
+            key={m}
+            aria-pressed={state.mode === m}
+            onClick={() => onApply({ ...state, mode: m })}
+            className={
+              state.mode === m
+                ? 'rounded bg-gray-900 px-2 py-1 text-xs text-white'
+                : 'rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50'
+            }
+          >
+            {m === 'table' ? 'Table' : m === 'grid' ? 'Covers' : 'Compact'}
+          </button>
+        ))}
+      </div>
+      {state.mode === 'table' && bulkAvailable && (
+        <button
+          type="button"
+          aria-pressed={bulkMode}
+          onClick={onToggleBulk}
+          className={
+            bulkMode
+              ? 'rounded bg-gray-900 px-2 py-1 text-sm text-white'
+              : 'rounded border border-gray-300 px-2 py-1 text-sm text-gray-600 hover:bg-gray-50'
+          }
+        >
+          Bulk edit
+        </button>
+      )}
+      <label className="flex items-center gap-2 text-sm font-medium">
+        Sort
+        <select
+          value={state.sort ?? ''}
+          onChange={(e) =>
+            onChange({ ...state, sort: e.target.value === '' ? undefined : (e.target.value as Sort) })
+          }
+          className="rounded border border-gray-300 px-2 py-1 text-sm"
+        >
+          <option value="">Date added (default)</option>
+          {sorts.map((s) => (
+            <option key={s} value={s}>
+              {sortLabels[s]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button"
+        onClick={() => onChange({ ...state, order: state.order === 'asc' ? 'desc' : 'asc' })}
+        className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
+      >
+        Order: {(state.order ?? 'desc') === 'desc' ? 'descending' : 'ascending'}
+      </button>
+      <label className="flex items-center gap-2 text-sm font-medium">
+        Group by
+        <select
+          value={state.groupBy ?? ''}
+          onChange={(e) =>
+            onChange({ ...state, groupBy: e.target.value === '' ? undefined : (e.target.value as GroupBy) })
+          }
+          className="rounded border border-gray-300 px-2 py-1 text-sm"
+        >
+          <option value="">Ungrouped</option>
+          {GROUPS.map((g) => (
+            <option key={g} value={g}>
+              {groupLabels[g]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button"
+        onClick={onToggleFilters}
+        aria-expanded={filtersOpen}
+        className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
+      >
+        {filterCount > 0 ? `Filters (${filterCount})` : 'Filters'}
+      </button>
+      {canClear && (
+        <button
+          type="button"
+          onClick={() => onChange({ ...defaultListState(), mode: state.mode })}
+          className="ml-auto rounded border border-gray-300 px-2 py-1 text-sm text-gray-600 hover:bg-gray-50"
+        >
+          Clear filters
+        </button>
+      )}
+    </div>
+  )
+}

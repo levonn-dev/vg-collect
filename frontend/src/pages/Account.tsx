@@ -12,6 +12,7 @@ import {
   type Identity,
   type Me,
 } from '../api/client'
+import CopyButton from '../components/CopyButton'
 
 const providerLabels: Record<string, string> = {
   google: 'Link Google',
@@ -26,14 +27,45 @@ const linkErrorMessages: Record<string, string> = {
   link_failed: 'Linking failed. Please try again.',
 }
 
+const visibilityOptions = [
+  ['private', 'Private - only you'],
+  ['unlisted', 'Unlisted - anyone signed in with your link'],
+  ['listed', 'Listed - appears in Explore and search'],
+] as const
+
+const landingPageOptions = [
+  ['feed', 'Feed'],
+  ['collection', 'Collection'],
+  ['explore', 'Explore'],
+] as const
+
+// The handle-cooldown and taken-handle problems get their own copy;
+// anything else (validation, network) falls back to the generic line.
+function saveErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === 'handle_taken') return 'That handle is taken.'
+    if (error.code === 'handle_cooldown') return 'Handle changed too recently - try again later.'
+    if (error.message) return error.message
+  }
+  return 'Saving failed. Please try again.'
+}
+
 // ProfileForm is keyed by me.id at the call site so its local draft
 // state seeds once per loaded profile.
 function ProfileForm({ me }: { me: Me }) {
-  const [displayName, setDisplayName] = useState(me.display_name)
+  const [handle, setHandle] = useState(me.handle)
   const [avatarUrl, setAvatarUrl] = useState(me.avatar_url ?? '')
+  const [visibility, setVisibility] = useState(me.profile_visibility)
+  const [landingPage, setLandingPage] = useState(me.landing_page)
   const queryClient = useQueryClient()
   const save = useMutation({
-    mutationFn: () => updateMe({ display_name: displayName, avatar_url: avatarUrl }),
+    mutationFn: () =>
+      updateMe({
+        handle,
+        avatar_url: avatarUrl,
+        profile_visibility: visibility,
+        landing_page: landingPage,
+      }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['me'] }),
   })
 
@@ -46,15 +78,18 @@ function ProfileForm({ me }: { me: Me }) {
       }}
     >
       <div className="flex flex-col gap-1">
-        <label htmlFor="display-name" className="text-sm text-gray-700">
-          Display name
+        <label htmlFor="handle" className="text-sm text-gray-700">
+          Handle
         </label>
         <input
-          id="display-name"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
+          id="handle"
+          value={handle}
+          onChange={(e) => setHandle(e.target.value)}
           required
-          maxLength={100}
+          minLength={2}
+          maxLength={30}
+          pattern="[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?"
+          title="2-30 characters, letters/digits, underscores inside only"
           className="rounded border border-gray-300 px-3 py-2"
         />
       </div>
@@ -72,6 +107,44 @@ function ProfileForm({ me }: { me: Me }) {
         />
         <p className="text-xs text-gray-500">Leave empty to use your initial instead.</p>
       </div>
+      <fieldset className="flex flex-col gap-1">
+        <legend className="text-sm text-gray-700">Profile visibility</legend>
+        {visibilityOptions.map(([value, label]) => (
+          <label key={value} className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="profile_visibility"
+              value={value}
+              checked={visibility === value}
+              onChange={() => setVisibility(value)}
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      <fieldset className="flex flex-col gap-1">
+        <legend className="text-sm text-gray-700">Default page</legend>
+        <p className="text-xs text-gray-500">Where the app opens after you sign in.</p>
+        {landingPageOptions.map(([value, label]) => (
+          <label key={value} className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="landing_page"
+              value={value}
+              checked={landingPage === value}
+              onChange={() => setLandingPage(value)}
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      {me.profile_visibility !== 'private' && (
+        <CopyButton
+          text={`${location.origin}/u/${me.handle}`}
+          label="Copy profile link"
+          className="self-start px-3 py-1 text-sm"
+        />
+      )}
       <div className="flex items-center gap-3">
         <button
           type="submit"
@@ -81,15 +154,13 @@ function ProfileForm({ me }: { me: Me }) {
           Save
         </button>
         {save.isSuccess && (
-          <span role="status" className="text-sm text-green-700">
+          <span role="status" className="text-sm text-green-800">
             Saved.
           </span>
         )}
         {save.isError && (
           <span role="alert" className="text-sm text-red-700">
-            {save.error instanceof ApiError && save.error.message
-              ? save.error.message
-              : 'Saving failed. Please try again.'}
+            {saveErrorMessage(save.error)}
           </span>
         )}
       </div>
@@ -167,7 +238,7 @@ export default function Account() {
       <h2 className="text-2xl font-bold">Account</h2>
 
       {linked && (
-        <p role="status" className="max-w-md rounded bg-green-50 p-3 text-sm text-green-700">
+        <p role="status" className="max-w-md rounded bg-green-50 p-3 text-sm text-green-800">
           Login linked. Signing in with it now lands in this account.
           <button className="ml-2 underline" onClick={() => setParams({}, { replace: true })}>
             Dismiss
@@ -243,7 +314,7 @@ export default function Account() {
       <section aria-label="Danger zone" className="flex flex-col gap-3">
         <h3 className="text-lg font-semibold text-red-700">Danger zone</h3>
         <p className="max-w-md text-sm text-gray-500">
-          Deleting your account removes your collection, tags, saved views, linked logins, and
+          Deleting your account removes your collection, tags, shelves, linked logins, and
           profile. This cannot be undone.
         </p>
         <div className="flex items-center gap-3">
@@ -251,7 +322,7 @@ export default function Account() {
             onClick={() => {
               if (
                 window.confirm(
-                  'Delete your account? Your collection, tags, saved views, linked logins, and profile will be permanently removed.',
+                  'Delete your account? Your collection, tags, shelves, linked logins, and profile will be permanently removed.',
                 )
               )
                 removeAccount.mutate()

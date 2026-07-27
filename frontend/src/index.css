@@ -39,7 +39,10 @@
   --color-red-300: #7f1d1d;
   --color-red-700: #fca5a5;
   --color-green-50: #052e16;
+  --color-green-300: #14532d;
   --color-green-800: #86efac;
+  --color-indigo-100: #1e1b4b;
+  --color-indigo-800: #a5b4fc;
 }
 
 /* The page surface and default ink come from the theme, so text

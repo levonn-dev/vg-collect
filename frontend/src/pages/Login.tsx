@@ -16,13 +16,25 @@ const providerLabels: Record<string, string> = {
 
 const devFixtures = ['alice', 'bob', 'admin']
 
+// next must be an internal path: leading slash, not protocol-relative.
+function safeNext(raw: string | null): string | null {
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return null
+  return raw
+}
+
 // Login links are full navigations on purpose: the OAuth dance needs
 // the browser to follow the gateway's redirects, and the dev provider
-// sets the session cookie on the same hop.
+// sets the session cookie on the same hop. The gateway always lands
+// back on /, so a requested destination is stashed to sessionStorage
+// before the hop and Layout re-applies it once the session resolves.
 export default function Login() {
   const [params] = useSearchParams()
   const providers = useQuery({ queryKey: ['providers'], queryFn: fetchProviders })
   const error = params.get('error')
+  const next = safeNext(params.get('next'))
+  const stash = () => {
+    if (next) sessionStorage.setItem('vg_next', next)
+  }
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
@@ -37,7 +49,7 @@ export default function Login() {
         </p>
       )}
       {params.get('deleted') && (
-        <p role="status" className="rounded bg-green-50 p-3 text-sm text-green-700">
+        <p role="status" className="rounded bg-green-50 p-3 text-sm text-green-800">
           Your account has been deleted.
         </p>
       )}
@@ -54,6 +66,7 @@ export default function Login() {
             <a
               key={p}
               href={`/api/auth/login?provider=${p}`}
+              onClick={stash}
               className="rounded border border-gray-300 px-4 py-2 text-center font-medium hover:bg-gray-50"
             >
               {providerLabels[p] ?? `Continue with ${p}`}
@@ -67,6 +80,7 @@ export default function Login() {
                 <a
                   key={user}
                   href={`/api/auth/login?provider=dev&user=${user}`}
+                  onClick={stash}
                   className="flex-1 rounded bg-gray-900 px-3 py-2 text-center text-sm text-white hover:bg-gray-700"
                 >
                   {user}
