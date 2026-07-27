@@ -24,6 +24,7 @@ import (
 	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/server"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/socialclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/static"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
 )
@@ -36,6 +37,7 @@ var (
 	_ server.UserAPI       = (*userclient.Client)(nil)
 	_ server.EnrichmentAPI = (*enrichmentclient.Client)(nil)
 	_ server.CollectionAPI = (*collectionclient.Client)(nil)
+	_ server.SocialAPI     = (*socialclient.Client)(nil)
 )
 
 func main() {
@@ -93,8 +95,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	social, err := socialclient.New(cfg.SocialServiceURL)
+	if err != nil {
+		return err
+	}
 
-	h := server.New(codec, cache.New(rdb), auth, users, enrichment, collection, server.Options{
+	h := server.New(codec, cache.New(rdb), auth, users, enrichment, collection, social, server.Options{
 		AccessTokenTTL: cfg.AccessTokenTTL,
 		RefreshWindow:  cfg.RefreshWindow,
 		MeCacheTTL:     cfg.MeCacheTTL,

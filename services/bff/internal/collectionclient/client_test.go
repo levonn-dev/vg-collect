@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -65,6 +66,9 @@ func TestRelayMethods_RouteBearerStatusAndBody(t *testing.T) {
 		{"ReorderEntry", func() (Result, error) {
 			return c.ReorderEntry(context.Background(), "tok", id, []byte(`{}`))
 		}, "POST", "/entries/" + id.String() + "/reorder", http.StatusOK},
+		{"BulkUpdateEntries", func() (Result, error) {
+			return c.BulkUpdateEntries(context.Background(), "tok", []byte(`{}`))
+		}, "POST", "/entries/bulk-update", http.StatusOK},
 		{"ListTags", func() (Result, error) {
 			return c.ListTags(context.Background(), "tok")
 		}, "GET", "/tags", http.StatusOK},
@@ -155,6 +159,25 @@ func TestRelay_UndeclaredStatusIsErrUpstream(t *testing.T) {
 	}
 }
 
+// TestCreateTag_Relays429ForTheUserTagCap pins that CreateTag's
+// allow-list includes 429 (the per-user tag cap's status): it must
+// relay verbatim, not collapse into ErrUpstream like an undeclared
+// status would.
+func TestCreateTag_Relays429ForTheUserTagCap(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"code":"cap_exceeded"}`))
+	})
+	res, err := c.CreateTag(context.Background(), "tok", []byte(`{"name":"x"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != http.StatusTooManyRequests || string(res.Body) != `{"code":"cap_exceeded"}` {
+		t.Fatalf("relay: %+v", res)
+	}
+}
+
 // TestLibrarySummary_DecodesTyped proves the one typed read: it decodes
 // the JSON200 body instead of relaying raw bytes.
 func TestLibrarySummary_DecodesTyped(t *testing.T) {
@@ -195,6 +218,234 @@ func TestLibrarySummary_UpstreamFailureIsErrUpstream(t *testing.T) {
 // branch: a dead upstream surfaces as a plain wrapped error (never
 // ErrUpstream, which is reserved for an upstream that actually
 // answered outside the relayed contract).
+// TestSharedShelf_DecodesTyped proves the shelf-page composition typed
+// read decodes SharedShelf on 200 and forwards the caller's bearer.
+func TestSharedShelf_DecodesTyped(t *testing.T) {
+	id := uuid.New()
+	ownerID := uuid.New()
+	var gotPath, gotAuth string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"` + id.String() + `","name":"Retro","owner_id":"` + ownerID.String() +
+			`","params":{},"slug":"retro","visibility":"listed"}`))
+	})
+	shelf, err := c.SharedShelf(context.Background(), "tok-3", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/shared/shelves/"+id.String() {
+		t.Fatalf("path = %s", gotPath)
+	}
+	if gotAuth != "Bearer tok-3" {
+		t.Fatalf("bearer = %q", gotAuth)
+	}
+	if shelf.Name != "Retro" || shelf.OwnerId != ownerID || string(shelf.Visibility) != "listed" {
+		t.Fatalf("shelf = %+v", shelf)
+	}
+}
+
+// TestSharedShelf_NotFound proves the 404 sentinel: a parsed
+// problem+json 404 is ErrShelfNotFound, not a raw status check (unknown
+// and private shelves are deliberately indistinguishable).
+func TestSharedShelf_NotFound(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"code":"shelf_not_found"}`))
+	})
+	if _, err := c.SharedShelf(context.Background(), "tok", uuid.New()); !errors.Is(err, ErrShelfNotFound) {
+		t.Fatalf("want ErrShelfNotFound, got %v", err)
+	}
+}
+
+// TestSharedShelf_NonOKIsErrUpstream covers the fallback branch: a
+// status outside 200/404 (both handled explicitly) is ErrUpstream.
+func TestSharedShelf_NonOKIsErrUpstream(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	if _, err := c.SharedShelf(context.Background(), "tok", uuid.New()); !errors.Is(err, ErrUpstream) {
+		t.Fatalf("want ErrUpstream, got %v", err)
+	}
+}
+
+// TestSharedShelfBySlug_DecodesTypedAndForwardsParams proves the
+// profile-shelf entry point resolves (owner, slug) via query params
+// and decodes the same SharedShelf shape.
+func TestSharedShelfBySlug_DecodesTypedAndForwardsParams(t *testing.T) {
+	id, ownerID := uuid.New(), uuid.New()
+	var gotPath, gotQuery string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotQuery = r.URL.Path, r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"` + id.String() + `","name":"Retro","owner_id":"` + ownerID.String() +
+			`","params":{},"slug":"retro","visibility":"listed"}`))
+	})
+	shelf, err := c.SharedShelfBySlug(context.Background(), "tok", ownerID, "retro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/shared/shelves/by-slug" {
+		t.Fatalf("path = %s", gotPath)
+	}
+	if !strings.Contains(gotQuery, "owner_id="+ownerID.String()) || !strings.Contains(gotQuery, "slug=retro") {
+		t.Fatalf("query = %s", gotQuery)
+	}
+	if shelf.Id != id || shelf.Slug != "retro" {
+		t.Fatalf("shelf = %+v", shelf)
+	}
+}
+
+// TestSharedShelfBySlug_NotFound proves the same 404 sentinel as
+// SharedShelf.
+func TestSharedShelfBySlug_NotFound(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"code":"shelf_not_found"}`))
+	})
+	if _, err := c.SharedShelfBySlug(context.Background(), "tok", uuid.New(), "missing"); !errors.Is(err, ErrShelfNotFound) {
+		t.Fatalf("want ErrShelfNotFound, got %v", err)
+	}
+}
+
+// TestSharedShelfBySlug_NonOKIsErrUpstream covers the fallback branch.
+func TestSharedShelfBySlug_NonOKIsErrUpstream(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	if _, err := c.SharedShelfBySlug(context.Background(), "tok", uuid.New(), "x"); !errors.Is(err, ErrUpstream) {
+		t.Fatalf("want ErrUpstream, got %v", err)
+	}
+}
+
+// TestSharedShelfEntries_RelaysStatusesAndForwardsPaging proves the
+// entries-tab relay: 200 and 404 both pass through with limit/offset
+// forwarded as query params, and an undeclared status is ErrUpstream.
+func TestSharedShelfEntries_RelaysStatusesAndForwardsPaging(t *testing.T) {
+	id := uuid.New()
+	var status int
+	var gotPath, gotQuery string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotQuery = r.URL.Path, r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{"echo":true}`))
+	})
+	limit, offset := 10, 20
+
+	status = http.StatusOK
+	res, err := c.SharedShelfEntries(context.Background(), "tok", id, &limit, &offset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/shared/shelves/"+id.String()+"/entries" {
+		t.Fatalf("path = %s", gotPath)
+	}
+	if !strings.Contains(gotQuery, "limit=10") || !strings.Contains(gotQuery, "offset=20") {
+		t.Fatalf("query = %s", gotQuery)
+	}
+	if res.Status != http.StatusOK {
+		t.Fatalf("status = %d", res.Status)
+	}
+
+	status = http.StatusNotFound
+	res, err = c.SharedShelfEntries(context.Background(), "tok", id, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != http.StatusNotFound {
+		t.Fatalf("status = %d", res.Status)
+	}
+
+	status = http.StatusBadRequest
+	if _, err := c.SharedShelfEntries(context.Background(), "tok", id, nil, nil); !errors.Is(err, ErrUpstream) {
+		t.Fatalf("want ErrUpstream, got %v", err)
+	}
+}
+
+// TestListSharedShelves_DecodesTypedAndForwardsParams proves the
+// profile-page shelf list forwards owner_ids/limit/offset and decodes
+// both the shelves page and the full total_count.
+func TestListSharedShelves_DecodesTypedAndForwardsParams(t *testing.T) {
+	shelfID, ownerA, ownerB := uuid.New(), uuid.New(), uuid.New()
+	var gotQuery string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		if r.URL.Path != "/shared/shelves" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"shelves":[{"id":"` + shelfID.String() + `","name":"Retro","owner_id":"` + ownerA.String() +
+			`","slug":"retro","visibility":"listed","cover_urls":[],"entry_count":2}],"total_count":7}`))
+	})
+	shelves, total, err := c.ListSharedShelves(context.Background(), "tok", []uuid.UUID{ownerA, ownerB}, 5, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(gotQuery, "limit=5") || !strings.Contains(gotQuery, "offset=10") {
+		t.Fatalf("query = %s", gotQuery)
+	}
+	if len(shelves) != 1 || shelves[0].Id != shelfID || shelves[0].EntryCount != 2 {
+		t.Fatalf("shelves = %+v", shelves)
+	}
+	if total != 7 {
+		t.Fatalf("total = %d", total)
+	}
+}
+
+// TestListSharedShelves_NonOKIsErrUpstream covers the non-200 branch.
+func TestListSharedShelves_NonOKIsErrUpstream(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	if _, _, err := c.ListSharedShelves(context.Background(), "tok", nil, 20, 0); !errors.Is(err, ErrUpstream) {
+		t.Fatalf("want ErrUpstream, got %v", err)
+	}
+}
+
+// TestSharedShelvesByIDs_DecodesTyped proves the feed/Explore hydration
+// batch read decodes the shelves envelope; ids without a resolvable
+// shelf are simply absent (no error, no placeholder).
+func TestSharedShelvesByIDs_DecodesTyped(t *testing.T) {
+	shelfID := uuid.New()
+	var gotAuth string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		if r.URL.Path != "/shared/shelves/by-ids" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"shelves":[{"id":"` + shelfID.String() + `","name":"Retro","owner_id":"` + uuid.New().String() +
+			`","slug":"retro","visibility":"listed","cover_urls":[],"entry_count":0}]}`))
+	})
+	shelves, err := c.SharedShelvesByIDs(context.Background(), "tok-4", []uuid.UUID{shelfID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer tok-4" {
+		t.Fatalf("bearer = %q", gotAuth)
+	}
+	if len(shelves) != 1 || shelves[0].Id != shelfID {
+		t.Fatalf("shelves = %+v", shelves)
+	}
+}
+
+// TestSharedShelvesByIDs_NonOKIsErrUpstream covers the non-200 branch.
+func TestSharedShelvesByIDs_NonOKIsErrUpstream(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	if _, err := c.SharedShelvesByIDs(context.Background(), "tok", []uuid.UUID{uuid.New()}); !errors.Is(err, ErrUpstream) {
+		t.Fatalf("want ErrUpstream, got %v", err)
+	}
+}
+
 func TestTransportErrorSurfaces(t *testing.T) {
 	c, err := New("http://127.0.0.1:1")
 	if err != nil {
@@ -236,6 +487,23 @@ func TestTransportErrorSurfaces(t *testing.T) {
 			return err
 		},
 		"SubmitVerdict": func() error { _, err := c.SubmitVerdict(context.Background(), "tok", id, nil); return err },
+		"SharedShelf":   func() error { _, err := c.SharedShelf(context.Background(), "tok", id); return err },
+		"SharedShelfBySlug": func() error {
+			_, err := c.SharedShelfBySlug(context.Background(), "tok", id, "slug")
+			return err
+		},
+		"SharedShelfEntries": func() error {
+			_, err := c.SharedShelfEntries(context.Background(), "tok", id, nil, nil)
+			return err
+		},
+		"ListSharedShelves": func() error {
+			_, _, err := c.ListSharedShelves(context.Background(), "tok", nil, 20, 0)
+			return err
+		},
+		"SharedShelvesByIDs": func() error {
+			_, err := c.SharedShelvesByIDs(context.Background(), "tok", []uuid.UUID{id})
+			return err
+		},
 	}
 	for name, call := range cases {
 		t.Run(name, func(t *testing.T) {

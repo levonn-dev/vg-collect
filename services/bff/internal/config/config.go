@@ -27,6 +27,7 @@ type Config struct {
 	UserServiceURL       string `env:"USER_SERVICE_URL,required"`
 	EnrichmentServiceURL string `env:"ENRICHMENT_SERVICE_URL,required"`
 	CollectionServiceURL string `env:"COLLECTION_SERVICE_URL,required"`
+	SocialServiceURL     string `env:"SOCIAL_SERVICE_URL,required"`
 
 	// OTLP/HTTP base URL of the collector agent for relayed browser
 	// telemetry. Empty disables the relay (payloads are accepted and

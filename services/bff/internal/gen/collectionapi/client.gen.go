@@ -45,6 +45,16 @@ const (
 	AdminSubmissionStatusRejected  AdminSubmissionStatus = "rejected"
 )
 
+// Defines values for BulkUpdateRequestStatus.
+const (
+	BulkUpdateRequestStatusBacklog   BulkUpdateRequestStatus = "backlog"
+	BulkUpdateRequestStatusBeaten    BulkUpdateRequestStatus = "beaten"
+	BulkUpdateRequestStatusCompleted BulkUpdateRequestStatus = "completed"
+	BulkUpdateRequestStatusDropped   BulkUpdateRequestStatus = "dropped"
+	BulkUpdateRequestStatusPlaying   BulkUpdateRequestStatus = "playing"
+	BulkUpdateRequestStatusShelved   BulkUpdateRequestStatus = "shelved"
+)
+
 // Defines values for CommunityProductSpecType.
 const (
 	CommunityProductSpecTypeAccessory CommunityProductSpecType = "accessory"
@@ -274,6 +284,83 @@ const (
 	EntryUpdateStatusShelved   EntryUpdateStatus = "shelved"
 )
 
+// Defines values for SavedViewVisibility.
+const (
+	SavedViewVisibilityListed   SavedViewVisibility = "listed"
+	SavedViewVisibilityPrivate  SavedViewVisibility = "private"
+	SavedViewVisibilityUnlisted SavedViewVisibility = "unlisted"
+)
+
+// Defines values for SharedEntryBoxCondition.
+const (
+	SharedEntryBoxConditionAcceptable SharedEntryBoxCondition = "acceptable"
+	SharedEntryBoxConditionGood       SharedEntryBoxCondition = "good"
+	SharedEntryBoxConditionMint       SharedEntryBoxCondition = "mint"
+	SharedEntryBoxConditionNearMint   SharedEntryBoxCondition = "near_mint"
+	SharedEntryBoxConditionPoor       SharedEntryBoxCondition = "poor"
+	SharedEntryBoxConditionVeryGood   SharedEntryBoxCondition = "very_good"
+)
+
+// Defines values for SharedEntryItemCondition.
+const (
+	SharedEntryItemConditionAcceptable SharedEntryItemCondition = "acceptable"
+	SharedEntryItemConditionGood       SharedEntryItemCondition = "good"
+	SharedEntryItemConditionMint       SharedEntryItemCondition = "mint"
+	SharedEntryItemConditionNearMint   SharedEntryItemCondition = "near_mint"
+	SharedEntryItemConditionPoor       SharedEntryItemCondition = "poor"
+	SharedEntryItemConditionVeryGood   SharedEntryItemCondition = "very_good"
+)
+
+// Defines values for SharedEntryItemType.
+const (
+	SharedEntryItemTypeAccessory SharedEntryItemType = "accessory"
+	SharedEntryItemTypeConsole   SharedEntryItemType = "console"
+	SharedEntryItemTypeGame      SharedEntryItemType = "game"
+)
+
+// Defines values for SharedEntryManualCondition.
+const (
+	SharedEntryManualConditionAcceptable SharedEntryManualCondition = "acceptable"
+	SharedEntryManualConditionGood       SharedEntryManualCondition = "good"
+	SharedEntryManualConditionMint       SharedEntryManualCondition = "mint"
+	SharedEntryManualConditionNearMint   SharedEntryManualCondition = "near_mint"
+	SharedEntryManualConditionPoor       SharedEntryManualCondition = "poor"
+	SharedEntryManualConditionVeryGood   SharedEntryManualCondition = "very_good"
+)
+
+// Defines values for SharedEntryMediaType.
+const (
+	Digital  SharedEntryMediaType = "digital"
+	Physical SharedEntryMediaType = "physical"
+)
+
+// Defines values for SharedEntryPackaging.
+const (
+	SharedEntryPackagingCib    SharedEntryPackaging = "cib"
+	SharedEntryPackagingLoose  SharedEntryPackaging = "loose"
+	SharedEntryPackagingSealed SharedEntryPackaging = "sealed"
+)
+
+// Defines values for SharedEntryRegion.
+const (
+	SharedEntryRegionNtscJ      SharedEntryRegion = "ntsc_j"
+	SharedEntryRegionNtscU      SharedEntryRegion = "ntsc_u"
+	SharedEntryRegionPal        SharedEntryRegion = "pal"
+	SharedEntryRegionRegionFree SharedEntryRegion = "region_free"
+)
+
+// Defines values for SharedShelfVisibility.
+const (
+	SharedShelfVisibilityListed   SharedShelfVisibility = "listed"
+	SharedShelfVisibilityUnlisted SharedShelfVisibility = "unlisted"
+)
+
+// Defines values for SharedShelfSummaryVisibility.
+const (
+	SharedShelfSummaryVisibilityListed   SharedShelfSummaryVisibility = "listed"
+	SharedShelfSummaryVisibilityUnlisted SharedShelfSummaryVisibility = "unlisted"
+)
+
 // Defines values for SubmissionStatus.
 const (
 	SubmissionStatusApproved  SubmissionStatus = "approved"
@@ -287,6 +374,13 @@ const (
 	ApproveExisting VerdictRequestAction = "approve_existing"
 	ApproveNew      VerdictRequestAction = "approve_new"
 	Reject          VerdictRequestAction = "reject"
+)
+
+// Defines values for ViewCreateVisibility.
+const (
+	ViewCreateVisibilityListed   ViewCreateVisibility = "listed"
+	ViewCreateVisibilityPrivate  ViewCreateVisibility = "private"
+	ViewCreateVisibilityUnlisted ViewCreateVisibility = "unlisted"
 )
 
 // Defines values for GetDashboardParamsItemType.
@@ -333,44 +427,44 @@ const (
 
 // Defines values for ListEntriesParamsItemType.
 const (
-	ListEntriesParamsItemTypeAccessory ListEntriesParamsItemType = "accessory"
-	ListEntriesParamsItemTypeConsole   ListEntriesParamsItemType = "console"
-	ListEntriesParamsItemTypeGame      ListEntriesParamsItemType = "game"
+	Accessory ListEntriesParamsItemType = "accessory"
+	Console   ListEntriesParamsItemType = "console"
+	Game      ListEntriesParamsItemType = "game"
 )
 
 // Defines values for ListEntriesParamsStatus.
 const (
-	Backlog   ListEntriesParamsStatus = "backlog"
-	Beaten    ListEntriesParamsStatus = "beaten"
-	Completed ListEntriesParamsStatus = "completed"
-	Dropped   ListEntriesParamsStatus = "dropped"
-	Playing   ListEntriesParamsStatus = "playing"
-	Shelved   ListEntriesParamsStatus = "shelved"
+	ListEntriesParamsStatusBacklog   ListEntriesParamsStatus = "backlog"
+	ListEntriesParamsStatusBeaten    ListEntriesParamsStatus = "beaten"
+	ListEntriesParamsStatusCompleted ListEntriesParamsStatus = "completed"
+	ListEntriesParamsStatusDropped   ListEntriesParamsStatus = "dropped"
+	ListEntriesParamsStatusPlaying   ListEntriesParamsStatus = "playing"
+	ListEntriesParamsStatusShelved   ListEntriesParamsStatus = "shelved"
 )
 
 // Defines values for ListEntriesParamsPackaging.
 const (
-	Cib    ListEntriesParamsPackaging = "cib"
-	Loose  ListEntriesParamsPackaging = "loose"
-	Sealed ListEntriesParamsPackaging = "sealed"
+	ListEntriesParamsPackagingCib    ListEntriesParamsPackaging = "cib"
+	ListEntriesParamsPackagingLoose  ListEntriesParamsPackaging = "loose"
+	ListEntriesParamsPackagingSealed ListEntriesParamsPackaging = "sealed"
 )
 
 // Defines values for ListEntriesParamsRegion.
 const (
-	ListEntriesParamsRegionNtscJ      ListEntriesParamsRegion = "ntsc_j"
-	ListEntriesParamsRegionNtscU      ListEntriesParamsRegion = "ntsc_u"
-	ListEntriesParamsRegionPal        ListEntriesParamsRegion = "pal"
-	ListEntriesParamsRegionRegionFree ListEntriesParamsRegion = "region_free"
+	NtscJ      ListEntriesParamsRegion = "ntsc_j"
+	NtscU      ListEntriesParamsRegion = "ntsc_u"
+	Pal        ListEntriesParamsRegion = "pal"
+	RegionFree ListEntriesParamsRegion = "region_free"
 )
 
 // Defines values for ListEntriesParamsItemCondition.
 const (
-	Acceptable ListEntriesParamsItemCondition = "acceptable"
-	Good       ListEntriesParamsItemCondition = "good"
-	Mint       ListEntriesParamsItemCondition = "mint"
-	NearMint   ListEntriesParamsItemCondition = "near_mint"
-	Poor       ListEntriesParamsItemCondition = "poor"
-	VeryGood   ListEntriesParamsItemCondition = "very_good"
+	ListEntriesParamsItemConditionAcceptable ListEntriesParamsItemCondition = "acceptable"
+	ListEntriesParamsItemConditionGood       ListEntriesParamsItemCondition = "good"
+	ListEntriesParamsItemConditionMint       ListEntriesParamsItemCondition = "mint"
+	ListEntriesParamsItemConditionNearMint   ListEntriesParamsItemCondition = "near_mint"
+	ListEntriesParamsItemConditionPoor       ListEntriesParamsItemCondition = "poor"
+	ListEntriesParamsItemConditionVeryGood   ListEntriesParamsItemCondition = "very_good"
 )
 
 // Defines values for ListEntriesParamsSort.
@@ -433,6 +527,26 @@ type AdminSubmissionsPage struct {
 
 	// TotalCount Full pending count, beyond this page.
 	TotalCount int64 `json:"total_count"`
+}
+
+// BulkUpdateRequest Delta applied across the caller's own entries among entry_ids (foreign or unknown ids are silently not counted, same ownership-filtering posture as tag attachment). At least one of add_tag_ids / remove_tag_ids / status / storage_location must be present, else 400. storage_location's clearing rule is the OPPOSITE of the full-replacement update's: here an ABSENT storage_location leaves the field untouched, and an explicit empty string clears it.
+type BulkUpdateRequest struct {
+	AddTagIds    *[]openapi_types.UUID    `json:"add_tag_ids,omitempty"`
+	EntryIds     []openapi_types.UUID     `json:"entry_ids"`
+	RemoveTagIds *[]openapi_types.UUID    `json:"remove_tag_ids,omitempty"`
+	Status       *BulkUpdateRequestStatus `json:"status,omitempty"`
+
+	// StorageLocation Empty string clears the field; an absent field leaves it untouched (see the operation description).
+	StorageLocation *string `json:"storage_location,omitempty"`
+}
+
+// BulkUpdateRequestStatus defines model for BulkUpdateRequest.Status.
+type BulkUpdateRequestStatus string
+
+// BulkUpdateResult defines model for BulkUpdateResult.
+type BulkUpdateResult struct {
+	// UpdatedCount Count of the caller's own entries among entry_ids, whether or not any targeted field actually changed.
+	UpdatedCount int `json:"updated_count"`
 }
 
 // CommunityProductSpec The curated fields for approve_new; mirrors the enrichment mint request (single edition field, no variant).
@@ -788,8 +902,110 @@ type SavedView struct {
 	Id        openapi_types.UUID     `json:"id"`
 	Name      string                 `json:"name"`
 	Params    map[string]interface{} `json:"params"`
-	UpdatedAt time.Time              `json:"updated_at"`
+
+	// PublishedAt Stamped on each transition into listed.
+	PublishedAt *time.Time `json:"published_at,omitempty"`
+
+	// Slug URL slug derived from the name (underscore transform); unique per user on its folded key.
+	Slug       string              `json:"slug"`
+	UpdatedAt  time.Time           `json:"updated_at"`
+	Visibility SavedViewVisibility `json:"visibility"`
 }
+
+// SavedViewVisibility defines model for SavedView.Visibility.
+type SavedViewVisibility string
+
+// SharedEntry The cross-user entry projection - a strict whitelist. No money fields (price paid, values, currency, purchase provenance, pricing mode) and no personal fields (status, rating, notes, location, backlog rank, external refs) may ever be added here without a deliberate privacy decision.
+type SharedEntry struct {
+	BoxCondition     *SharedEntryBoxCondition    `json:"box_condition,omitempty"`
+	CoverUrl         *string                     `json:"cover_url,omitempty"`
+	CreatedAt        time.Time                   `json:"created_at"`
+	DisplayName      string                      `json:"display_name"`
+	Edition          *string                     `json:"edition,omitempty"`
+	FirstReleaseDate *openapi_types.Date         `json:"first_release_date,omitempty"`
+	HasBox           bool                        `json:"has_box"`
+	HasManual        bool                        `json:"has_manual"`
+	Id               openapi_types.UUID          `json:"id"`
+	IgdbGameId       *int64                      `json:"igdb_game_id,omitempty"`
+	ItemCondition    *SharedEntryItemCondition   `json:"item_condition,omitempty"`
+	ItemType         SharedEntryItemType         `json:"item_type"`
+	ManualCondition  *SharedEntryManualCondition `json:"manual_condition,omitempty"`
+	MediaType        SharedEntryMediaType        `json:"media_type"`
+	Packaging        SharedEntryPackaging        `json:"packaging"`
+	Pinned           bool                        `json:"pinned"`
+
+	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
+	Platform  *EntryPlatform      `json:"platform,omitempty"`
+	ProductId *openapi_types.UUID `json:"product_id,omitempty"`
+	Region    SharedEntryRegion   `json:"region"`
+	Tags      []TagRef            `json:"tags"`
+}
+
+// SharedEntryBoxCondition defines model for SharedEntry.BoxCondition.
+type SharedEntryBoxCondition string
+
+// SharedEntryItemCondition defines model for SharedEntry.ItemCondition.
+type SharedEntryItemCondition string
+
+// SharedEntryItemType defines model for SharedEntry.ItemType.
+type SharedEntryItemType string
+
+// SharedEntryManualCondition defines model for SharedEntry.ManualCondition.
+type SharedEntryManualCondition string
+
+// SharedEntryMediaType defines model for SharedEntry.MediaType.
+type SharedEntryMediaType string
+
+// SharedEntryPackaging defines model for SharedEntry.Packaging.
+type SharedEntryPackaging string
+
+// SharedEntryRegion defines model for SharedEntry.Region.
+type SharedEntryRegion string
+
+// SharedEntryGroup defines model for SharedEntryGroup.
+type SharedEntryGroup struct {
+	Entries []SharedEntry `json:"entries"`
+	Key     string        `json:"key"`
+	Label   string        `json:"label"`
+}
+
+// SharedEntryList Exactly one of entries/groups is present (groups when the stored params group).
+type SharedEntryList struct {
+	Entries    *[]SharedEntry      `json:"entries,omitempty"`
+	Groups     *[]SharedEntryGroup `json:"groups,omitempty"`
+	TotalCount int                 `json:"total_count"`
+}
+
+// SharedShelf defines model for SharedShelf.
+type SharedShelf struct {
+	Id          openapi_types.UUID     `json:"id"`
+	Name        string                 `json:"name"`
+	OwnerId     openapi_types.UUID     `json:"owner_id"`
+	Params      map[string]interface{} `json:"params"`
+	PublishedAt *time.Time             `json:"published_at,omitempty"`
+	Slug        string                 `json:"slug"`
+	Visibility  SharedShelfVisibility  `json:"visibility"`
+}
+
+// SharedShelfVisibility defines model for SharedShelf.Visibility.
+type SharedShelfVisibility string
+
+// SharedShelfSummary defines model for SharedShelfSummary.
+type SharedShelfSummary struct {
+	CoverUrls   []string           `json:"cover_urls"`
+	EntryCount  int                `json:"entry_count"`
+	Id          openapi_types.UUID `json:"id"`
+	Name        string             `json:"name"`
+	OwnerId     openapi_types.UUID `json:"owner_id"`
+	PublishedAt *time.Time         `json:"published_at,omitempty"`
+	Slug        string             `json:"slug"`
+
+	// Visibility The bff's Explore/feed gating reads this (listed-only surfaces).
+	Visibility SharedShelfSummaryVisibility `json:"visibility"`
+}
+
+// SharedShelfSummaryVisibility The bff's Explore/feed gating reads this (listed-only surfaces).
+type SharedShelfSummaryVisibility string
 
 // Submission One catalog-submission lifecycle row for an entry. Rows persist as history (rejected and cancelled included; the rolling creation cap counts every attempt); deleting the entry removes them with it. product_id is the verdict's resolved product - recorded before adoption so an approve_new retry never mints twice.
 type Submission struct {
@@ -858,8 +1074,12 @@ type ViewCreate struct {
 	Name string `json:"name"`
 
 	// Params Opaque frontend view state; at most 8192 marshaled bytes.
-	Params map[string]interface{} `json:"params"`
+	Params     map[string]interface{} `json:"params"`
+	Visibility *ViewCreateVisibility  `json:"visibility,omitempty"`
 }
+
+// ViewCreateVisibility defines model for ViewCreate.Visibility.
+type ViewCreateVisibility string
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Problem
@@ -953,11 +1173,39 @@ type ListEntriesParamsOrder string
 // ListEntriesParamsGroupBy defines parameters for ListEntries.
 type ListEntriesParamsGroupBy string
 
+// ListSharedShelvesParams defines parameters for ListSharedShelves.
+type ListSharedShelvesParams struct {
+	// OwnerIds Omit to page across all listed shelves; when present, at most 5000 owner ids to scope the page to.
+	OwnerIds *[]openapi_types.UUID `form:"owner_ids,omitempty" json:"owner_ids,omitempty"`
+	Limit    *int                  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset   *int                  `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetSharedShelvesByIdsParams defines parameters for GetSharedShelvesByIds.
+type GetSharedShelvesByIdsParams struct {
+	Ids []openapi_types.UUID `form:"ids" json:"ids"`
+}
+
+// GetSharedShelfBySlugParams defines parameters for GetSharedShelfBySlug.
+type GetSharedShelfBySlugParams struct {
+	OwnerId openapi_types.UUID `form:"owner_id" json:"owner_id"`
+	Slug    string             `form:"slug" json:"slug"`
+}
+
+// ListSharedShelfEntriesParams defines parameters for ListSharedShelfEntries.
+type ListSharedShelfEntriesParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // SubmitVerdictJSONRequestBody defines body for SubmitVerdict for application/json ContentType.
 type SubmitVerdictJSONRequestBody = VerdictRequest
 
 // CreateEntryJSONRequestBody defines body for CreateEntry for application/json ContentType.
 type CreateEntryJSONRequestBody = EntryCreate
+
+// BulkUpdateEntriesJSONRequestBody defines body for BulkUpdateEntries for application/json ContentType.
+type BulkUpdateEntriesJSONRequestBody = BulkUpdateRequest
 
 // UpdateEntryJSONRequestBody defines body for UpdateEntry for application/json ContentType.
 type UpdateEntryJSONRequestBody = EntryUpdate
@@ -1075,6 +1323,11 @@ type ClientInterface interface {
 
 	CreateEntry(ctx context.Context, body CreateEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// BulkUpdateEntriesWithBody request with any body
+	BulkUpdateEntriesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	BulkUpdateEntries(ctx context.Context, body BulkUpdateEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DeleteEntry request
 	DeleteEntry(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1105,6 +1358,21 @@ type ClientInterface interface {
 
 	// GetLibrarySummary request
 	GetLibrarySummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSharedShelves request
+	ListSharedShelves(ctx context.Context, params *ListSharedShelvesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSharedShelvesByIds request
+	GetSharedShelvesByIds(ctx context.Context, params *GetSharedShelvesByIdsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSharedShelfBySlug request
+	GetSharedShelfBySlug(ctx context.Context, params *GetSharedShelfBySlugParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSharedShelf request
+	GetSharedShelf(ctx context.Context, shelfId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSharedShelfEntries request
+	ListSharedShelfEntries(ctx context.Context, shelfId openapi_types.UUID, params *ListSharedShelfEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListTags request
 	ListTags(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1250,6 +1518,30 @@ func (c *Client) CreateEntry(ctx context.Context, body CreateEntryJSONRequestBod
 	return c.Client.Do(req)
 }
 
+func (c *Client) BulkUpdateEntriesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBulkUpdateEntriesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) BulkUpdateEntries(ctx context.Context, body BulkUpdateEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBulkUpdateEntriesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) DeleteEntry(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteEntryRequest(c.Server, entryId)
 	if err != nil {
@@ -1372,6 +1664,66 @@ func (c *Client) AckSubmissionResolution(ctx context.Context, entryId openapi_ty
 
 func (c *Client) GetLibrarySummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetLibrarySummaryRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListSharedShelves(ctx context.Context, params *ListSharedShelvesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSharedShelvesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSharedShelvesByIds(ctx context.Context, params *GetSharedShelvesByIdsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSharedShelvesByIdsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSharedShelfBySlug(ctx context.Context, params *GetSharedShelfBySlugParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSharedShelfBySlugRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSharedShelf(ctx context.Context, shelfId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSharedShelfRequest(c.Server, shelfId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListSharedShelfEntries(ctx context.Context, shelfId openapi_types.UUID, params *ListSharedShelfEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSharedShelfEntriesRequest(c.Server, shelfId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2121,6 +2473,46 @@ func NewCreateEntryRequestWithBody(server string, contentType string, body io.Re
 	return req, nil
 }
 
+// NewBulkUpdateEntriesRequest calls the generic BulkUpdateEntries builder with application/json body
+func NewBulkUpdateEntriesRequest(server string, body BulkUpdateEntriesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBulkUpdateEntriesRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewBulkUpdateEntriesRequestWithBody generates requests for BulkUpdateEntries with any type of body
+func NewBulkUpdateEntriesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/entries/bulk-update")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewDeleteEntryRequest generates requests for DeleteEntry
 func NewDeleteEntryRequest(server string, entryId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -2436,6 +2828,295 @@ func NewGetLibrarySummaryRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListSharedShelvesRequest generates requests for ListSharedShelves
+func NewListSharedShelvesRequest(server string, params *ListSharedShelvesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/shared/shelves")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.OwnerIds != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "owner_ids", runtime.ParamLocationQuery, *params.OwnerIds); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSharedShelvesByIdsRequest generates requests for GetSharedShelvesByIds
+func NewGetSharedShelvesByIdsRequest(server string, params *GetSharedShelvesByIdsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/shared/shelves/by-ids")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "ids", runtime.ParamLocationQuery, params.Ids); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSharedShelfBySlugRequest generates requests for GetSharedShelfBySlug
+func NewGetSharedShelfBySlugRequest(server string, params *GetSharedShelfBySlugParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/shared/shelves/by-slug")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "owner_id", runtime.ParamLocationQuery, params.OwnerId); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "slug", runtime.ParamLocationQuery, params.Slug); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSharedShelfRequest generates requests for GetSharedShelf
+func NewGetSharedShelfRequest(server string, shelfId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "shelfId", runtime.ParamLocationPath, shelfId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/shared/shelves/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListSharedShelfEntriesRequest generates requests for ListSharedShelfEntries
+func NewListSharedShelfEntriesRequest(server string, shelfId openapi_types.UUID, params *ListSharedShelfEntriesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "shelfId", runtime.ParamLocationPath, shelfId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/shared/shelves/%s/entries", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -2837,6 +3518,11 @@ type ClientWithResponsesInterface interface {
 
 	CreateEntryWithResponse(ctx context.Context, body CreateEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateEntryResponse, error)
 
+	// BulkUpdateEntriesWithBodyWithResponse request with any body
+	BulkUpdateEntriesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BulkUpdateEntriesResponse, error)
+
+	BulkUpdateEntriesWithResponse(ctx context.Context, body BulkUpdateEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*BulkUpdateEntriesResponse, error)
+
 	// DeleteEntryWithResponse request
 	DeleteEntryWithResponse(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteEntryResponse, error)
 
@@ -2867,6 +3553,21 @@ type ClientWithResponsesInterface interface {
 
 	// GetLibrarySummaryWithResponse request
 	GetLibrarySummaryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLibrarySummaryResponse, error)
+
+	// ListSharedShelvesWithResponse request
+	ListSharedShelvesWithResponse(ctx context.Context, params *ListSharedShelvesParams, reqEditors ...RequestEditorFn) (*ListSharedShelvesResponse, error)
+
+	// GetSharedShelvesByIdsWithResponse request
+	GetSharedShelvesByIdsWithResponse(ctx context.Context, params *GetSharedShelvesByIdsParams, reqEditors ...RequestEditorFn) (*GetSharedShelvesByIdsResponse, error)
+
+	// GetSharedShelfBySlugWithResponse request
+	GetSharedShelfBySlugWithResponse(ctx context.Context, params *GetSharedShelfBySlugParams, reqEditors ...RequestEditorFn) (*GetSharedShelfBySlugResponse, error)
+
+	// GetSharedShelfWithResponse request
+	GetSharedShelfWithResponse(ctx context.Context, shelfId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSharedShelfResponse, error)
+
+	// ListSharedShelfEntriesWithResponse request
+	ListSharedShelfEntriesWithResponse(ctx context.Context, shelfId openapi_types.UUID, params *ListSharedShelfEntriesParams, reqEditors ...RequestEditorFn) (*ListSharedShelfEntriesResponse, error)
 
 	// ListTagsWithResponse request
 	ListTagsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListTagsResponse, error)
@@ -3073,6 +3774,30 @@ func (r CreateEntryResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CreateEntryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type BulkUpdateEntriesResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *BulkUpdateResult
+	ApplicationproblemJSON400 *Problem
+	ApplicationproblemJSON401 *Unauthorized
+}
+
+// Status returns HTTPResponse.Status
+func (r BulkUpdateEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BulkUpdateEntriesResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -3298,6 +4023,129 @@ func (r GetLibrarySummaryResponse) StatusCode() int {
 	return 0
 }
 
+type ListSharedShelvesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Shelves    []SharedShelfSummary `json:"shelves"`
+		TotalCount int                  `json:"total_count"`
+	}
+	ApplicationproblemJSON401 *Unauthorized
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSharedShelvesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSharedShelvesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSharedShelvesByIdsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Shelves []SharedShelfSummary `json:"shelves"`
+	}
+	ApplicationproblemJSON401 *Unauthorized
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSharedShelvesByIdsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSharedShelvesByIdsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSharedShelfBySlugResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *SharedShelf
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON404 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSharedShelfBySlugResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSharedShelfBySlugResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSharedShelfResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *SharedShelf
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON404 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSharedShelfResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSharedShelfResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListSharedShelfEntriesResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *SharedEntryList
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON404 *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSharedShelfEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSharedShelfEntriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListTagsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3330,6 +4178,7 @@ type CreateTagResponse struct {
 	ApplicationproblemJSON400 *BadRequest
 	ApplicationproblemJSON401 *Unauthorized
 	ApplicationproblemJSON409 *Problem
+	ApplicationproblemJSON429 *Problem
 }
 
 // Status returns HTTPResponse.Status
@@ -3597,6 +4446,23 @@ func (c *ClientWithResponses) CreateEntryWithResponse(ctx context.Context, body 
 	return ParseCreateEntryResponse(rsp)
 }
 
+// BulkUpdateEntriesWithBodyWithResponse request with arbitrary body returning *BulkUpdateEntriesResponse
+func (c *ClientWithResponses) BulkUpdateEntriesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BulkUpdateEntriesResponse, error) {
+	rsp, err := c.BulkUpdateEntriesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBulkUpdateEntriesResponse(rsp)
+}
+
+func (c *ClientWithResponses) BulkUpdateEntriesWithResponse(ctx context.Context, body BulkUpdateEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*BulkUpdateEntriesResponse, error) {
+	rsp, err := c.BulkUpdateEntries(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBulkUpdateEntriesResponse(rsp)
+}
+
 // DeleteEntryWithResponse request returning *DeleteEntryResponse
 func (c *ClientWithResponses) DeleteEntryWithResponse(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteEntryResponse, error) {
 	rsp, err := c.DeleteEntry(ctx, entryId, reqEditors...)
@@ -3692,6 +4558,51 @@ func (c *ClientWithResponses) GetLibrarySummaryWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseGetLibrarySummaryResponse(rsp)
+}
+
+// ListSharedShelvesWithResponse request returning *ListSharedShelvesResponse
+func (c *ClientWithResponses) ListSharedShelvesWithResponse(ctx context.Context, params *ListSharedShelvesParams, reqEditors ...RequestEditorFn) (*ListSharedShelvesResponse, error) {
+	rsp, err := c.ListSharedShelves(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSharedShelvesResponse(rsp)
+}
+
+// GetSharedShelvesByIdsWithResponse request returning *GetSharedShelvesByIdsResponse
+func (c *ClientWithResponses) GetSharedShelvesByIdsWithResponse(ctx context.Context, params *GetSharedShelvesByIdsParams, reqEditors ...RequestEditorFn) (*GetSharedShelvesByIdsResponse, error) {
+	rsp, err := c.GetSharedShelvesByIds(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSharedShelvesByIdsResponse(rsp)
+}
+
+// GetSharedShelfBySlugWithResponse request returning *GetSharedShelfBySlugResponse
+func (c *ClientWithResponses) GetSharedShelfBySlugWithResponse(ctx context.Context, params *GetSharedShelfBySlugParams, reqEditors ...RequestEditorFn) (*GetSharedShelfBySlugResponse, error) {
+	rsp, err := c.GetSharedShelfBySlug(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSharedShelfBySlugResponse(rsp)
+}
+
+// GetSharedShelfWithResponse request returning *GetSharedShelfResponse
+func (c *ClientWithResponses) GetSharedShelfWithResponse(ctx context.Context, shelfId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSharedShelfResponse, error) {
+	rsp, err := c.GetSharedShelf(ctx, shelfId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSharedShelfResponse(rsp)
+}
+
+// ListSharedShelfEntriesWithResponse request returning *ListSharedShelfEntriesResponse
+func (c *ClientWithResponses) ListSharedShelfEntriesWithResponse(ctx context.Context, shelfId openapi_types.UUID, params *ListSharedShelfEntriesParams, reqEditors ...RequestEditorFn) (*ListSharedShelfEntriesResponse, error) {
+	rsp, err := c.ListSharedShelfEntries(ctx, shelfId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSharedShelfEntriesResponse(rsp)
 }
 
 // ListTagsWithResponse request returning *ListTagsResponse
@@ -4124,6 +5035,46 @@ func ParseCreateEntryResponse(rsp *http.Response) (*CreateEntryResponse, error) 
 	return response, nil
 }
 
+// ParseBulkUpdateEntriesResponse parses an HTTP response from a BulkUpdateEntriesWithResponse call
+func ParseBulkUpdateEntriesResponse(rsp *http.Response) (*BulkUpdateEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BulkUpdateEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest BulkUpdateResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseDeleteEntryResponse parses an HTTP response from a DeleteEntryWithResponse call
 func ParseDeleteEntryResponse(rsp *http.Response) (*DeleteEntryResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -4505,6 +5456,197 @@ func ParseGetLibrarySummaryResponse(rsp *http.Response) (*GetLibrarySummaryRespo
 	return response, nil
 }
 
+// ParseListSharedShelvesResponse parses an HTTP response from a ListSharedShelvesWithResponse call
+func ParseListSharedShelvesResponse(rsp *http.Response) (*ListSharedShelvesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSharedShelvesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Shelves    []SharedShelfSummary `json:"shelves"`
+			TotalCount int                  `json:"total_count"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSharedShelvesByIdsResponse parses an HTTP response from a GetSharedShelvesByIdsWithResponse call
+func ParseGetSharedShelvesByIdsResponse(rsp *http.Response) (*GetSharedShelvesByIdsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSharedShelvesByIdsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Shelves []SharedShelfSummary `json:"shelves"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSharedShelfBySlugResponse parses an HTTP response from a GetSharedShelfBySlugWithResponse call
+func ParseGetSharedShelfBySlugResponse(rsp *http.Response) (*GetSharedShelfBySlugResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSharedShelfBySlugResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SharedShelf
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSharedShelfResponse parses an HTTP response from a GetSharedShelfWithResponse call
+func ParseGetSharedShelfResponse(rsp *http.Response) (*GetSharedShelfResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSharedShelfResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SharedShelf
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSharedShelfEntriesResponse parses an HTTP response from a ListSharedShelfEntriesWithResponse call
+func ParseListSharedShelfEntriesResponse(rsp *http.Response) (*ListSharedShelfEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSharedShelfEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SharedEntryList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListTagsResponse parses an HTTP response from a ListTagsWithResponse call
 func ParseListTagsResponse(rsp *http.Response) (*ListTagsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -4581,6 +5723,13 @@ func ParseCreateTagResponse(rsp *http.Response) (*CreateTagResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON429 = &dest
 
 	}
 

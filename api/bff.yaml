@@ -87,7 +87,7 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
     patch:
       operationId: updateMe
-      summary: Edit the signed-in user's profile (display name, avatar URL)
+      summary: Edit the signed-in user's profile (handle, avatar URL)
       requestBody:
         required: true
         content:
@@ -108,6 +108,16 @@ paths:
         "403": { $ref: "#/components/responses/OriginForbidden" }
         "404":
           description: The signed-in account no longer exists (relayed from the user service)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Another account owns that handle's folded key (code handle_taken; relayed from the user service)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: Handle changed too recently (code handle_cooldown; relayed from the user service)
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -415,6 +425,38 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/entries/bulk-update:
+    post:
+      operationId: bulkUpdateEntries
+      summary: Apply tag/status/storage-location changes across a batch of entries (proxied, uncached)
+      description: >
+        One transaction, all-or-nothing, on the collection service:
+        tag removal, tag addition, and whichever scalar fields are
+        present all apply in the same transaction; tag ids apply
+        ownership-scoped. A status change to
+        backlog manages backlog_rank like the single-entry update
+        (newly-entering entries append at the end, already-backlog
+        entries keep their position, leaving backlog clears it). If
+        any targeted entry would end up holding more than 50 tags, the
+        WHOLE transaction rolls back (400 code tag_cap_exceeded).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkUpdateRequest" }
+      responses:
+        "200":
+          description: The count of the caller's own entries among entry_ids
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkUpdateResult" }
+        "400":
+          description: Bounds violated, no action specified, or the per-entry tag cap exceeded (code invalid_body or tag_cap_exceeded)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
   /api/entries/{entryId}:
     get:
       operationId: getEntry
@@ -667,6 +709,11 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "409":
           description: Name already taken
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: Tag cap reached - at most 200 distinct tags per user (code cap_exceeded)
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -1338,6 +1385,420 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/profiles/{handle}:
+    get:
+      operationId: getProfilePage
+      summary: "A user's public profile: card, listed shelves, and social counts"
+      description: >
+        Composes the profile card with up to 50 of the owner's listed
+        shelves and the social follower/like counts. Owners see exactly
+        what visitors see (an honest preview of their own public page).
+        social is absent exactly when social_available is false (the
+        social service degrades open; the page still renders).
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Profile page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfilePage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Unknown or private (deliberately indistinguishable; code profile_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/profiles/{handle}/shelves/{slug}:
+    get:
+      operationId: getProfileShelfPage
+      summary: A shared shelf resolved by owner handle and slug
+      description: >
+        Resolves the handle to its owner, then the slug to a shelf
+        under that owner, applying the two-sided effective-visibility
+        rule (the stricter of profile visibility and shelf visibility:
+        both must be non-private). Every miss on this route - unknown
+        handle, private owner, unknown slug, private shelf - answers
+        the same 404 so a probing request cannot tell them apart. The
+        composed payload carries the shelf UUID for all subsequent
+        calls (entries, comments, likes).
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Shelf page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShelfPage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/shelves/{shelfId}:
+    get:
+      operationId: getShelfPage
+      summary: "A shared shelf's page: meta, owner card, and social counts"
+      description: >
+        Applies the two-sided effective-visibility rule (the stricter
+        of profile visibility and shelf visibility: both must be
+        non-private); unknown, private-shelf, and private-owner all
+        answer the same 404. social is absent exactly when
+        social_available is false.
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Shelf page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShelfPage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/shelves/{shelfId}/entries:
+    get:
+      operationId: listShelfEntries
+      summary: A shelf's entries, whitelist-projected (proxied)
+      description: >
+        Applies the effective-visibility rule before relaying
+        collection's whitelisted projection verbatim (money and
+        personal fields never appear).
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: One page of the shelf's entries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SharedEntryList" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/shelves/{shelfId}/comments:
+    get:
+      operationId: listShelfComments
+      summary: A shelf's live comments, newest first, keyset-paged (composed with batched author cards)
+      description: >
+        Applies the effective-visibility rule, then composes social's
+        page with a batched author ProfileCard per comment (mirrors
+        the feed's actor hydration). A card-fetch failure fails open:
+        the page still serves, just without any author. Anything
+        other than social's 200 (its own 400 on a malformed cursor
+        included) still relays verbatim, unchanged from before.
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: One page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommentList" }
+        "400":
+          description: Malformed cursor (code invalid_param)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+    post:
+      operationId: createShelfComment
+      summary: Comment on a shelf (proxied)
+      description: Applies the effective-visibility rule before relaying the social service verbatim.
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCommentRequest" }
+      responses:
+        "201":
+          description: The comment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Comment" }
+        "400":
+          description: Invalid body (code invalid_body)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: Comment cap reached - tombstones count (code cap_exceeded)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/comments/{commentId}:
+    delete:
+      operationId: deleteComment
+      summary: Delete a comment; author tombstones body-NULL, shelf owner tombstones body-retained (proxied)
+      description: >
+        Relayed verbatim; the bff does not resolve the shelf for this
+        call (social already knows the comment row's shelf and owner
+        and authorizes by row).
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Tombstoned
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller is neither author nor shelf owner (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          description: Unknown or already tombstoned (code comment_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/social/follows/{userId}:
+    put:
+      operationId: follow
+      summary: Follow a user (idempotent) (proxied)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Following (already or newly)
+        "400":
+          description: Self-follow (code self_follow)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Unknown or private (deliberately indistinguishable; code profile_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: Follow cap reached (code cap_exceeded)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+    delete:
+      operationId: unfollow
+      summary: Unfollow a user (idempotent) (proxied)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Not following (already or newly)
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/social/likes/{shelfId}:
+    put:
+      operationId: like
+      summary: Like a shelf (idempotent) (proxied)
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Liked (already or newly)
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: Like cap reached (code cap_exceeded)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+    delete:
+      operationId: unlike
+      summary: Remove a like (idempotent) (proxied)
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Not liked (already or newly)
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/search/users:
+    get:
+      operationId: searchUsers
+      summary: Substring search over listed profiles' handles (proxied)
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 64 }
+      responses:
+        "200":
+          description: Up to 20 listed matches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profiles]
+                properties:
+                  profiles:
+                    type: array
+                    items: { $ref: "#/components/schemas/ProfileCard" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/feed:
+    get:
+      operationId: getFeed
+      summary: The caller's two-tab activity feed (fill loop, hydrated and gated)
+      description: >
+        Runs a fill loop against the social service: fetch a raw page,
+        hydrate it (actor cards, shelf cards, comment excerpts), gate
+        it by the tab's visibility rule, and repeat until limit
+        survivors accumulate or the raw stream exhausts, capped at
+        feedFillRounds rounds (a rare shortfall yields a slightly
+        short page). Actions are signed, objects are gated: actor
+        cards attach at any visibility; on tab=following a row
+        naming a shelf survives only when the shelf is listed and its
+        owner is listed, and a followed_user row survives only when
+        the followee is listed; tab=you shows every row (the objects
+        are the caller's own shelves). next_cursor is the raw cursor
+        of the last consumed row; absent when the raw stream is
+        exhausted with nothing left to resume from.
+      parameters:
+        - name: tab
+          in: query
+          required: true
+          schema: { type: string, enum: [following, you] }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: One filled page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeedPage" }
+        "400":
+          description: Invalid tab or malformed cursor (code invalid_param)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/explore:
+    get:
+      operationId: getExplore
+      summary: Browse shared shelves - newest-published or top-liked, listed-only
+      description: >
+        recent pages collection's listed shelves directly (no owner
+        filter), gates each page's owner for listed-ness at the bff,
+        and fills short pages by re-paging collection, up to a fixed
+        round cap; next_offset carries the raw collection-space
+        resume position and is present only while more rows remain -
+        top is the fixed all-time like-count leaderboard (leaderboard
+        order preserved, no deep paging, no next_offset), dropping
+        anything that is not effectively listed by the time it is
+        read. limit and offset apply to recent only; top always
+        answers its own fixed-size leaderboard.
+      parameters:
+        - name: sort
+          in: query
+          required: true
+          schema: { type: string, enum: [recent, top] }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: One page of shelf cards
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExplorePage" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
 components:
   responses:
     Unauthenticated:
@@ -1384,11 +1845,11 @@ components:
         are intentionally omitted; add fields only when the SPA has a
         concrete use for them.
       type: object
-      required: [id, email, display_name, roles, preferred_currency]
+      required: [id, email, handle, roles, preferred_currency, profile_visibility, landing_page]
       properties:
         id: { type: string, format: uuid }
         email: { type: string }
-        display_name: { type: string }
+        handle: { type: string }
         avatar_url: { type: string }
         roles:
           type: array
@@ -1396,13 +1857,26 @@ components:
         preferred_currency:
           type: string
           description: Display currency for market values; USD until set.
+        profile_visibility:
+          type: string
+          enum: [private, unlisted, listed]
+        landing_page:
+          type: string
+          enum: [collection, feed, explore]
+          description: Where the app opens after sign-in.
     UpdateMeRequest:
       type: object
       description: Absent fields keep their value; an empty avatar_url clears it.
       properties:
-        display_name: { type: string }
+        handle: { type: string }
         avatar_url: { type: string }
         preferred_currency: { type: string, pattern: "^[A-Z]{3}$" }
+        profile_visibility:
+          type: string
+          enum: [private, unlisted, listed]
+        landing_page:
+          type: string
+          enum: [collection, feed, explore]
     Identity:
       type: object
       required: [id, provider, created_at]
@@ -2195,6 +2669,44 @@ components:
         entries:
           type: array
           items: { $ref: "#/components/schemas/Entry" }
+    BulkUpdateRequest:
+      description: >
+        Delta applied across the caller's own entries among entry_ids
+        (foreign or unknown ids are silently not counted, same
+        ownership-filtering posture as tag attachment). At least one
+        of add_tag_ids / remove_tag_ids / status / storage_location
+        must be present, else 400. storage_location's clearing rule is
+        the OPPOSITE of the full-replacement update's: here an ABSENT
+        storage_location leaves the field untouched, and an explicit
+        empty string clears it.
+      type: object
+      required: [entry_ids]
+      properties:
+        entry_ids:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items: { type: string, format: uuid }
+        add_tag_ids:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+        remove_tag_ids:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+        status: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
+        storage_location:
+          type: string
+          maxLength: 200
+          description: Empty string clears the field; an absent field leaves it untouched (see the operation description).
+    BulkUpdateResult:
+      type: object
+      required: [updated_count]
+      properties:
+        updated_count:
+          type: integer
+          description: Count of the caller's own entries among entry_ids, whether or not any targeted field actually changed.
     ReorderRequest:
       description: Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid.
       type: object
@@ -2222,10 +2734,20 @@ components:
         name: { type: string, minLength: 1, maxLength: 50 }
     SavedView:
       type: object
-      required: [id, name, params, created_at, updated_at]
+      required: [id, name, slug, visibility, params, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
+        slug:
+          type: string
+          description: URL slug derived from the name (underscore transform); unique per user on its folded key.
+        visibility:
+          type: string
+          enum: [private, unlisted, listed]
+        published_at:
+          type: string
+          format: date-time
+          description: Stamped on each transition into listed.
         params:
           type: object
           additionalProperties: true
@@ -2240,6 +2762,10 @@ components:
           type: object
           additionalProperties: true
           description: Opaque frontend view state; at most 8192 marshaled bytes.
+        visibility:
+          type: string
+          enum: [private, unlisted, listed]
+          default: private
     PlatformCount:
       type: object
       required: [name, count]
@@ -2302,3 +2828,245 @@ components:
         points:
           type: array
           items: { $ref: "#/components/schemas/ValuePoint" }
+    # The social/shared schemas below compose the public profile and
+    # shelf pages across the user, collection, and social services.
+    # ProfileCard mirrors the user service contract verbatim;
+    # ShelfSocialSummary/ProfileSocialSummary/Comment mirror the social
+    # service contract verbatim; SharedEntry/SharedEntryGroup mirror
+    # the collection service's shared-shelf contract verbatim (reusing
+    # EntryPlatform/TagRef above - the same fields, the same rules).
+    ProfileCard:
+      description: The cross-user projection of a user. Never email, never roles.
+      type: object
+      required: [user_id, handle, profile_visibility]
+      properties:
+        user_id: { type: string, format: uuid }
+        handle: { type: string }
+        avatar_url: { type: string }
+        profile_visibility:
+          type: string
+          enum: [private, unlisted, listed]
+    ShelfSocialSummary:
+      type: object
+      required: [shelf_id, like_count, comment_count, viewer_likes]
+      properties:
+        shelf_id: { type: string, format: uuid }
+        like_count: { type: integer }
+        comment_count: { type: integer, description: Live comments only. }
+        viewer_likes: { type: boolean }
+    ProfileSocialSummary:
+      type: object
+      required: [follower_count, following_count, viewer_follows]
+      properties:
+        follower_count: { type: integer }
+        following_count: { type: integer }
+        viewer_follows: { type: boolean }
+    ShelfCard:
+      description: >
+        A shelf card as shown in a profile's shelf list, an activity
+        feed excerpt, or an Explore grid. owner is embedded so a card
+        renders without a second round trip; like_count/comment_count/
+        viewer_likes are present exactly when the page's social
+        composition succeeded (all three absent together when the
+        page fell back to social_available: false).
+      type: object
+      required: [id, name, slug, owner, entry_count, cover_urls]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        owner: { $ref: "#/components/schemas/ProfileCard" }
+        published_at: { type: string, format: date-time }
+        entry_count: { type: integer }
+        cover_urls:
+          type: array
+          items: { type: string }
+        like_count: { type: integer }
+        comment_count: { type: integer }
+        viewer_likes: { type: boolean }
+    ShelfMeta:
+      description: >
+        A shelf's own identity and stored view state, without the
+        owner card or social counts (those are ShelfPage's sibling
+        fields).
+      type: object
+      required: [id, name, slug, params]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        params:
+          type: object
+          additionalProperties: true
+        published_at: { type: string, format: date-time }
+    ShelfPage:
+      description: >
+        A single shared shelf's page composition: the shelf meta, its
+        (non-private, by construction) owner card, and social counts
+        when the social service answered. social is absent exactly
+        when social_available is false (the social service degrades
+        open; the page still renders).
+      type: object
+      required: [shelf, owner, social_available]
+      properties:
+        shelf: { $ref: "#/components/schemas/ShelfMeta" }
+        owner: { $ref: "#/components/schemas/ProfileCard" }
+        social_available: { type: boolean }
+        social: { $ref: "#/components/schemas/ShelfSocialSummary" }
+    ProfilePage:
+      description: >
+        A profile's page composition: the profile card, social counts
+        when the social service answered, and up to 50 of the owner's
+        listed shelves (owners see exactly what visitors see). social
+        is absent exactly when social_available is false (the social
+        service degrades open; the page still renders).
+      type: object
+      required: [profile, social_available, shelves, total_count]
+      properties:
+        profile: { $ref: "#/components/schemas/ProfileCard" }
+        social_available: { type: boolean }
+        social: { $ref: "#/components/schemas/ProfileSocialSummary" }
+        shelves:
+          type: array
+          items: { $ref: "#/components/schemas/ShelfCard" }
+        total_count:
+          type: integer
+          description: The owner's full listed-shelf count, beyond this page.
+    Comment:
+      description: >
+        A live comment; tombstones never serialize. author_id is null
+        for a purge-anonymized comment (the row survives with its
+        body; only the account link is severed) and a uuid otherwise -
+        the key is always present, only the value varies. author is
+        the bff's batched ProfileCard hydration of author_id (the same
+        composition FeedItem.actor uses): present on a GET list page
+        when the author resolves, absent for an anonymized comment
+        (there is no id left to hydrate) or when the hydration batch
+        itself fails open; never populated on the POST response (a
+        verbatim create relay).
+      type: object
+      required: [id, shelf_id, author_id, body, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        shelf_id: { type: string, format: uuid }
+        author_id: { type: string, format: uuid, nullable: true }
+        body: { type: string }
+        created_at: { type: string, format: date-time }
+        author: { $ref: "#/components/schemas/ProfileCard" }
+    CommentList:
+      type: object
+      required: [comments]
+      properties:
+        comments:
+          type: array
+          items: { $ref: "#/components/schemas/Comment" }
+        next_cursor: { type: string }
+    CreateCommentRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 2000 }
+    FeedItem:
+      description: >
+        One activity-feed row after the fill loop hydrates and gates
+        it. actor always attaches (actions are signed, any
+        visibility); shelf is present only for the three shelf verbs
+        (liked_shelf, commented_shelf, published_shelf) whose object
+        cleared the tab's gating rule; followed_user is present only
+        for a surviving followed_user row and carries the followee's
+        card; comment_excerpt is present only for a surviving
+        commented_shelf row.
+      type: object
+      required: [id, verb, created_at, actor]
+      properties:
+        id: { type: string, format: uuid }
+        verb:
+          type: string
+          enum: [followed_user, liked_shelf, commented_shelf, published_shelf]
+        created_at: { type: string, format: date-time }
+        actor: { $ref: "#/components/schemas/ProfileCard" }
+        shelf: { $ref: "#/components/schemas/ShelfCard" }
+        followed_user: { $ref: "#/components/schemas/ProfileCard" }
+        comment_excerpt: { type: string }
+    FeedPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/FeedItem" }
+        next_cursor: { type: string }
+    ExplorePage:
+      description: >
+        total_count is never sent: top is a fixed leaderboard with no
+        deeper page to count, and recent supersedes it with
+        next_offset (kept in the shape, never populated, for forward
+        compatibility only).
+      type: object
+      required: [shelves]
+      properties:
+        total_count: { type: integer }
+        next_offset:
+          type: integer
+          minimum: 0
+          description: >
+            Present when more listed shelves remain to page through -
+            recent sort only. The raw collection-space offset to
+            resume from; absent once the listed-shelf stream is
+            exhausted.
+        shelves:
+          type: array
+          items: { $ref: "#/components/schemas/ShelfCard" }
+    SharedEntry:
+      description: >
+        The cross-user entry projection - a strict whitelist. No money
+        fields (price paid, values, currency, purchase provenance,
+        pricing mode) and no personal fields (status, rating, notes,
+        location, backlog rank, external refs) may ever be added here
+        without a deliberate privacy decision.
+      type: object
+      required: [id, item_type, media_type, display_name, region, packaging, has_box, has_manual, pinned, tags, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        item_type: { type: string, enum: [game, console, accessory] }
+        media_type: { type: string, enum: [physical, digital] }
+        display_name: { type: string }
+        platform: { $ref: "#/components/schemas/EntryPlatform" }
+        first_release_date: { type: string, format: date }
+        cover_url: { type: string }
+        igdb_game_id: { type: integer, format: int64 }
+        region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        edition: { type: string }
+        packaging: { type: string, enum: [sealed, cib, loose] }
+        has_box: { type: boolean }
+        has_manual: { type: boolean }
+        box_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        manual_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        item_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        pinned: { type: boolean }
+        tags:
+          type: array
+          items: { $ref: "#/components/schemas/TagRef" }
+        created_at: { type: string, format: date-time }
+    SharedEntryGroup:
+      type: object
+      required: [key, label, entries]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/SharedEntry" }
+    SharedEntryList:
+      description: Exactly one of entries/groups is present (groups when the stored params group).
+      type: object
+      required: [total_count]
+      properties:
+        total_count: { type: integer }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/SharedEntry" }
+        groups:
+          type: array
+          items: { $ref: "#/components/schemas/SharedEntryGroup" }

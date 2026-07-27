@@ -22,8 +22,10 @@ import (
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/authapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/collectionapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/enrichapi"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/socialapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/socialclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
 )
 
@@ -65,6 +67,9 @@ type UserAPI interface {
 	Get(ctx context.Context, id, bearer string) (userapi.User, error)
 	Update(ctx context.Context, id, bearer string, body []byte) (userclient.Result, error)
 	Delete(ctx context.Context, id, bearer string) error
+	SharedProfile(ctx context.Context, bearer, handle string) (userapi.ProfileCard, error)
+	SharedCardsByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]userapi.ProfileCard, error)
+	SearchProfiles(ctx context.Context, bearer, q string) (userclient.Result, error)
 }
 
 // EnrichmentAPI is the enrichment service surface (implemented by
@@ -99,6 +104,7 @@ type CollectionAPI interface {
 	UpdateEntry(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
 	DeleteEntry(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
 	ReorderEntry(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
+	BulkUpdateEntries(ctx context.Context, bearer string, body []byte) (collectionclient.Result, error)
 	ListTags(ctx context.Context, bearer string) (collectionclient.Result, error)
 	CreateTag(ctx context.Context, bearer string, body []byte) (collectionclient.Result, error)
 	RenameTag(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
@@ -118,6 +124,34 @@ type CollectionAPI interface {
 	AckSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
 	ListSubmissions(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error)
 	SubmitVerdict(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
+	SharedShelf(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error)
+	SharedShelfBySlug(ctx context.Context, bearer string, ownerID uuid.UUID, slug string) (collectionapi.SharedShelf, error)
+	SharedShelfEntries(ctx context.Context, bearer string, id uuid.UUID, limit, offset *int) (collectionclient.Result, error)
+	ListSharedShelves(ctx context.Context, bearer string, ownerIDs []uuid.UUID, limit, offset int) ([]collectionapi.SharedShelfSummary, int, error)
+	SharedShelvesByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]collectionapi.SharedShelfSummary, error)
+}
+
+// SocialAPI is the social service surface (implemented by
+// socialclient). Follow/Unfollow/Like/Unlike/ListComments/
+// CreateComment/DeleteComment/PurgeUserData are verbatim relays; the
+// rest are typed reads the bff consumes itself to compose the shared
+// pages, the activity feed and Explore browsing, and the publish
+// orchestration leg.
+type SocialAPI interface {
+	Follow(ctx context.Context, bearer string, userID uuid.UUID) (socialclient.Result, error)
+	Unfollow(ctx context.Context, bearer string, userID uuid.UUID) (socialclient.Result, error)
+	Like(ctx context.Context, bearer string, shelfID uuid.UUID) (socialclient.Result, error)
+	Unlike(ctx context.Context, bearer string, shelfID uuid.UUID) (socialclient.Result, error)
+	ListComments(ctx context.Context, bearer string, shelfID uuid.UUID, cursor *string, limit *int) (socialclient.Result, error)
+	CreateComment(ctx context.Context, bearer string, shelfID uuid.UUID, body []byte) (socialclient.Result, error)
+	DeleteComment(ctx context.Context, bearer string, commentID uuid.UUID) (socialclient.Result, error)
+	ProfileSummary(ctx context.Context, bearer string, userID uuid.UUID) (socialapi.ProfileSocialSummary, error)
+	ShelvesSummary(ctx context.Context, bearer string, ids []uuid.UUID) ([]socialapi.ShelfSocialSummary, error)
+	CommentsByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]socialapi.Comment, error)
+	Feed(ctx context.Context, bearer, tab string, cursor *string, limit int) (events []socialapi.ActivityEvent, nextCursor *string, err error)
+	TopShelves(ctx context.Context, bearer string, limit int) ([]uuid.UUID, error)
+	RecordPublish(ctx context.Context, bearer string, shelfID uuid.UUID) error
+	PurgeUserData(ctx context.Context, bearer string) (socialclient.Result, error)
 }
 
 const (
@@ -163,6 +197,7 @@ type Handlers struct {
 	users         UserAPI
 	enrichment    EnrichmentAPI
 	collection    CollectionAPI
+	social        SocialAPI
 	logger        *slog.Logger
 	accessTTL     time.Duration
 	refreshWindow time.Duration
@@ -184,7 +219,10 @@ type Handlers struct {
 
 // New builds a Handlers. The OTel meter is best-effort: a counter
 // registration failure is logged but does not prevent startup.
-func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, enrichment EnrichmentAPI, collection CollectionAPI, opts Options) *Handlers {
+func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, enrichment EnrichmentAPI, collection CollectionAPI, social SocialAPI, opts Options) *Handlers {
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
+	}
 	meter := otel.Meter("github.com/levonn-dev/vg-collect/services/bff")
 	counter := func(name, unit, desc string) metric.Int64Counter {
 		c, err := meter.Int64Counter(name, metric.WithUnit(unit), metric.WithDescription(desc))
@@ -204,7 +242,7 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 	cacheLookups := counter("vg.bff.cache.lookups", "{lookup}",
 		"Composition cache lookups (me, recs) by hit or miss")
 	return &Handlers{
-		codec: codec, cache: cache, auth: auth, users: users, enrichment: enrichment, collection: collection,
+		codec: codec, cache: cache, auth: auth, users: users, enrichment: enrichment, collection: collection, social: social,
 		logger:        opts.Logger,
 		accessTTL:     opts.AccessTokenTTL,
 		refreshWindow: opts.RefreshWindow,
@@ -231,7 +269,7 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 // failOpenEvent records a Valkey failure that the caller is about to
 // fail open on (log + metric; alerting watches the metric).
 func (h *Handlers) failOpenEvent(ctx context.Context, op string, err error) {
-	h.logger.ErrorContext(ctx, "valkey unavailable; failing open", "op", op, "err", err)
+	h.logger.ErrorContext(ctx, "dependency unavailable; failing open", "op", op, "err", err)
 	if h.failOpen != nil {
 		h.failOpen.Add(ctx, 1, metric.WithAttributes(attribute.String("op", op)))
 	}

@@ -23,6 +23,15 @@ import (
 // problem+json 404, meaning the account is gone (not a proxy error).
 var ErrUserNotFound = errors.New("userclient: user not found")
 
+// ErrProfileNotFound is returned when the user service issues a
+// parsed problem+json 404 for a shared-profile resolve: unknown and
+// private handles are deliberately indistinguishable.
+var ErrProfileNotFound = errors.New("userclient: profile not found")
+
+// ErrUpstream: the user service answered outside its relayed contract
+// (or an infrastructure layer answered for it).
+var ErrUpstream = errors.New("userclient: upstream failure")
+
 // Result relays a raw upstream answer so validation problems from the
 // user service reach the browser verbatim.
 type Result struct {
@@ -114,4 +123,60 @@ func (c *Client) Delete(ctx context.Context, id, bearer string) error {
 		return fmt.Errorf("userclient: delete: status %d", resp.StatusCode())
 	}
 	return nil
+}
+
+func bearerEditor(bearer string) userapi.RequestEditorFn {
+	return func(_ context.Context, req *http.Request) error {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		return nil
+	}
+}
+
+// SharedProfile resolves a handle to its cross-user profile card, the
+// composition input behind the shared shelf/profile pages. Gated on
+// the parsed problem body like Get: unknown and private
+// handles are deliberately indistinguishable, both ErrProfileNotFound.
+func (c *Client) SharedProfile(ctx context.Context, bearer, handle string) (userapi.ProfileCard, error) {
+	resp, err := c.api.GetSharedProfileWithResponse(ctx, handle, bearerEditor(bearer))
+	if err != nil {
+		return userapi.ProfileCard{}, fmt.Errorf("userclient: shared profile: %w", err)
+	}
+	if resp.ApplicationproblemJSON404 != nil {
+		return userapi.ProfileCard{}, ErrProfileNotFound
+	}
+	if resp.JSON200 == nil {
+		return userapi.ProfileCard{}, fmt.Errorf("%w: status %d", ErrUpstream, resp.StatusCode())
+	}
+	return *resp.JSON200, nil
+}
+
+// SharedCardsByIDs batch-resolves profile cards for hydration -
+// returned regardless of visibility (actions are signed; page access
+// is gated separately, by effectiveShelf and its siblings).
+func (c *Client) SharedCardsByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
+	resp, err := c.api.GetSharedProfilesByIdsWithResponse(ctx, &userapi.GetSharedProfilesByIdsParams{Ids: ids}, bearerEditor(bearer))
+	if err != nil {
+		return nil, fmt.Errorf("userclient: shared cards by ids: %w", err)
+	}
+	if resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
+		return nil, fmt.Errorf("%w: status %d", ErrUpstream, resp.StatusCode())
+	}
+	return resp.JSON200.Profiles, nil
+}
+
+// SearchProfiles relays a listed-handle substring search verbatim
+// (the SPA's people-search box).
+func (c *Client) SearchProfiles(ctx context.Context, bearer, q string) (Result, error) {
+	resp, err := c.api.SearchSharedProfilesWithResponse(ctx, &userapi.SearchSharedProfilesParams{Q: q}, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("userclient: search profiles: %w", err)
+	}
+	if resp.StatusCode() != http.StatusOK {
+		return Result{}, fmt.Errorf("%w: status %d", ErrUpstream, resp.StatusCode())
+	}
+	return Result{
+		Status:      resp.StatusCode(),
+		ContentType: resp.HTTPResponse.Header.Get("Content-Type"),
+		Body:        resp.Body,
+	}, nil
 }

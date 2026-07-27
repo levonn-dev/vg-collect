@@ -26,6 +26,7 @@ import (
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/enrichapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
+	"github.com/levonn-dev/vg-collect/services/bff/internal/socialclient"
 	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
 )
 
@@ -113,12 +114,17 @@ func (s *stubAuthFull) DeleteUserAuth(ctx context.Context, userID, bearer string
 
 // stubUsersFull returns a canned user/result or error. onDelete, when set, is
 // notified on every call so a test can record DeleteMe's cross-service
-// call order.
+// call order. The shared-page surface (added for the social pages) follows
+// the newer function-field, nil-panics convention instead.
 type stubUsersFull struct {
 	user     userapi.User
 	err      error
 	result   userclient.Result
 	onDelete func()
+
+	sharedProfile    func(ctx context.Context, bearer, handle string) (userapi.ProfileCard, error)
+	sharedCardsByIDs func(ctx context.Context, bearer string, ids []uuid.UUID) ([]userapi.ProfileCard, error)
+	searchProfiles   func(ctx context.Context, bearer, q string) (userclient.Result, error)
 }
 
 func (f *stubUsersFull) Get(context.Context, string, string) (userapi.User, error) {
@@ -140,6 +146,27 @@ func (f *stubUsersFull) Delete(_ context.Context, _, _ string) error {
 		f.onDelete()
 	}
 	return f.err
+}
+
+func (f *stubUsersFull) SharedProfile(ctx context.Context, bearer, handle string) (userapi.ProfileCard, error) {
+	if f.sharedProfile == nil {
+		panic("unexpected users.SharedProfile")
+	}
+	return f.sharedProfile(ctx, bearer, handle)
+}
+
+func (f *stubUsersFull) SharedCardsByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
+	if f.sharedCardsByIDs == nil {
+		panic("unexpected users.SharedCardsByIDs")
+	}
+	return f.sharedCardsByIDs(ctx, bearer, ids)
+}
+
+func (f *stubUsersFull) SearchProfiles(ctx context.Context, bearer, q string) (userclient.Result, error) {
+	if f.searchProfiles == nil {
+		panic("unexpected users.SearchProfiles")
+	}
+	return f.searchProfiles(ctx, bearer, q)
 }
 
 // stubEnrichment implements server.EnrichmentAPI via function fields.
@@ -597,7 +624,7 @@ func TestGetMe(t *testing.T) {
 	avatar := "https://cdn.example/a.png"
 	h := newTestHandlers(t, fc, &stubAuthFull{})
 	h.users = &stubUsersFull{user: userapi.User{
-		Id: uid, Email: "alice@example.test", DisplayName: "alice",
+		Id: uid, Email: "alice@example.test", Handle: "alice",
 		AvatarUrl: &avatar, Roles: []userapi.UserRoles{"user"},
 	}}
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
@@ -668,7 +695,7 @@ func TestGetMeUpstreamError(t *testing.T) {
 func TestGetMeComposesAndCaches(t *testing.T) {
 	s := newStack(t)
 	const sub = "11111111-1111-1111-1111-111111111111"
-	s.users.id, s.users.email, s.users.display = sub, "alice@example.test", "alice"
+	s.users.id, s.users.email, s.users.handle = sub, "alice@example.test", "alice"
 	access := mintAccess(t, sub, "jA", time.Now().Add(5*time.Minute)) // fresh: no refresh
 	cookie := s.cookieFor(t, access, "refresh-1")
 
@@ -677,15 +704,15 @@ func TestGetMeComposesAndCaches(t *testing.T) {
 		t.Fatalf("compose call: status = %d body=%s", r1.status, r1.body)
 	}
 	var me struct {
-		Id          string   `json:"id"`
-		Email       string   `json:"email"`
-		DisplayName string   `json:"display_name"`
-		Roles       []string `json:"roles"`
+		Id     string   `json:"id"`
+		Email  string   `json:"email"`
+		Handle string   `json:"handle"`
+		Roles  []string `json:"roles"`
 	}
 	if err := json.Unmarshal(r1.body, &me); err != nil {
 		t.Fatalf("compose body: %v (%s)", err, r1.body)
 	}
-	if me.Id != sub || me.Email != "alice@example.test" || me.DisplayName != "alice" ||
+	if me.Id != sub || me.Email != "alice@example.test" || me.Handle != "alice" ||
 		len(me.Roles) != 1 || me.Roles[0] != "user" {
 		t.Fatalf("composed me = %+v", me)
 	}
@@ -706,13 +733,13 @@ func TestUpdateMe_RelaysAndInvalidatesCache(t *testing.T) {
 	uid := uuid.New()
 
 	t.Run("200_relays_projection_and_invalidates_cache", func(t *testing.T) {
-		userJSON := []byte(`{"id":"` + uid.String() + `","email":"alice@example.test","display_name":"alice2","roles":["user"],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`)
+		userJSON := []byte(`{"id":"` + uid.String() + `","email":"alice@example.test","handle":"alice2","roles":["user"],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`)
 		fc := newStubCache()
 		fc.me[uid.String()] = []byte(`{"stale":true}`)
 		h := newTestHandlers(t, fc, &stubAuthFull{})
 		h.users = &stubUsersFull{result: userclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: userJSON}}
 		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
-		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"display_name":"alice2"}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"handle":"alice2"}`))
 		r.AddCookie(sealedCookie(t, h, access, "r1"))
 		r.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
@@ -731,7 +758,7 @@ func TestUpdateMe_RelaysAndInvalidatesCache(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &me); err != nil {
 			t.Fatal(err)
 		}
-		if me.Id != uid || me.Email != "alice@example.test" || me.DisplayName != "alice2" ||
+		if me.Id != uid || me.Email != "alice@example.test" || me.Handle != "alice2" ||
 			len(me.Roles) != 1 || me.Roles[0] != "user" {
 			t.Fatalf("me = %+v", me)
 		}
@@ -741,13 +768,13 @@ func TestUpdateMe_RelaysAndInvalidatesCache(t *testing.T) {
 	})
 
 	t.Run("400_relays_verbatim_and_does_not_invalidate", func(t *testing.T) {
-		problemJSON := []byte(`{"type":"about:blank","title":"Bad Request","status":400,"code":"invalid_body","detail":"display_name too long"}`)
+		problemJSON := []byte(`{"type":"about:blank","title":"Bad Request","status":400,"code":"invalid_body","detail":"handle too long"}`)
 		fc := newStubCache()
 		fc.me[uid.String()] = []byte(`{"cached":true}`)
 		h := newTestHandlers(t, fc, &stubAuthFull{})
 		h.users = &stubUsersFull{result: userclient.Result{Status: http.StatusBadRequest, ContentType: "application/problem+json", Body: problemJSON}}
 		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
-		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"display_name":""}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"handle":""}`))
 		r.AddCookie(sealedCookie(t, h, access, "r1"))
 		r.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
@@ -765,7 +792,7 @@ func TestUpdateMe_RelaysAndInvalidatesCache(t *testing.T) {
 		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
 		h.users = &stubUsersFull{err: errors.New("user service down")}
 		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
-		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"display_name":"x"}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"handle":"x"}`))
 		r.AddCookie(sealedCookie(t, h, access, "r1"))
 		r.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
@@ -782,7 +809,7 @@ func TestUnitGetMe_IncludesPreferredCurrency(t *testing.T) {
 	uid := uuid.New()
 	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
 	h.users = &stubUsersFull{user: userapi.User{
-		Id: uid, Email: "alice@example.test", DisplayName: "alice",
+		Id: uid, Email: "alice@example.test", Handle: "alice",
 		Roles: []userapi.UserRoles{"user"}, PreferredCurrency: "EUR",
 	}}
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
@@ -804,6 +831,68 @@ func TestUnitGetMe_IncludesPreferredCurrency(t *testing.T) {
 	}
 }
 
+// TestUnitGetMe_IncludesProfileVisibility pins that a non-default
+// profile_visibility reaches the browser projection unchanged (the
+// user service's column default is "private"; a silently-dropped or
+// defaulted-away field would still read "private" here).
+func TestUnitGetMe_IncludesProfileVisibility(t *testing.T) {
+	t.Run("non_default_value_round_trips", func(t *testing.T) {
+		uid := uuid.New()
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+		h.users = &stubUsersFull{user: userapi.User{
+			Id: uid, Email: "alice@example.test", Handle: "alice",
+			Roles: []userapi.UserRoles{"user"}, ProfileVisibility: userapi.Listed,
+		}}
+		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
+		r := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+		r.AddCookie(sealedCookie(t, h, access, "r1"))
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, r)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status: %d", rec.Code)
+		}
+		var got struct {
+			ProfileVisibility string `json:"profile_visibility"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if got.ProfileVisibility != "listed" {
+			t.Fatalf("profile_visibility: %q, want listed (the user service default is private)", got.ProfileVisibility)
+		}
+	})
+}
+
+// TestUnitGetMe_IncludesLandingPage pins that the profile's landing_page
+// preference reaches the browser projection (the user service default
+// is "feed"; a non-default value proves the field is not silently
+// dropped or defaulted-away in the composition).
+func TestUnitGetMe_IncludesLandingPage(t *testing.T) {
+	uid := uuid.New()
+	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h.users = &stubUsersFull{user: userapi.User{
+		Id: uid, Email: "alice@example.test", Handle: "alice",
+		Roles: []userapi.UserRoles{"user"}, LandingPage: userapi.UserLandingPageCollection,
+	}}
+	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
+	r := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	r.AddCookie(sealedCookie(t, h, access, "r1"))
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: %d", rec.Code)
+	}
+	var got struct {
+		LandingPage string `json:"landing_page"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.LandingPage != "collection" {
+		t.Fatalf("landing_page: %q, want collection", got.LandingPage)
+	}
+}
+
 // captureUsers embeds the stub so Get and Delete forward unchanged,
 // while Update additionally exposes the raw body reaching the user
 // service (mirrors captureCollection's pass-through capture).
@@ -821,7 +910,7 @@ func (c *captureUsers) Update(ctx context.Context, id, bearer string, body []byt
 // reaches the user service verbatim and the answer projects the field.
 func TestUnitUpdateMe_RelaysPreferredCurrency(t *testing.T) {
 	uid := uuid.New()
-	userJSON := []byte(`{"id":"` + uid.String() + `","email":"alice@example.test","display_name":"alice","preferred_currency":"JPY","roles":["user"],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`)
+	userJSON := []byte(`{"id":"` + uid.String() + `","email":"alice@example.test","handle":"alice","preferred_currency":"JPY","roles":["user"],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`)
 	users := &stubUsersFull{result: userclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: userJSON}}
 	var gotBody []byte
 	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
@@ -847,6 +936,40 @@ func TestUnitUpdateMe_RelaysPreferredCurrency(t *testing.T) {
 	}
 	if got.PreferredCurrency != "JPY" {
 		t.Fatalf("preferred_currency: %q, want JPY", got.PreferredCurrency)
+	}
+}
+
+// TestUnitUpdateMe_RelaysLandingPage pins that a PATCH carrying
+// landing_page reaches the user client verbatim in the request body,
+// and the answer's landing_page projects onto the composed Me.
+func TestUnitUpdateMe_RelaysLandingPage(t *testing.T) {
+	uid := uuid.New()
+	userJSON := []byte(`{"id":"` + uid.String() + `","email":"alice@example.test","handle":"alice","landing_page":"collection","roles":["user"],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`)
+	users := &stubUsersFull{result: userclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: userJSON}}
+	var gotBody []byte
+	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h.users = &captureUsers{stubUsersFull: users, onUpdate: func(body []byte) { gotBody = body }}
+	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
+	r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"landing_page":"collection"}`))
+	r.AddCookie(sealedCookie(t, h, access, "r1"))
+	r.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, r)
+
+	if !strings.Contains(string(gotBody), `"landing_page":"collection"`) {
+		t.Fatalf("relayed body = %s, want it to contain landing_page collection", gotBody)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		LandingPage string `json:"landing_page"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.LandingPage != "collection" {
+		t.Fatalf("landing_page: %q, want collection", got.LandingPage)
 	}
 }
 
@@ -1050,6 +1173,10 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 			record("collection.PurgeUserData")
 			return collectionclient.Result{Status: http.StatusNoContent}, nil
 		}}
+		soc := &stubSocialFull{purgeUserData: func(context.Context, string) (socialclient.Result, error) {
+			record("social.PurgeUserData")
+			return socialclient.Result{Status: http.StatusNoContent}, nil
+		}}
 		h := newTestHandlers(t, fc, &stubAuthFull{
 			deleteUserAuth: func(context.Context, string, string) error {
 				record("auth.DeleteUserAuth")
@@ -1057,6 +1184,7 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 			},
 		})
 		h.collection = col
+		h.social = soc
 		h.users = &stubUsersFull{onDelete: func() { record("users.Delete") }}
 		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 		r := httptest.NewRequest(http.MethodDelete, "/api/me", nil)
@@ -1067,7 +1195,7 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 		if rec.Code != http.StatusNoContent {
 			t.Fatalf("code = %d body=%s", rec.Code, rec.Body.String())
 		}
-		if want := []string{"collection.PurgeUserData", "auth.DeleteUserAuth", "users.Delete"}; !slices.Equal(order, want) {
+		if want := []string{"collection.PurgeUserData", "social.PurgeUserData", "auth.DeleteUserAuth", "users.Delete"}; !slices.Equal(order, want) {
 			t.Fatalf("order = %v, want %v", order, want)
 		}
 		if len(fc.denyAdds) != 1 || fc.denyAdds[0][0] != "j1" {
@@ -1132,6 +1260,69 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 		}
 	})
 
+	t.Run("social_purge_failure_stops_before_auth_or_user", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			res  socialclient.Result
+			err  error
+		}{
+			{"non_204_result", socialclient.Result{Status: http.StatusInternalServerError}, nil},
+			{"transport_error", socialclient.Result{}, errors.New("social down")},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				var mu sync.Mutex
+				var order []string
+				record := func(step string) {
+					mu.Lock()
+					order = append(order, step)
+					mu.Unlock()
+				}
+				col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+					record("collection.PurgeUserData")
+					return collectionclient.Result{Status: http.StatusNoContent}, nil
+				}}
+				soc := &stubSocialFull{purgeUserData: func(context.Context, string) (socialclient.Result, error) {
+					record("social.PurgeUserData")
+					return tc.res, tc.err
+				}}
+				h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+					deleteUserAuth: func(context.Context, string, string) error {
+						record("auth.DeleteUserAuth")
+						return nil
+					},
+				})
+				h.collection = col
+				h.social = soc
+				h.users = &stubUsersFull{onDelete: func() { record("users.Delete") }}
+				access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
+				r := httptest.NewRequest(http.MethodDelete, "/api/me", nil)
+				r.AddCookie(sealedCookie(t, h, access, "r1"))
+				rec := httptest.NewRecorder()
+				newRouterFor(t, h).ServeHTTP(rec, r)
+
+				if rec.Code != http.StatusBadGateway {
+					t.Fatalf("code = %d", rec.Code)
+				}
+				var p struct {
+					Code   string `json:"code"`
+					Detail string `json:"detail"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+					t.Fatalf("problem body: %v (%s)", err, rec.Body.String())
+				}
+				if p.Code != "upstream_error" || p.Detail != "social purge failed; retry" {
+					t.Fatalf("problem = %+v, want code=upstream_error detail=%q", p, "social purge failed; retry")
+				}
+				if want := []string{"collection.PurgeUserData", "social.PurgeUserData"}; !slices.Equal(order, want) {
+					t.Fatalf("order = %v, want %v (auth/user must not run)", order, want)
+				}
+				if clearedCookie(rec) {
+					t.Fatal("a mid-failure must keep the session intact")
+				}
+			})
+		}
+	})
+
 	t.Run("auth_failure_stops_before_user", func(t *testing.T) {
 		var mu sync.Mutex
 		var order []string
@@ -1144,6 +1335,10 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 			record("collection.PurgeUserData")
 			return collectionclient.Result{Status: http.StatusNoContent}, nil
 		}}
+		soc := &stubSocialFull{purgeUserData: func(context.Context, string) (socialclient.Result, error) {
+			record("social.PurgeUserData")
+			return socialclient.Result{Status: http.StatusNoContent}, nil
+		}}
 		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
 			deleteUserAuth: func(context.Context, string, string) error {
 				record("auth.DeleteUserAuth")
@@ -1151,6 +1346,7 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 			},
 		})
 		h.collection = col
+		h.social = soc
 		h.users = &stubUsersFull{onDelete: func() { record("users.Delete") }}
 		access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 		r := httptest.NewRequest(http.MethodDelete, "/api/me", nil)
@@ -1161,11 +1357,186 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 		if rec.Code != http.StatusBadGateway {
 			t.Fatalf("code = %d", rec.Code)
 		}
-		if want := []string{"collection.PurgeUserData", "auth.DeleteUserAuth"}; !slices.Equal(order, want) {
+		if want := []string{"collection.PurgeUserData", "social.PurgeUserData", "auth.DeleteUserAuth"}; !slices.Equal(order, want) {
 			t.Fatalf("order = %v, want %v (user delete must not run)", order, want)
 		}
 		if clearedCookie(rec) {
 			t.Fatal("a mid-failure must keep the session intact")
+		}
+	})
+}
+
+// TestUnitViewPublish_FiresEventFailOpen pins publishIfListed: a
+// successful view write that lands visibility=listed fires
+// social.RecordPublish with the view's id and the caller's own bearer;
+// a RecordPublish failure is swallowed (fail-open) so the view save
+// itself still answers exactly the collection relay - a social outage
+// must never fail the write. RecordPublish must not fire at all when
+// the write did not land listed: a private body, or any non-2xx
+// collection answer regardless of body. Both CreateView (201, id
+// parsed from the relay body) and UpdateView (200) are covered. Two
+// divergent-body subtests pin that the RESULT decides, not the
+// REQUEST: a request that asked for listed but whose result came back
+// private must not fire, and a request that never asked for listed
+// but whose result came back listed anyway must.
+func TestUnitViewPublish_FiresEventFailOpen(t *testing.T) {
+	viewID := uuid.New()
+	const listedBody = `{"name":"Backlog","params":{},"visibility":"listed"}`
+	const privateBody = `{"name":"Backlog","params":{},"visibility":"private"}`
+	relayed := func(id uuid.UUID) []byte {
+		return []byte(`{"id":"` + id.String() + `","name":"Backlog","params":{},"visibility":"listed"}`)
+	}
+
+	setup := func(col *stubCollection, soc *stubSocialFull) (*Handlers, *testEnv) {
+		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+		h.collection, h.social = col, soc
+		access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
+		return h, &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
+	}
+
+	t.Run("PUT listed, collection 200: RecordPublish fires with the view id and bearer", func(t *testing.T) {
+		var calls int
+		var gotID uuid.UUID
+		var gotBearer string
+		col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+			return collectionclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: relayed(viewID)}, nil
+		}}
+		soc := &stubSocialFull{recordPublish: func(_ context.Context, bearer string, id uuid.UUID) error {
+			calls++
+			gotID, gotBearer = id, bearer
+			return nil
+		}}
+		h, env := setup(col, soc)
+		rec := doAuthedBody(t, h, env, http.MethodPut, "/api/views/"+viewID.String(), listedBody)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("code = %d body = %s", rec.Code, rec.Body.String())
+		}
+		if calls != 1 || gotID != viewID {
+			t.Fatalf("RecordPublish calls = %d id = %v, want exactly 1 call with %v", calls, gotID, viewID)
+		}
+		if gotBearer != env.sessionAccessToken {
+			t.Fatalf("RecordPublish bearer = %q, want the caller's own session token", gotBearer)
+		}
+	})
+
+	t.Run("PUT listed, RecordPublish errors: the save still answers the collection relay (fail-open)", func(t *testing.T) {
+		col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+			return collectionclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: relayed(viewID)}, nil
+		}}
+		soc := &stubSocialFull{recordPublish: func(context.Context, string, uuid.UUID) error {
+			return errors.New("social down")
+		}}
+		h, env := setup(col, soc)
+		rec := doAuthedBody(t, h, env, http.MethodPut, "/api/views/"+viewID.String(), listedBody)
+		if rec.Code != http.StatusOK || rec.Body.String() != string(relayed(viewID)) {
+			t.Fatalf("a social outage must not change the relay: code = %d body = %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("PUT private: RecordPublish is never called", func(t *testing.T) {
+		col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+			return collectionclient.Result{Status: http.StatusOK, ContentType: "application/json",
+				Body: []byte(`{"id":"` + viewID.String() + `","name":"Backlog","params":{},"visibility":"private"}`)}, nil
+		}}
+		soc := &stubSocialFull{} // recordPublish left nil: an unwanted call panics
+		h, env := setup(col, soc)
+		rec := doAuthedBody(t, h, env, http.MethodPut, "/api/views/"+viewID.String(), privateBody)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("code = %d body = %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("PUT listed, collection 409: RecordPublish is never called", func(t *testing.T) {
+		const problem = `{"type":"about:blank","title":"Conflict","status":409,"code":"conflict"}`
+		col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+			return collectionclient.Result{Status: http.StatusConflict, ContentType: "application/problem+json", Body: []byte(problem)}, nil
+		}}
+		soc := &stubSocialFull{} // recordPublish left nil: an unwanted call panics
+		h, env := setup(col, soc)
+		rec := doAuthedBody(t, h, env, http.MethodPut, "/api/views/"+viewID.String(), listedBody)
+		if rec.Code != http.StatusConflict || rec.Body.String() != problem {
+			t.Fatalf("code = %d body = %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("PUT listed, collection 200 with no id in the relay body: RecordPublish is never called", func(t *testing.T) {
+		col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+			return collectionclient.Result{Status: http.StatusOK, ContentType: "application/json",
+				Body: []byte(`{"name":"Backlog","params":{},"visibility":"listed"}`)}, nil
+		}}
+		soc := &stubSocialFull{} // recordPublish left nil: an unwanted call panics
+		h, env := setup(col, soc)
+		rec := doAuthedBody(t, h, env, http.MethodPut, "/api/views/"+viewID.String(), listedBody)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("code = %d body = %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("POST listed, collection 201: RecordPublish fires with the created view's id parsed from the relay body", func(t *testing.T) {
+		var calls int
+		var gotID uuid.UUID
+		col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+			return collectionclient.Result{Status: http.StatusCreated, ContentType: "application/json", Body: relayed(viewID)}, nil
+		}}
+		soc := &stubSocialFull{recordPublish: func(_ context.Context, _ string, id uuid.UUID) error {
+			calls++
+			gotID = id
+			return nil
+		}}
+		h, env := setup(col, soc)
+		rec := doAuthedBody(t, h, env, http.MethodPost, "/api/views", listedBody)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("code = %d body = %s", rec.Code, rec.Body.String())
+		}
+		if calls != 1 || gotID != viewID {
+			t.Fatalf("RecordPublish calls = %d id = %v, want exactly 1 call with %v", calls, gotID, viewID)
+		}
+	})
+
+	t.Run("POST private: RecordPublish is never called", func(t *testing.T) {
+		col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+			return collectionclient.Result{Status: http.StatusCreated, ContentType: "application/json",
+				Body: []byte(`{"id":"` + viewID.String() + `","name":"Backlog","params":{},"visibility":"private"}`)}, nil
+		}}
+		soc := &stubSocialFull{} // recordPublish left nil: an unwanted call panics
+		h, env := setup(col, soc)
+		rec := doAuthedBody(t, h, env, http.MethodPost, "/api/views", privateBody)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("code = %d body = %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("PUT request says listed but the result says private: RecordPublish does not fire (the result governs, not the request)", func(t *testing.T) {
+		col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+			return collectionclient.Result{Status: http.StatusOK, ContentType: "application/json",
+				Body: []byte(`{"id":"` + viewID.String() + `","name":"Backlog","params":{},"visibility":"private"}`)}, nil
+		}}
+		soc := &stubSocialFull{} // recordPublish left nil: an unwanted call panics
+		h, env := setup(col, soc)
+		rec := doAuthedBody(t, h, env, http.MethodPut, "/api/views/"+viewID.String(), listedBody)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("code = %d body = %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("PUT request says private but the result says listed: RecordPublish fires with the result's id (the result governs, not the request)", func(t *testing.T) {
+		var calls int
+		var gotID uuid.UUID
+		col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
+			return collectionclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: relayed(viewID)}, nil
+		}}
+		soc := &stubSocialFull{recordPublish: func(_ context.Context, _ string, id uuid.UUID) error {
+			calls++
+			gotID = id
+			return nil
+		}}
+		h, env := setup(col, soc)
+		rec := doAuthedBody(t, h, env, http.MethodPut, "/api/views/"+viewID.String(), privateBody)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("code = %d body = %s", rec.Code, rec.Body.String())
+		}
+		if calls != 1 || gotID != viewID {
+			t.Fatalf("RecordPublish calls = %d id = %v, want exactly 1 call with %v", calls, gotID, viewID)
 		}
 	})
 }
@@ -1355,6 +1726,12 @@ type stubCollection struct {
 	listSubmissions  func(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error)
 	submitVerdict    func(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
 
+	sharedShelf        func(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error)
+	sharedShelfBySlug  func(ctx context.Context, bearer string, ownerID uuid.UUID, slug string) (collectionapi.SharedShelf, error)
+	sharedShelfEntries func(ctx context.Context, bearer string, id uuid.UUID, limit, offset *int) (collectionclient.Result, error)
+	listSharedShelves  func(ctx context.Context, bearer string, ownerIDs []uuid.UUID, limit, offset int) ([]collectionapi.SharedShelfSummary, int, error)
+	sharedShelvesByIDs func(ctx context.Context, bearer string, ids []uuid.UUID) ([]collectionapi.SharedShelfSummary, error)
+
 	mu        sync.Mutex
 	gotBearer []string
 	gotOps    []string
@@ -1388,6 +1765,9 @@ func (s *stubCollection) DeleteEntry(_ context.Context, bearer string, _ uuid.UU
 }
 func (s *stubCollection) ReorderEntry(_ context.Context, bearer string, _ uuid.UUID, _ []byte) (collectionclient.Result, error) {
 	return s.call("reorder_entry", bearer)
+}
+func (s *stubCollection) BulkUpdateEntries(_ context.Context, bearer string, _ []byte) (collectionclient.Result, error) {
+	return s.call("bulk_update_entries", bearer)
 }
 func (s *stubCollection) ListTags(_ context.Context, bearer string) (collectionclient.Result, error) {
 	return s.call("list_tags", bearer)
@@ -1475,6 +1855,41 @@ func (s *stubCollection) SubmitVerdict(ctx context.Context, bearer string, id uu
 	return s.submitVerdict(ctx, bearer, id, body)
 }
 
+func (s *stubCollection) SharedShelf(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error) {
+	if s.sharedShelf == nil {
+		panic("unexpected SharedShelf")
+	}
+	return s.sharedShelf(ctx, bearer, id)
+}
+
+func (s *stubCollection) SharedShelfBySlug(ctx context.Context, bearer string, ownerID uuid.UUID, slug string) (collectionapi.SharedShelf, error) {
+	if s.sharedShelfBySlug == nil {
+		panic("unexpected SharedShelfBySlug")
+	}
+	return s.sharedShelfBySlug(ctx, bearer, ownerID, slug)
+}
+
+func (s *stubCollection) SharedShelfEntries(ctx context.Context, bearer string, id uuid.UUID, limit, offset *int) (collectionclient.Result, error) {
+	if s.sharedShelfEntries == nil {
+		panic("unexpected SharedShelfEntries")
+	}
+	return s.sharedShelfEntries(ctx, bearer, id, limit, offset)
+}
+
+func (s *stubCollection) ListSharedShelves(ctx context.Context, bearer string, ownerIDs []uuid.UUID, limit, offset int) ([]collectionapi.SharedShelfSummary, int, error) {
+	if s.listSharedShelves == nil {
+		panic("unexpected ListSharedShelves")
+	}
+	return s.listSharedShelves(ctx, bearer, ownerIDs, limit, offset)
+}
+
+func (s *stubCollection) SharedShelvesByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]collectionapi.SharedShelfSummary, error) {
+	if s.sharedShelvesByIDs == nil {
+		panic("unexpected SharedShelvesByIDs")
+	}
+	return s.sharedShelvesByIDs(ctx, bearer, ids)
+}
+
 var _ CollectionAPI = (*stubCollection)(nil)
 
 // newTestHandlersWithCollection wires a session-ready Handlers around
@@ -1500,6 +1915,7 @@ func TestUnitCollectionPassThroughs_RouteMatrix(t *testing.T) {
 		{http.MethodPut, "/api/entries/" + id, "update_entry", `{}`, 200},
 		{http.MethodDelete, "/api/entries/" + id, "delete_entry", "", 204},
 		{http.MethodPost, "/api/entries/" + id + "/reorder", "reorder_entry", `{"after_id":null}`, 200},
+		{http.MethodPost, "/api/entries/bulk-update", "bulk_update_entries", `{"entry_ids":["` + id + `"],"status":"playing"}`, 200},
 		{http.MethodGet, "/api/tags", "list_tags", "", 200},
 		{http.MethodPost, "/api/tags", "create_tag", `{"name":"x"}`, 201},
 		{http.MethodPut, "/api/tags/" + id, "rename_tag", `{"name":"y"}`, 200},

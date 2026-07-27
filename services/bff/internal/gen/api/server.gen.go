@@ -37,6 +37,16 @@ const (
 	AdminSubmissionStatusRejected  AdminSubmissionStatus = "rejected"
 )
 
+// Defines values for BulkUpdateRequestStatus.
+const (
+	BulkUpdateRequestStatusBacklog   BulkUpdateRequestStatus = "backlog"
+	BulkUpdateRequestStatusBeaten    BulkUpdateRequestStatus = "beaten"
+	BulkUpdateRequestStatusCompleted BulkUpdateRequestStatus = "completed"
+	BulkUpdateRequestStatusDropped   BulkUpdateRequestStatus = "dropped"
+	BulkUpdateRequestStatusPlaying   BulkUpdateRequestStatus = "playing"
+	BulkUpdateRequestStatusShelved   BulkUpdateRequestStatus = "shelved"
+)
+
 // Defines values for CommunityProductCreateType.
 const (
 	CommunityProductCreateTypeAccessory CommunityProductCreateType = "accessory"
@@ -279,6 +289,28 @@ const (
 	EntryUpdateStatusShelved   EntryUpdateStatus = "shelved"
 )
 
+// Defines values for FeedItemVerb.
+const (
+	CommentedShelf FeedItemVerb = "commented_shelf"
+	FollowedUser   FeedItemVerb = "followed_user"
+	LikedShelf     FeedItemVerb = "liked_shelf"
+	PublishedShelf FeedItemVerb = "published_shelf"
+)
+
+// Defines values for MeLandingPage.
+const (
+	MeLandingPageCollection MeLandingPage = "collection"
+	MeLandingPageExplore    MeLandingPage = "explore"
+	MeLandingPageFeed       MeLandingPage = "feed"
+)
+
+// Defines values for MeProfileVisibility.
+const (
+	MeProfileVisibilityListed   MeProfileVisibility = "listed"
+	MeProfileVisibilityPrivate  MeProfileVisibility = "private"
+	MeProfileVisibilityUnlisted MeProfileVisibility = "unlisted"
+)
+
 // Defines values for ProductOrigin.
 const (
 	ProductOriginCommunity ProductOrigin = "community"
@@ -290,6 +322,13 @@ const (
 	ProductTypeConsole   ProductType = "console"
 	ProductTypeGame      ProductType = "game"
 	ProductTypePcListing ProductType = "pc_listing"
+)
+
+// Defines values for ProfileCardProfileVisibility.
+const (
+	ProfileCardProfileVisibilityListed   ProfileCardProfileVisibility = "listed"
+	ProfileCardProfileVisibilityPrivate  ProfileCardProfileVisibility = "private"
+	ProfileCardProfileVisibilityUnlisted ProfileCardProfileVisibility = "unlisted"
 )
 
 // Defines values for PromoteCandidateProvider.
@@ -311,6 +350,13 @@ const (
 	ResolveRequestTypePcListing ResolveRequestType = "pc_listing"
 )
 
+// Defines values for SavedViewVisibility.
+const (
+	SavedViewVisibilityListed   SavedViewVisibility = "listed"
+	SavedViewVisibilityPrivate  SavedViewVisibility = "private"
+	SavedViewVisibilityUnlisted SavedViewVisibility = "unlisted"
+)
+
 // Defines values for SearchResultItemType.
 const (
 	SearchResultItemTypeAccessory SearchResultItemType = "accessory"
@@ -330,6 +376,64 @@ const (
 	SearchResultTypePcListing SearchResultType = "pc_listing"
 )
 
+// Defines values for SharedEntryBoxCondition.
+const (
+	SharedEntryBoxConditionAcceptable SharedEntryBoxCondition = "acceptable"
+	SharedEntryBoxConditionGood       SharedEntryBoxCondition = "good"
+	SharedEntryBoxConditionMint       SharedEntryBoxCondition = "mint"
+	SharedEntryBoxConditionNearMint   SharedEntryBoxCondition = "near_mint"
+	SharedEntryBoxConditionPoor       SharedEntryBoxCondition = "poor"
+	SharedEntryBoxConditionVeryGood   SharedEntryBoxCondition = "very_good"
+)
+
+// Defines values for SharedEntryItemCondition.
+const (
+	SharedEntryItemConditionAcceptable SharedEntryItemCondition = "acceptable"
+	SharedEntryItemConditionGood       SharedEntryItemCondition = "good"
+	SharedEntryItemConditionMint       SharedEntryItemCondition = "mint"
+	SharedEntryItemConditionNearMint   SharedEntryItemCondition = "near_mint"
+	SharedEntryItemConditionPoor       SharedEntryItemCondition = "poor"
+	SharedEntryItemConditionVeryGood   SharedEntryItemCondition = "very_good"
+)
+
+// Defines values for SharedEntryItemType.
+const (
+	SharedEntryItemTypeAccessory SharedEntryItemType = "accessory"
+	SharedEntryItemTypeConsole   SharedEntryItemType = "console"
+	SharedEntryItemTypeGame      SharedEntryItemType = "game"
+)
+
+// Defines values for SharedEntryManualCondition.
+const (
+	SharedEntryManualConditionAcceptable SharedEntryManualCondition = "acceptable"
+	SharedEntryManualConditionGood       SharedEntryManualCondition = "good"
+	SharedEntryManualConditionMint       SharedEntryManualCondition = "mint"
+	SharedEntryManualConditionNearMint   SharedEntryManualCondition = "near_mint"
+	SharedEntryManualConditionPoor       SharedEntryManualCondition = "poor"
+	SharedEntryManualConditionVeryGood   SharedEntryManualCondition = "very_good"
+)
+
+// Defines values for SharedEntryMediaType.
+const (
+	Digital  SharedEntryMediaType = "digital"
+	Physical SharedEntryMediaType = "physical"
+)
+
+// Defines values for SharedEntryPackaging.
+const (
+	SharedEntryPackagingCib    SharedEntryPackaging = "cib"
+	SharedEntryPackagingLoose  SharedEntryPackaging = "loose"
+	SharedEntryPackagingSealed SharedEntryPackaging = "sealed"
+)
+
+// Defines values for SharedEntryRegion.
+const (
+	SharedEntryRegionNtscJ      SharedEntryRegion = "ntsc_j"
+	SharedEntryRegionNtscU      SharedEntryRegion = "ntsc_u"
+	SharedEntryRegionPal        SharedEntryRegion = "pal"
+	SharedEntryRegionRegionFree SharedEntryRegion = "region_free"
+)
+
 // Defines values for SubmissionStatus.
 const (
 	SubmissionStatusApproved  SubmissionStatus = "approved"
@@ -338,11 +442,32 @@ const (
 	SubmissionStatusRejected  SubmissionStatus = "rejected"
 )
 
+// Defines values for UpdateMeRequestLandingPage.
+const (
+	UpdateMeRequestLandingPageCollection UpdateMeRequestLandingPage = "collection"
+	UpdateMeRequestLandingPageExplore    UpdateMeRequestLandingPage = "explore"
+	UpdateMeRequestLandingPageFeed       UpdateMeRequestLandingPage = "feed"
+)
+
+// Defines values for UpdateMeRequestProfileVisibility.
+const (
+	UpdateMeRequestProfileVisibilityListed   UpdateMeRequestProfileVisibility = "listed"
+	UpdateMeRequestProfileVisibilityPrivate  UpdateMeRequestProfileVisibility = "private"
+	UpdateMeRequestProfileVisibilityUnlisted UpdateMeRequestProfileVisibility = "unlisted"
+)
+
 // Defines values for VerdictRequestAction.
 const (
 	ApproveExisting VerdictRequestAction = "approve_existing"
 	ApproveNew      VerdictRequestAction = "approve_new"
 	Reject          VerdictRequestAction = "reject"
+)
+
+// Defines values for ViewCreateVisibility.
+const (
+	Listed   ViewCreateVisibility = "listed"
+	Private  ViewCreateVisibility = "private"
+	Unlisted ViewCreateVisibility = "unlisted"
 )
 
 // Defines values for GetDashboardParamsItemType.
@@ -396,37 +521,37 @@ const (
 
 // Defines values for ListEntriesParamsStatus.
 const (
-	Backlog   ListEntriesParamsStatus = "backlog"
-	Beaten    ListEntriesParamsStatus = "beaten"
-	Completed ListEntriesParamsStatus = "completed"
-	Dropped   ListEntriesParamsStatus = "dropped"
-	Playing   ListEntriesParamsStatus = "playing"
-	Shelved   ListEntriesParamsStatus = "shelved"
+	ListEntriesParamsStatusBacklog   ListEntriesParamsStatus = "backlog"
+	ListEntriesParamsStatusBeaten    ListEntriesParamsStatus = "beaten"
+	ListEntriesParamsStatusCompleted ListEntriesParamsStatus = "completed"
+	ListEntriesParamsStatusDropped   ListEntriesParamsStatus = "dropped"
+	ListEntriesParamsStatusPlaying   ListEntriesParamsStatus = "playing"
+	ListEntriesParamsStatusShelved   ListEntriesParamsStatus = "shelved"
 )
 
 // Defines values for ListEntriesParamsPackaging.
 const (
-	Cib    ListEntriesParamsPackaging = "cib"
-	Loose  ListEntriesParamsPackaging = "loose"
-	Sealed ListEntriesParamsPackaging = "sealed"
+	ListEntriesParamsPackagingCib    ListEntriesParamsPackaging = "cib"
+	ListEntriesParamsPackagingLoose  ListEntriesParamsPackaging = "loose"
+	ListEntriesParamsPackagingSealed ListEntriesParamsPackaging = "sealed"
 )
 
 // Defines values for ListEntriesParamsRegion.
 const (
-	ListEntriesParamsRegionNtscJ      ListEntriesParamsRegion = "ntsc_j"
-	ListEntriesParamsRegionNtscU      ListEntriesParamsRegion = "ntsc_u"
-	ListEntriesParamsRegionPal        ListEntriesParamsRegion = "pal"
-	ListEntriesParamsRegionRegionFree ListEntriesParamsRegion = "region_free"
+	NtscJ      ListEntriesParamsRegion = "ntsc_j"
+	NtscU      ListEntriesParamsRegion = "ntsc_u"
+	Pal        ListEntriesParamsRegion = "pal"
+	RegionFree ListEntriesParamsRegion = "region_free"
 )
 
 // Defines values for ListEntriesParamsItemCondition.
 const (
-	Acceptable ListEntriesParamsItemCondition = "acceptable"
-	Good       ListEntriesParamsItemCondition = "good"
-	Mint       ListEntriesParamsItemCondition = "mint"
-	NearMint   ListEntriesParamsItemCondition = "near_mint"
-	Poor       ListEntriesParamsItemCondition = "poor"
-	VeryGood   ListEntriesParamsItemCondition = "very_good"
+	ListEntriesParamsItemConditionAcceptable ListEntriesParamsItemCondition = "acceptable"
+	ListEntriesParamsItemConditionGood       ListEntriesParamsItemCondition = "good"
+	ListEntriesParamsItemConditionMint       ListEntriesParamsItemCondition = "mint"
+	ListEntriesParamsItemConditionNearMint   ListEntriesParamsItemCondition = "near_mint"
+	ListEntriesParamsItemConditionPoor       ListEntriesParamsItemCondition = "poor"
+	ListEntriesParamsItemConditionVeryGood   ListEntriesParamsItemCondition = "very_good"
 )
 
 // Defines values for ListEntriesParamsSort.
@@ -456,11 +581,23 @@ const (
 	ListEntriesParamsGroupByTag      ListEntriesParamsGroupBy = "tag"
 )
 
+// Defines values for GetExploreParamsSort.
+const (
+	Recent GetExploreParamsSort = "recent"
+	Top    GetExploreParamsSort = "top"
+)
+
+// Defines values for GetFeedParamsTab.
+const (
+	Following GetFeedParamsTab = "following"
+	You       GetFeedParamsTab = "you"
+)
+
 // Defines values for SearchCatalogParamsType.
 const (
-	SearchCatalogParamsTypeGame      SearchCatalogParamsType = "game"
-	SearchCatalogParamsTypeHardware  SearchCatalogParamsType = "hardware"
-	SearchCatalogParamsTypePcListing SearchCatalogParamsType = "pc_listing"
+	Game      SearchCatalogParamsType = "game"
+	Hardware  SearchCatalogParamsType = "hardware"
+	PcListing SearchCatalogParamsType = "pc_listing"
 )
 
 // AdminSubmission One queue row: the submission plus the live proposal from the entry join (display_name, item_type, platform_name, region, edition, first_release_date pre-fill the curation form; entries carry no variant - the single edition field is the idiom).
@@ -498,12 +635,49 @@ type AdminSubmissionsPage struct {
 	TotalCount int64 `json:"total_count"`
 }
 
+// BulkUpdateRequest Delta applied across the caller's own entries among entry_ids (foreign or unknown ids are silently not counted, same ownership-filtering posture as tag attachment). At least one of add_tag_ids / remove_tag_ids / status / storage_location must be present, else 400. storage_location's clearing rule is the OPPOSITE of the full-replacement update's: here an ABSENT storage_location leaves the field untouched, and an explicit empty string clears it.
+type BulkUpdateRequest struct {
+	AddTagIds    *[]openapi_types.UUID    `json:"add_tag_ids,omitempty"`
+	EntryIds     []openapi_types.UUID     `json:"entry_ids"`
+	RemoveTagIds *[]openapi_types.UUID    `json:"remove_tag_ids,omitempty"`
+	Status       *BulkUpdateRequestStatus `json:"status,omitempty"`
+
+	// StorageLocation Empty string clears the field; an absent field leaves it untouched (see the operation description).
+	StorageLocation *string `json:"storage_location,omitempty"`
+}
+
+// BulkUpdateRequestStatus defines model for BulkUpdateRequest.Status.
+type BulkUpdateRequestStatus string
+
+// BulkUpdateResult defines model for BulkUpdateResult.
+type BulkUpdateResult struct {
+	// UpdatedCount Count of the caller's own entries among entry_ids, whether or not any targeted field actually changed.
+	UpdatedCount int `json:"updated_count"`
+}
+
 // CatalogPlatform One platform-catalog row with its known aliases.
 type CatalogPlatform struct {
 	// Aliases Alternate spellings and abbreviations (compare case-insensitively).
 	Aliases []string `json:"aliases"`
 	IgdbId  int64    `json:"igdb_id"`
 	Name    string   `json:"name"`
+}
+
+// Comment A live comment; tombstones never serialize. author_id is null for a purge-anonymized comment (the row survives with its body; only the account link is severed) and a uuid otherwise - the key is always present, only the value varies. author is the bff's batched ProfileCard hydration of author_id (the same composition FeedItem.actor uses): present on a GET list page when the author resolves, absent for an anonymized comment (there is no id left to hydrate) or when the hydration batch itself fails open; never populated on the POST response (a verbatim create relay).
+type Comment struct {
+	// Author The cross-user projection of a user. Never email, never roles.
+	Author    *ProfileCard        `json:"author,omitempty"`
+	AuthorId  *openapi_types.UUID `json:"author_id"`
+	Body      string              `json:"body"`
+	CreatedAt time.Time           `json:"created_at"`
+	Id        openapi_types.UUID  `json:"id"`
+	ShelfId   openapi_types.UUID  `json:"shelf_id"`
+}
+
+// CommentList defines model for CommentList.
+type CommentList struct {
+	Comments   []Comment `json:"comments"`
+	NextCursor *string   `json:"next_cursor,omitempty"`
 }
 
 // CommunityMeta Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present).
@@ -559,6 +733,11 @@ type CompanyCredit struct {
 	Developer bool   `json:"developer"`
 	Name      string `json:"name"`
 	Publisher bool   `json:"publisher"`
+}
+
+// CreateCommentRequest defines model for CreateCommentRequest.
+type CreateCommentRequest struct {
+	Body string `json:"body"`
 }
 
 // CurrencySpend defines model for CurrencySpend.
@@ -866,6 +1045,14 @@ type EntryUpdateRegion string
 // EntryUpdateStatus defines model for EntryUpdate.Status.
 type EntryUpdateStatus string
 
+// ExplorePage total_count is never sent: top is a fixed leaderboard with no deeper page to count, and recent supersedes it with next_offset (kept in the shape, never populated, for forward compatibility only).
+type ExplorePage struct {
+	// NextOffset Present when more listed shelves remain to page through - recent sort only. The raw collection-space offset to resume from; absent once the listed-shelf stream is exhausted.
+	NextOffset *int        `json:"next_offset,omitempty"`
+	Shelves    []ShelfCard `json:"shelves"`
+	TotalCount *int        `json:"total_count,omitempty"`
+}
+
 // FXRates defines model for FXRates.
 type FXRates struct {
 	// Base Always USD.
@@ -876,6 +1063,31 @@ type FXRates struct {
 
 	// Rates Target-units-per-USD by ISO 4217 code; USD omitted.
 	Rates map[string]float64 `json:"rates"`
+}
+
+// FeedItem One activity-feed row after the fill loop hydrates and gates it. actor always attaches (actions are signed, any visibility); shelf is present only for the three shelf verbs (liked_shelf, commented_shelf, published_shelf) whose object cleared the tab's gating rule; followed_user is present only for a surviving followed_user row and carries the followee's card; comment_excerpt is present only for a surviving commented_shelf row.
+type FeedItem struct {
+	// Actor The cross-user projection of a user. Never email, never roles.
+	Actor          ProfileCard `json:"actor"`
+	CommentExcerpt *string     `json:"comment_excerpt,omitempty"`
+	CreatedAt      time.Time   `json:"created_at"`
+
+	// FollowedUser The cross-user projection of a user. Never email, never roles.
+	FollowedUser *ProfileCard       `json:"followed_user,omitempty"`
+	Id           openapi_types.UUID `json:"id"`
+
+	// Shelf A shelf card as shown in a profile's shelf list, an activity feed excerpt, or an Explore grid. owner is embedded so a card renders without a second round trip; like_count/comment_count/ viewer_likes are present exactly when the page's social composition succeeded (all three absent together when the page fell back to social_available: false).
+	Shelf *ShelfCard   `json:"shelf,omitempty"`
+	Verb  FeedItemVerb `json:"verb"`
+}
+
+// FeedItemVerb defines model for FeedItem.Verb.
+type FeedItemVerb string
+
+// FeedPage defines model for FeedPage.
+type FeedPage struct {
+	Items      []FeedItem `json:"items"`
+	NextCursor *string    `json:"next_cursor,omitempty"`
 }
 
 // Identities defines model for Identities.
@@ -920,15 +1132,25 @@ type MappingRequest struct {
 
 // Me Browser-facing projection of the user service's User. Timestamps are intentionally omitted; add fields only when the SPA has a concrete use for them.
 type Me struct {
-	AvatarUrl   *string            `json:"avatar_url,omitempty"`
-	DisplayName string             `json:"display_name"`
-	Email       string             `json:"email"`
-	Id          openapi_types.UUID `json:"id"`
+	AvatarUrl *string            `json:"avatar_url,omitempty"`
+	Email     string             `json:"email"`
+	Handle    string             `json:"handle"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// LandingPage Where the app opens after sign-in.
+	LandingPage MeLandingPage `json:"landing_page"`
 
 	// PreferredCurrency Display currency for market values; USD until set.
-	PreferredCurrency string   `json:"preferred_currency"`
-	Roles             []string `json:"roles"`
+	PreferredCurrency string              `json:"preferred_currency"`
+	ProfileVisibility MeProfileVisibility `json:"profile_visibility"`
+	Roles             []string            `json:"roles"`
 }
+
+// MeLandingPage Where the app opens after sign-in.
+type MeLandingPage string
+
+// MeProfileVisibility defines model for Me.ProfileVisibility.
+type MeProfileVisibility string
 
 // PlatformCatalog defines model for PlatformCatalog.
 type PlatformCatalog struct {
@@ -1005,6 +1227,36 @@ type ProductOrigin string
 
 // ProductType defines model for Product.Type.
 type ProductType string
+
+// ProfileCard The cross-user projection of a user. Never email, never roles.
+type ProfileCard struct {
+	AvatarUrl         *string                      `json:"avatar_url,omitempty"`
+	Handle            string                       `json:"handle"`
+	ProfileVisibility ProfileCardProfileVisibility `json:"profile_visibility"`
+	UserId            openapi_types.UUID           `json:"user_id"`
+}
+
+// ProfileCardProfileVisibility defines model for ProfileCard.ProfileVisibility.
+type ProfileCardProfileVisibility string
+
+// ProfilePage A profile's page composition: the profile card, social counts when the social service answered, and up to 50 of the owner's listed shelves (owners see exactly what visitors see). social is absent exactly when social_available is false (the social service degrades open; the page still renders).
+type ProfilePage struct {
+	// Profile The cross-user projection of a user. Never email, never roles.
+	Profile         ProfileCard           `json:"profile"`
+	Shelves         []ShelfCard           `json:"shelves"`
+	Social          *ProfileSocialSummary `json:"social,omitempty"`
+	SocialAvailable bool                  `json:"social_available"`
+
+	// TotalCount The owner's full listed-shelf count, beyond this page.
+	TotalCount int `json:"total_count"`
+}
+
+// ProfileSocialSummary defines model for ProfileSocialSummary.
+type ProfileSocialSummary struct {
+	FollowerCount  int  `json:"follower_count"`
+	FollowingCount int  `json:"following_count"`
+	ViewerFollows  bool `json:"viewer_follows"`
+}
 
 // PromoteCandidate defines model for PromoteCandidate.
 type PromoteCandidate struct {
@@ -1096,8 +1348,18 @@ type SavedView struct {
 	Id        openapi_types.UUID     `json:"id"`
 	Name      string                 `json:"name"`
 	Params    map[string]interface{} `json:"params"`
-	UpdatedAt time.Time              `json:"updated_at"`
+
+	// PublishedAt Stamped on each transition into listed.
+	PublishedAt *time.Time `json:"published_at,omitempty"`
+
+	// Slug URL slug derived from the name (underscore transform); unique per user on its folded key.
+	Slug       string              `json:"slug"`
+	UpdatedAt  time.Time           `json:"updated_at"`
+	Visibility SavedViewVisibility `json:"visibility"`
 }
+
+// SavedViewVisibility defines model for SavedView.Visibility.
+type SavedViewVisibility string
 
 // ScoreResponse defines model for ScoreResponse.
 type ScoreResponse struct {
@@ -1142,6 +1404,112 @@ type SearchResults struct {
 	// Degraded True when the provider was unreachable and the local catalog answered instead.
 	Degraded bool           `json:"degraded"`
 	Results  []SearchResult `json:"results"`
+}
+
+// SharedEntry The cross-user entry projection - a strict whitelist. No money fields (price paid, values, currency, purchase provenance, pricing mode) and no personal fields (status, rating, notes, location, backlog rank, external refs) may ever be added here without a deliberate privacy decision.
+type SharedEntry struct {
+	BoxCondition     *SharedEntryBoxCondition    `json:"box_condition,omitempty"`
+	CoverUrl         *string                     `json:"cover_url,omitempty"`
+	CreatedAt        time.Time                   `json:"created_at"`
+	DisplayName      string                      `json:"display_name"`
+	Edition          *string                     `json:"edition,omitempty"`
+	FirstReleaseDate *openapi_types.Date         `json:"first_release_date,omitempty"`
+	HasBox           bool                        `json:"has_box"`
+	HasManual        bool                        `json:"has_manual"`
+	Id               openapi_types.UUID          `json:"id"`
+	IgdbGameId       *int64                      `json:"igdb_game_id,omitempty"`
+	ItemCondition    *SharedEntryItemCondition   `json:"item_condition,omitempty"`
+	ItemType         SharedEntryItemType         `json:"item_type"`
+	ManualCondition  *SharedEntryManualCondition `json:"manual_condition,omitempty"`
+	MediaType        SharedEntryMediaType        `json:"media_type"`
+	Packaging        SharedEntryPackaging        `json:"packaging"`
+	Pinned           bool                        `json:"pinned"`
+
+	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
+	Platform  *EntryPlatform      `json:"platform,omitempty"`
+	ProductId *openapi_types.UUID `json:"product_id,omitempty"`
+	Region    SharedEntryRegion   `json:"region"`
+	Tags      []TagRef            `json:"tags"`
+}
+
+// SharedEntryBoxCondition defines model for SharedEntry.BoxCondition.
+type SharedEntryBoxCondition string
+
+// SharedEntryItemCondition defines model for SharedEntry.ItemCondition.
+type SharedEntryItemCondition string
+
+// SharedEntryItemType defines model for SharedEntry.ItemType.
+type SharedEntryItemType string
+
+// SharedEntryManualCondition defines model for SharedEntry.ManualCondition.
+type SharedEntryManualCondition string
+
+// SharedEntryMediaType defines model for SharedEntry.MediaType.
+type SharedEntryMediaType string
+
+// SharedEntryPackaging defines model for SharedEntry.Packaging.
+type SharedEntryPackaging string
+
+// SharedEntryRegion defines model for SharedEntry.Region.
+type SharedEntryRegion string
+
+// SharedEntryGroup defines model for SharedEntryGroup.
+type SharedEntryGroup struct {
+	Entries []SharedEntry `json:"entries"`
+	Key     string        `json:"key"`
+	Label   string        `json:"label"`
+}
+
+// SharedEntryList Exactly one of entries/groups is present (groups when the stored params group).
+type SharedEntryList struct {
+	Entries    *[]SharedEntry      `json:"entries,omitempty"`
+	Groups     *[]SharedEntryGroup `json:"groups,omitempty"`
+	TotalCount int                 `json:"total_count"`
+}
+
+// ShelfCard A shelf card as shown in a profile's shelf list, an activity feed excerpt, or an Explore grid. owner is embedded so a card renders without a second round trip; like_count/comment_count/ viewer_likes are present exactly when the page's social composition succeeded (all three absent together when the page fell back to social_available: false).
+type ShelfCard struct {
+	CommentCount *int               `json:"comment_count,omitempty"`
+	CoverUrls    []string           `json:"cover_urls"`
+	EntryCount   int                `json:"entry_count"`
+	Id           openapi_types.UUID `json:"id"`
+	LikeCount    *int               `json:"like_count,omitempty"`
+	Name         string             `json:"name"`
+
+	// Owner The cross-user projection of a user. Never email, never roles.
+	Owner       ProfileCard `json:"owner"`
+	PublishedAt *time.Time  `json:"published_at,omitempty"`
+	Slug        string      `json:"slug"`
+	ViewerLikes *bool       `json:"viewer_likes,omitempty"`
+}
+
+// ShelfMeta A shelf's own identity and stored view state, without the owner card or social counts (those are ShelfPage's sibling fields).
+type ShelfMeta struct {
+	Id          openapi_types.UUID     `json:"id"`
+	Name        string                 `json:"name"`
+	Params      map[string]interface{} `json:"params"`
+	PublishedAt *time.Time             `json:"published_at,omitempty"`
+	Slug        string                 `json:"slug"`
+}
+
+// ShelfPage A single shared shelf's page composition: the shelf meta, its (non-private, by construction) owner card, and social counts when the social service answered. social is absent exactly when social_available is false (the social service degrades open; the page still renders).
+type ShelfPage struct {
+	// Owner The cross-user projection of a user. Never email, never roles.
+	Owner ProfileCard `json:"owner"`
+
+	// Shelf A shelf's own identity and stored view state, without the owner card or social counts (those are ShelfPage's sibling fields).
+	Shelf           ShelfMeta           `json:"shelf"`
+	Social          *ShelfSocialSummary `json:"social,omitempty"`
+	SocialAvailable bool                `json:"social_available"`
+}
+
+// ShelfSocialSummary defines model for ShelfSocialSummary.
+type ShelfSocialSummary struct {
+	// CommentCount Live comments only.
+	CommentCount int                `json:"comment_count"`
+	LikeCount    int                `json:"like_count"`
+	ShelfId      openapi_types.UUID `json:"shelf_id"`
+	ViewerLikes  bool               `json:"viewer_likes"`
 }
 
 // Submission One catalog-submission lifecycle row for an entry. Rows persist as history (rejected and cancelled included; the rolling creation cap counts every attempt); deleting the entry removes them with it. product_id is the verdict's resolved product - recorded before adoption so an approve_new retry never mints twice.
@@ -1190,10 +1558,18 @@ type UnmatchedProductsPage struct {
 
 // UpdateMeRequest Absent fields keep their value; an empty avatar_url clears it.
 type UpdateMeRequest struct {
-	AvatarUrl         *string `json:"avatar_url,omitempty"`
-	DisplayName       *string `json:"display_name,omitempty"`
-	PreferredCurrency *string `json:"preferred_currency,omitempty"`
+	AvatarUrl         *string                           `json:"avatar_url,omitempty"`
+	Handle            *string                           `json:"handle,omitempty"`
+	LandingPage       *UpdateMeRequestLandingPage       `json:"landing_page,omitempty"`
+	PreferredCurrency *string                           `json:"preferred_currency,omitempty"`
+	ProfileVisibility *UpdateMeRequestProfileVisibility `json:"profile_visibility,omitempty"`
 }
+
+// UpdateMeRequestLandingPage defines model for UpdateMeRequest.LandingPage.
+type UpdateMeRequestLandingPage string
+
+// UpdateMeRequestProfileVisibility defines model for UpdateMeRequest.ProfileVisibility.
+type UpdateMeRequestProfileVisibility string
 
 // ValueHistory defines model for ValueHistory.
 type ValueHistory struct {
@@ -1226,8 +1602,12 @@ type ViewCreate struct {
 	Name string `json:"name"`
 
 	// Params Opaque frontend view state; at most 8192 marshaled bytes.
-	Params map[string]interface{} `json:"params"`
+	Params     map[string]interface{} `json:"params"`
+	Visibility *ViewCreateVisibility  `json:"visibility,omitempty"`
 }
+
+// ViewCreateVisibility defines model for ViewCreate.Visibility.
+type ViewCreateVisibility string
 
 // OriginForbidden defines model for OriginForbidden.
 type OriginForbidden = Problem
@@ -1361,6 +1741,26 @@ type ListEntriesParamsOrder string
 // ListEntriesParamsGroupBy defines parameters for ListEntries.
 type ListEntriesParamsGroupBy string
 
+// GetExploreParams defines parameters for GetExplore.
+type GetExploreParams struct {
+	Sort   GetExploreParamsSort `form:"sort" json:"sort"`
+	Limit  *int                 `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int                 `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetExploreParamsSort defines parameters for GetExplore.
+type GetExploreParamsSort string
+
+// GetFeedParams defines parameters for GetFeed.
+type GetFeedParams struct {
+	Tab    GetFeedParamsTab `form:"tab" json:"tab"`
+	Cursor *string          `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int             `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetFeedParamsTab defines parameters for GetFeed.
+type GetFeedParamsTab string
+
 // ProxyTracesJSONBody defines parameters for ProxyTraces.
 type ProxyTracesJSONBody = openapi_types.File
 
@@ -1372,6 +1772,23 @@ type SearchCatalogParams struct {
 
 // SearchCatalogParamsType defines parameters for SearchCatalog.
 type SearchCatalogParamsType string
+
+// SearchUsersParams defines parameters for SearchUsers.
+type SearchUsersParams struct {
+	Q string `form:"q" json:"q"`
+}
+
+// ListShelfCommentsParams defines parameters for ListShelfComments.
+type ListShelfCommentsParams struct {
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListShelfEntriesParams defines parameters for ListShelfEntries.
+type ListShelfEntriesParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
 
 // CreateCommunityProductJSONRequestBody defines body for CreateCommunityProduct for application/json ContentType.
 type CreateCommunityProductJSONRequestBody = CommunityProductCreate
@@ -1391,6 +1808,9 @@ type SubmitVerdictJSONRequestBody = VerdictRequest
 // CreateEntryJSONRequestBody defines body for CreateEntry for application/json ContentType.
 type CreateEntryJSONRequestBody = EntryCreate
 
+// BulkUpdateEntriesJSONRequestBody defines body for BulkUpdateEntries for application/json ContentType.
+type BulkUpdateEntriesJSONRequestBody = BulkUpdateRequest
+
 // UpdateEntryJSONRequestBody defines body for UpdateEntry for application/json ContentType.
 type UpdateEntryJSONRequestBody = EntryUpdate
 
@@ -1405,6 +1825,9 @@ type ProxyTracesJSONRequestBody = ProxyTracesJSONBody
 
 // ResolveProductJSONRequestBody defines body for ResolveProduct for application/json ContentType.
 type ResolveProductJSONRequestBody = ResolveRequest
+
+// CreateShelfCommentJSONRequestBody defines body for CreateShelfComment for application/json ContentType.
+type CreateShelfCommentJSONRequestBody = CreateCommentRequest
 
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = TagCreate
@@ -1468,6 +1891,9 @@ type ServerInterface interface {
 	// Login provider names currently enabled (drives the login page buttons)
 	// (GET /api/auth/providers)
 	ListProviders(w http.ResponseWriter, r *http.Request)
+	// Delete a comment; author tombstones body-NULL, shelf owner tombstones body-retained (proxied)
+	// (DELETE /api/comments/{commentId})
+	DeleteComment(w http.ResponseWriter, r *http.Request, commentId openapi_types.UUID)
 	// Collection dashboard (proxied; cached by the collection service, never here)
 	// (GET /api/dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request, params GetDashboardParams)
@@ -1480,6 +1906,9 @@ type ServerInterface interface {
 	// Add an entry (proxied, uncached)
 	// (POST /api/entries)
 	CreateEntry(w http.ResponseWriter, r *http.Request)
+	// Apply tag/status/storage-location changes across a batch of entries (proxied, uncached)
+	// (POST /api/entries/bulk-update)
+	BulkUpdateEntries(w http.ResponseWriter, r *http.Request)
 	// Delete an entry (proxied)
 	// (DELETE /api/entries/{entryId})
 	DeleteEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
@@ -1504,6 +1933,12 @@ type ServerInterface interface {
 	// Acknowledge an approved submission (relay)
 	// (POST /api/entries/{entryId}/submission/ack)
 	AckSubmissionResolution(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
+	// Browse shared shelves - newest-published or top-liked, listed-only
+	// (GET /api/explore)
+	GetExplore(w http.ResponseWriter, r *http.Request, params GetExploreParams)
+	// The caller's two-tab activity feed (fill loop, hydrated and gated)
+	// (GET /api/feed)
+	GetFeed(w http.ResponseWriter, r *http.Request, params GetFeedParams)
 	// Latest USD-based exchange rates (relayed from the enrichment service)
 	// (GET /api/fx)
 	GetFx(w http.ResponseWriter, r *http.Request)
@@ -1513,7 +1948,7 @@ type ServerInterface interface {
 	// The signed-in user's profile (composed from the user service; briefly cached)
 	// (GET /api/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
-	// Edit the signed-in user's profile (display name, avatar URL)
+	// Edit the signed-in user's profile (handle, avatar URL)
 	// (PATCH /api/me)
 	UpdateMe(w http.ResponseWriter, r *http.Request)
 	// Provider logins linked to the signed-in account
@@ -1534,12 +1969,45 @@ type ServerInterface interface {
 	// Fetch a catalog product (proxied, uncached)
 	// (GET /api/products/{productId})
 	GetProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
+	// A user's public profile: card, listed shelves, and social counts
+	// (GET /api/profiles/{handle})
+	GetProfilePage(w http.ResponseWriter, r *http.Request, handle string)
+	// A shared shelf resolved by owner handle and slug
+	// (GET /api/profiles/{handle}/shelves/{slug})
+	GetProfileShelfPage(w http.ResponseWriter, r *http.Request, handle string, slug string)
 	// Heuristic game recommendations for the signed-in user's library
 	// (GET /api/recommendations)
 	GetRecommendations(w http.ResponseWriter, r *http.Request)
 	// Catalog discovery search (proxied to the enrichment service, uncached)
 	// (GET /api/search)
 	SearchCatalog(w http.ResponseWriter, r *http.Request, params SearchCatalogParams)
+	// Substring search over listed profiles' handles (proxied)
+	// (GET /api/search/users)
+	SearchUsers(w http.ResponseWriter, r *http.Request, params SearchUsersParams)
+	// A shared shelf's page: meta, owner card, and social counts
+	// (GET /api/shelves/{shelfId})
+	GetShelfPage(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID)
+	// A shelf's live comments, newest first, keyset-paged (composed with batched author cards)
+	// (GET /api/shelves/{shelfId}/comments)
+	ListShelfComments(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID, params ListShelfCommentsParams)
+	// Comment on a shelf (proxied)
+	// (POST /api/shelves/{shelfId}/comments)
+	CreateShelfComment(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID)
+	// A shelf's entries, whitelist-projected (proxied)
+	// (GET /api/shelves/{shelfId}/entries)
+	ListShelfEntries(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID, params ListShelfEntriesParams)
+	// Unfollow a user (idempotent) (proxied)
+	// (DELETE /api/social/follows/{userId})
+	Unfollow(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
+	// Follow a user (idempotent) (proxied)
+	// (PUT /api/social/follows/{userId})
+	Follow(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
+	// Remove a like (idempotent) (proxied)
+	// (DELETE /api/social/likes/{shelfId})
+	Unlike(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID)
+	// Like a shelf (idempotent) (proxied)
+	// (PUT /api/social/likes/{shelfId})
+	Like(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID)
 	// List tags with usage counts (proxied, uncached)
 	// (GET /api/tags)
 	ListTags(w http.ResponseWriter, r *http.Request)
@@ -2023,6 +2491,31 @@ func (siw *ServerInterfaceWrapper) ListProviders(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteComment operation middleware
+func (siw *ServerInterfaceWrapper) DeleteComment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "commentId" -------------
+	var commentId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "commentId", r.PathValue("commentId"), &commentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "commentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteComment(w, r, commentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetDashboard operation middleware
 func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.Request) {
 
@@ -2241,6 +2734,20 @@ func (siw *ServerInterfaceWrapper) CreateEntry(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// BulkUpdateEntries operation middleware
+func (siw *ServerInterfaceWrapper) BulkUpdateEntries(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BulkUpdateEntries(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteEntry operation middleware
 func (siw *ServerInterfaceWrapper) DeleteEntry(w http.ResponseWriter, r *http.Request) {
 
@@ -2441,6 +2948,106 @@ func (siw *ServerInterfaceWrapper) AckSubmissionResolution(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// GetExplore operation middleware
+func (siw *ServerInterfaceWrapper) GetExplore(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetExploreParams
+
+	// ------------- Required query parameter "sort" -------------
+
+	if paramValue := r.URL.Query().Get("sort"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "sort", r.URL.Query(), &params.Sort)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExplore(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFeed operation middleware
+func (siw *ServerInterfaceWrapper) GetFeed(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFeedParams
+
+	// ------------- Required query parameter "tab" -------------
+
+	if paramValue := r.URL.Query().Get("tab"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tab"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "tab", r.URL.Query(), &params.Tab)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tab", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "cursor", r.URL.Query(), &params.Cursor)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFeed(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetFx operation middleware
 func (siw *ServerInterfaceWrapper) GetFx(w http.ResponseWriter, r *http.Request) {
 
@@ -2603,6 +3210,65 @@ func (siw *ServerInterfaceWrapper) GetProduct(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// GetProfilePage operation middleware
+func (siw *ServerInterfaceWrapper) GetProfilePage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "handle" -------------
+	var handle string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "handle", r.PathValue("handle"), &handle, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "handle", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProfilePage(w, r, handle)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProfileShelfPage operation middleware
+func (siw *ServerInterfaceWrapper) GetProfileShelfPage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "handle" -------------
+	var handle string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "handle", r.PathValue("handle"), &handle, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "handle", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "slug" -------------
+	var slug string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", r.PathValue("slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProfileShelfPage(w, r, handle, slug)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetRecommendations operation middleware
 func (siw *ServerInterfaceWrapper) GetRecommendations(w http.ResponseWriter, r *http.Request) {
 
@@ -2657,6 +3323,278 @@ func (siw *ServerInterfaceWrapper) SearchCatalog(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SearchCatalog(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchUsers operation middleware
+func (siw *ServerInterfaceWrapper) SearchUsers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchUsersParams
+
+	// ------------- Required query parameter "q" -------------
+
+	if paramValue := r.URL.Query().Get("q"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "q", r.URL.Query(), &params.Q)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchUsers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetShelfPage operation middleware
+func (siw *ServerInterfaceWrapper) GetShelfPage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shelfId" -------------
+	var shelfId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shelfId", r.PathValue("shelfId"), &shelfId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shelfId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetShelfPage(w, r, shelfId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListShelfComments operation middleware
+func (siw *ServerInterfaceWrapper) ListShelfComments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shelfId" -------------
+	var shelfId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shelfId", r.PathValue("shelfId"), &shelfId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shelfId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListShelfCommentsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "cursor", r.URL.Query(), &params.Cursor)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListShelfComments(w, r, shelfId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateShelfComment operation middleware
+func (siw *ServerInterfaceWrapper) CreateShelfComment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shelfId" -------------
+	var shelfId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shelfId", r.PathValue("shelfId"), &shelfId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shelfId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateShelfComment(w, r, shelfId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListShelfEntries operation middleware
+func (siw *ServerInterfaceWrapper) ListShelfEntries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shelfId" -------------
+	var shelfId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shelfId", r.PathValue("shelfId"), &shelfId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shelfId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListShelfEntriesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListShelfEntries(w, r, shelfId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Unfollow operation middleware
+func (siw *ServerInterfaceWrapper) Unfollow(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Unfollow(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Follow operation middleware
+func (siw *ServerInterfaceWrapper) Follow(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Follow(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Unlike operation middleware
+func (siw *ServerInterfaceWrapper) Unlike(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shelfId" -------------
+	var shelfId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shelfId", r.PathValue("shelfId"), &shelfId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shelfId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Unlike(w, r, shelfId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Like operation middleware
+func (siw *ServerInterfaceWrapper) Like(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shelfId" -------------
+	var shelfId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shelfId", r.PathValue("shelfId"), &shelfId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shelfId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Like(w, r, shelfId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2958,10 +3896,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/login", wrapper.Login)
 	m.HandleFunc("POST "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/providers", wrapper.ListProviders)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/comments/{commentId}", wrapper.DeleteComment)
 	m.HandleFunc("GET "+options.BaseURL+"/api/dashboard", wrapper.GetDashboard)
 	m.HandleFunc("GET "+options.BaseURL+"/api/dashboard/value-history", wrapper.GetValueHistory)
 	m.HandleFunc("GET "+options.BaseURL+"/api/entries", wrapper.ListEntries)
 	m.HandleFunc("POST "+options.BaseURL+"/api/entries", wrapper.CreateEntry)
+	m.HandleFunc("POST "+options.BaseURL+"/api/entries/bulk-update", wrapper.BulkUpdateEntries)
 	m.HandleFunc("DELETE "+options.BaseURL+"/api/entries/{entryId}", wrapper.DeleteEntry)
 	m.HandleFunc("GET "+options.BaseURL+"/api/entries/{entryId}", wrapper.GetEntry)
 	m.HandleFunc("PUT "+options.BaseURL+"/api/entries/{entryId}", wrapper.UpdateEntry)
@@ -2970,6 +3910,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/entries/{entryId}/submission", wrapper.GetSubmission)
 	m.HandleFunc("POST "+options.BaseURL+"/api/entries/{entryId}/submission", wrapper.CreateSubmission)
 	m.HandleFunc("POST "+options.BaseURL+"/api/entries/{entryId}/submission/ack", wrapper.AckSubmissionResolution)
+	m.HandleFunc("GET "+options.BaseURL+"/api/explore", wrapper.GetExplore)
+	m.HandleFunc("GET "+options.BaseURL+"/api/feed", wrapper.GetFeed)
 	m.HandleFunc("GET "+options.BaseURL+"/api/fx", wrapper.GetFx)
 	m.HandleFunc("DELETE "+options.BaseURL+"/api/me", wrapper.DeleteMe)
 	m.HandleFunc("GET "+options.BaseURL+"/api/me", wrapper.GetMe)
@@ -2980,8 +3922,19 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/platforms", wrapper.ListPlatforms)
 	m.HandleFunc("POST "+options.BaseURL+"/api/products/resolve", wrapper.ResolveProduct)
 	m.HandleFunc("GET "+options.BaseURL+"/api/products/{productId}", wrapper.GetProduct)
+	m.HandleFunc("GET "+options.BaseURL+"/api/profiles/{handle}", wrapper.GetProfilePage)
+	m.HandleFunc("GET "+options.BaseURL+"/api/profiles/{handle}/shelves/{slug}", wrapper.GetProfileShelfPage)
 	m.HandleFunc("GET "+options.BaseURL+"/api/recommendations", wrapper.GetRecommendations)
 	m.HandleFunc("GET "+options.BaseURL+"/api/search", wrapper.SearchCatalog)
+	m.HandleFunc("GET "+options.BaseURL+"/api/search/users", wrapper.SearchUsers)
+	m.HandleFunc("GET "+options.BaseURL+"/api/shelves/{shelfId}", wrapper.GetShelfPage)
+	m.HandleFunc("GET "+options.BaseURL+"/api/shelves/{shelfId}/comments", wrapper.ListShelfComments)
+	m.HandleFunc("POST "+options.BaseURL+"/api/shelves/{shelfId}/comments", wrapper.CreateShelfComment)
+	m.HandleFunc("GET "+options.BaseURL+"/api/shelves/{shelfId}/entries", wrapper.ListShelfEntries)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/social/follows/{userId}", wrapper.Unfollow)
+	m.HandleFunc("PUT "+options.BaseURL+"/api/social/follows/{userId}", wrapper.Follow)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/social/likes/{shelfId}", wrapper.Unlike)
+	m.HandleFunc("PUT "+options.BaseURL+"/api/social/likes/{shelfId}", wrapper.Like)
 	m.HandleFunc("GET "+options.BaseURL+"/api/tags", wrapper.ListTags)
 	m.HandleFunc("POST "+options.BaseURL+"/api/tags", wrapper.CreateTag)
 	m.HandleFunc("DELETE "+options.BaseURL+"/api/tags/{tagId}", wrapper.DeleteTag)

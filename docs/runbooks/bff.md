@@ -15,7 +15,7 @@ What it does, as an operator sees it:
   deletion (purge orchestration across collection, auth, and user).
 - Profile: `/api/me` composed from the user service and cached 45s; profile
   edits invalidate the cache immediately.
-- Collection relays: entries CRUD and reorder, tags, views, dashboard, value
+- Collection relays: entries CRUD, reorder, and bulk-update, tags, views, dashboard, value
   history, catalog submissions (file, read, cancel, ack).
 - Catalog relays: search, product resolve and read, platforms, FX rates.
 - Recommendations: the one cross-service composition (collection library
@@ -171,7 +171,7 @@ Key families, all written by the bff:
 | `denylist:<jti>` | revoked access-token ids | access-token life + 1 min leeway |
 | `refresh:lock:<sha256(refresh)>` | rotation singleflight lock | 10s |
 | `refresh:result:<sha256(refresh)>` | published rotation result (AES-GCM sealed cookie) | 60s |
-| `me:v2:<sub>` | composed `/api/me` body | `ME_CACHE_TTL` (45s) |
+| `me:v4:<sub>` | composed `/api/me` body | `ME_CACHE_TTL` (45s) |
 | `recs:<sub>` | composed recommendations body | `RECS_CACHE_TTL` (1h) |
 
 Nothing secret rests in Valkey in the clear: the published rotation result is
@@ -215,7 +215,7 @@ mux patterns, method-prefixed (`GET /api/me`, `POST /api/otlp/v1/traces`).
 | `go_memory_used_bytes` | gauge | bytes | none | heap pressure against the 128Mi limit |
 | `vg_valkeykit_pool_*` (five series above) | counters + gauges | mixed | none | client pool sizing and saturation |
 | `redis_memory_used_bytes`, `redis_evicted_keys_total`, `redis_connected_clients` | exporter | mixed | `service="bff-valkey"` | server-side cache health |
-| `vg_bff_cache_fail_open_total` | counter (`vg.bff.cache.fail_open`) | (none) | `op`: `denylist_add`, `denylist_check`, `me_get`, `me_put`, `me_invalidate`, `recs_get`, `recs_put`, `recs_invalidate`, `refresh_lock`, `refresh_unlock`, `refresh_publish`, `refresh_result` | Valkey operations skipped by failing open; the denylist ops feed a page alert |
+| `vg_bff_cache_fail_open_total` | counter (`vg.bff.cache.fail_open`) | (none) | `op`: `denylist_add`, `denylist_check`, `me_get`, `me_put`, `me_invalidate`, `recs_get`, `recs_put`, `recs_invalidate`, `refresh_lock`, `refresh_unlock`, `refresh_publish`, `refresh_result`, `social_summary`, `social_publish_event`, `comment_authors` | Valkey operations skipped by failing open, plus non-Valkey composition calls that degrade the same way (social counts, the publish event, and batched comment-author cards); the denylist ops feed a page alert |
 | `vg_bff_auth_logins_total` | counter (`vg.bff.auth.logins`) | `{login}` | `flow`: `login`, `link`; `outcome`: `success`, `failed`, `email_unverified`, `provider_error`, `conflict` | did logins or account links regress, and how are they failing |
 | `vg_bff_session_refreshes_total` | counter (`vg.bff.session.refreshes`) | `{refresh}` | `outcome`: `rotated`, `adopted`, `deferred`, `rejected`, `reuse_revoked`, `failed`, `adopt_timeout` | are sessions staying alive; a `rejected`/`reuse_revoked`/`failed` climb is users being logged out |
 | `vg_bff_cache_lookups_total` | counter (`vg.bff.cache.lookups`) | `{lookup}` | `cache`: `me`, `recs`; `outcome`: `hit`, `miss` | are the two composition caches absorbing load; a hit-ratio drop after a deploy means a key-version bump or TTL misconfig |
@@ -252,7 +252,7 @@ Emission sites for the three domain counters beyond `fail_open`:
 ### Logs
 
 Lines worth knowing: `http request` (INFO, one per request: `method`,
-`path`, `status`, `duration_ms`), `valkey unavailable; failing open` (ERROR,
+`path`, `status`, `duration_ms`), `dependency unavailable; failing open` (ERROR,
 `op`, `err`), `login failed` (WARN, `err`), `token refresh failed` (WARN,
 `err`), `refresh chain revocation failed` (ERROR, `err`), `cookie seal failed`
 (ERROR, `err`), `bff listening` (INFO, `addr`, `serve_static`). All are JSON
@@ -401,7 +401,7 @@ fail-open events by op" panel, or:
 
     sum by (op) (increase(vg_bff_cache_fail_open_total[5m]))
 
-plus the ERROR line `valkey unavailable; failing open`. Many ops firing at
+plus the ERROR line `dependency unavailable; failing open`. Many ops firing at
 once means Valkey itself is down (check the `bff-valkey` pod); a single op
 firing points at one code path.
 

@@ -574,7 +574,7 @@ func TestUnitCacheLookupMetric_MeAndRecs(t *testing.T) {
 		uid := uuid.New()
 		h := newTestHandlers(t, fc, &stubAuthFull{})
 		h.users = &stubUsersFull{user: userapi.User{
-			Id: uid, Email: "alice@example.test", DisplayName: "alice", Roles: []userapi.UserRoles{"user"},
+			Id: uid, Email: "alice@example.test", Handle: "alice", Roles: []userapi.UserRoles{"user"},
 		}}
 		return h, uid.String()
 	}
@@ -670,5 +670,19 @@ func TestUnitProxyTraces_RelayFailureLogsWarn(t *testing.T) {
 	line := logBuf.String()
 	if !strings.Contains(line, "browser telemetry relay failed") || !strings.Contains(line, "err=") {
 		t.Fatalf("relay warn line missing: %q", line)
+	}
+}
+
+// TestUnitNew_NilLoggerDoesNotPanic pins the constructor's
+// tolerate-nil idiom (shared across services): a caller that leaves
+// Options.Logger nil gets slog.Default() instead of a panic on the
+// first log call.
+func TestUnitNew_NilLoggerDoesNotPanic(t *testing.T) {
+	h := New(nil, nil, nil, nil, nil, nil, nil, Options{})
+	if h == nil {
+		t.Fatal("New returned nil")
+	}
+	if h.logger == nil {
+		t.Fatal("logger must default to slog.Default(), not stay nil")
 	}
 }

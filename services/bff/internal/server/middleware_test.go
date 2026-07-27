@@ -218,6 +218,18 @@ func (stubUsers) Delete(context.Context, string, string) error {
 	panic("unexpected users.Delete")
 }
 
+func (stubUsers) SharedProfile(context.Context, string, string) (userapi.ProfileCard, error) {
+	panic("unexpected users.SharedProfile")
+}
+
+func (stubUsers) SharedCardsByIDs(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+	panic("unexpected users.SharedCardsByIDs")
+}
+
+func (stubUsers) SearchProfiles(context.Context, string, string) (userclient.Result, error) {
+	panic("unexpected users.SearchProfiles")
+}
+
 // ---- helpers ----
 
 func mintAccess(t *testing.T, sub, jti string, exp time.Time) string {
@@ -238,7 +250,7 @@ func newTestHandlers(t *testing.T, c SessionCache, a AuthAPI) *Handlers {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := New(codec, c, a, stubUsers{}, &stubEnrichment{}, &stubCollection{}, Options{
+	h := New(codec, c, a, stubUsers{}, &stubEnrichment{}, &stubCollection{}, &stubSocialFull{}, Options{
 		AccessTokenTTL: 5 * time.Minute,
 		RefreshWindow:  30 * time.Second,
 		MeCacheTTL:     45 * time.Second,
@@ -437,11 +449,11 @@ func itoa(n int) string {
 type stubUserService struct {
 	srv *httptest.Server
 
-	mu      sync.Mutex
-	id      string
-	email   string
-	display string
-	mode    userMode
+	mu     sync.Mutex
+	id     string
+	email  string
+	handle string
+	mode   userMode
 }
 
 type userMode int
@@ -452,9 +464,9 @@ const (
 	userGone
 )
 
-func newStubUserService(t *testing.T, id, email, display string) *stubUserService {
+func newStubUserService(t *testing.T, id, email, handle string) *stubUserService {
 	t.Helper()
-	f := &stubUserService{id: id, email: email, display: display, mode: userOK}
+	f := &stubUserService{id: id, email: email, handle: handle, mode: userOK}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /users/{id}", f.get)
 	f.srv = httptest.NewServer(mux)
@@ -490,7 +502,7 @@ func (f *stubUserService) get(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"id": f.id, "email": f.email, "display_name": f.display,
+		"id": f.id, "email": f.email, "handle": f.handle,
 		"roles": []string{"user"}, "created_at": "2026-01-01T00:00:00Z",
 		"updated_at": "2026-01-01T00:00:00Z",
 	})
@@ -735,7 +747,10 @@ func newStack(t *testing.T) *stack {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := New(codec, c, authClient, userClient, enrichClient, collClient, Options{
+	// No stubSocialService double exists: none of this stack's tests
+	// exercise a social route, so a nil-panic stub (same convention as
+	// every other unused surface here) is the correct no-op.
+	h := New(codec, c, authClient, userClient, enrichClient, collClient, &stubSocialFull{}, Options{
 		AccessTokenTTL: 5 * time.Minute,
 		RefreshWindow:  30 * time.Second,
 		MeCacheTTL:     45 * time.Second,
@@ -1369,7 +1384,7 @@ func TestConcurrentRefreshHitsAuthOnce(t *testing.T) {
 	const sub = "22222222-2222-2222-2222-222222222222"
 	access := mintAccess(t, sub, "jA", time.Now().Add(10*time.Second))
 	s.auth.seedChain("refresh-1", sub, "jA")
-	s.users.id, s.users.email, s.users.display = sub, "u1@example.test", "u-one"
+	s.users.id, s.users.email, s.users.handle = sub, "u1@example.test", "u-one"
 	cookie := s.cookieFor(t, access, "refresh-1")
 
 	const n = 8
@@ -1409,7 +1424,7 @@ func TestStaleTokenAdoptsAfterRotation(t *testing.T) {
 	const sub = "33333333-3333-3333-3333-333333333333"
 	access := mintAccess(t, sub, "jA", time.Now().Add(10*time.Second)) // within the 30s window, still valid
 	s.auth.seedChain("refresh-1", sub, "jA")
-	s.users.id, s.users.email, s.users.display = sub, "u1@example.test", "u-one"
+	s.users.id, s.users.email, s.users.handle = sub, "u1@example.test", "u-one"
 	cookie := s.cookieFor(t, access, "refresh-1")
 
 	// Request 1 rotates and publishes the successor to real Valkey.
@@ -1444,7 +1459,7 @@ func TestStaleTokenAdoptsAfterRotation(t *testing.T) {
 func TestReuseDenylistsAndRejects(t *testing.T) {
 	s := newStack(t)
 	const sub = "44444444-4444-4444-4444-444444444444"
-	s.users.id, s.users.email, s.users.display = sub, "u1@example.test", "u-one"
+	s.users.id, s.users.email, s.users.handle = sub, "u1@example.test", "u-one"
 
 	// Step A: expiring-valid access (jti jA) on an already-consumed
 	// refresh token whose live jti is jLive.

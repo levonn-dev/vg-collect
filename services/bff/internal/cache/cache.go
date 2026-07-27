@@ -101,8 +101,9 @@ func (c *Cache) GetRefreshResult(ctx context.Context, key string) (string, error
 // meKeyVersion tags the /api/me cache key with the projection shape.
 // Bump it whenever the Me projection changes so a deploy never serves
 // a pre-deploy body for the old shape ("v1" was the unversioned era;
-// v2 added preferred_currency).
-const meKeyVersion = "v2"
+// v2 added preferred_currency; v3 replaced display_name with handle +
+// profile_visibility; v4 added landing_page).
+const meKeyVersion = "v4"
 
 func meKey(sub string) string { return "me:" + meKeyVersion + ":" + sub }
 

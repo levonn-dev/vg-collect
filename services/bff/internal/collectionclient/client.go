@@ -25,6 +25,11 @@ import (
 // contract (or an infrastructure layer answered for it).
 var ErrUpstream = errors.New("collectionclient: upstream failure")
 
+// ErrShelfNotFound is returned when the collection service issues a
+// parsed problem+json 404 for a single-shelf resolve: unknown and
+// private shelves are deliberately indistinguishable.
+var ErrShelfNotFound = errors.New("collectionclient: shelf not found")
+
 // Result is one relayable upstream answer.
 type Result struct {
 	Status      int
@@ -205,6 +210,17 @@ func (c *Client) ReorderEntry(ctx context.Context, bearer string, id uuid.UUID, 
 		http.StatusOK, http.StatusBadRequest, http.StatusNotFound, http.StatusConflict)
 }
 
+// BulkUpdateEntries relays POST /entries/bulk-update (browser body
+// passes through untouched; the collection service owns both the
+// bounds/no-action guards and the per-entry tag cap).
+func (c *Client) BulkUpdateEntries(ctx context.Context, bearer string, body []byte) (Result, error) {
+	resp, err := c.api.BulkUpdateEntriesWithBodyWithResponse(ctx, "application/json", bytes.NewReader(body), bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: bulk update entries: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body, http.StatusOK, http.StatusBadRequest)
+}
+
 // ListTags relays GET /tags.
 func (c *Client) ListTags(ctx context.Context, bearer string) (Result, error) {
 	resp, err := c.api.ListTagsWithResponse(ctx, bearerEditor(bearer))
@@ -221,7 +237,7 @@ func (c *Client) CreateTag(ctx context.Context, bearer string, body []byte) (Res
 		return Result{}, fmt.Errorf("collectionclient: create tag: %w", err)
 	}
 	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body,
-		http.StatusCreated, http.StatusBadRequest, http.StatusConflict)
+		http.StatusCreated, http.StatusBadRequest, http.StatusConflict, http.StatusTooManyRequests)
 }
 
 // RenameTag relays PUT /tags/{id}.
@@ -322,4 +338,88 @@ func (c *Client) LibrarySummary(ctx context.Context, bearer string) (collectiona
 		return collectionapi.LibrarySummary{}, fmt.Errorf("%w: status %d", ErrUpstream, resp.StatusCode())
 	}
 	return *resp.JSON200, nil
+}
+
+// SharedShelf is the typed read behind the shelf-page composition and
+// the feed/Explore hydration that reuses it; not relayed to browsers
+// verbatim (the bff composes its own page schema around it).
+func (c *Client) SharedShelf(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error) {
+	resp, err := c.api.GetSharedShelfWithResponse(ctx, id, bearerEditor(bearer))
+	if err != nil {
+		return collectionapi.SharedShelf{}, fmt.Errorf("collectionclient: shared shelf: %w", err)
+	}
+	if resp.ApplicationproblemJSON404 != nil {
+		return collectionapi.SharedShelf{}, ErrShelfNotFound
+	}
+	if resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
+		return collectionapi.SharedShelf{}, fmt.Errorf("%w: status %d", ErrUpstream, resp.StatusCode())
+	}
+	return *resp.JSON200, nil
+}
+
+// SharedShelfBySlug resolves (owner, slug) to a shelf - the
+// profile-shelf page's entry point before a shelf id exists.
+func (c *Client) SharedShelfBySlug(ctx context.Context, bearer string, ownerID uuid.UUID, slug string) (collectionapi.SharedShelf, error) {
+	params := &collectionapi.GetSharedShelfBySlugParams{OwnerId: ownerID, Slug: slug}
+	resp, err := c.api.GetSharedShelfBySlugWithResponse(ctx, params, bearerEditor(bearer))
+	if err != nil {
+		return collectionapi.SharedShelf{}, fmt.Errorf("collectionclient: shared shelf by slug: %w", err)
+	}
+	if resp.ApplicationproblemJSON404 != nil {
+		return collectionapi.SharedShelf{}, ErrShelfNotFound
+	}
+	if resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
+		return collectionapi.SharedShelf{}, fmt.Errorf("%w: status %d", ErrUpstream, resp.StatusCode())
+	}
+	return *resp.JSON200, nil
+}
+
+// SharedShelfEntries relays GET /shared/shelves/{shelfId}/entries -
+// the composed shelf page's entries tab (the caller resolves
+// visibility via SharedShelf/effectiveShelf first). limit/offset pass
+// straight through; collection applies its own default when nil.
+func (c *Client) SharedShelfEntries(ctx context.Context, bearer string, id uuid.UUID, limit, offset *int) (Result, error) {
+	params := &collectionapi.ListSharedShelfEntriesParams{Limit: limit, Offset: offset}
+	resp, err := c.api.ListSharedShelfEntriesWithResponse(ctx, id, params, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: shared shelf entries: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body, http.StatusOK, http.StatusNotFound)
+}
+
+// ListSharedShelves is the typed read behind a profile page's shelf
+// list and Explore-recent's page-then-gate loop: listed shelves newest
+// publish first, plus the full count beyond this page. A nil or empty
+// ownerIDs pages across every listed owner (Explore-recent); a
+// non-empty one scopes the page to just those owners (the profile
+// page) - collectionapi.ListSharedShelvesParams.OwnerIds only gets set
+// in the latter case, so an unfiltered call omits owner_ids from the
+// request entirely rather than sending an empty list.
+func (c *Client) ListSharedShelves(ctx context.Context, bearer string, ownerIDs []uuid.UUID, limit, offset int) ([]collectionapi.SharedShelfSummary, int, error) {
+	params := &collectionapi.ListSharedShelvesParams{Limit: &limit, Offset: &offset}
+	if len(ownerIDs) > 0 {
+		params.OwnerIds = &ownerIDs
+	}
+	resp, err := c.api.ListSharedShelvesWithResponse(ctx, params, bearerEditor(bearer))
+	if err != nil {
+		return nil, 0, fmt.Errorf("collectionclient: list shared shelves: %w", err)
+	}
+	if resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
+		return nil, 0, fmt.Errorf("%w: status %d", ErrUpstream, resp.StatusCode())
+	}
+	return resp.JSON200.Shelves, resp.JSON200.TotalCount, nil
+}
+
+// SharedShelvesByIDs batch-resolves shelf summaries for hydration
+// (feed and Explore excerpts); ids without a resolvable (non-private)
+// shelf are simply absent from the answer.
+func (c *Client) SharedShelvesByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]collectionapi.SharedShelfSummary, error) {
+	resp, err := c.api.GetSharedShelvesByIdsWithResponse(ctx, &collectionapi.GetSharedShelvesByIdsParams{Ids: ids}, bearerEditor(bearer))
+	if err != nil {
+		return nil, fmt.Errorf("collectionclient: shared shelves by ids: %w", err)
+	}
+	if resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
+		return nil, fmt.Errorf("%w: status %d", ErrUpstream, resp.StatusCode())
+	}
+	return resp.JSON200.Shelves, nil
 }

@@ -12,8 +12,9 @@ patch {
 
 body:json {
   {
-    "display_name": "Alice Prime",
-    "preferred_currency": "EUR"
+    "handle": "alice_prime",
+    "preferred_currency": "EUR",
+    "landing_page": "collection"
   }
 }
 
@@ -22,7 +23,9 @@ docs {
   with the refreshed Me projection, and the bff drops its brief
   /api/me cache so the next "me" shows the change immediately. The
   user service's validation problems relay verbatim (400 invalid_body
-  naming the field). Logins never overwrite this: provider claims fill
+  naming the field, 409 handle_taken when another account owns the
+  folded key, 429 handle_cooldown on a repeat change inside the
+  cooldown window). Logins never overwrite this: provider claims fill
   the profile only when the account is first created. preferred_currency
   drives the SPA's display conversion; pattern ^[A-Z]{3}$, validated by
   the user service.

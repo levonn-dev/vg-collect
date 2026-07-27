@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
@@ -204,7 +205,10 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 	for i, role := range u.Roles {
 		roles[i] = string(role)
 	}
-	me := api.Me{Id: u.Id, Email: u.Email, DisplayName: u.DisplayName, AvatarUrl: u.AvatarUrl, Roles: roles, PreferredCurrency: u.PreferredCurrency}
+	me := api.Me{Id: u.Id, Email: u.Email, Handle: u.Handle, AvatarUrl: u.AvatarUrl,
+		Roles: roles, PreferredCurrency: u.PreferredCurrency,
+		ProfileVisibility: api.MeProfileVisibility(u.ProfileVisibility),
+		LandingPage:       api.MeLandingPage(u.LandingPage)}
 	body, err := json.Marshal(me)
 	if err != nil {
 		writeProblem(w, r, http.StatusInternalServerError, "internal", "encoding failed")
@@ -249,7 +253,10 @@ func (h *Handlers) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	for i, role := range u.Roles {
 		roles[i] = string(role)
 	}
-	writeJSON(w, http.StatusOK, api.Me{Id: u.Id, Email: u.Email, DisplayName: u.DisplayName, AvatarUrl: u.AvatarUrl, Roles: roles, PreferredCurrency: u.PreferredCurrency})
+	writeJSON(w, http.StatusOK, api.Me{Id: u.Id, Email: u.Email, Handle: u.Handle, AvatarUrl: u.AvatarUrl,
+		Roles: roles, PreferredCurrency: u.PreferredCurrency,
+		ProfileVisibility: api.MeProfileVisibility(u.ProfileVisibility),
+		LandingPage:       api.MeLandingPage(u.LandingPage)})
 }
 
 // GetMyIdentities lists the session account's linked logins. Uncached:
@@ -346,9 +353,10 @@ func linkErrorCode(err error) string {
 }
 
 // DeleteMe deletes the account everywhere. Order is self-healing:
-// data first, then auth, then the user row that login resolution
-// anchors on; an interruption leaves a login-able account that can
-// retry, and the email fallback re-attaches an abandoned partial.
+// data first - collection, then the social graph - then auth, then
+// the user row that login resolution anchors on; an interruption
+// leaves a login-able account that can retry, and the email fallback
+// re-attaches an abandoned partial.
 func (h *Handlers) DeleteMe(w http.ResponseWriter, r *http.Request) {
 	sess, claims, ok := session.FromContext(r.Context())
 	if !ok {
@@ -358,6 +366,10 @@ func (h *Handlers) DeleteMe(w http.ResponseWriter, r *http.Request) {
 	res, err := h.collection.PurgeUserData(r.Context(), sess.AccessToken)
 	if err != nil || res.Status != http.StatusNoContent {
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection purge failed; retry")
+		return
+	}
+	if sres, serr := h.social.PurgeUserData(r.Context(), sess.AccessToken); serr != nil || sres.Status != http.StatusNoContent {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "social purge failed; retry")
 		return
 	}
 	if err := h.auth.DeleteUserAuth(r.Context(), claims.Sub, sess.AccessToken); err != nil {
@@ -956,6 +968,25 @@ func (h *Handlers) ReorderEntry(w http.ResponseWriter, r *http.Request, entryId 
 	h.relayCollectionMutation(w, r, claims.Sub, res, err)
 }
 
+// BulkUpdateEntries proxies the transactional bulk tag/status/
+// storage-location update (browser body untouched; collection owns
+// the guards, the per-entry tag cap, and the all-or-nothing
+// transaction). A mutation like every other entry write, so it
+// invalidates recommendations the same way.
+func (h *Handlers) BulkUpdateEntries(w http.ResponseWriter, r *http.Request) {
+	sess, claims, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	body, ok := readCapped(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.collection.BulkUpdateEntries(r.Context(), sess.AccessToken, body)
+	h.relayCollectionMutation(w, r, claims.Sub, res, err)
+}
+
 // ListTags / CreateTag / RenameTag / DeleteTag proxy the tag surface.
 func (h *Handlers) ListTags(w http.ResponseWriter, r *http.Request) {
 	sess, _, ok := session.FromContext(r.Context())
@@ -1005,6 +1036,30 @@ func (h *Handlers) DeleteTag(w http.ResponseWriter, r *http.Request, tagId opena
 	h.relayCollection(w, r, res, err)
 }
 
+// publishIfListed fires the social publish event after a successful
+// view write whose RESULT landed visibility=listed - the response
+// body governs, not the request body: a request that asked for
+// listed but the stored view came back some other way must not fire,
+// and a request that did not ask for listed but the stored view came
+// back listed anyway must. Fail-open: the write itself already
+// succeeded in collection; a lost event costs a feed entry until the
+// next listed transition, never the write.
+func (h *Handlers) publishIfListed(r *http.Request, accessToken string, res collectionclient.Result) {
+	if res.Status < http.StatusOK || res.Status >= http.StatusMultipleChoices {
+		return
+	}
+	var view struct {
+		Id         uuid.UUID `json:"id"`
+		Visibility string    `json:"visibility"`
+	}
+	if err := json.Unmarshal(res.Body, &view); err != nil || view.Visibility != "listed" || view.Id == uuid.Nil {
+		return
+	}
+	if err := h.social.RecordPublish(r.Context(), accessToken, view.Id); err != nil {
+		h.failOpenEvent(r.Context(), "social_publish_event", err)
+	}
+}
+
 // ListViews / CreateView / UpdateView / DeleteView proxy saved views.
 func (h *Handlers) ListViews(w http.ResponseWriter, r *http.Request) {
 	sess, _, ok := session.FromContext(r.Context())
@@ -1027,6 +1082,9 @@ func (h *Handlers) CreateView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := h.collection.CreateView(r.Context(), sess.AccessToken, body)
+	if err == nil {
+		h.publishIfListed(r, sess.AccessToken, res)
+	}
 	h.relayCollection(w, r, res, err)
 }
 
@@ -1041,6 +1099,9 @@ func (h *Handlers) UpdateView(w http.ResponseWriter, r *http.Request, viewId ope
 		return
 	}
 	res, err := h.collection.UpdateView(r.Context(), sess.AccessToken, viewId, body)
+	if err == nil {
+		h.publishIfListed(r, sess.AccessToken, res)
+	}
 	h.relayCollection(w, r, res, err)
 }
 
