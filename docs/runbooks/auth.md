@@ -36,13 +36,14 @@ What it serves, as an operator sees it:
   caller's identities and revokes every refresh family (self only).
 - `GET /providers` reports which login buttons can succeed right now.
 - `GET /.well-known/jwks.json` serves every non-retired Ed25519 public
-  key; consumed by bff, user, enrichment, and collection via jwtauth.
+  key; consumed by bff, user, enrichment, collection, and social via
+  jwtauth.
 
 No endpoint on this service carries Bearer middleware except the
 self-service ones (link start, dev link, identities, unlink, auth
 wipe): login and JWKS are where tokens come from. Network reachability
 is the access control; the NetworkPolicy admits only bff, user,
-enrichment, and collection pods on 8080.
+enrichment, collection, and social pods on 8080.
 
 ## Architecture
 
@@ -54,6 +55,7 @@ graph LR
     user[user] -.->|"JWKS"| auth
     enrichment[enrichment] -.->|"JWKS"| auth
     collection[collection] -.->|"JWKS"| auth
+    social[social] -.->|"JWKS"| auth
     auth -->|"upsert + roles, service JWT"| user
     auth -->|"TLS verify-full"| authpg[("auth-pg Postgres 17")]
     auth -->|"discovery, code exchange, JWKS"| google[Google OIDC]

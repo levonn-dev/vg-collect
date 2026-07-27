@@ -36,6 +36,8 @@ If you need to test admin only features, you can grant admin to the dev fixture 
 task grant-fixture-admin
 ```
 
+Note: the fixture's handle is literally `admin` on dev databases created before the handle-backfill reserved-word fix (migrations do not re-run); fresh databases suffix it instead (e.g. `admin2`).
+
 ## Dev commands
 
 | Command | What |
@@ -46,7 +48,7 @@ task grant-fixture-admin
 | `task gen` | regenerate OpenAPI server stubs/types + the frontend's typed API client |
 | `task tidy` | go mod tidy every module |
 | `task build` | compile every module + the frontend bundle |
-| `task e2e` | Playwright smoke suite against the running stack (login, collection journey, display currency, account) |
+| `task e2e` | Playwright smoke suite against the running stack (login, collection journey, currency, account, admin, social, submissions) |
 | `task run` / `task down` | tilt up / down |
 | `task nuke` | full app-stack reset: tilt down + the vg-collect namespace (see Teardown) |
 
@@ -87,6 +89,7 @@ the other services are reachable in dev only via Tilt port-forwards.
 | 8081 | user, direct (Bruno `user/` Bearer flows) |
 | 8084 | enrichment, direct (Bruno `enrichment/` Bearer flows) |
 | 8085 | collection, direct (Bruno `collection/` Bearer flows) |
+| 8086 | social, direct (no Bruno flows yet) |
 | 5173 | Vite dev server (the manual `frontend-dev` Tilt resource; proxies `/api` to 8090) |
 | 3000 | Grafana (anonymous admin in dev) |
 | 9090 | Prometheus |
@@ -111,7 +114,7 @@ through a session-gated relay on the bff, so one trace stitches the
 browser through the bff and into whichever service and database
 answered the call.
 
-Ten dashboards are provisioned into the `vg-collect` Grafana folder
+Eleven dashboards are provisioned into the `vg-collect` Grafana folder
 (localhost:3000, anonymous admin in dev):
 
 - `vg-overview` - the application overview pane: edge, services, and
@@ -120,11 +123,11 @@ Ten dashboards are provisioned into the `vg-collect` Grafana folder
 - `vg-datastores` - Postgres/MongoDB/Valkey health
 - `vg-pod-details` - per-pod CPU/memory/restarts
 - `vg-node-details` - node-level pressure and capacity
-- `vg-auth`, `vg-bff`, `vg-collection`, `vg-enrichment`, `vg-user` -
-  one per service: RED, domain metrics, datastore health from that
-  service's seat, pods, and error logs
+- `vg-auth`, `vg-bff`, `vg-collection`, `vg-enrichment`, `vg-social`,
+  `vg-user` - one per service: RED, domain metrics, datastore health
+  from that service's seat, pods, and error logs
 
-Twenty alert rules are provisioned alongside them in the same
+Twenty-one alert rules are provisioned alongside them in the same
 `vg-collect` folder; each links a runbook under `docs/runbooks/` via
 its `runbook_url` annotation. The same directory holds an operating
 runbook per service and `docs/runbooks/stack.md` for the application

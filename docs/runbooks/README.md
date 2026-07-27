@@ -31,13 +31,17 @@ and triage, admin levers, capacity and rollout.
 - [enrichment.md](enrichment.md) - enrichment service: catalog and
   pricing quarantine, providers and stub modes, the nightly refresh
   walk; telemetry reference, dashboard vg-enrichment, moderation levers
+- [social.md](social.md) - social service: follows, likes, comments,
+  and the activity feed over collection's shelves and user's profiles;
+  telemetry reference, dashboard vg-social, failure triage, purge
+  semantics
 - [user.md](user.md) - user service: profile and RBAC source of truth;
   telemetry reference, dashboard vg-user, failure triage, psql role
   levers
 
 ## Alert rules
 
-The twenty rules live in
+The twenty-one rules live in
 `deploy/charts/platform/files/alerting/vg-rules.yaml`, provisioned
 into the `vg-collect` folder and evaluated every 1m. Each rule's
 `runbook_url` annotation deep-links the runbook section below; that
@@ -68,10 +72,11 @@ from Alerting > Alert rules in Grafana (localhost:3000).
 | vg-enrichment-refresh-stalled - Enrichment nightly price walk has not completed in 26h | warn | [enrichment.md](enrichment.md#4-nightly-walk-missing) |
 | vg-enrichment-search-degraded - Enrichment search serving degraded answers | warn | [enrichment.md](enrichment.md#3-search-degraded) |
 | vg-user-upsert-5xx - User profile upsert failing (logins blocked) | page | [user.md](user.md#1-logins-fail-at-the-upsert-leg) |
+| vg-social-down - social service down | page | [social.md](social.md#1-social-down) |
 
 `page` marks user-visible breakage worth interrupting someone for;
 `warn` is everything else worth investigating on the next pass. The
 dev tier has no contact point configured on purpose, so nothing here
 pages out: alerts are read from the Grafana UI (Alerting > Alert
-rules for the current state of all twenty, Alerting > Active alerts
-for what is firing right now).
+rules for the current state of all twenty-one, Alerting > Active
+alerts for what is firing right now).

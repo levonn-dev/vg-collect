@@ -565,3 +565,31 @@ groups:
           runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/user.md#1-logins-fail-at-the-upsert-leg
         labels:
           severity: page
+      - uid: vg-social-down
+        title: social service down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: up{namespace="vg-collect", pod=~"social-.*"}
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "social is down or its postgres exporter cannot reach it"
+          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/social.md#1-social-down
+        labels:
+          severity: page

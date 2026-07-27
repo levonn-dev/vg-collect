@@ -16,8 +16,8 @@ What an operator sees it doing:
   Accept-Language hint (`de-DE` becomes EUR); unmapped or absent hints
   default to USD. The SPA converts market values into this currency.
 - Serve profile reads (`GET /users/{id}`: self, service, or admin) and
-  self-service edits (`PATCH`: display name, avatar URL, preferred
-  currency).
+  self-service edits (`PATCH`: handle, avatar URL, preferred currency,
+  profile visibility, landing-page preference).
 - Store roles (`user`, `admin`) and hand them to auth at mint and
   refresh time. Admin grants are a psql lever, not an API (see
   [Admin levers](#admin-levers)); they land in the JWT at the next
@@ -34,6 +34,7 @@ graph LR
     gw --> bff
     bff -->|user bearer: get, patch, delete /users/id| user
     auth -->|service token: upsert at login, get at refresh| user
+    social[social] -->|bearer: followee validation, profile cards| user
     user -->|TLS verify-full :5432| pg[(user-pg)]
     exp[postgres-exporter sidecar] -->|loopback| pg
     prom[Prometheus] -.->|scrape :9187| exp
@@ -46,8 +47,8 @@ graph LR
 
 No external providers, no cron workloads, no cache. One deployment
 (`user`), one StatefulSet (`user-pg`) with a postgres-exporter sidecar.
-NetworkPolicies restrict ingress: `user:8080` accepts only auth and bff
-pods; `user-pg:5432` accepts only user pods; `user-pg:9187` accepts
+NetworkPolicies restrict ingress: `user:8080` accepts only auth, bff,
+and social pods; `user-pg:5432` accepts only user pods; `user-pg:9187` accepts
 only Prometheus from `vg-platform`.
 
 The login hot path, because it explains most incidents involving this
@@ -138,12 +139,15 @@ green; the service never crashes over JWKS.
 ## Datastore: user-pg
 
 One Postgres 17 instance, database `user`, user `user`. Schema at a
-glance: `users` (uuid id, citext unique email, display_name,
-avatar_url, preferred_currency with a `^[A-Z]{3}$` check, timestamps)
-and `user_roles` (user_id FK cascade-delete, role checked to
-`user | admin`, composite PK). Two migrations so far (`000001_init`,
-`000002_preferred_currency`), embedded in the binary and applied by the
-init container or `task user:db:migrate`.
+glance: `users` (uuid id, citext unique email, handle with a generated
+`handle_key` fold column backing a unique index, handle_changed_at,
+avatar_url, profile_visibility checked to `private | unlisted |
+listed`, preferred_currency with a `^[A-Z]{3}$` check, landing_page
+checked to `collection | feed | explore`, timestamps) and `user_roles`
+(user_id FK cascade-delete, role checked to `user | admin`, composite
+PK). Four migrations so far (`000001_init`, `000002_preferred_currency`,
+`000003_handle`, `000004_landing_page`), embedded in the binary and
+applied by the init container or `task user:db:migrate`.
 
 Connection facts: TLS `verify-full` against the cert-manager-issued
 `user-pg-tls` cert (ClusterIssuer `vg-ca`, 90-day duration, renewed

@@ -13,10 +13,20 @@ reads and verdicts, which additionally require role admin.
 Feature inventory, as an operator sees it:
 
 - Entries: create (product-backed or custom), get, full-replace
-  update, delete, and the list matrix (filter x sort x group, paged).
+  update, delete, transactional bulk-update (tags add/remove, status,
+  storage location across a batch of the caller's own entries; 400
+  `tag_cap_exceeded` rolls back the whole call), and the list matrix
+  (filter x sort x group, paged).
 - Backlog ordering: single-row fractional-index reorder between two
   neighbor entries (409 `conflicting_order` on stale drags).
-- Tags and saved views: per-user CRUD, case-insensitive unique names.
+- Tags and saved views: per-user CRUD, case-insensitive unique names;
+  tags are capped at 200 distinct per user (429 `cap_exceeded`).
+- Shelf sharing: saved views carry a visibility (private, unlisted,
+  listed; default private) with `published_at` stamped on transitions
+  into listed, and the `/shared/shelves` family (list, by-slug, by-ids,
+  by-id, entries) serves whitelisted cross-user reads to the bff and
+  social - profile pages, Explore, and social's shelf resolves all ride
+  it.
 - Dashboard and value history: SQL aggregates plus one batched
   enrichment price call, cached about five minutes in Valkey and
   invalidated by the owner's own mutations.
@@ -40,14 +50,15 @@ graph LR
     collection -->|"products, prices, history, mint"| enrichment[enrichment]
     collection -->|"TLS verify-full :5432"| pg[(collection-pg)]
     collection -->|"rediss :6379"| valkey[(collection-valkey)]
+    social[social] -->|"bearer: shelf + owner resolves"| collection
     eso[ExternalSecret via ClusterSecretStore vg-fake] -->|"collection/pg-password"| collection
     cm[cert-manager] -->|"collection-pg-tls, collection-valkey-tls"| pg
     cm --> valkey
 ```
 
-The bff is the only caller; NetworkPolicy
-`collection-from-callers-only` admits port 8080 ingress from bff pods
-only, and the datastore policies admit only collection pods plus the
+The bff and social are the only callers; NetworkPolicy
+`collection-from-callers-only` admits port 8080 ingress from bff and
+social pods only, and the datastore policies admit only collection pods plus the
 Prometheus exporter ports (9187, 9121) from vg-platform. There are no
 cron workloads: everything the service does is request-driven.
 Enrichment hops always relay the calling user's own bearer; there is
@@ -111,9 +122,9 @@ Task targets:
   against `DATABASE_URL`).
 
 Bruno flows live in `bruno/collection/` (environment variable
-`collection_url` = http://localhost:8085): entry CRUD, tags, views,
-dashboard, value history, library summary, reorder, purge, and the
-resnapshot lever.
+`collection_url` = http://localhost:8085): entry CRUD, bulk-update,
+tags, views, dashboard, value history, library summary, reorder,
+purge, and the resnapshot lever.
 
 Migrate mode: `collection migrate` loads the full config, runs the
 embedded migrations via pgkit.Migrate, and exits. The deployment runs
@@ -155,10 +166,13 @@ platform id never without a name; `backlog_rank` is COLLATE "C" so
 byte order matches the Go rank generator; partial index on `(user_id,
 backlog_rank) WHERE status = 'backlog'`), `tags` (citext name, unique
 per user), `entry_tags` (cascade join), `saved_views` (jsonb params,
-8192-byte cap enforced in the handler), and `catalog_submissions`
+8192-byte cap enforced in the handler; `visibility` checked
+private/unlisted/listed with default private, `published_at` stamped on
+transitions into listed, and a generated `slug_key` fold backing the
+per-user unique slug index), and `catalog_submissions`
 (lifecycle rows kept as history; partial unique index enforces one
 pending submission per entry; `(user_id, created_at)` serves the abuse
-caps and `(status, created_at)` the admin queue). Eight embedded
+caps and `(status, created_at)` the admin queue). Nine embedded
 migrations under `services/collection/migrations/`, applied by the
 init container (see migrate mode above). Connections use TLS
 verify-full against the in-cluster CA (secret `collection-pg-tls`);

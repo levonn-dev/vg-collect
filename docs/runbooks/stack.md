@@ -1,19 +1,21 @@
 # The vg-collect stack
 
-vg-collect is a video-game collection tracker: five Go services behind
+vg-collect is a video-game collection tracker: six Go services behind
 an APISIX gateway that publishes only the bff, a React SPA served out
 of the bff binary, and per-service datastores (Postgres for auth,
-user, and collection; MongoDB plus Valkey for enrichment; Valkey
-caches for the bff and collection). auth mints every token, user owns
-profiles and roles, collection owns what people track, enrichment
-quarantines all third-party data (IGDB, PriceCharting,
-frankfurter.dev), and the bff owns the browser session end to end. The
-dev stack runs under Tilt on any local Kubernetes context: the
-platform layer (gateway, cert-manager, external-secrets, observability)
-installs once per cluster into the `vg-platform` namespace, and the
-application deploys into `vg-collect`. Each service has its own
-runbook (auth.md, bff.md, collection.md, enrichment.md, user.md); this
-one covers the seams between them.
+user, collection, and social; MongoDB plus Valkey for enrichment;
+Valkey caches for the bff and collection). auth mints every token,
+user owns profiles and roles, collection owns what people track,
+social layers follows, likes, comments, and the activity feed on top
+of collection's shelves and user's profiles, enrichment quarantines
+all third-party data (IGDB, PriceCharting, frankfurter.dev), and the
+bff owns the browser session end to end. The dev stack runs under Tilt
+on any local Kubernetes context: the platform layer (gateway,
+cert-manager, external-secrets, observability) installs once per
+cluster into the `vg-platform` namespace, and the application deploys
+into `vg-collect`. Each service has its own runbook (auth.md, bff.md,
+collection.md, enrichment.md, social.md, user.md); this one covers the
+seams between them.
 
 ## Topology
 
@@ -24,8 +26,11 @@ graph LR
         bff --> user
         bff --> collection
         bff --> enrichment
+        bff --> social
         auth -->|"profile upsert, roles"| user
         collection -->|"products, prices"| enrichment
+        social -->|"shelf + owner"| collection
+        social -->|"followee + owner visibility"| user
     end
     browser[Browser SPA] -->|:8090| apisix[APISIX gateway]
     vite["Vite dev server :5173 (frontend-dev resource)"] -.->|"/api proxy"| apisix
@@ -37,6 +42,7 @@ graph LR
     bff --> bffvalkey[(bff-valkey)]
     collection --> collectionpg[(collection-pg)]
     collection --> collectionvalkey[(collection-valkey)]
+    social --> socialpg[(social-pg)]
     enrichment --> mongo[(enrichment-mongo)]
     enrichment --> enrichmentvalkey[(enrichment-valkey)]
     auth --> google[Google OIDC]
@@ -53,7 +59,7 @@ under `bruno/` either ride the gateway (`bruno/bff/`,
 `bruno/bff/admin/`) or hit services directly on their Tilt
 port-forwards with Bearer tokens. Every service validates JWTs against
 auth's JWKS; NetworkPolicies restrict each hop to its intended callers
-(the gateway namespace to bff, bff to the four services, each service
+(the gateway namespace to bff, bff to the five services, each service
 to its own datastores). Enrichment's provider calls run in `stub` mode
 by default, so the whole stack works with zero real credentials.
 
@@ -61,7 +67,7 @@ by default, so the whole stack works with zero real credentials.
 
 ```mermaid
 graph LR
-    svcs["auth, user, bff, collection, enrichment"] -->|"OTLP :4317"| agent[otel-agent]
+    svcs["auth, user, bff, collection, enrichment, social"] -->|"OTLP :4317"| agent[otel-agent]
     browser[Browser SPA] -->|"POST /api/otlp/v1/traces"| relay[bff relay]
     relay -->|"OTLP :4318"| agent
     agent --> gateway[otel-gateway]
@@ -142,6 +148,7 @@ All dev-tier Tilt port-forwards; in-cluster, every service listens on
 | 8081 | user, direct (Bruno `user/` Bearer flows) |
 | 8084 | enrichment, direct (Bruno `enrichment/` Bearer flows) |
 | 8085 | collection, direct (Bruno `collection/` Bearer flows) |
+| 8086 | social, direct (no Bruno flows yet; mint a bearer token with `auth/dev-token` and call it directly) |
 | 5173 | Vite dev server (manual `frontend-dev` resource; proxies `/api` to 8090) |
 | 3000 | Grafana (anonymous admin in dev) |
 | 9090 | Prometheus |
@@ -149,6 +156,7 @@ All dev-tier Tilt port-forwards; in-cluster, every service listens on
 | 5433 | user-pg (`psql -h localhost -p 5433 -U user user`) |
 | 5434 | auth-pg (`psql -h localhost -p 5434 -U auth auth`) |
 | 5435 | collection-pg (`psql -h localhost -p 5435 -U collection collection`) |
+| 5436 | social-pg (`psql -h localhost -p 5436 -U social social`) |
 | 27018 | enrichment-mongo |
 
 The three Valkey instances have no port-forward: TLS-only listeners,
@@ -157,7 +165,7 @@ in-cluster callers only (triage goes through `kubectl exec` and
 
 ## Dashboards
 
-Ten dashboards provision from
+Eleven dashboards provision from
 `deploy/charts/platform/files/dashboards/*.json` into Grafana's
 `vg-collect` folder (every file in that directory globs into the
 `vg-dashboards` ConfigMap). Open any of them at
@@ -178,9 +186,10 @@ dashboard.
 | Bff Service | `vg-bff` | sessions, composition caches, denylist fail-open, bff-valkey | [bff.md](bff.md) |
 | Collection Service | `vg-collection` | pricing composition, submissions queue, collection-pg and its cache | [collection.md](collection.md) |
 | Enrichment Service | `vg-enrichment` | search sources, auto-matching, the nightly walk, mongo and valkey | [enrichment.md](enrichment.md) |
+| Social Service | `vg-social` | follow/like/comment rates, feed reads, cap rejections, publish outcomes, social-pg | [social.md](social.md) |
 | User Service | `vg-user` | account upserts, currency seeds, deletions, user-pg | [user.md](user.md) |
 
-The five service dashboards share one layout contract: HTTP RED per
+The six service dashboards share one layout contract: HTTP RED per
 route first, then domain metrics, then datastores from that service's
 seat, then pods and error logs. Panels for a service's domain metrics
 (`vg_<service>_*`) stay empty until a pod built with those instruments
@@ -189,10 +198,10 @@ before the series exists.
 
 ## Alerting
 
-Twenty rules provision from
+Twenty-one rules provision from
 `deploy/charts/platform/files/alerting/vg-rules.yaml` into the same
-`vg-collect` folder, evaluated every 1m. `severity: page` (six rules)
-marks user-visible breakage worth interrupting someone for;
+`vg-collect` folder, evaluated every 1m. `severity: page` (seven
+rules) marks user-visible breakage worth interrupting someone for;
 `severity: warn` (fourteen) queues investigation on the next pass. The
 dev tier configures no contact point on purpose, so nothing sends:
 read state in Grafana under Alerting > Alert rules, and what is firing
@@ -200,13 +209,14 @@ under Alerting > Active alerts. Every rule's `runbook_url` lands on
 the runbook (or the exact failure-mode section) that triages it;
 [README.md](README.md) holds the full alert-to-runbook table.
 
-Two rules treat missing data as firing because absence is their
+Three rules treat missing data as firing because absence is their
 signal: vg-mongo-down (an unreachable exporter usually means an
-unreachable Mongo) and vg-enrichment-refresh-stalled (no completed
-price walk in 26h; a brand-new stack fires this until its first walk
-finishes at 06:00 or by manual trigger). Every other rule sets
-`noDataState: OK`, so a not-yet-emitting instrument stays silent
-rather than false-firing.
+unreachable Mongo), vg-enrichment-refresh-stalled (no completed price
+walk in 26h; a brand-new stack fires this until its first walk finishes
+at 06:00 or by manual trigger), and vg-social-down (the social app has
+no ServiceMonitor of its own, so the absence of its pg exporter target
+is the signal). Every other rule sets `noDataState: OK`, so a
+not-yet-emitting instrument stays silent rather than false-firing.
 
 ## Telemetry pipeline operations
 
@@ -283,13 +293,15 @@ runbooks in:
 | Users logged out mid-session | [bff.md](bff.md#3-refresh-failure-storm-mass-logout) | [auth.md](auth.md#3-refresh-reuse-detections) if reuse detections climb too |
 | Revoked tokens still usable | [bff.md](bff.md#1-valkey-unreachable) | exposure is bounded: a revoked token outlives revocation by its remaining TTL, 5 minutes max |
 | Prices null, stale, or thin search results | [collection.md](collection.md#1-enrichment-unreachable) | [enrichment.md](enrichment.md#3-search-degraded), [enrichment.md](enrichment.md#4-nightly-walk-missing) |
+| Like/follower counts missing from shelf or profile pages, or feed and social writes failing | [social.md](social.md#1-social-down) | [social.md](social.md#2-collection-or-user-down) if only writes 502 |
 | One service erroring or slow | [5xx ratio](#1-service-5xx-ratio-above-5-percent), [p99 latency](#2-service-p99-latency-above-500ms) below | that service's runbook failure modes |
 | A datastore down or saturated | [enrichment.md](enrichment.md#2-mongo-down), [Postgres saturation](#6-postgres-connections-above-80-percent-of-max), [Valkey pressure](#7-valkey-evicting-keys-or-memory-unusually-high) | the owning service runbook for readiness behavior and blast radius |
 | Dashboards blank, service healthy | [Telemetry pipeline operations](#telemetry-pipeline-operations) above | the four-step walk there, ending at the backend pods |
 
 The dependency chain behind most of these: browser -> gateway -> bff
--> auth -> user for anything session-shaped, and bff -> collection ->
-enrichment for anything money-shaped. Failures propagate left as 502s
+-> auth -> user for anything session-shaped, bff -> collection ->
+enrichment for anything money-shaped, and bff -> social -> collection
+or user for anything social-shaped. Failures propagate left as 502s
 with the failing dependency named in the problem detail, so the bff's
 "Errors by route and status" panel plus its route-to-dependency map
 ([bff.md](bff.md#2-a-downstream-service-is-down)) resolves "which
@@ -308,8 +320,8 @@ of a service's responses were 5xx for 5 minutes:
 
 1. "5xx ratio by service" on vg-overview shows the same ratio per
    service; open the firing service's own dashboard (vg-auth, vg-bff,
-   vg-collection, vg-enrichment, vg-user) and find which route carries
-   the errors on "Errors by route and status".
+   vg-collection, vg-enrichment, vg-social, vg-user) and find which
+   route carries the errors on "Errors by route and status".
 2. Jump from a latency-panel exemplar dot to the Jaeger trace, or open
    the error logs panel and follow a trace link from a log line.
 3. Check the pod details dashboard (vg-pod-details) for restarts or
@@ -434,7 +446,9 @@ separately (eviction rate and memory used):
 ## Smoke surfaces
 
 - `task e2e` runs the Playwright browser smoke against the running
-  stack: login, collection journey, display currency, account. It
+  stack: login, collection journey (incl. bulk edit), display currency,
+  account, admin, social journey, and catalog submissions - 15 tests
+  across 7 specs. It
   runs `task grant-fixture-admin` first, and needs
   `npx playwright install chromium` once.
 - `task grant-fixture-admin` logs the dev `admin` fixture in (so its
@@ -462,25 +476,26 @@ Dashboards hot-reload from the ConfigMap within a minute. Alert rules
 do not: Grafana reads alerting provisioning only at startup or on an
 explicit reload, and the reload endpoint requires the basic admin
 login (the anonymous Admin role lacks `provisioning:reload`). After
-the ConfigMap lands, reload and count, expecting twenty rules:
+the ConfigMap lands, reload and count, expecting twenty-one rules:
 
     curl -u admin:admin -X POST http://localhost:3000/api/admin/provisioning/alerting/reload
     curl -s -u admin:admin http://localhost:3000/api/v1/provisioning/alert-rules | jq length
 
-Dashboards provisioned, expecting ten `.json` entries in the
-ConfigMap and ten `vg-` uids in the `vg-collect` folder (Grafana
+Dashboards provisioned, expecting eleven `.json` entries in the
+ConfigMap and eleven `vg-` uids in the `vg-collect` folder (Grafana
 reloads provisioned files within a minute of the ConfigMap landing):
 
     kubectl -n vg-platform get cm vg-dashboards -o json | jq -r '.data | keys[]'
     curl -s "http://localhost:3000/api/search?tag=vg-collect&limit=50" | jq -r '.[] | select(.type=="dash-db") | .uid'
 
-Service deployments rolled, expecting `successfully rolled out` five
+Service deployments rolled, expecting `successfully rolled out` six
 times:
 
-    for d in auth bff collection enrichment user; do kubectl -n vg-collect rollout status deployment/$d; done
+    for d in auth bff collection enrichment social user; do kubectl -n vg-collect rollout status deployment/$d; done
 
 Pool gauges emit without traffic, expecting pg series for auth,
-collection, user and valkey series for bff, collection, enrichment:
+collection, social, user and valkey series for bff, collection,
+enrichment:
 
     curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum by (service_name) (vg_pgkit_pool_connections)'
     curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum by (service_name) (vg_valkeykit_pool_connections)'
