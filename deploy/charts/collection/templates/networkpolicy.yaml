@@ -58,8 +58,8 @@ spec:
           port: 9121
 ---
 {{- end }}
-# Collection's caller: the bff (the whole collection surface is
-# browser-driven; no service or cron calls in).
+# Collection's callers: the bff (the whole collection surface is
+# browser-driven) and social (shelf resolves for follows/likes/comments).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -75,5 +75,8 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: bff
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: social
       ports:
         - { port: 8080, protocol: TCP }

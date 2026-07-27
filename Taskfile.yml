@@ -132,6 +132,7 @@ tasks:
       - task: bff:gen
       - task: enrichment:gen
       - task: collection:gen
+      - task: social:gen
       - task: frontend:gen
 
   tidy:
@@ -242,6 +243,10 @@ includes:
   collection:
     taskfile: services/collection/Taskfile.yml
     dir: services/collection
+    optional: true
+  social:
+    taskfile: services/social/Taskfile.yml
+    dir: services/social
     optional: true
   frontend:
     taskfile: frontend/Taskfile.yml

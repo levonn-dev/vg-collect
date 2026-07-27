@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: social
+  labels: {{- include "social.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: social
+  template:
+    metadata:
+      labels: {{- include "social.labels" . | nindent 8 }}
+      annotations:
+        checksum/externalsecret: {{ include (print $.Template.BasePath "/externalsecret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: social
+      initContainers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate"]
+          env: &appEnv
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: social-pg-credentials, key: password }
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.postgres.username }}:$(PG_PASSWORD)@{{ include "social.pgHost" . }}:5432/{{ .Values.postgres.database }}?sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt"
+            - name: JWKS_URL
+              value: {{ .Values.env.jwksUrl | quote }}
+            - name: JWT_ISSUER
+              value: {{ .Values.env.jwtIssuer | quote }}
+            - name: JWT_AUDIENCE
+              value: {{ .Values.env.jwtAudience | quote }}
+            - name: COLLECTION_SERVICE_URL
+              value: {{ .Values.env.collectionServiceUrl | quote }}
+            - name: USER_SERVICE_URL
+              value: {{ .Values.env.userServiceUrl | quote }}
+            - name: SOCIAL_CAP_COMMENTS_24H
+              value: {{ .Values.env.capComments24h | quote }}
+            - name: SOCIAL_CAP_FOLLOWS_24H
+              value: {{ .Values.env.capFollows24h | quote }}
+            - name: SOCIAL_CAP_LIKES_24H
+              value: {{ .Values.env.capLikes24h | quote }}
+            - name: SERVICE_VERSION
+              value: {{ .Values.image.tag | quote }}
+            {{- if .Values.otel.exporterEndpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.exporterEndpoint | quote }}
+            {{- end }}
+          volumeMounts: &caMounts
+            - name: pg-ca
+              mountPath: /etc/vg/pg-ca
+              readOnly: true
+      containers:
+        - name: social
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8080 }
+          env: *appEnv
+          volumeMounts: *caMounts
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: pg-ca
+          secret:
+            secretName: social-pg-tls
+            items: [{ key: ca.crt, path: ca.crt }]

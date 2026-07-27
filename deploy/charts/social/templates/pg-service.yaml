@@ -1,0 +1,17 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: social-pg
+  labels:
+    app.kubernetes.io/name: social-pg
+    app.kubernetes.io/part-of: vg-collect
+spec:
+  selector:
+    app.kubernetes.io/name: social-pg
+  ports:
+    - { name: pg, port: 5432, targetPort: pg }
+    - name: metrics
+      port: 9187
+      targetPort: metrics
+{{- end }}

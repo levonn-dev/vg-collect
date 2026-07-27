@@ -1,0 +1,41 @@
+image:
+  repository: vg-collect/social
+  tag: dev
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+env:
+  jwksUrl: http://auth:8080/.well-known/jwks.json
+  jwtIssuer: vg-collect-auth
+  jwtAudience: vg-collect
+  collectionServiceUrl: http://collection:8080
+  userServiceUrl: http://user:8080
+  capComments24h: "50"
+  capFollows24h: "100"
+  capLikes24h: "200"
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { memory: 128Mi }
+
+postgres:
+  enabled: true            # the prod-path seam: disable + set externalUrl for RDS/CNPG
+  image: postgres:17-alpine
+  database: social
+  username: social
+  storage: 1Gi
+  exporterImage: quay.io/prometheuscommunity/postgres-exporter:v0.20.0
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 256Mi }
+
+otel:
+  # OTLP gRPC endpoint for traces, metrics and logs. Empty string
+  # disables export entirely (the service logs JSON to stdout only).
+  exporterEndpoint: http://otel-agent.vg-platform.svc.cluster.local:4317
+
+secretStore:
+  name: vg-fake
+  kind: ClusterSecretStore
+  passwordKey: social/pg-password

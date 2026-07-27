@@ -1,0 +1,6 @@
+apiVersion: v2
+name: social
+description: vg-collect social service (follows, likes, comments, activity) with its Postgres
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

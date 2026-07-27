@@ -1,0 +1,5 @@
+package: userapi
+generate:
+  models: true
+  client: true
+output: internal/gen/userapi/client.gen.go

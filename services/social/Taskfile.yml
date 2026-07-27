@@ -1,0 +1,21 @@
+version: "3"
+
+tasks:
+
+  default:
+    desc: List available tasks (run with no args)
+    silent: true
+    cmds:
+      - task --list
+
+  gen:
+    desc: Regenerate server stubs from api/social.yaml and the collection/user typed clients
+    cmds:
+      - go tool oapi-codegen -config oapi.server.yaml ../../api/social.yaml
+      - go tool oapi-codegen -config oapi.collectionclient.yaml ../../api/collection.yaml
+      - go tool oapi-codegen -config oapi.userclient.yaml ../../api/user.yaml
+
+  db:migrate:
+    desc: Run migrations against DATABASE_URL
+    cmds:
+      - go run ./cmd/social migrate
