@@ -42,6 +42,16 @@ const (
 	AdminSubmissionStatusRejected  AdminSubmissionStatus = "rejected"
 )
 
+// Defines values for BulkUpdateRequestStatus.
+const (
+	BulkUpdateRequestStatusBacklog   BulkUpdateRequestStatus = "backlog"
+	BulkUpdateRequestStatusBeaten    BulkUpdateRequestStatus = "beaten"
+	BulkUpdateRequestStatusCompleted BulkUpdateRequestStatus = "completed"
+	BulkUpdateRequestStatusDropped   BulkUpdateRequestStatus = "dropped"
+	BulkUpdateRequestStatusPlaying   BulkUpdateRequestStatus = "playing"
+	BulkUpdateRequestStatusShelved   BulkUpdateRequestStatus = "shelved"
+)
+
 // Defines values for CommunityProductSpecType.
 const (
 	CommunityProductSpecTypeAccessory CommunityProductSpecType = "accessory"
@@ -271,6 +281,83 @@ const (
 	EntryUpdateStatusShelved   EntryUpdateStatus = "shelved"
 )
 
+// Defines values for SavedViewVisibility.
+const (
+	SavedViewVisibilityListed   SavedViewVisibility = "listed"
+	SavedViewVisibilityPrivate  SavedViewVisibility = "private"
+	SavedViewVisibilityUnlisted SavedViewVisibility = "unlisted"
+)
+
+// Defines values for SharedEntryBoxCondition.
+const (
+	SharedEntryBoxConditionAcceptable SharedEntryBoxCondition = "acceptable"
+	SharedEntryBoxConditionGood       SharedEntryBoxCondition = "good"
+	SharedEntryBoxConditionMint       SharedEntryBoxCondition = "mint"
+	SharedEntryBoxConditionNearMint   SharedEntryBoxCondition = "near_mint"
+	SharedEntryBoxConditionPoor       SharedEntryBoxCondition = "poor"
+	SharedEntryBoxConditionVeryGood   SharedEntryBoxCondition = "very_good"
+)
+
+// Defines values for SharedEntryItemCondition.
+const (
+	SharedEntryItemConditionAcceptable SharedEntryItemCondition = "acceptable"
+	SharedEntryItemConditionGood       SharedEntryItemCondition = "good"
+	SharedEntryItemConditionMint       SharedEntryItemCondition = "mint"
+	SharedEntryItemConditionNearMint   SharedEntryItemCondition = "near_mint"
+	SharedEntryItemConditionPoor       SharedEntryItemCondition = "poor"
+	SharedEntryItemConditionVeryGood   SharedEntryItemCondition = "very_good"
+)
+
+// Defines values for SharedEntryItemType.
+const (
+	SharedEntryItemTypeAccessory SharedEntryItemType = "accessory"
+	SharedEntryItemTypeConsole   SharedEntryItemType = "console"
+	SharedEntryItemTypeGame      SharedEntryItemType = "game"
+)
+
+// Defines values for SharedEntryManualCondition.
+const (
+	SharedEntryManualConditionAcceptable SharedEntryManualCondition = "acceptable"
+	SharedEntryManualConditionGood       SharedEntryManualCondition = "good"
+	SharedEntryManualConditionMint       SharedEntryManualCondition = "mint"
+	SharedEntryManualConditionNearMint   SharedEntryManualCondition = "near_mint"
+	SharedEntryManualConditionPoor       SharedEntryManualCondition = "poor"
+	SharedEntryManualConditionVeryGood   SharedEntryManualCondition = "very_good"
+)
+
+// Defines values for SharedEntryMediaType.
+const (
+	Digital  SharedEntryMediaType = "digital"
+	Physical SharedEntryMediaType = "physical"
+)
+
+// Defines values for SharedEntryPackaging.
+const (
+	SharedEntryPackagingCib    SharedEntryPackaging = "cib"
+	SharedEntryPackagingLoose  SharedEntryPackaging = "loose"
+	SharedEntryPackagingSealed SharedEntryPackaging = "sealed"
+)
+
+// Defines values for SharedEntryRegion.
+const (
+	SharedEntryRegionNtscJ      SharedEntryRegion = "ntsc_j"
+	SharedEntryRegionNtscU      SharedEntryRegion = "ntsc_u"
+	SharedEntryRegionPal        SharedEntryRegion = "pal"
+	SharedEntryRegionRegionFree SharedEntryRegion = "region_free"
+)
+
+// Defines values for SharedShelfVisibility.
+const (
+	SharedShelfVisibilityListed   SharedShelfVisibility = "listed"
+	SharedShelfVisibilityUnlisted SharedShelfVisibility = "unlisted"
+)
+
+// Defines values for SharedShelfSummaryVisibility.
+const (
+	SharedShelfSummaryVisibilityListed   SharedShelfSummaryVisibility = "listed"
+	SharedShelfSummaryVisibilityUnlisted SharedShelfSummaryVisibility = "unlisted"
+)
+
 // Defines values for SubmissionStatus.
 const (
 	SubmissionStatusApproved  SubmissionStatus = "approved"
@@ -284,6 +371,13 @@ const (
 	ApproveExisting VerdictRequestAction = "approve_existing"
 	ApproveNew      VerdictRequestAction = "approve_new"
 	Reject          VerdictRequestAction = "reject"
+)
+
+// Defines values for ViewCreateVisibility.
+const (
+	ViewCreateVisibilityListed   ViewCreateVisibility = "listed"
+	ViewCreateVisibilityPrivate  ViewCreateVisibility = "private"
+	ViewCreateVisibilityUnlisted ViewCreateVisibility = "unlisted"
 )
 
 // Defines values for GetDashboardParamsItemType.
@@ -330,44 +424,44 @@ const (
 
 // Defines values for ListEntriesParamsItemType.
 const (
-	ListEntriesParamsItemTypeAccessory ListEntriesParamsItemType = "accessory"
-	ListEntriesParamsItemTypeConsole   ListEntriesParamsItemType = "console"
-	ListEntriesParamsItemTypeGame      ListEntriesParamsItemType = "game"
+	Accessory ListEntriesParamsItemType = "accessory"
+	Console   ListEntriesParamsItemType = "console"
+	Game      ListEntriesParamsItemType = "game"
 )
 
 // Defines values for ListEntriesParamsStatus.
 const (
-	Backlog   ListEntriesParamsStatus = "backlog"
-	Beaten    ListEntriesParamsStatus = "beaten"
-	Completed ListEntriesParamsStatus = "completed"
-	Dropped   ListEntriesParamsStatus = "dropped"
-	Playing   ListEntriesParamsStatus = "playing"
-	Shelved   ListEntriesParamsStatus = "shelved"
+	ListEntriesParamsStatusBacklog   ListEntriesParamsStatus = "backlog"
+	ListEntriesParamsStatusBeaten    ListEntriesParamsStatus = "beaten"
+	ListEntriesParamsStatusCompleted ListEntriesParamsStatus = "completed"
+	ListEntriesParamsStatusDropped   ListEntriesParamsStatus = "dropped"
+	ListEntriesParamsStatusPlaying   ListEntriesParamsStatus = "playing"
+	ListEntriesParamsStatusShelved   ListEntriesParamsStatus = "shelved"
 )
 
 // Defines values for ListEntriesParamsPackaging.
 const (
-	Cib    ListEntriesParamsPackaging = "cib"
-	Loose  ListEntriesParamsPackaging = "loose"
-	Sealed ListEntriesParamsPackaging = "sealed"
+	ListEntriesParamsPackagingCib    ListEntriesParamsPackaging = "cib"
+	ListEntriesParamsPackagingLoose  ListEntriesParamsPackaging = "loose"
+	ListEntriesParamsPackagingSealed ListEntriesParamsPackaging = "sealed"
 )
 
 // Defines values for ListEntriesParamsRegion.
 const (
-	ListEntriesParamsRegionNtscJ      ListEntriesParamsRegion = "ntsc_j"
-	ListEntriesParamsRegionNtscU      ListEntriesParamsRegion = "ntsc_u"
-	ListEntriesParamsRegionPal        ListEntriesParamsRegion = "pal"
-	ListEntriesParamsRegionRegionFree ListEntriesParamsRegion = "region_free"
+	NtscJ      ListEntriesParamsRegion = "ntsc_j"
+	NtscU      ListEntriesParamsRegion = "ntsc_u"
+	Pal        ListEntriesParamsRegion = "pal"
+	RegionFree ListEntriesParamsRegion = "region_free"
 )
 
 // Defines values for ListEntriesParamsItemCondition.
 const (
-	Acceptable ListEntriesParamsItemCondition = "acceptable"
-	Good       ListEntriesParamsItemCondition = "good"
-	Mint       ListEntriesParamsItemCondition = "mint"
-	NearMint   ListEntriesParamsItemCondition = "near_mint"
-	Poor       ListEntriesParamsItemCondition = "poor"
-	VeryGood   ListEntriesParamsItemCondition = "very_good"
+	ListEntriesParamsItemConditionAcceptable ListEntriesParamsItemCondition = "acceptable"
+	ListEntriesParamsItemConditionGood       ListEntriesParamsItemCondition = "good"
+	ListEntriesParamsItemConditionMint       ListEntriesParamsItemCondition = "mint"
+	ListEntriesParamsItemConditionNearMint   ListEntriesParamsItemCondition = "near_mint"
+	ListEntriesParamsItemConditionPoor       ListEntriesParamsItemCondition = "poor"
+	ListEntriesParamsItemConditionVeryGood   ListEntriesParamsItemCondition = "very_good"
 )
 
 // Defines values for ListEntriesParamsSort.
@@ -430,6 +524,26 @@ type AdminSubmissionsPage struct {
 
 	// TotalCount Full pending count, beyond this page.
 	TotalCount int64 `json:"total_count"`
+}
+
+// BulkUpdateRequest Delta applied across the caller's own entries among entry_ids (foreign or unknown ids are silently not counted, same ownership-filtering posture as tag attachment). At least one of add_tag_ids / remove_tag_ids / status / storage_location must be present, else 400. storage_location's clearing rule is the OPPOSITE of the full-replacement update's: here an ABSENT storage_location leaves the field untouched, and an explicit empty string clears it.
+type BulkUpdateRequest struct {
+	AddTagIds    *[]openapi_types.UUID    `json:"add_tag_ids,omitempty"`
+	EntryIds     []openapi_types.UUID     `json:"entry_ids"`
+	RemoveTagIds *[]openapi_types.UUID    `json:"remove_tag_ids,omitempty"`
+	Status       *BulkUpdateRequestStatus `json:"status,omitempty"`
+
+	// StorageLocation Empty string clears the field; an absent field leaves it untouched (see the operation description).
+	StorageLocation *string `json:"storage_location,omitempty"`
+}
+
+// BulkUpdateRequestStatus defines model for BulkUpdateRequest.Status.
+type BulkUpdateRequestStatus string
+
+// BulkUpdateResult defines model for BulkUpdateResult.
+type BulkUpdateResult struct {
+	// UpdatedCount Count of the caller's own entries among entry_ids, whether or not any targeted field actually changed.
+	UpdatedCount int `json:"updated_count"`
 }
 
 // CommunityProductSpec The curated fields for approve_new; mirrors the enrichment mint request (single edition field, no variant).
@@ -785,8 +899,110 @@ type SavedView struct {
 	Id        openapi_types.UUID     `json:"id"`
 	Name      string                 `json:"name"`
 	Params    map[string]interface{} `json:"params"`
-	UpdatedAt time.Time              `json:"updated_at"`
+
+	// PublishedAt Stamped on each transition into listed.
+	PublishedAt *time.Time `json:"published_at,omitempty"`
+
+	// Slug URL slug derived from the name (underscore transform); unique per user on its folded key.
+	Slug       string              `json:"slug"`
+	UpdatedAt  time.Time           `json:"updated_at"`
+	Visibility SavedViewVisibility `json:"visibility"`
 }
+
+// SavedViewVisibility defines model for SavedView.Visibility.
+type SavedViewVisibility string
+
+// SharedEntry The cross-user entry projection - a strict whitelist. No money fields (price paid, values, currency, purchase provenance, pricing mode) and no personal fields (status, rating, notes, location, backlog rank, external refs) may ever be added here without a deliberate privacy decision.
+type SharedEntry struct {
+	BoxCondition     *SharedEntryBoxCondition    `json:"box_condition,omitempty"`
+	CoverUrl         *string                     `json:"cover_url,omitempty"`
+	CreatedAt        time.Time                   `json:"created_at"`
+	DisplayName      string                      `json:"display_name"`
+	Edition          *string                     `json:"edition,omitempty"`
+	FirstReleaseDate *openapi_types.Date         `json:"first_release_date,omitempty"`
+	HasBox           bool                        `json:"has_box"`
+	HasManual        bool                        `json:"has_manual"`
+	Id               openapi_types.UUID          `json:"id"`
+	IgdbGameId       *int64                      `json:"igdb_game_id,omitempty"`
+	ItemCondition    *SharedEntryItemCondition   `json:"item_condition,omitempty"`
+	ItemType         SharedEntryItemType         `json:"item_type"`
+	ManualCondition  *SharedEntryManualCondition `json:"manual_condition,omitempty"`
+	MediaType        SharedEntryMediaType        `json:"media_type"`
+	Packaging        SharedEntryPackaging        `json:"packaging"`
+	Pinned           bool                        `json:"pinned"`
+
+	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
+	Platform  *EntryPlatform      `json:"platform,omitempty"`
+	ProductId *openapi_types.UUID `json:"product_id,omitempty"`
+	Region    SharedEntryRegion   `json:"region"`
+	Tags      []TagRef            `json:"tags"`
+}
+
+// SharedEntryBoxCondition defines model for SharedEntry.BoxCondition.
+type SharedEntryBoxCondition string
+
+// SharedEntryItemCondition defines model for SharedEntry.ItemCondition.
+type SharedEntryItemCondition string
+
+// SharedEntryItemType defines model for SharedEntry.ItemType.
+type SharedEntryItemType string
+
+// SharedEntryManualCondition defines model for SharedEntry.ManualCondition.
+type SharedEntryManualCondition string
+
+// SharedEntryMediaType defines model for SharedEntry.MediaType.
+type SharedEntryMediaType string
+
+// SharedEntryPackaging defines model for SharedEntry.Packaging.
+type SharedEntryPackaging string
+
+// SharedEntryRegion defines model for SharedEntry.Region.
+type SharedEntryRegion string
+
+// SharedEntryGroup defines model for SharedEntryGroup.
+type SharedEntryGroup struct {
+	Entries []SharedEntry `json:"entries"`
+	Key     string        `json:"key"`
+	Label   string        `json:"label"`
+}
+
+// SharedEntryList Exactly one of entries/groups is present (groups when the stored params group).
+type SharedEntryList struct {
+	Entries    *[]SharedEntry      `json:"entries,omitempty"`
+	Groups     *[]SharedEntryGroup `json:"groups,omitempty"`
+	TotalCount int                 `json:"total_count"`
+}
+
+// SharedShelf defines model for SharedShelf.
+type SharedShelf struct {
+	Id          openapi_types.UUID     `json:"id"`
+	Name        string                 `json:"name"`
+	OwnerId     openapi_types.UUID     `json:"owner_id"`
+	Params      map[string]interface{} `json:"params"`
+	PublishedAt *time.Time             `json:"published_at,omitempty"`
+	Slug        string                 `json:"slug"`
+	Visibility  SharedShelfVisibility  `json:"visibility"`
+}
+
+// SharedShelfVisibility defines model for SharedShelf.Visibility.
+type SharedShelfVisibility string
+
+// SharedShelfSummary defines model for SharedShelfSummary.
+type SharedShelfSummary struct {
+	CoverUrls   []string           `json:"cover_urls"`
+	EntryCount  int                `json:"entry_count"`
+	Id          openapi_types.UUID `json:"id"`
+	Name        string             `json:"name"`
+	OwnerId     openapi_types.UUID `json:"owner_id"`
+	PublishedAt *time.Time         `json:"published_at,omitempty"`
+	Slug        string             `json:"slug"`
+
+	// Visibility The bff's Explore/feed gating reads this (listed-only surfaces).
+	Visibility SharedShelfSummaryVisibility `json:"visibility"`
+}
+
+// SharedShelfSummaryVisibility The bff's Explore/feed gating reads this (listed-only surfaces).
+type SharedShelfSummaryVisibility string
 
 // Submission One catalog-submission lifecycle row for an entry. Rows persist as history (rejected and cancelled included; the rolling creation cap counts every attempt); deleting the entry removes them with it. product_id is the verdict's resolved product - recorded before adoption so an approve_new retry never mints twice.
 type Submission struct {
@@ -855,8 +1071,12 @@ type ViewCreate struct {
 	Name string `json:"name"`
 
 	// Params Opaque frontend view state; at most 8192 marshaled bytes.
-	Params map[string]interface{} `json:"params"`
+	Params     map[string]interface{} `json:"params"`
+	Visibility *ViewCreateVisibility  `json:"visibility,omitempty"`
 }
+
+// ViewCreateVisibility defines model for ViewCreate.Visibility.
+type ViewCreateVisibility string
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Problem
@@ -950,11 +1170,39 @@ type ListEntriesParamsOrder string
 // ListEntriesParamsGroupBy defines parameters for ListEntries.
 type ListEntriesParamsGroupBy string
 
+// ListSharedShelvesParams defines parameters for ListSharedShelves.
+type ListSharedShelvesParams struct {
+	// OwnerIds Omit to page across all listed shelves; when present, at most 5000 owner ids to scope the page to.
+	OwnerIds *[]openapi_types.UUID `form:"owner_ids,omitempty" json:"owner_ids,omitempty"`
+	Limit    *int                  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset   *int                  `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetSharedShelvesByIdsParams defines parameters for GetSharedShelvesByIds.
+type GetSharedShelvesByIdsParams struct {
+	Ids []openapi_types.UUID `form:"ids" json:"ids"`
+}
+
+// GetSharedShelfBySlugParams defines parameters for GetSharedShelfBySlug.
+type GetSharedShelfBySlugParams struct {
+	OwnerId openapi_types.UUID `form:"owner_id" json:"owner_id"`
+	Slug    string             `form:"slug" json:"slug"`
+}
+
+// ListSharedShelfEntriesParams defines parameters for ListSharedShelfEntries.
+type ListSharedShelfEntriesParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // SubmitVerdictJSONRequestBody defines body for SubmitVerdict for application/json ContentType.
 type SubmitVerdictJSONRequestBody = VerdictRequest
 
 // CreateEntryJSONRequestBody defines body for CreateEntry for application/json ContentType.
 type CreateEntryJSONRequestBody = EntryCreate
+
+// BulkUpdateEntriesJSONRequestBody defines body for BulkUpdateEntries for application/json ContentType.
+type BulkUpdateEntriesJSONRequestBody = BulkUpdateRequest
 
 // UpdateEntryJSONRequestBody defines body for UpdateEntry for application/json ContentType.
 type UpdateEntryJSONRequestBody = EntryUpdate
@@ -997,6 +1245,9 @@ type ServerInterface interface {
 	// Add an entry (catalog-backed, or custom for off-catalog items)
 	// (POST /entries)
 	CreateEntry(w http.ResponseWriter, r *http.Request)
+	// Apply tag/status/storage-location changes across a batch of the caller's entries (transactional)
+	// (POST /entries/bulk-update)
+	BulkUpdateEntries(w http.ResponseWriter, r *http.Request)
 	// Delete an entry (tag links cascade)
 	// (DELETE /entries/{entryId})
 	DeleteEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
@@ -1024,6 +1275,21 @@ type ServerInterface interface {
 	// Deduplicated game-library summary (recommendation scoring input)
 	// (GET /library/summary)
 	GetLibrarySummary(w http.ResponseWriter, r *http.Request)
+	// Listed shelf summaries, newest publish first (any authenticated caller)
+	// (GET /shared/shelves)
+	ListSharedShelves(w http.ResponseWriter, r *http.Request, params ListSharedShelvesParams)
+	// Batch shelf summaries for hydration (non-private only)
+	// (GET /shared/shelves/by-ids)
+	GetSharedShelvesByIds(w http.ResponseWriter, r *http.Request, params GetSharedShelvesByIdsParams)
+	// Resolve (owner, slug) to a shelf; folds case and underscores
+	// (GET /shared/shelves/by-slug)
+	GetSharedShelfBySlug(w http.ResponseWriter, r *http.Request, params GetSharedShelfBySlugParams)
+	// Shelf meta by id (non-private; any authenticated caller)
+	// (GET /shared/shelves/{shelfId})
+	GetSharedShelf(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID)
+	// Execute a shelf's stored params and return the whitelisted projection
+	// (GET /shared/shelves/{shelfId}/entries)
+	ListSharedShelfEntries(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID, params ListSharedShelfEntriesParams)
 	// List the caller's tags with usage counts
 	// (GET /tags)
 	ListTags(w http.ResponseWriter, r *http.Request)
@@ -1407,6 +1673,26 @@ func (siw *ServerInterfaceWrapper) CreateEntry(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// BulkUpdateEntries operation middleware
+func (siw *ServerInterfaceWrapper) BulkUpdateEntries(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BulkUpdateEntries(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteEntry operation middleware
 func (siw *ServerInterfaceWrapper) DeleteEntry(w http.ResponseWriter, r *http.Request) {
 
@@ -1666,6 +1952,231 @@ func (siw *ServerInterfaceWrapper) GetLibrarySummary(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetLibrarySummary(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSharedShelves operation middleware
+func (siw *ServerInterfaceWrapper) ListSharedShelves(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSharedShelvesParams
+
+	// ------------- Optional query parameter "owner_ids" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "owner_ids", r.URL.Query(), &params.OwnerIds)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "owner_ids", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSharedShelves(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSharedShelvesByIds operation middleware
+func (siw *ServerInterfaceWrapper) GetSharedShelvesByIds(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSharedShelvesByIdsParams
+
+	// ------------- Required query parameter "ids" -------------
+
+	if paramValue := r.URL.Query().Get("ids"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ids"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "ids", r.URL.Query(), &params.Ids)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ids", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSharedShelvesByIds(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSharedShelfBySlug operation middleware
+func (siw *ServerInterfaceWrapper) GetSharedShelfBySlug(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSharedShelfBySlugParams
+
+	// ------------- Required query parameter "owner_id" -------------
+
+	if paramValue := r.URL.Query().Get("owner_id"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "owner_id"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "owner_id", r.URL.Query(), &params.OwnerId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "owner_id", Err: err})
+		return
+	}
+
+	// ------------- Required query parameter "slug" -------------
+
+	if paramValue := r.URL.Query().Get("slug"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "slug"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "slug", r.URL.Query(), &params.Slug)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSharedShelfBySlug(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSharedShelf operation middleware
+func (siw *ServerInterfaceWrapper) GetSharedShelf(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shelfId" -------------
+	var shelfId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shelfId", r.PathValue("shelfId"), &shelfId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shelfId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSharedShelf(w, r, shelfId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSharedShelfEntries operation middleware
+func (siw *ServerInterfaceWrapper) ListSharedShelfEntries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shelfId" -------------
+	var shelfId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shelfId", r.PathValue("shelfId"), &shelfId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shelfId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSharedShelfEntriesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSharedShelfEntries(w, r, shelfId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2026,6 +2537,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/dashboard/value-history", wrapper.GetValueHistory)
 	m.HandleFunc("GET "+options.BaseURL+"/entries", wrapper.ListEntries)
 	m.HandleFunc("POST "+options.BaseURL+"/entries", wrapper.CreateEntry)
+	m.HandleFunc("POST "+options.BaseURL+"/entries/bulk-update", wrapper.BulkUpdateEntries)
 	m.HandleFunc("DELETE "+options.BaseURL+"/entries/{entryId}", wrapper.DeleteEntry)
 	m.HandleFunc("GET "+options.BaseURL+"/entries/{entryId}", wrapper.GetEntry)
 	m.HandleFunc("PUT "+options.BaseURL+"/entries/{entryId}", wrapper.UpdateEntry)
@@ -2035,6 +2547,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/entries/{entryId}/submission", wrapper.CreateSubmission)
 	m.HandleFunc("POST "+options.BaseURL+"/entries/{entryId}/submission/ack", wrapper.AckSubmissionResolution)
 	m.HandleFunc("GET "+options.BaseURL+"/library/summary", wrapper.GetLibrarySummary)
+	m.HandleFunc("GET "+options.BaseURL+"/shared/shelves", wrapper.ListSharedShelves)
+	m.HandleFunc("GET "+options.BaseURL+"/shared/shelves/by-ids", wrapper.GetSharedShelvesByIds)
+	m.HandleFunc("GET "+options.BaseURL+"/shared/shelves/by-slug", wrapper.GetSharedShelfBySlug)
+	m.HandleFunc("GET "+options.BaseURL+"/shared/shelves/{shelfId}", wrapper.GetSharedShelf)
+	m.HandleFunc("GET "+options.BaseURL+"/shared/shelves/{shelfId}/entries", wrapper.ListSharedShelfEntries)
 	m.HandleFunc("GET "+options.BaseURL+"/tags", wrapper.ListTags)
 	m.HandleFunc("POST "+options.BaseURL+"/tags", wrapper.CreateTag)
 	m.HandleFunc("DELETE "+options.BaseURL+"/tags/{tagId}", wrapper.DeleteTag)

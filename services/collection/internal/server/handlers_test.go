@@ -37,24 +37,33 @@ import (
 
 // stubStore implements server.Store via function fields.
 type stubStore struct {
-	createEntry     func(ctx context.Context, e store.Entry, tagIDs []uuid.UUID) (store.Entry, error)
-	getEntry        func(ctx context.Context, userID, id uuid.UUID) (store.Entry, error)
-	updateEntry     func(ctx context.Context, e store.Entry, tagIDs []uuid.UUID) (store.Entry, error)
-	deleteEntry     func(ctx context.Context, userID, id uuid.UUID) error
-	reorder         func(ctx context.Context, userID, entryID uuid.UUID, afterID, beforeID *uuid.UUID) (store.Entry, error)
-	listEntries     func(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.Entry, error)
-	librarySummary  func(ctx context.Context, userID uuid.UUID) ([]store.LibraryGame, error)
-	listTags        func(ctx context.Context, userID uuid.UUID) ([]store.Tag, error)
-	createTag       func(ctx context.Context, userID uuid.UUID, name string) (store.Tag, error)
-	renameTag       func(ctx context.Context, userID, id uuid.UUID, name string) (store.Tag, error)
-	deleteTag       func(ctx context.Context, userID, id uuid.UUID) error
-	listViews       func(ctx context.Context, userID uuid.UUID) ([]store.View, error)
-	createView      func(ctx context.Context, userID uuid.UUID, name string, params []byte) (store.View, error)
-	updateView      func(ctx context.Context, userID, id uuid.UUID, name string, params []byte) (store.View, error)
-	deleteView      func(ctx context.Context, userID, id uuid.UUID) error
-	dashboardCounts func(ctx context.Context, userID uuid.UUID, f store.Filters) (store.DashboardCounts, error)
-	pricingRows     func(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.PricingRow, error)
-	purgeUserData   func(ctx context.Context, userID uuid.UUID) error
+	createEntry       func(ctx context.Context, e store.Entry, tagIDs []uuid.UUID) (store.Entry, error)
+	getEntry          func(ctx context.Context, userID, id uuid.UUID) (store.Entry, error)
+	updateEntry       func(ctx context.Context, e store.Entry, tagIDs []uuid.UUID) (store.Entry, error)
+	deleteEntry       func(ctx context.Context, userID, id uuid.UUID) error
+	bulkUpdateEntries func(ctx context.Context, userID uuid.UUID, entryIDs []uuid.UUID, actions store.BulkActions) (int, error)
+	reorder           func(ctx context.Context, userID, entryID uuid.UUID, afterID, beforeID *uuid.UUID) (store.Entry, error)
+	listEntries       func(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.Entry, error)
+	librarySummary    func(ctx context.Context, userID uuid.UUID) ([]store.LibraryGame, error)
+	listTags          func(ctx context.Context, userID uuid.UUID) ([]store.Tag, error)
+	createTag         func(ctx context.Context, userID uuid.UUID, name string) (store.Tag, error)
+	renameTag         func(ctx context.Context, userID, id uuid.UUID, name string) (store.Tag, error)
+	deleteTag         func(ctx context.Context, userID, id uuid.UUID) error
+	listViews         func(ctx context.Context, userID uuid.UUID) ([]store.View, error)
+	createView        func(ctx context.Context, userID uuid.UUID, name string, params []byte, visibility string) (store.View, error)
+	updateView        func(ctx context.Context, userID, id uuid.UUID, name string, params []byte, visibility string) (store.View, error)
+	deleteView        func(ctx context.Context, userID, id uuid.UUID) error
+	seedDefaultViews  func(ctx context.Context, userID uuid.UUID) error
+	dashboardCounts   func(ctx context.Context, userID uuid.UUID, f store.Filters) (store.DashboardCounts, error)
+	pricingRows       func(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.PricingRow, error)
+	purgeUserData     func(ctx context.Context, userID uuid.UUID) error
+
+	getSharedShelf       func(ctx context.Context, id uuid.UUID) (store.View, error)
+	getSharedShelfBySlug func(ctx context.Context, ownerID uuid.UUID, foldedSlug string) (store.View, error)
+	listListedShelves    func(ctx context.Context, ownerIDs []uuid.UUID, limit, offset int) ([]store.View, int, error)
+	sharedShelvesByIDs   func(ctx context.Context, ids []uuid.UUID) ([]store.View, error)
+	countEntriesFiltered func(ctx context.Context, userID uuid.UUID, f store.Filters) (int, error)
+	coverURLs            func(ctx context.Context, userID uuid.UUID, f store.Filters, limit int) ([]string, error)
 
 	listGameBackedRefs    func(ctx context.Context) ([]store.GameEntryRef, error)
 	setFirstReleaseDate   func(ctx context.Context, entryID uuid.UUID, d *time.Time) error
@@ -104,6 +113,12 @@ func (s *stubStore) DeleteEntry(ctx context.Context, userID, id uuid.UUID) error
 	}
 	return s.deleteEntry(ctx, userID, id)
 }
+func (s *stubStore) BulkUpdateEntries(ctx context.Context, userID uuid.UUID, entryIDs []uuid.UUID, actions store.BulkActions) (int, error) {
+	if s.bulkUpdateEntries == nil {
+		panic("unexpected BulkUpdateEntries")
+	}
+	return s.bulkUpdateEntries(ctx, userID, entryIDs, actions)
+}
 func (s *stubStore) Reorder(ctx context.Context, userID, entryID uuid.UUID, afterID, beforeID *uuid.UUID) (store.Entry, error) {
 	if s.reorder == nil {
 		panic("unexpected Reorder")
@@ -152,23 +167,65 @@ func (s *stubStore) ListViews(ctx context.Context, userID uuid.UUID) ([]store.Vi
 	}
 	return s.listViews(ctx, userID)
 }
-func (s *stubStore) CreateView(ctx context.Context, userID uuid.UUID, name string, params []byte) (store.View, error) {
+func (s *stubStore) CreateView(ctx context.Context, userID uuid.UUID, name string, params []byte, visibility string) (store.View, error) {
 	if s.createView == nil {
 		panic("unexpected CreateView")
 	}
-	return s.createView(ctx, userID, name, params)
+	return s.createView(ctx, userID, name, params, visibility)
 }
-func (s *stubStore) UpdateView(ctx context.Context, userID, id uuid.UUID, name string, params []byte) (store.View, error) {
+func (s *stubStore) UpdateView(ctx context.Context, userID, id uuid.UUID, name string, params []byte, visibility string) (store.View, error) {
 	if s.updateView == nil {
 		panic("unexpected UpdateView")
 	}
-	return s.updateView(ctx, userID, id, name, params)
+	return s.updateView(ctx, userID, id, name, params, visibility)
 }
 func (s *stubStore) DeleteView(ctx context.Context, userID, id uuid.UUID) error {
 	if s.deleteView == nil {
 		panic("unexpected DeleteView")
 	}
 	return s.deleteView(ctx, userID, id)
+}
+func (s *stubStore) SeedDefaultViews(ctx context.Context, userID uuid.UUID) error {
+	if s.seedDefaultViews == nil {
+		panic("unexpected SeedDefaultViews")
+	}
+	return s.seedDefaultViews(ctx, userID)
+}
+func (s *stubStore) GetSharedShelf(ctx context.Context, id uuid.UUID) (store.View, error) {
+	if s.getSharedShelf == nil {
+		panic("unexpected GetSharedShelf")
+	}
+	return s.getSharedShelf(ctx, id)
+}
+func (s *stubStore) GetSharedShelfBySlug(ctx context.Context, ownerID uuid.UUID, foldedSlug string) (store.View, error) {
+	if s.getSharedShelfBySlug == nil {
+		panic("unexpected GetSharedShelfBySlug")
+	}
+	return s.getSharedShelfBySlug(ctx, ownerID, foldedSlug)
+}
+func (s *stubStore) ListListedShelves(ctx context.Context, ownerIDs []uuid.UUID, limit, offset int) ([]store.View, int, error) {
+	if s.listListedShelves == nil {
+		panic("unexpected ListListedShelves")
+	}
+	return s.listListedShelves(ctx, ownerIDs, limit, offset)
+}
+func (s *stubStore) SharedShelvesByIDs(ctx context.Context, ids []uuid.UUID) ([]store.View, error) {
+	if s.sharedShelvesByIDs == nil {
+		panic("unexpected SharedShelvesByIDs")
+	}
+	return s.sharedShelvesByIDs(ctx, ids)
+}
+func (s *stubStore) CountEntriesFiltered(ctx context.Context, userID uuid.UUID, f store.Filters) (int, error) {
+	if s.countEntriesFiltered == nil {
+		panic("unexpected CountEntriesFiltered")
+	}
+	return s.countEntriesFiltered(ctx, userID, f)
+}
+func (s *stubStore) CoverURLs(ctx context.Context, userID uuid.UUID, f store.Filters, limit int) ([]string, error) {
+	if s.coverURLs == nil {
+		panic("unexpected CoverURLs")
+	}
+	return s.coverURLs(ctx, userID, f, limit)
 }
 func (s *stubStore) DashboardCounts(ctx context.Context, userID uuid.UUID, f store.Filters) (store.DashboardCounts, error) {
 	if s.dashboardCounts == nil {
@@ -2750,6 +2807,33 @@ func TestUnitTags(t *testing.T) {
 			http.StatusBadRequest, "invalid_body")
 	})
 
+	// TestUnitTags/create_cap_exceeded_429 pins the per-user tag cap's
+	// status, code, and detail (the delegated status/code choice mirrors
+	// the social service's edge caps: 429 code cap_exceeded).
+	t.Run("create cap exceeded 429", func(t *testing.T) {
+		st := &stubStore{createTag: func(context.Context, uuid.UUID, string) (store.Tag, error) {
+			return store.Tag{}, store.ErrUserTagCapExceeded
+		}}
+		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+		resp := do(t, http.MethodPost, srv.URL+"/tags", a.token(t, user.String()), jsonBody(map[string]any{"name": "one too many"}))
+		if resp.StatusCode != http.StatusTooManyRequests {
+			t.Fatalf("status: got %d, want 429", resp.StatusCode)
+		}
+		var p struct {
+			Code   string `json:"code"`
+			Detail string `json:"detail"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+			t.Fatal(err)
+		}
+		if p.Code != "cap_exceeded" {
+			t.Fatalf("code: got %q, want cap_exceeded", p.Code)
+		}
+		if p.Detail != "at most 200 tags per user; delete a tag to create another" {
+			t.Fatalf("detail: got %q", p.Detail)
+		}
+	})
+
 	t.Run("rename + delete map sentinels", func(t *testing.T) {
 		st := &stubStore{
 			renameTag: func(context.Context, uuid.UUID, uuid.UUID, string) (store.Tag, error) {
@@ -2838,13 +2922,118 @@ func TestUnitCreateTag_NameCapCountsRunesNotBytes(t *testing.T) {
 	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
+// manyUUIDStrings builds n distinct uuid strings for maxItems guard
+// tests (the request bounds this task adds have no existing
+// generator to reuse).
+func manyUUIDStrings(n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = uuid.NewString()
+	}
+	return out
+}
+
+// TestUnitBulkUpdateEntries_ValidationMatrix mirrors
+// TestUnitCreateEntry_ValidationMatrix's idiom: every case reaches an
+// empty stubStore (BulkUpdateEntries unset), proving the guard 400s
+// before the store is ever touched (a call would panic).
+func TestUnitBulkUpdateEntries_ValidationMatrix(t *testing.T) {
+	validID := uuid.NewString()
+	cases := []struct {
+		name string
+		body map[string]any
+	}{
+		{"missing entry_ids", map[string]any{"status": "playing"}},
+		{"empty entry_ids", map[string]any{"entry_ids": []string{}, "status": "playing"}},
+		{"too many entry_ids", map[string]any{"entry_ids": manyUUIDStrings(201), "status": "playing"}},
+		{"too many add_tag_ids", map[string]any{"entry_ids": []string{validID}, "add_tag_ids": manyUUIDStrings(51)}},
+		{"too many remove_tag_ids", map[string]any{"entry_ids": []string{validID}, "remove_tag_ids": manyUUIDStrings(51)}},
+		{"bad status", map[string]any{"entry_ids": []string{validID}, "status": "queued"}},
+		{"storage_location too long", map[string]any{"entry_ids": []string{validID}, "storage_location": strings.Repeat("x", 201)}},
+		{"no action present", map[string]any{"entry_ids": []string{validID}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
+			resp := do(t, http.MethodPost, srv.URL+"/entries/bulk-update", a.token(t, uuid.NewString()), jsonBody(tc.body))
+			wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
+		})
+	}
+	// Malformed JSON.
+	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/entries/bulk-update", a.token(t, uuid.NewString()), bytes.NewReader([]byte("{")))
+	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
+}
+
+// TestUnitBulkUpdateEntries_Success proves a valid request reaches
+// the store with entry_ids and every action forwarded, and the
+// store's count becomes the response's updated_count.
+func TestUnitBulkUpdateEntries_Success(t *testing.T) {
+	user := uuid.New()
+	entryA, entryB, tagID := uuid.New(), uuid.New(), uuid.New()
+	var gotUserID uuid.UUID
+	var gotEntryIDs []uuid.UUID
+	var gotActions store.BulkActions
+	st := &stubStore{bulkUpdateEntries: func(_ context.Context, userID uuid.UUID, entryIDs []uuid.UUID, actions store.BulkActions) (int, error) {
+		gotUserID, gotEntryIDs, gotActions = userID, entryIDs, actions
+		return 2, nil
+	}}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/entries/bulk-update", a.token(t, user.String()),
+		jsonBody(map[string]any{
+			"entry_ids":        []string{entryA.String(), entryB.String()},
+			"add_tag_ids":      []string{tagID.String()},
+			"status":           "shelved",
+			"storage_location": "closet B",
+		}))
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	var got struct {
+		UpdatedCount int `json:"updated_count"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.UpdatedCount != 2 {
+		t.Fatalf("updated_count: got %+v, want 2", got)
+	}
+	if gotUserID != user || len(gotEntryIDs) != 2 || gotEntryIDs[0] != entryA || gotEntryIDs[1] != entryB {
+		t.Fatalf("store call: user=%s entryIDs=%v", gotUserID, gotEntryIDs)
+	}
+	if len(gotActions.AddTagIDs) != 1 || gotActions.AddTagIDs[0] != tagID {
+		t.Fatalf("add_tag_ids not forwarded: %+v", gotActions)
+	}
+	if gotActions.Status == nil || *gotActions.Status != "shelved" {
+		t.Fatalf("status not forwarded: %+v", gotActions)
+	}
+	if gotActions.StorageLocation == nil || *gotActions.StorageLocation != "closet B" {
+		t.Fatalf("storage_location not forwarded: %+v", gotActions)
+	}
+}
+
+// TestUnitBulkUpdateEntries_TagCapExceededMapsTo400 pins this task's
+// delegated status/code choice for the bulk per-entry tag cap: 400,
+// code tag_cap_exceeded (distinct from the generic invalid_body every
+// other bulk-update guard answers).
+func TestUnitBulkUpdateEntries_TagCapExceededMapsTo400(t *testing.T) {
+	st := &stubStore{bulkUpdateEntries: func(context.Context, uuid.UUID, []uuid.UUID, store.BulkActions) (int, error) {
+		return 0, store.ErrTagCapExceeded
+	}}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/entries/bulk-update", a.token(t, uuid.NewString()),
+		jsonBody(map[string]any{"entry_ids": []string{uuid.NewString()}, "add_tag_ids": []string{uuid.NewString()}}))
+	wantProblem(t, resp, http.StatusBadRequest, "tag_cap_exceeded")
+}
+
 func TestUnitViews(t *testing.T) {
 	user := uuid.New()
 	params := map[string]any{"filters": map[string]any{"status": []string{"backlog"}}, "view_mode": "grid"}
 
 	t.Run("create round-trips params verbatim", func(t *testing.T) {
 		var storedParams []byte
-		st := &stubStore{createView: func(_ context.Context, _ uuid.UUID, name string, p []byte) (store.View, error) {
+		st := &stubStore{createView: func(_ context.Context, _ uuid.UUID, name string, p []byte, _ string) (store.View, error) {
 			storedParams = p
 			return store.View{ID: uuid.New(), Name: name, Params: p}, nil
 		}}
@@ -2864,6 +3053,8 @@ func TestUnitViews(t *testing.T) {
 	})
 
 	t.Run("validation", func(t *testing.T) {
+		// The empty stubStore proves the store is never reached: a
+		// bad request must 400 before any of these get near it.
 		srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 		tok := a.token(t, user.String())
 		wantProblem(t, do(t, http.MethodPost, srv.URL+"/views", tok, jsonBody(map[string]any{"name": "", "params": params})),
@@ -2872,14 +3063,22 @@ func TestUnitViews(t *testing.T) {
 		big := map[string]any{"name": "big", "params": map[string]any{"blob": strings.Repeat("x", 9000)}}
 		wantProblem(t, do(t, http.MethodPost, srv.URL+"/views", tok, jsonBody(big)),
 			http.StatusBadRequest, "invalid_body")
+		// visibility outside {private, unlisted, listed}: the generated
+		// enum type is a plain string underneath (no UnmarshalJSON
+		// validation), so an invalid value must be rejected here -
+		// otherwise only the DB CHECK constraint would catch it and the
+		// client would see a 500 instead of a 400.
+		bad := map[string]any{"name": "x", "params": params, "visibility": "public"}
+		wantProblem(t, do(t, http.MethodPost, srv.URL+"/views", tok, jsonBody(bad)),
+			http.StatusBadRequest, "invalid_body")
 	})
 
 	t.Run("conflicts and not-found map", func(t *testing.T) {
 		st := &stubStore{
-			createView: func(context.Context, uuid.UUID, string, []byte) (store.View, error) {
+			createView: func(context.Context, uuid.UUID, string, []byte, string) (store.View, error) {
 				return store.View{}, store.ErrNameTaken
 			},
-			updateView: func(context.Context, uuid.UUID, uuid.UUID, string, []byte) (store.View, error) {
+			updateView: func(context.Context, uuid.UUID, uuid.UUID, string, []byte, string) (store.View, error) {
 				return store.View{}, store.ErrNotFound
 			},
 			deleteView: func(context.Context, uuid.UUID, uuid.UUID) error { return store.ErrNotFound },
@@ -2899,7 +3098,7 @@ func TestUnitViews(t *testing.T) {
 		newParams := map[string]any{"filters": map[string]any{"status": []string{"completed"}}, "view_mode": "list"}
 		paramsJSON, _ := json.Marshal(newParams)
 		updatedView := store.View{ID: viewID, Name: "Completed List", Params: paramsJSON}
-		st := &stubStore{updateView: func(_ context.Context, _ uuid.UUID, id uuid.UUID, name string, p []byte) (store.View, error) {
+		st := &stubStore{updateView: func(_ context.Context, _ uuid.UUID, id uuid.UUID, name string, p []byte, _ string) (store.View, error) {
 			if id == viewID && name == "Completed List" {
 				return updatedView, nil
 			}
@@ -2922,7 +3121,7 @@ func TestUnitViews(t *testing.T) {
 	})
 
 	t.Run("update name-taken 409", func(t *testing.T) {
-		st := &stubStore{updateView: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string, _ []byte) (store.View, error) {
+		st := &stubStore{updateView: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string, _ []byte, _ string) (store.View, error) {
 			return store.View{}, store.ErrNameTaken
 		}}
 		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
@@ -2944,6 +3143,98 @@ func TestUnitViews(t *testing.T) {
 		if resp.StatusCode != http.StatusNoContent {
 			t.Fatalf("delete: %d", resp.StatusCode)
 		}
+	})
+
+	t.Run("list seeds defaults on the zero-view case", func(t *testing.T) {
+		u := uuid.New()
+		var seedCalled bool
+		var listCalls int
+		defaults := []store.View{
+			{ID: uuid.New(), UserID: u, Name: "All Games", Slug: "all_games", Params: []byte(`{}`)},
+			{ID: uuid.New(), UserID: u, Name: "Backlog", Slug: "backlog", Params: []byte(`{}`)},
+		}
+		st := &stubStore{
+			listViews: func(context.Context, uuid.UUID) ([]store.View, error) {
+				listCalls++
+				if listCalls == 1 {
+					return nil, nil
+				}
+				return defaults, nil
+			},
+			seedDefaultViews: func(context.Context, uuid.UUID) error {
+				seedCalled = true
+				return nil
+			},
+		}
+		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+		resp := do(t, http.MethodGet, srv.URL+"/views", a.token(t, u.String()), nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status: %d", resp.StatusCode)
+		}
+		if !seedCalled {
+			t.Fatal("the zero-view case must seed the starter shelves")
+		}
+		if listCalls != 2 {
+			t.Fatalf("must re-list after seeding: %d calls", listCalls)
+		}
+		var got struct {
+			Views []struct{ Name string } `json:"views"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&got)
+		if len(got.Views) != 2 {
+			t.Fatalf("want the two seeded defaults back: %+v", got.Views)
+		}
+	})
+
+	t.Run("list does not seed when views already exist", func(t *testing.T) {
+		u := uuid.New()
+		existing := []store.View{{ID: uuid.New(), UserID: u, Name: "Mine", Slug: "mine", Params: []byte(`{}`)}}
+		// seedDefaultViews is intentionally left nil: a call panics
+		// loudly, proving the non-empty case never seeds.
+		st := &stubStore{listViews: func(context.Context, uuid.UUID) ([]store.View, error) {
+			return existing, nil
+		}}
+		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+		resp := do(t, http.MethodGet, srv.URL+"/views", a.token(t, u.String()), nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status: %d", resp.StatusCode)
+		}
+		var got struct {
+			Views []struct{ Name string } `json:"views"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&got)
+		if len(got.Views) != 1 || got.Views[0].Name != "Mine" {
+			t.Fatalf("want the existing view unchanged: %+v", got.Views)
+		}
+	})
+
+	t.Run("list seed failure maps to 500", func(t *testing.T) {
+		u := uuid.New()
+		st := &stubStore{
+			listViews:        func(context.Context, uuid.UUID) ([]store.View, error) { return nil, nil },
+			seedDefaultViews: func(context.Context, uuid.UUID) error { return errors.New("seed boom") },
+		}
+		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+		resp := do(t, http.MethodGet, srv.URL+"/views", a.token(t, u.String()), nil)
+		wantProblem(t, resp, http.StatusInternalServerError, "internal")
+	})
+
+	t.Run("list re-list failure maps to 500", func(t *testing.T) {
+		u := uuid.New()
+		var listCalls int
+		st := &stubStore{
+			listViews: func(context.Context, uuid.UUID) ([]store.View, error) {
+				listCalls++
+				if listCalls == 1 {
+					return nil, nil
+				}
+				return nil, errors.New("relist boom")
+			},
+			seedDefaultViews: func(context.Context, uuid.UUID) error { return nil },
+		}
+		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+		resp := do(t, http.MethodGet, srv.URL+"/views", a.token(t, u.String()), nil)
+		wantProblem(t, resp, http.StatusInternalServerError, "internal")
 	})
 }
 

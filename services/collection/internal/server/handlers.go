@@ -899,6 +899,83 @@ func (h *Handlers) ReorderEntry(w http.ResponseWriter, r *http.Request, entryId 
 	h.respondEntry(w, r, bearer, moved, http.StatusOK)
 }
 
+// bulkTagArrayCap bounds add_tag_ids/remove_tag_ids and mirrors the
+// per-entry tag ceiling store.BulkUpdateEntries enforces after the
+// write (store's own entryTagCap) - the same number by design,
+// referenced here for the guard and the cap-exceeded message.
+const bulkTagArrayCap = 50
+
+// validateBulkUpdate enforces the contract's bulk-update body rules
+// the generated layer does not (array bounds, enum membership, the
+// at-least-one-action requirement); a non-empty return is the 400
+// detail.
+func validateBulkUpdate(body api.BulkUpdateRequest) string {
+	if len(body.EntryIds) < 1 || len(body.EntryIds) > 200 {
+		return "entry_ids must contain between 1 and 200 entries"
+	}
+	if body.AddTagIds != nil && len(*body.AddTagIds) > bulkTagArrayCap {
+		return "add_tag_ids must contain at most 50 entries"
+	}
+	if body.RemoveTagIds != nil && len(*body.RemoveTagIds) > bulkTagArrayCap {
+		return "remove_tag_ids must contain at most 50 entries"
+	}
+	if body.Status != nil && !statusVals[string(*body.Status)] {
+		return "status is not a known value"
+	}
+	if body.StorageLocation != nil && utf8.RuneCountInString(*body.StorageLocation) > 200 {
+		return "storage_location is too long"
+	}
+	if body.AddTagIds == nil && body.RemoveTagIds == nil && body.Status == nil && body.StorageLocation == nil {
+		return "at least one of add_tag_ids, remove_tag_ids, status, storage_location is required"
+	}
+	return ""
+}
+
+// BulkUpdateEntries applies a batch of tag/status/storage-location
+// changes across the caller's own entries in one transaction
+// (entry_ids the caller does not own are silently excluded, same
+// ownership-filtering posture as tag attachment). See
+// validateBulkUpdate for the guard rules and store.BulkUpdateEntries
+// for the transaction shape, including the per-entry tag cap.
+func (h *Handlers) BulkUpdateEntries(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
+	var body api.BulkUpdateRequest
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+		return
+	}
+	if detail := validateBulkUpdate(body); detail != "" {
+		problem(w, r, http.StatusBadRequest, "invalid_body", detail)
+		return
+	}
+	actions := store.BulkActions{
+		AddTagIDs:       uuidsFrom(body.AddTagIds),
+		RemoveTagIDs:    uuidsFrom(body.RemoveTagIds),
+		StorageLocation: body.StorageLocation,
+	}
+	if body.Status != nil {
+		s := string(*body.Status)
+		actions.Status = &s
+	}
+
+	count, err := h.store.BulkUpdateEntries(r.Context(), userID, body.EntryIds, actions)
+	if errors.Is(err, store.ErrTagCapExceeded) {
+		problem(w, r, http.StatusBadRequest, "tag_cap_exceeded",
+			fmt.Sprintf("an entry would exceed the %d-tag cap; remove some tags first", bulkTagArrayCap))
+		return
+	}
+	if err != nil {
+		h.internalError(w, r, "bulk update failed", err)
+		return
+	}
+	h.invalidateDashboard(r.Context(), userID)
+	writeJSON(w, http.StatusOK, api.BulkUpdateResult{UpdatedCount: count})
+}
+
 func toAPISubmission(s store.Submission) api.Submission {
 	out := api.Submission{
 		Id: s.ID, EntryId: s.EntryID, Status: api.SubmissionStatus(s.Status),
@@ -1349,8 +1426,11 @@ func toAPIView(v store.View) (api.SavedView, error) {
 		return api.SavedView{}, err
 	}
 	return api.SavedView{
-		Id: v.ID, Name: v.Name, Params: params,
-		CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt,
+		Id: v.ID, Name: v.Name, Slug: v.Slug,
+		Visibility:  api.SavedViewVisibility(v.Visibility),
+		PublishedAt: v.PublishedAt,
+		Params:      params,
+		CreatedAt:   v.CreatedAt, UpdatedAt: v.UpdatedAt,
 	}, nil
 }
 
@@ -1401,6 +1481,11 @@ func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
 	tag, err := h.store.CreateTag(r.Context(), userID, body.Name)
 	if errors.Is(err, store.ErrNameTaken) {
 		problem(w, r, http.StatusConflict, "tag_exists", "a tag with that name already exists")
+		return
+	}
+	if errors.Is(err, store.ErrUserTagCapExceeded) {
+		problem(w, r, http.StatusTooManyRequests, "cap_exceeded",
+			fmt.Sprintf("at most %d tags per user; delete a tag to create another", store.TagCap))
 		return
 	}
 	if err != nil {
@@ -1461,28 +1546,44 @@ func (h *Handlers) DeleteTag(w http.ResponseWriter, r *http.Request, tagId opena
 }
 
 // viewBody decodes and validates a ViewCreate; the marshaled params
-// come back for storage.
-func viewBody(w http.ResponseWriter, r *http.Request) (api.ViewCreate, []byte, bool) {
+// come back for storage, along with the resolved visibility (default
+// private).
+func viewBody(w http.ResponseWriter, r *http.Request) (api.ViewCreate, []byte, string, bool) {
 	var body api.ViewCreate
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
-		return body, nil, false
+		return body, nil, "", false
 	}
 	if strings.TrimSpace(body.Name) == "" || utf8.RuneCountInString(body.Name) > 100 {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "name must be 1-100 characters")
-		return body, nil, false
+		return body, nil, "", false
 	}
 	params, err := json.Marshal(body.Params)
 	if err != nil || body.Params == nil {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "params must be a JSON object")
-		return body, nil, false
+		return body, nil, "", false
 	}
 	if len(params) > maxViewParamsBytes { // marshaled bytes, not characters: a storage cap, not a maxLength
 		problem(w, r, http.StatusBadRequest, "invalid_body", "params is too large")
-		return body, nil, false
+		return body, nil, "", false
 	}
-	return body, params, true
+	visibility := "private"
+	if body.Visibility != nil {
+		// The generated enum type is a plain string underneath (no
+		// UnmarshalJSON validation), so an invalid value must be
+		// rejected here -- otherwise it reaches the store and only
+		// the DB CHECK constraint catches it, surfacing as a 500
+		// instead of a 400.
+		switch *body.Visibility {
+		case api.ViewCreateVisibilityPrivate, api.ViewCreateVisibilityUnlisted, api.ViewCreateVisibilityListed:
+			visibility = string(*body.Visibility)
+		default:
+			problem(w, r, http.StatusBadRequest, "invalid_body", "visibility must be one of private, unlisted, listed")
+			return body, nil, "", false
+		}
+	}
+	return body, params, visibility, true
 }
 
 func (h *Handlers) respondView(w http.ResponseWriter, r *http.Request, v store.View, status int) {
@@ -1505,6 +1606,18 @@ func (h *Handlers) ListViews(w http.ResponseWriter, r *http.Request) {
 		h.internalError(w, r, "list failed", err)
 		return
 	}
+	if len(views) == 0 {
+		// First visit (or factory reset): give the two starter
+		// shelves, then re-read so the response includes them.
+		if err := h.store.SeedDefaultViews(r.Context(), userID); err != nil {
+			h.internalError(w, r, "seed failed", err)
+			return
+		}
+		if views, err = h.store.ListViews(r.Context(), userID); err != nil {
+			h.internalError(w, r, "list failed", err)
+			return
+		}
+	}
 	out := make([]api.SavedView, len(views))
 	for i, v := range views {
 		av, err := toAPIView(v)
@@ -1523,11 +1636,11 @@ func (h *Handlers) CreateView(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	body, params, ok := viewBody(w, r)
+	body, params, visibility, ok := viewBody(w, r)
 	if !ok {
 		return
 	}
-	v, err := h.store.CreateView(r.Context(), userID, body.Name, params)
+	v, err := h.store.CreateView(r.Context(), userID, body.Name, params, visibility)
 	if errors.Is(err, store.ErrNameTaken) {
 		problem(w, r, http.StatusConflict, "view_exists", "a view with that name already exists")
 		return
@@ -1545,11 +1658,11 @@ func (h *Handlers) UpdateView(w http.ResponseWriter, r *http.Request, viewId ope
 	if !ok {
 		return
 	}
-	body, params, ok := viewBody(w, r)
+	body, params, visibility, ok := viewBody(w, r)
 	if !ok {
 		return
 	}
-	v, err := h.store.UpdateView(r.Context(), userID, viewId, body.Name, params)
+	v, err := h.store.UpdateView(r.Context(), userID, viewId, body.Name, params, visibility)
 	if errors.Is(err, store.ErrNotFound) {
 		problem(w, r, http.StatusNotFound, "view_not_found", "no such view")
 		return

@@ -158,6 +158,41 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /entries/bulk-update:
+    post:
+      operationId: bulkUpdateEntries
+      summary: Apply tag/status/storage-location changes across a batch of the caller's entries (transactional)
+      description: >
+        One transaction, all-or-nothing: tag removal and tag addition
+        both apply ownership-scoped (a foreign or unknown tag id in
+        add_tag_ids/remove_tag_ids simply matches nothing, same
+        posture as tag attachment elsewhere), and whichever scalar
+        fields are present apply in the same transaction. A status
+        change to backlog manages
+        backlog_rank like the single-entry update: newly-entering
+        entries append at the end (oldest-created first among the
+        batch), entries already in backlog keep their position, and a
+        status change away from backlog clears it. If any targeted
+        entry would end up holding more than 50 tags, the WHOLE
+        transaction rolls back (400 code tag_cap_exceeded) - a
+        skipped-entry partial apply is never allowed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkUpdateRequest" }
+      responses:
+        "200":
+          description: The count of the caller's own entries among entry_ids (present even when every requested change already held)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkUpdateResult" }
+        "400":
+          description: Bounds violated, no action specified, or the per-entry tag cap exceeded (code invalid_body or tag_cap_exceeded)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /entries/{entryId}:
     get:
       operationId: getEntry
@@ -432,6 +467,11 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: Tag cap reached - at most 200 distinct tags per user (code cap_exceeded)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /tags/{tagId}:
     put:
       operationId: renameTag
@@ -570,6 +610,154 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           description: Not found (code view_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /shared/shelves:
+    get:
+      operationId: listSharedShelves
+      summary: Listed shelf summaries, newest publish first (any authenticated caller)
+      description: >
+        owner_ids absent or empty pages every listed shelf across every
+        owner (Explore-recent's read); present, it scopes the page to
+        just those owners (the profile page's read), same guard and
+        pagination semantics either way.
+      parameters:
+        - name: owner_ids
+          in: query
+          required: false
+          description: >
+            Omit to page across all listed shelves; when present, at
+            most 5000 owner ids to scope the page to.
+          schema:
+            type: array
+            maxItems: 5000
+            items: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: One page of summaries plus the total
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total_count, shelves]
+                properties:
+                  total_count: { type: integer }
+                  shelves:
+                    type: array
+                    items: { $ref: "#/components/schemas/SharedShelfSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /shared/shelves/by-slug:
+    get:
+      operationId: getSharedShelfBySlug
+      summary: Resolve (owner, slug) to a shelf; folds case and underscores
+      parameters:
+        - name: owner_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: slug
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The shelf (non-private)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SharedShelf" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Unknown or private (indistinguishable; code shelf_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /shared/shelves/by-ids:
+    get:
+      operationId: getSharedShelvesByIds
+      summary: Batch shelf summaries for hydration (non-private only)
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: array
+            maxItems: 100
+            items: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Summaries for the ids that resolve non-private
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [shelves]
+                properties:
+                  shelves:
+                    type: array
+                    items: { $ref: "#/components/schemas/SharedShelfSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /shared/shelves/{shelfId}:
+    get:
+      operationId: getSharedShelf
+      summary: Shelf meta by id (non-private; any authenticated caller)
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The shelf
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SharedShelf" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Unknown or private (indistinguishable; code shelf_not_found)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /shared/shelves/{shelfId}/entries:
+    get:
+      operationId: listSharedShelfEntries
+      summary: Execute a shelf's stored params and return the whitelisted projection
+      description: >
+        Filters, sort, and grouping come from the stored params
+        verbatim; the caller controls pagination only. Money and
+        personal fields never appear (SharedEntry is a strict
+        whitelist); a stored sort of "value" degrades to the stable
+        base order because value composition never runs here.
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: One page of the shelf's entries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SharedEntryList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Unknown or private (indistinguishable; code shelf_not_found)
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -1220,6 +1408,44 @@ components:
         entries:
           type: array
           items: { $ref: "#/components/schemas/Entry" }
+    BulkUpdateRequest:
+      description: >
+        Delta applied across the caller's own entries among entry_ids
+        (foreign or unknown ids are silently not counted, same
+        ownership-filtering posture as tag attachment). At least one
+        of add_tag_ids / remove_tag_ids / status / storage_location
+        must be present, else 400. storage_location's clearing rule is
+        the OPPOSITE of the full-replacement update's: here an ABSENT
+        storage_location leaves the field untouched, and an explicit
+        empty string clears it.
+      type: object
+      required: [entry_ids]
+      properties:
+        entry_ids:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items: { type: string, format: uuid }
+        add_tag_ids:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+        remove_tag_ids:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+        status: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
+        storage_location:
+          type: string
+          maxLength: 200
+          description: Empty string clears the field; an absent field leaves it untouched (see the operation description).
+    BulkUpdateResult:
+      type: object
+      required: [updated_count]
+      properties:
+        updated_count:
+          type: integer
+          description: Count of the caller's own entries among entry_ids, whether or not any targeted field actually changed.
     ReorderRequest:
       description: Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid.
       type: object
@@ -1247,10 +1473,20 @@ components:
         name: { type: string, minLength: 1, maxLength: 50 }
     SavedView:
       type: object
-      required: [id, name, params, created_at, updated_at]
+      required: [id, name, slug, visibility, params, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
+        slug:
+          type: string
+          description: URL slug derived from the name (underscore transform); unique per user on its folded key.
+        visibility:
+          type: string
+          enum: [private, unlisted, listed]
+        published_at:
+          type: string
+          format: date-time
+          description: Stamped on each transition into listed.
         params:
           type: object
           additionalProperties: true
@@ -1265,6 +1501,96 @@ components:
           type: object
           additionalProperties: true
           description: Opaque frontend view state; at most 8192 marshaled bytes.
+        visibility:
+          type: string
+          enum: [private, unlisted, listed]
+          default: private
+    SharedShelf:
+      type: object
+      required: [id, name, slug, owner_id, visibility, params]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        owner_id: { type: string, format: uuid }
+        visibility:
+          type: string
+          enum: [unlisted, listed]
+        published_at: { type: string, format: date-time }
+        params:
+          type: object
+          additionalProperties: true
+    SharedShelfSummary:
+      type: object
+      required: [id, name, slug, owner_id, visibility, entry_count, cover_urls]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        owner_id: { type: string, format: uuid }
+        visibility:
+          type: string
+          enum: [unlisted, listed]
+          description: The bff's Explore/feed gating reads this (listed-only surfaces).
+        published_at: { type: string, format: date-time }
+        entry_count: { type: integer }
+        cover_urls:
+          type: array
+          maxItems: 4
+          items: { type: string }
+    SharedEntry:
+      description: >
+        The cross-user entry projection - a strict whitelist. No money
+        fields (price paid, values, currency, purchase provenance,
+        pricing mode) and no personal fields (status, rating, notes,
+        location, backlog rank, external refs) may ever be added here
+        without a deliberate privacy decision.
+      type: object
+      required: [id, item_type, media_type, display_name, region, packaging, has_box, has_manual, pinned, tags, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        item_type: { type: string, enum: [game, console, accessory] }
+        media_type: { type: string, enum: [physical, digital] }
+        display_name: { type: string }
+        platform: { $ref: "#/components/schemas/EntryPlatform" }
+        first_release_date: { type: string, format: date }
+        cover_url: { type: string }
+        igdb_game_id: { type: integer, format: int64 }
+        region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        edition: { type: string }
+        packaging: { type: string, enum: [sealed, cib, loose] }
+        has_box: { type: boolean }
+        has_manual: { type: boolean }
+        box_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        manual_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        item_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
+        pinned: { type: boolean }
+        tags:
+          type: array
+          items: { $ref: "#/components/schemas/TagRef" }
+        created_at: { type: string, format: date-time }
+    SharedEntryList:
+      description: Exactly one of entries/groups is present (groups when the stored params group).
+      type: object
+      required: [total_count]
+      properties:
+        total_count: { type: integer }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/SharedEntry" }
+        groups:
+          type: array
+          items: { $ref: "#/components/schemas/SharedEntryGroup" }
+    SharedEntryGroup:
+      type: object
+      required: [key, label, entries]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/SharedEntry" }
     PlatformCount:
       type: object
       required: [name, count]

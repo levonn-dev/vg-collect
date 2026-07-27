@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -426,6 +427,39 @@ func TestUnitPendingSubmissionsGauge(t *testing.T) {
 			t.Fatal("collect must surface the count error")
 		}
 	})
+}
+
+// stubErrMeterProvider hands out a meter that refuses every counter
+// registration this service performs; the noop embeds satisfy the
+// rest of the interfaces.
+type stubErrMeterProvider struct{ noop.MeterProvider }
+
+func (stubErrMeterProvider) Meter(string, ...metric.MeterOption) metric.Meter {
+	return stubErrMeter{}
+}
+
+type stubErrMeter struct{ noop.Meter }
+
+func (stubErrMeter) Int64Counter(string, ...metric.Int64CounterOption) (metric.Int64Counter, error) {
+	return nil, errors.New("registration refused")
+}
+
+// TestUnitNew_NilLoggerDoesNotPanic pins the constructor's
+// tolerate-nil idiom (shared across services): a caller that leaves
+// Options.Logger nil must not crash New, whose counter registration
+// otherwise logs straight through it. Every registration is forced to
+// fail (a nil store also skips the pending-submissions gauge), so New
+// actually reaches opts.Logger.Error; without the nil-logger guard
+// this call would panic on the nil receiver.
+func TestUnitNew_NilLoggerDoesNotPanic(t *testing.T) {
+	prev := otel.GetMeterProvider()
+	otel.SetMeterProvider(stubErrMeterProvider{})
+	t.Cleanup(func() { otel.SetMeterProvider(prev) })
+
+	h := server.New(nil, nil, nil, server.Options{})
+	if h == nil {
+		t.Fatal("New returned nil")
+	}
 }
 
 // ---- log additions ----

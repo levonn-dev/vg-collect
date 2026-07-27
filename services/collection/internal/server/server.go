@@ -35,6 +35,7 @@ type Store interface {
 	GetEntry(ctx context.Context, userID, id uuid.UUID) (store.Entry, error)
 	UpdateEntry(ctx context.Context, e store.Entry, tagIDs []uuid.UUID) (store.Entry, error)
 	DeleteEntry(ctx context.Context, userID, id uuid.UUID) error
+	BulkUpdateEntries(ctx context.Context, userID uuid.UUID, entryIDs []uuid.UUID, actions store.BulkActions) (int, error)
 	Reorder(ctx context.Context, userID, entryID uuid.UUID, afterID, beforeID *uuid.UUID) (store.Entry, error)
 	ListEntries(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.Entry, error)
 	LibrarySummary(ctx context.Context, userID uuid.UUID) ([]store.LibraryGame, error)
@@ -43,9 +44,16 @@ type Store interface {
 	RenameTag(ctx context.Context, userID, id uuid.UUID, name string) (store.Tag, error)
 	DeleteTag(ctx context.Context, userID, id uuid.UUID) error
 	ListViews(ctx context.Context, userID uuid.UUID) ([]store.View, error)
-	CreateView(ctx context.Context, userID uuid.UUID, name string, params []byte) (store.View, error)
-	UpdateView(ctx context.Context, userID, id uuid.UUID, name string, params []byte) (store.View, error)
+	CreateView(ctx context.Context, userID uuid.UUID, name string, params []byte, visibility string) (store.View, error)
+	UpdateView(ctx context.Context, userID, id uuid.UUID, name string, params []byte, visibility string) (store.View, error)
 	DeleteView(ctx context.Context, userID, id uuid.UUID) error
+	SeedDefaultViews(ctx context.Context, userID uuid.UUID) error
+	GetSharedShelf(ctx context.Context, id uuid.UUID) (store.View, error)
+	GetSharedShelfBySlug(ctx context.Context, ownerID uuid.UUID, foldedSlug string) (store.View, error)
+	ListListedShelves(ctx context.Context, ownerIDs []uuid.UUID, limit, offset int) ([]store.View, int, error)
+	SharedShelvesByIDs(ctx context.Context, ids []uuid.UUID) ([]store.View, error)
+	CountEntriesFiltered(ctx context.Context, userID uuid.UUID, f store.Filters) (int, error)
+	CoverURLs(ctx context.Context, userID uuid.UUID, f store.Filters, limit int) ([]string, error)
 	DashboardCounts(ctx context.Context, userID uuid.UUID, f store.Filters) (store.DashboardCounts, error)
 	PricingRows(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.PricingRow, error)
 	PurgeUserData(ctx context.Context, userID uuid.UUID) error
@@ -124,6 +132,9 @@ type Handlers struct {
 // meter is best-effort: an instrument registration failure is logged
 // but never prevents startup.
 func New(st Store, enrich Enrichment, c Cache, opts Options) *Handlers {
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
+	}
 	m := otel.Meter("github.com/levonn-dev/vg-collect/services/collection")
 	counter := func(name, desc, unit string) metric.Int64Counter {
 		ctr, err := m.Int64Counter(name, metric.WithDescription(desc), metric.WithUnit(unit))
