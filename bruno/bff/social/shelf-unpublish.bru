@@ -1,0 +1,32 @@
+meta {
+  name: social - shelf: unpublish Backlog to private
+  type: http
+  seq: 17
+}
+
+put {
+  url: {{bff_url}}/api/views/{{social_shelf_id}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "{{social_shelf_name}}",
+    "params": {{social_shelf_params}},
+    "visibility": "private"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.visibility: eq private
+}
+
+docs {
+  Reverts flow 4, carrying the same captured name/params forward so
+  the Backlog view's own filter/sort is untouched - only visibility
+  moves back to private. The folder ends exactly where it started:
+  alice private, her Backlog shelf private, no comment/like/follow
+  residue. Safe to run again from flow 1 any time the stack is up.
+}

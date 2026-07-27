@@ -1,0 +1,33 @@
+meta {
+  name: social - feed: following (bob sees alice's publish)
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{bff_url}}/api/feed?tab=following
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const found = (res.body.items || []).some(
+      (i) => i.verb === "published_shelf" && i.shelf && i.shelf.id === bru.getEnvVar("social_shelf_id"),
+    );
+    if (!found) {
+      throw new Error("published_shelf activity for alice's shelf not present in bob's following feed");
+    }
+  }
+}
+
+docs {
+  bob's following tab covers everyone he follows (just alice, as of
+  flow 8) across all four verbs; the publish from flow 4 is expected
+  here. alice's own "you" tab (bob's follow + like landing on her)
+  is exercised by the frontend journey, not this folder.
+}

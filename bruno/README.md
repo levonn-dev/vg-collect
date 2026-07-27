@@ -76,8 +76,10 @@ sequence with the `local` environment selected:
    renders USD.
 5. The account-management flows mirror the SPA's account page:
    `me update` edits the profile, including `preferred_currency` (pattern
-   `^[A-Z]{3}$`) that drives the SPA's display conversion (edits survive
-   later logins - provider claims fill the profile only at creation);
+   `^[A-Z]{3}$`) that drives the SPA's display conversion, and
+   `landing_page` (collection/feed/explore - the SPA's `/` route
+   redirects to it after sign-in; edits survive later logins - provider
+   claims fill the profile only at creation);
    `link dev bob` is the
    linking navigation (302 to `/account?linked=dev`, or
    `?link_error=conflict` when dev-bob already belongs to another
@@ -171,6 +173,22 @@ approves-new with a cover, alice reads the approved submission,
 acknowledges it (idempotent 204 on repeat), and re-reads it stamped.
 A clean run deletes everything it created.
 
+## BFF social flows
+
+The `bff/social/` folder exercises the social extension end to end
+through the gateway, two actors sharing one cookie jar (the
+`bff/admin` precedent): alice lists her profile and publishes her
+Backlog shelf, bob discovers it through Explore and user search,
+follows alice, likes and comments on the shelf, and reads the publish
+back in his following feed; the folder then cleans up bob's comment,
+like, and follow, logs back in as alice, and returns her profile and
+the Backlog shelf to private. It needs only the alice and bob
+fixtures (no admin grant) and is self-healing: run it start to finish
+in seq order and it always ends private with no comment/like/follow
+residue, so it is safe to re-run any time the stack is up. Run it in
+the Bruno desktop app after `task run`; it is independent of
+`task e2e` (either can run without the other having run first).
+
 ## Enrichment flows
 
 The `enrichment/` folder exercises the catalog and pricing surface
@@ -216,9 +234,12 @@ tokens. Bootstrap chain: `auth / dev token` (token), then
 entry`. The flows are numbered in a happy-path order: two entries,
 list + backlog order, a reorder, a tag, a pin/rate update, a single
 entry read, a tag list, a saved
-view, the dashboard, the library summary, and a custom off-catalog
-entry priced by proxy. Reruns are mostly idempotent; tag and view
-creations answer 409 on the second run (names are unique per user).
+view, the dashboard, the library summary, a custom off-catalog
+entry priced by proxy, and a `bulk update entries` flow (seq 17) that
+tags both entries and flips their status/location in one transactional
+call, reading its ids from the earlier flows. Reruns are mostly
+idempotent; tag and view creations answer 409 on the second run (names
+are unique per user).
 
 `create entry (custom price)` and `update entry (custom price)` both
 carry `custom_value_cents` (the USD snapshot the backend aggregates

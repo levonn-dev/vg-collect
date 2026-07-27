@@ -1,0 +1,21 @@
+meta {
+  name: social - cleanup: unfollow
+  type: http
+  seq: 14
+}
+
+delete {
+  url: {{bff_url}}/api/social/follows/{{social_alice_id}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  Idempotent: 204 whether this removes a follow or there was none.
+  Removes the followed_user activity row along with the edge, so
+  bob's engagement leaves no trace once this folder finishes.
+}

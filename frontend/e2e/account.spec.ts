@@ -34,7 +34,7 @@ async function throttleAuth(page: Page) {
 async function login(page: Page, user: string) {
   await throttleAuth(page)
   await page.goto(`/api/auth/login?provider=dev&user=${user}`)
-  await expect(page).toHaveURL(/\/$/)
+  await expect(page).toHaveURL(/\/feed$/)
 }
 
 async function logout(page: Page) {
@@ -71,12 +71,12 @@ test('profile edits, login linking, conflicts, and account deletion', async ({ p
   // Profile edit survives a re-login: provider claims fill only at creation.
   await login(page, 'alice')
   await openAccount(page)
-  await page.getByLabel('Display name').fill('Alice Prime')
+  await page.getByLabel('Handle').fill('Alice_Prime')
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByText('Saved.')).toBeVisible()
   await logout(page)
   await login(page, 'alice')
-  await expect(page.getByText('Alice Prime')).toBeVisible()
+  await expect(page.getByText('@Alice_Prime')).toBeVisible()
 
   // Link dev-bob to alice's account; bob's login now lands there.
   await openAccount(page)
@@ -86,7 +86,7 @@ test('profile edits, login linking, conflicts, and account deletion', async ({ p
   await expect(page.getByText('bob@example.com')).toBeVisible()
   await logout(page)
   await login(page, 'bob')
-  await expect(page.getByText('Alice Prime')).toBeVisible()
+  await expect(page.getByText('@Alice_Prime')).toBeVisible()
 
   // Unlink bob (from the shared account); bob then gets his own account.
   await openAccount(page)
@@ -99,7 +99,7 @@ test('profile edits, login linking, conflicts, and account deletion', async ({ p
   await expect(page.getByText('bob@example.com')).toBeHidden()
   await logout(page)
   await login(page, 'bob')
-  await expect(page.getByText('Bob Fixture')).toBeVisible()
+  await expect(page.getByText('@Bob_Fixture')).toBeVisible()
 
   // Conflict: dev-alice already belongs to alice's account.
   await openAccount(page)
@@ -115,5 +115,5 @@ test('profile edits, login linking, conflicts, and account deletion', async ({ p
   await expect(page).toHaveURL(/\/login\?deleted=1$/)
   await expect(page.getByRole('status')).toContainText(/deleted/i)
   await login(page, 'bob')
-  await expect(page.getByText('Bob Fixture')).toBeVisible()
+  await expect(page.getByText('@Bob_Fixture')).toBeVisible()
 })

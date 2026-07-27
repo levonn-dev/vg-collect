@@ -1,0 +1,21 @@
+meta {
+  name: social - follow: alice
+  type: http
+  seq: 8
+}
+
+put {
+  url: {{bff_url}}/api/social/follows/{{social_alice_id}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  Idempotent: 204 whether this is a new follow or already-following.
+  Feeds the "following" side of flow 11's feed check and alice's own
+  "you" tab in the frontend journey.
+}

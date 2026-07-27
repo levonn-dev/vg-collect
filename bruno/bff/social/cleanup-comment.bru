@@ -1,0 +1,22 @@
+meta {
+  name: social - cleanup: delete bob's comment
+  type: http
+  seq: 12
+}
+
+delete {
+  url: {{bff_url}}/api/comments/{{social_comment_id}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  bob authored the comment, so this is the self-delete path (body
+  erased, deleted_by stamped) rather than an owner moderation removal.
+  Also drops the comment's commented_shelf activity row, so it cannot
+  leak into any later feed read.
+}

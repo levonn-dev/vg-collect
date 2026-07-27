@@ -1,0 +1,30 @@
+meta {
+  name: social - explore: recent (finds alice's shelf)
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{bff_url}}/api/explore?sort=recent
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const found = (res.body.shelves || []).some((s) => s.id === bru.getEnvVar("social_shelf_id"));
+    if (!found) {
+      throw new Error("just-published shelf not present in explore recent");
+    }
+  }
+}
+
+docs {
+  recent pages listed shelves newest-publish-first across every listed
+  owner; the shelf flow 4 just published is the most recent one, so it
+  is expected on the first page regardless of what else is listed.
+}

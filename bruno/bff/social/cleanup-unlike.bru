@@ -1,0 +1,20 @@
+meta {
+  name: social - cleanup: unlike
+  type: http
+  seq: 13
+}
+
+delete {
+  url: {{bff_url}}/api/social/likes/{{social_shelf_id}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  Idempotent: 204 whether this removes a like or there was none.
+  Removes the liked_shelf activity row along with the edge.
+}

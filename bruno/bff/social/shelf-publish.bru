@@ -1,0 +1,33 @@
+meta {
+  name: social - shelf: publish Backlog to listed
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{bff_url}}/api/views/{{social_shelf_id}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "{{social_shelf_name}}",
+    "params": {{social_shelf_params}},
+    "visibility": "listed"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.visibility: eq listed
+}
+
+docs {
+  Full-replacement PUT, so the view's own captured name/params ride
+  along unchanged - only visibility actually changes. Combined with
+  flow 2's listed profile, the shelf is now effectively listed (the
+  stricter-of rule needs both sides non-private) and stamps
+  published_at. The rest of this folder (explore, search, follow,
+  like, comment, feed) exercises it as bob from here.
+}

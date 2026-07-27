@@ -1,0 +1,33 @@
+meta {
+  name: social - comment: on alice's shelf
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{bff_url}}/api/shelves/{{social_shelf_id}}/comments
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "body": "bruno was here"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("social_comment_id", res.body.id);
+  }
+}
+
+docs {
+  A live top-level comment on alice's shelf, authored by bob. The
+  comment id is captured as social_comment_id; flow 12 tombstones it
+  as a self-delete so the folder leaves no comment residue behind.
+}

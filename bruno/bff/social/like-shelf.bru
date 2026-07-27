@@ -1,0 +1,21 @@
+meta {
+  name: social - like: alice's shelf
+  type: http
+  seq: 9
+}
+
+put {
+  url: {{bff_url}}/api/social/likes/{{social_shelf_id}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  Idempotent: 204 whether this is a new like or already-liked. Bumps
+  the shelf's like_count and stamps a liked_shelf activity row that
+  surfaces in alice's "you" feed.
+}

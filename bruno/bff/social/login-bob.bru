@@ -1,0 +1,18 @@
+meta {
+  name: social - dev login bob (switches the jar's actor)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{bff_url}}/api/auth/login?provider=dev&user=bob
+  body: none
+  auth: none
+}
+
+docs {
+  One cookie jar, two actors: this re-seals the session as bob, the
+  same role-switch idiom the bff/admin folder uses. Every request
+  through flow 14 acts as bob, discovering and engaging with the
+  shelf alice just published.
+}

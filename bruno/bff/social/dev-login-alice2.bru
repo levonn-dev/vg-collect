@@ -1,0 +1,17 @@
+meta {
+  name: social - dev login alice again (re-seeds the jar)
+  type: http
+  seq: 15
+}
+
+get {
+  url: {{bff_url}}/api/auth/login?provider=dev&user=alice
+  body: none
+  auth: none
+}
+
+docs {
+  Switches the jar's actor back to alice for the closing two flows,
+  which return her profile and shelf to private - this folder is
+  self-healing and always ends there.
+}

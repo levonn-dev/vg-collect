@@ -30,7 +30,7 @@ spec:
 ---
 # Auth's callers: the bff (login + token lifecycle) and every
 # JWT-validating service fetching the JWKS (today: user, enrichment,
-# collection).
+# collection, social).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -55,5 +55,8 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: collection
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: social
       ports:
         - { port: 8080, protocol: TCP }

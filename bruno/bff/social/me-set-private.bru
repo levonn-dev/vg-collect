@@ -1,0 +1,28 @@
+meta {
+  name: social - me: set visibility private
+  type: http
+  seq: 16
+}
+
+patch {
+  url: {{bff_url}}/api/me
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "profile_visibility": "private"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.profile_visibility: eq private
+}
+
+docs {
+  Reverts flow 2. handle is untouched throughout this folder - only
+  visibility moves, so alice's handle is exactly what it was before
+  this folder ran.
+}

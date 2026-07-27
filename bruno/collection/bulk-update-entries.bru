@@ -1,0 +1,51 @@
+meta {
+  name: bulk update entries (tags + status + storage location)
+  type: http
+  seq: 17
+}
+
+post {
+  url: {{collection_url}}/entries/bulk-update
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "entry_ids": ["{{entry_id}}", "{{entry_id_2}}"],
+    "add_tag_ids": ["{{tag_id}}"],
+    "status": "shelved",
+    "storage_location": "closet shelf B"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.updated_count: eq 2
+}
+
+docs {
+  Run create-entry, create-second-entry, and create-tag first
+  (entry_id, entry_id_2, tag_id). One transaction across both entries:
+  attaches tag_id to both, sets status shelved and storage_location on
+  both. Expect 200 {"updated_count":2}. Re-running answers the same
+  count (idempotent: the tag is already attached, the fields already
+  hold these values).
+
+  Foreign or unknown ids in entry_ids are silently not counted, same
+  posture as tag attachment. Guard failures (entry_ids outside 1-200,
+  add_tag_ids/remove_tag_ids over 50, an unknown status,
+  storage_location over 200 characters, or no action present at all)
+  answer 400 invalid_body before the store runs. The per-entry 50-tag
+  cap answers 400 tag_cap_exceeded and rolls back the WHOLE call - no
+  partial apply, even for entries well under the cap in the same
+  batch.
+
+  A status change into or out of backlog manages backlog_rank like the
+  single-entry update: entering appends at the end, already-backlog
+  entries keep their position, leaving clears it.
+}

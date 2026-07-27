@@ -1,0 +1,31 @@
+meta {
+  name: social - search: alice (captures her user id)
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{bff_url}}/api/search/users?q=alice
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const hit = (res.body.profiles || []).find((p) => p.handle === bru.getEnvVar("social_alice_handle"));
+    if (!hit) {
+      throw new Error("alice not found in the listed-profile user search");
+    }
+    bru.setEnvVar("social_alice_id", hit.user_id);
+  }
+}
+
+docs {
+  Substring search over listed profiles' folded handles - this is the
+  discovery path the Explore page's people box uses. alice's user_id
+  is captured as social_alice_id for the follow flow next.
+}

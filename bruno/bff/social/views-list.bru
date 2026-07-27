@@ -1,0 +1,38 @@
+meta {
+  name: social - views: list (captures the Backlog shelf)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{bff_url}}/api/views
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const backlog = (res.body.views || []).find((v) => v.name === "Backlog");
+    if (!backlog) {
+      throw new Error("Backlog view not found; every account is seeded with it on first list");
+    }
+    bru.setEnvVar("social_shelf_id", backlog.id);
+    bru.setEnvVar("social_shelf_slug", backlog.slug);
+    bru.setEnvVar("social_shelf_name", backlog.name);
+    bru.setEnvVar("social_shelf_params", JSON.stringify(backlog.params));
+  }
+}
+
+docs {
+  Every account is seeded with two saved views ("Full collection",
+  "Backlog") the first time its views are listed - no separate setup
+  step needed. This folder shares the Backlog view as alice's shelf:
+  its id, slug, name, and params (JSON-stringified, since environment
+  variables are strings) are captured for flow 4's publish and flow
+  17's unpublish, both of which must carry the view's own name/params
+  forward unchanged alongside the new visibility.
+}

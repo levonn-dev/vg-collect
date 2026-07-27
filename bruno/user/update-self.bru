@@ -1,5 +1,5 @@
 meta {
-  name: update self (display name)
+  name: update self (handle)
   type: http
   seq: 2
 }
@@ -16,7 +16,7 @@ auth:bearer {
 
 body:json {
   {
-    "display_name": "Alice Prime"
+    "handle": "Alice_Prime"
   }
 }
 
@@ -26,8 +26,16 @@ docs {
   avatar. Because logins fill the profile only at account creation,
   this edit survives every later login.
 
-  Validation answers 400 invalid_body naming the field: a blank or
-  >100-char display_name, or an avatar_url that is not http(s) or is
+  handle is the account's single identity now (display_name was
+  retired from this endpoint; it only ever seeds the handle at
+  upsert-time, never stored). A typed change like this one is
+  cooldown-gated (429 handle_cooldown on a repeat within the window)
+  and answers 409 handle_taken on a folded-key collision with another
+  account.
+
+  Validation answers 400 invalid_body naming the field: a handle
+  outside 2-30 characters (alphanumeric plus interior underscores) or
+  on the reserved list, or an avatar_url that is not http(s) or is
   over 2048 chars. Editing anyone else (or with a service/admin token)
   answers 403: profiles are self-service only.
 

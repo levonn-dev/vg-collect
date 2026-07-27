@@ -1,0 +1,36 @@
+meta {
+  name: social - me: set visibility listed
+  type: http
+  seq: 2
+}
+
+patch {
+  url: {{bff_url}}/api/me
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "profile_visibility": "listed"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.profile_visibility: eq listed
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setEnvVar("social_alice_handle", res.body.handle);
+  }
+}
+
+docs {
+  A listed profile is one half of the effective-visibility rule (the
+  stricter of profile and shelf visibility gates a shared shelf); flow
+  4 supplies the other half. handle is untouched (absent fields keep
+  their value) and captured here as social_alice_handle for the
+  search flow later in this folder.
+}

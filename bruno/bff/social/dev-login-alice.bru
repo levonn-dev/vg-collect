@@ -1,0 +1,17 @@
+meta {
+  name: social - dev login alice (seeds the jar)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{bff_url}}/api/auth/login?provider=dev&user=alice
+  body: none
+  auth: none
+}
+
+docs {
+  Opens this folder's journey as alice: the gateway completes the dev
+  login and returns the session as a Set-Cookie, which Bruno's cookie
+  jar captures. Every request through flow 4 rides this cookie.
+}
