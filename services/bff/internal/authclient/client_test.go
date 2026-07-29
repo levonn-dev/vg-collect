@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
 )
 
 // stubAuth answers like the auth service for one canned scenario per path.

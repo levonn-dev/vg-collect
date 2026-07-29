@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 )
 
 func TestRun_GracefulShutdown(t *testing.T) {

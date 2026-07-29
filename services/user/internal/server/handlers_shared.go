@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/levonn-dev/vg-collect/services/user/internal/gen/api"
-	"github.com/levonn-dev/vg-collect/services/user/internal/store"
+	"github.com/levonn-dev/vgkeep/services/user/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/services/user/internal/store"
 )
 
 // The /shared handlers serve any authenticated caller: no sub-scoping,

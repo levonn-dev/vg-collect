@@ -5,7 +5,7 @@ metadata:
   name: enrichment-mongo
   labels:
     app.kubernetes.io/name: enrichment-mongo
-    app.kubernetes.io/part-of: vg-collect
+    app.kubernetes.io/part-of: vgkeep
 spec:
   selector:
     app.kubernetes.io/name: enrichment-mongo

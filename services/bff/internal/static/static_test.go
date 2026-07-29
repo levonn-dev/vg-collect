@@ -17,7 +17,7 @@ func get(t *testing.T, path string) *httptest.ResponseRecorder {
 func TestServesIndexUncached(t *testing.T) {
 	for _, path := range []string{"/", "/index.html"} {
 		rec := get(t, path)
-		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "vg-collect") {
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "vgkeep") {
 			t.Fatalf("%s: code=%d", path, rec.Code)
 		}
 		if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
@@ -28,7 +28,7 @@ func TestServesIndexUncached(t *testing.T) {
 
 func TestClientRouteFallsBackToIndex(t *testing.T) {
 	rec := get(t, "/login")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "vg-collect") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "vgkeep") {
 		t.Fatalf("code=%d body=%q", rec.Code, rec.Body.String())
 	}
 	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {

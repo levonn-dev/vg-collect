@@ -15,7 +15,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 )
 
 // authEnv is an in-process JWKS + signer: handler tests exercise the
@@ -59,8 +59,8 @@ func (a *authEnv) token(t *testing.T, sub string, roles []string) string {
 	tok := jwt.NewWithClaims(jwt.SigningMethodEdDSA, jwt.MapClaims{
 		"sub":   sub,
 		"roles": roles,
-		"iss":   "vg-collect-auth",
-		"aud":   "vg-collect",
+		"iss":   "vgkeep-auth",
+		"aud":   "vgkeep",
 		"jti":   uuid.NewString(),
 		"iat":   now.Unix(),
 		"exp":   now.Add(5 * time.Minute).Unix(),
@@ -74,5 +74,5 @@ func (a *authEnv) token(t *testing.T, sub string, roles []string) string {
 }
 
 func (a *authEnv) validator() *jwtauth.Validator {
-	return jwtauth.NewValidator(a.srv.URL, "vg-collect-auth", "vg-collect")
+	return jwtauth.NewValidator(a.srv.URL, "vgkeep-auth", "vgkeep")
 }

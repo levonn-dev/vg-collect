@@ -22,8 +22,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
-	"github.com/levonn-dev/vg-collect/services/social/internal/server"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/services/social/internal/server"
 )
 
 // authEnv is an in-process token mint + JWKS: real Ed25519 signatures
@@ -49,7 +49,7 @@ func newAuthEnv(t *testing.T) authEnv {
 	}))
 	t.Cleanup(srv.Close)
 	return authEnv{
-		v:   jwtauth.NewValidatorWithRefetchInterval(srv.URL, "vg-collect-auth", "vg-collect", 0),
+		v:   jwtauth.NewValidatorWithRefetchInterval(srv.URL, "vgkeep-auth", "vgkeep", 0),
 		key: priv,
 		kid: kid,
 	}
@@ -62,7 +62,7 @@ func (a authEnv) token(t *testing.T, sub string, roles ...string) string {
 		roles = []string{"user"}
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodEdDSA, jwt.MapClaims{
-		"sub": sub, "iss": "vg-collect-auth", "aud": "vg-collect",
+		"sub": sub, "iss": "vgkeep-auth", "aud": "vgkeep",
 		"jti": uuid.NewString(), "exp": time.Now().Add(5 * time.Minute).Unix(),
 		"roles": roles,
 	})

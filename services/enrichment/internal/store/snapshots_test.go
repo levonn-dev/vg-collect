@@ -7,7 +7,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/store"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
 
 func TestSnapshots_AppendIntoTimeSeries(t *testing.T) {

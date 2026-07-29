@@ -13,7 +13,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/levonn-dev/vg-collect/services/auth/internal/oidc"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/oidc"
 )
 
 func newRP(t *testing.T, f *fakeIDP, hc *http.Client) *oidc.RP {

@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: vg-collect bff
+  title: vgkeep bff
   version: 0.1.0
   description: >
     The browser-facing API. Authentication is a sealed HttpOnly cookie,

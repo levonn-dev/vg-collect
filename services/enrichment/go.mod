@@ -1,16 +1,16 @@
-module github.com/levonn-dev/vg-collect/services/enrichment
+module github.com/levonn-dev/vgkeep/services/enrichment
 
 go 1.26.2
 
-replace github.com/levonn-dev/vg-collect/libs/go/config => ../../libs/go/config
+replace github.com/levonn-dev/vgkeep/libs/go/config => ../../libs/go/config
 
-replace github.com/levonn-dev/vg-collect/libs/go/httpkit => ../../libs/go/httpkit
+replace github.com/levonn-dev/vgkeep/libs/go/httpkit => ../../libs/go/httpkit
 
-replace github.com/levonn-dev/vg-collect/libs/go/jwtauth => ../../libs/go/jwtauth
+replace github.com/levonn-dev/vgkeep/libs/go/jwtauth => ../../libs/go/jwtauth
 
-replace github.com/levonn-dev/vg-collect/libs/go/otel => ../../libs/go/otel
+replace github.com/levonn-dev/vgkeep/libs/go/otel => ../../libs/go/otel
 
-replace github.com/levonn-dev/vg-collect/libs/go/valkeykit => ../../libs/go/valkeykit
+replace github.com/levonn-dev/vgkeep/libs/go/valkeykit => ../../libs/go/valkeykit
 
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
@@ -18,11 +18,11 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/golang-migrate/migrate/v4 v4.18.1
 	github.com/google/uuid v1.6.0
-	github.com/levonn-dev/vg-collect/libs/go/config v0.0.0-20260614184616-91058dc972dc
-	github.com/levonn-dev/vg-collect/libs/go/httpkit v0.0.0-20260614184616-91058dc972dc
-	github.com/levonn-dev/vg-collect/libs/go/jwtauth v0.0.0-20260614184616-91058dc972dc
-	github.com/levonn-dev/vg-collect/libs/go/otel v0.0.0-00010101000000-000000000000
-	github.com/levonn-dev/vg-collect/libs/go/valkeykit v0.0.0-20260614184616-91058dc972dc
+	github.com/levonn-dev/vgkeep/libs/go/config v0.0.0-20260614184616-91058dc972dc
+	github.com/levonn-dev/vgkeep/libs/go/httpkit v0.0.0-20260614184616-91058dc972dc
+	github.com/levonn-dev/vgkeep/libs/go/jwtauth v0.0.0-20260614184616-91058dc972dc
+	github.com/levonn-dev/vgkeep/libs/go/otel v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/valkeykit v0.0.0-20260614184616-91058dc972dc
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/testcontainers/testcontainers-go/modules/mongodb v0.35.0

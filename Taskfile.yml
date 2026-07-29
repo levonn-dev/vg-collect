@@ -2,7 +2,7 @@
 # every task with its description. The layout mirrors the dev flow:
 # bootstrap -> lint -> build/test -> gen -> run.
 #
-# vg-collect is a multi-module Go monorepo plus a Vite/React frontend. The
+# vgkeep is a multi-module Go monorepo plus a Vite/React frontend. The
 # Go tasks fan out over every module discovered by the GO_MODULES var
 # (every directory containing a go.mod); the frontend and the per-service
 # OpenAPI codegen live in included Taskfiles (see `includes:` at the bottom
@@ -62,7 +62,7 @@ tasks:
       - kubectl get clusterissuer vg-ca -o name
 
   bootstrap:cluster:down:
-    desc: 'Tear down the platform (both helm releases + the vg-platform namespace). The next bootstrap:cluster mints a NEW dev CA, so TLS secrets already issued in vg-collect keep chaining to the old one; for a full reset run `task nuke && task bootstrap:cluster:down`.'
+    desc: 'Tear down the platform (both helm releases + the vg-platform namespace). The next bootstrap:cluster mints a NEW dev CA, so TLS secrets already issued in vgkeep keep chaining to the old one; for a full reset run `task nuke && task bootstrap:cluster:down`.'
     cmds:
       # helm uninstall (never a bare namespace delete): the releases own
       # cluster-scoped objects (ClusterIssuers, cert-manager/ESO webhook
@@ -191,19 +191,19 @@ tasks:
       - tilt up
 
   down:
-    desc: Stop the Tilt-managed dev stack (the vg-collect namespace, datastore PVCs, and issued TLS secrets survive)
+    desc: Stop the Tilt-managed dev stack (the vgkeep namespace, datastore PVCs, and issued TLS secrets survive)
     cmds:
       - tilt down
 
   nuke:
-    desc: 'Full reset: tilt down + delete the vg-collect namespace (drops datastore PVCs + issued TLS secrets)'
+    desc: 'Full reset: tilt down + delete the vgkeep namespace (drops datastore PVCs + issued TLS secrets)'
     cmds:
       - task: down
-      # Tilt never deletes namespaces on `tilt down`; dropping vg-collect
+      # Tilt never deletes namespaces on `tilt down`; dropping vgkeep
       # clears the datastore PVCs and the cert-manager-issued *-tls
       # secrets, so a platform cycle (bootstrap:cluster:down, then
       # bootstrap:cluster) cannot leave them chained to a replaced CA.
-      - kubectl delete namespace vg-collect --ignore-not-found
+      - kubectl delete namespace vgkeep --ignore-not-found
 
   e2e:
     desc: Browser smoke (Playwright) against the running stack
@@ -218,7 +218,7 @@ tasks:
       # user row must exist (the login upserts it). Idempotent end to end.
       - curl -sf -o /dev/null "http://localhost:8090/api/auth/login?provider=dev&user=admin"
       - >-
-        kubectl -n vg-collect exec statefulset/user-pg -- psql -U user -d user -c
+        kubectl -n vgkeep exec statefulset/user-pg -- psql -U user -d user -c
         "INSERT INTO user_roles (user_id, role)
          SELECT id, 'admin' FROM users WHERE email = 'admin@example.com'
          ON CONFLICT DO NOTHING;"

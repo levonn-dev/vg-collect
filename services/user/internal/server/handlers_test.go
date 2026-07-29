@@ -20,11 +20,11 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
-	"github.com/levonn-dev/vg-collect/libs/go/pgkit"
-	"github.com/levonn-dev/vg-collect/services/user/internal/server"
-	"github.com/levonn-dev/vg-collect/services/user/internal/store"
-	"github.com/levonn-dev/vg-collect/services/user/migrations"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/services/user/internal/server"
+	"github.com/levonn-dev/vgkeep/services/user/internal/store"
+	"github.com/levonn-dev/vgkeep/services/user/migrations"
 )
 
 // newTestStore duplicates the fixture in internal/store/store_test.go
@@ -76,13 +76,13 @@ func newAuthEnv(t *testing.T) authEnv {
 	}}})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(jwks) }))
 	t.Cleanup(srv.Close)
-	return authEnv{priv: priv, v: jwtauth.NewValidator(srv.URL, "vg-collect-auth", "vg-collect")}
+	return authEnv{priv: priv, v: jwtauth.NewValidator(srv.URL, "vgkeep-auth", "vgkeep")}
 }
 
 func (a authEnv) token(t *testing.T, sub string, roles ...string) string {
 	t.Helper()
 	tok := jwt.NewWithClaims(jwt.SigningMethodEdDSA, jwt.MapClaims{
-		"sub": sub, "iss": "vg-collect-auth", "aud": "vg-collect",
+		"sub": sub, "iss": "vgkeep-auth", "aud": "vgkeep",
 		"exp": time.Now().Add(5 * time.Minute).Unix(), "jti": "j", "roles": roles,
 	})
 	tok.Header["kid"] = "t1"

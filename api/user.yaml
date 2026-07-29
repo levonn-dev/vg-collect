@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: vg-collect user service
+  title: vgkeep user service
   version: 0.1.0
 security:
   - bearerAuth: []

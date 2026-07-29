@@ -70,7 +70,7 @@ export default function Layout() {
         <div className="flex items-baseline gap-6">
           <div className="flex items-center gap-2">
             <Logo />
-            <h1 className="text-xl font-bold">vg-collect</h1>
+            <h1 className="text-xl font-bold">vgkeep</h1>
           </div>
           <nav className="flex gap-4" aria-label="Primary">
             <NavLink to="/collection" end className={navClass}>

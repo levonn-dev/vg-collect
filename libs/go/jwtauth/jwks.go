@@ -1,4 +1,4 @@
-// Package jwtauth validates vg-collect access JWTs (Ed25519, kid-aware
+// Package jwtauth validates vgkeep access JWTs (Ed25519, kid-aware
 // JWKS) and provides auth/role middleware. It never mints tokens;
 // that is the auth service's job.
 package jwtauth

@@ -13,9 +13,9 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/levonn-dev/vg-collect/libs/go/pgkit"
-	"github.com/levonn-dev/vg-collect/services/social/internal/store"
-	"github.com/levonn-dev/vg-collect/services/social/migrations"
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/services/social/internal/store"
+	"github.com/levonn-dev/vgkeep/services/social/migrations"
 )
 
 // newTestStore duplicates the fixture in migrations/migrations_test.go

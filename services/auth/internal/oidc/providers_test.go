@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/levonn-dev/vg-collect/services/auth/internal/oidc"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/oidc"
 )
 
 func authorizeQuery(t *testing.T, p oidc.Provider) url.Values {

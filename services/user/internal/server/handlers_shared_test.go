@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vg-collect/services/user/internal/store"
+	"github.com/levonn-dev/vgkeep/services/user/internal/store"
 )
 
 func TestUnitSharedProfile_VisibilityGate(t *testing.T) {

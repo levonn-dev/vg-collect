@@ -19,8 +19,8 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.HTTPAddr != ":8080" || cfg.JWTIssuer != "vg-collect-auth" ||
-		cfg.JWTAudience != "vg-collect" || cfg.DashboardCacheTTL.Minutes() != 5 || cfg.Version != "dev" {
+	if cfg.HTTPAddr != ":8080" || cfg.JWTIssuer != "vgkeep-auth" ||
+		cfg.JWTAudience != "vgkeep" || cfg.DashboardCacheTTL.Minutes() != 5 || cfg.Version != "dev" {
 		t.Fatalf("defaults: %+v", cfg)
 	}
 }

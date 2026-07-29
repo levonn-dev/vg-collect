@@ -27,15 +27,15 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
-	"github.com/levonn-dev/vg-collect/libs/go/pgkit"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/gen/api"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/oidc"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/server"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/store"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/token"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/userclient"
-	"github.com/levonn-dev/vg-collect/services/auth/migrations"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/oidc"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/server"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/store"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/token"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/userclient"
+	"github.com/levonn-dev/vgkeep/services/auth/migrations"
 )
 
 var testSeed = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32))
@@ -94,7 +94,7 @@ type stubUsersServer struct {
 
 // newJWKSValidator builds a jwtauth.Validator against a JWKS httptest
 // server mirroring m's public key -- the same verification path every
-// real service uses to check a vg-collect access token, including the
+// real service uses to check a vgkeep access token, including the
 // auth service validating its own tokens on the self-service endpoints.
 func newJWKSValidator(t *testing.T, m *token.Minter) *jwtauth.Validator {
 	t.Helper()
@@ -106,7 +106,7 @@ func newJWKSValidator(t *testing.T, m *token.Minter) *jwtauth.Validator {
 		_, _ = w.Write(jwks)
 	}))
 	t.Cleanup(jwksSrv.Close)
-	return jwtauth.NewValidator(jwksSrv.URL, "vg-collect-auth", "vg-collect")
+	return jwtauth.NewValidator(jwksSrv.URL, "vgkeep-auth", "vgkeep")
 }
 
 func newStubUsersServer(t *testing.T, m *token.Minter) *stubUsersServer {
@@ -327,7 +327,7 @@ type env struct {
 func newEnv(t *testing.T, devEnabled bool) *env {
 	t.Helper()
 	pool := newTestPool(t)
-	m, err := token.NewMinter(testSeed, "vg-collect-auth", "vg-collect", 5*time.Minute)
+	m, err := token.NewMinter(testSeed, "vgkeep-auth", "vgkeep", 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -862,7 +862,7 @@ func TestDevToken_MintsSessionValidatedByJwtauth(t *testing.T) {
 	// The keystone cross-check: a token minted here must validate via
 	// the shared jwtauth library against this service's own JWKS
 	// endpoint, exactly as every other service will validate it.
-	v := jwtauth.NewValidator(e.srv.URL+"/.well-known/jwks.json", "vg-collect-auth", "vg-collect")
+	v := jwtauth.NewValidator(e.srv.URL+"/.well-known/jwks.json", "vgkeep-auth", "vgkeep")
 	claims, err := v.Validate(context.Background(), pair.AccessToken)
 	if err != nil {
 		t.Fatalf("jwtauth rejected our token: %v", err)

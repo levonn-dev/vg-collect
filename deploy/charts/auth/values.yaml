@@ -1,13 +1,13 @@
 image:
-  repository: vg-collect/auth
+  repository: vgkeep/auth
   tag: dev
   pullPolicy: IfNotPresent
 
 replicas: 1
 
 env:
-  jwtIssuer: vg-collect-auth
-  jwtAudience: vg-collect
+  jwtIssuer: vgkeep-auth
+  jwtAudience: vgkeep
   accessTokenTtl: 5m
   refreshTokenTtl: 720h
   userServiceUrl: http://user:8080

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	libconfig "github.com/levonn-dev/vg-collect/libs/go/config"
+	libconfig "github.com/levonn-dev/vgkeep/libs/go/config"
 )
 
 // Config holds all environment-sourced configuration for the auth
@@ -16,8 +16,8 @@ type Config struct {
 	DatabaseURL string `env:"DATABASE_URL,required"`
 
 	JWTSigningKey   string        `env:"JWT_SIGNING_KEY,required"` // base64 (std) 32-byte Ed25519 seed
-	JWTIssuer       string        `env:"JWT_ISSUER"           envDefault:"vg-collect-auth"`
-	JWTAudience     string        `env:"JWT_AUDIENCE"         envDefault:"vg-collect"`
+	JWTIssuer       string        `env:"JWT_ISSUER"           envDefault:"vgkeep-auth"`
+	JWTAudience     string        `env:"JWT_AUDIENCE"         envDefault:"vgkeep"`
 	AccessTokenTTL  time.Duration `env:"ACCESS_TOKEN_TTL"     envDefault:"5m"`
 	RefreshTokenTTL time.Duration `env:"REFRESH_TOKEN_TTL"    envDefault:"720h"`
 

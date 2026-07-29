@@ -15,9 +15,9 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/levonn-dev/vg-collect/libs/go/pgkit"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/store"
-	"github.com/levonn-dev/vg-collect/services/auth/migrations"
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/store"
+	"github.com/levonn-dev/vgkeep/services/auth/migrations"
 )
 
 func newTestPool(t *testing.T) *pgxpool.Pool {

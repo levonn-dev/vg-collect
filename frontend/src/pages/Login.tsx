@@ -40,7 +40,7 @@ export default function Login() {
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
       <div className="flex items-center gap-3">
         <Logo className="h-10 w-auto" />
-        <h1 className="text-3xl font-bold">vg-collect</h1>
+        <h1 className="text-3xl font-bold">vgkeep</h1>
       </div>
       <p className="text-gray-600">Track your game collection.</p>
       {error && (

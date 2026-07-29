@@ -13,12 +13,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vg-collect/services/bff/internal/collectionclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/collectionapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/socialapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/socialclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/socialapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/socialclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
 // stubSocialFull implements server.SocialAPI via function fields; each

@@ -1,4 +1,4 @@
-module github.com/levonn-dev/vg-collect/libs/go/config
+module github.com/levonn-dev/vgkeep/libs/go/config
 
 go 1.26.2
 

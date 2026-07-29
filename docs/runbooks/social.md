@@ -1,6 +1,6 @@
 # Social service
 
-Follows, likes, comments, and the activity feed - vg-collect's social
+Follows, likes, comments, and the activity feed - vgkeep's social
 layer over shelves (collection's saved views) and profiles (user's
 identities). It owns four tables (`follows`, `likes`, `comments`,
 `activity`) and validates every write against collection or user
@@ -95,7 +95,7 @@ until collection and user are both ready.
 
 | Surface | Where |
 |---|---|
-| Service in-cluster | `social:8080` (vg-collect namespace) |
+| Service in-cluster | `social:8080` (vgkeep namespace) |
 | Direct dev port | `localhost:8086` (Tilt port-forward; the 8090 gateway fronts only the bff) |
 | Postgres | `localhost:5436` -> `social-pg:5432` |
 | Liveness | `GET /healthz`, static ok, no auth |
@@ -131,8 +131,8 @@ before the listener opens.
 | `DATABASE_URL` | yes | none | composed in `deploy/charts/social/templates/deployment.yaml` from chart values plus `$(PG_PASSWORD)` | carries `sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt` |
 | `PG_PASSWORD` | chart-internal | none | secret `social-pg-credentials`, key `password` | filled by the ExternalSecret; only ever referenced inside `DATABASE_URL` |
 | `JWKS_URL` | yes | none | chart value `env.jwksUrl`, default `http://auth:8080/.well-known/jwks.json` | keys fetched lazily and cached by kid; unknown-kid refetch at most every 30s |
-| `JWT_ISSUER` | no | `vg-collect-auth` | chart value `env.jwtIssuer` | |
-| `JWT_AUDIENCE` | no | `vg-collect` | chart value `env.jwtAudience` | |
+| `JWT_ISSUER` | no | `vgkeep-auth` | chart value `env.jwtIssuer` | |
+| `JWT_AUDIENCE` | no | `vgkeep` | chart value `env.jwtAudience` | |
 | `COLLECTION_SERVICE_URL` | yes | none | chart value `env.collectionServiceUrl`, default `http://collection:8080` | shelf resolve for likes, comments, and publish events |
 | `USER_SERVICE_URL` | yes | none | chart value `env.userServiceUrl`, default `http://user:8080` | profile cards for follow and like visibility checks |
 | `SOCIAL_CAP_COMMENTS_24H` | no | `50` | chart value `env.capComments24h` | rolling 24h cap; tombstones still count |
@@ -209,7 +209,7 @@ PG pool, emitted since pgkit gained pool instrumentation (no labels;
 | `vg_pgkit_pool_empty_acquires_total` | observable counter | {acquire} | acquires that had to wait on a drained pool |
 | `vg_pgkit_pool_acquire_wait_seconds_total` | observable counter | s | total wait; divided by acquires = mean acquire latency |
 
-Domain metrics, meter `github.com/levonn-dev/vg-collect/services/social`
+Domain metrics, meter `github.com/levonn-dev/vgkeep/services/social`
 (this service has no Valkey, so no `vg_valkeykit_*` series exist for
 it):
 
@@ -270,10 +270,10 @@ carry exemplars into these traces.
 
 File `deploy/charts/platform/files/dashboards/social.json`, uid
 `vg-social`, title `Social Service`, provisioned into Grafana's
-`vg-collect` folder. Open it at http://localhost:3000/d/vg-social
+`vgkeep` folder. Open it at http://localhost:3000/d/vg-social
 while `task run` holds the Grafana port-forward. Structural
-conventions are the ones shared by every vg-collect dashboard:
-schemaVersion 39, tags `["vg-collect"]`, timezone `browser`, refresh
+conventions are the ones shared by every vgkeep dashboard:
+schemaVersion 39, tags `["vgkeep"]`, timezone `browser`, refresh
 `30s`, an explicit datasource object on every target (`prometheus` or
 `loki` by uid), timeseries for rates and durations, default palette,
 no dual-axis anywhere; `legendFormat` from a label on every
@@ -361,19 +361,19 @@ social-pg and the init container out):
 
 16. Pod CPU. timeseries, unit `short`, legend `{{pod}}`.
 
-        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vg-collect", container="social"}[$__rate_interval]))
+        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", container="social"}[$__rate_interval]))
 
 17. Pod memory working set. timeseries, unit `bytes`, legend `{{pod}}`
     (limit is 128Mi; read this panel against it).
 
-        sum by (pod) (container_memory_working_set_bytes{namespace="vg-collect", container="social"})
+        sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", container="social"})
 
 18. Restarts (15m) and OOM kills. timeseries, unit `short`, legends
     `restarts {{pod}}` / `oom {{pod}}`; `pod=~"social-.*"` covers the
     app and social-pg pods.
 
-        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vg-collect", pod=~"social-.*"}[15m]))
-        sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vg-collect", pod=~"social-.*"})
+        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"social-.*"}[15m]))
+        sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vgkeep", pod=~"social-.*"})
 
 Logs row:
 
@@ -399,7 +399,7 @@ go flat:
 
 The vg-social-down rule pages after 2 minutes on:
 
-    up{namespace="vg-collect", pod=~"social-.*"}
+    up{namespace="vgkeep", pod=~"social-.*"}
 
 which in practice tracks the social-pg exporter's scrape target (the
 app itself is OTLP push-only, so it has no scraped `up` series of its
@@ -410,7 +410,7 @@ sees it. A pure app-level crash with social-pg still healthy is caught
 instead by the platform-wide restart-churn and 5xx rules (failure
 scenario 4 below, and
 [stack.md](stack.md#1-service-5xx-ratio-above-5-percent)). Either way,
-check `kubectl -n vg-collect get pods -l app.kubernetes.io/name=social`
+check `kubectl -n vgkeep get pods -l app.kubernetes.io/name=social`
 and `-l app.kubernetes.io/name=social-pg` to see which side is down,
 then that pod's logs for the actual cause.
 

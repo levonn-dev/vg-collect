@@ -4,7 +4,7 @@ metadata:
   name: vg-alerting
   labels:
     app.kubernetes.io/name: grafana
-    app.kubernetes.io/part-of: vg-collect
+    app.kubernetes.io/part-of: vgkeep
 data:
 {{- range $path, $_ := .Files.Glob "files/alerting/*.yaml" }}
   {{ base $path }}: |-

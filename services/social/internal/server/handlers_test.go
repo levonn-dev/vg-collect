@@ -12,10 +12,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vg-collect/services/social/internal/collectionclient"
-	"github.com/levonn-dev/vg-collect/services/social/internal/server"
-	"github.com/levonn-dev/vg-collect/services/social/internal/store"
-	"github.com/levonn-dev/vg-collect/services/social/internal/userclient"
+	"github.com/levonn-dev/vgkeep/services/social/internal/collectionclient"
+	"github.com/levonn-dev/vgkeep/services/social/internal/server"
+	"github.com/levonn-dev/vgkeep/services/social/internal/store"
+	"github.com/levonn-dev/vgkeep/services/social/internal/userclient"
 )
 
 // ---- stub doubles (function fields; a nil field panics loudly) ----

@@ -16,7 +16,7 @@ it('boots into the app shell', async () => {
   window.history.pushState({}, '', '/login')
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { providers: [] })))
   render(<App />)
-  expect(await screen.findByText('vg-collect')).toBeInTheDocument()
+  expect(await screen.findByText('vgkeep')).toBeInTheDocument()
 })
 
 it('does not retry a 401 and routes to login', async () => {

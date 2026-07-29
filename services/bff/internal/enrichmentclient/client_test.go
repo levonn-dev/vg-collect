@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/enrichapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
 )
 
 func newTestClient(t *testing.T, h http.HandlerFunc) *Client {

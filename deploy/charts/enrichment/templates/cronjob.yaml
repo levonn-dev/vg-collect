@@ -19,7 +19,7 @@ spec:
         metadata:
           labels:
             app.kubernetes.io/name: enrichment-refresh
-            app.kubernetes.io/part-of: vg-collect
+            app.kubernetes.io/part-of: vgkeep
         spec:
           restartPolicy: Never
           containers:

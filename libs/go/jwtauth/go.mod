@@ -1,4 +1,4 @@
-module github.com/levonn-dev/vg-collect/libs/go/jwtauth
+module github.com/levonn-dev/vgkeep/libs/go/jwtauth
 
 go 1.26.2
 

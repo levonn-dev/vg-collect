@@ -14,7 +14,7 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/levonn-dev/vg-collect/services/user/migrations"
+	"github.com/levonn-dev/vgkeep/services/user/migrations"
 )
 
 func newTestDB(t *testing.T) string {

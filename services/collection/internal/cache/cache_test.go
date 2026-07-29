@@ -7,7 +7,7 @@ import (
 
 	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
 
-	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
+	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 )
 
 func newTestCache(t *testing.T) *Cache {

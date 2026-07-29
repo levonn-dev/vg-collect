@@ -9,17 +9,17 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
-	vgotel "github.com/levonn-dev/vg-collect/libs/go/otel"
-	"github.com/levonn-dev/vg-collect/libs/go/pgkit"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/config"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/oidc"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/server"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/store"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/token"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/userclient"
-	"github.com/levonn-dev/vg-collect/services/auth/migrations"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/config"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/oidc"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/server"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/store"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/token"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/userclient"
+	"github.com/levonn-dev/vgkeep/services/auth/migrations"
 )
 
 func main() {

@@ -5,7 +5,7 @@ metadata:
   name: auth-pg
   labels:
     app.kubernetes.io/name: auth-pg
-    app.kubernetes.io/part-of: vg-collect
+    app.kubernetes.io/part-of: vgkeep
 spec:
   selector:
     app.kubernetes.io/name: auth-pg

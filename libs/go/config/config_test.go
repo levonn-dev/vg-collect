@@ -3,7 +3,7 @@ package config_test
 import (
 	"testing"
 
-	"github.com/levonn-dev/vg-collect/libs/go/config"
+	"github.com/levonn-dev/vgkeep/libs/go/config"
 )
 
 // Synthetic variable names keep these tests hermetic; real names like

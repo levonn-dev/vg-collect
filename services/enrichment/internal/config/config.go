@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	libconfig "github.com/levonn-dev/vg-collect/libs/go/config"
+	libconfig "github.com/levonn-dev/vgkeep/libs/go/config"
 )
 
 // Config holds all environment-sourced configuration for the
@@ -32,8 +32,8 @@ type Config struct {
 	ValkeyCAFile string `env:"VALKEY_CA_FILE"`
 
 	JWKSURL     string `env:"JWKS_URL,required"`
-	JWTIssuer   string `env:"JWT_ISSUER"   envDefault:"vg-collect-auth"`
-	JWTAudience string `env:"JWT_AUDIENCE" envDefault:"vg-collect"`
+	JWTIssuer   string `env:"JWT_ISSUER"   envDefault:"vgkeep-auth"`
+	JWTAudience string `env:"JWT_AUDIENCE" envDefault:"vgkeep"`
 
 	// Accepted internal-caller tokens for POST /internal/refresh (the
 	// CronJob's trigger, which has no JWT source). One or two entries:

@@ -14,16 +14,16 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/token"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/userclient"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/token"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/userclient"
 )
 
 var testSeed = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32))
 
 func newMinter(t *testing.T) *token.Minter {
 	t.Helper()
-	m, err := token.NewMinter(testSeed, "vg-collect-auth", "vg-collect", 5*time.Minute)
+	m, err := token.NewMinter(testSeed, "vgkeep-auth", "vgkeep", 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func newFakeUserService(t *testing.T, m *token.Minter, status int, body any) *ht
 		_, _ = w.Write(jwks)
 	}))
 	t.Cleanup(jwksSrv.Close)
-	v := jwtauth.NewValidator(jwksSrv.URL, "vg-collect-auth", "vg-collect")
+	v := jwtauth.NewValidator(jwksSrv.URL, "vgkeep-auth", "vgkeep")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")

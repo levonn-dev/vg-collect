@@ -15,11 +15,11 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/enrichmentclient"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/gen/api"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/gen/enrichapi"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/store"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
 var _ api.ServerInterface = (*Handlers)(nil)
@@ -2287,7 +2287,7 @@ func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 // service. With the dev stack up and the admin fixture role already
 // granted (task grant-fixture-admin):
 //
-//	kubectl -n vg-collect port-forward svc/collection 8085:8080 &
+//	kubectl -n vgkeep port-forward svc/collection 8085:8080 &
 //	TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
 //	  -H 'Content-Type: application/json' -d '{"user":"admin"}' \
 //	  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)

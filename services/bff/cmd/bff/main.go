@@ -1,4 +1,4 @@
-// The bff: the only public vg-collect service. It owns the browser
+// The bff: the only public vgkeep service. It owns the browser
 // session (sealed cookie, refresh, denylist, origin checks) and serves
 // the SPA bundle in cluster; every other service stays internal
 // behind it.
@@ -14,19 +14,19 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
-	vgotel "github.com/levonn-dev/vg-collect/libs/go/otel"
-	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/cache"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/collectionclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/config"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/server"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/socialclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/static"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
+	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/cache"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/config"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/enrichmentclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/server"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/socialclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/static"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
 // The server package defines its dependency surfaces; prove the real

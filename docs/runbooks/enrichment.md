@@ -45,7 +45,7 @@ Features as an operator sees them:
 
 ```mermaid
 graph LR
-    subgraph vg-collect callers
+    subgraph vgkeep callers
         bff[bff]
         coll[collection]
         cron["enrichment-refresh CronJob 06:00"]
@@ -159,7 +159,7 @@ ExternalSecret `enrichment-secrets` (refreshInterval 1m) -> pod env.
 | `VALKEY_URL` | chart `env.valkeyUrl` = `rediss://enrichment-valkey:6379/0` |
 | `VALKEY_CA_FILE` | `/etc/vg/valkey-ca/ca.crt` when `valkey.enabled`; config refuses a `rediss://` URL without it |
 | `JWKS_URL` | `http://auth:8080/.well-known/jwks.json` |
-| `JWT_ISSUER` / `JWT_AUDIENCE` | `vg-collect-auth` / `vg-collect` |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | `vgkeep-auth` / `vgkeep` |
 | `INTERNAL_REFRESH_SECRETS` | CSV composed from secret keys `enrichment/internal-refresh-token` (+ `-previous` when `refresh.previousTokenEnabled`); .env `ENRICHMENT_INTERNAL_REFRESH_TOKEN` (+ `_PREVIOUS`) |
 | `IGDB_MODE` | `stub` (default) or `real`; real requires `IGDB_CLIENT_ID` + `IGDB_CLIENT_SECRET` from secret keys |
 | `PRICECHARTING_MODE` | `stub` or `real`; real requires `PRICECHARTING_API_KEY` |
@@ -253,7 +253,7 @@ Emitted today (Prometheus-side names):
 | `redis_memory_used_bytes`, `redis_keyspace_hits_total`, `redis_keyspace_misses_total`, `redis_evicted_keys_total`, `redis_connected_clients` | redis exporter sidecar | `service="enrichment-valkey"` | server-side cache health |
 
 Domain instruments, meter
-`github.com/levonn-dev/vg-collect/services/enrichment`, held as
+`github.com/levonn-dev/vgkeep/services/enrichment`, held as
 `Handlers` fields with best-effort registration (the bff
 `vg.bff.cache.fail_open` pattern):
 
@@ -311,10 +311,10 @@ failure warns, panic containment).
 
 File `deploy/charts/platform/files/dashboards/enrichment.json`, uid
 `vg-enrichment`, title `Enrichment Service`, provisioned into the
-vg-collect folder like every dashboard in that directory. Open it at
+vgkeep folder like every dashboard in that directory. Open it at
 http://localhost:3000/d/vg-enrichment while `task run` holds the
 Grafana port-forward. It follows the structural conventions shared by
-every vg-collect dashboard: schemaVersion 39, tags `["vg-collect"]`,
+every vgkeep dashboard: schemaVersion 39, tags `["vgkeep"]`,
 timezone browser, refresh 30s, explicit datasource object per target
 (prometheus, loki). Panels, grouped by row:
 
@@ -414,16 +414,16 @@ Pods and logs:
 19. "CPU by pod" - timeseries, short, legend `{{pod}}` (covers the
     app, mongo, valkey and refresh job pods)
 
-        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vg-collect", pod=~"enrichment.*", container!=""}[$__rate_interval]))
+        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"enrichment.*", container!=""}[$__rate_interval]))
 
 20. "Working-set memory by pod" - timeseries, bytes, legend `{{pod}}`
 
-        sum by (pod) (container_memory_working_set_bytes{namespace="vg-collect", pod=~"enrichment.*", container!=""})
+        sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"enrichment.*", container!=""})
 
 21. "Restarts (15m windows) by pod" - timeseries, short, legend
     `{{pod}}`
 
-        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vg-collect", pod=~"enrichment.*"}[15m]))
+        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"enrichment.*"}[15m]))
 
 22. "Recent error logs" - logs panel, Loki datasource
 
@@ -452,10 +452,10 @@ an unreachable Mongo. The "Mongo up" stat shows the same series:
 
     mongodb_up
 
-1. Run `kubectl -n vg-collect get pods enrichment-mongo-0` to see
+1. Run `kubectl -n vgkeep get pods enrichment-mongo-0` to see
    whether the pod is down, crash-looping or just unready.
 2. Read the container logs
-   (`kubectl -n vg-collect logs enrichment-mongo-0 -c mongo`) for the
+   (`kubectl -n vgkeep logs enrichment-mongo-0 -c mongo`) for the
    startup or crash reason.
 3. Read how far enrichment's error rate has climbed on this
    dashboard's "5xx ratio" panel: while Mongo is down, enrichment
@@ -512,8 +512,8 @@ expression, and treats an absent series as firing too (a walk that
 never ran is the failure case), so a brand-new stack alerts until its
 first walk completes at 06:00 or by manual trigger. Then:
 
-1. `kubectl -n vg-collect get jobs -l app.kubernetes.io/name=enrichment-refresh`
-   and `kubectl -n vg-collect logs job/<latest>` for the curl output.
+1. `kubectl -n vgkeep get jobs -l app.kubernetes.io/name=enrichment-refresh`
+   and `kubectl -n vgkeep logs job/<latest>` for the curl output.
 2. curl exit 22 reporting error 401: token drift between the CronJob
    secret and `INTERNAL_REFRESH_SECRETS` - mid-rotation state left
    half-finished. Re-check the rotation steps under Admin levers.
@@ -521,10 +521,10 @@ first walk completes at 06:00 or by manual trigger. Then:
    running. Walks check their context between products and the budget
    cancels it at 30m, so a 409 persisting well past 30m means the walk
    goroutine is stuck in a call that ignores its context;
-   `kubectl -n vg-collect rollout restart deployment/enrichment`
+   `kubectl -n vgkeep rollout restart deployment/enrichment`
    clears it (the guard dies with the process).
 4. No job at all: CronJob suspended or schedule drift;
-   `kubectl -n vg-collect get cronjob enrichment-refresh`.
+   `kubectl -n vgkeep get cronjob enrichment-refresh`.
 
 Once fixed, trigger immediately rather than waiting for 06:00 (see
 Admin levers).
@@ -593,7 +593,7 @@ script the calls.
 
 Run the nightly walk now, CronJob path (no JWT, in-cluster):
 
-    kubectl -n vg-collect create job --from=cronjob/enrichment-refresh refresh-now
+    kubectl -n vgkeep create job --from=cronjob/enrichment-refresh refresh-now
 
 Same walk via the admin API (port-forward 8084):
 

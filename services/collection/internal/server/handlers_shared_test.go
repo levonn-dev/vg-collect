@@ -14,8 +14,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vg-collect/services/collection/internal/gen/api"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/store"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
 func ptrInt64(v int64) *int64 { return &v }

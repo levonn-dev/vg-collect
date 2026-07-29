@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: vg-collect social service
+  title: vgkeep social service
   version: 0.1.0
   description: >
     Follows, likes, comments, and the activity feed. Every endpoint

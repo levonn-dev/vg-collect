@@ -20,7 +20,7 @@ import (
 )
 
 // meterName follows the repo convention: meter name = module path.
-const meterName = "github.com/levonn-dev/vg-collect/libs/go/pgkit"
+const meterName = "github.com/levonn-dev/vgkeep/libs/go/pgkit"
 
 // Connect builds an OTel-instrumented pool from a postgres:// URL.
 // TLS (verify-full + CA) rides in URL params: sslmode, sslrootcert.

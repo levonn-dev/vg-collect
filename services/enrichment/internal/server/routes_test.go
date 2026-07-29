@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/gen/api"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/igdb"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/store"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
 
 // newBareRouter builds a router with nil collaborators: routing and

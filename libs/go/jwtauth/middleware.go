@@ -16,7 +16,7 @@ func FromContext(ctx context.Context) (Claims, bool) {
 }
 
 // ErrorWriter lets callers control the error body shape (e.g. httpkit
-// problem+json) without jwtauth importing other vg-collect libs.
+// problem+json) without jwtauth importing other vgkeep libs.
 type ErrorWriter func(w http.ResponseWriter, r *http.Request, status int, code, detail string)
 
 // Middleware returns an HTTP middleware that validates the Bearer token in

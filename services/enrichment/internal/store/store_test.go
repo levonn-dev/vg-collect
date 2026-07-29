@@ -14,10 +14,10 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/db"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/igdb"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/store"
-	"github.com/levonn-dev/vg-collect/services/enrichment/migrations"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/db"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
+	"github.com/levonn-dev/vgkeep/services/enrichment/migrations"
 )
 
 // newTestStore boots a migrated MongoDB and returns the Store plus the

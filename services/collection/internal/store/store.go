@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/levonn-dev/vg-collect/services/collection/internal/rank"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/rank"
 )
 
 // Sentinels the handlers branch on via errors.Is.

@@ -1,4 +1,4 @@
-module github.com/levonn-dev/vg-collect/libs/go/pgkit
+module github.com/levonn-dev/vgkeep/libs/go/pgkit
 
 go 1.26.2
 

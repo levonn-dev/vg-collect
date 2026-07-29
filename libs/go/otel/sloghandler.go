@@ -1,5 +1,5 @@
 // Package otel bootstraps OpenTelemetry traces, metrics, and logs for
-// vg-collect services. Import aliased (vgotel) to avoid clashing with
+// vgkeep services. Import aliased (vgotel) to avoid clashing with
 // the upstream go.opentelemetry.io/otel package.
 package otel
 
@@ -15,7 +15,7 @@ import (
 //
 // Limitation: stamping happens at Handle time, so if the logger has an
 // open WithGroup group the IDs land inside that group instead of top
-// level. vg-collect services therefore do not call WithGroup on the
+// level. vgkeep services therefore do not call WithGroup on the
 // root logger. The OTLP log leg is unaffected: the SDK stamps trace
 // context onto the record itself from ctx, independent of groups.
 type traceContextHandler struct{ inner slog.Handler }

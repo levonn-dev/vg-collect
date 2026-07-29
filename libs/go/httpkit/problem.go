@@ -1,5 +1,5 @@
 // Package httpkit provides HTTP server lifecycle, middleware, and RFC 9457
-// problem+json responses shared by all vg-collect services.
+// problem+json responses shared by all vgkeep services.
 package httpkit
 
 import (
@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-// Problem is an RFC 9457 problem details body. Code is a vg-collect
+// Problem is an RFC 9457 problem details body. Code is a vgkeep
 // extension carrying a stable machine-readable error code.
 type Problem struct {
 	Type     string `json:"type"`

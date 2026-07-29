@@ -12,12 +12,12 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 )
 
 const (
-	testIssuer   = "vg-collect-auth"
-	testAudience = "vg-collect"
+	testIssuer   = "vgkeep-auth"
+	testAudience = "vgkeep"
 )
 
 func genKey(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {

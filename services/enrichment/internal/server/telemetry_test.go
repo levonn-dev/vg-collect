@@ -24,14 +24,14 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/igdb"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/pricecharting"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/store"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
 
 // enrichmentMeter is the meter instruments register under (the module
 // path, per convention).
-const enrichmentMeter = "github.com/levonn-dev/vg-collect/services/enrichment"
+const enrichmentMeter = "github.com/levonn-dev/vgkeep/services/enrichment"
 
 // newTestMeter swaps the global meter provider for one draining into
 // a manual reader, restored on cleanup. Handlers built after this

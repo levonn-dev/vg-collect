@@ -82,7 +82,7 @@ from bearer routes until auth serves its JWKS.
 
 | Surface | Where |
 |---|---|
-| Service in-cluster | `user:8080` (vg-collect namespace) |
+| Service in-cluster | `user:8080` (vgkeep namespace) |
 | Direct dev port | `localhost:8081` (Tilt port-forward; the 8090 gateway fronts only the bff) |
 | Postgres | `localhost:5433` -> `user-pg:5432` |
 | Liveness | `GET /healthz`, static ok, no auth |
@@ -119,8 +119,8 @@ before the listener opens.
 | `DATABASE_URL` | yes | none | composed in `deploy/charts/user/templates/deployment.yaml` from chart values plus `$(PG_PASSWORD)` | carries `sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt` |
 | `PG_PASSWORD` | chart-internal | none | secret `user-pg-credentials`, key `password` | filled by the ExternalSecret; only ever referenced inside `DATABASE_URL` |
 | `JWKS_URL` | yes | none | chart value `env.jwksUrl`, default `http://auth:8080/.well-known/jwks.json` | keys fetched lazily and cached by kid; unknown-kid refetch at most every 30s |
-| `JWT_ISSUER` | no | `vg-collect-auth` | chart value `env.jwtIssuer` | |
-| `JWT_AUDIENCE` | no | `vg-collect` | chart value `env.jwtAudience` | |
+| `JWT_ISSUER` | no | `vgkeep-auth` | chart value `env.jwtIssuer` | |
+| `JWT_AUDIENCE` | no | `vgkeep` | chart value `env.jwtAudience` | |
 | `SERVICE_VERSION` | no | `dev` | chart sets it to the image tag | stamped onto telemetry as `service.version` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | unset | chart value `otel.exporterEndpoint`, default `http://otel-agent.vg-platform.svc.cluster.local:4317` | empty disables all export: logs stay on stdout as JSON, every metric and trace in this document goes dark |
 
@@ -188,7 +188,7 @@ PG pool, emitted since pgkit gained pool instrumentation (no labels;
 | `vg_pgkit_pool_empty_acquires_total` | observable counter | {acquire} | acquires that had to wait on a drained pool |
 | `vg_pgkit_pool_acquire_wait_seconds_total` | observable counter | s | total wait; divided by acquires = mean acquire latency |
 
-Domain metrics, meter `github.com/levonn-dev/vg-collect/services/user`
+Domain metrics, meter `github.com/levonn-dev/vgkeep/services/user`
 (this service has no Valkey, so no `vg_valkeykit_*` series exist for
 it):
 
@@ -242,10 +242,10 @@ Latency panels carry exemplars into these traces.
 
 File `deploy/charts/platform/files/dashboards/user.json`, uid
 `vg-user`, title `User Service`, provisioned into Grafana's
-`vg-collect` folder. Open it at http://localhost:3000/d/vg-user while
+`vgkeep` folder. Open it at http://localhost:3000/d/vg-user while
 `task run` holds the Grafana port-forward. Structural conventions
-are the ones shared by every vg-collect dashboard: schemaVersion 39,
-tags `["vg-collect"]`, timezone
+are the ones shared by every vgkeep dashboard: schemaVersion 39,
+tags `["vgkeep"]`, timezone
 `browser`, refresh `30s`, an explicit datasource object on every target
 (`prometheus` or `loki` by uid), timeseries for rates and durations,
 stat only for headline values, default palette, no dual-axis anywhere;
@@ -331,19 +331,19 @@ user-pg and the init container out):
 
 14. Pod CPU. timeseries, unit `short`, legend `{{pod}}`.
 
-        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vg-collect", container="user"}[$__rate_interval]))
+        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", container="user"}[$__rate_interval]))
 
 15. Pod memory working set. timeseries, unit `bytes`, legend
     `{{pod}}` (limit is 128Mi; read this panel against it).
 
-        sum by (pod) (container_memory_working_set_bytes{namespace="vg-collect", container="user"})
+        sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", container="user"})
 
 16. Restarts (15m) and OOM kills. timeseries, unit `short`, legends
     `restarts {{pod}}` / `oom {{pod}}`; `pod=~"user-.*"` covers the
     app and user-pg pods.
 
-        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vg-collect", pod=~"user-.*"}[15m]))
-        sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vg-collect", pod=~"user-.*"})
+        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"user-.*"}[15m]))
+        sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vgkeep", pod=~"user-.*"})
 
 Logs row:
 
@@ -370,7 +370,7 @@ upsert requests:
 
     sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert", http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert"}[5m]))
 
-Then check user-pg: `kubectl -n vg-collect exec statefulset/user-pg
+Then check user-pg: `kubectl -n vgkeep exec statefulset/user-pg
 -- psql -U user -d user -c "SHOW transaction_read_only;"` and disk on
 its PVC.
 Broader 5xx triage:
@@ -414,7 +414,7 @@ logins and bff `/api/me` return 5xx until pg is back. On vg-user,
 (the kubelet probes are instrumented like every route) while
 bearer-route traffic on "Request rate by route" falls to zero once the
 pod leaves endpoints. Confirm with
-`kubectl -n vg-collect get pods` (user-pg not ready, user pod Running
+`kubectl -n vgkeep get pods` (user-pg not ready, user pod Running
 but not Ready) and `curl -s localhost:8081/readyz` returning a
 `not_ready` problem. No manual action on recovery: the pool
 re-establishes on demand and readiness flips back. A deleted user-pg
@@ -464,7 +464,7 @@ purpose, so every lever is psql-level and idempotent.
 Grant admin (the documented lever; roles reach the JWT at next login
 or refresh):
 
-    kubectl -n vg-collect exec statefulset/user-pg -- \
+    kubectl -n vgkeep exec statefulset/user-pg -- \
       psql -U user -d user -c \
       "INSERT INTO user_roles (user_id, role) \
        SELECT id, 'admin' FROM users WHERE email = 'someone@example.com' \
@@ -476,14 +476,14 @@ login (so the row exists) followed by exactly this insert for
 
 Revoke admin (same propagation rule):
 
-    kubectl -n vg-collect exec statefulset/user-pg -- \
+    kubectl -n vgkeep exec statefulset/user-pg -- \
       psql -U user -d user -c \
       "DELETE FROM user_roles WHERE role = 'admin' \
        AND user_id = (SELECT id FROM users WHERE email = 'someone@example.com');"
 
 Inspect a user's roles:
 
-    kubectl -n vg-collect exec statefulset/user-pg -- \
+    kubectl -n vgkeep exec statefulset/user-pg -- \
       psql -U user -d user -c \
       "SELECT u.email, r.role FROM users u \
        LEFT JOIN user_roles r ON r.user_id = u.id \

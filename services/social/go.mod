@@ -1,16 +1,16 @@
-module github.com/levonn-dev/vg-collect/services/social
+module github.com/levonn-dev/vgkeep/services/social
 
 go 1.26.2
 
-replace github.com/levonn-dev/vg-collect/libs/go/config => ../../libs/go/config
+replace github.com/levonn-dev/vgkeep/libs/go/config => ../../libs/go/config
 
-replace github.com/levonn-dev/vg-collect/libs/go/httpkit => ../../libs/go/httpkit
+replace github.com/levonn-dev/vgkeep/libs/go/httpkit => ../../libs/go/httpkit
 
-replace github.com/levonn-dev/vg-collect/libs/go/jwtauth => ../../libs/go/jwtauth
+replace github.com/levonn-dev/vgkeep/libs/go/jwtauth => ../../libs/go/jwtauth
 
-replace github.com/levonn-dev/vg-collect/libs/go/otel => ../../libs/go/otel
+replace github.com/levonn-dev/vgkeep/libs/go/otel => ../../libs/go/otel
 
-replace github.com/levonn-dev/vg-collect/libs/go/pgkit => ../../libs/go/pgkit
+replace github.com/levonn-dev/vgkeep/libs/go/pgkit => ../../libs/go/pgkit
 
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
@@ -19,11 +19,11 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.18.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
-	github.com/levonn-dev/vg-collect/libs/go/config v0.0.0-00010101000000-000000000000
-	github.com/levonn-dev/vg-collect/libs/go/httpkit v0.0.0-00010101000000-000000000000
-	github.com/levonn-dev/vg-collect/libs/go/jwtauth v0.0.0-00010101000000-000000000000
-	github.com/levonn-dev/vg-collect/libs/go/otel v0.0.0-00010101000000-000000000000
-	github.com/levonn-dev/vg-collect/libs/go/pgkit v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/config v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/httpkit v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/jwtauth v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/otel v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/pgkit v0.0.0-00010101000000-000000000000
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/testcontainers/testcontainers-go v0.35.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.35.0

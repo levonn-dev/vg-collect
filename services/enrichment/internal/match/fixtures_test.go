@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/igdb"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/match"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/pricecharting"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/match"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
 )
 
 // TestFixtures_EveryGameResolvesExceptTheUnmatchedOne drives each

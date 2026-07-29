@@ -1,4 +1,4 @@
-module github.com/levonn-dev/vg-collect/libs/go/valkeykit
+module github.com/levonn-dev/vgkeep/libs/go/valkeykit
 
 go 1.26.2
 

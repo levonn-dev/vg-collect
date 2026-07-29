@@ -10,7 +10,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/levonn-dev/vg-collect/services/auth/internal/token"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/token"
 )
 
 // testSeed is a base64 (std) encoded 32-byte seed, the JWT_SIGNING_KEY
@@ -20,7 +20,7 @@ var testSeed = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32))
 
 func newMinter(t *testing.T) *token.Minter {
 	t.Helper()
-	m, err := token.NewMinter(testSeed, "vg-collect-auth", "vg-collect", 5*time.Minute)
+	m, err := token.NewMinter(testSeed, "vgkeep-auth", "vgkeep", 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestMint_ClaimsAndHeader(t *testing.T) {
 	if header["kid"] != m.Kid() {
 		t.Fatalf("kid = %v, want %s", header["kid"], m.Kid())
 	}
-	if mc["iss"] != "vg-collect-auth" || mc["aud"] != "vg-collect" ||
+	if mc["iss"] != "vgkeep-auth" || mc["aud"] != "vgkeep" ||
 		mc["sub"] != "user-123" || mc["jti"] != "jti-1" {
 		t.Fatalf("claims = %v", mc)
 	}

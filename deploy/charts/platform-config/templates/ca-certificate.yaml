@@ -8,7 +8,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
 spec:
   isCA: true
-  commonName: vg-collect-dev-ca
+  commonName: vgkeep-dev-ca
   duration: 87600h # 10y dev CA
   secretName: vg-ca-key-pair
   privateKey:

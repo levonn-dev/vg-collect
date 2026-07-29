@@ -9,14 +9,14 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
-	vgotel "github.com/levonn-dev/vg-collect/libs/go/otel"
-	"github.com/levonn-dev/vg-collect/libs/go/pgkit"
-	"github.com/levonn-dev/vg-collect/services/user/internal/config"
-	"github.com/levonn-dev/vg-collect/services/user/internal/server"
-	"github.com/levonn-dev/vg-collect/services/user/internal/store"
-	"github.com/levonn-dev/vg-collect/services/user/migrations"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/services/user/internal/config"
+	"github.com/levonn-dev/vgkeep/services/user/internal/server"
+	"github.com/levonn-dev/vgkeep/services/user/internal/store"
+	"github.com/levonn-dev/vgkeep/services/user/migrations"
 )
 
 func main() {

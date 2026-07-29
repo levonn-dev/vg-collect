@@ -1,6 +1,6 @@
-# The vg-collect stack
+# The vgkeep stack
 
-vg-collect is a video-game collection tracker: six Go services behind
+vgkeep is a video-game collection tracker: six Go services behind
 an APISIX gateway that publishes only the bff, a React SPA served out
 of the bff binary, and per-service datastores (Postgres for auth,
 user, collection, and social; MongoDB plus Valkey for enrichment;
@@ -13,7 +13,7 @@ bff owns the browser session end to end. The dev stack runs under Tilt
 on any local Kubernetes context: the platform layer (gateway,
 cert-manager, external-secrets, observability) installs once per
 cluster into the `vg-platform` namespace, and the application deploys
-into `vg-collect`. Each service has its own runbook (auth.md, bff.md,
+into `vgkeep`. Each service has its own runbook (auth.md, bff.md,
 collection.md, enrichment.md, social.md, user.md); this one covers the
 seams between them.
 
@@ -21,7 +21,7 @@ seams between them.
 
 ```mermaid
 graph LR
-    subgraph services[vg-collect services]
+    subgraph services[vgkeep services]
         bff --> auth
         bff --> user
         bff --> collection
@@ -116,7 +116,7 @@ foreground with every port-forward below; Ctrl-C stops it.
 
 ```bash
 task down                    # stop the dev stack; namespace, datastore PVCs, issued TLS secrets survive
-task nuke                    # app layer: tilt down + delete the vg-collect namespace (drops PVCs + TLS secrets)
+task nuke                    # app layer: tilt down + delete the vgkeep namespace (drops PVCs + TLS secrets)
 task bootstrap:cluster:down  # remove the platform: helm uninstalls + the vg-platform namespace
 ```
 
@@ -124,9 +124,9 @@ What each tier preserves:
 
 | Command | Removes | Survives |
 |---|---|---|
-| `task down` | running Tilt resources | vg-collect namespace, datastore PVCs, issued TLS secrets, the platform |
-| `task nuke` | vg-collect namespace, its PVCs and TLS secrets | the platform (vg-platform), CRDs |
-| `task bootstrap:cluster:down` | both platform helm releases and the vg-platform namespace | cert-manager and APISIX ingress CRDs (re-adopted by the next bootstrap), the hand-applied kps CRDs, the vg-collect namespace and everything in it |
+| `task down` | running Tilt resources | vgkeep namespace, datastore PVCs, issued TLS secrets, the platform |
+| `task nuke` | vgkeep namespace, its PVCs and TLS secrets | the platform (vg-platform), CRDs |
+| `task bootstrap:cluster:down` | both platform helm releases and the vg-platform namespace | cert-manager and APISIX ingress CRDs (re-adopted by the next bootstrap), the hand-applied kps CRDs, the vgkeep namespace and everything in it |
 
 Reinstalling the platform mints a fresh dev CA, and cert-manager does
 not reissue certificates that still match their specs, so TLS secrets
@@ -167,7 +167,7 @@ in-cluster callers only (triage goes through `kubectl exec` and
 
 Eleven dashboards provision from
 `deploy/charts/platform/files/dashboards/*.json` into Grafana's
-`vg-collect` folder (every file in that directory globs into the
+`vgkeep` folder (every file in that directory globs into the
 `vg-dashboards` ConfigMap). Open any of them at
 `http://localhost:3000/d/<uid>` while `task run` holds the forward.
 The per-service dashboards plus vg-overview absorbed the former
@@ -200,7 +200,7 @@ before the series exists.
 
 Twenty-one rules provision from
 `deploy/charts/platform/files/alerting/vg-rules.yaml` into the same
-`vg-collect` folder, evaluated every 1m. `severity: page` (seven
+`vgkeep` folder, evaluated every 1m. `severity: page` (seven
 rules) marks user-visible breakage worth interrupting someone for;
 `severity: warn` (fourteen) queues investigation on the next pass. The
 dev tier configures no contact point on purpose, so nothing sends:
@@ -372,7 +372,7 @@ than 3 times in 15 minutes, or was OOM-killed, sustained for 5
 minutes. The query combines the two series the Pod details dashboard
 plots separately (restart count and OOM-kill count):
 
-    sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~"vg-collect|vg-platform"}[15m])) > 3 or sum by (namespace, pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace=~"vg-collect|vg-platform"}) > 0
+    sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~"vgkeep|vg-platform"}[15m])) > 3 or sum by (namespace, pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace=~"vgkeep|vg-platform"}) > 0
 
 1. Run `kubectl -n <namespace> describe pod <pod>` and read the last
    termination reason and event list.
@@ -482,16 +482,16 @@ the ConfigMap lands, reload and count, expecting twenty-one rules:
     curl -s -u admin:admin http://localhost:3000/api/v1/provisioning/alert-rules | jq length
 
 Dashboards provisioned, expecting eleven `.json` entries in the
-ConfigMap and eleven `vg-` uids in the `vg-collect` folder (Grafana
+ConfigMap and eleven `vg-` uids in the `vgkeep` folder (Grafana
 reloads provisioned files within a minute of the ConfigMap landing):
 
     kubectl -n vg-platform get cm vg-dashboards -o json | jq -r '.data | keys[]'
-    curl -s "http://localhost:3000/api/search?tag=vg-collect&limit=50" | jq -r '.[] | select(.type=="dash-db") | .uid'
+    curl -s "http://localhost:3000/api/search?tag=vgkeep&limit=50" | jq -r '.[] | select(.type=="dash-db") | .uid'
 
 Service deployments rolled, expecting `successfully rolled out` six
 times:
 
-    for d in auth bff collection enrichment social user; do kubectl -n vg-collect rollout status deployment/$d; done
+    for d in auth bff collection enrichment social user; do kubectl -n vgkeep rollout status deployment/$d; done
 
 Pool gauges emit without traffic, expecting pg series for auth,
 collection, social, user and valkey series for bff, collection,

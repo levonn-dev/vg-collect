@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 )
 
 func routeFromLabeler(t *testing.T, l *otelhttp.Labeler) (string, bool) {

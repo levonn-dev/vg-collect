@@ -21,16 +21,16 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 
-	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/cache"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/db"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/fx"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/gen/api"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/igdb"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/match"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/pricecharting"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/store"
-	"github.com/levonn-dev/vg-collect/services/enrichment/migrations"
+	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/cache"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/db"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/fx"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/match"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
+	"github.com/levonn-dev/vgkeep/services/enrichment/migrations"
 )
 
 // ---------------------------------------------------------------

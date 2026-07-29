@@ -52,7 +52,7 @@ it('renders the logo mark before the title, decorative only', () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
     jsonResponse(200, { providers: ['dev'] })))
   renderLogin()
-  const heading = screen.getByRole('heading', { name: 'vg-collect' })
+  const heading = screen.getByRole('heading', { name: 'vgkeep' })
   const mark = heading.previousElementSibling
   expect(mark?.tagName.toLowerCase()).toBe('svg')
   // The h1 carries the accessible name; the mark must stay silent.

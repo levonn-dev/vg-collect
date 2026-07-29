@@ -10,7 +10,7 @@ import (
 
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	vgotel "github.com/levonn-dev/vg-collect/libs/go/otel"
+	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
 )
 
 func TestTraceHandler_InjectsIDsInsideSpan(t *testing.T) {

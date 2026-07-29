@@ -1,5 +1,5 @@
 image:
-  repository: vg-collect/collection
+  repository: vgkeep/collection
   tag: dev
   pullPolicy: IfNotPresent
 
@@ -7,8 +7,8 @@ replicas: 1
 
 env:
   jwksUrl: http://auth:8080/.well-known/jwks.json
-  jwtIssuer: vg-collect-auth
-  jwtAudience: vg-collect
+  jwtIssuer: vgkeep-auth
+  jwtAudience: vgkeep
   enrichmentServiceUrl: http://enrichment:8080
   valkeyUrl: rediss://collection-valkey:6379/0
   dashboardCacheTtl: 5m

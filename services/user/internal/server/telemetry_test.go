@@ -14,7 +14,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	"github.com/levonn-dev/vg-collect/services/user/internal/store"
+	"github.com/levonn-dev/vgkeep/services/user/internal/store"
 )
 
 // ============================================================================

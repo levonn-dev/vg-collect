@@ -10,9 +10,9 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/levonn-dev/vg-collect/services/social/internal/collectionclient"
-	"github.com/levonn-dev/vg-collect/services/social/internal/gen/api"
-	"github.com/levonn-dev/vg-collect/services/social/internal/store"
+	"github.com/levonn-dev/vgkeep/services/social/internal/collectionclient"
+	"github.com/levonn-dev/vgkeep/services/social/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/services/social/internal/store"
 )
 
 var _ api.ServerInterface = (*Handlers)(nil)

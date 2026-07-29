@@ -1,5 +1,5 @@
 apiVersion: v2
 name: vg-platform-config
-description: vg-collect cluster-scoped CRs (CA chain) applied after operators are ready
+description: vgkeep cluster-scoped CRs (CA chain) applied after operators are ready
 type: application
 version: 0.1.0

@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/levonn-dev/vg-collect/services/bff/internal/config"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/config"
 )
 
 func setRequired(t *testing.T) {

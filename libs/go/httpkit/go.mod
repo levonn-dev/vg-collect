@@ -1,4 +1,4 @@
-module github.com/levonn-dev/vg-collect/libs/go/httpkit
+module github.com/levonn-dev/vgkeep/libs/go/httpkit
 
 go 1.26.2
 

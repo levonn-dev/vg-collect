@@ -1,4 +1,4 @@
-// The collection service: the granular CRUD core of vg-collect
+// The collection service: the granular CRUD core of vgkeep
 // (entries, tags, saved views, backlog ordering, dashboard).
 // `collection migrate` runs schema migrations and exits (init
 // container mode).
@@ -13,17 +13,17 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
-	vgotel "github.com/levonn-dev/vg-collect/libs/go/otel"
-	"github.com/levonn-dev/vg-collect/libs/go/pgkit"
-	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/cache"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/config"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/enrichmentclient"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/server"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/store"
-	"github.com/levonn-dev/vg-collect/services/collection/migrations"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/cache"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/config"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/server"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
+	"github.com/levonn-dev/vgkeep/services/collection/migrations"
 )
 
 func main() {

@@ -14,7 +14,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: user-pg
-        app.kubernetes.io/part-of: vg-collect
+        app.kubernetes.io/part-of: vgkeep
     spec:
       initContainers:
         # postgres requires the TLS key to be 0600 and owned by postgres

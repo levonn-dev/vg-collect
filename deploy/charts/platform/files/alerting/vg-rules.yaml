@@ -1,8 +1,8 @@
 apiVersion: 1
 groups:
   - orgId: 1
-    name: vg-collect
-    folder: vg-collect
+    name: vgkeep
+    folder: vgkeep
     interval: 1m
     rules:
       - uid: vg-service-5xx
@@ -30,7 +30,7 @@ groups:
         for: 5m
         annotations:
           summary: "{{ $labels.service_name }} is answering more than 5 percent 5xx"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#1-service-5xx-ratio-above-5-percent
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#1-service-5xx-ratio-above-5-percent
         labels:
           severity: page
       - uid: vg-service-p99
@@ -58,7 +58,7 @@ groups:
         for: 10m
         annotations:
           summary: "{{ $labels.service_name }} p99 is above the 500ms objective"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#2-service-p99-latency-above-500ms
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#2-service-p99-latency-above-500ms
         labels:
           severity: warn
       - uid: vg-pod-churn
@@ -71,7 +71,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~"vg-collect|vg-platform"}[15m])) > 3 or sum by (namespace, pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace=~"vg-collect|vg-platform"}) > 0
+              expr: sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~"vgkeep|vg-platform"}[15m])) > 3 or sum by (namespace, pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace=~"vgkeep|vg-platform"}) > 0
           - refId: C
             relativeTimeRange: { from: 0, to: 0 }
             datasourceUid: __expr__
@@ -86,7 +86,7 @@ groups:
         for: 5m
         annotations:
           summary: "{{ $labels.namespace }}/{{ $labels.pod }} is restart-churning or was OOM-killed"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#4-pod-restart-churn-or-oom-kill
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#4-pod-restart-churn-or-oom-kill
         labels:
           severity: warn
       - uid: vg-node-pressure
@@ -114,7 +114,7 @@ groups:
         for: 5m
         annotations:
           summary: "node pressure condition active or memory nearly exhausted"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#5-node-under-memory-disk-or-pid-pressure
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#5-node-under-memory-disk-or-pid-pressure
         labels:
           severity: page
       - uid: vg-pg-saturation
@@ -142,7 +142,7 @@ groups:
         for: 5m
         annotations:
           summary: "{{ $labels.service }} is using more than 80 percent of max_connections"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#6-postgres-connections-above-80-percent-of-max
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#6-postgres-connections-above-80-percent-of-max
         labels:
           severity: warn
       - uid: vg-valkey-pressure
@@ -170,7 +170,7 @@ groups:
         for: 5m
         annotations:
           summary: "{{ $labels.service }} is evicting keys or holding over 200MiB"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#7-valkey-evicting-keys-or-memory-unusually-high
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#7-valkey-evicting-keys-or-memory-unusually-high
         labels:
           severity: warn
       - uid: vg-mongo-down
@@ -198,7 +198,7 @@ groups:
         for: 2m
         annotations:
           summary: "enrichment-mongo is down or its exporter cannot reach it"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/enrichment.md#2-mongo-down
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/enrichment.md#2-mongo-down
         labels:
           severity: page
       - uid: vg-collector-drops
@@ -226,7 +226,7 @@ groups:
         for: 5m
         annotations:
           summary: "the otel pipeline is failing to deliver spans, metrics or logs"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#telemetry-pipeline-operations
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#telemetry-pipeline-operations
         labels:
           severity: warn
       - uid: vg-denylist-failopen
@@ -254,7 +254,7 @@ groups:
         for: 0s
         annotations:
           summary: "revoked-token checks are being skipped because Valkey is unreachable"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/bff.md#1-valkey-unreachable
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/bff.md#1-valkey-unreachable
         labels:
           severity: page
       - uid: vg-loki-errors
@@ -282,7 +282,7 @@ groups:
         for: 5m
         annotations:
           summary: "{{ $labels.service_name }} logged more than 20 errors in 5 minutes"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/stack.md#3-error-log-spike
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#3-error-log-spike
         labels:
           severity: warn
       - uid: vg-auth-jwks-empty
@@ -310,7 +310,7 @@ groups:
         for: 0s
         annotations:
           summary: "auth is serving an empty JWKS; every service's token validation fails as consumer caches miss"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/auth.md#6-platform-wide-401s-jwks-trouble
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/auth.md#6-platform-wide-401s-jwks-trouble
         labels:
           severity: page
       - uid: vg-auth-refresh-reuse
@@ -338,7 +338,7 @@ groups:
         for: 0s
         annotations:
           summary: "a refresh token was replayed and its session family revoked; theft or a client double-refresh regression"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/auth.md#3-refresh-reuse-detections
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/auth.md#3-refresh-reuse-detections
         labels:
           severity: warn
       - uid: vg-auth-provider-errors
@@ -366,7 +366,7 @@ groups:
         for: 5m
         annotations:
           summary: "{{ $labels.provider }} logins are failing at the identity provider (outage or expired client credentials)"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/auth.md#1-logins-failing-at-the-provider-hop
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/auth.md#1-logins-failing-at-the-provider-hop
         labels:
           severity: warn
       - uid: vg-bff-refresh-failures
@@ -394,7 +394,7 @@ groups:
         for: 5m
         annotations:
           summary: "bff session refreshes are failing; users are being logged out"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/bff.md#3-refresh-failure-storm-mass-logout
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/bff.md#3-refresh-failure-storm-mass-logout
         labels:
           severity: warn
       - uid: vg-bff-valkey-pool-timeouts
@@ -422,7 +422,7 @@ groups:
         for: 0s
         annotations:
           summary: "bff callers are timing out waiting for a Valkey pool connection"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/bff.md#5-valkey-client-pool-exhaustion
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/bff.md#5-valkey-client-pool-exhaustion
         labels:
           severity: warn
       - uid: vg-collection-pricing-degraded
@@ -450,7 +450,7 @@ groups:
         for: 10m
         annotations:
           summary: "collection is composing values without enrichment prices; users see null values and available=false"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/collection.md#1-enrichment-unreachable
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/collection.md#1-enrichment-unreachable
         labels:
           severity: warn
       - uid: vg-collection-submissions-backlog
@@ -478,7 +478,7 @@ groups:
         for: 6h
         annotations:
           summary: "the catalog submission review queue has stayed above 25 pending; reviews are not keeping up"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/collection.md#6-submission-queue-not-draining
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/collection.md#6-submission-queue-not-draining
         labels:
           severity: warn
       - uid: vg-enrichment-refresh-stalled
@@ -506,7 +506,7 @@ groups:
         for: 1h
         annotations:
           summary: "enrichment has not finished a price walk in more than 26 hours; catalog prices are going stale"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/enrichment.md#4-nightly-walk-missing
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/enrichment.md#4-nightly-walk-missing
         labels:
           severity: warn
       - uid: vg-enrichment-search-degraded
@@ -534,7 +534,7 @@ groups:
         for: 15m
         annotations:
           summary: "more than 10 percent of enrichment search answers are degraded local fallbacks; a provider is failing"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/enrichment.md#3-search-degraded
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/enrichment.md#3-search-degraded
         labels:
           severity: warn
       - uid: vg-user-upsert-5xx
@@ -562,7 +562,7 @@ groups:
         for: 5m
         annotations:
           summary: "the user service is failing profile upserts; every login runs this call, so logins are down while the service-wide 5xx ratio can stay under vg-service-5xx's threshold"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/user.md#1-logins-fail-at-the-upsert-leg
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/user.md#1-logins-fail-at-the-upsert-leg
         labels:
           severity: page
       - uid: vg-social-down
@@ -575,7 +575,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: up{namespace="vg-collect", pod=~"social-.*"}
+              expr: up{namespace="vgkeep", pod=~"social-.*"}
           - refId: C
             relativeTimeRange: { from: 0, to: 0 }
             datasourceUid: __expr__
@@ -590,6 +590,6 @@ groups:
         for: 2m
         annotations:
           summary: "social is down or its postgres exporter cannot reach it"
-          runbook_url: https://github.com/levonn-dev/vg-collect/blob/main/docs/runbooks/social.md#1-social-down
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/social.md#1-social-down
         labels:
           severity: page

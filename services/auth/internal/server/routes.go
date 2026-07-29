@@ -7,8 +7,8 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/gen/api"
 )
 
 // NewRouter wires: Recover wraps otelhttp (span) wraps RequestLogger

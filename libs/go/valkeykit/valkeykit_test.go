@@ -28,7 +28,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
+	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 )
 
 func TestConnectAndRoundtrip(t *testing.T) {
@@ -95,7 +95,7 @@ func TestConnectAndRoundtrip(t *testing.T) {
 func poolMetricInt64(t *testing.T, rm metricdata.ResourceMetrics, name string) int64 {
 	t.Helper()
 	for _, sm := range rm.ScopeMetrics {
-		if sm.Scope.Name != "github.com/levonn-dev/vg-collect/libs/go/valkeykit" {
+		if sm.Scope.Name != "github.com/levonn-dev/vgkeep/libs/go/valkeykit" {
 			continue
 		}
 		for _, m := range sm.Metrics {

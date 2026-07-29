@@ -7,7 +7,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/igdb"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 )
 
 func TestRaw_UpsertReplaceAndMissingAbsent(t *testing.T) {

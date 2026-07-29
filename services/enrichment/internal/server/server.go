@@ -16,13 +16,13 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/cache"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/fx"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/igdb"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/match"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/pricecharting"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/store"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/cache"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/fx"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/match"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
 
 // Store is the persistence surface the handlers consume. The sentinel
@@ -172,7 +172,7 @@ func New(st Store, games GameProvider, prices PriceProvider, fxRates FXProvider,
 
 		now: time.Now,
 	}
-	meter := otel.Meter("github.com/levonn-dev/vg-collect/services/enrichment")
+	meter := otel.Meter("github.com/levonn-dev/vgkeep/services/enrichment")
 	var err error
 	if h.cacheFailOpen, err = meter.Int64Counter("vg.enrichment.cache.fail_open",
 		metric.WithDescription("Valkey operations that failed and were failed open"),

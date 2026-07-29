@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: vg-collect auth service
+  title: vgkeep auth service
   version: 0.1.0
   description: >
     OIDC relying party and first-party token issuer. The login, refresh,

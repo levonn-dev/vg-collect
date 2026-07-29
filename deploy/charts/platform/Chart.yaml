@@ -1,6 +1,6 @@
 apiVersion: v2
 name: vg-platform
-description: Third-party platform dependencies for vg-collect (cert-manager, external-secrets, APISIX, and the observability stack)
+description: Third-party platform dependencies for vgkeep (cert-manager, external-secrets, APISIX, and the observability stack)
 type: application
 version: 0.1.0
 dependencies:

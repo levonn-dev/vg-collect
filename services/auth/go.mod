@@ -1,26 +1,26 @@
-module github.com/levonn-dev/vg-collect/services/auth
+module github.com/levonn-dev/vgkeep/services/auth
 
 go 1.26.2
 
-replace github.com/levonn-dev/vg-collect/libs/go/config => ../../libs/go/config
+replace github.com/levonn-dev/vgkeep/libs/go/config => ../../libs/go/config
 
-replace github.com/levonn-dev/vg-collect/libs/go/httpkit => ../../libs/go/httpkit
+replace github.com/levonn-dev/vgkeep/libs/go/httpkit => ../../libs/go/httpkit
 
-replace github.com/levonn-dev/vg-collect/libs/go/jwtauth => ../../libs/go/jwtauth
+replace github.com/levonn-dev/vgkeep/libs/go/jwtauth => ../../libs/go/jwtauth
 
-replace github.com/levonn-dev/vg-collect/libs/go/otel => ../../libs/go/otel
+replace github.com/levonn-dev/vgkeep/libs/go/otel => ../../libs/go/otel
 
-replace github.com/levonn-dev/vg-collect/libs/go/pgkit => ../../libs/go/pgkit
+replace github.com/levonn-dev/vgkeep/libs/go/pgkit => ../../libs/go/pgkit
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
-	github.com/levonn-dev/vg-collect/libs/go/config v0.0.0-00010101000000-000000000000
-	github.com/levonn-dev/vg-collect/libs/go/httpkit v0.0.0-00010101000000-000000000000
-	github.com/levonn-dev/vg-collect/libs/go/jwtauth v0.0.0-00010101000000-000000000000
-	github.com/levonn-dev/vg-collect/libs/go/otel v0.0.0-00010101000000-000000000000
-	github.com/levonn-dev/vg-collect/libs/go/pgkit v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/config v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/httpkit v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/jwtauth v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/otel v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/pgkit v0.0.0-00010101000000-000000000000
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/testcontainers/testcontainers-go v0.35.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.35.0

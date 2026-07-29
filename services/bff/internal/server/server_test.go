@@ -18,11 +18,11 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/embedded"
 
-	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/collectionapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/enrichapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 )
 
 // stubCounter records Add calls so tests can assert the exact bounded

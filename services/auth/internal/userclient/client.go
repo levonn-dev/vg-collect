@@ -12,8 +12,8 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/levonn-dev/vg-collect/services/auth/internal/gen/userapi"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/token"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/gen/userapi"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/token"
 )
 
 var ErrUserNotFound = errors.New("userclient: user not found")

@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 )
 
 func TestWriteProblem(t *testing.T) {

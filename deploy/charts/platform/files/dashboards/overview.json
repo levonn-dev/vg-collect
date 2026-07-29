@@ -6,7 +6,7 @@
   "timezone": "browser",
   "time": { "from": "now-1h", "to": "now" },
   "refresh": "30s",
-  "tags": ["vg-collect"],
+  "tags": ["vgkeep"],
   "templating": {
     "list": []
   },
@@ -232,7 +232,7 @@
     {
       "id": 12,
       "type": "dashlist",
-      "title": "vg-collect dashboards",
+      "title": "vgkeep dashboards",
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 20 },
       "options": {
         "keepTime": false,
@@ -243,7 +243,7 @@
         "showRecentlyViewed": false,
         "showSearch": true,
         "showStarred": false,
-        "tags": ["vg-collect"]
+        "tags": ["vgkeep"]
       }
     }
   ]

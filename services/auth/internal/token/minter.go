@@ -1,4 +1,4 @@
-// Package token signs vg-collect access JWTs and generates opaque
+// Package token signs vgkeep access JWTs and generates opaque
 // refresh tokens. This is the only minting code in the system; every
 // other service validates via the shared jwtauth library.
 package token
@@ -76,7 +76,7 @@ func (m *Minter) Mint(sub string, roles []string, jti string) (string, error) {
 }
 
 // ServiceToken mints the short-lived token this service presents when
-// calling other vg-collect services (role "service").
+// calling other vgkeep services (role "service").
 func (m *Minter) ServiceToken() (string, error) {
 	return m.Mint("svc:auth", []string{"service"}, uuid.NewString())
 }

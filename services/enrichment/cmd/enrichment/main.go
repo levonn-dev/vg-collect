@@ -13,19 +13,19 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
-	vgotel "github.com/levonn-dev/vg-collect/libs/go/otel"
-	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/cache"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/config"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/db"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/fx"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/igdb"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/pricecharting"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/server"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/store"
-	"github.com/levonn-dev/vg-collect/services/enrichment/migrations"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
+	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/cache"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/config"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/db"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/fx"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/server"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
+	"github.com/levonn-dev/vgkeep/services/enrichment/migrations"
 )
 
 func main() {

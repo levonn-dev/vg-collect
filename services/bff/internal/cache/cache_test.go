@@ -8,8 +8,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
 
-	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/cache"
+	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/cache"
 )
 
 func newTestCache(t *testing.T) *cache.Cache {

@@ -10,16 +10,16 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
-	vgotel "github.com/levonn-dev/vg-collect/libs/go/otel"
-	"github.com/levonn-dev/vg-collect/libs/go/pgkit"
-	"github.com/levonn-dev/vg-collect/services/social/internal/collectionclient"
-	"github.com/levonn-dev/vg-collect/services/social/internal/config"
-	"github.com/levonn-dev/vg-collect/services/social/internal/server"
-	"github.com/levonn-dev/vg-collect/services/social/internal/store"
-	"github.com/levonn-dev/vg-collect/services/social/internal/userclient"
-	"github.com/levonn-dev/vg-collect/services/social/migrations"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/services/social/internal/collectionclient"
+	"github.com/levonn-dev/vgkeep/services/social/internal/config"
+	"github.com/levonn-dev/vgkeep/services/social/internal/server"
+	"github.com/levonn-dev/vgkeep/services/social/internal/store"
+	"github.com/levonn-dev/vgkeep/services/social/internal/userclient"
+	"github.com/levonn-dev/vgkeep/services/social/migrations"
 )
 
 func main() {

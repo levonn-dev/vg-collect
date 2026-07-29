@@ -1,6 +1,6 @@
 # bff service
 
-The bff is the only public vg-collect service: APISIX (port 8090) publishes it and
+The bff is the only public vgkeep service: APISIX (port 8090) publishes it and
 nothing else. It owns the browser session end to end (AES-GCM sealed cookie,
 transparent token refresh, jti denylist, CSRF origin checks, security headers),
 serves the built SPA bundle from the binary, and fronts every other service
@@ -194,7 +194,7 @@ labels.
 
 Triage access (read-only; `--scan`, never `KEYS`):
 
-    kubectl -n vg-collect exec statefulset/bff-valkey -c valkey -- \
+    kubectl -n vgkeep exec statefulset/bff-valkey -c valkey -- \
       valkey-cli --tls --cacert /tls/ca.crt -p 6379 --scan --pattern 'denylist:*'
 
 ## Telemetry
@@ -205,7 +205,7 @@ Everything the bff emits, with Prometheus-side names. HTTP and runtime series
 come from the shared router stack (`httpkit.Recover` > otelhttp >
 `httpkit.RouteLabel` > `httpkit.RequestLogger`) and the otel runtime
 instrumentation; domain counters are registered on the meter
-`github.com/levonn-dev/vg-collect/services/bff`. `http_route` values are the
+`github.com/levonn-dev/vgkeep/services/bff`. `http_route` values are the
 mux patterns, method-prefixed (`GET /api/me`, `POST /api/otlp/v1/traces`).
 
 | Prometheus name | Instrument | Unit | Labels (bounded values) | Answers |
@@ -273,10 +273,10 @@ Three lines cover paths that would otherwise fail silently:
 ## Dashboard: vg-bff
 
 Provisioned from `deploy/charts/platform/files/dashboards/bff.json` into the
-vg-collect folder, uid `vg-bff`, title `Bff Service`. Open it at
+vgkeep folder, uid `vg-bff`, title `Bff Service`. Open it at
 http://localhost:3000/d/vg-bff while `task run` holds the Grafana
 port-forward. It follows the structural conventions shared by every
-vg-collect dashboard (schemaVersion 39, tag `vg-collect`, browser timezone,
+vgkeep dashboard (schemaVersion 39, tag `vgkeep`, browser timezone,
 30s refresh, explicit `{"type": "prometheus", "uid": "prometheus"}`
 datasource per target; the logs panel uses uid `loki`). No in-flight panel:
 the pipeline exports no active-requests series.
@@ -376,15 +376,15 @@ Runtime and pods:
 
 18. "Pod CPU" - timeseries, `short`, legend `{{pod}}`:
 
-        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vg-collect", pod=~"bff.*", container!=""}[$__rate_interval]))
+        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"bff.*", container!=""}[$__rate_interval]))
 
 19. "Pod working-set memory" - timeseries, `bytes`, legend `{{pod}}`:
 
-        sum by (pod) (container_memory_working_set_bytes{namespace="vg-collect", pod=~"bff.*", container!=""})
+        sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"bff.*", container!=""})
 
 20. "Pod restarts (15m)" - timeseries, `short`, legend `{{pod}}`:
 
-        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vg-collect", pod=~"bff.*"}[15m]))
+        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"bff.*"}[15m]))
 
 Logs:
 
@@ -546,7 +546,7 @@ relays and key material.
   deployment's checksum annotation tracks the ExternalSecret manifest, not
   the value, so force the roll:
 
-      kubectl -n vg-collect rollout restart deployment/bff
+      kubectl -n vgkeep rollout restart deployment/bff
 
   Every live cookie stops opening; every user re-logs-in. Expect the "Login
   and link outcomes" spike and a 401 wave (scenario 3's last bullet) as
@@ -554,7 +554,7 @@ relays and key material.
 
 - Cache reset: restart the cache, since it holds nothing persistent:
 
-      kubectl -n vg-collect rollout restart statefulset/bff-valkey
+      kubectl -n vgkeep rollout restart statefulset/bff-valkey
 
   Consequences are scenario 1's for the restart window plus a cold-cache
   latency bump on `/api/me` and `/api/recommendations`, and denylist entries

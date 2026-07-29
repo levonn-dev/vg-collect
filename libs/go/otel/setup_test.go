@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	vgotel "github.com/levonn-dev/vg-collect/libs/go/otel"
+	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
 )
 
 func TestSetup_NoEndpointIsNoop(t *testing.T) {

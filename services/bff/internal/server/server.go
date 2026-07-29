@@ -15,18 +15,18 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/collectionclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/authapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/collectionapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/enrichapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/socialapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/socialclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/enrichmentclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/authapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/socialapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/socialclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
 // SessionCache is the Valkey surface the server needs (implemented by
@@ -223,7 +223,7 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
-	meter := otel.Meter("github.com/levonn-dev/vg-collect/services/bff")
+	meter := otel.Meter("github.com/levonn-dev/vgkeep/services/bff")
 	counter := func(name, unit, desc string) metric.Int64Counter {
 		c, err := meter.Int64Counter(name, metric.WithUnit(unit), metric.WithDescription(desc))
 		if err != nil {

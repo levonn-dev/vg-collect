@@ -1,5 +1,5 @@
 image:
-  repository: vg-collect/enrichment
+  repository: vgkeep/enrichment
   tag: dev
   pullPolicy: IfNotPresent
 
@@ -7,8 +7,8 @@ replicas: 1
 
 env:
   jwksUrl: http://auth:8080/.well-known/jwks.json
-  jwtIssuer: vg-collect-auth
-  jwtAudience: vg-collect
+  jwtIssuer: vgkeep-auth
+  jwtAudience: vgkeep
   # External MongoDB URL (creds-less, e.g. mongodb+srv://...); read only
   # when mongo.enabled is false. Credentials still ride MONGO_USERNAME
   # (mongo.username) + MONGO_PASSWORD (secret), composed service-side.

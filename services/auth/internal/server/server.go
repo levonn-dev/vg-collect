@@ -16,12 +16,12 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/oidc"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/store"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/token"
-	"github.com/levonn-dev/vg-collect/services/auth/internal/userclient"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/oidc"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/store"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/token"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/userclient"
 )
 
 // Store is the persistence surface the handlers consume. It is the
@@ -108,7 +108,7 @@ func New(st Store, m Minter, users UserService, providers map[string]oidc.Provid
 		store: st, minter: m, users: users, providers: providers,
 		verifier: verifier, devEnabled: devEnabled, refreshTTL: refreshTTL,
 	}
-	meter := otel.Meter("github.com/levonn-dev/vg-collect/services/auth")
+	meter := otel.Meter("github.com/levonn-dev/vgkeep/services/auth")
 	var err error
 	h.loginOutcomes, err = meter.Int64Counter("vg.auth.login.outcomes",
 		metric.WithDescription("Terminals of provider login and link dances"),

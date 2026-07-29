@@ -142,8 +142,8 @@ blocks the rollout while the old pod keeps serving.
 | VALKEY_URL | required | chart `env.valkeyUrl` = rediss://collection-valkey:6379/0 | |
 | VALKEY_CA_FILE | /etc/vg/valkey-ca/ca.crt | set when `valkey.enabled` | config.Load rejects a rediss:// URL without it |
 | JWKS_URL | required | chart `env.jwksUrl` = http://auth:8080/.well-known/jwks.json | |
-| JWT_ISSUER | vg-collect-auth | chart `env.jwtIssuer` | |
-| JWT_AUDIENCE | vg-collect | chart `env.jwtAudience` | |
+| JWT_ISSUER | vgkeep-auth | chart `env.jwtIssuer` | |
+| JWT_AUDIENCE | vgkeep | chart `env.jwtAudience` | |
 | ENRICHMENT_SERVICE_URL | required | chart `env.enrichmentServiceUrl` = http://enrichment:8080 | 10s client timeout |
 | DASHBOARD_CACHE_TTL | 5m | chart `env.dashboardCacheTtl` | also the value-history TTL |
 | SERVICE_VERSION | dev | chart sets it to the image tag | stamped as service.version on telemetry |
@@ -203,7 +203,7 @@ pool, scoped by the resource attribute `service_name="collection"`:
 Everything flows through libs/go/otel Setup(): OTLP traces, metrics,
 and logs to otel-agent -> otel-gateway -> Jaeger / Prometheus / Loki,
 plus JSON slog to stdout with trace ids attached. Domain instruments
-hang off `otel.Meter("github.com/levonn-dev/vg-collect/services/collection")`
+hang off `otel.Meter("github.com/levonn-dev/vgkeep/services/collection")`
 and follow the `vg.collection.<area>.<name>` convention.
 
 ### Metrics
@@ -286,11 +286,11 @@ Domain lifecycle and outcome events (same pipeline and labels):
 
 File `deploy/charts/platform/files/dashboards/collection.json`, uid
 `vg-collection`, title `Collection Service`, globbed into the
-vg-dashboards ConfigMap and provisioned into Grafana's "vg-collect"
+vg-dashboards ConfigMap and provisioned into Grafana's "vgkeep"
 folder. Open it at http://localhost:3000/d/vg-collection while
 `task run` holds the Grafana port-forward. Structural conventions
-are the ones shared by every vg-collect dashboard: schemaVersion 39,
-tags ["vg-collect"],
+are the ones shared by every vgkeep dashboard: schemaVersion 39,
+tags ["vgkeep"],
 timezone browser, refresh 30s, an explicit datasource object per
 target (uid `prometheus`, and uid `loki` for the logs panel). Every
 panel sets fieldConfig.defaults.unit; legends come from labels;
@@ -381,16 +381,16 @@ those statefulset pods are part of this service's blast radius):
 
 16. "CPU by pod" - timeseries, short, legend {{pod}}
 
-        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vg-collect", pod=~"collection.*", container!=""}[$__rate_interval]))
+        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"collection.*", container!=""}[$__rate_interval]))
 
 17. "Working-set memory by pod" - timeseries, bytes, legend {{pod}}
     (limits to read against: app 128Mi, pg 256Mi, valkey 128Mi)
 
-        sum by (pod) (container_memory_working_set_bytes{namespace="vg-collect", pod=~"collection.*", container!=""})
+        sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"collection.*", container!=""})
 
 18. "Restarts last 15m" - timeseries, short, legend {{pod}}
 
-        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vg-collect", pod=~"collection.*"}[15m]))
+        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"collection.*"}[15m]))
 
 19. "Goroutines" - timeseries, short
 
@@ -441,8 +441,8 @@ Down: /readyz fails, the pod goes NotReady, the bff answers 502
 `upstream_error` for every collection route. Confirm with "Restarts
 last 15m" and:
 
-    kubectl -n vg-collect get pods -l app.kubernetes.io/name=collection
-    kubectl -n vg-collect logs statefulset/collection-pg
+    kubectl -n vgkeep get pods -l app.kubernetes.io/name=collection
+    kubectl -n vgkeep logs statefulset/collection-pg
 
 Saturated: the "PG pool connections", "PG pool mean acquire wait",
 and "PG server connections vs max" panels. Mean acquire wait climbing

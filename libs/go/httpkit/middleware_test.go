@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 )
 
 func TestRecover(t *testing.T) {

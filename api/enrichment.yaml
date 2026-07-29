@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: vg-collect enrichment service
+  title: vgkeep enrichment service
   version: 0.1.0
   description: >
     Cluster-internal catalog and pricing service. All third-party data

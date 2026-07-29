@@ -27,13 +27,13 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	"github.com/levonn-dev/vg-collect/services/collection/internal/enrichmentclient"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/gen/enrichapi"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/server"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/store"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/server"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-const collectionMeter = "github.com/levonn-dev/vg-collect/services/collection"
+const collectionMeter = "github.com/levonn-dev/vgkeep/services/collection"
 
 // installTestMeter points the global meter provider at a fresh SDK
 // draining into the returned reader. Instruments queued on the global

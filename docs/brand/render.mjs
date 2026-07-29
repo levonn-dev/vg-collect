@@ -28,10 +28,10 @@ async function renderIcon(svgPath, outPath, size) {
 async function renderLockup(outPath, background, color) {
   const svg = readFileSync(join(brandDir, "lockup.svg"), "utf8").replace(
     "<svg ",
-    '<svg style="display:block;width:400px;height:90px" ',
+    '<svg style="display:block;width:340px;height:90px" ',
   );
   const page = await browser.newPage({
-    viewport: { width: 440, height: 130 },
+    viewport: { width: 380, height: 130 },
     deviceScaleFactor: 4,
   });
   await page.setContent(

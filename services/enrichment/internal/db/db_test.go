@@ -10,8 +10,8 @@ import (
 	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"go.mongodb.org/mongo-driver/bson"
 
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/db"
-	"github.com/levonn-dev/vg-collect/services/enrichment/migrations"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/db"
+	"github.com/levonn-dev/vgkeep/services/enrichment/migrations"
 )
 
 func TestUnitComposeURL_EmptyPairPassesThroughUnchanged(t *testing.T) {

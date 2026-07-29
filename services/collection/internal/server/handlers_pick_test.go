@@ -7,7 +7,7 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/levonn-dev/vg-collect/services/collection/internal/gen/enrichapi"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 )
 
 func TestPickReleaseDate(t *testing.T) {

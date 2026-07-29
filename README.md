@@ -1,8 +1,8 @@
-# vg-collect
+# vgkeep
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/brand/lockup-dark.png">
-  <img src="docs/brand/lockup-light.png" alt="vg-collect: a pixel VG monogram on an indigo tile" width="440">
+  <img src="docs/brand/lockup-light.png" alt="vgkeep: a pixel VG monogram on an indigo tile" width="380">
 </picture>
 
 Video-game collection tracker with granular per-item detail: OIDC login,
@@ -50,13 +50,13 @@ Note: the fixture's handle is literally `admin` on dev databases created before 
 | `task build` | compile every module + the frontend bundle |
 | `task e2e` | Playwright smoke suite against the running stack (login, collection journey, currency, account, admin, social, submissions) |
 | `task run` / `task down` | tilt up / down |
-| `task nuke` | full app-stack reset: tilt down + the vg-collect namespace (see Teardown) |
+| `task nuke` | full app-stack reset: tilt down + the vgkeep namespace (see Teardown) |
 
 ## Teardown
 
 ```bash
 task down                    # stop the dev stack; namespace, datastore PVCs, issued TLS secrets survive
-task nuke                    # app layer: tilt down + delete the vg-collect namespace (drops PVCs + TLS secrets)
+task nuke                    # app layer: tilt down + delete the vgkeep namespace (drops PVCs + TLS secrets)
 task bootstrap:cluster:down  # remove the platform: helm uninstalls + the vg-platform namespace
 ```
 
@@ -65,7 +65,7 @@ reissue previously issued certificates (they still match their Certificate
 specs), so TLS secrets from before a platform-only teardown keep chaining
 to the dead CA until their renewal window. For platform down/up cycles
 prefer `task nuke && task bootstrap:cluster:down`, which drops those secrets
-(and the datastore PVCs) with the vg-collect namespace; 
+(and the datastore PVCs) with the vgkeep namespace; 
 `task bootstrap:cluster && task run` then brings everything back from scratch.
 
 Platform teardown removes the monitoring stack's owning helm release, but
@@ -114,7 +114,7 @@ through a session-gated relay on the bff, so one trace stitches the
 browser through the bff and into whichever service and database
 answered the call.
 
-Eleven dashboards are provisioned into the `vg-collect` Grafana folder
+Eleven dashboards are provisioned into the `vgkeep` Grafana folder
 (localhost:3000, anonymous admin in dev):
 
 - `vg-overview` - the application overview pane: edge, services, and
@@ -128,7 +128,7 @@ Eleven dashboards are provisioned into the `vg-collect` Grafana folder
   from that service's seat, pods, and error logs
 
 Twenty-one alert rules are provisioned alongside them in the same
-`vg-collect` folder; each links a runbook under `docs/runbooks/` via
+`vgkeep` folder; each links a runbook under `docs/runbooks/` via
 its `runbook_url` annotation. The same directory holds an operating
 runbook per service and `docs/runbooks/stack.md` for the application
 as a whole; `docs/runbooks/README.md` indexes them.

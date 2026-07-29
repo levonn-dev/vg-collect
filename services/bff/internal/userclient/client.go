@@ -16,7 +16,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
 )
 
 // ErrUserNotFound is returned when the user service issues a parsed

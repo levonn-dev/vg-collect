@@ -17,7 +17,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	"github.com/levonn-dev/vg-collect/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 )
 
 //go:embed testdata/migrations/*.sql
@@ -88,7 +88,7 @@ func TestConnectMigrateHealth(t *testing.T) {
 func poolAcquires(t *testing.T, rm metricdata.ResourceMetrics) int64 {
 	t.Helper()
 	for _, sm := range rm.ScopeMetrics {
-		if sm.Scope.Name != "github.com/levonn-dev/vg-collect/libs/go/pgkit" {
+		if sm.Scope.Name != "github.com/levonn-dev/vgkeep/libs/go/pgkit" {
 			continue
 		}
 		for _, m := range sm.Metrics {

@@ -114,7 +114,7 @@ func NewRPWithRefetchInterval(cfg RPConfig, hc *http.Client, jwksRefetch time.Du
 	// logs and the record sites no-op. Both real providers create the
 	// same instrument (the SDK deduplicates); the dev provider has no
 	// RP, so it never appears in this histogram.
-	hist, err := otel.Meter("github.com/levonn-dev/vg-collect/services/auth").
+	hist, err := otel.Meter("github.com/levonn-dev/vgkeep/services/auth").
 		Float64Histogram("vg.auth.provider.request.duration",
 			metric.WithDescription("Wall time of relying-party round trips to the identity provider"),
 			metric.WithUnit("s"))

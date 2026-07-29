@@ -9,7 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// Claims holds the validated, deserialized fields from a vg-collect JWT.
+// Claims holds the validated, deserialized fields from a vgkeep JWT.
 type Claims struct {
 	Subject string
 	Roles   []string
@@ -26,7 +26,7 @@ func (c Claims) HasRole(role string) bool {
 	return false
 }
 
-// Validator validates vg-collect access JWTs against a JWKS endpoint.
+// Validator validates vgkeep access JWTs against a JWKS endpoint.
 type Validator struct {
 	cache    *keyCache
 	issuer   string

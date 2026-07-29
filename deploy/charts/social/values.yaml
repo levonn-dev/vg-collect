@@ -1,5 +1,5 @@
 image:
-  repository: vg-collect/social
+  repository: vgkeep/social
   tag: dev
   pullPolicy: IfNotPresent
 
@@ -7,8 +7,8 @@ replicas: 1
 
 env:
   jwksUrl: http://auth:8080/.well-known/jwks.json
-  jwtIssuer: vg-collect-auth
-  jwtAudience: vg-collect
+  jwtIssuer: vgkeep-auth
+  jwtAudience: vgkeep
   collectionServiceUrl: http://collection:8080
   userServiceUrl: http://user:8080
   capComments24h: "50"

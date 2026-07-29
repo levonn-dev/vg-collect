@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/levonn-dev/vg-collect/services/auth/internal/token"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/token"
 )
 
 func TestNewRefreshToken(t *testing.T) {

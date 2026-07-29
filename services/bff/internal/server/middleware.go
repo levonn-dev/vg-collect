@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 )
 
 // securityCSP is the SPA's content security policy. style-src allows

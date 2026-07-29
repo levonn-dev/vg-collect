@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
 func TestGet_ForwardsBearerAndParses(t *testing.T) {

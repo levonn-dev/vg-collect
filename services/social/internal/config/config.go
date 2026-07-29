@@ -1,7 +1,7 @@
 // Package config declares the social service's environment contract.
 package config
 
-import libconfig "github.com/levonn-dev/vg-collect/libs/go/config"
+import libconfig "github.com/levonn-dev/vgkeep/libs/go/config"
 
 // Config holds all environment-sourced configuration for the social
 // service.
@@ -10,8 +10,8 @@ type Config struct {
 	DatabaseURL string `env:"DATABASE_URL,required,notEmpty"`
 
 	JWKSURL     string `env:"JWKS_URL,required,notEmpty"`
-	JWTIssuer   string `env:"JWT_ISSUER"   envDefault:"vg-collect-auth"`
-	JWTAudience string `env:"JWT_AUDIENCE" envDefault:"vg-collect"`
+	JWTIssuer   string `env:"JWT_ISSUER"   envDefault:"vgkeep-auth"`
+	JWTAudience string `env:"JWT_AUDIENCE" envDefault:"vgkeep"`
 
 	CollectionServiceURL string `env:"COLLECTION_SERVICE_URL,required,notEmpty"`
 	UserServiceURL       string `env:"USER_SERVICE_URL,required,notEmpty"`

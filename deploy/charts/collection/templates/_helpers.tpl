@@ -1,6 +1,6 @@
 {{- define "collection.labels" -}}
 app.kubernetes.io/name: collection
-app.kubernetes.io/part-of: vg-collect
+app.kubernetes.io/part-of: vgkeep
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 

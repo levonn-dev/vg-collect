@@ -257,7 +257,7 @@ grafana:
       providers:
         - name: vg
           orgId: 1
-          folder: vg-collect
+          folder: vgkeep
           type: file
           disableDeletion: false
           options:

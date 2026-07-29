@@ -1,5 +1,5 @@
 image:
-  repository: vg-collect/user
+  repository: vgkeep/user
   tag: dev
   pullPolicy: IfNotPresent
 
@@ -7,8 +7,8 @@ replicas: 1
 
 env:
   jwksUrl: http://auth:8080/.well-known/jwks.json  # resolves once the auth service exists
-  jwtIssuer: vg-collect-auth
-  jwtAudience: vg-collect
+  jwtIssuer: vgkeep-auth
+  jwtAudience: vgkeep
   handleChangeCooldown: 24h
 
 resources:

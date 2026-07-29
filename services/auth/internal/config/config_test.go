@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/levonn-dev/vg-collect/services/auth/internal/config"
+	"github.com/levonn-dev/vgkeep/services/auth/internal/config"
 )
 
 var required = []string{"DATABASE_URL", "JWT_SIGNING_KEY", "USER_SERVICE_URL"}
@@ -32,7 +32,7 @@ func TestLoad_Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.HTTPAddr != ":8080" || cfg.JWTIssuer != "vg-collect-auth" || cfg.JWTAudience != "vg-collect" {
+	if cfg.HTTPAddr != ":8080" || cfg.JWTIssuer != "vgkeep-auth" || cfg.JWTAudience != "vgkeep" {
 		t.Fatalf("defaults wrong: %+v", cfg)
 	}
 	if cfg.JWKSURL != "http://localhost:8080/.well-known/jwks.json" {

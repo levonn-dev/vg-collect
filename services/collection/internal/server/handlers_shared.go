@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/levonn-dev/vg-collect/services/collection/internal/gen/api"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/store"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
 // The /shared handlers serve any authenticated caller. They never

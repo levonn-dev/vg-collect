@@ -1,5 +1,5 @@
-# vg-collect dev loop. Cluster-agnostic: add your context to the list.
-allow_k8s_contexts(['docker-desktop', 'kind-kind', 'k3d-vg-collect', 'minikube'])
+# vgkeep dev loop. Cluster-agnostic: add your context to the list.
+allow_k8s_contexts(['docker-desktop', 'kind-kind', 'k3d-vgkeep', 'minikube'])
 
 # ----- preflights (fail fast with actionable messages) -----
 local_resource(
@@ -21,7 +21,7 @@ local_resource(
 # ----- namespace -----
 k8s_yaml(encode_yaml({
     'apiVersion': 'v1', 'kind': 'Namespace',
-    'metadata': {'name': 'vg-collect'},
+    'metadata': {'name': 'vgkeep'},
 }))
 
 # ----- ESO fake ClusterSecretStore rendered from .env -----
@@ -77,11 +77,11 @@ k8s_resource(
 
 # ----- user service -----
 docker_build(
-    'vg-collect/user', '.',
+    'vgkeep/user', '.',
     dockerfile='services/user/Dockerfile',
     only=['libs/go', 'services/user'],
 )
-k8s_yaml(helm('deploy/charts/user', name='user', namespace='vg-collect',
+k8s_yaml(helm('deploy/charts/user', name='user', namespace='vgkeep',
               set=['env.handleChangeCooldown=5s']))
 k8s_resource('user', port_forwards=['8081:8080'],
              resource_deps=['secret-store', 'user-pg'], labels=['services'])
@@ -89,7 +89,7 @@ k8s_resource('user-pg', port_forwards=['5433:5432'], labels=['datastores'])
 
 # ----- auth service -----
 docker_build(
-    'vg-collect/auth', '.',
+    'vgkeep/auth', '.',
     dockerfile='services/auth/Dockerfile',
     only=['libs/go', 'services/auth'],
 )
@@ -104,7 +104,7 @@ if ENV.get('TWITCH_CLIENT_ID', '') != '' and ENV.get('TWITCH_CLIENT_SECRET', '')
     _auth_set.append('providers.twitch.enabled=true')
 if _auth_set:
     _auth_set.append('env.oauthRedirectUrl=' + ENV.get('OAUTH_REDIRECT_URL', 'http://localhost:8090/api/auth/callback'))
-k8s_yaml(helm('deploy/charts/auth', name='auth', namespace='vg-collect', set=_auth_set))
+k8s_yaml(helm('deploy/charts/auth', name='auth', namespace='vgkeep', set=_auth_set))
 k8s_resource('auth', port_forwards=['8082:8080'],
              resource_deps=['secret-store', 'auth-pg', 'user'], labels=['services'])
 k8s_resource('auth-pg', port_forwards=['5434:5432'], labels=['datastores'])
@@ -138,19 +138,19 @@ local_resource(
 
 # ----- bff service -----
 docker_build(
-    'vg-collect/bff', '.',
+    'vgkeep/bff', '.',
     dockerfile='services/bff/Dockerfile',
     only=['libs/go', 'services/bff', 'frontend'],
     ignore=['frontend/node_modules', 'frontend/dist', 'frontend/playwright-report', 'frontend/test-results'],
 )
-k8s_yaml(helm('deploy/charts/bff', name='bff', namespace='vg-collect'))
+k8s_yaml(helm('deploy/charts/bff', name='bff', namespace='vgkeep'))
 k8s_resource('bff', port_forwards=['8083:8080'],
              resource_deps=['secret-store', 'bff-valkey', 'auth', 'collection'], labels=['services'])
 k8s_resource('bff-valkey', labels=['datastores'])
 
 # ----- enrichment service -----
 docker_build(
-    'vg-collect/enrichment', '.',
+    'vgkeep/enrichment', '.',
     dockerfile='services/enrichment/Dockerfile',
     only=['libs/go', 'services/enrichment'],
 )
@@ -166,7 +166,7 @@ if ENV.get('PRICECHARTING_API_KEY', '') != '':
 # Mid-rotation the service accepts the previous internal token too.
 if ENV.get('ENRICHMENT_INTERNAL_REFRESH_TOKEN_PREVIOUS', '') != '':
     _enrichment_set.append('refresh.previousTokenEnabled=true')
-k8s_yaml(helm('deploy/charts/enrichment', name='enrichment', namespace='vg-collect', set=_enrichment_set))
+k8s_yaml(helm('deploy/charts/enrichment', name='enrichment', namespace='vgkeep', set=_enrichment_set))
 k8s_resource('enrichment', port_forwards=['8084:8080'],
              resource_deps=['secret-store', 'enrichment-mongo', 'enrichment-valkey', 'auth'], labels=['services'])
 k8s_resource('enrichment-mongo', port_forwards=['27018:27017'], labels=['datastores'])
@@ -175,11 +175,11 @@ k8s_resource('enrichment-refresh', resource_deps=['enrichment'], labels=['servic
 
 # ----- collection service -----
 docker_build(
-    'vg-collect/collection', '.',
+    'vgkeep/collection', '.',
     dockerfile='services/collection/Dockerfile',
     only=['libs/go', 'services/collection'],
 )
-k8s_yaml(helm('deploy/charts/collection', name='collection', namespace='vg-collect'))
+k8s_yaml(helm('deploy/charts/collection', name='collection', namespace='vgkeep'))
 k8s_resource('collection', port_forwards=['8085:8080'],
              resource_deps=['secret-store', 'collection-pg', 'collection-valkey', 'auth', 'enrichment'],
              labels=['services'])
@@ -188,11 +188,11 @@ k8s_resource('collection-valkey', labels=['datastores'])
 
 # ----- social service -----
 docker_build(
-    'vg-collect/social', '.',
+    'vgkeep/social', '.',
     dockerfile='services/social/Dockerfile',
     only=['libs/go', 'services/social'],
 )
-k8s_yaml(helm('deploy/charts/social', name='social', namespace='vg-collect'))
+k8s_yaml(helm('deploy/charts/social', name='social', namespace='vgkeep'))
 k8s_resource('social', port_forwards=['8086:8080'],
              resource_deps=['secret-store', 'social-pg', 'auth', 'user', 'collection'],
              labels=['services'])

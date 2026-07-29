@@ -1,6 +1,6 @@
 apiVersion: v2
 name: auth
-description: vg-collect auth service (OIDC relying party + token issuer)
+description: vgkeep auth service (OIDC relying party + token issuer)
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

@@ -1,4 +1,4 @@
-module github.com/levonn-dev/vg-collect/libs/go/otel
+module github.com/levonn-dev/vgkeep/libs/go/otel
 
 go 1.26.2
 

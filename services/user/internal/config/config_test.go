@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/levonn-dev/vg-collect/services/user/internal/config"
+	"github.com/levonn-dev/vgkeep/services/user/internal/config"
 )
 
 func TestLoad(t *testing.T) {
@@ -14,7 +14,7 @@ func TestLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.HTTPAddr != ":8080" || cfg.JWTIssuer != "vg-collect-auth" || cfg.JWTAudience != "vg-collect" {
+	if cfg.HTTPAddr != ":8080" || cfg.JWTIssuer != "vgkeep-auth" || cfg.JWTAudience != "vgkeep" {
 		t.Fatalf("defaults wrong: %+v", cfg)
 	}
 }

@@ -1,7 +1,7 @@
 # Auth service
 
 The auth service is the OIDC relying party and the only token issuer in
-vg-collect. It runs the authorization-code + PKCE dance against Google
+vgkeep. It runs the authorization-code + PKCE dance against Google
 and Twitch (plus a fixture-only dev provider), resolves the verified
 identity to a user via the user service, and mints Ed25519 access JWTs
 paired with opaque rotating refresh tokens. Every other service trusts
@@ -19,7 +19,7 @@ What it serves, as an operator sees it:
   `alice`, `bob`, or `admin` (answers 404 unless `DEV_PROVIDER_ENABLED`).
   Fixtures are the only identities it can mint for; real accounts always
   go through a real provider.
-- Access tokens: EdDSA JWTs, `iss vg-collect-auth`, `aud vg-collect`,
+- Access tokens: EdDSA JWTs, `iss vgkeep-auth`, `aud vgkeep`,
   5 minute TTL, `roles` claim read from the user service at mint time.
 - Refresh tokens: opaque, single-use, rotated on every
   `POST /token/refresh`; a session family hard-stops 720h (30 days)
@@ -130,7 +130,7 @@ Task targets that touch this service:
   like every other.
 
 In Tilt the `auth` resource (label `services`) rebuilds
-`vg-collect/auth` from `services/auth/Dockerfile` whenever `libs/go` or
+`vgkeep/auth` from `services/auth/Dockerfile` whenever `libs/go` or
 `services/auth` changes, and depends on `secret-store`, `auth-pg`, and
 `user`. Tilt enables a real provider only when both halves of its
 credential pair are present in `.env`, and then also sets
@@ -154,8 +154,8 @@ values fill most of them; secrets arrive through the ExternalSecret
 | `HTTP_ADDR` | `:8080` | code default; the chart does not set it |
 | `DATABASE_URL` | required | assembled in deployment.yaml: `postgres://auth:$(PG_PASSWORD)@auth-pg:5432/auth?sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt`; `PG_PASSWORD` from Secret `auth-secrets` key `pg-password` (store key `auth/pg-password`, `.env` `PG_AUTH_PASSWORD`) |
 | `JWT_SIGNING_KEY` | required | Secret `auth-secrets` key `jwt-signing-key` (store key `auth/jwt-signing-key`, `.env` `AUTH_JWT_SIGNING_KEY`); base64 (std) 32-byte Ed25519 seed |
-| `JWT_ISSUER` | `vg-collect-auth` | values `env.jwtIssuer` |
-| `JWT_AUDIENCE` | `vg-collect` | values `env.jwtAudience` |
+| `JWT_ISSUER` | `vgkeep-auth` | values `env.jwtIssuer` |
+| `JWT_AUDIENCE` | `vgkeep` | values `env.jwtAudience` |
 | `ACCESS_TOKEN_TTL` | `5m` | values `env.accessTokenTtl` |
 | `REFRESH_TOKEN_TTL` | `720h` | values `env.refreshTokenTtl` |
 | `USER_SERVICE_URL` | required | values `env.userServiceUrl` (`http://user:8080`) |
@@ -241,7 +241,7 @@ Platform-provided signals:
 
 ### Domain metrics
 
-Meter name `github.com/levonn-dev/vg-collect/services/auth`; counter
+Meter name `github.com/levonn-dev/vgkeep/services/auth`; counter
 and gauge instruments live as fields on `server.Handlers` (same shape
 as the bff cache counter); the provider histogram is recorded inside
 `internal/oidc`. All label values are bounded sets listed here; none
@@ -304,11 +304,11 @@ Never log token material: no refresh tokens, no hashes, no minted JWTs.
 ## Dashboard: vg-auth
 
 File `deploy/charts/platform/files/dashboards/auth.json`, uid
-`vg-auth`, title `Auth Service`, provisioned into the `vg-collect`
+`vg-auth`, title `Auth Service`, provisioned into the `vgkeep`
 folder like every dashboard in that directory. Open it at
 http://localhost:3000/d/vg-auth while `task run` holds the Grafana
 port-forward. It follows the structural conventions shared by every
-vg-collect dashboard: schemaVersion 39, tags `["vg-collect"]`, timezone
+vgkeep dashboard: schemaVersion 39, tags `["vgkeep"]`, timezone
 `browser`, refresh `30s`, an explicit datasource object per target
 (uid `prometheus`, or `loki` for the logs panel). No dual-axis panels;
 Grafana default palette; thresholds only on the two state panels noted.
@@ -388,15 +388,15 @@ legend `{{provider}} {{op}}`)
 **15. Pod CPU** (timeseries, short, legend `{{pod}}`; the `auth-.*`
 scope intentionally covers auth-pg-0 too)
 
-    sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vg-collect", pod=~"auth-.*", container!=""}[$__rate_interval]))
+    sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"auth-.*", container!=""}[$__rate_interval]))
 
 **16. Pod working-set memory** (timeseries, bytes, legend `{{pod}}`)
 
-    sum by (pod) (container_memory_working_set_bytes{namespace="vg-collect", pod=~"auth-.*", container!=""})
+    sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"auth-.*", container!=""})
 
 **17. Pod restarts, 15m** (timeseries, short, legend `{{pod}}`)
 
-    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vg-collect", pod=~"auth-.*"}[15m]))
+    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"auth-.*"}[15m]))
 
 **18. Goroutines** (timeseries, short, legend `goroutines`)
 
@@ -503,7 +503,7 @@ every key (the boot-time registration makes 0 impossible otherwise).
 A pod restart does not fix this: key registration is insert-only and
 skips the existing retired row. Un-retire immediately:
 
-    kubectl -n vg-collect exec statefulset/auth-pg -- psql -U auth -d auth -c "UPDATE signing_keys SET retired_at = NULL WHERE kid = '<kid>';"
+    kubectl -n vgkeep exec statefulset/auth-pg -- psql -U auth -d auth -c "UPDATE signing_keys SET retired_at = NULL WHERE kid = '<kid>';"
 
 If the count is fine but 401s persist, compare the `kid` in a rejected
 token's header against `curl -s http://localhost:8082/.well-known/jwks.json`:
@@ -546,14 +546,14 @@ renormalization. The levers are:
   4. After the last old-key access token expired (ACCESS_TOKEN_TTL,
      5 minutes), retire the old key:
 
-         kubectl -n vg-collect exec statefulset/auth-pg -- psql -U auth -d auth -c "UPDATE signing_keys SET retired_at = now() WHERE kid = '<old-kid>';"
+         kubectl -n vgkeep exec statefulset/auth-pg -- psql -U auth -d auth -c "UPDATE signing_keys SET retired_at = now() WHERE kid = '<old-kid>';"
 
      "Active signing keys" should read 2 during the overlap and 1
      after. Retired the wrong kid? Set `retired_at = NULL` for it (see
      failure mode 6).
 - Revoke every session of one user (compromised account):
 
-      kubectl -n vg-collect exec statefulset/auth-pg -- psql -U auth -d auth -c "UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = '<uuid>' AND revoked_at IS NULL;"
+      kubectl -n vgkeep exec statefulset/auth-pg -- psql -U auth -d auth -c "UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = '<uuid>' AND revoked_at IS NULL;"
 
   The user's next refresh answers 401 `refresh_reused` and the bff
   clears the session. Outstanding access tokens stay valid up to 5

@@ -19,11 +19,11 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
-	"github.com/levonn-dev/vg-collect/services/social/internal/collectionclient"
-	"github.com/levonn-dev/vg-collect/services/social/internal/store"
-	"github.com/levonn-dev/vg-collect/services/social/internal/userclient"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/services/social/internal/collectionclient"
+	"github.com/levonn-dev/vgkeep/services/social/internal/store"
+	"github.com/levonn-dev/vgkeep/services/social/internal/userclient"
 )
 
 // Store is the persistence surface the handlers consume. Sentinels:
@@ -97,7 +97,7 @@ func New(st Store, col Collection, users Users, opts Options) *Handlers {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
-	m := otel.Meter("github.com/levonn-dev/vg-collect/services/social")
+	m := otel.Meter("github.com/levonn-dev/vgkeep/services/social")
 	counter := func(name, desc, unit string) metric.Int64Counter {
 		ctr, err := m.Int64Counter(name, metric.WithDescription(desc), metric.WithUnit(unit))
 		if err != nil {

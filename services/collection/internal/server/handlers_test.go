@@ -22,15 +22,15 @@ import (
 	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/levonn-dev/vg-collect/libs/go/pgkit"
-	"github.com/levonn-dev/vg-collect/libs/go/valkeykit"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/cache"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/enrichmentclient"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/gen/api"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/gen/enrichapi"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/server"
-	"github.com/levonn-dev/vg-collect/services/collection/internal/store"
-	"github.com/levonn-dev/vg-collect/services/collection/migrations"
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/cache"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/server"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
+	"github.com/levonn-dev/vgkeep/services/collection/migrations"
 )
 
 // ---- stub doubles (function fields; a nil field panics loudly) ----

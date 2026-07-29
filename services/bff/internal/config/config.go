@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	libconfig "github.com/levonn-dev/vg-collect/libs/go/config"
+	libconfig "github.com/levonn-dev/vgkeep/libs/go/config"
 )
 
 // Config holds all environment-sourced configuration for the bff.

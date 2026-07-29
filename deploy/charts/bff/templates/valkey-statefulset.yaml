@@ -14,7 +14,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: bff-valkey
-        app.kubernetes.io/part-of: vg-collect
+        app.kubernetes.io/part-of: vgkeep
     spec:
       initContainers:
         # Secret mounts are read-only and root-owned; copy and chown so

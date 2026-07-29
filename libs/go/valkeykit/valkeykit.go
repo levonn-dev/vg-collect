@@ -17,7 +17,7 @@ import (
 )
 
 // meterName follows the repo convention: meter name = module path.
-const meterName = "github.com/levonn-dev/vg-collect/libs/go/valkeykit"
+const meterName = "github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 
 // Substitution seams for white-box tests: redisotel never errors for
 // *redis.Client today, but the API contract says it can.

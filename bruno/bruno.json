@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "name": "vg-collect",
+  "name": "vgkeep",
   "type": "collection",
   "ignore": ["node_modules", ".git"]
 }

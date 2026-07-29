@@ -43,7 +43,7 @@ and triage, admin levers, capacity and rollout.
 
 The twenty-one rules live in
 `deploy/charts/platform/files/alerting/vg-rules.yaml`, provisioned
-into the `vg-collect` folder and evaluated every 1m. Each rule's
+into the `vgkeep` folder and evaluated every 1m. Each rule's
 `runbook_url` annotation deep-links the runbook section below; that
 section quotes the rule's query verbatim in an indented code block,
 so the number you read while triaging is the number that fired. When

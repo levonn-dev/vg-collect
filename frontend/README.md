@@ -1,6 +1,6 @@
-# vg-collect frontend
+# vgkeep frontend
 
-React 19 SPA for the vg-collect video game collection tracker.
+React 19 SPA for the vgkeep video game collection tracker.
 Typed against the BFF OpenAPI contract at `api/bff.yaml`.
 Served in production by the BFF at the same origin; in dev the Vite
 proxy forwards `/api` to the APISIX gateway port-forward on :8090.

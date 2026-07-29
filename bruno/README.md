@@ -1,4 +1,4 @@
-# vg-collect Bruno collection
+# vgkeep Bruno collection
 
 API flows against the Tilt dev stack, using the `local` environment. Two
 styles of folder live here:
@@ -118,7 +118,7 @@ The `admin` fixture starts with the plain `user` role. The user service
 has no role-grant endpoint (roles are data it owns), so granting admin
 is a manual, visible step:
 
-    kubectl -n vg-collect exec statefulset/user-pg -- \
+    kubectl -n vgkeep exec statefulset/user-pg -- \
       psql -U user -d user -c \
       "INSERT INTO user_roles (user_id, role) \
        SELECT id, 'admin' FROM users WHERE email = 'admin@example.com' \

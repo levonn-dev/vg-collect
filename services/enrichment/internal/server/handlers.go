@@ -14,13 +14,13 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/levonn-dev/vg-collect/libs/go/jwtauth"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/gen/api"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/igdb"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/match"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/pricecharting"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/recs"
-	"github.com/levonn-dev/vg-collect/services/enrichment/internal/store"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/match"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/recs"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
 
 var _ api.ServerInterface = (*Handlers)(nil)

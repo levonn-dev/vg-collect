@@ -17,17 +17,17 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vg-collect/services/bff/internal/authclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/collectionclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/enrichmentclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/api"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/authapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/collectionapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/enrichapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/gen/userapi"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/session"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/socialclient"
-	"github.com/levonn-dev/vg-collect/services/bff/internal/userclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/enrichmentclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/authapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/socialclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
 // stubAuthFull lets each test override exactly the methods it expects.

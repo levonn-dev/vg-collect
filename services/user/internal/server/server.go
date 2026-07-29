@@ -13,8 +13,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/levonn-dev/vg-collect/libs/go/httpkit"
-	"github.com/levonn-dev/vg-collect/services/user/internal/store"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/services/user/internal/store"
 )
 
 // Store is the persistence surface the handlers consume. The sentinel error
@@ -53,7 +53,7 @@ type Handlers struct {
 // not prevent startup (every increment site guards the nil).
 func New(st Store, cooldown time.Duration) *Handlers {
 	h := &Handlers{store: st, handleCooldown: cooldown}
-	m := otel.Meter("github.com/levonn-dev/vg-collect/services/user")
+	m := otel.Meter("github.com/levonn-dev/vgkeep/services/user")
 	var err error
 	if h.accountUpserts, err = m.Int64Counter("vg.user.account.upserts",
 		metric.WithDescription("Login-path profile upserts by outcome (created or existing)"),
