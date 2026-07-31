@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import Home from '../pages/Home'
@@ -216,4 +216,19 @@ it('hides the Admin nav link without the admin role', async () => {
   renderLayout()
   await screen.findByText('page-content')
   expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
+})
+
+it('renders the site footer with the Help link', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, me)))
+  renderLayout()
+  await screen.findByText('page-content')
+  const footer = screen.getByRole('contentinfo', { name: 'Site footer' })
+  expect(within(footer).getByRole('link', { name: 'Help' })).toHaveAttribute('href', '/help')
+})
+
+it('links the brand back to the start page', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, me)))
+  renderLayout()
+  await screen.findByText('page-content')
+  expect(screen.getByRole('link', { name: 'vgkeep' })).toHaveAttribute('href', '/')
 })

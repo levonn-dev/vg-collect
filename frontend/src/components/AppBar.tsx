@@ -1,0 +1,87 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Link, NavLink, useNavigate } from 'react-router'
+import { logout, type Me } from '../api/client'
+import { site } from '../lib/site'
+import Avatar from './Avatar'
+import CurrencySelect from './CurrencySelect'
+import Logo from './Logo'
+import ThemeToggle from './ThemeToggle'
+
+function navClass({ isActive }: { isActive: boolean }): string {
+  return isActive
+    ? 'text-sm font-semibold text-gray-900'
+    : 'text-sm text-gray-500 hover:text-gray-900'
+}
+
+// AppBar is the signed-in header. Layout always renders it;
+// PublicShell renders it too once its session probe resolves, so the
+// chrome does not change with the route after sign-in.
+export default function AppBar({ me }: { me: Me }) {
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const signOut = useMutation({
+    mutationFn: logout,
+    // onSettled fires on both an HTTP error and a network failure:
+    // either way the session is gone or unreachable, so clear the
+    // cache and navigate away unconditionally.
+    onSettled: () => {
+      queryClient.clear()
+      void navigate('/login')
+    },
+  })
+
+  return (
+    <header
+      className="flex items-center justify-between border-b border-gray-200 pb-3"
+      aria-label="App bar"
+    >
+      <div className="flex items-baseline gap-6">
+        <Link to="/" className="flex items-center gap-2">
+          <Logo />
+          <h1 className="text-xl font-bold">{site().name}</h1>
+        </Link>
+        <nav className="flex gap-4" aria-label="Primary">
+          <NavLink to="/collection" end className={navClass}>
+            Collection
+          </NavLink>
+          <NavLink to="/add" className={navClass}>
+            Add
+          </NavLink>
+          <NavLink to="/explore" className={navClass}>
+            Explore
+          </NavLink>
+          <NavLink to="/feed" className={navClass}>
+            Feed
+          </NavLink>
+          <NavLink to="/recommendations" className={navClass}>
+            Recommendations
+          </NavLink>
+          {me.roles.includes('admin') && (
+            <NavLink to="/admin" className={navClass}>
+              Admin
+            </NavLink>
+          )}
+        </nav>
+      </div>
+      <div className="flex items-center gap-3">
+        <CurrencySelect />
+        <ThemeToggle />
+        <NavLink
+          to="/account"
+          aria-label="Account"
+          className="flex items-center gap-3 rounded px-1 py-0.5 hover:bg-gray-50"
+        >
+          <Avatar key={me.avatar_url} url={me.avatar_url} label={me.handle} size="md" />
+          <span className="text-sm text-gray-700">@{me.handle}</span>
+        </NavLink>
+        <button
+          onClick={() => signOut.mutate()}
+          disabled={signOut.isPending}
+          className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+        >
+          Log out
+        </button>
+      </div>
+    </header>
+  )
+}
