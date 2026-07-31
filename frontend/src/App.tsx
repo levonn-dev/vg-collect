@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { ApiError } from './api/client'
 import Layout from './components/Layout'
+import PublicShell from './components/PublicShell'
+import About from './pages/About'
 import Account from './pages/Account'
 import AddWizard from './pages/AddWizard'
 import Admin from './pages/Admin'
@@ -9,11 +11,15 @@ import Collection from './pages/Collection'
 import EntryDetail from './pages/EntryDetail'
 import Explore from './pages/Explore'
 import Feed from './pages/Feed'
+import Help from './pages/Help'
 import Home from './pages/Home'
 import Login from './pages/Login'
+import NotFound from './pages/NotFound'
+import Privacy from './pages/Privacy'
 import Profile from './pages/Profile'
 import Recommendations from './pages/Recommendations'
 import SharedShelf from './pages/SharedShelf'
+import Terms from './pages/Terms'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,7 +39,13 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<Login />} />
+          <Route element={<PublicShell />}>
+            <Route path="/login" element={<Login />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
           <Route element={<Layout />}>
             <Route path="/" element={<Home />} />
             <Route path="/collection" element={<Collection />} />
@@ -46,6 +58,7 @@ export default function App() {
             <Route path="/feed" element={<Feed />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/account" element={<Account />} />
+            <Route path="/help" element={<Help />} />
           </Route>
         </Routes>
       </BrowserRouter>

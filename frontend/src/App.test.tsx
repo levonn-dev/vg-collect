@@ -14,7 +14,14 @@ afterEach(() => {
 
 it('boots into the app shell', async () => {
   window.history.pushState({}, '', '/login')
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { providers: [] })))
+  // Logged-out boot: the shell's session probe must get a 401, not a
+  // providers-shaped body - the singleton QueryClient would cache it
+  // as a Me and poison every later test in this file.
+  vi.stubGlobal('fetch', vi.fn((input: string) => {
+    const url = String(input)
+    if (url === '/api/auth/providers') return Promise.resolve(jsonResponse(200, { providers: [] }))
+    return Promise.resolve(jsonResponse(401, { title: 'unauthenticated' }))
+  }))
   render(<App />)
   expect(await screen.findByText('vgkeep')).toBeInTheDocument()
 })
@@ -28,9 +35,11 @@ it('does not retry a 401 and routes to login', async () => {
   render(<App />)
   // The login route renders its own provider buttons region.
   expect(await screen.findByText('Track your game collection.')).toBeInTheDocument()
-  // 401 must not be retried: /api/me is hit exactly once.
+  // 401 must not be retried: each shell probes /api/me exactly once
+  // (Layout's gate, then PublicShell's header probe after the
+  // redirect). Retries would push this past two.
   const meCalls = fetchMock.mock.calls.filter((c) => c[0] === '/api/me')
-  expect(meCalls).toHaveLength(1)
+  expect(meCalls).toHaveLength(2)
 })
 
 // The header's CurrencySelect fetches /api/fx on every authenticated
