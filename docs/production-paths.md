@@ -65,6 +65,9 @@ response-headers policy, and the bff itself runs with
 SERVE_STATIC=false since it no longer serves the bundle. A midpoint
 without a CDN in front is a static-file pod plus an APISIX route split
 between it and the bff.
+The CI build step also owns the `VITE_SITE_*` site-identity variables
+(documented in `.env.example`): set them in the build environment
+before `npm run build`; the bundle carries them from there.
 
 ## Observability hardening
 

@@ -104,6 +104,12 @@ trigger the `frontend-dev` Tilt resource (or run `npm run dev` in
 to the gateway on 8090, so login and cookie flows run against the real
 edge. See `frontend/README.md` for the frontend task list.
 
+Site identity (instance name, operator and legal slots, provider
+credit lists) bakes into the bundle at build time from `VITE_SITE_*`
+variables; see the frontend section of `.env.example`. In dev, Tilt
+derives the credit lists from the same `.env` credentials that enable
+the backend providers.
+
 ## Observability
 
 Every service pushes OTLP straight to a node-local otel-agent collector;

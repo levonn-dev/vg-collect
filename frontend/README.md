@@ -5,6 +5,11 @@ Typed against the BFF OpenAPI contract at `api/bff.yaml`.
 Served in production by the BFF at the same origin; in dev the Vite
 proxy forwards `/api` to the APISIX gateway port-forward on :8090.
 
+Site identity (the VITE_SITE_* slots, footer credit lines) is baked in
+at image build; the dev server on :5173 runs without the values Tilt
+derives for the cluster image, so credits and operator text are absent
+there by design.
+
 ## Dev commands
 
     npm run dev          start the Vite dev server on :5173
