@@ -29,7 +29,7 @@ const linkErrorMessages: Record<string, string> = {
 
 const visibilityOptions = [
   ['private', 'Private - only you'],
-  ['unlisted', 'Unlisted - anyone signed in with your link'],
+  ['unlisted', 'Unlisted - anyone signed in who has your link'],
   ['listed', 'Listed - appears in Explore and search'],
 ] as const
 
