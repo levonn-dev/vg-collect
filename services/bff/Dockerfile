@@ -3,6 +3,14 @@ WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+# Site identity baked into the SPA; unset args fall back in code.
+ARG VITE_SITE_NAME
+ARG VITE_SITE_OPERATOR
+ARG VITE_SITE_CONTACT
+ARG VITE_SITE_JURISDICTION
+ARG VITE_SITE_SOURCE_URL
+ARG VITE_SITE_DATA_SOURCES
+ARG VITE_SITE_AUTH_PROVIDERS
 RUN npm run build
 
 FROM golang:1.26-alpine AS build

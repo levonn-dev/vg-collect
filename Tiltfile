@@ -137,11 +137,33 @@ local_resource(
 )
 
 # ----- bff service -----
+# Frontend site-identity build args. The two CSV lists mirror the
+# backend enablement blocks in this file: a provider shows up in
+# credits and legal text only when its backend half runs real.
+# Explicit VITE_SITE_* values in .env win over derivation.
+_site_args = {k: v for k, v in ENV.items() if k.startswith('VITE_SITE_')}
+if 'VITE_SITE_DATA_SOURCES' not in ENV:
+    _sources = []
+    if ENV.get('IGDB_CLIENT_ID', '') != '' and ENV.get('IGDB_CLIENT_SECRET', '') != '':
+        _sources.append('igdb')
+    if ENV.get('PRICECHARTING_API_KEY', '') != '':
+        _sources.append('pricecharting')
+    # fx is credential-less and the chart defaults fx.mode=real.
+    _sources.append('frankfurter')
+    _site_args['VITE_SITE_DATA_SOURCES'] = ','.join(_sources)
+if 'VITE_SITE_AUTH_PROVIDERS' not in ENV:
+    _providers = []
+    if ENV.get('GOOGLE_CLIENT_ID', '') != '' and ENV.get('GOOGLE_CLIENT_SECRET', '') != '':
+        _providers.append('google')
+    if ENV.get('TWITCH_CLIENT_ID', '') != '' and ENV.get('TWITCH_CLIENT_SECRET', '') != '':
+        _providers.append('twitch')
+    _site_args['VITE_SITE_AUTH_PROVIDERS'] = ','.join(_providers)
 docker_build(
     'vgkeep/bff', '.',
     dockerfile='services/bff/Dockerfile',
     only=['libs/go', 'services/bff', 'frontend'],
     ignore=['frontend/node_modules', 'frontend/dist', 'frontend/playwright-report', 'frontend/test-results'],
+    build_args=_site_args,
 )
 k8s_yaml(helm('deploy/charts/bff', name='bff', namespace='vgkeep'))
 k8s_resource('bff', port_forwards=['8083:8080'],
