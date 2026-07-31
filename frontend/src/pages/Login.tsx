@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { fetchProviders } from '../api/client'
-import Logo from '../components/Logo'
 
 const errorMessages: Record<string, string> = {
   login_failed: 'Login failed. Please try again.',
@@ -37,11 +36,10 @@ export default function Login() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
-      <div className="flex items-center gap-3">
-        <Logo className="h-10 w-auto" />
-        <h1 className="text-3xl font-bold">vgkeep</h1>
-      </div>
+    <main
+      aria-label="Sign in"
+      className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6"
+    >
       <p className="text-gray-600">Track your game collection.</p>
       {error && (
         <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">
