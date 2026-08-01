@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { fetchDashboard, fetchValueHistory } from '../../api/collection'
@@ -15,6 +16,7 @@ import ValueOverTime from './ValueOverTime'
 // whole-collection - price snapshots record aggregate history - and
 // says so in its caption.
 export default function InsightsPanel({ state }: { state: ListState }) {
+  const { t } = useLingui()
   const filterQuery = toFilterQuery(state).toString()
   const [open, setOpen] = useState(false)
   const dashboard = useQuery({
@@ -31,16 +33,16 @@ export default function InsightsPanel({ state }: { state: ListState }) {
   if (dashboard.isError) {
     return (
       <p role="alert" className="mb-4 text-sm text-gray-500">
-        Stats cannot be loaded right now.
+        <Trans>Stats cannot be loaded right now.</Trans>
       </p>
     )
   }
   return (
-    <section aria-label="Insights" className="mb-4 flex flex-col gap-4">
+    <section aria-label={t`Insights`} className="mb-4 flex flex-col gap-4">
       {dashboard.data ? (
         <StatCards dashboard={dashboard.data} />
       ) : (
-        <p className="text-sm text-gray-500">Loading stats...</p>
+        <p className="text-sm text-gray-500"><Trans>Loading stats...</Trans></p>
       )}
       <button
         type="button"
@@ -48,7 +50,7 @@ export default function InsightsPanel({ state }: { state: ListState }) {
         aria-expanded={open}
         className="self-start text-sm text-gray-600 underline hover:text-gray-900"
       >
-        {open ? 'Hide insights' : 'Show insights'}
+        {open ? t`Hide insights` : t`Show insights`}
       </button>
       {open && dashboard.data && (
         <>
@@ -56,7 +58,7 @@ export default function InsightsPanel({ state }: { state: ListState }) {
           {history.data && <ValueOverTime history={history.data} />}
           {history.isError && (
             <p role="alert" className="rounded bg-amber-50 p-3 text-sm text-amber-800">
-              Value history cannot be loaded right now.
+              <Trans>Value history cannot be loaded right now.</Trans>
             </p>
           )}
           <RecsPanel />

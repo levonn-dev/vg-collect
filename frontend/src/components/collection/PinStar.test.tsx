@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { entryFixture, jsonResponse, putBody } from '../../test/fixtures'
+import { renderWithI18n } from '../../test/i18n'
 import PinStar from './PinStar'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -14,7 +15,7 @@ it('PUTs the full baseline with pinned flipped', async () => {
   const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ...e, pinned: true }))
   vi.stubGlobal('fetch', fetchMock)
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
+  renderWithI18n(
     <QueryClientProvider client={qc}>
       <PinStar entry={e} />
     </QueryClientProvider>,
@@ -37,7 +38,7 @@ it('syncs the entry-detail cache with the updated entry (no stale write-back)', 
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, updated)))
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   qc.setQueryData(['entry', e.id], { ...e, notes: 'stale from before the pin' })
-  render(
+  renderWithI18n(
     <QueryClientProvider client={qc}>
       <PinStar entry={e} />
     </QueryClientProvider>,
@@ -48,7 +49,7 @@ it('syncs the entry-detail cache with the updated entry (no stale write-back)', 
 
 it('reads as Unpin when pinned', () => {
   const qc = new QueryClient()
-  render(
+  renderWithI18n(
     <QueryClientProvider client={qc}>
       <PinStar entry={entryFixture({ pinned: true })} />
     </QueryClientProvider>,

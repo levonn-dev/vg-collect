@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useState } from 'react'
 import type { EntryCreate } from '../../api/collection'
 import PlatformPicker from '../catalog/PlatformPicker'
@@ -23,6 +24,7 @@ interface CustomStepProps {
 // CustomStep collects the display facts for an item no provider lists.
 // These stay user-owned and editable, unlike catalog snapshots.
 export default function CustomStep({ initialValues, onBack, onNext }: CustomStepProps) {
+  const { t } = useLingui()
   const [v, setV] = useState<CustomValues>(() => initialValues ?? {
     displayName: '', itemType: 'game', platformName: '', platformIgdbId: undefined, firstReleaseDate: '', coverUrl: '',
   })
@@ -35,21 +37,23 @@ export default function CustomStep({ initialValues, onBack, onNext }: CustomStep
         e.preventDefault()
         if (v.displayName.trim() !== '') onNext({ ...v, displayName: v.displayName.trim() })
       }}
-      aria-label="Custom item"
+      aria-label={t`Custom item`}
       className="flex flex-col gap-3"
     >
-      <h3 className="text-lg font-semibold">Custom item</h3>
+      <h3 className="text-lg font-semibold"><Trans>Custom item</Trans></h3>
       <p className="max-w-prose text-sm text-gray-600">
-        For items search cannot find: reproductions, fan translations, homebrew, self-built
-        hardware. A variant of a searchable item (a first print, a color variant) belongs on
-        that item instead - pick it from search and note the variant in the edition field.
+        <Trans>
+          For items search cannot find: reproductions, fan translations, homebrew, self-built
+          hardware. A variant of a searchable item (a first print, a color variant) belongs on
+          that item instead - pick it from search and note the variant in the edition field.
+        </Trans>
       </p>
       <label className={labelClass}>
-        Name
+        <Trans>Name</Trans>
         <input value={v.displayName} onChange={(e) => setV({ ...v, displayName: e.target.value })} required className={inputClass} />
       </label>
       <label className={labelClass}>
-        Item type
+        <Trans>Item type</Trans>
         <select
           value={v.itemType}
           onChange={(e) => setV({ ...v, itemType: e.target.value as CustomValues['itemType'] })}
@@ -65,24 +69,24 @@ export default function CustomStep({ initialValues, onBack, onNext }: CustomStep
         onChange={(pv) => setV({ ...v, platformName: pv.platformName, platformIgdbId: pv.platformIgdbId })}
       />
       <label className={labelClass}>
-        Release date
+        <Trans>Release date</Trans>
         <input type="date" value={v.firstReleaseDate} onChange={(e) => setV({ ...v, firstReleaseDate: e.target.value })} className={inputClass} />
       </label>
       <label className={labelClass}>
-        Cover image link (optional)
+        <Trans>Cover image link (optional)</Trans>
         <input
           value={v.coverUrl}
           onChange={(e) => setV({ ...v, coverUrl: e.target.value })}
-          placeholder="https://..."
+          placeholder={t`https://...`}
           className={inputClass}
         />
       </label>
       <div className="flex gap-2">
         <button type="button" onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
-          Back
+          <Trans>Back</Trans>
         </button>
         <button type="submit" className="rounded bg-gray-900 px-4 py-1 text-sm text-white hover:bg-gray-700">
-          Continue
+          <Trans>Continue</Trans>
         </button>
       </div>
     </form>

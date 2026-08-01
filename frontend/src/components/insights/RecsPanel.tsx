@@ -1,20 +1,22 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { fetchRecommendations } from '../../api/catalog'
 
 export default function RecsPanel() {
+  const { t } = useLingui()
   const recs = useQuery({ queryKey: ['recommendations'], queryFn: fetchRecommendations })
   return (
-    <section aria-label="Recommendations" className="rounded border border-gray-200 p-4">
+    <section aria-label={t`Recommendations`} className="rounded border border-gray-200 p-4">
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-        Recommended next
+        <Trans>Recommended next</Trans>
       </h3>
-      {recs.isPending && <p className="text-sm text-gray-500">Scoring your library...</p>}
+      {recs.isPending && <p className="text-sm text-gray-500"><Trans>Scoring your library...</Trans></p>}
       {recs.isError && (
-        <p className="text-sm text-gray-500">Recommendations are unavailable right now.</p>
+        <p className="text-sm text-gray-500"><Trans>Recommendations are unavailable right now.</Trans></p>
       )}
       {recs.data && recs.data.recommendations.length === 0 && (
-        <p className="text-sm text-gray-500">Add and rate a few games to get suggestions.</p>
+        <p className="text-sm text-gray-500"><Trans>Add and rate a few games to get suggestions.</Trans></p>
       )}
       <ul className="flex flex-col gap-1 text-sm">
         {recs.data?.recommendations.slice(0, 5).map((r) => (
@@ -25,7 +27,7 @@ export default function RecsPanel() {
         ))}
       </ul>
       <Link to="/recommendations" className="mt-2 inline-block text-sm underline">
-        See all recommendations
+        <Trans>See all recommendations</Trans>
       </Link>
     </section>
   )

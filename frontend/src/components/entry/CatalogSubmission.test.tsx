@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../test/fixtures'
+import { renderWithI18n } from '../../test/i18n'
 import CatalogSubmission from './CatalogSubmission'
 
 function renderBlock() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  return render(
+  return renderWithI18n(
     <QueryClientProvider client={qc}>
       <CatalogSubmission entryId="e1" />
     </QueryClientProvider>,

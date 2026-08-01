@@ -1,3 +1,6 @@
+import { Trans, useLingui } from '@lingui/react/macro'
+import { t } from '@lingui/core/macro'
+import type { I18n } from '@lingui/core'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { deleteProduct, fetchCommunityProducts } from '../../api/admin'
@@ -5,12 +8,16 @@ import { ApiError } from '../../api/client'
 import { releaseYear } from '../../lib/format'
 import ItemTypeIcon from '../ItemTypeIcon'
 
-function deleteErrorMessage(e: unknown): string {
+// t(i18n) throughout this file, component included: deleteErrorMessage
+// is a plain function (cannot call useLingui() itself), so it takes the
+// caller's i18n explicitly; the component uses the same explicit form
+// for its own strings rather than importing a second, same-named t.
+function deleteErrorMessage(e: unknown, i18n: I18n): string {
   if (e instanceof ApiError) {
-    if (e.code === 'product_referenced') return 'In use by existing entries - cannot delete.'
+    if (e.code === 'product_referenced') return t(i18n)`In use by existing entries - cannot delete.`
     if (e.message) return e.message
   }
-  return 'The product could not be deleted.'
+  return t(i18n)`The product could not be deleted.`
 }
 
 // CommunityProducts lists every admin-minted, un-promoted community
@@ -21,6 +28,7 @@ function deleteErrorMessage(e: unknown): string {
 // product_referenced, shown inline on that row only, so a single
 // blocked row never hides the rest of the list.
 export default function CommunityProducts() {
+  const { i18n } = useLingui()
   const queryClient = useQueryClient()
   const [blocked, setBlocked] = useState<Record<string, string>>({})
   const list = useInfiniteQuery({
@@ -47,7 +55,7 @@ export default function CommunityProducts() {
       clearBlocked(productId)
       void queryClient.invalidateQueries({ queryKey: ['admin'] })
     },
-    onError: (e, productId) => setBlocked((prev) => ({ ...prev, [productId]: deleteErrorMessage(e) })),
+    onError: (e, productId) => setBlocked((prev) => ({ ...prev, [productId]: deleteErrorMessage(e, i18n) })),
   })
 
   const remove = (productId: string) => {
@@ -55,29 +63,29 @@ export default function CommunityProducts() {
     del.mutate(productId)
   }
 
-  if (list.isPending) return <p className="mt-4 text-sm text-gray-500">Loading community products...</p>
+  if (list.isPending) return <p className="mt-4 text-sm text-gray-500"><Trans>Loading community products...</Trans></p>
   if (list.isError)
     return (
       <p role="alert" className="mt-4 text-sm text-red-700">
-        Community products could not be loaded.
+        <Trans>Community products could not be loaded.</Trans>
       </p>
     )
 
   const products = list.data.pages.flatMap((p) => p.products)
 
   return (
-    <section aria-label="Community products" className="mt-6">
-      <h3 className="text-base font-semibold">Community products</h3>
+    <section aria-label={t(i18n)`Community products`} className="mt-6">
+      <h3 className="text-base font-semibold"><Trans>Community products</Trans></h3>
       <p className="mt-1 text-sm text-gray-500">
-        Community catalog products; delete removes unused ones - products referenced by entries are protected.
+        <Trans>Community catalog products; delete removes unused ones - products referenced by entries are protected.</Trans>
       </p>
       <table className="mt-2 w-full text-left text-sm">
         <thead>
           <tr className="border-b border-gray-200 text-gray-500">
-            <th className="py-1 pr-2 font-normal">Name</th>
-            <th className="py-1 pr-2 font-normal">Platform</th>
-            <th className="py-1 pr-2 font-normal">Release</th>
-            <th className="py-1 pr-2 font-normal">Updated</th>
+            <th className="py-1 pr-2 font-normal"><Trans>Name</Trans></th>
+            <th className="py-1 pr-2 font-normal"><Trans>Platform</Trans></th>
+            <th className="py-1 pr-2 font-normal"><Trans>Release</Trans></th>
+            <th className="py-1 pr-2 font-normal"><Trans>Updated</Trans></th>
             <th className="py-1 font-normal"></th>
           </tr>
         </thead>
@@ -109,7 +117,7 @@ export default function CommunityProducts() {
                   disabled={del.isPending && del.variables === p.id}
                   className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50 disabled:opacity-50"
                 >
-                  Delete
+                  <Trans>Delete</Trans>
                 </button>
                 {blocked[p.id] && (
                   <p role="alert" className="mt-1 text-xs text-red-700">
@@ -128,7 +136,7 @@ export default function CommunityProducts() {
           disabled={list.isFetchingNextPage}
           className="mt-2 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
         >
-          Load more
+          <Trans>Load more</Trans>
         </button>
       )}
     </section>

@@ -32,6 +32,13 @@ tasks:
     cmds:
      - npm run gen
 
+  extract:
+    desc: Extract translatable strings into src/locales/*.po (root gen runs this; CI fails on drift)
+    deps:
+      - deps
+    cmds:
+      - npm run extract
+
   lint:
     desc: eslint (type-aware) over the SPA sources
     deps:

@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../test/fixtures'
+import { renderWithI18n } from '../../test/i18n'
 import { renderWithMoney } from '../../test/money'
 import DetailsStep, { defaultDetails, detailsToCreate } from './DetailsStep'
 
@@ -8,7 +9,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 it('submits the collected values', async () => {
   const onNext = vi.fn()
-  render(<DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={onNext} />)
+  renderWithI18n(<DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={onNext} />)
   await userEvent.selectOptions(screen.getByLabelText('Packaging'), 'sealed')
   await userEvent.type(screen.getByLabelText(/price paid/i), '129.50')
   await userEvent.selectOptions(screen.getByLabelText('Status'), 'shelved')
@@ -20,7 +21,7 @@ it('submits the collected values', async () => {
 
 it('clears box and manual when packaging goes loose', async () => {
   const onNext = vi.fn()
-  render(<DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={onNext} />)
+  renderWithI18n(<DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={onNext} />)
   // The cib default carries both flags on.
   expect(screen.getByRole('checkbox', { name: /has box/i })).toBeChecked()
   expect(screen.getByRole('checkbox', { name: /has manual/i })).toBeChecked()
@@ -36,7 +37,7 @@ it('clears box and manual when packaging goes loose', async () => {
 
 it('checks box and manual when packaging goes cib or sealed', async () => {
   const onNext = vi.fn()
-  render(<DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={onNext} />)
+  renderWithI18n(<DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={onNext} />)
   await userEvent.selectOptions(screen.getByLabelText('Packaging'), 'loose')
   expect(screen.getByRole('checkbox', { name: /has box/i })).not.toBeChecked()
   await userEvent.selectOptions(screen.getByLabelText('Packaging'), 'sealed')
@@ -70,13 +71,13 @@ it('stamps the create payload with the given currency', () => {
 })
 
 it('does not render a currency input and labels price paid with the given currency', () => {
-  render(<DetailsStep heading="Copy details" currency="EUR" onBack={vi.fn()} onNext={vi.fn()} />)
+  renderWithI18n(<DetailsStep heading="Copy details" currency="EUR" onBack={vi.fn()} onNext={vi.fn()} />)
   expect(screen.queryByLabelText(/^currency$/i)).not.toBeInTheDocument()
   expect(screen.getByText(/price paid \(eur\)/i)).toBeInTheDocument()
 })
 
 it('renders no listing-match row without the callback (custom and hardware paths)', () => {
-  render(<DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={vi.fn()} />)
+  renderWithI18n(<DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={vi.fn()} />)
   expect(screen.queryByText(/price listing match/i)).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Match manually' })).not.toBeInTheDocument()
 })
@@ -107,7 +108,7 @@ it('opens the listing dialog, stores the pick, and clears it', async () => {
 
 it('renders the stored choice as a chip and clears it', async () => {
   const onManualMatchChange = vi.fn()
-  render(
+  renderWithI18n(
     <DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={vi.fn()}
       manualMatch={{ pcProductId: 7042, name: 'Chrono Trigger [PAL]' }}
       onManualMatchChange={onManualMatchChange} manualMatchQuery="Chrono Trigger" />,

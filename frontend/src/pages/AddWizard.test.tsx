@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { entryFixture, fxRatesFixture, jsonResponse, meFixture, putBody } from '../test/fixtures'
+import { renderWithI18n } from '../test/i18n'
 import AddWizard from './AddWizard'
 
 const searchAnswer = {
@@ -39,7 +40,7 @@ function renderWizard(
   if (rates) qc.setQueryData(['fx'], fxRatesFixture())
   return {
     qc,
-    ...render(
+    ...renderWithI18n(
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={[path]}>
           <Routes>

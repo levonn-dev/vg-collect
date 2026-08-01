@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core'
+import { I18nProvider } from '@lingui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -5,11 +7,18 @@ import FollowButton from './FollowButton'
 
 afterEach(() => vi.unstubAllGlobals())
 
+// Wrapped inline (not via the renderWithI18n helper): the first test
+// below calls rerender() with a fresh element tree, which must carry
+// the same I18nProvider ancestor as the initial render, or React would
+// swap out the whole tree - including the i18n context - rather than
+// reconcile it in place.
 function renderButton(qc: QueryClient, viewerFollows: boolean) {
   return render(
-    <QueryClientProvider client={qc}>
-      <FollowButton userId="u1" handle="Alice_Prime" viewerFollows={viewerFollows} />
-    </QueryClientProvider>,
+    <I18nProvider i18n={i18n}>
+      <QueryClientProvider client={qc}>
+        <FollowButton userId="u1" handle="Alice_Prime" viewerFollows={viewerFollows} />
+      </QueryClientProvider>
+    </I18nProvider>,
   )
 }
 
@@ -22,9 +31,11 @@ it('PUTs to follow, then DELETEs to unfollow once the caller re-renders with the
   expect(fetchMock).toHaveBeenLastCalledWith('/api/social/follows/u1', { method: 'PUT' })
 
   rerender(
-    <QueryClientProvider client={qc}>
-      <FollowButton userId="u1" handle="Alice_Prime" viewerFollows />
-    </QueryClientProvider>,
+    <I18nProvider i18n={i18n}>
+      <QueryClientProvider client={qc}>
+        <FollowButton userId="u1" handle="Alice_Prime" viewerFollows />
+      </QueryClientProvider>
+    </I18nProvider>,
   )
   await userEvent.click(screen.getByRole('button', { name: 'Following' }))
   expect(fetchMock).toHaveBeenLastCalledWith('/api/social/follows/u1', { method: 'DELETE' })

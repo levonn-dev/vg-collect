@@ -15,9 +15,10 @@ it, configuration, datastores, telemetry, its dashboard, failure modes
 and triage, admin levers, capacity and rollout.
 
 - [stack.md](stack.md) - the whole application: topology, bring-up and
-  teardown, ports, the dashboards catalog, alerting posture, telemetry
-  pipeline operations, secrets flow, and stack-level failure scenarios
-  (the cross-service and infrastructure alerts triage there)
+  teardown, ports, the dashboards catalog, frontend telemetry, alerting
+  posture, telemetry pipeline operations, secrets flow, and stack-level
+  failure scenarios (the cross-service and infrastructure alerts triage
+  there)
 - [auth.md](auth.md) - auth service: OIDC login and token issuing end
   to end; telemetry reference, dashboard vg-auth, failure triage,
   signing-key rotation and session revocation levers
@@ -31,6 +32,10 @@ and triage, admin levers, capacity and rollout.
 - [enrichment.md](enrichment.md) - enrichment service: catalog and
   pricing quarantine, providers and stub modes, the nightly refresh
   walk; telemetry reference, dashboard vg-enrichment, moderation levers
+- [frontend.md](frontend.md) - the SPA's own telemetry: locale, prose
+  fallback, uncaught errors, network failures, and web vitals;
+  dashboard vg-frontend, failure scenarios. Not a service runbook in
+  the usual sense - no pods, no server logs, no alert rules
 - [social.md](social.md) - social service: follows, likes, comments,
   and the activity feed over collection's shelves and user's profiles;
   telemetry reference, dashboard vg-social, failure triage, purge

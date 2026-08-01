@@ -1,4 +1,5 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
+import { renderWithI18n } from '../test/i18n'
 import CopyButton from './CopyButton'
 
 // Mirrors CopyButton's own (unexported) revert window.
@@ -27,13 +28,13 @@ afterEach(() => {
 
 it('reads Copy link by default', () => {
   stubClipboard(vi.fn().mockResolvedValue(undefined))
-  render(<CopyButton text="https://example.test/x" />)
+  renderWithI18n(<CopyButton text="https://example.test/x" />)
   expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument()
 })
 
 it('reads a custom label at rest', () => {
   stubClipboard(vi.fn().mockResolvedValue(undefined))
-  render(<CopyButton text="https://example.test/x" label="Copy profile link" />)
+  renderWithI18n(<CopyButton text="https://example.test/x" label="Copy profile link" />)
   expect(screen.getByRole('button', { name: 'Copy profile link' })).toBeInTheDocument()
 })
 
@@ -41,7 +42,7 @@ it('keeps a stable accessible name across a click while its visible text and a s
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const writeText = vi.fn().mockResolvedValue(undefined)
   stubClipboard(writeText)
-  render(<CopyButton text="https://example.test/shelf" />)
+  renderWithI18n(<CopyButton text="https://example.test/shelf" />)
   // Held from before the click and re-asserted after: the accessible
   // name is aria-label, not the swapping text content, so the same
   // query still matches the same element post-click.
@@ -67,7 +68,7 @@ it('keeps a stable accessible name across a click while its visible text and a s
 it('announces Copy failed through the revert window on a rejected write, with no unhandled rejection', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   stubClipboard(vi.fn().mockRejectedValue(new Error('denied')))
-  render(<CopyButton text="https://example.test/shelf" />)
+  renderWithI18n(<CopyButton text="https://example.test/shelf" />)
   const button = screen.getByRole('button', { name: 'Copy link' })
 
   // No unhandled rejection reaching here (vitest fails the run on one
@@ -86,7 +87,7 @@ it('announces Copy failed through the revert window on a rejected write, with no
 it('re-clicking mid-window restarts the revert timer instead of letting the stale one fire early', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   stubClipboard(vi.fn().mockResolvedValue(undefined))
-  render(<CopyButton text="https://example.test/shelf" />)
+  renderWithI18n(<CopyButton text="https://example.test/shelf" />)
   const button = screen.getByRole('button', { name: 'Copy link' })
 
   await click(button)
@@ -127,7 +128,7 @@ it("a later overlapping click's settle clears an earlier still-pending click's t
     .mockReturnValueOnce(new Promise<void>((resolve) => (resolveA = resolve)))
     .mockReturnValueOnce(new Promise<void>((resolve) => (resolveB = resolve)))
   stubClipboard(writeText)
-  render(<CopyButton text="https://example.test/shelf" />)
+  renderWithI18n(<CopyButton text="https://example.test/shelf" />)
   const button = screen.getByRole('button', { name: 'Copy link' })
 
   act(() => {
@@ -179,7 +180,7 @@ it("a later overlapping click's settle clears an earlier still-pending click's t
 it('unmounting mid-window clears the pending timer, firing no update and no act warning', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   stubClipboard(vi.fn().mockResolvedValue(undefined))
-  const { unmount } = render(<CopyButton text="https://example.test/shelf" />)
+  const { unmount } = renderWithI18n(<CopyButton text="https://example.test/shelf" />)
   const button = screen.getByRole('button', { name: 'Copy link' })
 
   await click(button)
@@ -199,7 +200,7 @@ it('unmounting while a click\'s clipboard write is still pending drops the resul
   let resolveWrite: () => void = () => {}
   const writeText = vi.fn(() => new Promise<void>((resolve) => (resolveWrite = resolve)))
   stubClipboard(writeText)
-  const { unmount } = render(<CopyButton text="https://example.test/shelf" />)
+  const { unmount } = renderWithI18n(<CopyButton text="https://example.test/shelf" />)
   const button = screen.getByRole('button', { name: 'Copy link' })
 
   act(() => {

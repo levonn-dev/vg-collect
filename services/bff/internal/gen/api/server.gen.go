@@ -1761,6 +1761,9 @@ type GetFeedParams struct {
 // GetFeedParamsTab defines parameters for GetFeed.
 type GetFeedParamsTab string
 
+// ProxyMetricsJSONBody defines parameters for ProxyMetrics.
+type ProxyMetricsJSONBody = openapi_types.File
+
 // ProxyTracesJSONBody defines parameters for ProxyTraces.
 type ProxyTracesJSONBody = openapi_types.File
 
@@ -1819,6 +1822,9 @@ type ReorderEntryJSONRequestBody = ReorderRequest
 
 // UpdateMeJSONRequestBody defines body for UpdateMe for application/json ContentType.
 type UpdateMeJSONRequestBody = UpdateMeRequest
+
+// ProxyMetricsJSONRequestBody defines body for ProxyMetrics for application/json ContentType.
+type ProxyMetricsJSONRequestBody = ProxyMetricsJSONBody
 
 // ProxyTracesJSONRequestBody defines body for ProxyTraces for application/json ContentType.
 type ProxyTracesJSONRequestBody = ProxyTracesJSONBody
@@ -1957,6 +1963,9 @@ type ServerInterface interface {
 	// Unlink a provider login from the signed-in account
 	// (DELETE /api/me/identities/{identityId})
 	DeleteMyIdentity(w http.ResponseWriter, r *http.Request, identityId openapi_types.UUID)
+	// Relay browser OTLP metric batches to the in-cluster collector
+	// (POST /api/otlp/v1/metrics)
+	ProxyMetrics(w http.ResponseWriter, r *http.Request)
 	// Relay browser OTLP trace batches to the in-cluster collector
 	// (POST /api/otlp/v1/traces)
 	ProxyTraces(w http.ResponseWriter, r *http.Request)
@@ -3143,6 +3152,20 @@ func (siw *ServerInterfaceWrapper) DeleteMyIdentity(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ProxyMetrics operation middleware
+func (siw *ServerInterfaceWrapper) ProxyMetrics(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ProxyMetrics(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ProxyTraces operation middleware
 func (siw *ServerInterfaceWrapper) ProxyTraces(w http.ResponseWriter, r *http.Request) {
 
@@ -3918,6 +3941,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("PATCH "+options.BaseURL+"/api/me", wrapper.UpdateMe)
 	m.HandleFunc("GET "+options.BaseURL+"/api/me/identities", wrapper.GetMyIdentities)
 	m.HandleFunc("DELETE "+options.BaseURL+"/api/me/identities/{identityId}", wrapper.DeleteMyIdentity)
+	m.HandleFunc("POST "+options.BaseURL+"/api/otlp/v1/metrics", wrapper.ProxyMetrics)
 	m.HandleFunc("POST "+options.BaseURL+"/api/otlp/v1/traces", wrapper.ProxyTraces)
 	m.HandleFunc("GET "+options.BaseURL+"/api/platforms", wrapper.ListPlatforms)
 	m.HandleFunc("POST "+options.BaseURL+"/api/products/resolve", wrapper.ResolveProduct)

@@ -160,6 +160,8 @@ against AWS Secrets Manager in the documented production path.
 - `deploy/charts/` Helm (per-service + platform)
 - `docs/` diagrams, runbooks, production paths, brand assets (`docs/brand/`).
 
+Translations: see `docs/translations.md` to contribute a language.
+
 ## Status
 
 All services and features to date are complete and verified end to end

@@ -1,3 +1,6 @@
+import { Trans, useLingui } from '@lingui/react/macro'
+import { t } from '@lingui/core/macro'
+import type { I18n } from '@lingui/core'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { deleteProduct, setProductMapping } from '../../api/admin'
@@ -10,17 +13,21 @@ interface MappingFixProps {
   onDone: () => void
 }
 
-function fixErrorMessage(e: unknown): string {
+// t(i18n) throughout this file, component included: fixErrorMessage is
+// a plain function (cannot call useLingui() itself), so it takes the
+// caller's i18n explicitly; the component uses the same explicit form
+// for its own strings rather than importing a second, same-named t.
+function fixErrorMessage(e: unknown, i18n: I18n): string {
   if (e instanceof ApiError) {
     // The server's identity_taken detail names the holding product;
     // surface it verbatim so the admin can look the holder up.
     if (e.code === 'identity_taken')
-      return e.message || 'Another product already carries that identity - the mapping was not changed.'
-    if (e.code === 'unknown_pc_product') return 'PriceCharting does not know that listing.'
-    if (e.code === 'upstream_unavailable') return 'The price provider is unavailable - try again.'
+      return e.message || t(i18n)`Another product already carries that identity - the mapping was not changed.`
+    if (e.code === 'unknown_pc_product') return t(i18n)`PriceCharting does not know that listing.`
+    if (e.code === 'upstream_unavailable') return t(i18n)`The price provider is unavailable - try again.`
     if (e.message) return e.message
   }
-  return 'The mapping change failed.'
+  return t(i18n)`The mapping change failed.`
 }
 
 // MappingFix is the admin correction surface for one product: set a
@@ -29,6 +36,7 @@ function fixErrorMessage(e: unknown): string {
 // residue whose listings all belong to siblings - park it with Hold
 // (the same PUT null; the walk stops retrying, any set lifts it).
 export default function MappingFix({ product, onDone }: MappingFixProps) {
+  const { i18n } = useLingui()
   const [pickerOpen, setPickerOpen] = useState(false)
   const fix = useMutation({
     mutationFn: (pcProductId: number | null) => setProductMapping(product.id, pcProductId),
@@ -38,7 +46,7 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
   const clear = () => {
     if (
       !window.confirm(
-        'Clear this mapping? The product becomes unmatched and is held out of the nightly re-match walk.',
+        t(i18n)`Clear this mapping? The product becomes unmatched and is held out of the nightly re-match walk.`,
       )
     )
       return
@@ -48,7 +56,7 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
   const hold = () => {
     if (
       !window.confirm(
-        'Hold this product out of the nightly re-match walk? Setting any mapping lifts the hold.',
+        t(i18n)`Hold this product out of the nightly re-match walk? Setting any mapping lifts the hold.`,
       )
     )
       return
@@ -63,7 +71,7 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
   const remove = () => {
     if (
       !window.confirm(
-        'Delete this product from the catalog? Only unmatched products that no entries reference can be deleted.',
+        t(i18n)`Delete this product from the catalog? Only unmatched products that no entries reference can be deleted.`,
       )
     )
       return
@@ -72,19 +80,20 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
 
   const pc = product.pricecharting
   return (
-    <div className="mt-2 rounded border border-gray-200 p-3" aria-label={`Fix mapping for ${product.name}`}>
+    <div className="mt-2 rounded border border-gray-200 p-3" aria-label={t(i18n)`Fix mapping for ${product.name}`}>
       <p className="text-sm">
         {pc ? (
-          <>
-            Mapped to &quot;{pc.pc_name}&quot; ({pc.console_name}), match{' '}
-            {Math.round(pc.match_confidence * 100)}%{pc.verified && ', verified'}
-          </>
+          pc.verified ? (
+            t(i18n)`Mapped to "${pc.pc_name}" (${pc.console_name}), match ${Math.round(pc.match_confidence * 100)}%, verified`
+          ) : (
+            t(i18n)`Mapped to "${pc.pc_name}" (${pc.console_name}), match ${Math.round(pc.match_confidence * 100)}%`
+          )
         ) : (
-          <>Unmatched</>
+          <Trans>Unmatched</Trans>
         )}
         {product.match_hold && (
           <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-semibold text-amber-800">
-            held
+            <Trans>held</Trans>
           </span>
         )}
       </p>
@@ -95,7 +104,7 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
           disabled={fix.isPending}
           className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
         >
-          Choose listing
+          <Trans>Choose listing</Trans>
         </button>
         {pc && (
           <button
@@ -104,7 +113,7 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
             disabled={fix.isPending}
             className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
           >
-            Clear mapping
+            <Trans>Clear mapping</Trans>
           </button>
         )}
         {!pc && !product.match_hold && (
@@ -114,7 +123,7 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
             disabled={fix.isPending}
             className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
           >
-            Hold
+            <Trans>Hold</Trans>
           </button>
         )}
         {!pc && (
@@ -124,13 +133,13 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
             disabled={fix.isPending || del.isPending}
             className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
           >
-            Delete
+            <Trans>Delete</Trans>
           </button>
         )}
       </div>
       {(fix.isError || del.isError) && (
         <p role="alert" className="mt-2 text-sm text-red-700">
-          {fixErrorMessage(fix.isError ? fix.error : del.error)}
+          {fixErrorMessage(fix.isError ? fix.error : del.error, i18n)}
         </p>
       )}
       {pickerOpen && (

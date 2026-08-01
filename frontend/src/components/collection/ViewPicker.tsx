@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createView, deleteView, fetchViews, updateView } from '../../api/collection'
 import type { ListState } from '../../lib/listParams'
@@ -19,6 +20,7 @@ interface ViewPickerProps {
 // API still calls these views (SavedView, fetchViews, toViewParams,
 // ...); this component's copy calls them shelves.
 export default function ViewPicker({ state, onApply }: ViewPickerProps) {
+  const { t } = useLingui()
   const queryClient = useQueryClient()
   const views = useQuery({ queryKey: ['views'], queryFn: fetchViews })
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['views'] })
@@ -68,16 +70,16 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
   }
 
   return (
-    <section aria-label="Shelf picker" className="mb-3 flex flex-col gap-2">
+    <section aria-label={t`Shelf picker`} className="mb-3 flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2 text-sm font-medium">
-          Shelf
+          <Trans>Shelf</Trans>
           <select
             value={state.viewId ?? ''}
             onChange={(e) => e.target.value && applyView(e.target.value)}
             className="rounded border border-gray-300 px-2 py-1 text-sm"
           >
-            <option value="">Choose...</option>
+            <option value="">{t`Choose...`}</option>
             {views.data?.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.name}
@@ -88,7 +90,7 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
         <button
           type="button"
           onClick={() => {
-            const name = window.prompt('Name this shelf')
+            const name = window.prompt(t`Name this shelf`)
             if (name?.trim()) {
               resetErrors()
               save.mutate(name.trim())
@@ -97,7 +99,7 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
           disabled={save.isPending}
           className="rounded border border-gray-300 px-2 py-1 text-sm enabled:hover:bg-gray-50 disabled:opacity-50"
         >
-          Save shelf...
+          <Trans>Save shelf...</Trans>
         </button>
         {state.viewId && (
           <>
@@ -110,12 +112,12 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
               disabled={update.isPending}
               className="rounded border border-gray-300 px-2 py-1 text-sm enabled:hover:bg-gray-50 disabled:opacity-50"
             >
-              Update shelf
+              <Trans>Update shelf</Trans>
             </button>
             <button
               type="button"
               onClick={() => {
-                if (window.confirm('Delete this shelf?')) {
+                if (window.confirm(t`Delete this shelf?`)) {
                   resetErrors()
                   remove.mutate()
                 }
@@ -123,13 +125,13 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
               disabled={remove.isPending}
               className="rounded border border-gray-300 px-2 py-1 text-sm text-red-700 enabled:hover:bg-red-50 disabled:opacity-50"
             >
-              Delete shelf
+              <Trans>Delete shelf</Trans>
             </button>
           </>
         )}
         {error && (
           <p role="alert" className="text-xs text-red-700">
-            {error.message || 'The shelf operation failed.'}
+            {error.message || t`The shelf operation failed.`}
           </p>
         )}
       </div>

@@ -1156,11 +1156,12 @@ func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 	h.relayCollection(w, r, res, err)
 }
 
-// ProxyTraces relays browser OTLP trace batches to the collector
-// agent verbatim. Session-gated like every /api route; the body is
+// proxyOTLP relays a browser OTLP batch to the collector agent
+// verbatim; ProxyTraces and ProxyMetrics are thin wrappers selecting
+// the signal. Session-gated like every /api route; the body is
 // capped; the collector's response status and body pass through so
 // the web SDK sees real OTLP semantics. Never cached.
-func (h *Handlers) ProxyTraces(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) proxyOTLP(w http.ResponseWriter, r *http.Request, signal string) {
 	if _, _, ok := session.FromContext(r.Context()); !ok {
 		h.unauthorized(w, r)
 		return
@@ -1176,7 +1177,7 @@ func (h *Handlers) ProxyTraces(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, h.otlpProxyURL+"/v1/traces", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, h.otlpProxyURL+"/v1/"+signal, bytes.NewReader(body))
 	if err != nil {
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collector request could not be built")
 		return
@@ -1200,6 +1201,16 @@ func (h *Handlers) ProxyTraces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeRelay(w, res.StatusCode, res.Header.Get("Content-Type"), out)
+}
+
+// ProxyTraces relays browser OTLP trace batches to the collector agent.
+func (h *Handlers) ProxyTraces(w http.ResponseWriter, r *http.Request) {
+	h.proxyOTLP(w, r, "traces")
+}
+
+// ProxyMetrics relays browser OTLP metric batches to the collector agent.
+func (h *Handlers) ProxyMetrics(w http.ResponseWriter, r *http.Request) {
+	h.proxyOTLP(w, r, "metrics")
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

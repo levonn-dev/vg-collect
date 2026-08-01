@@ -1,13 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Product } from '../../api/catalog'
 import { jsonResponse, putBody } from '../../test/fixtures'
+import { renderWithI18n } from '../../test/i18n'
 import MappingFix from './MappingFix'
 
 function renderFix(product: Product, onDone = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  render(
+  renderWithI18n(
     <QueryClientProvider client={qc}>
       <MappingFix product={product} onDone={onDone} />
     </QueryClientProvider>,

@@ -1,3 +1,4 @@
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { fetchSubmissions } from '../../api/admin'
@@ -9,6 +10,7 @@ import ReviewPanel from './ReviewPanel'
 // fields); a verdict invalidates the admin queries so resolved rows
 // leave the list.
 export default function SubmissionsQueue() {
+  const { t } = useLingui()
   const queryClient = useQueryClient()
   const [reviewing, setReviewing] = useState<AdminSubmission | null>(null)
   // A transient notice the panel carries up on close: a raced 409
@@ -31,11 +33,11 @@ export default function SubmissionsQueue() {
     void queryClient.invalidateQueries({ queryKey: ['admin'] })
   }
 
-  if (list.isPending) return <p className="mt-4 text-sm text-gray-500">Loading queue...</p>
+  if (list.isPending) return <p className="mt-4 text-sm text-gray-500"><Trans>Loading queue...</Trans></p>
   if (list.isError)
     return (
       <p role="alert" className="mt-4 text-sm text-red-700">
-        The queue could not be loaded.
+        <Trans>The queue could not be loaded.</Trans>
       </p>
     )
 
@@ -43,8 +45,10 @@ export default function SubmissionsQueue() {
   const total = list.data.pages[0].total_count
 
   return (
-    <section aria-label="Catalog submissions" className="mt-6">
-      <h3 className="text-base font-semibold">{total} pending {total === 1 ? 'submission' : 'submissions'}</h3>
+    <section aria-label={t`Catalog submissions`} className="mt-6">
+      <h3 className="text-base font-semibold">
+        <Plural value={total} one="# pending submission" other="# pending submissions" />
+      </h3>
       {notice && (
         <p role="status" className="mt-2 rounded bg-amber-50 p-2 text-sm text-amber-800">
           {notice}
@@ -53,12 +57,12 @@ export default function SubmissionsQueue() {
       <table className="mt-2 w-full text-left text-sm">
         <thead>
           <tr className="border-b border-gray-200 text-gray-500">
-            <th className="py-1 pr-2 font-normal">Proposed name</th>
-            <th className="py-1 pr-2 font-normal">Type</th>
-            <th className="py-1 pr-2 font-normal">Platform</th>
-            <th className="py-1 pr-2 font-normal">Region / edition</th>
-            <th className="py-1 pr-2 font-normal">Submitter</th>
-            <th className="py-1 pr-2 font-normal">Submitted</th>
+            <th className="py-1 pr-2 font-normal"><Trans>Proposed name</Trans></th>
+            <th className="py-1 pr-2 font-normal"><Trans>Type</Trans></th>
+            <th className="py-1 pr-2 font-normal"><Trans>Platform</Trans></th>
+            <th className="py-1 pr-2 font-normal"><Trans>Region / edition</Trans></th>
+            <th className="py-1 pr-2 font-normal"><Trans>Submitter</Trans></th>
+            <th className="py-1 pr-2 font-normal"><Trans>Submitted</Trans></th>
             <th className="py-1 font-normal"></th>
           </tr>
         </thead>
@@ -80,7 +84,7 @@ export default function SubmissionsQueue() {
                   }}
                   className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
                 >
-                  Review
+                  <Trans>Review</Trans>
                 </button>
               </td>
             </tr>
@@ -94,7 +98,7 @@ export default function SubmissionsQueue() {
           disabled={list.isFetchingNextPage}
           className="mt-2 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
         >
-          Load more
+          <Trans>Load more</Trans>
         </button>
       )}
       {reviewing && <ReviewPanel submission={reviewing} onDone={done} />}

@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { jsonResponse } from '../../test/fixtures'
+import { renderWithI18n } from '../../test/i18n'
 import TagPicker from './TagPicker'
 
 function Harness({ initial = [] as string[] }) {
@@ -12,7 +13,7 @@ function Harness({ initial = [] as string[] }) {
 
 function renderPicker(initial?: string[]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  return renderWithI18n(
     <QueryClientProvider client={qc}>
       <Harness initial={initial} />
     </QueryClientProvider>,

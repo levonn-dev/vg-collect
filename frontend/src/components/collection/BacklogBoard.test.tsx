@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { fetchEntries } from '../../api/collection'
 import { entryFixture, jsonResponse, listFixture, putBody } from '../../test/fixtures'
+import { renderWithI18n } from '../../test/i18n'
 import BacklogBoard from './BacklogBoard'
 
 const entries = [
@@ -14,7 +15,7 @@ const entries = [
 
 function renderBoard() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  return renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <BacklogBoard entries={entries} />
@@ -101,7 +102,7 @@ it('a move reorders the rendered rows and locks the buttons before the server an
   )
   vi.stubGlobal('fetch', fetchMock)
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
+  renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <BoardFromCache />
@@ -161,7 +162,7 @@ it('a failed reorder restores the pre-drag order before any refetch resolves', a
     .mockImplementation(() => new Promise<Response>(() => {}))
   vi.stubGlobal('fetch', fetchMock)
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
+  renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <BoardFromCache />

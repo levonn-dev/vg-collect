@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { cancelSubmission, createSubmission, fetchSubmission } from '../../api/submissions'
 import type { Submission } from '../../api/submissions'
@@ -9,6 +10,7 @@ import { ApiError } from '../../api/client'
 // product-backed and this block (custom-only) unmounts. Cancelled
 // reads as never-submitted for resubmit purposes.
 export default function CatalogSubmission({ entryId }: { entryId: string }) {
+  const { t } = useLingui()
   const queryClient = useQueryClient()
   const submission = useQuery({
     queryKey: ['submission', entryId],
@@ -30,22 +32,22 @@ export default function CatalogSubmission({ entryId }: { entryId: string }) {
   if (submission.isError)
     return (
       <p role="alert" className="mt-4 text-sm text-red-700">
-        The catalog-submission state could not be loaded.
+        <Trans>The catalog-submission state could not be loaded.</Trans>
       </p>
     )
 
   const sub = submission.data
   if (sub?.status === 'pending') {
     return (
-      <section aria-label="Catalog submission" className="mt-4 rounded border border-gray-200 p-3 text-sm">
-        <p>Submitted to the catalog - waiting for review. You can keep editing; reviewers always see your latest edits.</p>
+      <section aria-label={t`Catalog submission`} className="mt-4 rounded border border-gray-200 p-3 text-sm">
+        <p><Trans>Submitted to the catalog - waiting for review. You can keep editing; reviewers always see your latest edits.</Trans></p>
         <button
           type="button"
           onClick={() => cancel.mutate()}
           disabled={cancel.isPending}
           className="mt-2 rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
         >
-          Cancel submission
+          <Trans>Cancel submission</Trans>
         </button>
         {cancel.isError && (
           <p role="alert" className="mt-2 text-red-700">
@@ -57,18 +59,24 @@ export default function CatalogSubmission({ entryId }: { entryId: string }) {
   }
   const rejected = sub?.status === 'rejected'
   return (
-    <section aria-label="Catalog submission" className="mt-4 rounded border border-gray-200 p-3 text-sm">
+    <section aria-label={t`Catalog submission`} className="mt-4 rounded border border-gray-200 p-3 text-sm">
       {rejected && (
-        <p className="mb-2">Submission rejected{sub?.reject_reason ? `: ${sub.reject_reason}` : '.'}</p>
+        <p className="mb-2">
+          {sub?.reject_reason ? (
+            <Trans>Submission rejected: {sub.reject_reason}</Trans>
+          ) : (
+            <Trans>Submission rejected.</Trans>
+          )}
+        </p>
       )}
-      <p className="text-gray-600">Think others own this too? Submit it to the shared catalog for review.</p>
+      <p className="text-gray-600"><Trans>Think others own this too? Submit it to the shared catalog for review.</Trans></p>
       <button
         type="button"
         onClick={() => submit.mutate()}
         disabled={submit.isPending}
         className="mt-2 rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
       >
-        {rejected ? 'Resubmit to catalog' : 'Submit to catalog'}
+        {rejected ? <Trans>Resubmit to catalog</Trans> : <Trans>Submit to catalog</Trans>}
       </button>
       {submit.isError && (
         <p role="alert" className="mt-2 text-red-700">

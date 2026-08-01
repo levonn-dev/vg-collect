@@ -1,0 +1,2366 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-07-31 02:31-0400\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#: src/pages/EntryDetail.tsx
+msgid " - custom item"
+msgstr " - custom item"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "; more than a week old"
+msgstr "; more than a week old"
+
+#. placeholder {0}: card.entry_count
+#: src/components/social/ShelfCard.tsx
+msgid "{0, plural, one {# entry} other {# entries}}"
+msgstr "{0, plural, one {# entry} other {# entries}}"
+
+#. placeholder {0}: social.follower_count
+#: src/pages/Profile.tsx
+msgid "{0, plural, one {# follower} other {# followers}}"
+msgstr "{0, plural, one {# follower} other {# followers}}"
+
+#. placeholder {0}: card.like_count
+#: src/components/social/ShelfCard.tsx
+msgid "{0, plural, one {# like} other {# likes}}"
+msgstr "{0, plural, one {# like} other {# likes}}"
+
+#. placeholder {0}: identity.email ?? t(i18n)`no email recorded`
+#. placeholder {1}: new Date(identity.created_at).toLocaleDateString()
+#: src/pages/Account.tsx
+msgid "{0} - linked {1}"
+msgstr "{0} - linked {1}"
+
+#. placeholder {0}: social.following_count
+#: src/pages/Profile.tsx
+msgid "{0} following"
+msgstr "{0} following"
+
+#. placeholder {0}: s.name
+#. placeholder {1}: s.operator
+#: src/components/Footer.tsx
+msgid "{0} is run by {1}"
+msgstr "{0} is run by {1}"
+
+#. placeholder {0}: s.name
+#. placeholder {1}: s.operator
+#. placeholder {2}: s.contact
+#: src/components/Footer.tsx
+msgid "{0} is run by {1} (<0>{2}</0>)"
+msgstr "{0} is run by {1} (<0>{2}</0>)"
+
+#. placeholder {0}: r.name
+#. placeholder {1}: p.name
+#. placeholder {1}: r.platform_name
+#: src/components/catalog/SearchPicker.tsx
+msgid "{0} on {1}"
+msgstr "{0} on {1}"
+
+#. placeholder {0}: p.priced_entries
+#. placeholder {1}: p.unpriced_entries
+#. placeholder {2}: p.excluded_entries
+#: src/components/insights/StatCards.tsx
+msgid "{0} priced - {1} unpriced - {2} excluded"
+msgstr "{0} priced - {1} unpriced - {2} excluded"
+
+#. placeholder {0}: i18n._(d.dataType)
+#. placeholder {1}: d.label
+#: src/components/Footer.tsx
+msgid "{0} provided by <0>{1}</0>"
+msgstr "{0} provided by <0>{1}</0>"
+
+#. placeholder {0}: selected.size
+#: src/components/collection/BulkEditBar.tsx
+msgid "{0} selected"
+msgstr "{0} selected"
+
+#: src/lib/relativeTime.ts
+msgid "{days}d ago"
+msgstr "{days}d ago"
+
+#: src/components/collection/Pager.tsx
+msgid "{from}-{to} of {totalCount}"
+msgstr "{from}-{to} of {totalCount}"
+
+#: src/lib/relativeTime.ts
+msgid "{hours}h ago"
+msgstr "{hours}h ago"
+
+#: src/lib/relativeTime.ts
+msgid "{minutes}m ago"
+msgstr "{minutes}m ago"
+
+#: src/pages/Profile.tsx
+msgid "{total_count, plural, one {# shared shelf} other {# shared shelves}}"
+msgstr "{total_count, plural, one {# shared shelf} other {# shared shelves}}"
+
+#: src/components/admin/PromoteCandidates.tsx
+msgid "{total, plural, one {# community product with possible provider matches} other {# community products with possible provider matches}}"
+msgstr "{total, plural, one {# community product with possible provider matches} other {# community products with possible provider matches}}"
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "{total, plural, one {# pending submission} other {# pending submissions}}"
+msgstr "{total, plural, one {# pending submission} other {# pending submissions}}"
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "{total} unmatched products"
+msgstr "{total} unmatched products"
+
+#: src/components/collection/Pager.tsx
+msgid "{totalCount} items"
+msgstr "{totalCount} items"
+
+#: src/pages/SharedShelf.tsx
+msgid "{totalEntries, plural, one {# entry} other {# entries}}"
+msgstr "{totalEntries, plural, one {# entry} other {# entries}}"
+
+#: src/pages/Account.tsx
+msgid "2-30 characters, letters/digits, underscores inside only"
+msgstr "2-30 characters, letters/digits, underscores inside only"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/entry/PricingPanel.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "59.99"
+msgstr "59.99"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "A provider product already holds that identity - nothing changed."
+msgstr "A provider product already holds that identity - nothing changed."
+
+#: src/components/admin/RefreshWalk.tsx
+msgid "A walk is already running."
+msgstr "A walk is already running."
+
+#: src/components/Footer.tsx
+msgid "About"
+msgstr "About"
+
+#: src/components/ProsePage.tsx
+msgid "About this translation"
+msgstr "About this translation"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Acceptable"
+msgstr "Acceptable"
+
+#: src/components/collection/FilterBar.tsx
+msgid "Accessories"
+msgstr "Accessories"
+
+#: src/components/insights/BreakdownCharts.tsx
+#: src/pages/EntryDetail.tsx
+msgid "accessory"
+msgstr "accessory"
+
+#: src/components/AppBar.tsx
+#: src/pages/Account.tsx
+msgid "Account"
+msgstr "Account"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Acquisition"
+msgstr "Acquisition"
+
+#: src/components/AppBar.tsx
+msgid "Add"
+msgstr "Add"
+
+#. placeholder {0}: r.name
+#: src/components/catalog/SearchPicker.tsx
+msgid "Add {0}"
+msgstr "Add {0}"
+
+#. placeholder {0}: r.name
+#: src/pages/Recommendations.tsx
+msgid "Add {0} to collection"
+msgstr "Add {0} to collection"
+
+#: src/components/social/CommentComposer.tsx
+msgid "Add a comment"
+msgstr "Add a comment"
+
+#: src/components/social/CommentComposer.tsx
+msgid "Add a comment..."
+msgstr "Add a comment..."
+
+#: src/components/insights/RecsPanel.tsx
+msgid "Add and rate a few games to get suggestions."
+msgstr "Add and rate a few games to get suggestions."
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Add on:"
+msgstr "Add on:"
+
+#: src/components/entry/TagPicker.tsx
+msgid "Add tag"
+msgstr "Add tag"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Add tags"
+msgstr "Add tags"
+
+#: src/components/wizard/ConfirmShell.tsx
+#: src/pages/AddWizard.tsx
+#: src/pages/Recommendations.tsx
+msgid "Add to collection"
+msgstr "Add to collection"
+
+#: src/pages/EntryDetail.tsx
+msgid "Added to your collection."
+msgstr "Added to your collection."
+
+#: src/components/AppBar.tsx
+#: src/pages/Admin.tsx
+msgid "Admin"
+msgstr "Admin"
+
+#: src/pages/Admin.tsx
+msgid "Admin sections"
+msgstr "Admin sections"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Adopt by id"
+msgstr "Adopt by id"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Adopt existing product"
+msgstr "Adopt existing product"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Another admin already resolved this submission."
+msgstr "Another admin already resolved this submission."
+
+#: src/components/admin/MappingFix.tsx
+msgid "Another product already carries that identity - the mapping was not changed."
+msgstr "Another product already carries that identity - the mapping was not changed."
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Any listing (games, variants, hardware)..."
+msgstr "Any listing (games, variants, hardware)..."
+
+#: src/pages/Account.tsx
+msgid "Any login listed here signs into this account, even when its email differs."
+msgstr "Any login listed here signs into this account, even when its email differs."
+
+#: src/components/AppBar.tsx
+#: src/components/PublicShell.tsx
+msgid "App bar"
+msgstr "App bar"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Apply"
+msgstr "Apply"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Approve as new product"
+msgstr "Approve as new product"
+
+#: src/components/collection/ListControls.tsx
+msgid "ascending"
+msgstr "ascending"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "Attach a price listing (optional)"
+msgstr "Attach a price listing (optional)"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "auto (this item's own price listing)"
+msgstr "auto (this item's own price listing)"
+
+#: src/pages/Account.tsx
+msgid "Avatar image URL"
+msgstr "Avatar image URL"
+
+#: src/components/wizard/ConfirmShell.tsx
+#: src/components/wizard/ConfirmStep.tsx
+#: src/components/wizard/CustomStep.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Back"
+msgstr "Back"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/insights/BreakdownCharts.tsx
+msgid "backlog"
+msgstr "backlog"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Backlog"
+msgstr "Backlog"
+
+#: src/components/collection/BacklogBoard.tsx
+#: src/components/collection/ListControls.tsx
+msgid "Backlog order"
+msgstr "Backlog order"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/insights/BreakdownCharts.tsx
+msgid "beaten"
+msgstr "beaten"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Beaten"
+msgstr "Beaten"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Box condition"
+msgstr "Box condition"
+
+#: src/components/collection/BulkEditBar.tsx
+#: src/components/collection/ListControls.tsx
+msgid "Bulk edit"
+msgstr "Bulk edit"
+
+#: src/components/insights/BreakdownCharts.tsx
+msgid "By item type"
+msgstr "By item type"
+
+#: src/components/insights/BreakdownCharts.tsx
+msgid "By platform"
+msgstr "By platform"
+
+#: src/components/insights/BreakdownCharts.tsx
+msgid "By status"
+msgstr "By status"
+
+#: src/pages/AddWizard.tsx
+msgid "Can not find it? Add it as a custom item."
+msgstr "Can not find it? Add it as a custom item."
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Cancel"
+msgstr "Cancel"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Cancel submission"
+msgstr "Cancel submission"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Catalog submission"
+msgstr "Catalog submission"
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Catalog submissions"
+msgstr "Catalog submissions"
+
+#: src/components/catalog/PlatformPicker.tsx
+msgid "Change"
+msgstr "Change"
+
+#: src/components/wizard/ConfirmStep.tsx
+msgid "Change listing"
+msgstr "Change listing"
+
+#: src/components/catalog/PlatformPicker.tsx
+msgid "Change platform"
+msgstr "Change platform"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Change price source"
+msgstr "Change price source"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Checking the price match..."
+msgstr "Checking the price match..."
+
+#: src/components/entry/ProxyPicker.tsx
+msgid "Choose a price source"
+msgstr "Choose a price source"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Choose a price source before saving."
+msgstr "Choose a price source before saving."
+
+#: src/components/admin/MappingFix.tsx
+msgid "Choose listing"
+msgstr "Choose listing"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Choose price source"
+msgstr "Choose price source"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Choose..."
+msgstr "Choose..."
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "cib"
+msgstr "cib"
+
+#: src/components/collection/FilterBar.tsx
+msgid "CIB"
+msgstr "CIB"
+
+#: src/components/admin/PromotePanel.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Clear"
+msgstr "Clear"
+
+#: src/components/collection/ListControls.tsx
+msgid "Clear filters"
+msgstr "Clear filters"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Clear mapping"
+msgstr "Clear mapping"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Clear this mapping? The product becomes unmatched and is held out of the nightly re-match walk."
+msgstr "Clear this mapping? The product becomes unmatched and is held out of the nightly re-match walk."
+
+#: src/components/entry/ProxyPicker.tsx
+#: src/components/wizard/ManualMatchPicker.tsx
+msgid "Close"
+msgstr "Close"
+
+#: src/components/AppBar.tsx
+#: src/pages/Account.tsx
+#: src/pages/Collection.tsx
+msgid "Collection"
+msgstr "Collection"
+
+#: src/pages/Collection.tsx
+msgid "Collection sections"
+msgstr "Collection sections"
+
+#. placeholder {0}: money.currency
+#: src/components/insights/StatCards.tsx
+msgid "Collection value ({0})"
+msgstr "Collection value ({0})"
+
+#. placeholder {0}: money.currency
+#: src/components/insights/ValueOverTime.tsx
+msgid "Collection value in {0} (last 90 days)"
+msgstr "Collection value in {0} (last 90 days)"
+
+#: src/components/insights/ValueOverTime.tsx
+msgid "Collection value over time"
+msgstr "Collection value over time"
+
+#: src/components/social/CommentComposer.tsx
+msgid "Comment could not be posted. Please try again."
+msgstr "Comment could not be posted. Please try again."
+
+#: src/components/social/CommentList.tsx
+msgid "Comment deleted - <0>Undo</0>"
+msgstr "Comment deleted - <0>Undo</0>"
+
+#: src/components/social/CommentComposer.tsx
+msgid "Comment limit reached - try again later."
+msgstr "Comment limit reached - try again later."
+
+#: src/pages/Feed.tsx
+msgid "commented on"
+msgstr "commented on"
+
+#: src/components/social/CommentList.tsx
+msgid "Comments"
+msgstr "Comments"
+
+#: src/components/social/CommentList.tsx
+msgid "Comments cannot be loaded right now. Please try again."
+msgstr "Comments cannot be loaded right now. Please try again."
+
+#: src/components/admin/ProductLookup.tsx
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/catalog/SearchPicker.tsx
+msgid "community"
+msgstr "community"
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "Community catalog products; delete removes unused ones - products referenced by entries are protected."
+msgstr "Community catalog products; delete removes unused ones - products referenced by entries are protected."
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "Community products"
+msgstr "Community products"
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "Community products could not be loaded."
+msgstr "Community products could not be loaded."
+
+#: src/components/collection/ListControls.tsx
+msgid "Compact"
+msgstr "Compact"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/insights/BreakdownCharts.tsx
+msgid "completed"
+msgstr "completed"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Completed"
+msgstr "Completed"
+
+#: src/components/collection/FilterBar.tsx
+msgid "Condition"
+msgstr "Condition"
+
+#: src/components/wizard/ConfirmStep.tsx
+msgid "Confirm"
+msgstr "Confirm"
+
+#: src/pages/AddWizard.tsx
+msgid "Confirm custom item"
+msgstr "Confirm custom item"
+
+#: src/components/wizard/ConfirmShell.tsx
+msgid "Confirm: {title}"
+msgstr "Confirm: {title}"
+
+#: src/components/insights/BreakdownCharts.tsx
+#: src/pages/EntryDetail.tsx
+msgid "console"
+msgstr "console"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Console or accessory..."
+msgstr "Console or accessory..."
+
+#: src/components/collection/FilterBar.tsx
+msgid "Consoles"
+msgstr "Consoles"
+
+#: src/components/wizard/CustomStep.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Continue"
+msgstr "Continue"
+
+#. placeholder {0}: providerNames[p] ?? p
+#: src/pages/Login.tsx
+msgid "Continue with {0}"
+msgstr "Continue with {0}"
+
+#. placeholder {0}: money.rateDate
+#. placeholder {1}: money.rateStale ? t`; more than a week old` : ''
+#: src/components/entry/PricingPanel.tsx
+msgid "Converted from USD at ECB rates ({0}{1})."
+msgstr "Converted from USD at ECB rates ({0}{1})."
+
+#: src/components/CopyButton.tsx
+msgid "Copied"
+msgstr "Copied"
+
+#: src/components/wizard/DetailsStep.tsx
+msgid "Copy details"
+msgstr "Copy details"
+
+#: src/components/CopyButton.tsx
+msgid "Copy failed"
+msgstr "Copy failed"
+
+#: src/components/CopyButton.tsx
+msgid "Copy link"
+msgstr "Copy link"
+
+#: src/pages/Account.tsx
+msgid "Copy profile link"
+msgstr "Copy profile link"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Cover image link"
+msgstr "Cover image link"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Cover image link (optional)"
+msgstr "Cover image link (optional)"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "cover preview"
+msgstr "cover preview"
+
+#: src/components/collection/ListControls.tsx
+msgid "Covers"
+msgstr "Covers"
+
+#: src/components/insights/ValueOverTime.tsx
+msgid "Covers your whole collection; price history does not follow filters."
+msgstr "Covers your whole collection; price history does not follow filters."
+
+#: src/components/entry/PricingPanel.tsx
+msgid "custom (a price you set yourself)"
+msgstr "custom (a price you set yourself)"
+
+#: src/pages/AddWizard.tsx
+msgid "custom item"
+msgstr "custom item"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Custom item"
+msgstr "Custom item"
+
+#: src/pages/AddWizard.tsx
+msgid "Custom items start without market pricing. To track a value, open the entry afterwards and choose a similar listed item as its price source."
+msgstr "Custom items start without market pricing. To track a value, open the entry afterwards and choose a similar listed item as its price source."
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Custom price ({inputCurrency})"
+msgstr "Custom price ({inputCurrency})"
+
+#: src/pages/Account.tsx
+msgid "Danger zone"
+msgstr "Danger zone"
+
+#: src/components/collection/ListControls.tsx
+msgid "Date added"
+msgstr "Date added"
+
+#: src/components/collection/ListControls.tsx
+msgid "Date added (default)"
+msgstr "Date added (default)"
+
+#: src/pages/Account.tsx
+msgid "Default page"
+msgstr "Default page"
+
+#: src/components/admin/CommunityProducts.tsx
+#: src/components/admin/MappingFix.tsx
+#: src/components/social/CommentList.tsx
+msgid "Delete"
+msgstr "Delete"
+
+#: src/pages/Account.tsx
+msgid "Delete account"
+msgstr "Delete account"
+
+#: src/pages/EntryDetail.tsx
+msgid "Delete entry"
+msgstr "Delete entry"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Delete shelf"
+msgstr "Delete shelf"
+
+#: src/pages/EntryDetail.tsx
+msgid "Delete this entry? This cannot be undone."
+msgstr "Delete this entry? This cannot be undone."
+
+#: src/components/admin/MappingFix.tsx
+msgid "Delete this product from the catalog? Only unmatched products that no entries reference can be deleted."
+msgstr "Delete this product from the catalog? Only unmatched products that no entries reference can be deleted."
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Delete this shelf?"
+msgstr "Delete this shelf?"
+
+#: src/pages/Account.tsx
+msgid "Delete your account? Your collection, tags, shelves, linked logins, and profile will be permanently removed."
+msgstr "Delete your account? Your collection, tags, shelves, linked logins, and profile will be permanently removed."
+
+#. placeholder {0}: truncateBody(c.body)
+#: src/components/social/CommentList.tsx
+msgid "Delete your comment: {0}"
+msgstr "Delete your comment: {0}"
+
+#: src/components/social/CommentList.tsx
+msgid "Deleted user"
+msgstr "Deleted user"
+
+#: src/pages/Account.tsx
+msgid "Deleting your account removes your collection, tags, shelves, linked logins, and profile. This cannot be undone."
+msgstr "Deleting your account removes your collection, tags, shelves, linked logins, and profile. This cannot be undone."
+
+#: src/pages/Account.tsx
+msgid "Deletion did not finish. Nothing is lost ahead of it; try again."
+msgstr "Deletion did not finish. Nothing is lost ahead of it; try again."
+
+#: src/components/collection/ListControls.tsx
+msgid "descending"
+msgstr "descending"
+
+#: src/pages/Login.tsx
+msgid "Dev fixtures"
+msgstr "Dev fixtures"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "disabled (no market value)"
+msgstr "disabled (no market value)"
+
+#: src/components/admin/PromotePanel.tsx
+#: src/components/entry/ApprovalNotice.tsx
+#: src/pages/Account.tsx
+msgid "Dismiss"
+msgstr "Dismiss"
+
+#: src/components/entry/ApprovalNotice.tsx
+msgid "Dismiss approval notice"
+msgstr "Dismiss approval notice"
+
+#: src/components/CurrencySelect.tsx
+msgid "Display currency"
+msgstr "Display currency"
+
+#: src/components/collection/ListControls.tsx
+msgid "Display mode"
+msgstr "Display mode"
+
+#. placeholder {0}: entry.display_name
+#: src/components/collection/BacklogBoard.tsx
+msgid "Drag {0}"
+msgstr "Drag {0}"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/insights/BreakdownCharts.tsx
+msgid "dropped"
+msgstr "dropped"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Dropped"
+msgstr "Dropped"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Edition"
+msgstr "Edition"
+
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Edition or variant"
+msgstr "Edition or variant"
+
+#. placeholder {0}: me.data.email
+#: src/pages/Account.tsx
+msgid "Email: {0}"
+msgstr "Email: {0}"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Empty clears the location."
+msgstr "Empty clears the location."
+
+#: src/components/entry/EntryForm.tsx
+msgid "Enter a custom price before saving."
+msgstr "Enter a custom price before saving."
+
+#: src/pages/SharedShelf.tsx
+msgid "Entries"
+msgstr "Entries"
+
+#: src/pages/SharedShelf.tsx
+msgid "Entries cannot be loaded right now. Please try again."
+msgstr "Entries cannot be loaded right now. Please try again."
+
+#: src/pages/EntryDetail.tsx
+msgid "Entry detail"
+msgstr "Entry detail"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Entry editor"
+msgstr "Entry editor"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "exact match"
+msgstr "exact match"
+
+#: src/lib/site.ts
+msgid "Exchange rates"
+msgstr "Exchange rates"
+
+#: src/components/CurrencySelect.tsx
+msgid "Exchange rates are unavailable; prices show in USD."
+msgstr "Exchange rates are unavailable; prices show in USD."
+
+#: src/components/entry/EntryForm.tsx
+msgid "Exchange rates are unavailable; try saving again shortly."
+msgstr "Exchange rates are unavailable; try saving again shortly."
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Exchange rates are unavailable; values show in USD."
+msgstr "Exchange rates are unavailable; values show in USD."
+
+#: src/components/AppBar.tsx
+#: src/pages/Account.tsx
+#: src/pages/Explore.tsx
+msgid "Explore"
+msgstr "Explore"
+
+#: src/pages/Explore.tsx
+msgid "Explore sort"
+msgstr "Explore sort"
+
+#: src/components/AppBar.tsx
+#: src/pages/Account.tsx
+#: src/pages/Feed.tsx
+msgid "Feed"
+msgstr "Feed"
+
+#: src/pages/Feed.tsx
+msgid "Feed sections"
+msgstr "Feed sections"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/collection/ListControls.tsx
+msgid "Filters"
+msgstr "Filters"
+
+#: src/components/collection/ListControls.tsx
+msgid "Filters ({filterCount})"
+msgstr "Filters ({filterCount})"
+
+#: src/components/entry/EntryForm.tsx
+msgid "first print, black label..."
+msgstr "first print, black label..."
+
+#: src/components/wizard/DetailsStep.tsx
+msgid "first print, players choice..."
+msgstr "first print, players choice..."
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "First release date"
+msgstr "First release date"
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "Fix mapping"
+msgstr "Fix mapping"
+
+#. placeholder {0}: product.name
+#: src/components/admin/MappingFix.tsx
+msgid "Fix mapping for {0}"
+msgstr "Fix mapping for {0}"
+
+#: src/components/social/FollowButton.tsx
+msgid "Follow"
+msgstr "Follow"
+
+#: src/pages/Feed.tsx
+msgid "followed"
+msgstr "followed"
+
+#: src/components/social/FollowButton.tsx
+#: src/pages/Feed.tsx
+msgid "Following"
+msgstr "Following"
+
+#: src/components/wizard/CustomStep.tsx
+msgid "For items search cannot find: reproductions, fan translations, homebrew, self-built hardware. A variant of a searchable item (a first print, a color variant) belongs on that item instead - pick it from search and note the variant in the edition field."
+msgstr "For items search cannot find: reproductions, fan translations, homebrew, self-built hardware. A variant of a searchable item (a first print, a color variant) belongs on that item instead - pick it from search and note the variant in the edition field."
+
+#: src/components/insights/BreakdownCharts.tsx
+#: src/pages/EntryDetail.tsx
+msgid "game"
+msgstr "game"
+
+#: src/lib/site.ts
+msgid "Game data"
+msgstr "Game data"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Game title..."
+msgstr "Game title..."
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "games"
+msgstr "games"
+
+#: src/components/catalog/SearchPicker.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Games"
+msgstr "Games"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Good"
+msgstr "Good"
+
+#: src/components/collection/ListControls.tsx
+msgid "Group by"
+msgstr "Group by"
+
+#: src/pages/Account.tsx
+msgid "Handle"
+msgstr "Handle"
+
+#: src/pages/Account.tsx
+msgid "Handle changed too recently - try again later."
+msgstr "Handle changed too recently - try again later."
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "hardware"
+msgstr "hardware"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Hardware"
+msgstr "Hardware"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Has box"
+msgstr "Has box"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Has manual"
+msgstr "Has manual"
+
+#: src/components/admin/MappingFix.tsx
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "held"
+msgstr "held"
+
+#: src/components/Footer.tsx
+msgid "Help"
+msgstr "Help"
+
+#: src/components/insights/InsightsPanel.tsx
+msgid "Hide insights"
+msgstr "Hide insights"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Hold"
+msgstr "Hold"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Hold this product out of the nightly re-match walk? Setting any mapping lifts the hold."
+msgstr "Hold this product out of the nightly re-match walk? Setting any mapping lifts the hold."
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "https://..."
+msgstr "https://..."
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "In use by existing entries - cannot delete."
+msgstr "In use by existing entries - cannot delete."
+
+#: src/components/insights/InsightsPanel.tsx
+msgid "Insights"
+msgstr "Insights"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Item condition"
+msgstr "Item condition"
+
+#: src/components/collection/ListControls.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Item type"
+msgstr "Item type"
+
+#: src/components/insights/StatCards.tsx
+#: src/pages/Collection.tsx
+msgid "Items"
+msgstr "Items"
+
+#: src/lib/relativeTime.ts
+msgid "just now"
+msgstr "just now"
+
+#: src/components/LocaleSwitch.tsx
+msgid "Language"
+msgstr "Language"
+
+#: src/components/admin/PromoteCandidates.tsx
+msgid "Last confirmed"
+msgstr "Last confirmed"
+
+#. placeholder {0}: formatCents(dollarsToCents(value.customValue), inputCurrency)
+#: src/components/entry/PricingPanel.tsx
+msgid "Last custom price: {0}"
+msgstr "Last custom price: {0}"
+
+#. placeholder {0}: targetProduct.data?.name ?? value.productId
+#: src/components/entry/PricingPanel.tsx
+msgid "Last price proxy: {0}"
+msgstr "Last price proxy: {0}"
+
+#: src/pages/Account.tsx
+msgid "Leave empty to use your initial instead."
+msgstr "Leave empty to use your initial instead."
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Leave unchanged"
+msgstr "Leave unchanged"
+
+#: src/components/social/LikeButton.tsx
+msgid "Like"
+msgstr "Like"
+
+#: src/pages/Feed.tsx
+msgid "liked"
+msgstr "liked"
+
+#. placeholder {0}: providerNames[p] ?? p
+#: src/pages/Account.tsx
+msgid "Link {0}"
+msgstr "Link {0}"
+
+#: src/pages/Account.tsx
+msgid "Link a dev fixture"
+msgstr "Link a dev fixture"
+
+#: src/pages/Account.tsx
+msgid "Linked logins"
+msgstr "Linked logins"
+
+#: src/pages/Account.tsx
+msgid "Linked logins could not be loaded."
+msgstr "Linked logins could not be loaded."
+
+#: src/pages/Account.tsx
+msgid "Linking failed. Please try again."
+msgstr "Linking failed. Please try again."
+
+#: src/components/collection/ShelfManager.tsx
+msgid "listed"
+msgstr "listed"
+
+#: src/components/social/VisibilityControl.tsx
+msgid "Listed"
+msgstr "Listed"
+
+#: src/pages/Account.tsx
+msgid "Listed - appears in Explore and search"
+msgstr "Listed - appears in Explore and search"
+
+#. placeholder {0}: listing.name
+#: src/components/admin/PromotePanel.tsx
+msgid "Listing: {0}"
+msgstr "Listing: {0}"
+
+#: src/components/admin/CommunityProducts.tsx
+#: src/components/admin/PromoteCandidates.tsx
+#: src/components/admin/SubmissionsQueue.tsx
+#: src/components/admin/UnmatchedWorklist.tsx
+#: src/components/social/CommentList.tsx
+#: src/pages/Explore.tsx
+#: src/pages/Feed.tsx
+#: src/pages/SharedShelf.tsx
+msgid "Load more"
+msgstr "Load more"
+
+#: src/components/admin/PromoteCandidates.tsx
+msgid "Loading candidates..."
+msgstr "Loading candidates..."
+
+#: src/pages/Collection.tsx
+msgid "Loading collection..."
+msgstr "Loading collection..."
+
+#: src/components/social/CommentList.tsx
+msgid "Loading comments..."
+msgstr "Loading comments..."
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "Loading community products..."
+msgstr "Loading community products..."
+
+#: src/pages/SharedShelf.tsx
+msgid "Loading entries..."
+msgstr "Loading entries..."
+
+#: src/pages/EntryDetail.tsx
+msgid "Loading entry..."
+msgstr "Loading entry..."
+
+#: src/pages/Feed.tsx
+msgid "Loading feed..."
+msgstr "Loading feed..."
+
+#: src/pages/Profile.tsx
+msgid "Loading profile..."
+msgstr "Loading profile..."
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Loading queue..."
+msgstr "Loading queue..."
+
+#: src/pages/SharedShelf.tsx
+msgid "Loading shelf..."
+msgstr "Loading shelf..."
+
+#: src/pages/Explore.tsx
+msgid "Loading shelves..."
+msgstr "Loading shelves..."
+
+#: src/pages/Login.tsx
+msgid "Loading sign-in options..."
+msgstr "Loading sign-in options..."
+
+#: src/components/insights/InsightsPanel.tsx
+msgid "Loading stats..."
+msgstr "Loading stats..."
+
+#: src/components/entry/TagPicker.tsx
+msgid "Loading tags..."
+msgstr "Loading tags..."
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "Loading worklist..."
+msgstr "Loading worklist..."
+
+#: src/components/Layout.tsx
+#: src/pages/Account.tsx
+msgid "Loading..."
+msgstr "Loading..."
+
+#: src/components/collection/ListControls.tsx
+msgid "Location"
+msgstr "Location"
+
+#: src/components/AppBar.tsx
+msgid "Log out"
+msgstr "Log out"
+
+#: src/pages/Login.tsx
+msgid "Login failed. Please try again."
+msgstr "Login failed. Please try again."
+
+#: src/pages/Account.tsx
+msgid "Login linked. Signing in with it now lands in this account."
+msgstr "Login linked. Signing in with it now lands in this account."
+
+#: src/components/admin/ProductLookup.tsx
+msgid "Look up"
+msgstr "Look up"
+
+#: src/components/wizard/ConfirmStep.tsx
+msgid "Looking it up..."
+msgstr "Looking it up..."
+
+#: src/components/admin/ProductLookup.tsx
+msgid "Looking up..."
+msgstr "Looking up..."
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "loose"
+msgstr "loose"
+
+#: src/components/collection/FilterBar.tsx
+msgid "Loose"
+msgstr "Loose"
+
+#. placeholder {0}: money.format(pc.loose_cents) ?? '-'
+#. placeholder {0}: money.format(r.loose_cents) ?? '-'
+#. placeholder {1}: money.format(pc.cib_cents) ?? '-'
+#. placeholder {1}: money.format(r.cib_cents) ?? '-'
+#. placeholder {2}: money.format(pc.new_cents) ?? '-'
+#. placeholder {2}: money.format(r.new_cents) ?? '-'
+#: src/components/catalog/SearchPicker.tsx
+#: src/components/entry/PricingPanel.tsx
+msgid "Loose {0} / CIB {1} / New {2}"
+msgstr "Loose {0} / CIB {1} / New {2}"
+
+#: src/components/collection/ShelfManager.tsx
+msgid "Manage shelves"
+msgstr "Manage shelves"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Manual condition"
+msgstr "Manual condition"
+
+#. placeholder {0}: pc.pc_name
+#. placeholder {1}: pc.console_name
+#. placeholder {2}: Math.round(pc.match_confidence * 100)
+#: src/components/admin/MappingFix.tsx
+msgid "Mapped to \"{0}\" ({1}), match {2}%"
+msgstr "Mapped to \"{0}\" ({1}), match {2}%"
+
+#. placeholder {0}: pc.pc_name
+#. placeholder {1}: pc.console_name
+#. placeholder {2}: Math.round(pc.match_confidence * 100)
+#: src/components/admin/MappingFix.tsx
+msgid "Mapped to \"{0}\" ({1}), match {2}%, verified"
+msgstr "Mapped to \"{0}\" ({1}), match {2}%, verified"
+
+#: src/pages/Admin.tsx
+msgid "Mappings"
+msgstr "Mappings"
+
+#: src/pages/Collection.tsx
+msgid "Market pricing is temporarily unavailable; values are hidden."
+msgstr "Market pricing is temporarily unavailable; values are hidden."
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Market values are in USD."
+msgstr "Market values are in USD."
+
+#: src/components/wizard/ManualMatchPicker.tsx
+msgid "Match a price listing"
+msgstr "Match a price listing"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Match listing"
+msgstr "Match listing"
+
+#: src/components/wizard/ConfirmStep.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Match manually"
+msgstr "Match manually"
+
+#: src/components/social/CommentList.tsx
+msgid "Member"
+msgstr "Member"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Mint"
+msgstr "Mint"
+
+#. placeholder {0}: entry.display_name
+#: src/components/collection/BacklogBoard.tsx
+msgid "Move {0} down"
+msgstr "Move {0} down"
+
+#. placeholder {0}: entry.display_name
+#: src/components/collection/BacklogBoard.tsx
+msgid "Move {0} up"
+msgstr "Move {0} up"
+
+#: src/components/catalog/PlatformPicker.tsx
+msgid "My platform isn't listed"
+msgstr "My platform isn't listed"
+
+#: src/components/admin/CommunityProducts.tsx
+#: src/components/admin/PromoteCandidates.tsx
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/admin/UnmatchedWorklist.tsx
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/ListControls.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Name"
+msgstr "Name"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Name this shelf"
+msgstr "Name this shelf"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Near mint"
+msgstr "Near mint"
+
+#: src/components/entry/TagPicker.tsx
+msgid "New tag"
+msgstr "New tag"
+
+#: src/components/collection/Pager.tsx
+msgid "Next"
+msgstr "Next"
+
+#: src/pages/Feed.tsx
+msgid "No activity yet."
+msgstr "No activity yet."
+
+#: src/components/social/CommentList.tsx
+msgid "No comments yet."
+msgstr "No comments yet."
+
+#: src/components/entry/PricingPanel.tsx
+#: src/components/wizard/ConfirmStep.tsx
+msgid "No confirmed price listing yet - market value stays empty until a match is made."
+msgstr "No confirmed price listing yet - market value stays empty until a match is made."
+
+#: src/pages/Account.tsx
+msgid "no email recorded"
+msgstr "no email recorded"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "No market value available."
+msgstr "No market value available."
+
+#: src/pages/Explore.tsx
+msgid "No people found for \"{query}\"."
+msgstr "No people found for \"{query}\"."
+
+#: src/components/collection/FilterBar.tsx
+msgid "No platforms yet"
+msgstr "No platforms yet"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "No price source chosen yet."
+msgstr "No price source chosen yet."
+
+#: src/components/admin/ProductLookup.tsx
+#: src/components/admin/ReviewPanel.tsx
+msgid "No product with that id."
+msgstr "No product with that id."
+
+#: src/components/insights/StatCards.tsx
+msgid "No purchase prices recorded."
+msgstr "No purchase prices recorded."
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "No results for \"{submitted}\"."
+msgstr "No results for \"{submitted}\"."
+
+#: src/pages/Explore.tsx
+#: src/pages/Profile.tsx
+msgid "No shared shelves yet."
+msgstr "No shared shelves yet."
+
+#: src/components/collection/ShelfManager.tsx
+msgid "No shelves yet. Save one from the Items tab."
+msgstr "No shelves yet. Save one from the Items tab."
+
+#: src/components/collection/BulkEditBar.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "No tags yet"
+msgstr "No tags yet"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "None found."
+msgstr "None found."
+
+#: src/components/social/NotFoundState.tsx
+msgid "Not found"
+msgstr "Not found"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Not graded"
+msgstr "Not graded"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Notes"
+msgstr "Notes"
+
+#: src/pages/Collection.tsx
+msgid "Nothing here yet. <0>Add your first item.</0>"
+msgstr "Nothing here yet. <0>Add your first item.</0>"
+
+#: src/components/social/NotFoundState.tsx
+msgid "Nothing here."
+msgstr "Nothing here."
+
+#: src/pages/Collection.tsx
+msgid "Nothing matches these filters."
+msgstr "Nothing matches these filters."
+
+#: src/pages/Recommendations.tsx
+msgid "Nothing to recommend yet - add and rate a few games first."
+msgstr "Nothing to recommend yet - add and rate a few games first."
+
+#: src/components/insights/BreakdownCharts.tsx
+msgid "Nothing yet"
+msgstr "Nothing yet"
+
+#: src/pages/Feed.tsx
+msgid "Nothing yet. <0>Explore</0> people to follow."
+msgstr "Nothing yet. <0>Explore</0> people to follow."
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "NTSC-J"
+msgstr "NTSC-J"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "NTSC-U"
+msgstr "NTSC-U"
+
+#. placeholder {0}: (state.order ?? 'desc') === 'desc' ? t`descending` : t`ascending`
+#: src/components/collection/ListControls.tsx
+msgid "Order: {0}"
+msgstr "Order: {0}"
+
+#: src/components/wizard/DetailsStep.tsx
+msgid "Otherwise auto-match picks the listing."
+msgstr "Otherwise auto-match picks the listing."
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Packaging"
+msgstr "Packaging"
+
+#: src/pages/NotFound.tsx
+msgid "Page not found"
+msgstr "Page not found"
+
+#: src/components/collection/Pager.tsx
+msgid "Pagination"
+msgstr "Pagination"
+
+#: src/components/collection/EntryTable.tsx
+msgid "Paid"
+msgstr "Paid"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "PAL"
+msgstr "PAL"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Personal"
+msgstr "Personal"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Physical details"
+msgstr "Physical details"
+
+#: src/components/catalog/PlatformPicker.tsx
+msgid "Pick from the catalog instead"
+msgstr "Pick from the catalog instead"
+
+#: src/components/collection/PinStar.tsx
+msgid "Pin"
+msgstr "Pin"
+
+#: src/components/collection/rowMeta.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Pinned"
+msgstr "Pinned"
+
+#: src/components/admin/CommunityProducts.tsx
+#: src/components/admin/SubmissionsQueue.tsx
+#: src/components/catalog/PlatformPicker.tsx
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+#: src/components/collection/ListControls.tsx
+msgid "Platform"
+msgstr "Platform"
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "Platform / console"
+msgstr "Platform / console"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/insights/BreakdownCharts.tsx
+msgid "playing"
+msgstr "playing"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Playing"
+msgstr "Playing"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Poor"
+msgstr "Poor"
+
+#: src/components/social/CommentComposer.tsx
+msgid "Post"
+msgstr "Post"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Potential duplicates"
+msgstr "Potential duplicates"
+
+#: src/components/collection/Pager.tsx
+msgid "Previous"
+msgstr "Previous"
+
+#: src/lib/site.ts
+msgid "Price data"
+msgstr "Price data"
+
+#: src/components/wizard/DetailsStep.tsx
+msgid "Price listing match (optional)"
+msgstr "Price listing match (optional)"
+
+#: src/components/collection/ListControls.tsx
+msgid "Price paid"
+msgstr "Price paid"
+
+#. placeholder {0}: entry.currency
+#: src/components/entry/EntryForm.tsx
+msgid "Price paid ({0})"
+msgstr "Price paid ({0})"
+
+#: src/components/wizard/DetailsStep.tsx
+msgid "Price paid ({currency})"
+msgstr "Price paid ({currency})"
+
+#. placeholder {0}: new Date(entry.custom_value_set_at).toLocaleDateString()
+#: src/components/entry/PricingPanel.tsx
+msgid "Price set on {0}."
+msgstr "Price set on {0}."
+
+#. placeholder {0}: targetProduct.data?.name ?? value.productId
+#: src/components/entry/PricingPanel.tsx
+msgid "Price source: <0>{0}</0>"
+msgstr "Price source: <0>{0}</0>"
+
+#: src/components/admin/MappingFix.tsx
+msgid "PriceCharting does not know that listing."
+msgstr "PriceCharting does not know that listing."
+
+#. placeholder {0}: pc.pc_name
+#. placeholder {1}: pc.console_name
+#. placeholder {2}: Math.round(pc.match_confidence * 100)
+#: src/components/entry/PricingPanel.tsx
+#: src/components/wizard/ConfirmStep.tsx
+msgid "Priced as \"{0}\" ({1}) - match {2}%, verified."
+msgstr "Priced as \"{0}\" ({1}) - match {2}%, verified."
+
+#. placeholder {0}: pc.pc_name
+#. placeholder {1}: pc.console_name
+#. placeholder {2}: Math.round(pc.match_confidence * 100)
+#: src/components/entry/PricingPanel.tsx
+#: src/components/wizard/ConfirmStep.tsx
+msgid "Priced as \"{0}\" ({1}) - match {2}%."
+msgstr "Priced as \"{0}\" ({1}) - match {2}%."
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Pricing"
+msgstr "Pricing"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Pricing mode"
+msgstr "Pricing mode"
+
+#: src/components/AppBar.tsx
+msgid "Primary"
+msgstr "Primary"
+
+#: src/components/Footer.tsx
+msgid "Privacy"
+msgstr "Privacy"
+
+#: src/components/collection/ShelfManager.tsx
+msgid "private"
+msgstr "private"
+
+#: src/components/social/VisibilityControl.tsx
+msgid "Private"
+msgstr "Private"
+
+#: src/pages/Account.tsx
+msgid "Private - only you"
+msgstr "Private - only you"
+
+#: src/components/admin/ProductLookup.tsx
+#: src/components/admin/ReviewPanel.tsx
+msgid "Product id"
+msgstr "Product id"
+
+#: src/components/admin/ProductLookup.tsx
+#: src/components/admin/ReviewPanel.tsx
+msgid "Product id (uuid)"
+msgstr "Product id (uuid)"
+
+#: src/components/admin/ProductLookup.tsx
+msgid "Product lookup"
+msgstr "Product lookup"
+
+#: src/pages/Account.tsx
+#: src/pages/Profile.tsx
+msgid "Profile"
+msgstr "Profile"
+
+#: src/pages/Account.tsx
+msgid "Profile visibility"
+msgstr "Profile visibility"
+
+#. placeholder {0}: product.name
+#: src/components/admin/PromotePanel.tsx
+msgid "Promote {0}"
+msgstr "Promote {0}"
+
+#: src/components/admin/PromoteCandidates.tsx
+msgid "Promote candidates"
+msgstr "Promote candidates"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "Promote this community product to provider identity? Adopter entries upgrade in place; this cannot be undone from the UI."
+msgstr "Promote this community product to provider identity? Adopter entries upgrade in place; this cannot be undone from the UI."
+
+#: src/components/admin/PromotePanel.tsx
+msgid "Promote to provider identity"
+msgstr "Promote to provider identity"
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Proposed name"
+msgstr "Proposed name"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "proxy (another listing prices this copy)"
+msgstr "proxy (another listing prices this copy)"
+
+#: src/pages/Feed.tsx
+msgid "published"
+msgstr "published"
+
+#: src/components/collection/ListControls.tsx
+msgid "Purchase date"
+msgstr "Purchase date"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Purchased from"
+msgstr "Purchased from"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Purchased on"
+msgstr "Purchased on"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/ListControls.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Rating"
+msgstr "Rating"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Reactivate"
+msgstr "Reactivate"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Reactivate the last custom price"
+msgstr "Reactivate the last custom price"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Reactivate the last price proxy"
+msgstr "Reactivate the last price proxy"
+
+#: src/pages/Explore.tsx
+msgid "Recent"
+msgstr "Recent"
+
+#: src/components/AppBar.tsx
+#: src/components/insights/RecsPanel.tsx
+#: src/pages/Recommendations.tsx
+msgid "Recommendations"
+msgstr "Recommendations"
+
+#: src/components/insights/RecsPanel.tsx
+msgid "Recommendations are unavailable right now."
+msgstr "Recommendations are unavailable right now."
+
+#: src/pages/Recommendations.tsx
+msgid "Recommendations cannot be loaded right now. Please try again."
+msgstr "Recommendations cannot be loaded right now. Please try again."
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Recommendations treat this copy as the proxied game."
+msgstr "Recommendations treat this copy as the proxied game."
+
+#: src/pages/Recommendations.tsx
+msgid "Recommended for you"
+msgstr "Recommended for you"
+
+#: src/components/insights/RecsPanel.tsx
+msgid "Recommended next"
+msgstr "Recommended next"
+
+#: src/components/admin/RefreshWalk.tsx
+msgid "Refresh walk"
+msgstr "Refresh walk"
+
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Region"
+msgstr "Region"
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Region / edition"
+msgstr "Region / edition"
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "Region / edition / variant"
+msgstr "Region / edition / variant"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Region free"
+msgstr "Region free"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Reject"
+msgstr "Reject"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Rejection reason"
+msgstr "Rejection reason"
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "Release"
+msgstr "Release"
+
+#: src/components/collection/ListControls.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Release date"
+msgstr "Release date"
+
+#: src/components/social/CommentList.tsx
+msgid "Remove"
+msgstr "Remove"
+
+#. placeholder {0}: truncateBody(c.body)
+#: src/components/social/CommentList.tsx
+msgid "Remove comment: {0}"
+msgstr "Remove comment: {0}"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Remove tags"
+msgstr "Remove tags"
+
+#: src/components/social/CommentList.tsx
+msgid "Remove this comment? The author will not be able to restore it."
+msgstr "Remove this comment? The author will not be able to restore it."
+
+#: src/components/entry/ProxyPicker.tsx
+msgid "Resolving..."
+msgstr "Resolving..."
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Resubmit to catalog"
+msgstr "Resubmit to catalog"
+
+#: src/components/admin/PromoteCandidates.tsx
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Review"
+msgstr "Review"
+
+#. placeholder {0}: submission.display_name
+#: src/components/admin/ReviewPanel.tsx
+msgid "Review {0}"
+msgstr "Review {0}"
+
+#. placeholder {0}: submission.display_name
+#: src/components/admin/ReviewPanel.tsx
+msgid "Review: {0}"
+msgstr "Review: {0}"
+
+#: src/pages/Account.tsx
+msgid "Save"
+msgstr "Save"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Save changes"
+msgstr "Save changes"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Save shelf..."
+msgstr "Save shelf..."
+
+#: src/components/entry/EntryForm.tsx
+#: src/pages/Account.tsx
+msgid "Saved."
+msgstr "Saved."
+
+#: src/components/CurrencySelect.tsx
+#: src/pages/Account.tsx
+msgid "Saving failed. Please try again."
+msgstr "Saving failed. Please try again."
+
+#. placeholder {0}: r.score.toFixed(1)
+#: src/pages/Recommendations.tsx
+msgid "score {0}"
+msgstr "score {0}"
+
+#: src/pages/Recommendations.tsx
+msgid "Scoring ran degraded - some candidates were skipped. Try again later for a fuller list."
+msgstr "Scoring ran degraded - some candidates were skipped. Try again later for a fuller list."
+
+#: src/components/insights/RecsPanel.tsx
+#: src/pages/Recommendations.tsx
+msgid "Scoring your library..."
+msgstr "Scoring your library..."
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "sealed"
+msgstr "sealed"
+
+#: src/components/collection/FilterBar.tsx
+msgid "Sealed"
+msgstr "Sealed"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Search"
+msgstr "Search"
+
+#. placeholder {0}: nouns.join('')
+#: src/components/catalog/SearchPicker.tsx
+msgid "Search for {0}"
+msgstr "Search for {0}"
+
+#. placeholder {0}: nouns[0]
+#. placeholder {1}: nouns[1]
+#: src/components/catalog/SearchPicker.tsx
+msgid "Search for {0} and {1}"
+msgstr "Search for {0} and {1}"
+
+#. placeholder {0}: nouns.slice(0, -1).join(', ')
+#. placeholder {1}: nouns[nouns.length - 1]
+#: src/components/catalog/SearchPicker.tsx
+msgid "Search for {0}, and {1}"
+msgstr "Search for {0}, and {1}"
+
+#: src/pages/Explore.tsx
+msgid "Search for people"
+msgstr "Search for people"
+
+#: src/pages/Explore.tsx
+msgid "Search for people..."
+msgstr "Search for people..."
+
+#: src/components/catalog/SearchPicker.tsx
+#: src/pages/Explore.tsx
+msgid "Search is not working right now. Please try again."
+msgstr "Search is not working right now. Please try again."
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Search may be missing some results right now; try again in a moment for the full set."
+msgstr "Search may be missing some results right now; try again in a moment for the full set."
+
+#: src/pages/Explore.tsx
+msgid "Search results"
+msgstr "Search results"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Search type"
+msgstr "Search type"
+
+#: src/pages/Explore.tsx
+msgid "Searching..."
+msgstr "Searching..."
+
+#: src/components/insights/RecsPanel.tsx
+msgid "See all recommendations"
+msgstr "See all recommendations"
+
+#. placeholder {0}: e.display_name
+#: src/components/collection/EntryTable.tsx
+msgid "Select {0}"
+msgstr "Select {0}"
+
+#: src/components/collection/EntryTable.tsx
+msgid "Select all"
+msgstr "Select all"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Selection is over the 200-entry limit."
+msgstr "Selection is over the 200-entry limit."
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Set storage location"
+msgstr "Set storage location"
+
+#: src/pages/SharedShelf.tsx
+msgid "Shared shelf"
+msgstr "Shared shelf"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Shelf"
+msgstr "Shelf"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Shelf picker"
+msgstr "Shelf picker"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/insights/BreakdownCharts.tsx
+msgid "shelved"
+msgstr "shelved"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Shelved"
+msgstr "Shelved"
+
+#: src/pages/Collection.tsx
+#: src/pages/Profile.tsx
+msgid "Shelves"
+msgstr "Shelves"
+
+#: src/pages/Explore.tsx
+msgid "Shelves cannot be loaded right now. Please try again."
+msgstr "Shelves cannot be loaded right now. Please try again."
+
+#: src/components/insights/InsightsPanel.tsx
+msgid "Show insights"
+msgstr "Show insights"
+
+#: src/pages/Login.tsx
+msgid "Sign in"
+msgstr "Sign in"
+
+#: src/pages/Login.tsx
+msgid "Sign-in is unavailable right now."
+msgstr "Sign-in is unavailable right now."
+
+#: src/components/Footer.tsx
+msgid "Site"
+msgstr "Site"
+
+#: src/components/Footer.tsx
+msgid "Site footer"
+msgstr "Site footer"
+
+#: src/components/Layout.tsx
+msgid "Something went wrong. Please try again."
+msgstr "Something went wrong. Please try again."
+
+#: src/components/collection/ListControls.tsx
+msgid "Sort"
+msgstr "Sort"
+
+#: src/components/Footer.tsx
+msgid "Source"
+msgstr "Source"
+
+#: src/components/insights/StatCards.tsx
+msgid "Spent"
+msgstr "Spent"
+
+#: src/components/catalog/PlatformPicker.tsx
+msgid "Start typing (SNES, PlayStation...)"
+msgstr "Start typing (SNES, PlayStation...)"
+
+#: src/components/insights/InsightsPanel.tsx
+msgid "Stats cannot be loaded right now."
+msgstr "Stats cannot be loaded right now."
+
+#: src/components/collection/BulkEditBar.tsx
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+#: src/components/collection/ListControls.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Status"
+msgstr "Status"
+
+#: src/components/collection/BulkEditBar.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Storage location"
+msgstr "Storage location"
+
+#. placeholder {0}: sub.reject_reason
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Submission rejected: {0}"
+msgstr "Submission rejected: {0}"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Submission rejected."
+msgstr "Submission rejected."
+
+#: src/pages/Admin.tsx
+msgid "Submissions"
+msgstr "Submissions"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Submit to catalog"
+msgstr "Submit to catalog"
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Submitted"
+msgstr "Submitted"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Submitted to the catalog - waiting for review. You can keep editing; reviewers always see your latest edits."
+msgstr "Submitted to the catalog - waiting for review. You can keep editing; reviewers always see your latest edits."
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Submitter"
+msgstr "Submitter"
+
+#: src/components/ThemeToggle.tsx
+msgid "Switch to dark mode"
+msgstr "Switch to dark mode"
+
+#: src/components/ThemeToggle.tsx
+msgid "Switch to light mode"
+msgstr "Switch to light mode"
+
+#: src/components/collection/ListControls.tsx
+msgid "Table"
+msgstr "Table"
+
+#: src/components/collection/ListControls.tsx
+msgid "Tag"
+msgstr "Tag"
+
+#: src/components/entry/TagPicker.tsx
+msgid "Tags"
+msgstr "Tags"
+
+#: src/components/collection/FilterBar.tsx
+msgid "Tags (all of)"
+msgstr "Tags (all of)"
+
+#: src/components/entry/TagPicker.tsx
+msgid "Tags cannot be loaded right now."
+msgstr "Tags cannot be loaded right now."
+
+#: src/components/Footer.tsx
+msgid "Terms"
+msgstr "Terms"
+
+#: src/pages/Login.tsx
+msgid "That account has no verified email address; verify it there and sign in again."
+msgstr "That account has no verified email address; verify it there and sign in again."
+
+#: src/pages/Account.tsx
+msgid "That handle is taken."
+msgstr "That handle is taken."
+
+#: src/components/wizard/ConfirmStep.tsx
+msgid "That listing cannot be matched right now. Go back to change or clear the manual match."
+msgstr "That listing cannot be matched right now. Go back to change or clear the manual match."
+
+#: src/components/entry/ProxyPicker.tsx
+msgid "That listing cannot be used right now; pick another or try again."
+msgstr "That listing cannot be used right now; pick another or try again."
+
+#: src/pages/Account.tsx
+msgid "That login already belongs to another account, so it was not linked."
+msgstr "That login already belongs to another account, so it was not linked."
+
+#: src/pages/Account.tsx
+msgid "That login has no verified email address; verify it there and try again."
+msgstr "That login has no verified email address; verify it there and try again."
+
+#: src/pages/Login.tsx
+msgid "That sign-in service is unavailable. Please try again shortly."
+msgstr "That sign-in service is unavailable. Please try again shortly."
+
+#: src/components/collection/BacklogBoard.tsx
+msgid "The backlog changed somewhere else; the list has been refreshed."
+msgstr "The backlog changed somewhere else; the list has been refreshed."
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "The bulk update failed."
+msgstr "The bulk update failed."
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "The catalog cannot be reached - try again."
+msgstr "The catalog cannot be reached - try again."
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "The catalog-submission state could not be loaded."
+msgstr "The catalog-submission state could not be loaded."
+
+#: src/pages/Collection.tsx
+msgid "The collection cannot be loaded right now. Please try again."
+msgstr "The collection cannot be loaded right now. Please try again."
+
+#: src/components/admin/PromotePanel.tsx
+msgid "The dismissal failed - try again."
+msgstr "The dismissal failed - try again."
+
+#: src/pages/EntryDetail.tsx
+msgid "The entry cannot be loaded right now. Please try again."
+msgstr "The entry cannot be loaded right now. Please try again."
+
+#: src/components/wizard/ConfirmStep.tsx
+#: src/pages/AddWizard.tsx
+msgid "The entry could not be created."
+msgstr "The entry could not be created."
+
+#: src/pages/Feed.tsx
+msgid "The feed cannot be loaded right now. Please try again."
+msgstr "The feed cannot be loaded right now. Please try again."
+
+#: src/components/entry/PricingPanel.tsx
+msgid "The listing match failed; try again in a moment."
+msgstr "The listing match failed; try again in a moment."
+
+#: src/components/wizard/ConfirmStep.tsx
+msgid "The lookup failed; your details are kept - try again in a moment."
+msgstr "The lookup failed; your details are kept - try again in a moment."
+
+#: src/components/admin/ProductLookup.tsx
+msgid "The lookup failed."
+msgstr "The lookup failed."
+
+#: src/components/admin/MappingFix.tsx
+msgid "The mapping change failed."
+msgstr "The mapping change failed."
+
+#: src/components/collection/BacklogBoard.tsx
+msgid "The move could not be saved; the list has been refreshed."
+msgstr "The move could not be saved; the list has been refreshed."
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "The pick could not be resolved to a product - try again or paste an id."
+msgstr "The pick could not be resolved to a product - try again or paste an id."
+
+#: src/components/entry/PricingPanel.tsx
+msgid "The price listing cannot be loaded right now."
+msgstr "The price listing cannot be loaded right now."
+
+#: src/components/admin/MappingFix.tsx
+msgid "The price provider is unavailable - try again."
+msgstr "The price provider is unavailable - try again."
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "The product could not be deleted."
+msgstr "The product could not be deleted."
+
+#: src/components/admin/PromoteCandidates.tsx
+msgid "The promote candidates could not be loaded."
+msgstr "The promote candidates could not be loaded."
+
+#: src/components/admin/PromotePanel.tsx
+msgid "The promotion failed."
+msgstr "The promotion failed."
+
+#: src/components/admin/PromotePanel.tsx
+msgid "The provider does not know that id."
+msgstr "The provider does not know that id."
+
+#: src/components/admin/PromotePanel.tsx
+msgid "The provider is unavailable - try again."
+msgstr "The provider is unavailable - try again."
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "The queue could not be loaded."
+msgstr "The queue could not be loaded."
+
+#: src/components/collection/ViewPicker.tsx
+msgid "The shelf operation failed."
+msgstr "The shelf operation failed."
+
+#: src/components/collection/ShelfManager.tsx
+msgid "The shelf visibility update failed."
+msgstr "The shelf visibility update failed."
+
+#: src/components/entry/TagPicker.tsx
+msgid "The tag could not be created."
+msgstr "The tag could not be created."
+
+#: src/components/admin/RefreshWalk.tsx
+msgid "The trigger failed - try again."
+msgstr "The trigger failed - try again."
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "The verdict failed."
+msgstr "The verdict failed."
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "The worklist could not be loaded."
+msgstr "The worklist could not be loaded."
+
+#: src/pages/NotFound.tsx
+msgid "There is no page at this address. <0>Go to the start page</0>."
+msgstr "There is no page at this address. <0>Go to the start page</0>."
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Think others own this too? Submit it to the shared catalog for review."
+msgstr "Think others own this too? Submit it to the shared catalog for review."
+
+#: src/pages/EntryDetail.tsx
+msgid "This entry does not exist (it may have been deleted)."
+msgstr "This entry does not exist (it may have been deleted)."
+
+#: src/components/wizard/ConfirmStep.tsx
+msgid "This item is no longer available; try searching again."
+msgstr "This item is no longer available; try searching again."
+
+#: src/components/admin/PromotePanel.tsx
+msgid "This product is already provider-identified."
+msgstr "This product is already provider-identified."
+
+#: src/pages/Profile.tsx
+msgid "This profile cannot be loaded right now. Please try again."
+msgstr "This profile cannot be loaded right now. Please try again."
+
+#: src/pages/SharedShelf.tsx
+msgid "This shelf cannot be loaded right now. Please try again."
+msgstr "This shelf cannot be loaded right now. Please try again."
+
+#: src/pages/SharedShelf.tsx
+msgid "This shelf is empty."
+msgstr "This shelf is empty."
+
+#: src/components/ProsePage.tsx
+msgid "This translation is provided for convenience. The English version is the controlling text."
+msgstr "This translation is provided for convenience. The English version is the controlling text."
+
+#: src/pages/Explore.tsx
+msgid "Top"
+msgstr "Top"
+
+#: src/components/admin/PromoteCandidates.tsx
+msgid "Top candidate"
+msgstr "Top candidate"
+
+#: src/components/insights/StatCards.tsx
+msgid "Totals"
+msgstr "Totals"
+
+#: src/pages/Login.tsx
+msgid "Track your game collection."
+msgstr "Track your game collection."
+
+#: src/components/admin/RefreshWalk.tsx
+msgid "Trigger refresh walk"
+msgstr "Trigger refresh walk"
+
+#: src/components/admin/PromoteCandidates.tsx
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/admin/SubmissionsQueue.tsx
+#: src/components/admin/UnmatchedWorklist.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Type"
+msgstr "Type"
+
+#: src/components/collection/ListControls.tsx
+msgid "Ungrouped"
+msgstr "Ungrouped"
+
+#: src/components/social/LikeButton.tsx
+msgid "Unlike"
+msgstr "Unlike"
+
+#: src/pages/Account.tsx
+msgid "Unlink"
+msgstr "Unlink"
+
+#: src/pages/Account.tsx
+msgid "Unlink this login? You will no longer be able to sign in with it."
+msgstr "Unlink this login? You will no longer be able to sign in with it."
+
+#: src/pages/Account.tsx
+msgid "Unlinking failed. Please try again."
+msgstr "Unlinking failed. Please try again."
+
+#: src/components/collection/ShelfManager.tsx
+msgid "unlisted"
+msgstr "unlisted"
+
+#: src/components/social/VisibilityControl.tsx
+msgid "Unlisted"
+msgstr "Unlisted"
+
+#: src/pages/Account.tsx
+msgid "Unlisted - anyone signed in who has your link"
+msgstr "Unlisted - anyone signed in who has your link"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Unmatched"
+msgstr "Unmatched"
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "Unmatched products"
+msgstr "Unmatched products"
+
+#: src/pages/Recommendations.tsx
+msgid "Unowned games scored against what you own, play, and rate."
+msgstr "Unowned games scored against what you own, play, and rate."
+
+#: src/components/collection/PinStar.tsx
+msgid "Unpin"
+msgstr "Unpin"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Unrated"
+msgstr "Unrated"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Update shelf"
+msgstr "Update shelf"
+
+#: src/components/admin/CommunityProducts.tsx
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "Updated"
+msgstr "Updated"
+
+#: src/pages/Collection.tsx
+msgid "Updated {n} entries."
+msgstr "Updated {n} entries."
+
+#. placeholder {0}: r.name
+#: src/components/catalog/SearchPicker.tsx
+msgid "Use {0}"
+msgstr "Use {0}"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Use as existing"
+msgstr "Use as existing"
+
+#: src/components/collection/ListControls.tsx
+#: src/components/insights/ValueOverTime.tsx
+msgid "Value"
+msgstr "Value"
+
+#. placeholder {0}: money.currency
+#: src/components/collection/EntryTable.tsx
+msgid "Value ({0})"
+msgstr "Value ({0})"
+
+#: src/components/insights/ValueOverTime.tsx
+msgid "Value history appears when price snapshots accumulate for your collection."
+msgstr "Value history appears when price snapshots accumulate for your collection."
+
+#: src/components/insights/InsightsPanel.tsx
+msgid "Value history cannot be loaded right now."
+msgstr "Value history cannot be loaded right now."
+
+#: src/components/insights/ValueOverTime.tsx
+msgid "Value history is temporarily unavailable; try again shortly."
+msgstr "Value history is temporarily unavailable; try again shortly."
+
+#: src/components/insights/StatCards.tsx
+msgid "Value unavailable right now; try again shortly."
+msgstr "Value unavailable right now; try again shortly."
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Very good"
+msgstr "Very good"
+
+#: src/components/admin/RefreshWalk.tsx
+msgid "Walk started."
+msgstr "Walk started."
+
+#: src/pages/Account.tsx
+msgid "Where the app opens after you sign in."
+msgstr "Where the app opens after you sign in."
+
+#: src/pages/Feed.tsx
+msgid "You"
+msgstr "You"
+
+#: src/pages/Login.tsx
+msgid "Your account has been deleted."
+msgstr "Your account has been deleted."
+
+#: src/pages/Account.tsx
+msgid "Your account needs at least one login"
+msgstr "Your account needs at least one login"
+
+#. placeholder {0}: state.custom.displayName
+#. placeholder {0}: state.pick.name
+#: src/pages/AddWizard.tsx
+msgid "Your copy of {0}"
+msgstr "Your copy of {0}"
+
+#: src/pages/Account.tsx
+msgid "Your profile could not be loaded."
+msgstr "Your profile could not be loaded."
+
+#: src/components/collection/ShelfManager.tsx
+msgid "Your profile is private, so other people cannot see any of your shelves regardless of their own setting. Change profile visibility <0>in Account</0>."
+msgstr "Your profile is private, so other people cannot see any of your shelves regardless of their own setting. Change profile visibility <0>in Account</0>."
+
+#: src/components/collection/ShelfManager.tsx
+msgid "Your profile is unlisted, so listed shelves are reachable by link only - they will not appear in Explore."
+msgstr "Your profile is unlisted, so listed shelves are reachable by link only - they will not appear in Explore."
+
+#: src/components/entry/ApprovalNotice.tsx
+msgid "Your submission was approved and added to the shared catalog."
+msgstr "Your submission was approved and added to the shared catalog."

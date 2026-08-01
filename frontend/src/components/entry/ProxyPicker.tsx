@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import type { Product } from '../../api/catalog'
@@ -19,6 +20,7 @@ interface ProxyPickerProps {
 // the shared search surface plus a resolve to mint/fetch the product.
 // The caller owns the PUT that activates it.
 export default function ProxyPicker({ onPick, onClose, initialQuery }: ProxyPickerProps) {
+  const { t } = useLingui()
   const dialogRef = useRef<HTMLDivElement>(null)
 
   // A dialog opens on top of the page's own focus; move focus in so
@@ -46,13 +48,13 @@ export default function ProxyPicker({ onPick, onClose, initialQuery }: ProxyPick
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
-      aria-label="Choose a price source"
+      aria-label={t`Choose a price source`}
       className="mt-3 rounded border border-gray-300 bg-gray-50 p-3"
     >
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-sm font-semibold">Choose a price source</p>
+        <p className="text-sm font-semibold"><Trans>Choose a price source</Trans></p>
         <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-900">
-          Close
+          <Trans>Close</Trans>
         </button>
       </div>
       <SearchPicker
@@ -61,10 +63,10 @@ export default function ProxyPicker({ onPick, onClose, initialQuery }: ProxyPick
         initialQuery={initialQuery}
         onPick={(pick) => resolve.mutate(pick)}
       />
-      {resolve.isPending && <p className="mt-2 text-sm text-gray-500">Resolving...</p>}
+      {resolve.isPending && <p className="mt-2 text-sm text-gray-500"><Trans>Resolving...</Trans></p>}
       {resolve.isError && (
         <p role="alert" className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
-          That listing cannot be used right now; pick another or try again.
+          <Trans>That listing cannot be used right now; pick another or try again.</Trans>
         </p>
       )}
     </div>

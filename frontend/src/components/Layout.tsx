@@ -1,3 +1,4 @@
+import { Trans } from '@lingui/react/macro'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router'
@@ -26,7 +27,7 @@ export default function Layout() {
     }
   }, [me.data, navigate])
 
-  if (me.isPending) return <main className="p-8">Loading...</main>
+  if (me.isPending) return <main className="p-8"><Trans>Loading...</Trans></main>
   if (me.isError) {
     if (me.error instanceof ApiError && me.error.status === 401) {
       const next =
@@ -37,7 +38,7 @@ export default function Layout() {
     }
     return (
       <main className="p-8" role="alert">
-        Something went wrong. Please try again.
+        <Trans>Something went wrong. Please try again.</Trans>
       </main>
     )
   }

@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
@@ -30,6 +31,7 @@ interface ConfirmStepProps {
 // its price-match status before the entry is created: the user sees
 // what "market value" will mean for this copy.
 export default function ConfirmStep({ pick, details, manualMatch, onManualMatch, onBack }: ConfirmStepProps) {
+  const { t } = useLingui()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const money = useDisplayMoney()
@@ -60,20 +62,22 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
     },
   })
 
-  if (product.isPending) return <p className="py-4">Looking it up...</p>
+  if (product.isPending) return <p className="py-4"><Trans>Looking it up...</Trans></p>
   if (product.isError) {
     const notFound = product.error instanceof ApiError && product.error.status === 404
     return (
       <div className="py-4">
         <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">
-          {manualMatch
-            ? 'That listing cannot be matched right now. Go back to change or clear the manual match.'
-            : notFound
-              ? 'This item is no longer available; try searching again.'
-              : 'The lookup failed; your details are kept - try again in a moment.'}
+          {manualMatch ? (
+            <Trans>That listing cannot be matched right now. Go back to change or clear the manual match.</Trans>
+          ) : notFound ? (
+            <Trans>This item is no longer available; try searching again.</Trans>
+          ) : (
+            <Trans>The lookup failed; your details are kept - try again in a moment.</Trans>
+          )}
         </p>
         <button onClick={onBack} className="mt-3 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
-          Back
+          <Trans>Back</Trans>
         </button>
       </div>
     )
@@ -83,10 +87,10 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
   const pc = p.pricecharting
   return (
     <ConfirmShell
-      ariaLabel="Confirm"
+      ariaLabel={t`Confirm`}
       title={p.name}
       subtitle={[p.platform?.name, p.type].filter(Boolean).join(' - ')}
-      errorMessage={create.isError ? create.error.message || 'The entry could not be created.' : undefined}
+      errorMessage={create.isError ? create.error.message || t`The entry could not be created.` : undefined}
       onBack={onBack}
       onSubmit={() => create.mutate()}
       submitPending={create.isPending}
@@ -105,8 +109,15 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
       ) : pc ? (
         <div className="rounded bg-green-50 p-3 text-sm text-green-800">
           <p>
-            Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%
-            {pc.verified ? ', verified' : ''}.
+            {pc.verified ? (
+              <Trans>
+                Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%, verified.
+              </Trans>
+            ) : (
+              <Trans>
+                Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%.
+              </Trans>
+            )}
           </p>
           {pick.kind === 'game' && (
             <button
@@ -114,20 +125,20 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
               onClick={() => setMatchOpen(true)}
               className="mt-2 rounded border border-green-300 px-2 py-1 text-sm hover:border-green-800 hover:bg-white"
             >
-              Change listing
+              <Trans>Change listing</Trans>
             </button>
           )}
         </div>
       ) : (
         <div className="rounded bg-gray-50 p-3 text-sm text-gray-600">
-          <p>No confirmed price listing yet - market value stays empty until a match is made.</p>
+          <p><Trans>No confirmed price listing yet - market value stays empty until a match is made.</Trans></p>
           {pick.kind === 'game' && (
             <button
               type="button"
               onClick={() => setMatchOpen(true)}
               className="mt-2 rounded border border-gray-300 px-2 py-1 text-sm hover:border-gray-400 hover:bg-white"
             >
-              Match manually
+              <Trans>Match manually</Trans>
             </button>
           )}
         </div>

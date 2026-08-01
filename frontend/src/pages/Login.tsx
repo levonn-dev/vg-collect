@@ -1,16 +1,21 @@
+import { Trans, useLingui } from '@lingui/react/macro'
+import { msg } from '@lingui/core/macro'
+import type { MessageDescriptor } from '@lingui/core'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { fetchProviders } from '../api/client'
 
-const errorMessages: Record<string, string> = {
-  login_failed: 'Login failed. Please try again.',
-  email_unverified: 'That account has no verified email address; verify it there and sign in again.',
-  provider_error: 'That sign-in service is unavailable. Please try again shortly.',
+const errorMessages: Record<string, MessageDescriptor> = {
+  login_failed: msg`Login failed. Please try again.`,
+  email_unverified: msg`That account has no verified email address; verify it there and sign in again.`,
+  provider_error: msg`That sign-in service is unavailable. Please try again shortly.`,
 }
 
-const providerLabels: Record<string, string> = {
-  google: 'Continue with Google',
-  twitch: 'Continue with Twitch',
+// Proper nouns only (leave-alone list) - never wrapped for translation.
+// An unknown provider id falls back to itself, same as before.
+const providerNames: Record<string, string> = {
+  google: 'Google',
+  twitch: 'Twitch',
 }
 
 const devFixtures = ['alice', 'bob', 'admin']
@@ -27,6 +32,7 @@ function safeNext(raw: string | null): string | null {
 // back on /, so a requested destination is stashed to sessionStorage
 // before the hop and Layout re-applies it once the session resolves.
 export default function Login() {
+  const { t, i18n } = useLingui()
   const [params] = useSearchParams()
   const providers = useQuery({ queryKey: ['providers'], queryFn: fetchProviders })
   const error = params.get('error')
@@ -37,24 +43,24 @@ export default function Login() {
 
   return (
     <main
-      aria-label="Sign in"
+      aria-label={t`Sign in`}
       className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6"
     >
-      <p className="text-gray-600">Track your game collection.</p>
+      <p className="text-gray-600"><Trans>Track your game collection.</Trans></p>
       {error && (
         <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">
-          {errorMessages[error] ?? errorMessages.login_failed}
+          {i18n._(errorMessages[error] ?? errorMessages.login_failed)}
         </p>
       )}
       {params.get('deleted') && (
         <p role="status" className="rounded bg-green-50 p-3 text-sm text-green-800">
-          Your account has been deleted.
+          <Trans>Your account has been deleted.</Trans>
         </p>
       )}
-      {providers.isPending && <p>Loading sign-in options...</p>}
+      {providers.isPending && <p><Trans>Loading sign-in options...</Trans></p>}
       {providers.isError && (
         <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">
-          Sign-in is unavailable right now.
+          <Trans>Sign-in is unavailable right now.</Trans>
         </p>
       )}
       <div className="flex flex-col gap-3">
@@ -67,12 +73,12 @@ export default function Login() {
               onClick={stash}
               className="rounded border border-gray-300 px-4 py-2 text-center font-medium hover:bg-gray-50"
             >
-              {providerLabels[p] ?? `Continue with ${p}`}
+              <Trans>Continue with {providerNames[p] ?? p}</Trans>
             </a>
           ))}
         {providers.data?.includes('dev') && (
           <div className="mt-2 border-t border-gray-200 pt-4">
-            <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">Dev fixtures</p>
+            <p className="mb-2 text-xs uppercase tracking-wide text-gray-500"><Trans>Dev fixtures</Trans></p>
             <div className="flex gap-2">
               {devFixtures.map((user) => (
                 <a

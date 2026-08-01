@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { ShelfCard as ShelfCardData } from '../../api/social'
+import { renderWithI18n } from '../../test/i18n'
 import ShelfCard from './ShelfCard'
 
 const card: ShelfCardData = {
@@ -15,7 +16,7 @@ const card: ShelfCardData = {
 }
 
 function renderCard(overrides: Partial<ShelfCardData> = {}) {
-  return render(
+  return renderWithI18n(
     <MemoryRouter>
       <ShelfCard card={{ ...card, ...overrides }} />
     </MemoryRouter>,

@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { AdminSubmission } from '../../api/admin'
 import type { Platform } from '../../api/platforms'
 import { jsonResponse, putBody } from '../../test/fixtures'
+import { renderWithI18n } from '../../test/i18n'
 import ReviewPanel from './ReviewPanel'
 
 function renderPanel(submission: AdminSubmission, onDone = vi.fn(), platforms: Platform[] = []) {
@@ -14,7 +15,7 @@ function renderPanel(submission: AdminSubmission, onDone = vi.fn(), platforms: P
   // Empty by default (most tests never search the catalog); a test that
   // drives a confirmed pick supplies its own seed rows.
   qc.setQueryData(['platforms'], { platforms })
-  render(
+  renderWithI18n(
     <QueryClientProvider client={qc}>
       <ReviewPanel submission={submission} onDone={onDone} />
     </QueryClientProvider>,

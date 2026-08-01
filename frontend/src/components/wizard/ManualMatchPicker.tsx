@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useEffect, useRef } from 'react'
 import type { ManualMatch } from '../../lib/catalog'
 import type { CatalogPick } from '../catalog/SearchPicker'
@@ -16,6 +17,7 @@ interface ManualMatchPickerProps {
 // game resolve, which lands on that listing's own product (game
 // identity is listing-keyed). Same dialog conventions as ProxyPicker.
 export default function ManualMatchPicker({ initialQuery, onPick, onClose }: ManualMatchPickerProps) {
+  const { t } = useLingui()
   const dialogRef = useRef<HTMLDivElement>(null)
 
   // A dialog opens on top of the page's own focus; move focus in so
@@ -36,13 +38,13 @@ export default function ManualMatchPicker({ initialQuery, onPick, onClose }: Man
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
-      aria-label="Match a price listing"
+      aria-label={t`Match a price listing`}
       className="mt-3 rounded border border-gray-300 bg-gray-50 p-3"
     >
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-sm font-semibold">Match a price listing</p>
+        <p className="text-sm font-semibold"><Trans>Match a price listing</Trans></p>
         <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-900">
-          Close
+          <Trans>Close</Trans>
         </button>
       </div>
       <SearchPicker kinds={['pc_listing']} initialQuery={initialQuery} onPick={pickListing} />

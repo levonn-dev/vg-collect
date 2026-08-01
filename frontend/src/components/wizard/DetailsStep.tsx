@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useState } from 'react'
 import type { EntryCreate } from '../../api/collection'
 import type { ManualMatch } from '../../lib/catalog'
@@ -88,6 +89,7 @@ interface DetailsStepProps {
 }
 
 export default function DetailsStep({ heading, currency, initialValues, manualMatch, onManualMatchChange, manualMatchQuery, onBack, onNext }: DetailsStepProps) {
+  const { t } = useLingui()
   const [v, setV] = useState<DetailsValues>(() => initialValues ?? defaultDetails())
   const [matchOpen, setMatchOpen] = useState(false)
   const set = <K extends keyof DetailsValues>(key: K, value: DetailsValues[K]) =>
@@ -108,7 +110,7 @@ export default function DetailsStep({ heading, currency, initialValues, manualMa
     <label className={labelClass}>
       {label}
       <select value={v[key]} onChange={(e) => set(key, e.target.value as DetailsValues[typeof key])} className={inputClass}>
-        <option value="">Not graded</option>
+        <option value="">{t`Not graded`}</option>
         {CONDITIONS.map((c) => (
           <option key={c} value={c}>
             {c.replace('_', ' ')}
@@ -125,13 +127,13 @@ export default function DetailsStep({ heading, currency, initialValues, manualMa
           e.preventDefault()
           onNext(v)
         }}
-        aria-label="Copy details"
+        aria-label={t`Copy details`}
         className="flex flex-col gap-4"
       >
         <h3 className="text-lg font-semibold">{heading}</h3>
         <div className="flex flex-wrap gap-3">
           <label className={labelClass}>
-            Region
+            <Trans>Region</Trans>
             <select value={v.region} onChange={(e) => set('region', e.target.value as DetailsValues['region'])} className={inputClass}>
               {REGIONS.map((r) => (
                 <option key={r} value={r}>
@@ -141,11 +143,11 @@ export default function DetailsStep({ heading, currency, initialValues, manualMa
             </select>
           </label>
           <label className={labelClass}>
-            Edition or variant
-            <input value={v.edition} onChange={(e) => set('edition', e.target.value)} placeholder="first print, players choice..." className={inputClass} />
+            <Trans>Edition or variant</Trans>
+            <input value={v.edition} onChange={(e) => set('edition', e.target.value)} placeholder={t`first print, players choice...`} className={inputClass} />
           </label>
           <label className={labelClass}>
-            Packaging
+            <Trans>Packaging</Trans>
             <select value={v.packaging} onChange={(e) => setPackaging(e.target.value as DetailsValues['packaging'])} className={inputClass}>
               {PACKAGINGS.map((p) => (
                 <option key={p} value={p}>
@@ -154,34 +156,34 @@ export default function DetailsStep({ heading, currency, initialValues, manualMa
               ))}
             </select>
           </label>
-          {conditionSelect('Item condition', 'itemCondition')}
+          {conditionSelect(t`Item condition`, 'itemCondition')}
           <label className="flex items-center gap-2 text-sm font-medium">
             <input type="checkbox" checked={v.hasBox} onChange={(e) => set('hasBox', e.target.checked)} />
-            Has box
+            <Trans>Has box</Trans>
           </label>
-          {v.hasBox && conditionSelect('Box condition', 'boxCondition')}
+          {v.hasBox && conditionSelect(t`Box condition`, 'boxCondition')}
           <label className="flex items-center gap-2 text-sm font-medium">
             <input type="checkbox" checked={v.hasManual} onChange={(e) => set('hasManual', e.target.checked)} />
-            Has manual
+            <Trans>Has manual</Trans>
           </label>
-          {v.hasManual && conditionSelect('Manual condition', 'manualCondition')}
+          {v.hasManual && conditionSelect(t`Manual condition`, 'manualCondition')}
         </div>
         <div className="flex flex-wrap gap-3">
           <label className={labelClass}>
-            Price paid ({currency})
-            <input inputMode="decimal" value={v.pricePaid} onChange={(e) => set('pricePaid', e.target.value)} placeholder="59.99" className={inputClass} />
+            <Trans>Price paid ({currency})</Trans>
+            <input inputMode="decimal" value={v.pricePaid} onChange={(e) => set('pricePaid', e.target.value)} placeholder={t`59.99`} className={inputClass} />
           </label>
           <label className={labelClass}>
-            Purchased on
+            <Trans>Purchased on</Trans>
             <input type="date" value={v.purchasedAt} onChange={(e) => set('purchasedAt', e.target.value)} className={inputClass} />
           </label>
           <label className={labelClass}>
-            Purchased from
+            <Trans>Purchased from</Trans>
             <input value={v.purchasedFrom} onChange={(e) => set('purchasedFrom', e.target.value)} className={inputClass} />
           </label>
           {onManualMatchChange && (
             <div className={labelClass}>
-              Price listing match (optional)
+              <Trans>Price listing match (optional)</Trans>
               {manualMatch ? (
                 <span className="flex items-center gap-2 font-normal">
                   {manualMatch.name}
@@ -190,7 +192,7 @@ export default function DetailsStep({ heading, currency, initialValues, manualMa
                     onClick={() => onManualMatchChange(null)}
                     className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
                   >
-                    Clear
+                    <Trans>Clear</Trans>
                   </button>
                 </span>
               ) : (
@@ -200,9 +202,9 @@ export default function DetailsStep({ heading, currency, initialValues, manualMa
                     onClick={() => setMatchOpen(true)}
                     className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
                   >
-                    Match manually
+                    <Trans>Match manually</Trans>
                   </button>
-                  <span className="text-xs font-normal text-gray-500">Otherwise auto-match picks the listing.</span>
+                  <span className="text-xs font-normal text-gray-500"><Trans>Otherwise auto-match picks the listing.</Trans></span>
                 </span>
               )}
             </div>
@@ -210,7 +212,7 @@ export default function DetailsStep({ heading, currency, initialValues, manualMa
         </div>
         <div className="flex flex-wrap gap-3">
           <label className={labelClass}>
-            Status
+            <Trans>Status</Trans>
             <select value={v.status} onChange={(e) => set('status', e.target.value as DetailsValues['status'])} className={inputClass}>
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -220,9 +222,9 @@ export default function DetailsStep({ heading, currency, initialValues, manualMa
             </select>
           </label>
           <label className={labelClass}>
-            Rating
+            <Trans>Rating</Trans>
             <select value={v.rating} onChange={(e) => set('rating', e.target.value)} className={inputClass}>
-              <option value="">Unrated</option>
+              <option value="">{t`Unrated`}</option>
               {Array.from({ length: 10 }, (_, i) => String(i + 1)).map((n) => (
                 <option key={n} value={n}>
                   {n}
@@ -231,24 +233,24 @@ export default function DetailsStep({ heading, currency, initialValues, manualMa
             </select>
           </label>
           <label className={labelClass}>
-            Storage location
+            <Trans>Storage location</Trans>
             <input value={v.storageLocation} onChange={(e) => set('storageLocation', e.target.value)} className={inputClass} />
           </label>
           <label className="flex items-center gap-2 text-sm font-medium">
             <input type="checkbox" checked={v.pinned} onChange={(e) => set('pinned', e.target.checked)} />
-            Pinned
+            <Trans>Pinned</Trans>
           </label>
         </div>
         <label className={labelClass}>
-          Notes
+          <Trans>Notes</Trans>
           <textarea value={v.notes} onChange={(e) => set('notes', e.target.value)} rows={2} className={inputClass} />
         </label>
         <div className="flex gap-2">
           <button type="button" onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
-            Back
+            <Trans>Back</Trans>
           </button>
           <button type="submit" className="rounded bg-gray-900 px-4 py-1 text-sm text-white hover:bg-gray-700">
-            Continue
+            <Trans>Continue</Trans>
           </button>
         </div>
       </form>

@@ -1,3 +1,6 @@
+import { Trans, useLingui } from '@lingui/react/macro'
+import { msg, t } from '@lingui/core/macro'
+import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
@@ -51,29 +54,41 @@ interface SearchPickerProps {
   communityLane?: 'shown' | 'hidden'
 }
 
-const kindLabels: Record<SearchKind, string> = {
-  game: 'Games',
-  hardware: 'Hardware',
+// pc_listing's label/noun is the PriceCharting brand name - a proper
+// noun that never translates - so it stays a plain string while
+// game/hardware translate; the two tables below therefore mix
+// MessageDescriptor and string values.
+const kindLabels: Record<SearchKind, MessageDescriptor | string> = {
+  game: msg`Games`,
+  hardware: msg`Hardware`,
   pc_listing: 'PriceCharting',
 }
-const kindPlaceholders: Record<SearchKind, string> = {
-  game: 'Game title...',
-  hardware: 'Console or accessory...',
-  pc_listing: 'Any listing (games, variants, hardware)...',
+const kindPlaceholders: Record<SearchKind, MessageDescriptor> = {
+  game: msg`Game title...`,
+  hardware: msg`Console or accessory...`,
+  pc_listing: msg`Any listing (games, variants, hardware)...`,
 }
 // The search box's aria-label names the kinds on offer: "games and
 // hardware" (default two kinds, pinned by the add wizard's tests and
 // e2e steps) or an Oxford-comma list once PriceCharting joins in.
-const kindNouns: Record<SearchKind, string> = {
-  game: 'games',
-  hardware: 'hardware',
+const kindNouns: Record<SearchKind, MessageDescriptor | string> = {
+  game: msg`games`,
+  hardware: msg`hardware`,
   pc_listing: 'PriceCharting',
 }
-function searchBoxLabel(kinds: SearchKind[]): string {
-  const nouns = kinds.map((k) => kindNouns[k])
-  if (nouns.length < 2) return `Search for ${nouns.join('')}`
-  if (nouns.length === 2) return `Search for ${nouns[0]} and ${nouns[1]}`
-  return `Search for ${nouns.slice(0, -1).join(', ')}, and ${nouns[nouns.length - 1]}`
+function resolveKindText(v: MessageDescriptor | string, i18n: I18n): string {
+  return typeof v === 'string' ? v : i18n._(v)
+}
+// searchBoxLabel is a plain function, not a component: it cannot call
+// useLingui() itself, so its i18n comes from the caller's own hook
+// (same reasoning as rowMeta - see components/collection/rowMeta.tsx)
+// rather than the @lingui/core singleton, which would not force a
+// re-render of SearchPicker on a later locale switch.
+function searchBoxLabel(kinds: SearchKind[], i18n: I18n): string {
+  const nouns = kinds.map((k) => resolveKindText(kindNouns[k], i18n))
+  if (nouns.length < 2) return t(i18n)`Search for ${nouns.join('')}`
+  if (nouns.length === 2) return t(i18n)`Search for ${nouns[0]} and ${nouns[1]}`
+  return t(i18n)`Search for ${nouns.slice(0, -1).join(', ')}, and ${nouns[nouns.length - 1]}`
 }
 
 // SearchPicker is the shared catalog-search surface: the add wizard's
@@ -81,6 +96,7 @@ function searchBoxLabel(kinds: SearchKind[]): string {
 // picking a platform (a product is game-on-platform); hardware and
 // pc_listing picks are the listing itself.
 export default function SearchPicker({ initialQuery = '', onPick, footer, kinds = ['game', 'hardware'], communityLane = 'shown' }: SearchPickerProps) {
+  const { t, i18n } = useLingui()
   const money = useDisplayMoney()
   const [kind, setKind] = useState<SearchKind>(kinds[0])
   const [text, setText] = useState(initialQuery)
@@ -100,7 +116,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
   )
 
   return (
-    <section aria-label="Search" className="flex flex-col gap-3">
+    <section aria-label={t`Search`} className="flex flex-col gap-3">
       <form
         role="search"
         onSubmit={(e) => {
@@ -110,21 +126,21 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
         className="flex flex-wrap items-center gap-2"
       >
         {kinds.length > 1 && (
-          <fieldset className="flex gap-2" aria-label="Search type">
+          <fieldset className="flex gap-2" aria-label={t`Search type`}>
             {kinds.map((k) => (
               <label key={k} className="flex items-center gap-1 text-sm">
                 <input type="radio" name="kind" checked={kind === k} onChange={() => setKind(k)} />
-                {kindLabels[k]}
+                {resolveKindText(kindLabels[k], i18n)}
               </label>
             ))}
           </fieldset>
         )}
         <input
           type="search"
-          aria-label={searchBoxLabel(kinds)}
+          aria-label={searchBoxLabel(kinds, i18n)}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={kindPlaceholders[kind]}
+          placeholder={i18n._(kindPlaceholders[kind])}
           className="w-64 rounded border border-gray-300 px-2 py-1 text-sm"
         />
         <button
@@ -132,22 +148,22 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
           disabled={text.trim() === ''}
           className="rounded bg-gray-900 px-3 py-1 text-sm text-white enabled:hover:bg-gray-700 disabled:opacity-50"
         >
-          Search
+          <Trans>Search</Trans>
         </button>
       </form>
 
       {search.data?.degraded && (
         <p role="alert" className="rounded bg-amber-50 p-3 text-sm text-amber-800">
-          Search may be missing some results right now; try again in a moment for the full set.
+          <Trans>Search may be missing some results right now; try again in a moment for the full set.</Trans>
         </p>
       )}
       {search.isError && (
         <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">
-          Search is not working right now. Please try again.
+          <Trans>Search is not working right now. Please try again.</Trans>
         </p>
       )}
       {search.isSuccess && rows.length === 0 && (
-        <p className="text-sm text-gray-500">No results for "{submitted}".</p>
+        <p className="text-sm text-gray-500"><Trans>No results for "{submitted}".</Trans></p>
       )}
 
       <ul className="flex flex-col gap-2">
@@ -187,7 +203,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
                 {r.category && <span className="ml-2 text-xs text-gray-400">{r.category}</span>}
                 {r.origin === 'community' && (
                   <span className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-semibold text-indigo-800">
-                    community
+                    <Trans>community</Trans>
                   </span>
                 )}
               </p>
@@ -196,7 +212,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
                   <p className="mt-1 flex flex-wrap items-center gap-1">
                     {/* Mirrors the provider game row's chip idiom below:
                         the chip is the pick target, not the row. */}
-                    <span className="text-xs text-gray-500">Add on:</span>
+                    <span className="text-xs text-gray-500"><Trans>Add on:</Trans></span>
                     <button
                       type="button"
                       onClick={() =>
@@ -208,7 +224,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
                           platformName: r.platform_name,
                         })
                       }
-                      aria-label={`${r.name} on ${r.platform_name}`}
+                      aria-label={t`${r.name} on ${r.platform_name}`}
                       className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
                     >
                       {r.platform_name}
@@ -228,13 +244,13 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
                     }
                     className="mt-1 rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
                   >
-                    Add {r.name}
+                    <Trans>Add {r.name}</Trans>
                   </button>
                 )
               ) : r.type === 'game' && r.igdb_game_id !== undefined ? (
                 <p className="mt-1 flex flex-wrap items-center gap-1">
                   {/* The chips are the pick targets, not the row; say so. */}
-                  <span className="text-xs text-gray-500">Add on:</span>
+                  <span className="text-xs text-gray-500"><Trans>Add on:</Trans></span>
                   {r.platforms?.map((p) => (
                     <button
                       key={p.igdb_platform_id}
@@ -248,7 +264,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
                           platformName: p.name,
                         })
                       }
-                      aria-label={`${r.name} on ${p.name}`}
+                      aria-label={t`${r.name} on ${p.name}`}
                       className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
                     >
                       {p.name}
@@ -258,8 +274,10 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
               ) : r.type === 'pc_listing' && r.pc_product_id !== undefined ? (
                 <div className="mt-1 flex flex-col gap-1">
                   <p className="text-xs text-gray-500">
-                    Loose {money.format(r.loose_cents) ?? '-'} / CIB {money.format(r.cib_cents) ?? '-'} / New{' '}
-                    {money.format(r.new_cents) ?? '-'}
+                    <Trans>
+                      Loose {money.format(r.loose_cents) ?? '-'} / CIB {money.format(r.cib_cents) ?? '-'} / New{' '}
+                      {money.format(r.new_cents) ?? '-'}
+                    </Trans>
                   </p>
                   <button
                     type="button"
@@ -268,7 +286,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
                     }
                     className="self-start rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
                   >
-                    Use {r.name}
+                    <Trans>Use {r.name}</Trans>
                   </button>
                 </div>
               ) : r.pc_product_id !== undefined ? (
@@ -284,7 +302,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
                   }
                   className="mt-1 rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
                 >
-                  Add {r.name}
+                  <Trans>Add {r.name}</Trans>
                 </button>
               ) : null}
             </div>

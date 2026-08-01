@@ -1,3 +1,6 @@
+import { Trans, useLingui } from '@lingui/react/macro'
+import { t } from '@lingui/core/macro'
+import type { I18n } from '@lingui/core'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { dismissPromoteCandidate, promoteProduct } from '../../api/admin'
@@ -17,18 +20,22 @@ interface PromotePanelProps {
   onDone: () => void
 }
 
-function promoteErrorMessage(e: unknown): string {
+// t(i18n) throughout this file, component included: promoteErrorMessage
+// is a plain function (cannot call useLingui() itself), so it takes the
+// caller's i18n explicitly; the component uses the same explicit form
+// for its own strings rather than importing a second, same-named t.
+function promoteErrorMessage(e: unknown, i18n: I18n): string {
   if (e instanceof ApiError) {
     // identity_taken names the provider holder; surface it verbatim -
     // this is the true-merge signal an admin acts on by hand.
     if (e.code === 'identity_taken')
-      return e.message || 'A provider product already holds that identity - nothing changed.'
-    if (e.code === 'product_not_community') return 'This product is already provider-identified.'
-    if (e.code === 'unknown_game' || e.code === 'unknown_pc_product') return 'The provider does not know that id.'
-    if (e.code === 'upstream_unavailable') return 'The provider is unavailable - try again.'
+      return e.message || t(i18n)`A provider product already holds that identity - nothing changed.`
+    if (e.code === 'product_not_community') return t(i18n)`This product is already provider-identified.`
+    if (e.code === 'unknown_game' || e.code === 'unknown_pc_product') return t(i18n)`The provider does not know that id.`
+    if (e.code === 'upstream_unavailable') return t(i18n)`The provider is unavailable - try again.`
     if (e.message) return e.message
   }
-  return 'The promotion failed.'
+  return t(i18n)`The promotion failed.`
 }
 
 // PromotePanel is a community product's upgrade surface: confirm the
@@ -37,6 +44,7 @@ function promoteErrorMessage(e: unknown): string {
 // every adopter upgrades through live reads. Dismiss silences a
 // wrong candidate permanently.
 export default function PromotePanel({ product, candidates, onDone }: PromotePanelProps) {
+  const { i18n } = useLingui()
   const queryClient = useQueryClient()
   const [picking, setPicking] = useState(false)
   const [attaching, setAttaching] = useState(false)
@@ -57,7 +65,7 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
   const confirmAnd = (run: () => void) => {
     if (
       window.confirm(
-        'Promote this community product to provider identity? Adopter entries upgrade in place; this cannot be undone from the UI.',
+        t(i18n)`Promote this community product to provider identity? Adopter entries upgrade in place; this cannot be undone from the UI.`,
       )
     )
       run()
@@ -76,7 +84,7 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
 
   const seed = candidates[0]?.name ?? product.name
   return (
-    <div aria-label={`Promote ${product.name}`} className="mt-2 rounded border border-gray-200 p-3 text-sm">
+    <div aria-label={t(i18n)`Promote ${product.name}`} className="mt-2 rounded border border-gray-200 p-3 text-sm">
       {candidates.length > 0 && (
         <ul className="mb-2">
           {candidates.map((c) => (
@@ -90,7 +98,7 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
                 disabled={dismiss.isPending}
                 className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50 disabled:opacity-50"
               >
-                Dismiss
+                <Trans>Dismiss</Trans>
               </button>
             </li>
           ))}
@@ -101,7 +109,7 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
         onClick={() => setPicking(true)}
         className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50"
       >
-        Promote to provider identity
+        <Trans>Promote to provider identity</Trans>
       </button>
       {picking &&
         (product.type === 'game' ? (
@@ -112,13 +120,13 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
                 body at the two provider ids. */}
             {listing ? (
               <p className="mt-2 flex items-center gap-2 text-sm">
-                <span>Listing: {listing.name}</span>
+                <span><Trans>Listing: {listing.name}</Trans></span>
                 <button
                   type="button"
                   onClick={() => setListing(null)}
                   className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
                 >
-                  Clear
+                  <Trans>Clear</Trans>
                 </button>
               </p>
             ) : attaching ? (
@@ -136,7 +144,7 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
                 onClick={() => setAttaching(true)}
                 className="mt-2 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
               >
-                Attach a price listing (optional)
+                <Trans>Attach a price listing (optional)</Trans>
               </button>
             )}
           </div>
@@ -152,12 +160,12 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
         ))}
       {promote.isError && (
         <p role="alert" className="mt-2 text-red-700">
-          {promoteErrorMessage(promote.error)}
+          {promoteErrorMessage(promote.error, i18n)}
         </p>
       )}
       {dismiss.isError && (
         <p role="alert" className="mt-2 text-red-700">
-          The dismissal failed - try again.
+          <Trans>The dismissal failed - try again.</Trans>
         </p>
       )}
     </div>

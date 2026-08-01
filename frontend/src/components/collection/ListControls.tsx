@@ -1,23 +1,26 @@
+import { Trans, useLingui } from '@lingui/react/macro'
+import { msg } from '@lingui/core/macro'
+import type { MessageDescriptor } from '@lingui/core'
 import type { GroupBy, ListState, Sort } from '../../lib/listParams'
 import { canBacklogSort, defaultListState, GROUPS, SORTS } from '../../lib/listParams'
 
-const sortLabels: Record<Sort, string> = {
-  name: 'Name',
-  release_date: 'Release date',
-  purchased_at: 'Purchase date',
-  created_at: 'Date added',
-  value: 'Value',
-  paid: 'Price paid',
-  rating: 'Rating',
-  backlog_rank: 'Backlog order',
+const sortLabels: Record<Sort, MessageDescriptor> = {
+  name: msg`Name`,
+  release_date: msg`Release date`,
+  purchased_at: msg`Purchase date`,
+  created_at: msg`Date added`,
+  value: msg`Value`,
+  paid: msg`Price paid`,
+  rating: msg`Rating`,
+  backlog_rank: msg`Backlog order`,
 }
 
-const groupLabels: Record<GroupBy, string> = {
-  platform: 'Platform',
-  status: 'Status',
-  item_type: 'Item type',
-  location: 'Location',
-  tag: 'Tag',
+const groupLabels: Record<GroupBy, MessageDescriptor> = {
+  platform: msg`Platform`,
+  status: msg`Status`,
+  item_type: msg`Item type`,
+  location: msg`Location`,
+  tag: msg`Tag`,
 }
 
 // The seven chip dimensions FilterBar renders behind the Filters
@@ -61,13 +64,14 @@ interface ListControlsProps {
 export default function ListControls({
   state, onApply, onChange, filtersOpen, onToggleFilters, bulkMode, onToggleBulk, bulkAvailable,
 }: ListControlsProps) {
+  const { t, i18n } = useLingui()
   const sorts = SORTS.filter((s) => s !== 'backlog_rank' || canBacklogSort(state))
   const filterCount = activeFilterCount(state)
   const canClear = filterCount > 0 || !!state.sort || !!state.order || !!state.groupBy
 
   return (
     <div className="mb-3 flex flex-wrap items-center gap-3">
-      <div className="flex gap-1" role="group" aria-label="Display mode">
+      <div className="flex gap-1" role="group" aria-label={t`Display mode`}>
         {(['table', 'grid', 'compact'] as const).map((m) => (
           <button
             key={m}
@@ -79,7 +83,7 @@ export default function ListControls({
                 : 'rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50'
             }
           >
-            {m === 'table' ? 'Table' : m === 'grid' ? 'Covers' : 'Compact'}
+            {m === 'table' ? t`Table` : m === 'grid' ? t`Covers` : t`Compact`}
           </button>
         ))}
       </div>
@@ -94,11 +98,11 @@ export default function ListControls({
               : 'rounded border border-gray-300 px-2 py-1 text-sm text-gray-600 hover:bg-gray-50'
           }
         >
-          Bulk edit
+          <Trans>Bulk edit</Trans>
         </button>
       )}
       <label className="flex items-center gap-2 text-sm font-medium">
-        Sort
+        <Trans>Sort</Trans>
         <select
           value={state.sort ?? ''}
           onChange={(e) =>
@@ -106,10 +110,10 @@ export default function ListControls({
           }
           className="rounded border border-gray-300 px-2 py-1 text-sm"
         >
-          <option value="">Date added (default)</option>
+          <option value="">{t`Date added (default)`}</option>
           {sorts.map((s) => (
             <option key={s} value={s}>
-              {sortLabels[s]}
+              {i18n._(sortLabels[s])}
             </option>
           ))}
         </select>
@@ -119,10 +123,10 @@ export default function ListControls({
         onClick={() => onChange({ ...state, order: state.order === 'asc' ? 'desc' : 'asc' })}
         className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
       >
-        Order: {(state.order ?? 'desc') === 'desc' ? 'descending' : 'ascending'}
+        <Trans>Order: {(state.order ?? 'desc') === 'desc' ? t`descending` : t`ascending`}</Trans>
       </button>
       <label className="flex items-center gap-2 text-sm font-medium">
-        Group by
+        <Trans>Group by</Trans>
         <select
           value={state.groupBy ?? ''}
           onChange={(e) =>
@@ -130,10 +134,10 @@ export default function ListControls({
           }
           className="rounded border border-gray-300 px-2 py-1 text-sm"
         >
-          <option value="">Ungrouped</option>
+          <option value="">{t`Ungrouped`}</option>
           {GROUPS.map((g) => (
             <option key={g} value={g}>
-              {groupLabels[g]}
+              {i18n._(groupLabels[g])}
             </option>
           ))}
         </select>
@@ -144,7 +148,7 @@ export default function ListControls({
         aria-expanded={filtersOpen}
         className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
       >
-        {filterCount > 0 ? `Filters (${filterCount})` : 'Filters'}
+        {filterCount > 0 ? t`Filters (${filterCount})` : t`Filters`}
       </button>
       {canClear && (
         <button
@@ -152,7 +156,7 @@ export default function ListControls({
           onClick={() => onChange({ ...defaultListState(), mode: state.mode })}
           className="ml-auto rounded border border-gray-300 px-2 py-1 text-sm text-gray-600 hover:bg-gray-50"
         >
-          Clear filters
+          <Trans>Clear filters</Trans>
         </button>
       )}
     </div>

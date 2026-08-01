@@ -1,3 +1,6 @@
+import { Trans, useLingui } from '@lingui/react/macro'
+import { msg } from '@lingui/core/macro'
+import type { MessageDescriptor } from '@lingui/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
@@ -9,7 +12,17 @@ import CatalogSubmission from '../components/entry/CatalogSubmission'
 import EntryForm from '../components/entry/EntryForm'
 import { releaseYear } from '../lib/format'
 
+// Identity-preserving: the byline has never been prettified, so the
+// item-type word stays the raw wire value. An unknown future wire
+// value falls back to rendering itself raw.
+const itemTypeLabels: Record<string, MessageDescriptor> = {
+  game: msg`game`,
+  console: msg`console`,
+  accessory: msg`accessory`,
+}
+
 export default function EntryDetail() {
+  const { t, i18n } = useLingui()
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -39,28 +52,28 @@ export default function EntryDetail() {
     },
   })
 
-  if (entry.isPending) return <main className="py-8">Loading entry...</main>
+  if (entry.isPending) return <main className="py-8"><Trans>Loading entry...</Trans></main>
   if (entry.isError) {
     if (entry.error instanceof ApiError && entry.error.status === 404) {
       return (
         <main className="py-8" role="alert">
-          This entry does not exist (it may have been deleted).
+          <Trans>This entry does not exist (it may have been deleted).</Trans>
         </main>
       )
     }
     return (
       <main className="py-8" role="alert">
-        The entry cannot be loaded right now. Please try again.
+        <Trans>The entry cannot be loaded right now. Please try again.</Trans>
       </main>
     )
   }
 
   const e = entry.data
   return (
-    <main className="py-6" aria-label="Entry detail">
+    <main className="py-6" aria-label={t`Entry detail`}>
       {justAdded && (
         <p role="status" className="mb-4 rounded bg-green-50 p-3 text-sm text-green-800">
-          Added to your collection.
+          <Trans>Added to your collection.</Trans>
         </p>
       )}
       <header className="mb-6 flex items-start gap-4">
@@ -79,18 +92,22 @@ export default function EntryDetail() {
         <div>
           <h2 className="text-2xl font-bold">{e.display_name}</h2>
           <p className="text-sm text-gray-600">
-            {[e.platform?.name, releaseYear(e.first_release_date), e.item_type].filter(Boolean).join(' - ')}
-            {!e.product_id && ' - custom item'}
+            {[
+              e.platform?.name,
+              releaseYear(e.first_release_date),
+              itemTypeLabels[e.item_type] ? i18n._(itemTypeLabels[e.item_type]) : e.item_type,
+            ].filter(Boolean).join(' - ')}
+            {!e.product_id && <Trans> - custom item</Trans>}
           </p>
         </div>
         <button
           onClick={() => {
-            if (window.confirm('Delete this entry? This cannot be undone.')) remove.mutate()
+            if (window.confirm(t`Delete this entry? This cannot be undone.`)) remove.mutate()
           }}
           disabled={remove.isPending}
           className="ml-auto rounded border border-red-300 px-3 py-1 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
         >
-          Delete entry
+          <Trans>Delete entry</Trans>
         </button>
       </header>
       {e.product_id && <ApprovalNotice entryId={e.id} />}

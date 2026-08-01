@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { BulkUpdateRequest, Tag } from '../../api/collection'
 import { jsonResponse, putBody } from '../../test/fixtures'
+import { renderWithI18n } from '../../test/i18n'
 import BulkEditBar from './BulkEditBar'
 
 const tags: Tag[] = [
@@ -15,7 +16,7 @@ function renderBar(opts: { selected?: Set<string>; tags?: Tag[] } = {}) {
   const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
   const onCancel = vi.fn()
   const onApplied = vi.fn()
-  render(
+  renderWithI18n(
     <QueryClientProvider client={qc}>
       <BulkEditBar
         selected={opts.selected ?? new Set(['e1', 'e2'])}

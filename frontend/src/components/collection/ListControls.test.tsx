@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ListState } from '../../lib/listParams'
 import { defaultListState } from '../../lib/listParams'
+import { renderWithI18n } from '../../test/i18n'
 import ListControls from './ListControls'
 
 function renderControls(
@@ -14,7 +15,7 @@ function renderControls(
   const onChange = vi.fn()
   const onToggleFilters = vi.fn()
   const onToggleBulk = vi.fn()
-  const { unmount } = render(
+  const { unmount } = renderWithI18n(
     <ListControls
       state={state}
       onApply={onApply}

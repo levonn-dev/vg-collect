@@ -1,3 +1,4 @@
+import { Plural } from '@lingui/react/macro'
 import { Link } from 'react-router'
 import type { ShelfCard } from '../../api/social'
 import UserChip from './UserChip'
@@ -28,9 +29,9 @@ export default function ShelfCard({ card }: { card: ShelfCard }) {
         <UserChip profile={card.owner} />
       </div>
       <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-        <span>{card.entry_count} {card.entry_count === 1 ? 'entry' : 'entries'}</span>
+        <span><Plural value={card.entry_count} one="# entry" other="# entries" /></span>
         {card.like_count !== undefined && (
-          <span>{card.like_count} {card.like_count === 1 ? 'like' : 'likes'}</span>
+          <span><Plural value={card.like_count} one="# like" other="# likes" /></span>
         )}
         {card.published_at && <span>{new Date(card.published_at).toLocaleDateString()}</span>}
       </p>

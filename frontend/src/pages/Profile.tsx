@@ -1,3 +1,4 @@
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router'
 import { ApiError, fetchMe } from '../api/client'
@@ -21,6 +22,7 @@ import { foldHandle } from '../lib/handle'
 // or a follow control (a control we cannot render correctly without
 // knowing whether the viewer already follows this person).
 export default function Profile() {
+  const { t } = useLingui()
   const { handle = '' } = useParams()
   const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
   const profile = useQuery({
@@ -28,12 +30,12 @@ export default function Profile() {
     queryFn: () => fetchProfilePage(handle),
   })
 
-  if (profile.isPending) return <main className="py-8">Loading profile...</main>
+  if (profile.isPending) return <main className="py-8"><Trans>Loading profile...</Trans></main>
   if (profile.isError) {
     if (profile.error instanceof ApiError && profile.error.status === 404) return <NotFoundState />
     return (
       <main className="py-8" role="alert">
-        This profile cannot be loaded right now. Please try again.
+        <Trans>This profile cannot be loaded right now. Please try again.</Trans>
       </main>
     )
   }
@@ -45,16 +47,16 @@ export default function Profile() {
   const isOwner = me.data ? me.data.id === card.user_id : true
 
   return (
-    <main aria-label="Profile" className="py-6">
+    <main aria-label={t`Profile`} className="py-6">
       <header className="flex flex-wrap items-center gap-4 border-b border-gray-200 pb-4">
         <Avatar key={card.avatar_url} url={card.avatar_url} label={card.handle} size="lg" />
         <div>
           <h2 className="text-2xl font-bold">@{card.handle}</h2>
           {social_available && social && (
             <p className="text-sm text-gray-500">
-              {social.follower_count} {social.follower_count === 1 ? 'follower' : 'followers'}
+              <Plural value={social.follower_count} one="# follower" other="# followers" />
               {' - '}
-              {social.following_count} following
+              <Trans>{social.following_count} following</Trans>
             </p>
           )}
         </div>
@@ -65,13 +67,13 @@ export default function Profile() {
         )}
       </header>
 
-      <section aria-label="Shelves" className="mt-6">
+      <section aria-label={t`Shelves`} className="mt-6">
         {shelves.length === 0 ? (
-          <p className="py-12 text-center text-gray-500">No shared shelves yet.</p>
+          <p className="py-12 text-center text-gray-500"><Trans>No shared shelves yet.</Trans></p>
         ) : (
           <>
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-              {total_count} shared {total_count === 1 ? 'shelf' : 'shelves'}
+              <Plural value={total_count} one="# shared shelf" other="# shared shelves" />
             </h3>
             <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {shelves.map((s) => (

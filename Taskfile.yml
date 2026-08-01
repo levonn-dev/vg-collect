@@ -134,6 +134,7 @@ tasks:
       - task: collection:gen
       - task: social:gen
       - task: frontend:gen
+      - task: frontend:extract
 
   tidy:
     desc: 'go mod tidy every module (plain tidy; the repo carries no known dependency skew)'

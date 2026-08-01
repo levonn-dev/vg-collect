@@ -1,3 +1,4 @@
+import { useLingui } from '@lingui/react/macro'
 import { useEffect, useRef, useState } from 'react'
 
 type CopyState = 'idle' | 'copied' | 'failed'
@@ -35,7 +36,9 @@ interface CopyButtonProps {
 // settles. A mounted flag (also flipped in the unmount cleanup below)
 // keeps a clipboard promise that resolves after unmount from touching
 // state or scheduling a timer nothing would ever clear.
-export default function CopyButton({ text, label = 'Copy link', className = '' }: CopyButtonProps) {
+export default function CopyButton({ text, label, className = '' }: CopyButtonProps) {
+  const { t } = useLingui()
+  const resolvedLabel = label ?? t`Copy link`
   const [state, setState] = useState<CopyState>('idle')
   const revertTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const mounted = useRef(true)
@@ -63,14 +66,14 @@ export default function CopyButton({ text, label = 'Copy link', className = '' }
     )
   }
 
-  const shown = state === 'copied' ? 'Copied' : state === 'failed' ? 'Copy failed' : label
+  const shown = state === 'copied' ? t`Copied` : state === 'failed' ? t`Copy failed` : resolvedLabel
   const announced = state === 'idle' ? '' : shown
   return (
     <>
       <button
         type="button"
         onClick={copy}
-        aria-label={label}
+        aria-label={resolvedLabel}
         className={`rounded border border-gray-300 hover:bg-gray-50 ${className}`.trim()}
       >
         {shown}

@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchMe, updateMe, type Me } from '../api/client'
 import { useFxRates } from '../lib/useDisplayMoney'
@@ -8,6 +9,7 @@ import { useFxRates } from '../lib/useDisplayMoney'
 // rates are unavailable the app can only render USD, so the control
 // pins there and says why.
 export default function CurrencySelect() {
+  const { t } = useLingui()
   const queryClient = useQueryClient()
   const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
   const fx = useFxRates()
@@ -35,8 +37,8 @@ export default function CurrencySelect() {
   return (
     <>
       <select
-        aria-label="Display currency"
-        title={fx.isSuccess ? undefined : 'Exchange rates are unavailable; prices show in USD.'}
+        aria-label={t`Display currency`}
+        title={fx.isSuccess ? undefined : t`Exchange rates are unavailable; prices show in USD.`}
         value={value}
         disabled={!fx.isSuccess || save.isPending}
         onChange={(e) => save.mutate(e.target.value)}
@@ -50,7 +52,7 @@ export default function CurrencySelect() {
       </select>
       {save.isError && (
         <span role="alert" className="text-sm text-red-700">
-          Saving failed. Please try again.
+          <Trans>Saving failed. Please try again.</Trans>
         </span>
       )}
     </>

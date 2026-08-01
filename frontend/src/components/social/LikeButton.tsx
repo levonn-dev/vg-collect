@@ -1,3 +1,4 @@
+import { useLingui } from '@lingui/react/macro'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { like, unlike } from '../../api/social'
 
@@ -13,6 +14,7 @@ interface LikeButtonProps {
 // deliberate optimistic-free tradeoff so a failed request never
 // leaves a stale, too-high count on screen.
 export default function LikeButton({ shelfId, viewerLikes, count }: LikeButtonProps) {
+  const { t } = useLingui()
   const queryClient = useQueryClient()
   const toggle = useMutation({
     mutationFn: () => (viewerLikes ? unlike(shelfId) : like(shelfId)),
@@ -27,7 +29,7 @@ export default function LikeButton({ shelfId, viewerLikes, count }: LikeButtonPr
       onClick={() => toggle.mutate()}
       disabled={toggle.isPending}
       aria-pressed={viewerLikes}
-      aria-label={viewerLikes ? 'Unlike' : 'Like'}
+      aria-label={viewerLikes ? t`Unlike` : t`Like`}
       className={`flex items-center gap-1 text-sm ${
         viewerLikes ? 'text-red-700' : 'text-gray-300 hover:text-red-700'
       }`}

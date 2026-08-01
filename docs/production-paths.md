@@ -66,8 +66,12 @@ SERVE_STATIC=false since it no longer serves the bundle. A midpoint
 without a CDN in front is a static-file pod plus an APISIX route split
 between it and the bff.
 The CI build step also owns the `VITE_SITE_*` site-identity variables
-(documented in `.env.example`): set them in the build environment
-before `npm run build`; the bundle carries them from there.
+and `VITE_BUILD_VERSION` (documented in `.env.example`): set them in
+the build environment before `npm run build`; the bundle carries them
+from there. `VITE_BUILD_VERSION` typically gets the git SHA or release
+tag, and lands on browser telemetry so an error or web-vitals
+regression can be traced back to the build that shipped it -
+[frontend.md](runbooks/frontend.md) covers the attribute.
 
 ## Observability hardening
 

@@ -1,3 +1,6 @@
+import { Trans, useLingui } from '@lingui/react/macro'
+import { msg } from '@lingui/core/macro'
+import type { MessageDescriptor } from '@lingui/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
@@ -16,6 +19,12 @@ const visibilityBadges: Record<SavedView['visibility'], string> = {
   listed: 'bg-green-50 text-green-800',
 }
 
+const visibilityLabels: Record<SavedView['visibility'], MessageDescriptor> = {
+  private: msg`private`,
+  unlisted: msg`unlisted`,
+  listed: msg`listed`,
+}
+
 // ShelfManager is the Shelves tab's own content: the per-shelf
 // management list that used to live behind ViewPicker's Manage-shelves
 // disclosure (ViewPicker itself now renders only the quick-row - see
@@ -32,6 +41,7 @@ const visibilityBadges: Record<SavedView['visibility'], string> = {
 // they are still link-reachable. At most one of the two notes ever
 // applies, since profile_visibility is a single value.
 export default function ShelfManager() {
+  const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
   const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
   const views = useQuery({ queryKey: ['views'], queryFn: fetchViews })
@@ -53,18 +63,22 @@ export default function ShelfManager() {
   let note: ReactNode = null
   if (me.data?.profile_visibility === 'private' && hasNonPrivateShelf) {
     note = (
-      <>
+      <Trans>
         Your profile is private, so other people cannot see any of your shelves
         regardless of their own setting. Change profile visibility{' '}
         <Link to="/account" className="underline">in Account</Link>.
-      </>
+      </Trans>
     )
   } else if (me.data?.profile_visibility === 'unlisted' && hasListedShelf) {
-    note = 'Your profile is unlisted, so listed shelves are reachable by link only - they will not appear in Explore.'
+    note = (
+      <Trans>
+        Your profile is unlisted, so listed shelves are reachable by link only - they will not appear in Explore.
+      </Trans>
+    )
   }
 
   return (
-    <section aria-label="Manage shelves" className="flex flex-col gap-3">
+    <section aria-label={t`Manage shelves`} className="flex flex-col gap-3">
       {note && (
         <p role="note" className="rounded bg-amber-50 p-3 text-sm text-amber-800">
           {note}
@@ -72,12 +86,12 @@ export default function ShelfManager() {
       )}
       {changeVisibility.error && (
         <p role="alert" className="text-xs text-red-700">
-          {changeVisibility.error.message || 'The shelf visibility update failed.'}
+          {changeVisibility.error.message || t`The shelf visibility update failed.`}
         </p>
       )}
       {views.data && (
         shelves.length === 0 ? (
-          <p className="text-sm text-gray-500">No shelves yet. Save one from the Items tab.</p>
+          <p className="text-sm text-gray-500"><Trans>No shelves yet. Save one from the Items tab.</Trans></p>
         ) : (
           <ul className="flex flex-col gap-1">
             {shelves.map((v) => (
@@ -86,7 +100,7 @@ export default function ShelfManager() {
                 <span
                   className={`rounded px-1.5 py-0.5 text-xs font-semibold ${visibilityBadges[v.visibility]}`}
                 >
-                  {v.visibility}
+                  {i18n._(visibilityLabels[v.visibility])}
                 </span>
                 <VisibilityControl
                   value={v.visibility}

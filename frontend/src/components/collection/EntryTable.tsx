@@ -1,3 +1,6 @@
+import { Trans, useLingui } from '@lingui/react/macro'
+import { msg } from '@lingui/core/macro'
+import type { MessageDescriptor } from '@lingui/core'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { Entry } from '../../api/collection'
@@ -6,13 +9,23 @@ import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import { isFullEntry, rowMeta, type EntryRow } from './rowMeta'
 
 // eslint-disable-next-line react-refresh/only-export-components -- shared label map, consumed by other collection views alongside this component.
-export const statusLabels: Record<Entry['status'], string> = {
-  backlog: 'Backlog',
-  playing: 'Playing',
-  beaten: 'Beaten',
-  completed: 'Completed',
-  dropped: 'Dropped',
-  shelved: 'Shelved',
+export const statusLabels: Record<Entry['status'], MessageDescriptor> = {
+  backlog: msg`Backlog`,
+  playing: msg`Playing`,
+  beaten: msg`Beaten`,
+  completed: msg`Completed`,
+  dropped: msg`Dropped`,
+  shelved: msg`Shelved`,
+}
+
+// Identity-preserving, unlike statusLabels above: the Packaging column
+// has never been prettified, so its cell text stays the raw wire
+// value. An unknown future wire value falls back to rendering itself
+// raw rather than crashing.
+const packagingLabels: Record<string, MessageDescriptor> = {
+  sealed: msg`sealed`,
+  cib: msg`cib`,
+  loose: msg`loose`,
 }
 
 interface EntryTableProps {
@@ -43,6 +56,7 @@ interface EntryTableProps {
 export default function EntryTable({
   entries, pinSlot, linkTo, numbered, shared, selectable, selected, onToggleSelect,
 }: EntryTableProps) {
+  const { t, i18n } = useLingui()
   const money = useDisplayMoney()
   // Only meaningful while selectable (nothing reads them otherwise),
   // so these skip re-deriving that from selectable itself.
@@ -67,7 +81,7 @@ export default function EntryTable({
             <th className="py-2 pr-3">
               <input
                 type="checkbox"
-                aria-label="Select all"
+                aria-label={t`Select all`}
                 checked={allSelected}
                 ref={(el) => {
                   if (el) el.indeterminate = someSelected
@@ -77,25 +91,25 @@ export default function EntryTable({
             </th>
           )}
           {numbered && <th className="py-2 pr-3 text-right">#</th>}
-          <th className="py-2 pr-3">Name</th>
-          <th className="py-2 pr-3">Platform</th>
-          {!shared && <th className="py-2 pr-3">Status</th>}
-          <th className="py-2 pr-3">Packaging</th>
-          {!shared && <th className="py-2 pr-3">Rating</th>}
-          {!shared && <th className="py-2 pr-3 text-right">Paid</th>}
-          {!shared && <th className="py-2 text-right">Value ({money.currency})</th>}
+          <th className="py-2 pr-3"><Trans>Name</Trans></th>
+          <th className="py-2 pr-3"><Trans>Platform</Trans></th>
+          {!shared && <th className="py-2 pr-3"><Trans>Status</Trans></th>}
+          <th className="py-2 pr-3"><Trans>Packaging</Trans></th>
+          {!shared && <th className="py-2 pr-3"><Trans>Rating</Trans></th>}
+          {!shared && <th className="py-2 pr-3 text-right"><Trans>Paid</Trans></th>}
+          {!shared && <th className="py-2 text-right"><Trans>Value ({money.currency})</Trans></th>}
         </tr>
       </thead>
       <tbody>
         {entries.map((e, i) => {
-          const meta = rowMeta(e, money, { pinSlot, pinTrailingSpace: true })
+          const meta = rowMeta(e, money, i18n, { pinSlot, pinTrailingSpace: true })
           return (
             <tr key={e.id} className="border-b border-gray-100">
               {selectable && (
                 <td className="py-2 pr-3">
                   <input
                     type="checkbox"
-                    aria-label={`Select ${e.display_name}`}
+                    aria-label={t`Select ${e.display_name}`}
                     checked={selected?.has(e.id) ?? false}
                     onChange={() => onToggleSelect?.(e.id)}
                   />
@@ -113,8 +127,8 @@ export default function EntryTable({
                 )}
               </td>
               <td className="py-2 pr-3">{meta.platform}</td>
-              {!shared && <td className="py-2 pr-3">{isFullEntry(e) ? statusLabels[e.status] : '-'}</td>}
-              <td className="py-2 pr-3">{e.packaging}</td>
+              {!shared && <td className="py-2 pr-3">{isFullEntry(e) ? i18n._(statusLabels[e.status]) : '-'}</td>}
+              <td className="py-2 pr-3">{packagingLabels[e.packaging] ? i18n._(packagingLabels[e.packaging]) : e.packaging}</td>
               {!shared && <td className="py-2 pr-3">{isFullEntry(e) ? (e.rating ?? '-') : '-'}</td>}
               {!shared && (
                 <td className="py-2 pr-3 text-right">

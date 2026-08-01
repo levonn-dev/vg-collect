@@ -1,3 +1,4 @@
+import { useLingui } from '@lingui/react/macro'
 import { useEffect, useState } from 'react'
 
 // The inline script in index.html applies the initial theme class
@@ -5,6 +6,7 @@ import { useEffect, useState } from 'react'
 // dark). This control flips and persists it; until the user chooses,
 // live system-preference changes keep being followed.
 export default function ThemeToggle() {
+  const { t } = useLingui()
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export default function ThemeToggle() {
       onClick={flip}
       className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-600 hover:bg-gray-50"
     >
-      {dark ? 'Switch to light mode' : 'Switch to dark mode'}
+      {dark ? t`Switch to light mode` : t`Switch to dark mode`}
     </button>
   )
 }

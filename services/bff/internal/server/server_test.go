@@ -673,6 +673,27 @@ func TestUnitProxyTraces_RelayFailureLogsWarn(t *testing.T) {
 	}
 }
 
+func TestUnitProxyMetrics_RelayFailureLogsWarn(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	upstream.Close() // closed before any request: dialing it must fail
+
+	h, env := newTestHandlersForOtlp(t, upstream.URL)
+	var logBuf bytes.Buffer
+	h.logger = slog.New(slog.NewTextHandler(&logBuf, nil))
+	req := httptest.NewRequest(http.MethodPost, "/api/otlp/v1/metrics", strings.NewReader(`{}`))
+	req.AddCookie(env.cookie)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("code = %d", rec.Code)
+	}
+	line := logBuf.String()
+	if !strings.Contains(line, "browser telemetry relay failed") || !strings.Contains(line, "err=") {
+		t.Fatalf("relay warn line missing: %q", line)
+	}
+}
+
 // TestUnitNew_NilLoggerDoesNotPanic pins the constructor's
 // tolerate-nil idiom (shared across services): a caller that leaves
 // Options.Logger nil gets slog.Default() instead of a panic on the

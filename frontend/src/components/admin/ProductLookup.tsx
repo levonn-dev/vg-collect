@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { fetchPromoteCandidates } from '../../api/admin'
@@ -10,6 +11,7 @@ import PromotePanel from './PromotePanel'
 // looking at an entry, where the product id is at hand; pasting it
 // here brings up the product regardless of matching state.
 export default function ProductLookup() {
+  const { t } = useLingui()
   const queryClient = useQueryClient()
   const [input, setInput] = useState('')
   const [id, setId] = useState('')
@@ -30,8 +32,8 @@ export default function ProductLookup() {
   }
 
   return (
-    <section aria-label="Product lookup" className="mt-6">
-      <h3 className="text-base font-semibold">Product lookup</h3>
+    <section aria-label={t`Product lookup`} className="mt-6">
+      <h3 className="text-base font-semibold"><Trans>Product lookup</Trans></h3>
       <form
         className="mt-2 flex gap-2"
         onSubmit={(e) => {
@@ -48,10 +50,10 @@ export default function ProductLookup() {
       >
         <input
           type="text"
-          aria-label="Product id"
+          aria-label={t`Product id`}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Product id (uuid)"
+          placeholder={t`Product id (uuid)`}
           className="w-96 rounded border border-gray-300 px-2 py-1 text-sm"
         />
         <button
@@ -59,15 +61,15 @@ export default function ProductLookup() {
           disabled={input.trim() === ''}
           className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
         >
-          Look up
+          <Trans>Look up</Trans>
         </button>
       </form>
-      {product.isFetching && <p className="mt-2 text-sm text-gray-500">Looking up...</p>}
+      {product.isFetching && <p className="mt-2 text-sm text-gray-500"><Trans>Looking up...</Trans></p>}
       {product.isError && (
         <p role="alert" className="mt-2 text-sm text-red-700">
           {product.error instanceof ApiError && product.error.status === 404
-            ? 'No product with that id.'
-            : 'The lookup failed.'}
+            ? t`No product with that id.`
+            : t`The lookup failed.`}
         </p>
       )}
       {product.isSuccess && (
@@ -79,7 +81,7 @@ export default function ProductLookup() {
           </p>
           {product.data.origin === 'community' && (
             <span className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-semibold text-indigo-800">
-              community
+              <Trans>community</Trans>
             </span>
           )}
           {product.data.origin === 'community' ? (

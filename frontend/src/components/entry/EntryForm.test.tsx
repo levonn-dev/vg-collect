@@ -163,10 +163,9 @@ it('preserves the stored paid currency on edit and shows it on the label', async
   expect(sent.currency).toBe('JPY')
 })
 
-// Not brief-specified: the fields above cover the payload semantics the
-// brief calls out (full-replacement baseline, clearing, gating). This
-// test exercises every remaining field's own control once so the
-// coverage gate holds; it is additional breadth, not new behavior.
+// The tests above pin the payload semantics (full-replacement baseline,
+// clearing, gating); this one exercises every remaining field's own
+// control once - breadth, not new behavior.
 it('carries edits from every remaining field control into the payload', async () => {
   const tags = [{ id: 't1', name: 'rpg', entry_count: 1 }]
   const platforms = { platforms: [{ igdb_id: 99, name: 'Famicom', aliases: [] }] }
@@ -341,10 +340,9 @@ it('converts the draft at the frozen input currency when the display currency ch
   expect(sent.custom_value_entered_currency).toBe('EUR')
 })
 
-// Not brief-specified: locks in the deliberate behavior change named in the
-// design (a blanked draft no longer clears stored memory on save) - without
-// this, a stray clear-then-switch-mode click would silently erase
-// custom_value_cents from the baseline echo.
+// Locks in a deliberate behavior change: a blanked draft no longer clears
+// stored memory on save - without this, a stray clear-then-switch-mode
+// click would silently erase custom_value_cents from the baseline echo.
 it('preserves a stored custom price when the draft is blanked and saved under a different mode', async () => {
   const entry = entryFixture({
     pricing_mode: 'custom',

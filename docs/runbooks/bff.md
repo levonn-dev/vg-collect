@@ -334,10 +334,10 @@ Feature health:
 
         sum by (op) (increase(vg_bff_cache_fail_open_total[5m]))
 
-11. "Browser telemetry relay responses" - timeseries, `reqps`, legend
-    `{{http_response_status_code}}`:
+11. "Browser telemetry relay responses by route" - timeseries, `reqps`,
+    legend `{{http_route}} {{http_response_status_code}}`:
 
-        sum by (http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="bff",http_route="POST /api/otlp/v1/traces"}[$__rate_interval]))
+        sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="bff",http_route=~"POST /api/otlp/v1/(traces|metrics)"}[$__rate_interval]))
 
 Valkey:
 
@@ -503,12 +503,19 @@ Shared triage in
 ### 7. Browser telemetry relay failing
 
 Browser traces stop appearing in Jaeger; the app itself is unaffected.
-Confirm on the "Browser telemetry relay responses" panel (502s on
+Confirm on the "Browser telemetry relay responses by route" panel (502s on
 `POST /api/otlp/v1/traces`) and the WARN line
 `browser telemetry relay failed`. A 200-yet-no-traces state means
 `OTLP_PROXY_URL` is empty (accept-and-drop mode) or the collector is dropping
 queue items downstream:
 [stack.md](stack.md#telemetry-pipeline-operations).
+
+The relay carries a second OTLP signal the same way: `POST
+/api/otlp/v1/metrics` shares the identical session gate, 1 MiB cap, and
+verbatim passthrough to the otel-agent (`proxyOTLP` in the bff serves both
+routes), and a relay failure on that leg logs the same WARN line. Empty
+panels on the Frontend Telemetry dashboard (vg-frontend) with the rest of
+the pipeline healthy point here first: [frontend.md](frontend.md).
 
 ### 8. Rate limiting at the gateway
 

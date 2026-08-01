@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { fetchPlatforms } from '../../api/platforms'
@@ -24,6 +25,7 @@ export interface PlatformValue {
 // wizard Back that retains state re-enters it, and an external reset of
 // the value exits it - all for free, with no extra state to sync.
 export default function PlatformPicker({ value, onChange }: { value: PlatformValue; onChange: (v: PlatformValue) => void }) {
+  const { t } = useLingui()
   const platforms = useQuery({ queryKey: ['platforms'], queryFn: fetchPlatforms, staleTime: Infinity })
   const [query, setQuery] = useState(value.platformName)
   const [freeText, setFreeText] = useState(value.platformIgdbId === undefined && value.platformName !== '')
@@ -49,19 +51,19 @@ export default function PlatformPicker({ value, onChange }: { value: PlatformVal
     return (
       <div className="flex flex-col gap-1">
         <div className={labelClass}>
-          Platform
+          <Trans>Platform</Trans>
           <span className="text-sm font-normal">{value.platformName}</span>
         </div>
         <button
           type="button"
-          aria-label="Change platform"
+          aria-label={t`Change platform`}
           onClick={() => {
             setQuery('')
             onChange({ platformIgdbId: undefined, platformName: '' })
           }}
           className={linkButtonClass}
         >
-          Change
+          <Trans>Change</Trans>
         </button>
       </div>
     )
@@ -71,9 +73,9 @@ export default function PlatformPicker({ value, onChange }: { value: PlatformVal
     return (
       <div className="flex flex-col gap-1">
         <label className={labelClass}>
-          Platform
+          <Trans>Platform</Trans>
           <input
-            aria-label="Platform"
+            aria-label={t`Platform`}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value)
@@ -91,7 +93,7 @@ export default function PlatformPicker({ value, onChange }: { value: PlatformVal
           }}
           className={linkButtonClass}
         >
-          Pick from the catalog instead
+          <Trans>Pick from the catalog instead</Trans>
         </button>
       </div>
     )
@@ -100,16 +102,16 @@ export default function PlatformPicker({ value, onChange }: { value: PlatformVal
   return (
     <div className="flex flex-col gap-1">
       <label className={labelClass}>
-        Platform
+        <Trans>Platform</Trans>
         <input
-          aria-label="Platform"
+          aria-label={t`Platform`}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)
             // Typing clears a prior canonical pick until a new one lands.
             onChange({ platformIgdbId: undefined, platformName: e.target.value })
           }}
-          placeholder="Start typing (SNES, PlayStation...)"
+          placeholder={t`Start typing (SNES, PlayStation...)`}
           className={inputClass}
         />
       </label>
@@ -142,7 +144,7 @@ export default function PlatformPicker({ value, onChange }: { value: PlatformVal
         }}
         className={linkButtonClass}
       >
-        My platform isn't listed
+        <Trans>My platform isn't listed</Trans>
       </button>
     </div>
   )

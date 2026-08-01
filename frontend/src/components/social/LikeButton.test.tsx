@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { renderWithI18n } from '../../test/i18n'
 import LikeButton from './LikeButton'
 
 afterEach(() => vi.unstubAllGlobals())
 
 function renderButton(qc: QueryClient, viewerLikes: boolean, count = 3) {
-  return render(
+  return renderWithI18n(
     <QueryClientProvider client={qc}>
       <LikeButton shelfId="s1" viewerLikes={viewerLikes} count={count} />
     </QueryClientProvider>,

@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
@@ -22,13 +23,14 @@ type WizardStep =
   | { step: 'custom-confirm'; custom: CustomValues; details: DetailsValues }
 
 export default function AddWizard() {
+  const { t } = useLingui()
   const [searchParams] = useSearchParams()
   const [state, setState] = useState<WizardStep>({ step: 'search' })
   const money = useDisplayMoney()
 
   return (
-    <main className="py-6" aria-label="Add to collection">
-      <h2 className="mb-4 text-2xl font-bold">Add to collection</h2>
+    <main className="py-6" aria-label={t`Add to collection`}>
+      <h2 className="mb-4 text-2xl font-bold"><Trans>Add to collection</Trans></h2>
       {state.step === 'search' && (
         <SearchPicker
           initialQuery={searchParams.get('q') ?? ''}
@@ -40,7 +42,7 @@ export default function AddWizard() {
                 onClick={() => setState({ step: 'custom' })}
                 className="underline hover:text-gray-600"
               >
-                Can not find it? Add it as a custom item.
+                <Trans>Can not find it? Add it as a custom item.</Trans>
               </button>
             </p>
           }
@@ -48,7 +50,7 @@ export default function AddWizard() {
       )}
       {state.step === 'details' && (
         <DetailsStep
-          heading={`Your copy of ${state.pick.name}`}
+          heading={t`Your copy of ${state.pick.name}`}
           currency={money.profileCurrency}
           initialValues={state.details}
           manualMatch={state.pick.kind === 'game' ? state.manualMatch : undefined}
@@ -78,7 +80,7 @@ export default function AddWizard() {
       )}
       {state.step === 'custom-details' && (
         <DetailsStep
-          heading={`Your copy of ${state.custom.displayName}`}
+          heading={t`Your copy of ${state.custom.displayName}`}
           currency={money.profileCurrency}
           initialValues={state.details}
           onBack={() => setState({ step: 'custom', custom: state.custom, details: state.details })}
@@ -103,6 +105,7 @@ function CustomConfirm({
   details: DetailsValues
   onBack: () => void
 }) {
+  const { t } = useLingui()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const money = useDisplayMoney()
@@ -127,17 +130,19 @@ function CustomConfirm({
   })
   return (
     <ConfirmShell
-      ariaLabel="Confirm custom item"
+      ariaLabel={t`Confirm custom item`}
       title={custom.displayName}
-      subtitle={[custom.platformName || null, custom.itemType, 'custom item'].filter(Boolean).join(' - ')}
-      errorMessage={create.isError ? create.error.message || 'The entry could not be created.' : undefined}
+      subtitle={[custom.platformName || null, custom.itemType, t`custom item`].filter(Boolean).join(' - ')}
+      errorMessage={create.isError ? create.error.message || t`The entry could not be created.` : undefined}
       onBack={onBack}
       onSubmit={() => create.mutate()}
       submitPending={create.isPending}
     >
       <p className="rounded bg-gray-50 p-3 text-sm text-gray-600">
-        Custom items start without market pricing. To track a value, open the entry afterwards
-        and choose a similar listed item as its price source.
+        <Trans>
+          Custom items start without market pricing. To track a value, open the entry afterwards
+          and choose a similar listed item as its price source.
+        </Trans>
       </p>
     </ConfirmShell>
   )

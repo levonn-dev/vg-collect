@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ProfileCard, ShelfPage } from '../api/social'
 import { UNDO_WINDOW_MS } from '../components/social/useCommentDelete'
 import { fxRatesFixture, jsonResponse, meFixture, sharedEntryFixture } from '../test/fixtures'
+import { renderWithI18n } from '../test/i18n'
 import SharedShelf from './SharedShelf'
 
 // Same route-map idiom as Profile.test/Explore.test: fetch is
@@ -58,7 +59,7 @@ function shelfPage(overrides: Partial<ShelfPage> = {}): ShelfPage {
 
 function renderShelf(handle = 'alice', slug = 'backlog-wall') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  return renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[`/u/${handle}/shelves/${slug}`]}>
         <Routes>

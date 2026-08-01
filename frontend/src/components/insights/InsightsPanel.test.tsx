@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { ListState } from '../../lib/listParams'
 import { defaultListState } from '../../lib/listParams'
 import { dashboardFixture, jsonResponse } from '../../test/fixtures'
+import { renderWithI18n } from '../../test/i18n'
 import InsightsPanel from './InsightsPanel'
 
 const history = {
@@ -36,7 +37,7 @@ function stubApi(overrides: Partial<Record<'dashboard' | 'history' | 'recs', unk
 
 function renderPanel(state: ListState = defaultListState()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  return renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <InsightsPanel state={state} />

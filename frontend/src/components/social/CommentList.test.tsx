@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { Comment, ProfileCard } from '../../api/social'
 import { jsonResponse, meFixture } from '../../test/fixtures'
+import { renderWithI18n } from '../../test/i18n'
 import CommentList from './CommentList'
 
 // Same route-map idiom as Profile.test/Explore.test: fetch is
@@ -48,7 +49,7 @@ function comment(overrides: Partial<Comment> = {}): Comment {
 
 function renderList(ownerId = 'owner1') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  return renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <CommentList shelfId="s1" ownerId={ownerId} />

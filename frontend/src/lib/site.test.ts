@@ -1,3 +1,4 @@
+import { i18n } from '@lingui/core'
 import { site } from './site'
 
 afterEach(() => {
@@ -36,7 +37,8 @@ it('resolves data sources from the CSV in catalog order', () => {
 
 it('resolves full catalog records', () => {
   vi.stubEnv('VITE_SITE_DATA_SOURCES', 'pricecharting')
-  expect(site().dataSources).toEqual([
+  const resolved = site().dataSources.map((d) => ({ ...d, dataType: i18n._(d.dataType) }))
+  expect(resolved).toEqual([
     {
       key: 'pricecharting',
       label: 'PriceCharting',

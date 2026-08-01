@@ -1,3 +1,4 @@
+import { useLingui } from '@lingui/react/macro'
 import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet } from 'react-router'
 import { fetchMe } from '../api/client'
@@ -14,6 +15,7 @@ import Logo from './Logo'
 // after sign-in. min-h-screen plus flex-1 keeps the footer at the
 // viewport bottom on short pages and lets Login center vertically.
 export default function PublicShell() {
+  const { t } = useLingui()
   const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
   return (
     <div className="mx-auto flex min-h-screen max-w-6xl flex-col p-4">
@@ -22,7 +24,7 @@ export default function PublicShell() {
       ) : (
         <header
           className="flex items-center gap-2 border-b border-gray-200 pb-3"
-          aria-label="App bar"
+          aria-label={t`App bar`}
         >
           {/* min-h-9 matches the authed app bar's tallest chip (Avatar
               h-8 in its py-0.5 link) so both headers line up. */}

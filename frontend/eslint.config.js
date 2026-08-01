@@ -1,5 +1,6 @@
 import js from '@eslint/js'
 import globals from 'globals'
+import lingui from 'eslint-plugin-lingui'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
@@ -33,4 +34,8 @@ export default defineConfig([
       },
     },
   },
+  // no-unlocalized-strings is deliberately off: on this codebase it is all
+  // false positives (route paths, classNames, API field names) that no
+  // ignore config fully silences.
+  lingui.configs['flat/recommended'],
 ])

@@ -69,6 +69,7 @@ by default, so the whole stack works with zero real credentials.
 graph LR
     svcs["auth, user, bff, collection, enrichment, social"] -->|"OTLP :4317"| agent[otel-agent]
     browser[Browser SPA] -->|"POST /api/otlp/v1/traces"| relay[bff relay]
+    browser -->|"POST /api/otlp/v1/metrics"| relay
     relay -->|"OTLP :4318"| agent
     agent --> gateway[otel-gateway]
     gateway -->|"remote write, exemplars"| prometheus[Prometheus]
@@ -165,7 +166,7 @@ in-cluster callers only (triage goes through `kubectl exec` and
 
 ## Dashboards
 
-Eleven dashboards provision from
+Twelve dashboards provision from
 `deploy/charts/platform/files/dashboards/*.json` into Grafana's
 `vgkeep` folder (every file in that directory globs into the
 `vg-dashboards` ConfigMap). Open any of them at
@@ -188,13 +189,24 @@ dashboard.
 | Enrichment Service | `vg-enrichment` | search sources, auto-matching, the nightly walk, mongo and valkey | [enrichment.md](enrichment.md) |
 | Social Service | `vg-social` | follow/like/comment rates, feed reads, cap rejections, publish outcomes, social-pg | [social.md](social.md) |
 | User Service | `vg-user` | account upserts, currency seeds, deletions, user-pg | [user.md](user.md) |
+| Frontend Telemetry | `vg-frontend` | locale boots by source, browser languages hitting fallback, catalog fetch failures, mid-session locale switches, prose pages served in English, uncaught errors, network failures, and web-vitals health | [frontend.md](frontend.md) |
 
 The six service dashboards share one layout contract: HTTP RED per
 route first, then domain metrics, then datastores from that service's
 seat, then pods and error logs. Panels for a service's domain metrics
 (`vg_<service>_*`) stay empty until a pod built with those instruments
 is running; a freshly landed instrument needs its deployment rolled
-before the series exists.
+before the series exists. Frontend Telemetry does not follow that
+contract: the browser emits no HTTP RED histogram, owns no datastore,
+and runs no pod of its own, so its dashboard holds nine browser-side
+instruments instead - locale, prose fallback, errors, network
+failures, and web vitals - documented in [frontend.md](frontend.md).
+
+## Frontend telemetry
+
+The SPA's telemetry - six counters and three web-vitals histograms,
+relayed through the bff the same way traces are - has its own runbook:
+[frontend.md](frontend.md).
 
 ## Alerting
 
@@ -256,9 +268,10 @@ while the service itself answers requests, walk this order:
    otel-gateway pods in vg-platform.
 4. Backend trouble: Prometheus, Loki, or Jaeger pods in vg-platform.
 
-Browser traces have one extra hop: they enter through the bff's
-`POST /api/otlp/v1/traces` relay, so missing frontend traces with
-healthy backend telemetry point at the relay
+Browser traces and metrics have one extra hop: they enter through the
+bff's `POST /api/otlp/v1/traces` and `POST /api/otlp/v1/metrics` relay
+routes, so missing frontend telemetry with healthy backend telemetry
+points at the relay
 ([bff.md](bff.md#7-browser-telemetry-relay-failing)).
 
 ## Secrets
@@ -481,8 +494,8 @@ the ConfigMap lands, reload and count, expecting twenty-one rules:
     curl -u admin:admin -X POST http://localhost:3000/api/admin/provisioning/alerting/reload
     curl -s -u admin:admin http://localhost:3000/api/v1/provisioning/alert-rules | jq length
 
-Dashboards provisioned, expecting eleven `.json` entries in the
-ConfigMap and eleven `vg-` uids in the `vgkeep` folder (Grafana
+Dashboards provisioned, expecting twelve `.json` entries in the
+ConfigMap and twelve `vg-` uids in the `vgkeep` folder (Grafana
 reloads provisioned files within a minute of the ConfigMap landing):
 
     kubectl -n vg-platform get cm vg-dashboards -o json | jq -r '.data | keys[]'

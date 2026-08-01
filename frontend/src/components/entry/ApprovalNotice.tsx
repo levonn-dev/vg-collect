@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ApiError } from '../../api/client'
@@ -12,6 +13,7 @@ import type { Submission } from '../../api/submissions'
 // never reach an approved submission, so this and CatalogSubmission
 // never co-render.
 export default function ApprovalNotice({ entryId }: { entryId: string }) {
+  const { t } = useLingui()
   const queryClient = useQueryClient()
   const submission = useQuery({
     queryKey: ['submission', entryId],
@@ -37,17 +39,17 @@ export default function ApprovalNotice({ entryId }: { entryId: string }) {
   if (!sub || sub.status !== 'approved' || sub.resolution_ack_at || dismissed) return null
   return (
     <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded bg-green-50 p-3 text-sm text-green-800">
-      <p>Your submission was approved and added to the shared catalog.</p>
+      <p><Trans>Your submission was approved and added to the shared catalog.</Trans></p>
       <button
         type="button"
-        aria-label="Dismiss approval notice"
+        aria-label={t`Dismiss approval notice`}
         onClick={() => {
           setDismissed(true)
           ack.mutate()
         }}
         className="shrink-0 rounded border border-green-300 px-2 py-0.5 hover:bg-white"
       >
-        Dismiss
+        <Trans>Dismiss</Trans>
       </button>
     </div>
   )

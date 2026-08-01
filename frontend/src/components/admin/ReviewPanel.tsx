@@ -1,3 +1,6 @@
+import { Trans, useLingui } from '@lingui/react/macro'
+import { t } from '@lingui/core/macro'
+import type { I18n } from '@lingui/core'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { submitVerdict } from '../../api/admin'
@@ -20,14 +23,20 @@ interface ReviewPanelProps {
   onDone: (message?: string) => void
 }
 
-function verdictErrorMessage(e: unknown): string {
+// t(i18n) throughout this file, component included: verdictErrorMessage
+// is a plain function (cannot call useLingui() itself), so it takes the
+// caller's i18n explicitly; the ReviewPanel component uses the same
+// explicit form for its own strings rather than importing a second,
+// same-named t. PotentialDuplicates below has no such helper to collide
+// with, so it uses the plain useLingui()-bound Trans/t as usual.
+function verdictErrorMessage(e: unknown, i18n: I18n): string {
   if (e instanceof ApiError) {
-    if (e.code === 'submission_resolved') return 'Another admin already resolved this submission.'
-    if (e.code === 'unknown_product') return 'No product with that id.'
-    if (e.code === 'enrichment_unavailable') return 'The catalog cannot be reached - try again.'
+    if (e.code === 'submission_resolved') return t(i18n)`Another admin already resolved this submission.`
+    if (e.code === 'unknown_product') return t(i18n)`No product with that id.`
+    if (e.code === 'enrichment_unavailable') return t(i18n)`The catalog cannot be reached - try again.`
     if (e.message) return e.message
   }
-  return 'The verdict failed.'
+  return t(i18n)`The verdict failed.`
 }
 
 function duplicatesKind(itemType: AdminSubmission['item_type']): SearchKind {
@@ -80,9 +89,9 @@ function PotentialDuplicates({
   const rows = (search.data.results ?? []).slice(0, 5)
   return (
     <div className="mt-2 rounded border border-gray-200 p-2">
-      <p className="text-xs font-semibold text-gray-500">Potential duplicates</p>
+      <p className="text-xs font-semibold text-gray-500"><Trans>Potential duplicates</Trans></p>
       {rows.length === 0 ? (
-        <p className="mt-1 text-sm text-gray-500">None found.</p>
+        <p className="mt-1 text-sm text-gray-500"><Trans>None found.</Trans></p>
       ) : (
         <ul className="mt-1 flex flex-col gap-1">
           {rows.map((r, i) => (
@@ -96,12 +105,12 @@ function PotentialDuplicates({
               )}
               {r.origin === 'community' && (
                 <span className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-semibold text-indigo-800">
-                  community
+                  <Trans>community</Trans>
                 </span>
               )}
               {isExactDuplicate(submission, r) && (
                 <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-semibold text-amber-800">
-                  exact match
+                  <Trans>exact match</Trans>
                 </span>
               )}
               {r.origin === 'community' && (
@@ -119,7 +128,7 @@ function PotentialDuplicates({
                   disabled={pending}
                   className="ml-2 rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50 disabled:opacity-50"
                 >
-                  Use as existing
+                  <Trans>Use as existing</Trans>
                 </button>
               )}
             </li>
@@ -138,6 +147,7 @@ function PotentialDuplicates({
 // provider hits resolve to a product first. Reject carries the
 // reason the submitter reads.
 export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
+  const { i18n } = useLingui()
   const [name, setName] = useState(submission.display_name)
   const [itemType, setItemType] = useState(submission.item_type)
   const [platform, setPlatform] = useState<PlatformValue>({ platformName: submission.platform_name ?? '' })
@@ -156,7 +166,7 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
     onError: (e) => {
       // A raced verdict is done from this row's perspective: close, and
       // carry the reason up so the queue can show it once this unmounts.
-      if (e instanceof ApiError && e.code === 'submission_resolved') onDone(verdictErrorMessage(e))
+      if (e instanceof ApiError && e.code === 'submission_resolved') onDone(verdictErrorMessage(e, i18n))
     },
   })
 
@@ -186,20 +196,20 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
     }
     resolveProduct(resolveRequestFor(p, undefined, undefined))
       .then((prod) => adoptExisting(prod.id))
-      .catch(() => setResolveError('The pick could not be resolved to a product - try again or paste an id.'))
+      .catch(() => setResolveError(t(i18n)`The pick could not be resolved to a product - try again or paste an id.`))
   }
 
   return (
-    <div aria-label={`Review ${submission.display_name}`} className="mt-3 rounded border border-gray-300 p-3">
-      <h4 className="text-sm font-semibold">Review: {submission.display_name}</h4>
+    <div aria-label={t(i18n)`Review ${submission.display_name}`} className="mt-3 rounded border border-gray-300 p-3">
+      <h4 className="text-sm font-semibold"><Trans>Review: {submission.display_name}</Trans></h4>
       <PotentialDuplicates submission={submission} onAdopt={adoptPick} pending={verdict.isPending} />
       <div className="mt-2 grid max-w-xl grid-cols-2 gap-2 text-sm">
         <label className="col-span-2">
-          Name
+          <Trans>Name</Trans>
           <input value={name} onChange={(e) => setName(e.target.value)} className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />
         </label>
         <label>
-          Type
+          <Trans>Type</Trans>
           <select value={itemType} onChange={(e) => setItemType(e.target.value as AdminSubmission['item_type'])} className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1">
             <option value="game">game</option>
             <option value="console">console</option>
@@ -208,26 +218,26 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
         </label>
         <PlatformPicker value={platform} onChange={setPlatform} />
         <label>
-          Region
+          <Trans>Region</Trans>
           <input value={region} onChange={(e) => setRegion(e.target.value)} className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />
         </label>
         <label>
-          Edition or variant
+          <Trans>Edition or variant</Trans>
           <input value={edition} onChange={(e) => setEdition(e.target.value)} maxLength={128} className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />
         </label>
         <label>
-          First release date
+          <Trans>First release date</Trans>
           <input type="date" value={releaseDate} onChange={(e) => setReleaseDate(e.target.value)} className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />
         </label>
         <label>
-          Cover image link
+          <Trans>Cover image link</Trans>
           <input value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} placeholder="https://..." className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />
         </label>
         {coverUrl.trim() !== '' && (
           <img
             key={coverUrl}
             src={coverUrl}
-            alt="cover preview"
+            alt={t(i18n)`cover preview`}
             className="col-span-2 h-24 w-auto rounded"
             onError={(e) => { e.currentTarget.style.display = 'none' }}
           />
@@ -240,20 +250,20 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
           disabled={verdict.isPending || name.trim() === ''}
           className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
         >
-          Approve as new product
+          <Trans>Approve as new product</Trans>
         </button>
         <button
           type="button"
           onClick={() => setAdopting((v) => !v)}
           className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50"
         >
-          Adopt existing product
+          <Trans>Adopt existing product</Trans>
         </button>
         <input
-          aria-label="Rejection reason"
+          aria-label={t(i18n)`Rejection reason`}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="Rejection reason"
+          placeholder={t(i18n)`Rejection reason`}
           className="w-64 rounded border border-gray-300 px-2 py-1"
         />
         <button
@@ -262,7 +272,7 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
           disabled={verdict.isPending || reason.trim() === ''}
           className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
         >
-          Reject
+          <Trans>Reject</Trans>
         </button>
       </div>
       {adopting && (
@@ -276,10 +286,10 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
             }}
           >
             <input
-              aria-label="Product id"
+              aria-label={t(i18n)`Product id`}
               value={adoptId}
               onChange={(e) => setAdoptId(e.target.value)}
-              placeholder="Product id (uuid)"
+              placeholder={t(i18n)`Product id (uuid)`}
               className="w-96 rounded border border-gray-300 px-2 py-1 text-sm"
             />
             <button
@@ -287,7 +297,7 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
               disabled={adoptId.trim() === '' || verdict.isPending}
               className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
             >
-              Adopt by id
+              <Trans>Adopt by id</Trans>
             </button>
           </form>
         </div>
@@ -299,7 +309,7 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
       )}
       {verdict.isError && (
         <p role="alert" className="mt-2 text-sm text-red-700">
-          {verdictErrorMessage(verdict.error)}
+          {verdictErrorMessage(verdict.error, i18n)}
         </p>
       )}
     </div>

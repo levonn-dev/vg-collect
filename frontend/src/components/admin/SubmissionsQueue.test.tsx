@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../test/fixtures'
+import { renderWithI18n } from '../../test/i18n'
 import SubmissionsQueue from './SubmissionsQueue'
 
 function renderQueue() {
@@ -12,7 +13,7 @@ function renderQueue() {
   // the submissions-list and verdict calls; seed platforms fresh+stale-
   // proof so that extra fetch never consumes one of those queue slots.
   qc.setQueryData(['platforms'], { platforms: [] })
-  render(
+  renderWithI18n(
     <QueryClientProvider client={qc}>
       <SubmissionsQueue />
     </QueryClientProvider>,

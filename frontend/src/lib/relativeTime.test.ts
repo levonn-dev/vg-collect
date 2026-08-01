@@ -1,3 +1,5 @@
+import { vi } from 'vitest'
+import { formatLocale } from './locale'
 import { relativeTime } from './relativeTime'
 
 it('buckets relative time from just-now through the week-plus date fallback', () => {
@@ -8,4 +10,19 @@ it('buckets relative time from just-now through the week-plus date fallback', ()
   expect(relativeTime(new Date(now - 2 * 86_400_000).toISOString(), now)).toBe('2d ago')
   const old = new Date(now - 10 * 86_400_000)
   expect(relativeTime(old.toISOString(), now)).toBe(old.toLocaleDateString())
+})
+
+it('pins the week-plus date fallback to the resolved locale, not the runtime default', () => {
+  const langSpy = vi.spyOn(window.navigator, 'language', 'get').mockReturnValue('fr-FR')
+  try {
+    const now = new Date('2026-07-25T12:00:00Z').getTime()
+    const old = new Date(now - 10 * 86_400_000)
+    // fr-FR ("15/07/2026") differs from the jsdom/Node runtime
+    // default ("7/15/2026"), so this fails if the fallback ever stops
+    // routing through formatLocale() and starts using the runtime
+    // default instead.
+    expect(relativeTime(old.toISOString(), now)).toBe(old.toLocaleDateString(formatLocale()))
+  } finally {
+    langSpy.mockRestore()
+  }
 })

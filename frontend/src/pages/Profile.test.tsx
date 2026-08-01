@@ -1,13 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ProfilePage } from '../api/social'
 import { jsonResponse } from '../test/fixtures'
+import { renderWithI18n } from '../test/i18n'
 import Profile from './Profile'
 
 function renderProfile(handle = 'Alice_Prime') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  return renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[`/u/${handle}`]}>
         <Routes>

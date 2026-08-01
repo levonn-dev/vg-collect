@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
+import { renderWithI18n } from './test/i18n'
 import App from './App'
 
 const jsonResponse = (status: number, body: unknown) =>
@@ -22,7 +23,7 @@ it('boots into the app shell', async () => {
     if (url === '/api/auth/providers') return Promise.resolve(jsonResponse(200, { providers: [] }))
     return Promise.resolve(jsonResponse(401, { title: 'unauthenticated' }))
   }))
-  render(<App />)
+  renderWithI18n(<App />)
   expect(await screen.findByText('vgkeep')).toBeInTheDocument()
 })
 
@@ -32,7 +33,7 @@ it('does not retry a 401 and routes to login', async () => {
     type: 'about:blank', title: 'Unauthorized', status: 401, code: 'unauthenticated',
   }))
   vi.stubGlobal('fetch', fetchMock)
-  render(<App />)
+  renderWithI18n(<App />)
   // The login route renders its own provider buttons region.
   expect(await screen.findByText('Track your game collection.')).toBeInTheDocument()
   // 401 must not be retried: each shell probes /api/me exactly once
@@ -62,7 +63,7 @@ it('renders the account page inside the shell', async () => {
       id: 'u1', email: 'alice@example.test', handle: 'alice', roles: ['user'],
     }))
   }))
-  render(<App />)
+  renderWithI18n(<App />)
   expect(await screen.findByRole('heading', { name: 'Account' })).toBeInTheDocument()
 })
 
@@ -76,7 +77,7 @@ it('renders the explore page inside the shell', async () => {
       id: 'u1', email: 'alice@example.test', handle: 'alice', roles: ['user'],
     }))
   }))
-  render(<App />)
+  renderWithI18n(<App />)
   expect(await screen.findByRole('heading', { name: 'Explore' })).toBeInTheDocument()
 })
 
@@ -98,7 +99,7 @@ it('renders the profile page inside the shell', async () => {
       id: 'u1', email: 'alice@example.test', handle: 'alice', roles: ['user'],
     }))
   }))
-  render(<App />)
+  renderWithI18n(<App />)
   expect(await screen.findByRole('heading', { name: '@Alice_Prime' })).toBeInTheDocument()
 })
 
@@ -125,7 +126,7 @@ it('renders the shared shelf page inside the shell', async () => {
       id: 'u1', email: 'alice@example.test', handle: 'alice', roles: ['user'],
     }))
   }))
-  render(<App />)
+  renderWithI18n(<App />)
   expect(await screen.findByRole('heading', { name: 'Backlog Wall' })).toBeInTheDocument()
 })
 
@@ -139,6 +140,6 @@ it('renders the feed page inside the shell', async () => {
       id: 'u1', email: 'alice@example.test', handle: 'alice', roles: ['user'],
     }))
   }))
-  render(<App />)
+  renderWithI18n(<App />)
   expect(await screen.findByRole('heading', { name: 'Feed' })).toBeInTheDocument()
 })

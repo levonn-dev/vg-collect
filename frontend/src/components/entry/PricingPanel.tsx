@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { Product } from '../../api/catalog'
@@ -11,25 +12,38 @@ import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import ManualMatchPicker from '../wizard/ManualMatchPicker'
 import ProxyPicker from './ProxyPicker'
 
+// MatchCard renders entirely through Trans, which subscribes to the
+// locale context itself and does not depend on its caller re-rendering
+// to stay live (contrast rowMeta.tsx, a non-component helper with no
+// such subscription of its own).
 function MatchCard({ product }: { product: Product }) {
   const money = useDisplayMoney()
   const pc = product.pricecharting
   if (!pc) {
     return (
       <p className="rounded bg-gray-50 p-3 text-sm text-gray-600">
-        No confirmed price listing yet - market value stays empty until a match is made.
+        <Trans>No confirmed price listing yet - market value stays empty until a match is made.</Trans>
       </p>
     )
   }
   return (
     <div className="rounded bg-green-50 p-3 text-sm text-green-800">
       <p>
-        Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%
-        {pc.verified ? ', verified' : ''}.
+        {pc.verified ? (
+          <Trans>
+            Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%, verified.
+          </Trans>
+        ) : (
+          <Trans>
+            Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%.
+          </Trans>
+        )}
       </p>
       <p className="mt-1 text-xs text-green-800">
-        Loose {money.format(pc.loose_cents) ?? '-'} / CIB {money.format(pc.cib_cents) ?? '-'} / New{' '}
-        {money.format(pc.new_cents) ?? '-'}
+        <Trans>
+          Loose {money.format(pc.loose_cents) ?? '-'} / CIB {money.format(pc.cib_cents) ?? '-'} / New{' '}
+          {money.format(pc.new_cents) ?? '-'}
+        </Trans>
       </p>
     </div>
   )
@@ -60,6 +74,7 @@ interface PricingPanelProps {
 // target" memory, and any activation INTO proxy is re-validated by the
 // server on save (a vanished target answers 404).
 export default function PricingPanel({ entry, value, onChange, inputCurrency }: PricingPanelProps) {
+  const { t } = useLingui()
   const [picking, setPicking] = useState(false)
   const [matching, setMatching] = useState(false)
   const queryClient = useQueryClient()
@@ -116,32 +131,34 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
     ? ['auto', 'proxy', 'custom', 'disabled']
     : ['proxy', 'custom', 'disabled']
   const modeHelp: Record<Entry['pricing_mode'], string> = {
-    auto: 'auto (this item\'s own price listing)',
-    proxy: 'proxy (another listing prices this copy)',
-    custom: 'custom (a price you set yourself)',
-    disabled: 'disabled (no market value)',
+    auto: t`auto (this item's own price listing)`,
+    proxy: t`proxy (another listing prices this copy)`,
+    custom: t`custom (a price you set yourself)`,
+    disabled: t`disabled (no market value)`,
   }
 
   return (
-    <section aria-label="Pricing" className="mb-6 rounded border border-gray-200 p-4">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Pricing</h3>
+    <section aria-label={t`Pricing`} className="mb-6 rounded border border-gray-200 p-4">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500"><Trans>Pricing</Trans></h3>
       <p className="mt-1 text-lg">
-        {money.entryValue(entry) ?? 'No market value available.'}
+        {money.entryValue(entry) ?? t`No market value available.`}
       </p>
       {!money.ready ? (
         <p className="mt-1 text-xs text-gray-500">
-          Exchange rates are unavailable; values show in USD.
+          <Trans>Exchange rates are unavailable; values show in USD.</Trans>
         </p>
       ) : money.currency === 'USD' ? (
-        <p className="mt-1 text-xs text-gray-500">Market values are in USD.</p>
+        <p className="mt-1 text-xs text-gray-500"><Trans>Market values are in USD.</Trans></p>
       ) : (
         <p className="mt-1 text-xs text-gray-500">
-          Converted from USD at ECB rates ({money.rateDate}
-          {money.rateStale ? '; more than a week old' : ''}).
+          <Trans>
+            Converted from USD at ECB rates ({money.rateDate}
+            {money.rateStale ? t`; more than a week old` : ''}).
+          </Trans>
         </p>
       )}
 
-      <fieldset className="mt-3 flex flex-col gap-1" aria-label="Pricing mode">
+      <fieldset className="mt-3 flex flex-col gap-1" aria-label={t`Pricing mode`}>
         {modes.map((m) => (
           <label key={m} className="flex items-center gap-2 text-sm">
             <input
@@ -168,19 +185,19 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
                     disabled={rematch.isPending}
                     className="mt-2 rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
                   >
-                    Match listing
+                    <Trans>Match listing</Trans>
                   </button>
                 )}
               {rematch.isError && (
                 <p role="alert" className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
-                  The listing match failed; try again in a moment.
+                  <Trans>The listing match failed; try again in a moment.</Trans>
                 </p>
               )}
             </>
           ) : ownProduct.isError ? (
-            <p className="text-sm text-gray-500">The price listing cannot be loaded right now.</p>
+            <p className="text-sm text-gray-500"><Trans>The price listing cannot be loaded right now.</Trans></p>
           ) : (
-            <p className="text-sm text-gray-500">Checking the price match...</p>
+            <p className="text-sm text-gray-500"><Trans>Checking the price match...</Trans></p>
           )}
         </div>
       )}
@@ -188,12 +205,14 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
       {value.mode === 'proxy' && value.productId && (
         <div className="mt-3 flex flex-col gap-2">
           <p className="text-sm">
-            Price source: <span className="font-medium">{targetProduct.data?.name ?? value.productId}</span>
+            <Trans>
+              Price source: <span className="font-medium">{targetProduct.data?.name ?? value.productId}</span>
+            </Trans>
           </p>
           {targetProduct.isSuccess && <MatchCard product={targetProduct.data} />}
           {!entry.product_id && entry.item_type === 'game' && (
             <p className="text-xs text-gray-500">
-              Recommendations treat this copy as the proxied game.
+              <Trans>Recommendations treat this copy as the proxied game.</Trans>
             </p>
           )}
           <button
@@ -201,20 +220,20 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
             onClick={() => setPicking(true)}
             className="self-start rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
           >
-            Change price source
+            <Trans>Change price source</Trans>
           </button>
         </div>
       )}
 
       {value.mode === 'proxy' && !value.productId && (
         <div className="mt-3 flex flex-col gap-2">
-          <p className="text-sm text-gray-600">No price source chosen yet.</p>
+          <p className="text-sm text-gray-600"><Trans>No price source chosen yet.</Trans></p>
           <button
             type="button"
             onClick={() => setPicking(true)}
             className="self-start rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
           >
-            Choose price source
+            <Trans>Choose price source</Trans>
           </button>
         </div>
       )}
@@ -222,18 +241,18 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
       {value.mode === 'custom' && (
         <div className="mt-3 flex flex-col gap-2">
           <label className="flex flex-col gap-1 text-sm font-medium">
-            Custom price ({inputCurrency})
+            <Trans>Custom price ({inputCurrency})</Trans>
             <input
               inputMode="decimal"
               value={value.customValue}
               onChange={(e) => onChange({ ...value, customValue: e.target.value })}
-              placeholder="59.99"
+              placeholder={t`59.99`}
               className="w-32 rounded border border-gray-300 px-2 py-1 text-sm"
             />
           </label>
           {entry.custom_value_set_at && (
             <p className="text-xs text-gray-500">
-              Price set on {new Date(entry.custom_value_set_at).toLocaleDateString()}.
+              <Trans>Price set on {new Date(entry.custom_value_set_at).toLocaleDateString()}.</Trans>
             </p>
           )}
         </div>
@@ -241,28 +260,28 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
 
       {value.mode !== 'proxy' && value.productId && (
         <p className="mt-3 flex items-center gap-2 rounded bg-gray-50 p-2 text-sm text-gray-600">
-          Last price proxy: {targetProduct.data?.name ?? value.productId}
+          <Trans>Last price proxy: {targetProduct.data?.name ?? value.productId}</Trans>
           <button
             type="button"
             onClick={() => onChange({ ...value, mode: 'proxy' })}
-            aria-label="Reactivate the last price proxy"
+            aria-label={t`Reactivate the last price proxy`}
             className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
           >
-            Reactivate
+            <Trans>Reactivate</Trans>
           </button>
         </p>
       )}
 
       {value.mode !== 'custom' && dollarsToCents(value.customValue) !== undefined && (
         <p className="mt-3 flex items-center gap-2 rounded bg-gray-50 p-2 text-sm text-gray-600">
-          Last custom price: {formatCents(dollarsToCents(value.customValue), inputCurrency)}
+          <Trans>Last custom price: {formatCents(dollarsToCents(value.customValue), inputCurrency)}</Trans>
           <button
             type="button"
             onClick={() => onChange({ ...value, mode: 'custom' })}
-            aria-label="Reactivate the last custom price"
+            aria-label={t`Reactivate the last custom price`}
             className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
           >
-            Reactivate
+            <Trans>Reactivate</Trans>
           </button>
         </p>
       )}

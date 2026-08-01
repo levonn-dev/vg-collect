@@ -221,7 +221,7 @@
     {
       "id": 11,
       "type": "timeseries",
-      "title": "Browser telemetry relay responses",
+      "title": "Browser telemetry relay responses by route",
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 28 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
@@ -229,8 +229,8 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum by (http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name=\"bff\",http_route=\"POST /api/otlp/v1/traces\"}[$__rate_interval]))",
-          "legendFormat": "{{http_response_status_code}}",
+          "expr": "sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name=\"bff\",http_route=~\"POST /api/otlp/v1/(traces|metrics)\"}[$__rate_interval]))",
+          "legendFormat": "{{http_route}} {{http_response_status_code}}",
           "exemplar": false
         }
       ]

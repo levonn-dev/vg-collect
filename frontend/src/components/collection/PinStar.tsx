@@ -1,3 +1,4 @@
+import { useLingui } from '@lingui/react/macro'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Entry } from '../../api/collection'
 import { updateEntry } from '../../api/collection'
@@ -7,6 +8,7 @@ import { entryToUpdate } from '../../lib/entryUpdate'
 // is the faithful baseline with one field changed, so a quick toggle
 // never clears anything else.
 export default function PinStar({ entry }: { entry: Entry }) {
+  const { t } = useLingui()
   const queryClient = useQueryClient()
   const toggle = useMutation({
     mutationFn: () => updateEntry(entry.id, { ...entryToUpdate(entry), pinned: !entry.pinned }),
@@ -20,7 +22,7 @@ export default function PinStar({ entry }: { entry: Entry }) {
       onClick={() => toggle.mutate()}
       disabled={toggle.isPending}
       aria-pressed={entry.pinned}
-      aria-label={entry.pinned ? 'Unpin' : 'Pin'}
+      aria-label={entry.pinned ? t`Unpin` : t`Pin`}
       className={entry.pinned ? 'text-amber-500' : 'text-gray-300 hover:text-amber-400'}
     >
       {'\u2605'}

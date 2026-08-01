@@ -52,4 +52,4 @@ jobs:
       - name: Test + coverage gate (80%)
         run: task test:cover
       - name: Codegen drift
-        run: task gen && git diff --exit-code
+        run: task gen && git add -A -N && git diff --exit-code

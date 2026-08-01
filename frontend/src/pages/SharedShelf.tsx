@@ -1,3 +1,4 @@
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router'
 import { ApiError } from '../api/client'
@@ -53,6 +54,7 @@ function viewMode(params: Record<string, unknown>): 'table' | 'grid' | 'compact'
 // authoritative on identity. 404 covers unknown, private-owner, and
 // private-shelf alike (no existence oracle).
 export default function SharedShelf() {
+  const { t } = useLingui()
   const { handle = '', slug = '' } = useParams()
   const page = useQuery({
     queryKey: ['sharedShelf', foldHandle(handle), foldHandle(slug)],
@@ -73,12 +75,12 @@ export default function SharedShelf() {
     enabled: shelfId !== undefined,
   })
 
-  if (page.isPending) return <main className="py-8">Loading shelf...</main>
+  if (page.isPending) return <main className="py-8"><Trans>Loading shelf...</Trans></main>
   if (page.isError) {
     if (page.error instanceof ApiError && page.error.status === 404) return <NotFoundState />
     return (
       <main className="py-8" role="alert">
-        This shelf cannot be loaded right now. Please try again.
+        <Trans>This shelf cannot be loaded right now. Please try again.</Trans>
       </main>
     )
   }
@@ -93,7 +95,7 @@ export default function SharedShelf() {
   const View = mode === 'grid' ? CoverGrid : mode === 'compact' ? CompactList : EntryTable
 
   return (
-    <main aria-label="Shared shelf" className="py-6">
+    <main aria-label={t`Shared shelf`} className="py-6">
       <header className="mb-6 border-b border-gray-200 pb-4">
         <h2 className="text-2xl font-bold">{shelf.name}</h2>
         <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -103,7 +105,7 @@ export default function SharedShelf() {
           )}
           {totalEntries !== undefined && (
             <span className="text-sm text-gray-500">
-              {totalEntries} {totalEntries === 1 ? 'entry' : 'entries'}
+              <Plural value={totalEntries} one="# entry" other="# entries" />
             </span>
           )}
           {shelf.published_at && (
@@ -112,16 +114,16 @@ export default function SharedShelf() {
         </div>
       </header>
 
-      <section aria-label="Entries" className="mb-8">
-        {entries.isPending && <p className="text-sm text-gray-500">Loading entries...</p>}
+      <section aria-label={t`Entries`} className="mb-8">
+        {entries.isPending && <p className="text-sm text-gray-500"><Trans>Loading entries...</Trans></p>}
         {entries.isError && (
           <p role="alert" className="text-sm text-red-700">
-            Entries cannot be loaded right now. Please try again.
+            <Trans>Entries cannot be loaded right now. Please try again.</Trans>
           </p>
         )}
         {!entries.isPending && !entries.isError && (
           flatEntries.length === 0 && groups.length === 0 ? (
-            <p className="py-8 text-center text-gray-500">This shelf is empty.</p>
+            <p className="py-8 text-center text-gray-500"><Trans>This shelf is empty.</Trans></p>
           ) : (
             <>
               {groups.length > 0 ? (
@@ -150,7 +152,7 @@ export default function SharedShelf() {
                   disabled={entries.isFetchingNextPage}
                   className="mt-4 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
                 >
-                  Load more
+                  <Trans>Load more</Trans>
                 </button>
               )}
             </>

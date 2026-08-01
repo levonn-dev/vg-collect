@@ -1,3 +1,4 @@
+import { useLingui } from '@lingui/react/macro'
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -20,6 +21,7 @@ function SortableRow({
   atBottom: boolean
   pending: boolean
 }) {
+  const { t } = useLingui()
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: entry.id })
   return (
     <li
@@ -31,7 +33,7 @@ function SortableRow({
         type="button"
         {...attributes}
         {...listeners}
-        aria-label={`Drag ${entry.display_name}`}
+        aria-label={t`Drag ${entry.display_name}`}
         className="cursor-grab text-gray-400"
       >
         {'::'}
@@ -45,7 +47,7 @@ function SortableRow({
           type="button"
           onClick={() => onMove(entry.id, -1)}
           disabled={atTop || pending}
-          aria-label={`Move ${entry.display_name} up`}
+          aria-label={t`Move ${entry.display_name} up`}
           className="rounded border border-gray-300 px-2 text-xs disabled:opacity-30"
         >
           {'^'}
@@ -54,7 +56,7 @@ function SortableRow({
           type="button"
           onClick={() => onMove(entry.id, 1)}
           disabled={atBottom || pending}
-          aria-label={`Move ${entry.display_name} down`}
+          aria-label={t`Move ${entry.display_name} down`}
           className="rounded border border-gray-300 px-2 text-xs disabled:opacity-30"
         >
           {'v'}
@@ -70,6 +72,7 @@ function SortableRow({
 // refetches. 409 conflicting_order means the list moved somewhere else
 // (another tab, another device) - refetch and say so.
 export default function BacklogBoard({ entries }: { entries: Entry[] }) {
+  const { t } = useLingui()
   const queryClient = useQueryClient()
   const [conflict, setConflict] = useState<string | null>(null)
   const sensors = useSensors(useSensor(PointerSensor))
@@ -102,8 +105,8 @@ export default function BacklogBoard({ entries }: { entries: Entry[] }) {
       context?.previous.forEach(([key, data]) => queryClient.setQueryData(key, data))
       setConflict(
         err instanceof ApiError && err.code === 'conflicting_order'
-          ? 'The backlog changed somewhere else; the list has been refreshed.'
-          : 'The move could not be saved; the list has been refreshed.',
+          ? t`The backlog changed somewhere else; the list has been refreshed.`
+          : t`The move could not be saved; the list has been refreshed.`,
       )
     },
     onSettled: () => {
@@ -122,7 +125,7 @@ export default function BacklogBoard({ entries }: { entries: Entry[] }) {
   }
 
   return (
-    <section aria-label="Backlog order">
+    <section aria-label={t`Backlog order`}>
       {conflict && (
         <p role="alert" className="mb-3 rounded bg-amber-50 p-3 text-sm text-amber-800">
           {conflict}

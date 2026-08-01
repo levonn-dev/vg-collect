@@ -1,9 +1,11 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, NavLink, useNavigate } from 'react-router'
 import { logout, type Me } from '../api/client'
 import { site } from '../lib/site'
 import Avatar from './Avatar'
 import CurrencySelect from './CurrencySelect'
+import LocaleSwitch from './LocaleSwitch'
 import Logo from './Logo'
 import ThemeToggle from './ThemeToggle'
 
@@ -17,6 +19,7 @@ function navClass({ isActive }: { isActive: boolean }): string {
 // PublicShell renders it too once its session probe resolves, so the
 // chrome does not change with the route after sign-in.
 export default function AppBar({ me }: { me: Me }) {
+  const { t } = useLingui()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const signOut = useMutation({
@@ -33,42 +36,43 @@ export default function AppBar({ me }: { me: Me }) {
   return (
     <header
       className="flex items-center justify-between border-b border-gray-200 pb-3"
-      aria-label="App bar"
+      aria-label={t`App bar`}
     >
       <div className="flex items-baseline gap-6">
         <Link to="/" className="flex items-center gap-2">
           <Logo />
           <h1 className="text-xl font-bold">{site().name}</h1>
         </Link>
-        <nav className="flex gap-4" aria-label="Primary">
+        <nav className="flex gap-4" aria-label={t`Primary`}>
           <NavLink to="/collection" end className={navClass}>
-            Collection
+            <Trans>Collection</Trans>
           </NavLink>
           <NavLink to="/add" className={navClass}>
-            Add
+            <Trans>Add</Trans>
           </NavLink>
           <NavLink to="/explore" className={navClass}>
-            Explore
+            <Trans>Explore</Trans>
           </NavLink>
           <NavLink to="/feed" className={navClass}>
-            Feed
+            <Trans>Feed</Trans>
           </NavLink>
           <NavLink to="/recommendations" className={navClass}>
-            Recommendations
+            <Trans>Recommendations</Trans>
           </NavLink>
           {me.roles.includes('admin') && (
             <NavLink to="/admin" className={navClass}>
-              Admin
+              <Trans>Admin</Trans>
             </NavLink>
           )}
         </nav>
       </div>
       <div className="flex items-center gap-3">
+        <LocaleSwitch />
         <CurrencySelect />
         <ThemeToggle />
         <NavLink
           to="/account"
-          aria-label="Account"
+          aria-label={t`Account`}
           className="flex items-center gap-3 rounded px-1 py-0.5 hover:bg-gray-50"
         >
           <Avatar key={me.avatar_url} url={me.avatar_url} label={me.handle} size="md" />
@@ -79,7 +83,7 @@ export default function AppBar({ me }: { me: Me }) {
           disabled={signOut.isPending}
           className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
         >
-          Log out
+          <Trans>Log out</Trans>
         </button>
       </div>
     </header>

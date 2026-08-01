@@ -1,4 +1,6 @@
 import '@testing-library/jest-dom/vitest'
+import { i18n } from '@lingui/core'
+import { messages } from '../locales/en.po'
 
 // Recharts' ResponsiveContainer needs a ResizeObserver; jsdom has
 // none. Charts render zero-sized here - tests assert our own regions
@@ -36,3 +38,8 @@ class PerformanceObserverStub {
 }
 globalThis.PerformanceObserver ??=
   PerformanceObserverStub as unknown as typeof PerformanceObserver
+
+// Tests run with the English catalog active on the Lingui singleton,
+// so components render the same English copy assertions always saw.
+i18n.load('en', messages)
+i18n.activate('en')

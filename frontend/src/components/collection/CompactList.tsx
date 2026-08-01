@@ -1,3 +1,4 @@
+import { useLingui } from '@lingui/react/macro'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { Entry } from '../../api/collection'
@@ -17,11 +18,12 @@ interface CompactListProps {
 }
 
 export default function CompactList({ entries, pinSlot, linkTo, shared }: CompactListProps) {
+  const { i18n } = useLingui()
   const money = useDisplayMoney()
   return (
     <ul className="divide-y divide-gray-100 text-sm">
       {entries.map((e) => {
-        const meta = rowMeta(e, money, { pinSlot })
+        const meta = rowMeta(e, money, i18n, { pinSlot })
         return (
           <li key={e.id} className="flex items-center gap-2 py-1">
             {meta.pin}
@@ -29,7 +31,7 @@ export default function CompactList({ entries, pinSlot, linkTo, shared }: Compac
               ? <span className="font-medium">{e.display_name}</span>
               : <Link to={(linkTo ?? (x => `/entries/${x.id}`))(e)!} className="font-medium hover:underline">{e.display_name}</Link>}
             <span className="text-gray-400">{meta.platform}</span>
-            {isFullEntry(e) && <span className="text-gray-400">{statusLabels[e.status]}</span>}
+            {isFullEntry(e) && <span className="text-gray-400">{i18n._(statusLabels[e.status])}</span>}
             {!shared && <span className="ml-auto text-gray-500">{meta.value}</span>}
           </li>
         )

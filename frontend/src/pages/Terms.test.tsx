@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
+import { renderWithI18n } from '../test/i18n'
 import Terms from './Terms'
 
 function renderTerms() {
-  return render(
+  return renderWithI18n(
     <MemoryRouter>
       <Terms />
     </MemoryRouter>,

@@ -1,3 +1,4 @@
+import { Trans } from '@lingui/react/macro'
 import type { ReactNode } from 'react'
 
 interface ConfirmShellProps {
@@ -23,7 +24,7 @@ export default function ConfirmShell({
 }: ConfirmShellProps) {
   return (
     <section aria-label={ariaLabel} className="flex flex-col gap-3">
-      <h3 className="text-lg font-semibold">Confirm: {title}</h3>
+      <h3 className="text-lg font-semibold"><Trans>Confirm: {title}</Trans></h3>
       <p className="text-sm text-gray-600">{subtitle}</p>
       {children}
       {errorMessage && (
@@ -33,14 +34,14 @@ export default function ConfirmShell({
       )}
       <div className="flex gap-2">
         <button onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
-          Back
+          <Trans>Back</Trans>
         </button>
         <button
           onClick={onSubmit}
           disabled={submitPending}
           className="rounded bg-gray-900 px-4 py-1 text-sm text-white enabled:hover:bg-gray-700 disabled:opacity-50"
         >
-          Add to collection
+          <Trans>Add to collection</Trans>
         </button>
       </div>
     </section>

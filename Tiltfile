@@ -158,6 +158,11 @@ if 'VITE_SITE_AUTH_PROVIDERS' not in ENV:
     if ENV.get('TWITCH_CLIENT_ID', '') != '' and ENV.get('TWITCH_CLIENT_SECRET', '') != '':
         _providers.append('twitch')
     _site_args['VITE_SITE_AUTH_PROVIDERS'] = ','.join(_providers)
+# VITE_BUILD_VERSION is explicit-only: Tilt never derives a git SHA, so
+# an unset value stays absent (the Dockerfile ARG then defaults empty,
+# same as every VITE_SITE_* arg above).
+if 'VITE_BUILD_VERSION' in ENV:
+    _site_args['VITE_BUILD_VERSION'] = ENV['VITE_BUILD_VERSION']
 docker_build(
     'vgkeep/bff', '.',
     dockerfile='services/bff/Dockerfile',

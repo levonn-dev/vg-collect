@@ -1,3 +1,4 @@
+import { useLingui } from '@lingui/react/macro'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { Entry } from '../../api/collection'
@@ -16,11 +17,18 @@ interface CoverGridProps {
 }
 
 export default function CoverGrid({ entries, pinSlot, linkTo, shared }: CoverGridProps) {
+  // CoverGrid has no translated string of its own, but useLingui()
+  // is still required here: rowMeta's pin badge needs a live i18n
+  // (see rowMeta.tsx), and this call is what subscribes CoverGrid to
+  // locale changes so a mounted grid - e.g. SharedShelf's read-only
+  // view, which passes no pinSlot - re-renders that badge instead of
+  // going stale after a live locale switch.
+  const { i18n } = useLingui()
   const money = useDisplayMoney()
   return (
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
       {entries.map((e) => {
-        const meta = rowMeta(e, money, { pinSlot })
+        const meta = rowMeta(e, money, i18n, { pinSlot })
         const cover = (
           <>
             {e.cover_url ? (

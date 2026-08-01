@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchMe } from '../../api/client'
 import { deleteComment, fetchShelfComments } from '../../api/social'
@@ -31,7 +32,7 @@ function UnresolvedAuthor() {
       >
         ?
       </span>
-      Member
+      <Trans>Member</Trans>
     </span>
   )
 }
@@ -49,7 +50,7 @@ function DeletedUser() {
       >
         ?
       </span>
-      Deleted user
+      <Trans>Deleted user</Trans>
     </span>
   )
 }
@@ -67,6 +68,7 @@ interface CommentListProps {
 // comment is a moderation action with no undo, confirmed and
 // committed immediately through its own mutation.
 export default function CommentList({ shelfId, ownerId }: CommentListProps) {
+  const { t } = useLingui()
   const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
   const { pendingIds, requestDelete, undo } = useCommentDelete(shelfId)
   const qc = useQueryClient()
@@ -87,17 +89,17 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
   const comments = list.data?.pages.flatMap((p) => p.comments) ?? []
 
   return (
-    <section aria-label="Comments" className="mt-6">
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Comments</h3>
-      {list.isPending && <p className="text-sm text-gray-500">Loading comments...</p>}
+    <section aria-label={t`Comments`} className="mt-6">
+      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500"><Trans>Comments</Trans></h3>
+      {list.isPending && <p className="text-sm text-gray-500"><Trans>Loading comments...</Trans></p>}
       {list.isError && (
         <p role="alert" className="text-sm text-red-700">
-          Comments cannot be loaded right now. Please try again.
+          <Trans>Comments cannot be loaded right now. Please try again.</Trans>
         </p>
       )}
       {!list.isPending && !list.isError && (
         comments.length === 0 ? (
-          <p className="text-sm text-gray-500">No comments yet.</p>
+          <p className="text-sm text-gray-500"><Trans>No comments yet.</Trans></p>
         ) : (
           <>
             <ul className="flex flex-col gap-3">
@@ -105,14 +107,16 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
                 if (pendingIds.has(c.id)) {
                   return (
                     <li key={c.id} role="status" className="text-sm text-gray-500">
-                      Comment deleted -{' '}
-                      <button
-                        type="button"
-                        onClick={() => undo(c.id)}
-                        className="text-amber-600 hover:underline"
-                      >
-                        Undo
-                      </button>
+                      <Trans>
+                        Comment deleted -{' '}
+                        <button
+                          type="button"
+                          onClick={() => undo(c.id)}
+                          className="text-amber-600 hover:underline"
+                        >
+                          Undo
+                        </button>
+                      </Trans>
                     </li>
                   )
                 }
@@ -133,10 +137,10 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
                         <button
                           type="button"
                           onClick={() => requestDelete(c.id)}
-                          aria-label={`Delete your comment: ${truncateBody(c.body)}`}
+                          aria-label={t`Delete your comment: ${truncateBody(c.body)}`}
                           className="ml-auto text-xs text-gray-500 hover:text-red-700"
                         >
-                          Delete
+                          <Trans>Delete</Trans>
                         </button>
                       )}
                       {canModerate && (
@@ -145,17 +149,17 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
                           onClick={() => {
                             if (
                               window.confirm(
-                                'Remove this comment? The author will not be able to restore it.',
+                                t`Remove this comment? The author will not be able to restore it.`,
                               )
                             ) {
                               ownerRemove.mutate(c.id)
                             }
                           }}
                           disabled={ownerRemove.isPending}
-                          aria-label={`Remove comment: ${truncateBody(c.body)}`}
+                          aria-label={t`Remove comment: ${truncateBody(c.body)}`}
                           className="ml-auto text-xs text-gray-500 hover:text-red-700 disabled:opacity-50"
                         >
-                          Remove
+                          <Trans>Remove</Trans>
                         </button>
                       )}
                     </div>
@@ -171,7 +175,7 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
                 disabled={list.isFetchingNextPage}
                 className="mt-3 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
               >
-                Load more
+                <Trans>Load more</Trans>
               </button>
             )}
           </>

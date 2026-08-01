@@ -1,7 +1,4 @@
-// The browser's own locale decides digit grouping and symbol
-// placement (jsdom pins en-US, keeping unit tests deterministic).
-// Tests pass an explicit locale; production code never does.
-const defaultLocale = typeof navigator !== 'undefined' ? navigator.language : undefined
+import { formatLocale } from './locale'
 
 // formatCents renders integer cents as a currency string, or null for
 // an absent value. Callers choose the neutral copy for null: an absent
@@ -11,7 +8,7 @@ const defaultLocale = typeof navigator !== 'undefined' ? navigator.language : un
 export function formatCents(
   cents: number | null | undefined,
   currency = 'USD',
-  locale: string | undefined = defaultLocale,
+  locale: string | undefined = formatLocale(),
 ): string | null {
   if (cents === null || cents === undefined) return null
   return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(cents / 100)
@@ -22,7 +19,7 @@ export function formatCents(
 export function formatMajor(
   amount: number,
   currency: string,
-  locale: string | undefined = defaultLocale,
+  locale: string | undefined = formatLocale(),
   opts: { wholeUnits?: boolean } = {},
 ): string {
   return new Intl.NumberFormat(locale, {

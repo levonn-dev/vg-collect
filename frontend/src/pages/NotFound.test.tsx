@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
+import { renderWithI18n } from '../test/i18n'
 import NotFound from './NotFound'
 
 it('renders the heading and a link home for an unknown path', () => {
-  render(
+  renderWithI18n(
     <MemoryRouter initialEntries={['/no-such-page']}>
       <Routes>
         <Route path="*" element={<NotFound />} />

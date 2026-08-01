@@ -1,3 +1,4 @@
+import { vi } from 'vitest'
 import { centsToDollars, dollarsToCents, enteredCentsToUsdCents, formatCents, formatMajor, isStaleRateDate, releaseYear, usdCentsToMajor } from './format'
 
 it('formatCents renders currency and passes null through', () => {
@@ -11,6 +12,24 @@ it('formatCents honors an explicit locale', () => {
   expect(formatCents(123456, 'EUR', 'de-DE')).toBe('1.234,56 €')
   expect(formatCents(123456, 'EUR', 'en-US')).toBe('€1,234.56')
   expect(formatCents(50000, 'JPY', 'en-US')).toBe('¥500')
+})
+
+it('formatCents default locale: a stored choice outranks the browser language', () => {
+  const langSpy = vi.spyOn(window.navigator, 'language', 'get').mockReturnValue('fr-FR')
+  try {
+    // No stored choice yet: the (stubbed) browser language governs,
+    // so grouping follows fr-FR - a comma decimal separator, not
+    // en's period.
+    expect(formatCents(123456)).toContain(',56')
+    expect(formatCents(123456)).not.toBe('$1,234.56')
+
+    // A stored choice wins even though the browser still says fr-FR.
+    localStorage.setItem('locale', 'en')
+    expect(formatCents(123456)).toBe('$1,234.56')
+  } finally {
+    localStorage.removeItem('locale')
+    langSpy.mockRestore()
+  }
 })
 
 it('formatMajor renders major amounts, optionally whole-unit', () => {

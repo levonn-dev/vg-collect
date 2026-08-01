@@ -1,3 +1,5 @@
+import { t } from '@lingui/core/macro'
+import type { I18n } from '@lingui/core'
 import type { ReactNode } from 'react'
 import type { Entry } from '../../api/collection'
 import type { components } from '../../api/schema'
@@ -29,9 +31,22 @@ export function isFullEntry(e: EntryRow): e is Entry {
 // (a shared SharedEntry listing never passes one) and simply never
 // fires for a SharedEntry row; the money value falls back to '-' the
 // same way - a SharedEntry carries no price data to show.
+//
+// i18n is threaded in by the caller rather than read off the
+// @lingui/core singleton directly: rowMeta is a plain function, not
+// a component, so it cannot call the real useLingui() hook itself,
+// and reading the singleton would render the correct string today
+// but never trigger a re-render on a later locale switch (only a
+// component that itself subscribes via useLingui() re-renders on
+// change). Requiring the parameter forces every caller - including
+// CoverGrid, which otherwise has no i18n-touching string of its own
+// - to obtain it from their own useLingui() call, so the static
+// "Pinned" badge stays live even when it is the only translated
+// thing on screen.
 export function rowMeta(
   entry: EntryRow,
   money: DisplayMoney,
+  i18n: I18n,
   opts: { pinSlot?: (e: Entry) => ReactNode; pinTrailingSpace?: boolean } = {},
 ) {
   const { pinSlot, pinTrailingSpace } = opts
@@ -39,7 +54,7 @@ export function rowMeta(
   return {
     pin: pinSlot && full
       ? pinSlot(full)
-      : entry.pinned && <span aria-label="Pinned">{pinTrailingSpace ? STAR_SPACE : STAR}</span>,
+      : entry.pinned && <span aria-label={t(i18n)`Pinned`}>{pinTrailingSpace ? STAR_SPACE : STAR}</span>,
     platform: entry.platform?.name ?? '-',
     value: full ? (money.entryValue(full) ?? '-') : '-',
   }

@@ -1,9 +1,10 @@
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
+import { renderWithI18n } from '../test/i18n'
 import Footer from './Footer'
 
 function renderFooter(showHelp = false) {
-  return render(
+  return renderWithI18n(
     <MemoryRouter>
       <Footer showHelp={showHelp} />
     </MemoryRouter>,

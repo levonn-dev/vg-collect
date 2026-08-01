@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import Home from '../pages/Home'
 import { fxRatesFixture, jsonResponse, meFixture } from '../test/fixtures'
+import { renderWithI18n } from '../test/i18n'
 import Layout from './Layout'
 
 // Renders the query string react-router actually landed on so a test
@@ -15,7 +16,7 @@ function LoginProbe() {
 
 function renderLayout(path = '/') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  return renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
@@ -145,7 +146,7 @@ it('consumes a stashed next path once the profile resolves', async () => {
 function renderLayoutWithHome() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(['me'], meFixture({ landing_page: 'collection' }))
-  return render(
+  return renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/']}>
         <Routes>

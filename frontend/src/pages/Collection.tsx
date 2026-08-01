@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
@@ -21,12 +22,12 @@ import { fromSearchParams, toQuery, toSearchParams } from '../lib/listParams'
 
 type CollectionTab = 'items' | 'shelves'
 
-const COLLECTION_TABS: Tab<CollectionTab>[] = [
-  { key: 'items', label: 'Items' },
-  { key: 'shelves', label: 'Shelves' },
-]
-
 export default function Collection() {
+  const { t } = useLingui()
+  const collectionTabs: Tab<CollectionTab>[] = [
+    { key: 'items', label: t`Items` },
+    { key: 'shelves', label: t`Shelves` },
+  ]
   const [searchParams, setSearchParams] = useSearchParams()
   const state = fromSearchParams(searchParams)
   const apply = (next: ListState) => setSearchParams(toSearchParams(next))
@@ -40,7 +41,7 @@ export default function Collection() {
   // panel's own contents remount on every switch back to it (plain
   // conditional rendering, same as Feed/Admin), but filtersOpen above
   // lives on Collection itself, which never unmounts on a tab switch,
-  // so it survives a round trip - acceptable either way per spec.
+  // so it survives a round trip - acceptable either way.
   const [tab, setTab] = useState<CollectionTab>('items')
 
   // Bulk edit's own local state: bulkMode gates the toggle's pressed
@@ -89,11 +90,11 @@ export default function Collection() {
   const platforms = useQuery({ queryKey: ['platform-facets'], queryFn: fetchPlatformFacets })
   const tags = useQuery({ queryKey: ['tags'], queryFn: fetchTags })
 
-  if (list.isPending) return <main className="py-8">Loading collection...</main>
+  if (list.isPending) return <main className="py-8"><Trans>Loading collection...</Trans></main>
   if (list.isError) {
     return (
       <main className="py-8" role="alert">
-        The collection cannot be loaded right now. Please try again.
+        <Trans>The collection cannot be loaded right now. Please try again.</Trans>
       </main>
     )
   }
@@ -130,8 +131,8 @@ export default function Collection() {
       <View entries={items} pinSlot={pinSlot} />
     )
   return (
-    <main className="py-6" aria-label="Collection">
-      <Tabs label="Collection sections" tabs={COLLECTION_TABS} active={tab} onChange={setTab} className="mb-4" />
+    <main className="py-6" aria-label={t`Collection`}>
+      <Tabs label={t`Collection sections`} tabs={collectionTabs} active={tab} onChange={setTab} className="mb-4" />
       {tab === 'items' ? (
         <>
           <ViewPicker state={state} onApply={apply} />
@@ -156,7 +157,7 @@ export default function Collection() {
           <InsightsPanel state={state} />
           {!pricing_available && (
             <p role="alert" className="mb-4 rounded bg-amber-50 p-3 text-sm text-amber-800">
-              Market pricing is temporarily unavailable; values are hidden.
+              <Trans>Market pricing is temporarily unavailable; values are hidden.</Trans>
             </p>
           )}
           {/* Always mounted, text empty when there is nothing to say - an
@@ -182,16 +183,18 @@ export default function Collection() {
               onApplied={(n) => {
                 setBulkMode(false)
                 setSelected(new Set())
-                setBulkAnnouncement(`Updated ${n} entries.`)
+                setBulkAnnouncement(t`Updated ${n} entries.`)
               }}
             />
           )}
           {total_count === 0 ? (
             filtered ? (
-              <p className="py-12 text-center text-gray-500">Nothing matches these filters.</p>
+              <p className="py-12 text-center text-gray-500"><Trans>Nothing matches these filters.</Trans></p>
             ) : (
               <p className="py-12 text-center text-gray-500">
-                Nothing here yet. <Link to="/add" className="underline">Add your first item.</Link>
+                <Trans>
+                  Nothing here yet. <Link to="/add" className="underline">Add your first item.</Link>
+                </Trans>
               </p>
             )
           ) : state.sort === 'backlog_rank' && !groups ? (

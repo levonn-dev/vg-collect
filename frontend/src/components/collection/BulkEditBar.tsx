@@ -1,3 +1,4 @@
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ApiError } from '../../api/client'
@@ -31,6 +32,7 @@ interface BulkEditBarProps {
 // tag_cap_exceeded response (or any other 400) leaves the user able to
 // adjust and retry without reselecting anything.
 export default function BulkEditBar({ selected, tags, onCancel, onApplied }: BulkEditBarProps) {
+  const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
   const [addTagIds, setAddTagIds] = useState<string[]>([])
   const [removeTagIds, setRemoveTagIds] = useState<string[]>([])
@@ -79,47 +81,47 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
 
   return (
     <section
-      aria-label="Bulk edit"
+      aria-label={t`Bulk edit`}
       className="mb-3 flex flex-col gap-3 rounded border border-gray-300 bg-gray-50 p-3"
     >
       <div className="flex flex-wrap items-end gap-4">
-        <span className="text-sm font-medium">{selected.size} selected</span>
+        <span className="text-sm font-medium"><Trans>{selected.size} selected</Trans></span>
         <fieldset disabled={disabled} className="flex flex-wrap items-center gap-2">
           <legend className="float-left mr-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Add tags
+            <Trans>Add tags</Trans>
           </legend>
-          {tags.map((t) => (
-            <label key={t.id} className="flex items-center gap-1 text-sm">
-              <input type="checkbox" checked={addTagIds.includes(t.id)} onChange={() => toggleAddTag(t.id)} />
-              {t.name}
+          {tags.map((tag) => (
+            <label key={tag.id} className="flex items-center gap-1 text-sm">
+              <input type="checkbox" checked={addTagIds.includes(tag.id)} onChange={() => toggleAddTag(tag.id)} />
+              {tag.name}
             </label>
           ))}
-          {tags.length === 0 && <span className="text-xs text-gray-400">No tags yet</span>}
+          {tags.length === 0 && <span className="text-xs text-gray-400"><Trans>No tags yet</Trans></span>}
         </fieldset>
         <fieldset disabled={disabled} className="flex flex-wrap items-center gap-2">
           <legend className="float-left mr-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Remove tags
+            <Trans>Remove tags</Trans>
           </legend>
-          {tags.map((t) => (
-            <label key={t.id} className="flex items-center gap-1 text-sm">
-              <input type="checkbox" checked={removeTagIds.includes(t.id)} onChange={() => toggleRemoveTag(t.id)} />
-              {t.name}
+          {tags.map((tag) => (
+            <label key={tag.id} className="flex items-center gap-1 text-sm">
+              <input type="checkbox" checked={removeTagIds.includes(tag.id)} onChange={() => toggleRemoveTag(tag.id)} />
+              {tag.name}
             </label>
           ))}
-          {tags.length === 0 && <span className="text-xs text-gray-400">No tags yet</span>}
+          {tags.length === 0 && <span className="text-xs text-gray-400"><Trans>No tags yet</Trans></span>}
         </fieldset>
         <label className="flex items-center gap-2 text-sm font-medium">
-          Status
+          <Trans>Status</Trans>
           <select
             value={status}
             disabled={disabled}
             onChange={(e) => setStatus(e.target.value as Entry['status'] | '')}
             className="rounded border border-gray-300 px-2 py-1 text-sm"
           >
-            <option value="">Leave unchanged</option>
+            <option value="">{t`Leave unchanged`}</option>
             {(Object.keys(statusLabels) as Entry['status'][]).map((s) => (
               <option key={s} value={s}>
-                {statusLabels[s]}
+                {i18n._(statusLabels[s])}
               </option>
             ))}
           </select>
@@ -132,31 +134,31 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
               disabled={disabled}
               onChange={(e) => setLocationEnabled(e.target.checked)}
             />
-            Set storage location
+            <Trans>Set storage location</Trans>
           </label>
           {locationEnabled && (
             <>
               <input
-                aria-label="Storage location"
+                aria-label={t`Storage location`}
                 value={location}
                 disabled={disabled}
                 maxLength={200}
                 onChange={(e) => setLocation(e.target.value)}
                 className="rounded border border-gray-300 px-2 py-1 text-sm"
               />
-              <span className="text-xs text-gray-500">Empty clears the location.</span>
+              <span className="text-xs text-gray-500"><Trans>Empty clears the location.</Trans></span>
             </>
           )}
         </div>
       </div>
       {overCap && (
-        <p className="text-sm text-amber-800">Selection is over the 200-entry limit.</p>
+        <p className="text-sm text-amber-800"><Trans>Selection is over the 200-entry limit.</Trans></p>
       )}
       {apply.isError && (
         <p role="alert" className="text-sm text-red-700">
           {apply.error instanceof ApiError && apply.error.message
             ? apply.error.message
-            : 'The bulk update failed.'}
+            : t`The bulk update failed.`}
         </p>
       )}
       <div className="flex items-center gap-2">
@@ -166,7 +168,7 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
           disabled={disabled || !hasAction || selected.size === 0 || overCap}
           className="rounded bg-gray-900 px-3 py-1 text-sm text-white disabled:opacity-50"
         >
-          Apply
+          <Trans>Apply</Trans>
         </button>
         <button
           type="button"
@@ -174,7 +176,7 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
           disabled={disabled}
           className="rounded border border-gray-300 px-3 py-1 text-sm enabled:hover:bg-gray-50 disabled:opacity-50"
         >
-          Cancel
+          <Trans>Cancel</Trans>
         </button>
       </div>
     </section>

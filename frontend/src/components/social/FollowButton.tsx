@@ -1,3 +1,4 @@
+import { Trans } from '@lingui/react/macro'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { follow, unfollow } from '../../api/social'
 import { foldHandle } from '../../lib/handle'
@@ -33,7 +34,7 @@ export default function FollowButton({ userId, handle, viewerFollows }: FollowBu
           : 'rounded bg-gray-900 px-3 py-1 text-sm text-white hover:bg-gray-700 disabled:opacity-50'
       }
     >
-      {viewerFollows ? 'Following' : 'Follow'}
+      {viewerFollows ? <Trans>Following</Trans> : <Trans>Follow</Trans>}
     </button>
   )
 }

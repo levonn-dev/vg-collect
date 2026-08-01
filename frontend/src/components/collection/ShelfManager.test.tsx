@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { jsonResponse, meFixture, putBody } from '../../test/fixtures'
+import { renderWithI18n } from '../../test/i18n'
 import { defaultListState, toViewParams } from '../../lib/listParams'
 import ShelfManager from './ShelfManager'
 
@@ -20,7 +21,7 @@ const view = {
 function renderManager(me = meFixture()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(['me'], me)
-  render(
+  renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <ShelfManager />
@@ -66,7 +67,7 @@ it('withholds the copy-link button for a non-private shelf until the signed-in h
   // link out of yet even though the shelf itself already qualifies.
   vi.stubGlobal('fetch', vi.fn((path: string) =>
     path === '/api/me' ? new Promise(() => {}) : Promise.resolve(jsonResponse(200, { views: [listed] }))))
-  render(
+  renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <ShelfManager />

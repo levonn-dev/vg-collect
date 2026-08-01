@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { renderWithI18n } from '../../test/i18n'
 import VisibilityControl from './VisibilityControl'
 
 it('marks the active segment aria-pressed and leaves the others unpressed', () => {
-  render(<VisibilityControl value="unlisted" onChange={vi.fn()} />)
+  renderWithI18n(<VisibilityControl value="unlisted" onChange={vi.fn()} />)
   expect(screen.getByRole('button', { name: 'Private', pressed: false })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Unlisted', pressed: true })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Listed', pressed: false })).toBeInTheDocument()
@@ -11,7 +12,7 @@ it('marks the active segment aria-pressed and leaves the others unpressed', () =
 
 it('fires onChange with the clicked segment value', async () => {
   const onChange = vi.fn()
-  render(<VisibilityControl value="unlisted" onChange={onChange} />)
+  renderWithI18n(<VisibilityControl value="unlisted" onChange={onChange} />)
   await userEvent.click(screen.getByRole('button', { name: 'Private' }))
   expect(onChange).toHaveBeenCalledWith('private')
   await userEvent.click(screen.getByRole('button', { name: 'Listed' }))
@@ -20,7 +21,7 @@ it('fires onChange with the clicked segment value', async () => {
 })
 
 it('disables every segment when disabled', () => {
-  render(<VisibilityControl value="private" onChange={vi.fn()} disabled />)
+  renderWithI18n(<VisibilityControl value="private" onChange={vi.fn()} disabled />)
   expect(screen.getByRole('button', { name: 'Private' })).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Unlisted' })).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Listed' })).toBeDisabled()

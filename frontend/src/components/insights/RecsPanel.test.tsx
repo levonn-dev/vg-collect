@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { jsonResponse } from '../../test/fixtures'
+import { renderWithI18n } from '../../test/i18n'
 import RecsPanel from './RecsPanel'
 
 function renderPanel() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  return renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <RecsPanel />
