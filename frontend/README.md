@@ -57,21 +57,30 @@ i18n._(dataSource.dataType)
 ```
 
 Run `npm run extract` (or `task frontend:extract`) after changing any
-translatable copy. This regenerates `src/locales/en.po`, which is
-committed like any other source file. The root `task gen` runs the
-same extraction, so a catalog left out of date fails CI's drift check
-the same way a stale generated API client would.
+translatable copy. This rewrites every registered locale's catalog:
+new English text lands in `en.po` and shows up as a missing entry in
+each translated catalog, which then falls back to English until
+someone translates it. All of them are committed like any other source
+file. The root `task gen` runs the same extraction, so a catalog left
+out of date fails CI's drift check the same way a stale generated API
+client would.
 
 Prose pages (About, Terms, Privacy, Help) skip the catalog entirely.
 Each is a whole page per locale under `src/pages/<page>/` (for example
-`src/pages/about/About.en.tsx`), picked by `ProsePage` at render time.
-Translating one of these means adding a page variant, not catalog
-entries.
+`src/pages/about/About.en.tsx` and `About.ja.tsx`), picked by
+`ProsePage` at render time. Translating one of these means adding a
+page variant, not catalog entries.
 
-Adding a locale takes an entry in `SUPPORTED_LOCALES`, `LOCALE_NAMES`,
-and `CATALOG_LOADERS` in `src/lib/locale.ts`, plus a `.po` file under
-`src/locales/`. The language switcher in the app bar renders nothing
-until two locales are supported, then appears on its own. See
-`docs/translations.md` for the contributor-facing guide.
+Adding a locale takes a `.po` file under `src/locales/`, an entry in
+`SUPPORTED_LOCALES` and `LOCALE_NAMES` in `src/lib/locales.ts`, and
+one loader line in `CATALOG_LOADERS` in `src/lib/locale.ts` (the split
+keeps the Lingui CLI config loadable under plain Node - see the
+comments in both files). Prose variants are optional and can follow
+per page. English and Japanese ship today; the language switcher in
+the footer renders nothing while only one locale is supported, then
+appears on its own. The footer is its single mount point and renders
+in both shells, so signed-out visitors can switch languages on the
+public pages too. See `docs/translations.md` for the
+contributor-facing guide.
 
 See the root README for the full stack (task run / task down).
