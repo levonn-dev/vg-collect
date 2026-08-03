@@ -1,0 +1,2288 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-07-31 21:34-0400\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: ja\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#: src/pages/EntryDetail.tsx
+msgid " - custom item"
+msgstr " - カスタムアイテム"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "; more than a week old"
+msgstr "、1週間以上前"
+
+#: src/components/Footer.tsx
+msgid "{dataType} provided by <0>{label}</0>"
+msgstr "{dataType}は<0>{label}</0>の提供です"
+
+#: src/lib/relativeTime.ts
+msgid "{days}d ago"
+msgstr "{days}日前"
+
+#: src/pages/Account.tsx
+msgid "{email} - linked {linkedDate}"
+msgstr "{email}（{linkedDate}に連携）"
+
+#: src/components/social/ShelfCard.tsx
+msgid "{entryCount, plural, one {# entry} other {# entries}}"
+msgstr "{entryCount, plural, other {アイテム#件}}"
+
+#: src/pages/Profile.tsx
+msgid "{followerCount, plural, one {# follower} other {# followers}}"
+msgstr "{followerCount, plural, other {フォロワー#人}}"
+
+#: src/pages/Profile.tsx
+msgid "{followingCount} following"
+msgstr "フォロー中{followingCount}人"
+
+#: src/components/collection/Pager.tsx
+msgid "{from}-{to} of {totalCount}"
+msgstr "{totalCount}件中 {from}-{to}"
+
+#: src/lib/relativeTime.ts
+msgid "{hours}h ago"
+msgstr "{hours}時間前"
+
+#: src/components/social/ShelfCard.tsx
+msgid "{likeCount, plural, one {# like} other {# likes}}"
+msgstr "{likeCount, plural, other {いいね#件}}"
+
+#: src/lib/relativeTime.ts
+msgid "{minutes}m ago"
+msgstr "{minutes}分前"
+
+#: src/components/Footer.tsx
+msgid "{name} is run by {operator}"
+msgstr "{name}の運営者は{operator}です"
+
+#: src/components/Footer.tsx
+msgid "{name} is run by {operator} (<0>{contact}</0>)"
+msgstr "{name}の運営者は{operator}です（<0>{contact}</0>）"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "{name} on {platformName}"
+msgstr "{name}（{platformName}）"
+
+#: src/components/insights/StatCards.tsx
+msgid "{pricedCount} priced - {unpricedCount} unpriced - {excludedCount} excluded"
+msgstr "価格あり{pricedCount}件 - 価格なし{unpricedCount}件 - 対象外{excludedCount}件"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "{selectedCount} selected"
+msgstr "{selectedCount}件を選択中"
+
+#: src/pages/Profile.tsx
+msgid "{total_count, plural, one {# shared shelf} other {# shared shelves}}"
+msgstr "{total_count, plural, other {共有棚#件}}"
+
+#: src/components/admin/PromoteCandidates.tsx
+msgid "{total, plural, one {# community product with possible provider matches} other {# community products with possible provider matches}}"
+msgstr "{total, plural, other {プロバイダー一致候補のあるコミュニティ商品#件}}"
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "{total, plural, one {# pending submission} other {# pending submissions}}"
+msgstr "{total, plural, other {審査待ちのカタログ申請#件}}"
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "{total} unmatched products"
+msgstr "未マッピングの商品{total}件"
+
+#: src/components/collection/Pager.tsx
+msgid "{totalCount} items"
+msgstr "{totalCount}件"
+
+#: src/pages/SharedShelf.tsx
+msgid "{totalEntries, plural, one {# entry} other {# entries}}"
+msgstr "{totalEntries, plural, other {アイテム#件}}"
+
+#: src/pages/Feed.tsx
+msgid "<0/> commented on <1>{shelfName}</1>"
+msgstr "<0/>が<1>{shelfName}</1>にコメントしました"
+
+#: src/pages/Feed.tsx
+msgid "<0/> followed <1/>"
+msgstr "<0/>が<1/>をフォローしました"
+
+#: src/pages/Feed.tsx
+msgid "<0/> liked <1>{shelfName}</1>"
+msgstr "<0/>が<1>{shelfName}</1>をいいねしました"
+
+#: src/pages/Feed.tsx
+msgid "<0/> published <1>{shelfName}</1>"
+msgstr "<0/>が<1>{shelfName}</1>を公開しました"
+
+#: src/pages/Account.tsx
+msgid "2-30 characters, letters/digits, underscores inside only"
+msgstr "2-30文字の英数字（アンダースコアは中間のみ）"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/entry/PricingPanel.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "59.99"
+msgstr "59.99"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "A provider product already holds that identity - nothing changed."
+msgstr "プロバイダー商品がすでにその識別情報を持っているため、何も変更されませんでした。"
+
+#: src/components/admin/RefreshWalk.tsx
+msgid "A walk is already running."
+msgstr "巡回はすでに実行中です。"
+
+#: src/components/Footer.tsx
+msgid "About"
+msgstr "このサイトについて"
+
+#: src/components/ProsePage.tsx
+msgid "About this translation"
+msgstr "この翻訳について"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Acceptable"
+msgstr "並品"
+
+#: src/components/collection/FilterBar.tsx
+msgid "Accessories"
+msgstr "周辺機器"
+
+#: src/components/insights/BreakdownCharts.tsx
+#: src/pages/EntryDetail.tsx
+msgid "accessory"
+msgstr "周辺機器"
+
+#: src/components/AppBar.tsx
+#: src/pages/Account.tsx
+msgid "Account"
+msgstr "アカウント"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Acquisition"
+msgstr "入手情報"
+
+#: src/components/AppBar.tsx
+msgid "Add"
+msgstr "追加"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Add {name}"
+msgstr "{name}を追加"
+
+#: src/pages/Recommendations.tsx
+msgid "Add {name} to collection"
+msgstr "{name}をコレクションに追加"
+
+#: src/components/social/CommentComposer.tsx
+msgid "Add a comment"
+msgstr "コメントを追加"
+
+#: src/components/social/CommentComposer.tsx
+msgid "Add a comment..."
+msgstr "コメントを追加..."
+
+#: src/components/insights/RecsPanel.tsx
+msgid "Add and rate a few games to get suggestions."
+msgstr "ゲームをいくつか追加して評価すると、おすすめが表示されます。"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Add on:"
+msgstr "追加先："
+
+#: src/components/entry/TagPicker.tsx
+msgid "Add tag"
+msgstr "タグを追加"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Add tags"
+msgstr "タグを追加"
+
+#: src/components/wizard/ConfirmShell.tsx
+#: src/pages/AddWizard.tsx
+#: src/pages/Recommendations.tsx
+msgid "Add to collection"
+msgstr "コレクションに追加"
+
+#: src/pages/EntryDetail.tsx
+msgid "Added to your collection."
+msgstr "コレクションに追加しました。"
+
+#: src/components/AppBar.tsx
+#: src/pages/Admin.tsx
+msgid "Admin"
+msgstr "管理"
+
+#: src/pages/Admin.tsx
+msgid "Admin sections"
+msgstr "管理セクション"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Adopt by id"
+msgstr "IDで採用"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Adopt existing product"
+msgstr "既存商品を採用"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Another admin already resolved this submission."
+msgstr "別の管理者がこのカタログ申請をすでに処理しました。"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Another product already carries that identity - the mapping was not changed."
+msgstr "別の商品がすでにその識別情報を持っているため、マッピングは変更されませんでした。"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Any listing (games, variants, hardware)..."
+msgstr "リスティング全般（ゲーム、バリエーション、ハードウェア）..."
+
+#: src/pages/Account.tsx
+msgid "Any login listed here signs into this account, even when its email differs."
+msgstr "ここに表示されているログインはすべて、メールアドレスが異なっていてもこのアカウントにログインします。"
+
+#: src/components/AppBar.tsx
+#: src/components/PublicShell.tsx
+msgid "App bar"
+msgstr "アプリバー"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Apply"
+msgstr "適用"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Approve as new product"
+msgstr "新規商品として承認"
+
+#: src/components/collection/ListControls.tsx
+msgid "ascending"
+msgstr "昇順"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "Attach a price listing (optional)"
+msgstr "価格リスティングを添付（任意）"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "auto (this item's own price listing)"
+msgstr "自動（このアイテム自身の価格リスティング）"
+
+#: src/pages/Account.tsx
+msgid "Avatar image URL"
+msgstr "アバター画像URL"
+
+#: src/components/wizard/ConfirmShell.tsx
+#: src/components/wizard/ConfirmStep.tsx
+#: src/components/wizard/CustomStep.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Back"
+msgstr "戻る"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/insights/BreakdownCharts.tsx
+msgid "backlog"
+msgstr "積みゲー"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Backlog"
+msgstr "積みゲー"
+
+#: src/components/collection/BacklogBoard.tsx
+#: src/components/collection/ListControls.tsx
+msgid "Backlog order"
+msgstr "積みゲー順"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/insights/BreakdownCharts.tsx
+msgid "beaten"
+msgstr "クリア済み"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Beaten"
+msgstr "クリア済み"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Box condition"
+msgstr "箱の状態"
+
+#: src/components/collection/BulkEditBar.tsx
+#: src/components/collection/ListControls.tsx
+msgid "Bulk edit"
+msgstr "一括編集"
+
+#: src/components/insights/BreakdownCharts.tsx
+msgid "By item type"
+msgstr "アイテムの種類別"
+
+#: src/components/insights/BreakdownCharts.tsx
+msgid "By platform"
+msgstr "プラットフォーム別"
+
+#: src/components/insights/BreakdownCharts.tsx
+msgid "By status"
+msgstr "ステータス別"
+
+#: src/pages/AddWizard.tsx
+msgid "Can not find it? Add it as a custom item."
+msgstr "見つかりませんか？カスタムアイテムとして追加できます。"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Cancel"
+msgstr "キャンセル"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Cancel submission"
+msgstr "カタログ申請をキャンセル"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Catalog submission"
+msgstr "カタログ申請"
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Catalog submissions"
+msgstr "カタログ申請"
+
+#: src/components/catalog/PlatformPicker.tsx
+msgid "Change"
+msgstr "変更"
+
+#: src/components/wizard/ConfirmStep.tsx
+msgid "Change listing"
+msgstr "リスティングを変更"
+
+#: src/components/catalog/PlatformPicker.tsx
+msgid "Change platform"
+msgstr "プラットフォームを変更"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Change price source"
+msgstr "価格ソースを変更"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Checking the price match..."
+msgstr "価格の照合状況を確認しています..."
+
+#: src/components/entry/ProxyPicker.tsx
+msgid "Choose a price source"
+msgstr "価格ソースを選択"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Choose a price source before saving."
+msgstr "保存する前に価格ソースを選択してください。"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Choose listing"
+msgstr "リスティングを選択"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Choose price source"
+msgstr "価格ソースを選択"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Choose..."
+msgstr "選択..."
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "cib"
+msgstr "完品"
+
+#: src/components/collection/FilterBar.tsx
+msgid "CIB"
+msgstr "完品"
+
+#: src/components/admin/PromotePanel.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Clear"
+msgstr "クリア"
+
+#: src/components/collection/ListControls.tsx
+msgid "Clear filters"
+msgstr "フィルターをクリア"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Clear mapping"
+msgstr "マッピングをクリア"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Clear this mapping? The product becomes unmatched and is held out of the nightly re-match walk."
+msgstr "このマッピングをクリアしますか？商品は未マッピングになり、保留として毎晩の再照合巡回の対象から外れます。"
+
+#: src/components/entry/ProxyPicker.tsx
+#: src/components/wizard/ManualMatchPicker.tsx
+msgid "Close"
+msgstr "閉じる"
+
+#: src/components/AppBar.tsx
+#: src/pages/Account.tsx
+#: src/pages/Collection.tsx
+msgid "Collection"
+msgstr "コレクション"
+
+#: src/pages/Collection.tsx
+msgid "Collection sections"
+msgstr "コレクションのセクション"
+
+#: src/components/insights/StatCards.tsx
+msgid "Collection value ({currency})"
+msgstr "コレクションの価値（{currency}）"
+
+#: src/components/insights/ValueOverTime.tsx
+msgid "Collection value in {currency} (last 90 days)"
+msgstr "コレクションの価値（{currency}、過去90日間）"
+
+#: src/components/insights/ValueOverTime.tsx
+msgid "Collection value over time"
+msgstr "コレクション価値の推移"
+
+#: src/components/social/CommentComposer.tsx
+msgid "Comment could not be posted. Please try again."
+msgstr "コメントを投稿できませんでした。もう一度お試しください。"
+
+#: src/components/social/CommentList.tsx
+msgid "Comment deleted - <0>Undo</0>"
+msgstr "コメントを削除しました - <0>元に戻す</0>"
+
+#: src/components/social/CommentComposer.tsx
+msgid "Comment limit reached - try again later."
+msgstr "コメントの上限に達しました。しばらくしてからもう一度お試しください。"
+
+#: src/components/social/CommentList.tsx
+msgid "Comments"
+msgstr "コメント"
+
+#: src/components/social/CommentList.tsx
+msgid "Comments cannot be loaded right now. Please try again."
+msgstr "コメントを読み込めませんでした。もう一度お試しください。"
+
+#: src/components/admin/ProductLookup.tsx
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/catalog/SearchPicker.tsx
+msgid "community"
+msgstr "コミュニティ"
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "Community catalog products; delete removes unused ones - products referenced by entries are protected."
+msgstr "コミュニティのカタログ商品です。削除できるのは未使用のもののみで、アイテムから参照されている商品は保護されます。"
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "Community products"
+msgstr "コミュニティ商品"
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "Community products could not be loaded."
+msgstr "コミュニティ商品を読み込めませんでした。"
+
+#: src/components/collection/ListControls.tsx
+msgid "Compact"
+msgstr "コンパクト"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/insights/BreakdownCharts.tsx
+msgid "completed"
+msgstr "コンプリート"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Completed"
+msgstr "コンプリート"
+
+#: src/components/collection/FilterBar.tsx
+msgid "Condition"
+msgstr "状態"
+
+#: src/components/wizard/ConfirmStep.tsx
+msgid "Confirm"
+msgstr "確認"
+
+#: src/pages/AddWizard.tsx
+msgid "Confirm custom item"
+msgstr "カスタムアイテムの確認"
+
+#: src/components/wizard/ConfirmShell.tsx
+msgid "Confirm: {title}"
+msgstr "確認：{title}"
+
+#: src/components/insights/BreakdownCharts.tsx
+#: src/pages/EntryDetail.tsx
+msgid "console"
+msgstr "ゲーム機"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Console or accessory..."
+msgstr "ゲーム機・周辺機器..."
+
+#: src/components/collection/FilterBar.tsx
+msgid "Consoles"
+msgstr "ゲーム機"
+
+#: src/components/wizard/CustomStep.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Continue"
+msgstr "次へ"
+
+#: src/pages/Login.tsx
+msgid "Continue with {providerName}"
+msgstr "{providerName}で続ける"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Converted from USD at ECB rates ({rateDate}{staleNote})."
+msgstr "ECBレート（{rateDate}{staleNote}）でUSDから換算しています。"
+
+#: src/components/CopyButton.tsx
+msgid "Copied"
+msgstr "コピーしました"
+
+#: src/components/wizard/DetailsStep.tsx
+msgid "Copy details"
+msgstr "お手持ちのアイテムの詳細"
+
+#: src/components/CopyButton.tsx
+msgid "Copy failed"
+msgstr "コピーできませんでした"
+
+#: src/components/CopyButton.tsx
+msgid "Copy link"
+msgstr "リンクをコピー"
+
+#: src/pages/Account.tsx
+msgid "Copy profile link"
+msgstr "プロフィールリンクをコピー"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Cover image link"
+msgstr "カバー画像リンク"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Cover image link (optional)"
+msgstr "カバー画像リンク（任意）"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "cover preview"
+msgstr "カバープレビュー"
+
+#: src/components/collection/ListControls.tsx
+msgid "Covers"
+msgstr "カバー"
+
+#: src/components/insights/ValueOverTime.tsx
+msgid "Covers your whole collection; price history does not follow filters."
+msgstr "コレクション全体が対象です。価格履歴はフィルターに追従しません。"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "custom (a price you set yourself)"
+msgstr "カスタム（自分で設定した価格）"
+
+#: src/pages/AddWizard.tsx
+msgid "custom item"
+msgstr "カスタムアイテム"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Custom item"
+msgstr "カスタムアイテム"
+
+#: src/pages/AddWizard.tsx
+msgid "Custom items start without market pricing. To track a value, open the entry afterwards and choose a similar listed item as its price source."
+msgstr "カスタムアイテムには最初は相場が付きません。価値を追跡するには、追加後にアイテムを開き、よく似た掲載アイテムを価格ソースとして選択してください。"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Custom price ({inputCurrency})"
+msgstr "カスタム価格（{inputCurrency}）"
+
+#: src/pages/Account.tsx
+msgid "Danger zone"
+msgstr "危険な操作"
+
+#: src/components/collection/ListControls.tsx
+msgid "Date added"
+msgstr "追加日"
+
+#: src/components/collection/ListControls.tsx
+msgid "Date added (default)"
+msgstr "追加日（デフォルト）"
+
+#: src/pages/Account.tsx
+msgid "Default page"
+msgstr "デフォルトページ"
+
+#: src/components/admin/CommunityProducts.tsx
+#: src/components/admin/MappingFix.tsx
+#: src/components/social/CommentList.tsx
+msgid "Delete"
+msgstr "削除"
+
+#: src/pages/Account.tsx
+msgid "Delete account"
+msgstr "アカウントを削除"
+
+#: src/pages/EntryDetail.tsx
+msgid "Delete entry"
+msgstr "アイテムを削除"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Delete shelf"
+msgstr "棚を削除"
+
+#: src/pages/EntryDetail.tsx
+msgid "Delete this entry? This cannot be undone."
+msgstr "このアイテムを削除しますか？この操作は元に戻せません。"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Delete this product from the catalog? Only unmatched products that no entries reference can be deleted."
+msgstr "この商品をカタログから削除しますか？削除できるのは、どのアイテムからも参照されていない未マッピングの商品のみです。"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Delete this shelf?"
+msgstr "この棚を削除しますか？"
+
+#: src/pages/Account.tsx
+msgid "Delete your account? Your collection, tags, shelves, linked logins, and profile will be permanently removed."
+msgstr "アカウントを削除しますか？コレクション、タグ、棚、連携済みログイン、プロフィールは完全に削除されます。"
+
+#: src/components/social/CommentList.tsx
+msgid "Delete your comment: {bodyPreview}"
+msgstr "自分のコメントを削除：{bodyPreview}"
+
+#: src/components/social/CommentList.tsx
+msgid "Deleted user"
+msgstr "退会したユーザー"
+
+#: src/pages/Account.tsx
+msgid "Deleting your account removes your collection, tags, shelves, linked logins, and profile. This cannot be undone."
+msgstr "アカウントを削除すると、コレクション、タグ、棚、連携済みログイン、プロフィールが削除されます。この操作は元に戻せません。"
+
+#: src/pages/Account.tsx
+msgid "Deletion did not finish. Nothing is lost ahead of it; try again."
+msgstr "削除を完了できませんでした。データはまだ失われていません。もう一度お試しください。"
+
+#: src/components/collection/ListControls.tsx
+msgid "descending"
+msgstr "降順"
+
+#: src/pages/Login.tsx
+msgid "Dev fixtures"
+msgstr "開発用フィクスチャ"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "disabled (no market value)"
+msgstr "無効（相場なし）"
+
+#: src/components/admin/PromotePanel.tsx
+#: src/components/entry/ApprovalNotice.tsx
+#: src/pages/Account.tsx
+msgid "Dismiss"
+msgstr "非表示にする"
+
+#: src/components/entry/ApprovalNotice.tsx
+msgid "Dismiss approval notice"
+msgstr "承認通知を非表示にする"
+
+#: src/components/CurrencySelect.tsx
+msgid "Display currency"
+msgstr "表示通貨"
+
+#: src/components/collection/ListControls.tsx
+msgid "Display mode"
+msgstr "表示モード"
+
+#: src/components/collection/BacklogBoard.tsx
+msgid "Drag {displayName}"
+msgstr "{displayName}をドラッグ"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/insights/BreakdownCharts.tsx
+msgid "dropped"
+msgstr "挫折"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Dropped"
+msgstr "挫折"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Edition"
+msgstr "エディション"
+
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Edition or variant"
+msgstr "エディション・バリエーション"
+
+#: src/pages/Account.tsx
+msgid "Email: {email}"
+msgstr "メールアドレス：{email}"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Empty clears the location."
+msgstr "空欄にすると保管場所をクリアします。"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Enter a custom price before saving."
+msgstr "保存する前にカスタム価格を入力してください。"
+
+#: src/pages/SharedShelf.tsx
+msgid "Entries"
+msgstr "アイテム"
+
+#: src/pages/SharedShelf.tsx
+msgid "Entries cannot be loaded right now. Please try again."
+msgstr "アイテムを読み込めませんでした。もう一度お試しください。"
+
+#: src/pages/EntryDetail.tsx
+msgid "Entry detail"
+msgstr "アイテムの詳細"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Entry editor"
+msgstr "アイテムの編集"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "exact match"
+msgstr "完全一致"
+
+#: src/lib/site.ts
+msgid "Exchange rates"
+msgstr "為替レート"
+
+#: src/components/CurrencySelect.tsx
+msgid "Exchange rates are unavailable; prices show in USD."
+msgstr "為替レートが利用できないため、価格はUSDで表示されます。"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Exchange rates are unavailable; try saving again shortly."
+msgstr "為替レートが利用できません。しばらくしてからもう一度保存してください。"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Exchange rates are unavailable; values show in USD."
+msgstr "為替レートが利用できないため、金額はUSDで表示されます。"
+
+#: src/components/AppBar.tsx
+#: src/pages/Account.tsx
+#: src/pages/Explore.tsx
+msgid "Explore"
+msgstr "見つける"
+
+#: src/pages/Explore.tsx
+msgid "Explore sort"
+msgstr "並び順"
+
+#: src/components/AppBar.tsx
+#: src/pages/Account.tsx
+#: src/pages/Feed.tsx
+msgid "Feed"
+msgstr "フィード"
+
+#: src/pages/Feed.tsx
+msgid "Feed sections"
+msgstr "フィードのセクション"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/collection/ListControls.tsx
+msgid "Filters"
+msgstr "フィルター"
+
+#: src/components/collection/ListControls.tsx
+msgid "Filters ({filterCount})"
+msgstr "フィルター（{filterCount}）"
+
+#: src/components/entry/EntryForm.tsx
+msgid "first print, black label..."
+msgstr "初版、ブラックレーベルなど..."
+
+#: src/components/wizard/DetailsStep.tsx
+msgid "first print, players choice..."
+msgstr "初版、Players Choiceなど..."
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "First release date"
+msgstr "初回発売日"
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "Fix mapping"
+msgstr "マッピングを修正"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Fix mapping for {productName}"
+msgstr "{productName}のマッピングを修正"
+
+#: src/components/social/FollowButton.tsx
+msgid "Follow"
+msgstr "フォロー"
+
+#: src/components/social/FollowButton.tsx
+#: src/pages/Feed.tsx
+msgid "Following"
+msgstr "フォロー中"
+
+#: src/components/wizard/CustomStep.tsx
+msgid "For items search cannot find: reproductions, fan translations, homebrew, self-built hardware. A variant of a searchable item (a first print, a color variant) belongs on that item instead - pick it from search and note the variant in the edition field."
+msgstr "検索で見つからないアイテム（複製品、ファン翻訳、自主制作ソフト、自作ハードウェアなど）のための機能です。検索で見つかるアイテムのバリエーション（初版、カラーバリエーションなど）は、そのアイテム側に登録してください。検索から選び、エディション欄にバリエーションを記入します。"
+
+#: src/components/insights/BreakdownCharts.tsx
+#: src/pages/EntryDetail.tsx
+msgid "game"
+msgstr "ゲーム"
+
+#: src/lib/site.ts
+msgid "Game data"
+msgstr "ゲームデータ"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Game title..."
+msgstr "ゲームタイトル..."
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "games"
+msgstr "ゲーム"
+
+#: src/components/catalog/SearchPicker.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Games"
+msgstr "ゲーム"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Good"
+msgstr "良品"
+
+#: src/components/collection/ListControls.tsx
+msgid "Group by"
+msgstr "グループ化"
+
+#: src/pages/Account.tsx
+msgid "Handle"
+msgstr "ハンドル"
+
+#: src/pages/Account.tsx
+msgid "Handle changed too recently - try again later."
+msgstr "ハンドルを変更してから間もないため、変更できません。しばらくしてからもう一度お試しください。"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "hardware"
+msgstr "ハードウェア"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Hardware"
+msgstr "ハードウェア"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Has box"
+msgstr "箱あり"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Has manual"
+msgstr "説明書あり"
+
+#: src/components/admin/MappingFix.tsx
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "held"
+msgstr "保留中"
+
+#: src/components/Footer.tsx
+msgid "Help"
+msgstr "ヘルプ"
+
+#: src/components/insights/InsightsPanel.tsx
+msgid "Hide insights"
+msgstr "統計を非表示"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Hold"
+msgstr "保留"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Hold this product out of the nightly re-match walk? Setting any mapping lifts the hold."
+msgstr "この商品を保留にして、毎晩の再照合巡回の対象から外しますか？マッピングを設定すると保留は解除されます。"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "https://..."
+msgstr "https://..."
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "In use by existing entries - cannot delete."
+msgstr "既存のアイテムで使用されているため、削除できません。"
+
+#: src/components/insights/InsightsPanel.tsx
+msgid "Insights"
+msgstr "統計"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Item condition"
+msgstr "アイテムの状態"
+
+#: src/components/collection/ListControls.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Item type"
+msgstr "アイテムの種類"
+
+#: src/components/insights/StatCards.tsx
+#: src/pages/Collection.tsx
+msgid "Items"
+msgstr "アイテム"
+
+#: src/lib/relativeTime.ts
+msgid "just now"
+msgstr "たった今"
+
+#: src/components/LocaleSwitch.tsx
+msgid "Language"
+msgstr "言語"
+
+#: src/components/admin/PromoteCandidates.tsx
+msgid "Last confirmed"
+msgstr "最終確認日"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Last custom price: {lastCustomPrice}"
+msgstr "前回のカスタム価格：{lastCustomPrice}"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Last price proxy: {proxyName}"
+msgstr "前回の価格ソース：{proxyName}"
+
+#: src/pages/Account.tsx
+msgid "Leave empty to use your initial instead."
+msgstr "空欄の場合はイニシャルが表示されます。"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Leave unchanged"
+msgstr "変更しない"
+
+#: src/components/social/LikeButton.tsx
+msgid "Like"
+msgstr "いいね"
+
+#: src/pages/Account.tsx
+msgid "Link {providerName}"
+msgstr "{providerName}を連携"
+
+#: src/pages/Account.tsx
+msgid "Link a dev fixture"
+msgstr "開発用フィクスチャを連携"
+
+#: src/pages/Account.tsx
+msgid "Linked logins"
+msgstr "連携済みログイン"
+
+#: src/pages/Account.tsx
+msgid "Linked logins could not be loaded."
+msgstr "連携済みログインを読み込めませんでした。"
+
+#: src/pages/Account.tsx
+msgid "Linking failed. Please try again."
+msgstr "連携できませんでした。もう一度お試しください。"
+
+#: src/components/collection/ShelfManager.tsx
+msgid "listed"
+msgstr "公開"
+
+#: src/components/social/VisibilityControl.tsx
+msgid "Listed"
+msgstr "公開"
+
+#: src/pages/Account.tsx
+msgid "Listed - appears in Explore and search"
+msgstr "公開 - 「見つける」と検索に表示されます"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "Listing: {listingName}"
+msgstr "リスティング：{listingName}"
+
+#: src/components/admin/CommunityProducts.tsx
+#: src/components/admin/PromoteCandidates.tsx
+#: src/components/admin/SubmissionsQueue.tsx
+#: src/components/admin/UnmatchedWorklist.tsx
+#: src/components/social/CommentList.tsx
+#: src/pages/Explore.tsx
+#: src/pages/Feed.tsx
+#: src/pages/SharedShelf.tsx
+msgid "Load more"
+msgstr "さらに読み込む"
+
+#: src/components/admin/PromoteCandidates.tsx
+msgid "Loading candidates..."
+msgstr "候補を読み込んでいます..."
+
+#: src/pages/Collection.tsx
+msgid "Loading collection..."
+msgstr "コレクションを読み込んでいます..."
+
+#: src/components/social/CommentList.tsx
+msgid "Loading comments..."
+msgstr "コメントを読み込んでいます..."
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "Loading community products..."
+msgstr "コミュニティ商品を読み込んでいます..."
+
+#: src/pages/SharedShelf.tsx
+msgid "Loading entries..."
+msgstr "アイテムを読み込んでいます..."
+
+#: src/pages/EntryDetail.tsx
+msgid "Loading entry..."
+msgstr "アイテムを読み込んでいます..."
+
+#: src/pages/Feed.tsx
+msgid "Loading feed..."
+msgstr "フィードを読み込んでいます..."
+
+#: src/pages/Profile.tsx
+msgid "Loading profile..."
+msgstr "プロフィールを読み込んでいます..."
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Loading queue..."
+msgstr "キューを読み込んでいます..."
+
+#: src/pages/SharedShelf.tsx
+msgid "Loading shelf..."
+msgstr "棚を読み込んでいます..."
+
+#: src/pages/Explore.tsx
+msgid "Loading shelves..."
+msgstr "棚を読み込んでいます..."
+
+#: src/pages/Login.tsx
+msgid "Loading sign-in options..."
+msgstr "ログイン方法を読み込んでいます..."
+
+#: src/components/insights/InsightsPanel.tsx
+msgid "Loading stats..."
+msgstr "統計を読み込んでいます..."
+
+#: src/components/entry/TagPicker.tsx
+msgid "Loading tags..."
+msgstr "タグを読み込んでいます..."
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "Loading worklist..."
+msgstr "作業リストを読み込んでいます..."
+
+#: src/components/Layout.tsx
+#: src/pages/Account.tsx
+msgid "Loading..."
+msgstr "読み込んでいます..."
+
+#: src/components/collection/ListControls.tsx
+msgid "Location"
+msgstr "保管場所"
+
+#: src/components/AppBar.tsx
+msgid "Log out"
+msgstr "ログアウト"
+
+#: src/pages/Login.tsx
+msgid "Login failed. Please try again."
+msgstr "ログインできませんでした。もう一度お試しください。"
+
+#: src/pages/Account.tsx
+msgid "Login linked. Signing in with it now lands in this account."
+msgstr "ログインを連携しました。今後はそのログインでこのアカウントにログインできます。"
+
+#: src/components/admin/ProductLookup.tsx
+msgid "Look up"
+msgstr "照会"
+
+#: src/components/wizard/ConfirmStep.tsx
+msgid "Looking it up..."
+msgstr "照会しています..."
+
+#: src/components/admin/ProductLookup.tsx
+msgid "Looking up..."
+msgstr "照会しています..."
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "loose"
+msgstr "箱説なし"
+
+#: src/components/collection/FilterBar.tsx
+msgid "Loose"
+msgstr "箱説なし"
+
+#: src/components/catalog/SearchPicker.tsx
+#: src/components/entry/PricingPanel.tsx
+msgid "Loose {loose} / CIB {cib} / New {newPrice}"
+msgstr "箱説なし {loose} / 完品 {cib} / 新品 {newPrice}"
+
+#: src/components/collection/ShelfManager.tsx
+msgid "Manage shelves"
+msgstr "棚の管理"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Manual condition"
+msgstr "説明書の状態"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Mapped to \"{pcName}\" ({consoleName}), match {confidence}%"
+msgstr "「{pcName}」（{consoleName}）にマッピング済み、一致度{confidence}%"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Mapped to \"{pcName}\" ({consoleName}), match {confidence}%, verified"
+msgstr "「{pcName}」（{consoleName}）にマッピング済み、一致度{confidence}%、確認済み"
+
+#: src/pages/Admin.tsx
+msgid "Mappings"
+msgstr "マッピング"
+
+#: src/pages/Collection.tsx
+msgid "Market pricing is temporarily unavailable; values are hidden."
+msgstr "相場情報は一時的に利用できないため、価値は非表示になっています。"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Market values are in USD."
+msgstr "相場はUSDで表示されます。"
+
+#: src/components/wizard/ManualMatchPicker.tsx
+msgid "Match a price listing"
+msgstr "価格リスティングを照合"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Match listing"
+msgstr "リスティングを照合"
+
+#: src/components/wizard/ConfirmStep.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Match manually"
+msgstr "手動で照合"
+
+#: src/components/social/CommentList.tsx
+msgid "Member"
+msgstr "メンバー"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Mint"
+msgstr "新品同様"
+
+#: src/components/collection/BacklogBoard.tsx
+msgid "Move {displayName} down"
+msgstr "{displayName}を下へ移動"
+
+#: src/components/collection/BacklogBoard.tsx
+msgid "Move {displayName} up"
+msgstr "{displayName}を上へ移動"
+
+#: src/components/catalog/PlatformPicker.tsx
+msgid "My platform isn't listed"
+msgstr "プラットフォームが見つからない場合"
+
+#: src/components/admin/CommunityProducts.tsx
+#: src/components/admin/PromoteCandidates.tsx
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/admin/UnmatchedWorklist.tsx
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/ListControls.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Name"
+msgstr "名前"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Name this shelf"
+msgstr "棚の名前を入力してください"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Near mint"
+msgstr "極美品"
+
+#: src/components/entry/TagPicker.tsx
+msgid "New tag"
+msgstr "新しいタグ"
+
+#: src/components/collection/Pager.tsx
+msgid "Next"
+msgstr "次へ"
+
+#: src/pages/Feed.tsx
+msgid "No activity yet."
+msgstr "アクティビティはまだありません。"
+
+#: src/components/social/CommentList.tsx
+msgid "No comments yet."
+msgstr "コメントはまだありません。"
+
+#: src/components/entry/PricingPanel.tsx
+#: src/components/wizard/ConfirmStep.tsx
+msgid "No confirmed price listing yet - market value stays empty until a match is made."
+msgstr "確定した価格リスティングはまだありません。照合が済むまで相場は空のままです。"
+
+#: src/pages/Account.tsx
+msgid "no email recorded"
+msgstr "メールアドレス未登録"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "No market value available."
+msgstr "相場なし"
+
+#: src/pages/Explore.tsx
+msgid "No people found for \"{query}\"."
+msgstr "「{query}」に一致するユーザーは見つかりませんでした。"
+
+#: src/components/collection/FilterBar.tsx
+msgid "No platforms yet"
+msgstr "プラットフォームはまだありません"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "No price source chosen yet."
+msgstr "価格ソースはまだ選択されていません。"
+
+#: src/components/admin/ProductLookup.tsx
+#: src/components/admin/ReviewPanel.tsx
+msgid "No product with that id."
+msgstr "そのIDの商品はありません。"
+
+#: src/components/insights/StatCards.tsx
+msgid "No purchase prices recorded."
+msgstr "購入価格の記録はありません。"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "No results for \"{submitted}\"."
+msgstr "「{submitted}」に一致する結果はありません。"
+
+#: src/pages/Explore.tsx
+#: src/pages/Profile.tsx
+msgid "No shared shelves yet."
+msgstr "共有棚はまだありません。"
+
+#: src/components/collection/ShelfManager.tsx
+msgid "No shelves yet. Save one from the Items tab."
+msgstr "棚はまだありません。「アイテム」タブから保存できます。"
+
+#: src/components/collection/BulkEditBar.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "No tags yet"
+msgstr "タグはまだありません"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "None found."
+msgstr "該当はありません。"
+
+#: src/components/social/NotFoundState.tsx
+msgid "Not found"
+msgstr "見つかりません"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Not graded"
+msgstr "指定なし"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Notes"
+msgstr "メモ"
+
+#: src/pages/Collection.tsx
+msgid "Nothing here yet. <0>Add your first item.</0>"
+msgstr "まだ何もありません。<0>最初のアイテムを追加しましょう。</0>"
+
+#: src/components/social/NotFoundState.tsx
+msgid "Nothing here."
+msgstr "ここには何もありません。"
+
+#: src/pages/Collection.tsx
+msgid "Nothing matches these filters."
+msgstr "このフィルターに一致するアイテムはありません。"
+
+#: src/pages/Recommendations.tsx
+msgid "Nothing to recommend yet - add and rate a few games first."
+msgstr "おすすめできるものはまだありません。まずゲームをいくつか追加して評価してください。"
+
+#: src/components/insights/BreakdownCharts.tsx
+msgid "Nothing yet"
+msgstr "まだありません"
+
+#: src/pages/Feed.tsx
+msgid "Nothing yet. <0>Explore</0> people to follow."
+msgstr "まだ何もありません。<0>見つける</0>からフォローするユーザーを探しましょう。"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "NTSC-J"
+msgstr "NTSC-J"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "NTSC-U"
+msgstr "NTSC-U"
+
+#: src/components/collection/ListControls.tsx
+msgid "Order: {direction}"
+msgstr "順序：{direction}"
+
+#: src/components/wizard/DetailsStep.tsx
+msgid "Otherwise auto-match picks the listing."
+msgstr "指定しない場合は自動照合でリスティングが選ばれます。"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Packaging"
+msgstr "パッケージ"
+
+#: src/pages/NotFound.tsx
+msgid "Page not found"
+msgstr "ページが見つかりません"
+
+#: src/components/collection/Pager.tsx
+msgid "Pagination"
+msgstr "ページ送り"
+
+#: src/components/collection/EntryTable.tsx
+msgid "Paid"
+msgstr "購入価格"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "PAL"
+msgstr "PAL"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Personal"
+msgstr "パーソナル"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Physical details"
+msgstr "現物の詳細"
+
+#: src/components/catalog/PlatformPicker.tsx
+msgid "Pick from the catalog instead"
+msgstr "カタログから選び直す"
+
+#: src/components/collection/PinStar.tsx
+msgid "Pin"
+msgstr "ピン留め"
+
+#: src/components/collection/rowMeta.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Pinned"
+msgstr "ピン留め"
+
+#: src/components/admin/CommunityProducts.tsx
+#: src/components/admin/SubmissionsQueue.tsx
+#: src/components/catalog/PlatformPicker.tsx
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+#: src/components/collection/ListControls.tsx
+msgid "Platform"
+msgstr "プラットフォーム"
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "Platform / console"
+msgstr "プラットフォーム / ゲーム機"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/insights/BreakdownCharts.tsx
+msgid "playing"
+msgstr "プレイ中"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Playing"
+msgstr "プレイ中"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Poor"
+msgstr "難あり"
+
+#: src/components/social/CommentComposer.tsx
+msgid "Post"
+msgstr "投稿"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Potential duplicates"
+msgstr "重複の可能性"
+
+#: src/components/collection/Pager.tsx
+msgid "Previous"
+msgstr "前へ"
+
+#: src/lib/site.ts
+msgid "Price data"
+msgstr "価格データ"
+
+#: src/components/wizard/DetailsStep.tsx
+msgid "Price listing match (optional)"
+msgstr "価格リスティングの照合（任意）"
+
+#: src/components/collection/ListControls.tsx
+msgid "Price paid"
+msgstr "購入価格"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Price paid ({currency})"
+msgstr "購入価格（{currency}）"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Price set on {priceSetDate}."
+msgstr "{priceSetDate}に設定した価格です。"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Price source: <0>{proxyName}</0>"
+msgstr "価格ソース：<0>{proxyName}</0>"
+
+#: src/components/admin/MappingFix.tsx
+msgid "PriceCharting does not know that listing."
+msgstr "PriceChartingにそのリスティングは存在しません。"
+
+#: src/components/entry/PricingPanel.tsx
+#: src/components/wizard/ConfirmStep.tsx
+msgid "Priced as \"{pcName}\" ({consoleName}) - match {confidence}%, verified."
+msgstr "「{pcName}」（{consoleName}）の価格を参照しています。一致度{confidence}%、確認済み。"
+
+#: src/components/entry/PricingPanel.tsx
+#: src/components/wizard/ConfirmStep.tsx
+msgid "Priced as \"{pcName}\" ({consoleName}) - match {confidence}%."
+msgstr "「{pcName}」（{consoleName}）の価格を参照しています。一致度{confidence}%。"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Pricing"
+msgstr "価格情報"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Pricing mode"
+msgstr "価格モード"
+
+#: src/components/AppBar.tsx
+msgid "Primary"
+msgstr "メイン"
+
+#: src/components/Footer.tsx
+msgid "Privacy"
+msgstr "プライバシー"
+
+#: src/components/collection/ShelfManager.tsx
+msgid "private"
+msgstr "非公開"
+
+#: src/components/social/VisibilityControl.tsx
+msgid "Private"
+msgstr "非公開"
+
+#: src/pages/Account.tsx
+msgid "Private - only you"
+msgstr "非公開 - 自分のみ"
+
+#: src/components/admin/ProductLookup.tsx
+#: src/components/admin/ReviewPanel.tsx
+msgid "Product id"
+msgstr "商品ID"
+
+#: src/components/admin/ProductLookup.tsx
+#: src/components/admin/ReviewPanel.tsx
+msgid "Product id (uuid)"
+msgstr "商品ID（UUID）"
+
+#: src/components/admin/ProductLookup.tsx
+msgid "Product lookup"
+msgstr "商品照会"
+
+#: src/pages/Account.tsx
+#: src/pages/Profile.tsx
+msgid "Profile"
+msgstr "プロフィール"
+
+#: src/pages/Account.tsx
+msgid "Profile visibility"
+msgstr "プロフィールの公開範囲"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "Promote {productName}"
+msgstr "{productName}を昇格"
+
+#: src/components/admin/PromoteCandidates.tsx
+msgid "Promote candidates"
+msgstr "昇格候補"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "Promote this community product to provider identity? Adopter entries upgrade in place; this cannot be undone from the UI."
+msgstr "このコミュニティ商品をプロバイダーの識別情報へ昇格しますか？この商品を使用しているアイテムはそのまま引き継がれます。この操作はUIからは元に戻せません。"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "Promote to provider identity"
+msgstr "プロバイダーの識別情報へ昇格"
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Proposed name"
+msgstr "申請名"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "proxy (another listing prices this copy)"
+msgstr "代用（別のリスティングの価格を使用）"
+
+#: src/components/collection/ListControls.tsx
+msgid "Purchase date"
+msgstr "購入日"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Purchased from"
+msgstr "購入先"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Purchased on"
+msgstr "購入日"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/ListControls.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Rating"
+msgstr "評価"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Reactivate"
+msgstr "再有効化"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Reactivate the last custom price"
+msgstr "前回のカスタム価格を再有効化"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Reactivate the last price proxy"
+msgstr "前回の価格ソースを再有効化"
+
+#: src/pages/Explore.tsx
+msgid "Recent"
+msgstr "新着"
+
+#: src/components/AppBar.tsx
+#: src/components/insights/RecsPanel.tsx
+#: src/pages/Recommendations.tsx
+msgid "Recommendations"
+msgstr "おすすめ"
+
+#: src/components/insights/RecsPanel.tsx
+msgid "Recommendations are unavailable right now."
+msgstr "おすすめは現在利用できません。"
+
+#: src/pages/Recommendations.tsx
+msgid "Recommendations cannot be loaded right now. Please try again."
+msgstr "おすすめを読み込めませんでした。もう一度お試しください。"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "Recommendations treat this copy as the proxied game."
+msgstr "おすすめ機能は、このアイテムを価格ソースのゲームとして扱います。"
+
+#: src/pages/Recommendations.tsx
+msgid "Recommended for you"
+msgstr "あなたへのおすすめ"
+
+#: src/components/insights/RecsPanel.tsx
+msgid "Recommended next"
+msgstr "次のおすすめ"
+
+#: src/components/admin/RefreshWalk.tsx
+msgid "Refresh walk"
+msgstr "更新巡回"
+
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Region"
+msgstr "リージョン"
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Region / edition"
+msgstr "リージョン / エディション"
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "Region / edition / variant"
+msgstr "リージョン / エディション / バリエーション"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Region free"
+msgstr "リージョンフリー"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Reject"
+msgstr "却下"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Rejection reason"
+msgstr "却下理由"
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "Release"
+msgstr "発売年"
+
+#: src/components/collection/ListControls.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Release date"
+msgstr "発売日"
+
+#: src/components/social/CommentList.tsx
+msgid "Remove"
+msgstr "削除"
+
+#: src/components/social/CommentList.tsx
+msgid "Remove comment: {bodyPreview}"
+msgstr "コメントを削除：{bodyPreview}"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Remove tags"
+msgstr "タグを外す"
+
+#: src/components/social/CommentList.tsx
+msgid "Remove this comment? The author will not be able to restore it."
+msgstr "このコメントを削除しますか？投稿者はこのコメントを復元できません。"
+
+#: src/components/entry/ProxyPicker.tsx
+msgid "Resolving..."
+msgstr "処理しています..."
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Resubmit to catalog"
+msgstr "カタログに再申請"
+
+#: src/components/admin/PromoteCandidates.tsx
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Review"
+msgstr "審査"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Review {displayName}"
+msgstr "{displayName}を審査"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Review: {displayName}"
+msgstr "審査：{displayName}"
+
+#: src/pages/Account.tsx
+msgid "Save"
+msgstr "保存"
+
+#: src/components/entry/EntryForm.tsx
+msgid "Save changes"
+msgstr "変更を保存"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Save shelf..."
+msgstr "棚として保存..."
+
+#: src/components/entry/EntryForm.tsx
+#: src/pages/Account.tsx
+msgid "Saved."
+msgstr "保存しました。"
+
+#: src/components/CurrencySelect.tsx
+#: src/pages/Account.tsx
+msgid "Saving failed. Please try again."
+msgstr "保存できませんでした。もう一度お試しください。"
+
+#: src/pages/Recommendations.tsx
+msgid "score {score}"
+msgstr "スコア{score}"
+
+#: src/pages/Recommendations.tsx
+msgid "Scoring ran degraded - some candidates were skipped. Try again later for a fuller list."
+msgstr "スコア計算が完全には実行できず、一部の候補がスキップされました。しばらくしてからもう一度お試しください。"
+
+#: src/components/insights/RecsPanel.tsx
+#: src/pages/Recommendations.tsx
+msgid "Scoring your library..."
+msgstr "コレクションを分析しています..."
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "sealed"
+msgstr "未開封"
+
+#: src/components/collection/FilterBar.tsx
+msgid "Sealed"
+msgstr "未開封"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Search"
+msgstr "検索"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Search for {allButLast}, and {last}"
+msgstr "{allButLast}、{last}を検索"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Search for {first} and {second}"
+msgstr "{first}と{second}を検索"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Search for {noun}"
+msgstr "{noun}を検索"
+
+#: src/pages/Explore.tsx
+msgid "Search for people"
+msgstr "ユーザーを検索"
+
+#: src/pages/Explore.tsx
+msgid "Search for people..."
+msgstr "ユーザーを検索..."
+
+#: src/components/catalog/SearchPicker.tsx
+#: src/pages/Explore.tsx
+msgid "Search is not working right now. Please try again."
+msgstr "検索を実行できませんでした。もう一度お試しください。"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Search may be missing some results right now; try again in a moment for the full set."
+msgstr "現在、検索結果が一部表示されていない可能性があります。しばらくしてからもう一度検索すると、すべての結果が表示されます。"
+
+#: src/pages/Explore.tsx
+msgid "Search results"
+msgstr "検索結果"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Search type"
+msgstr "検索対象"
+
+#: src/pages/Explore.tsx
+msgid "Searching..."
+msgstr "検索しています..."
+
+#: src/components/insights/RecsPanel.tsx
+msgid "See all recommendations"
+msgstr "おすすめをすべて見る"
+
+#: src/components/collection/EntryTable.tsx
+msgid "Select {displayName}"
+msgstr "{displayName}を選択"
+
+#: src/components/collection/EntryTable.tsx
+msgid "Select all"
+msgstr "すべて選択"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Selection is over the 200-entry limit."
+msgstr "選択数が上限の200件を超えています。"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "Set storage location"
+msgstr "保管場所を設定"
+
+#: src/pages/SharedShelf.tsx
+msgid "Shared shelf"
+msgstr "共有棚"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Shelf"
+msgstr "棚"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Shelf picker"
+msgstr "棚の選択"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/insights/BreakdownCharts.tsx
+msgid "shelved"
+msgstr "中断"
+
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Shelved"
+msgstr "中断"
+
+#: src/pages/Collection.tsx
+#: src/pages/Profile.tsx
+msgid "Shelves"
+msgstr "棚"
+
+#: src/pages/Explore.tsx
+msgid "Shelves cannot be loaded right now. Please try again."
+msgstr "棚を読み込めませんでした。もう一度お試しください。"
+
+#: src/components/insights/InsightsPanel.tsx
+msgid "Show insights"
+msgstr "統計を表示"
+
+#: src/pages/Login.tsx
+msgid "Sign in"
+msgstr "ログイン"
+
+#: src/pages/Login.tsx
+msgid "Sign-in is unavailable right now."
+msgstr "ログインは現在利用できません。"
+
+#: src/components/Footer.tsx
+msgid "Site"
+msgstr "サイト"
+
+#: src/components/Footer.tsx
+msgid "Site footer"
+msgstr "サイトフッター"
+
+#: src/components/Layout.tsx
+msgid "Something went wrong. Please try again."
+msgstr "問題が発生しました。もう一度お試しください。"
+
+#: src/components/collection/ListControls.tsx
+msgid "Sort"
+msgstr "並べ替え"
+
+#: src/components/Footer.tsx
+msgid "Source"
+msgstr "ソースコード"
+
+#: src/components/insights/StatCards.tsx
+msgid "Spent"
+msgstr "支出"
+
+#: src/components/catalog/PlatformPicker.tsx
+msgid "Start typing (SNES, PlayStation...)"
+msgstr "入力して検索（SNES、PlayStationなど）"
+
+#: src/components/insights/InsightsPanel.tsx
+msgid "Stats cannot be loaded right now."
+msgstr "統計を読み込めませんでした。"
+
+#: src/components/collection/BulkEditBar.tsx
+#: src/components/collection/EntryTable.tsx
+#: src/components/collection/FilterBar.tsx
+#: src/components/collection/ListControls.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Status"
+msgstr "ステータス"
+
+#: src/components/collection/BulkEditBar.tsx
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Storage location"
+msgstr "保管場所"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Submission rejected: {rejectReason}"
+msgstr "カタログ申請が却下されました：{rejectReason}"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Submission rejected."
+msgstr "カタログ申請が却下されました。"
+
+#: src/pages/Admin.tsx
+msgid "Submissions"
+msgstr "カタログ申請"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Submit to catalog"
+msgstr "カタログに申請"
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Submitted"
+msgstr "申請日"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Submitted to the catalog - waiting for review. You can keep editing; reviewers always see your latest edits."
+msgstr "カタログに申請済みです。審査をお待ちください。編集は続けられます。審査担当者には常に最新の内容が表示されます。"
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "Submitter"
+msgstr "申請者"
+
+#: src/components/ThemeToggle.tsx
+msgid "Switch to dark mode"
+msgstr "ダークモードに切り替え"
+
+#: src/components/ThemeToggle.tsx
+msgid "Switch to light mode"
+msgstr "ライトモードに切り替え"
+
+#: src/components/collection/ListControls.tsx
+msgid "Table"
+msgstr "テーブル"
+
+#: src/components/collection/ListControls.tsx
+msgid "Tag"
+msgstr "タグ"
+
+#: src/components/entry/TagPicker.tsx
+msgid "Tags"
+msgstr "タグ"
+
+#: src/components/collection/FilterBar.tsx
+msgid "Tags (all of)"
+msgstr "タグ（すべて含む）"
+
+#: src/components/entry/TagPicker.tsx
+msgid "Tags cannot be loaded right now."
+msgstr "タグを読み込めませんでした。"
+
+#: src/components/Footer.tsx
+msgid "Terms"
+msgstr "利用規約"
+
+#: src/pages/Login.tsx
+msgid "That account has no verified email address; verify it there and sign in again."
+msgstr "そのアカウントには確認済みのメールアドレスがありません。提供元で確認してから、もう一度ログインしてください。"
+
+#: src/pages/Account.tsx
+msgid "That handle is taken."
+msgstr "そのハンドルはすでに使われています。"
+
+#: src/components/wizard/ConfirmStep.tsx
+msgid "That listing cannot be matched right now. Go back to change or clear the manual match."
+msgstr "そのリスティングを照合できませんでした。戻って手動照合を変更するか、クリアしてください。"
+
+#: src/components/entry/ProxyPicker.tsx
+msgid "That listing cannot be used right now; pick another or try again."
+msgstr "そのリスティングを現在使用できません。別のものを選ぶか、もう一度お試しください。"
+
+#: src/pages/Account.tsx
+msgid "That login already belongs to another account, so it was not linked."
+msgstr "そのログインはすでに別のアカウントに連携されているため、連携できませんでした。"
+
+#: src/pages/Account.tsx
+msgid "That login has no verified email address; verify it there and try again."
+msgstr "そのログインには確認済みのメールアドレスがありません。提供元で確認してから、もう一度お試しください。"
+
+#: src/pages/Login.tsx
+msgid "That sign-in service is unavailable. Please try again shortly."
+msgstr "そのログインサービスは現在利用できません。しばらくしてからもう一度お試しください。"
+
+#: src/components/collection/BacklogBoard.tsx
+msgid "The backlog changed somewhere else; the list has been refreshed."
+msgstr "積みゲーリストが別の場所で変更されたため、リストを更新しました。"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "The bulk update failed."
+msgstr "一括更新できませんでした。"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "The catalog cannot be reached - try again."
+msgstr "カタログに接続できませんでした。もう一度お試しください。"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "The catalog-submission state could not be loaded."
+msgstr "カタログ申請の状態を読み込めませんでした。"
+
+#: src/pages/Collection.tsx
+msgid "The collection cannot be loaded right now. Please try again."
+msgstr "コレクションを読み込めませんでした。もう一度お試しください。"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "The dismissal failed - try again."
+msgstr "非表示にできませんでした。もう一度お試しください。"
+
+#: src/pages/EntryDetail.tsx
+msgid "The entry cannot be loaded right now. Please try again."
+msgstr "アイテムを読み込めませんでした。もう一度お試しください。"
+
+#: src/components/wizard/ConfirmStep.tsx
+#: src/pages/AddWizard.tsx
+msgid "The entry could not be created."
+msgstr "アイテムを作成できませんでした。"
+
+#: src/pages/Feed.tsx
+msgid "The feed cannot be loaded right now. Please try again."
+msgstr "フィードを読み込めませんでした。もう一度お試しください。"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "The listing match failed; try again in a moment."
+msgstr "リスティングを照合できませんでした。しばらくしてからもう一度お試しください。"
+
+#: src/components/wizard/ConfirmStep.tsx
+msgid "The lookup failed; your details are kept - try again in a moment."
+msgstr "照会できませんでした。入力した内容は保持されています。しばらくしてからもう一度お試しください。"
+
+#: src/components/admin/ProductLookup.tsx
+msgid "The lookup failed."
+msgstr "照会できませんでした。"
+
+#: src/components/admin/MappingFix.tsx
+msgid "The mapping change failed."
+msgstr "マッピングを変更できませんでした。"
+
+#: src/components/collection/BacklogBoard.tsx
+msgid "The move could not be saved; the list has been refreshed."
+msgstr "並べ替えを保存できませんでした。リストを更新しました。"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "The pick could not be resolved to a product - try again or paste an id."
+msgstr "選択した候補を商品に特定できませんでした。もう一度試すか、IDを貼り付けてください。"
+
+#: src/components/entry/PricingPanel.tsx
+msgid "The price listing cannot be loaded right now."
+msgstr "価格リスティングを読み込めませんでした。"
+
+#: src/components/admin/MappingFix.tsx
+msgid "The price provider is unavailable - try again."
+msgstr "価格プロバイダーが現在利用できません。もう一度お試しください。"
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "The product could not be deleted."
+msgstr "商品を削除できませんでした。"
+
+#: src/components/admin/PromoteCandidates.tsx
+msgid "The promote candidates could not be loaded."
+msgstr "昇格候補を読み込めませんでした。"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "The promotion failed."
+msgstr "昇格できませんでした。"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "The provider does not know that id."
+msgstr "プロバイダーにそのIDは存在しません。"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "The provider is unavailable - try again."
+msgstr "プロバイダーが現在利用できません。もう一度お試しください。"
+
+#: src/components/admin/SubmissionsQueue.tsx
+msgid "The queue could not be loaded."
+msgstr "キューを読み込めませんでした。"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "The shelf operation failed."
+msgstr "棚の操作を完了できませんでした。"
+
+#: src/components/collection/ShelfManager.tsx
+msgid "The shelf visibility update failed."
+msgstr "棚の公開範囲を変更できませんでした。"
+
+#: src/components/entry/TagPicker.tsx
+msgid "The tag could not be created."
+msgstr "タグを作成できませんでした。"
+
+#: src/components/admin/RefreshWalk.tsx
+msgid "The trigger failed - try again."
+msgstr "巡回を開始できませんでした。もう一度お試しください。"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "The verdict failed."
+msgstr "判定を送信できませんでした。"
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "The worklist could not be loaded."
+msgstr "作業リストを読み込めませんでした。"
+
+#: src/pages/NotFound.tsx
+msgid "There is no page at this address. <0>Go to the start page</0>."
+msgstr "このアドレスにページはありません。<0>スタートページに戻る</0>。"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Think others own this too? Submit it to the shared catalog for review."
+msgstr "他の人も持っていそうなアイテムですか？共有カタログに申請して審査を受けられます。"
+
+#: src/pages/EntryDetail.tsx
+msgid "This entry does not exist (it may have been deleted)."
+msgstr "このアイテムは存在しません（削除された可能性があります）。"
+
+#: src/components/wizard/ConfirmStep.tsx
+msgid "This item is no longer available; try searching again."
+msgstr "このアイテムは利用できなくなりました。もう一度検索してください。"
+
+#: src/components/admin/PromotePanel.tsx
+msgid "This product is already provider-identified."
+msgstr "この商品はすでにプロバイダーの識別情報を持っています。"
+
+#: src/pages/Profile.tsx
+msgid "This profile cannot be loaded right now. Please try again."
+msgstr "プロフィールを読み込めませんでした。もう一度お試しください。"
+
+#: src/pages/SharedShelf.tsx
+msgid "This shelf cannot be loaded right now. Please try again."
+msgstr "棚を読み込めませんでした。もう一度お試しください。"
+
+#: src/pages/SharedShelf.tsx
+msgid "This shelf is empty."
+msgstr "この棚は空です。"
+
+#: src/components/ProsePage.tsx
+msgid "This translation is provided for convenience. The English version is the controlling text."
+msgstr "この翻訳は参考のために提供されています。正文は英語版です。"
+
+#: src/pages/Explore.tsx
+msgid "Top"
+msgstr "人気"
+
+#: src/components/admin/PromoteCandidates.tsx
+msgid "Top candidate"
+msgstr "第一候補"
+
+#: src/components/insights/StatCards.tsx
+msgid "Totals"
+msgstr "合計"
+
+#: src/pages/Login.tsx
+msgid "Track your game collection."
+msgstr "ゲームコレクションを記録・管理。"
+
+#: src/components/admin/RefreshWalk.tsx
+msgid "Trigger refresh walk"
+msgstr "更新巡回を開始"
+
+#: src/components/admin/PromoteCandidates.tsx
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/admin/SubmissionsQueue.tsx
+#: src/components/admin/UnmatchedWorklist.tsx
+#: src/components/collection/FilterBar.tsx
+msgid "Type"
+msgstr "種類"
+
+#: src/components/collection/ListControls.tsx
+msgid "Ungrouped"
+msgstr "グループなし"
+
+#: src/components/social/LikeButton.tsx
+msgid "Unlike"
+msgstr "いいねを取り消す"
+
+#: src/pages/Account.tsx
+msgid "Unlink"
+msgstr "連携解除"
+
+#: src/pages/Account.tsx
+msgid "Unlink this login? You will no longer be able to sign in with it."
+msgstr "このログインの連携を解除しますか？解除すると、この方法ではログインできなくなります。"
+
+#: src/pages/Account.tsx
+msgid "Unlinking failed. Please try again."
+msgstr "連携を解除できませんでした。もう一度お試しください。"
+
+#: src/components/collection/ShelfManager.tsx
+msgid "unlisted"
+msgstr "限定公開"
+
+#: src/components/social/VisibilityControl.tsx
+msgid "Unlisted"
+msgstr "限定公開"
+
+#: src/pages/Account.tsx
+msgid "Unlisted - anyone signed in who has your link"
+msgstr "限定公開 - リンクを知っているログイン済みユーザー"
+
+#: src/components/admin/MappingFix.tsx
+msgid "Unmatched"
+msgstr "未マッピング"
+
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "Unmatched products"
+msgstr "未マッピングの商品"
+
+#: src/pages/Recommendations.tsx
+msgid "Unowned games scored against what you own, play, and rate."
+msgstr "所有・プレイ・評価の記録をもとに、未所有のゲームを採点しています。"
+
+#: src/components/collection/PinStar.tsx
+msgid "Unpin"
+msgstr "ピン留め解除"
+
+#: src/components/entry/EntryForm.tsx
+#: src/components/wizard/DetailsStep.tsx
+msgid "Unrated"
+msgstr "未評価"
+
+#: src/components/collection/ViewPicker.tsx
+msgid "Update shelf"
+msgstr "棚を更新"
+
+#: src/components/admin/CommunityProducts.tsx
+#: src/components/admin/UnmatchedWorklist.tsx
+msgid "Updated"
+msgstr "更新日"
+
+#: src/pages/Collection.tsx
+msgid "Updated {n} entries."
+msgstr "{n}件のアイテムを更新しました。"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "Use {name}"
+msgstr "{name}を使用"
+
+#: src/components/admin/ReviewPanel.tsx
+msgid "Use as existing"
+msgstr "既存として採用"
+
+#: src/components/collection/ListControls.tsx
+#: src/components/insights/ValueOverTime.tsx
+msgid "Value"
+msgstr "価値"
+
+#: src/components/collection/EntryTable.tsx
+msgid "Value ({currency})"
+msgstr "価値（{currency}）"
+
+#: src/components/insights/ValueOverTime.tsx
+msgid "Value history appears when price snapshots accumulate for your collection."
+msgstr "価値の履歴は、コレクションの価格スナップショットが蓄積されると表示されます。"
+
+#: src/components/insights/InsightsPanel.tsx
+msgid "Value history cannot be loaded right now."
+msgstr "価値の履歴を読み込めませんでした。"
+
+#: src/components/insights/ValueOverTime.tsx
+msgid "Value history is temporarily unavailable; try again shortly."
+msgstr "価値の履歴は一時的に利用できません。しばらくしてからもう一度お試しください。"
+
+#: src/components/insights/StatCards.tsx
+msgid "Value unavailable right now; try again shortly."
+msgstr "価値を現在表示できません。しばらくしてからもう一度お試しください。"
+
+#: src/components/collection/FilterBar.tsx
+#: src/components/entry/EntryForm.tsx
+msgid "Very good"
+msgstr "美品"
+
+#: src/components/admin/RefreshWalk.tsx
+msgid "Walk started."
+msgstr "巡回を開始しました。"
+
+#: src/pages/Account.tsx
+msgid "Where the app opens after you sign in."
+msgstr "ログイン後に最初に表示されるページです。"
+
+#: src/pages/Feed.tsx
+msgid "You"
+msgstr "あなた"
+
+#: src/pages/Login.tsx
+msgid "Your account has been deleted."
+msgstr "アカウントを削除しました。"
+
+#: src/pages/Account.tsx
+msgid "Your account needs at least one login"
+msgstr "アカウントには少なくとも1つのログインが必要です"
+
+#: src/pages/AddWizard.tsx
+msgid "Your copy of {itemName}"
+msgstr "お手持ちの{itemName}"
+
+#: src/pages/Account.tsx
+msgid "Your profile could not be loaded."
+msgstr "プロフィールを読み込めませんでした。"
+
+#: src/components/collection/ShelfManager.tsx
+msgid "Your profile is private, so other people cannot see any of your shelves regardless of their own setting. Change profile visibility <0>in Account</0>."
+msgstr "プロフィールが非公開のため、棚ごとの設定に関わらず、他のユーザーはあなたの棚を一切見られません。プロフィールの公開範囲は<0>アカウント</0>で変更できます。"
+
+#: src/components/collection/ShelfManager.tsx
+msgid "Your profile is unlisted, so listed shelves are reachable by link only - they will not appear in Explore."
+msgstr "プロフィールが限定公開のため、公開に設定した棚もリンクからのみ閲覧でき、「見つける」には表示されません。"
+
+#: src/components/entry/ApprovalNotice.tsx
+msgid "Your submission was approved and added to the shared catalog."
+msgstr "カタログ申請が承認され、共有カタログに追加されました。"
