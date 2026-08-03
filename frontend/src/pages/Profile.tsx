@@ -45,6 +45,8 @@ export default function Profile() {
   // resolves, rather than risk a flash of Follow on the viewer's own
   // page while the identity check is still in flight.
   const isOwner = me.data ? me.data.id === card.user_id : true
+  const followerCount = social_available && social ? social.follower_count : 0
+  const followingCount = social_available && social ? social.following_count : undefined
 
   return (
     <main aria-label={t`Profile`} className="py-6">
@@ -54,9 +56,9 @@ export default function Profile() {
           <h2 className="text-2xl font-bold">@{card.handle}</h2>
           {social_available && social && (
             <p className="text-sm text-gray-500">
-              <Plural value={social.follower_count} one="# follower" other="# followers" />
+              <Plural value={followerCount} one="# follower" other="# followers" />
               {' - '}
-              <Trans>{social.following_count} following</Trans>
+              <Trans>{followingCount} following</Trans>
             </p>
           )}
         </div>

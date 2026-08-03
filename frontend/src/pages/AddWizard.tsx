@@ -27,6 +27,10 @@ export default function AddWizard() {
   const [searchParams] = useSearchParams()
   const [state, setState] = useState<WizardStep>({ step: 'search' })
   const money = useDisplayMoney()
+  const itemName =
+    state.step === 'details' ? state.pick.name
+    : state.step === 'custom-details' ? state.custom.displayName
+    : undefined
 
   return (
     <main className="py-6" aria-label={t`Add to collection`}>
@@ -50,7 +54,7 @@ export default function AddWizard() {
       )}
       {state.step === 'details' && (
         <DetailsStep
-          heading={t`Your copy of ${state.pick.name}`}
+          heading={t`Your copy of ${itemName}`}
           currency={money.profileCurrency}
           initialValues={state.details}
           manualMatch={state.pick.kind === 'game' ? state.manualMatch : undefined}
@@ -80,7 +84,7 @@ export default function AddWizard() {
       )}
       {state.step === 'custom-details' && (
         <DetailsStep
-          heading={t`Your copy of ${state.custom.displayName}`}
+          heading={t`Your copy of ${itemName}`}
           currency={money.profileCurrency}
           initialValues={state.details}
           onBack={() => setState({ step: 'custom', custom: state.custom, details: state.details })}

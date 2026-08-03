@@ -36,32 +36,36 @@ export default function Recommendations() {
         </p>
       ) : (
         <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {recommendations.map((r) => (
-            <li key={r.igdb_game_id} className="flex flex-col rounded border border-gray-200 p-2">
-              {r.cover_url ? (
-                <img src={r.cover_url} alt="" className="mb-2 aspect-[3/4] w-full rounded object-cover" />
-              ) : (
-                <div
-                  aria-hidden="true"
-                  className="mb-2 flex aspect-[3/4] w-full items-center justify-center rounded bg-gray-100 text-gray-400"
+          {recommendations.map((r) => {
+            const name = r.name
+            const score = r.score.toFixed(1)
+            return (
+              <li key={r.igdb_game_id} className="flex flex-col rounded border border-gray-200 p-2">
+                {r.cover_url ? (
+                  <img src={r.cover_url} alt="" className="mb-2 aspect-[3/4] w-full rounded object-cover" />
+                ) : (
+                  <div
+                    aria-hidden="true"
+                    className="mb-2 flex aspect-[3/4] w-full items-center justify-center rounded bg-gray-100 text-gray-400"
+                  >
+                    <ItemTypeIcon type="game" className="h-10 w-10" />
+                  </div>
+                )}
+                <p className="text-sm font-medium">{r.name}</p>
+                <p className="text-xs text-gray-500">
+                  {[releaseYear(r.first_release_date), r.genres.join(', ')].filter(Boolean).join(' - ')}
+                </p>
+                <p className="mt-1 text-xs text-gray-400"><Trans>score {score}</Trans></p>
+                <Link
+                  to={`/add?q=${encodeURIComponent(r.name)}`}
+                  aria-label={t`Add ${name} to collection`}
+                  className="mt-2 rounded bg-gray-900 px-2 py-1 text-center text-xs text-white hover:bg-gray-700"
                 >
-                  <ItemTypeIcon type="game" className="h-10 w-10" />
-                </div>
-              )}
-              <p className="text-sm font-medium">{r.name}</p>
-              <p className="text-xs text-gray-500">
-                {[releaseYear(r.first_release_date), r.genres.join(', ')].filter(Boolean).join(' - ')}
-              </p>
-              <p className="mt-1 text-xs text-gray-400"><Trans>score {r.score.toFixed(1)}</Trans></p>
-              <Link
-                to={`/add?q=${encodeURIComponent(r.name)}`}
-                aria-label={t`Add ${r.name} to collection`}
-                className="mt-2 rounded bg-gray-900 px-2 py-1 text-center text-xs text-white hover:bg-gray-700"
-              >
-                <Trans>Add to collection</Trans>
-              </Link>
-            </li>
-          ))}
+                  <Trans>Add to collection</Trans>
+                </Link>
+              </li>
+            )
+          })}
         </ul>
       )}
     </main>

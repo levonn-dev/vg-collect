@@ -7,6 +7,10 @@ export default function StatCards({ dashboard }: { dashboard: Dashboard }) {
   const { t } = useLingui()
   const money = useDisplayMoney()
   const p = dashboard.pricing
+  const currency = money.currency
+  const pricedCount = p.priced_entries
+  const unpricedCount = p.unpriced_entries
+  const excludedCount = p.excluded_entries
   return (
     <section aria-label={t`Totals`} className="grid gap-4 sm:grid-cols-3">
       <div className="rounded border border-gray-200 p-4">
@@ -14,12 +18,12 @@ export default function StatCards({ dashboard }: { dashboard: Dashboard }) {
         <p className="mt-1 text-3xl font-bold">{dashboard.total_entries}</p>
       </div>
       <div className="rounded border border-gray-200 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500"><Trans>Collection value ({money.currency})</Trans></p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500"><Trans>Collection value ({currency})</Trans></p>
         {p.available ? (
           <>
             <p className="mt-1 text-3xl font-bold">{money.format(p.total_value_cents) ?? money.format(0)}</p>
             <p className="mt-1 text-xs text-gray-500">
-              <Trans>{p.priced_entries} priced - {p.unpriced_entries} unpriced - {p.excluded_entries} excluded</Trans>
+              <Trans>{pricedCount} priced - {unpricedCount} unpriced - {excludedCount} excluded</Trans>
             </p>
           </>
         ) : (

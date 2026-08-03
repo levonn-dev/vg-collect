@@ -58,6 +58,7 @@ export default function EntryTable({
 }: EntryTableProps) {
   const { t, i18n } = useLingui()
   const money = useDisplayMoney()
+  const currency = money.currency
   // Only meaningful while selectable (nothing reads them otherwise),
   // so these skip re-deriving that from selectable itself.
   const selectedCount = entries.filter((e) => selected?.has(e.id)).length
@@ -97,19 +98,20 @@ export default function EntryTable({
           <th className="py-2 pr-3"><Trans>Packaging</Trans></th>
           {!shared && <th className="py-2 pr-3"><Trans>Rating</Trans></th>}
           {!shared && <th className="py-2 pr-3 text-right"><Trans>Paid</Trans></th>}
-          {!shared && <th className="py-2 text-right"><Trans>Value ({money.currency})</Trans></th>}
+          {!shared && <th className="py-2 text-right"><Trans>Value ({currency})</Trans></th>}
         </tr>
       </thead>
       <tbody>
         {entries.map((e, i) => {
           const meta = rowMeta(e, money, i18n, { pinSlot, pinTrailingSpace: true })
+          const displayName = e.display_name
           return (
             <tr key={e.id} className="border-b border-gray-100">
               {selectable && (
                 <td className="py-2 pr-3">
                   <input
                     type="checkbox"
-                    aria-label={t`Select ${e.display_name}`}
+                    aria-label={t`Select ${displayName}`}
                     checked={selected?.has(e.id) ?? false}
                     onChange={() => onToggleSelect?.(e.id)}
                   />

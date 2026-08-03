@@ -79,13 +79,14 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
     apply.mutate(body)
   }
 
+  const selectedCount = selected.size
   return (
     <section
       aria-label={t`Bulk edit`}
       className="mb-3 flex flex-col gap-3 rounded border border-gray-300 bg-gray-50 p-3"
     >
       <div className="flex flex-wrap items-end gap-4">
-        <span className="text-sm font-medium"><Trans>{selected.size} selected</Trans></span>
+        <span className="text-sm font-medium"><Trans>{selectedCount} selected</Trans></span>
         <fieldset disabled={disabled} className="flex flex-wrap items-center gap-2">
           <legend className="float-left mr-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
             <Trans>Add tags</Trans>

@@ -79,14 +79,18 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
   }
 
   const pc = product.pricecharting
+  const productName = product.name
+  const pcName = pc?.pc_name
+  const consoleName = pc?.console_name
+  const confidence = pc ? Math.round(pc.match_confidence * 100) : undefined
   return (
-    <div className="mt-2 rounded border border-gray-200 p-3" aria-label={t(i18n)`Fix mapping for ${product.name}`}>
+    <div className="mt-2 rounded border border-gray-200 p-3" aria-label={t(i18n)`Fix mapping for ${productName}`}>
       <p className="text-sm">
         {pc ? (
           pc.verified ? (
-            t(i18n)`Mapped to "${pc.pc_name}" (${pc.console_name}), match ${Math.round(pc.match_confidence * 100)}%, verified`
+            t(i18n)`Mapped to "${pcName}" (${consoleName}), match ${confidence}%, verified`
           ) : (
-            t(i18n)`Mapped to "${pc.pc_name}" (${pc.console_name}), match ${Math.round(pc.match_confidence * 100)}%`
+            t(i18n)`Mapped to "${pcName}" (${consoleName}), match ${confidence}%`
           )
         ) : (
           <Trans>Unmatched</Trans>

@@ -26,23 +26,29 @@ function MatchCard({ product }: { product: Product }) {
       </p>
     )
   }
+  const pcName = pc.pc_name
+  const consoleName = pc.console_name
+  const confidence = Math.round(pc.match_confidence * 100)
+  const loose = money.format(pc.loose_cents) ?? '-'
+  const cib = money.format(pc.cib_cents) ?? '-'
+  const newPrice = money.format(pc.new_cents) ?? '-'
   return (
     <div className="rounded bg-green-50 p-3 text-sm text-green-800">
       <p>
         {pc.verified ? (
           <Trans>
-            Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%, verified.
+            Priced as "{pcName}" ({consoleName}) - match {confidence}%, verified.
           </Trans>
         ) : (
           <Trans>
-            Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%.
+            Priced as "{pcName}" ({consoleName}) - match {confidence}%.
           </Trans>
         )}
       </p>
       <p className="mt-1 text-xs text-green-800">
         <Trans>
-          Loose {money.format(pc.loose_cents) ?? '-'} / CIB {money.format(pc.cib_cents) ?? '-'} / New{' '}
-          {money.format(pc.new_cents) ?? '-'}
+          Loose {loose} / CIB {cib} / New{' '}
+          {newPrice}
         </Trans>
       </p>
     </div>
@@ -136,6 +142,11 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
     custom: t`custom (a price you set yourself)`,
     disabled: t`disabled (no market value)`,
   }
+  const rateDate = money.rateDate
+  const staleNote = money.rateStale ? t`; more than a week old` : ''
+  const proxyName = targetProduct.data?.name ?? value.productId
+  const priceSetDate = entry.custom_value_set_at ? new Date(entry.custom_value_set_at).toLocaleDateString() : ''
+  const lastCustomPrice = formatCents(dollarsToCents(value.customValue), inputCurrency)
 
   return (
     <section aria-label={t`Pricing`} className="mb-6 rounded border border-gray-200 p-4">
@@ -152,8 +163,8 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
       ) : (
         <p className="mt-1 text-xs text-gray-500">
           <Trans>
-            Converted from USD at ECB rates ({money.rateDate}
-            {money.rateStale ? t`; more than a week old` : ''}).
+            Converted from USD at ECB rates ({rateDate}
+            {staleNote}).
           </Trans>
         </p>
       )}
@@ -206,7 +217,7 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
         <div className="mt-3 flex flex-col gap-2">
           <p className="text-sm">
             <Trans>
-              Price source: <span className="font-medium">{targetProduct.data?.name ?? value.productId}</span>
+              Price source: <span className="font-medium">{proxyName}</span>
             </Trans>
           </p>
           {targetProduct.isSuccess && <MatchCard product={targetProduct.data} />}
@@ -252,7 +263,7 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
           </label>
           {entry.custom_value_set_at && (
             <p className="text-xs text-gray-500">
-              <Trans>Price set on {new Date(entry.custom_value_set_at).toLocaleDateString()}.</Trans>
+              <Trans>Price set on {priceSetDate}.</Trans>
             </p>
           )}
         </div>
@@ -260,7 +271,7 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
 
       {value.mode !== 'proxy' && value.productId && (
         <p className="mt-3 flex items-center gap-2 rounded bg-gray-50 p-2 text-sm text-gray-600">
-          <Trans>Last price proxy: {targetProduct.data?.name ?? value.productId}</Trans>
+          <Trans>Last price proxy: {proxyName}</Trans>
           <button
             type="button"
             onClick={() => onChange({ ...value, mode: 'proxy' })}
@@ -274,7 +285,7 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
 
       {value.mode !== 'custom' && dollarsToCents(value.customValue) !== undefined && (
         <p className="mt-3 flex items-center gap-2 rounded bg-gray-50 p-2 text-sm text-gray-600">
-          <Trans>Last custom price: {formatCents(dollarsToCents(value.customValue), inputCurrency)}</Trans>
+          <Trans>Last custom price: {lastCustomPrice}</Trans>
           <button
             type="button"
             onClick={() => onChange({ ...value, mode: 'custom' })}

@@ -10,6 +10,8 @@ import UserChip from './UserChip'
 // together exactly when the page's social composition failed open -
 // only like_count is shown here, and only when present.
 export default function ShelfCard({ card }: { card: ShelfCard }) {
+  const entryCount = card.entry_count
+  const likeCount = card.like_count ?? 0
   return (
     <div className="rounded border border-gray-200 p-2">
       {card.cover_urls.length > 0 && (
@@ -29,9 +31,9 @@ export default function ShelfCard({ card }: { card: ShelfCard }) {
         <UserChip profile={card.owner} />
       </div>
       <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-        <span><Plural value={card.entry_count} one="# entry" other="# entries" /></span>
+        <span><Plural value={entryCount} one="# entry" other="# entries" /></span>
         {card.like_count !== undefined && (
-          <span><Plural value={card.like_count} one="# like" other="# likes" /></span>
+          <span><Plural value={likeCount} one="# like" other="# likes" /></span>
         )}
         {card.published_at && <span>{new Date(card.published_at).toLocaleDateString()}</span>}
       </p>

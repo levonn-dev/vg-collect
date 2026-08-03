@@ -39,10 +39,10 @@ export default function TagPicker({ value, onChange }: TagPickerProps) {
         </p>
       )}
       <div className="mt-1 flex flex-wrap gap-3">
-        {tags.data?.map((t) => (
-          <label key={t.id} className="flex items-center gap-1 text-sm">
-            <input type="checkbox" checked={value.includes(t.id)} onChange={() => toggle(t.id)} />
-            {t.name}
+        {tags.data?.map((tag) => (
+          <label key={tag.id} className="flex items-center gap-1 text-sm">
+            <input type="checkbox" checked={value.includes(tag.id)} onChange={() => toggle(tag.id)} />
+            {tag.name}
           </label>
         ))}
       </div>

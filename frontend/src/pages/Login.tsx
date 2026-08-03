@@ -66,16 +66,19 @@ export default function Login() {
       <div className="flex flex-col gap-3">
         {providers.data
           ?.filter((p) => p !== 'dev')
-          .map((p) => (
-            <a
-              key={p}
-              href={`/api/auth/login?provider=${p}`}
-              onClick={stash}
-              className="rounded border border-gray-300 px-4 py-2 text-center font-medium hover:bg-gray-50"
-            >
-              <Trans>Continue with {providerNames[p] ?? p}</Trans>
-            </a>
-          ))}
+          .map((p) => {
+            const providerName = providerNames[p] ?? p
+            return (
+              <a
+                key={p}
+                href={`/api/auth/login?provider=${p}`}
+                onClick={stash}
+                className="rounded border border-gray-300 px-4 py-2 text-center font-medium hover:bg-gray-50"
+              >
+                <Trans>Continue with {providerName}</Trans>
+              </a>
+            )
+          })}
         {providers.data?.includes('dev') && (
           <div className="mt-2 border-t border-gray-200 pt-4">
             <p className="mb-2 text-xs uppercase tracking-wide text-gray-500"><Trans>Dev fixtures</Trans></p>

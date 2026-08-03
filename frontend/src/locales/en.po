@@ -21,73 +21,29 @@ msgstr " - custom item"
 msgid "; more than a week old"
 msgstr "; more than a week old"
 
-#. placeholder {0}: card.entry_count
-#: src/components/social/ShelfCard.tsx
-msgid "{0, plural, one {# entry} other {# entries}}"
-msgstr "{0, plural, one {# entry} other {# entries}}"
-
-#. placeholder {0}: social.follower_count
-#: src/pages/Profile.tsx
-msgid "{0, plural, one {# follower} other {# followers}}"
-msgstr "{0, plural, one {# follower} other {# followers}}"
-
-#. placeholder {0}: card.like_count
-#: src/components/social/ShelfCard.tsx
-msgid "{0, plural, one {# like} other {# likes}}"
-msgstr "{0, plural, one {# like} other {# likes}}"
-
-#. placeholder {0}: identity.email ?? t(i18n)`no email recorded`
-#. placeholder {1}: new Date(identity.created_at).toLocaleDateString()
-#: src/pages/Account.tsx
-msgid "{0} - linked {1}"
-msgstr "{0} - linked {1}"
-
-#. placeholder {0}: social.following_count
-#: src/pages/Profile.tsx
-msgid "{0} following"
-msgstr "{0} following"
-
-#. placeholder {0}: s.name
-#. placeholder {1}: s.operator
 #: src/components/Footer.tsx
-msgid "{0} is run by {1}"
-msgstr "{0} is run by {1}"
-
-#. placeholder {0}: s.name
-#. placeholder {1}: s.operator
-#. placeholder {2}: s.contact
-#: src/components/Footer.tsx
-msgid "{0} is run by {1} (<0>{2}</0>)"
-msgstr "{0} is run by {1} (<0>{2}</0>)"
-
-#. placeholder {0}: r.name
-#. placeholder {1}: p.name
-#. placeholder {1}: r.platform_name
-#: src/components/catalog/SearchPicker.tsx
-msgid "{0} on {1}"
-msgstr "{0} on {1}"
-
-#. placeholder {0}: p.priced_entries
-#. placeholder {1}: p.unpriced_entries
-#. placeholder {2}: p.excluded_entries
-#: src/components/insights/StatCards.tsx
-msgid "{0} priced - {1} unpriced - {2} excluded"
-msgstr "{0} priced - {1} unpriced - {2} excluded"
-
-#. placeholder {0}: i18n._(d.dataType)
-#. placeholder {1}: d.label
-#: src/components/Footer.tsx
-msgid "{0} provided by <0>{1}</0>"
-msgstr "{0} provided by <0>{1}</0>"
-
-#. placeholder {0}: selected.size
-#: src/components/collection/BulkEditBar.tsx
-msgid "{0} selected"
-msgstr "{0} selected"
+msgid "{dataType} provided by <0>{label}</0>"
+msgstr "{dataType} provided by <0>{label}</0>"
 
 #: src/lib/relativeTime.ts
 msgid "{days}d ago"
 msgstr "{days}d ago"
+
+#: src/pages/Account.tsx
+msgid "{email} - linked {linkedDate}"
+msgstr "{email} - linked {linkedDate}"
+
+#: src/components/social/ShelfCard.tsx
+msgid "{entryCount, plural, one {# entry} other {# entries}}"
+msgstr "{entryCount, plural, one {# entry} other {# entries}}"
+
+#: src/pages/Profile.tsx
+msgid "{followerCount, plural, one {# follower} other {# followers}}"
+msgstr "{followerCount, plural, one {# follower} other {# followers}}"
+
+#: src/pages/Profile.tsx
+msgid "{followingCount} following"
+msgstr "{followingCount} following"
 
 #: src/components/collection/Pager.tsx
 msgid "{from}-{to} of {totalCount}"
@@ -97,9 +53,33 @@ msgstr "{from}-{to} of {totalCount}"
 msgid "{hours}h ago"
 msgstr "{hours}h ago"
 
+#: src/components/social/ShelfCard.tsx
+msgid "{likeCount, plural, one {# like} other {# likes}}"
+msgstr "{likeCount, plural, one {# like} other {# likes}}"
+
 #: src/lib/relativeTime.ts
 msgid "{minutes}m ago"
 msgstr "{minutes}m ago"
+
+#: src/components/Footer.tsx
+msgid "{name} is run by {operator}"
+msgstr "{name} is run by {operator}"
+
+#: src/components/Footer.tsx
+msgid "{name} is run by {operator} (<0>{contact}</0>)"
+msgstr "{name} is run by {operator} (<0>{contact}</0>)"
+
+#: src/components/catalog/SearchPicker.tsx
+msgid "{name} on {platformName}"
+msgstr "{name} on {platformName}"
+
+#: src/components/insights/StatCards.tsx
+msgid "{pricedCount} priced - {unpricedCount} unpriced - {excludedCount} excluded"
+msgstr "{pricedCount} priced - {unpricedCount} unpriced - {excludedCount} excluded"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "{selectedCount} selected"
+msgstr "{selectedCount} selected"
 
 #: src/pages/Profile.tsx
 msgid "{total_count, plural, one {# shared shelf} other {# shared shelves}}"
@@ -124,6 +104,22 @@ msgstr "{totalCount} items"
 #: src/pages/SharedShelf.tsx
 msgid "{totalEntries, plural, one {# entry} other {# entries}}"
 msgstr "{totalEntries, plural, one {# entry} other {# entries}}"
+
+#: src/pages/Feed.tsx
+msgid "<0/> commented on <1>{shelfName}</1>"
+msgstr "<0/> commented on <1>{shelfName}</1>"
+
+#: src/pages/Feed.tsx
+msgid "<0/> followed <1/>"
+msgstr "<0/> followed <1/>"
+
+#: src/pages/Feed.tsx
+msgid "<0/> liked <1>{shelfName}</1>"
+msgstr "<0/> liked <1>{shelfName}</1>"
+
+#: src/pages/Feed.tsx
+msgid "<0/> published <1>{shelfName}</1>"
+msgstr "<0/> published <1>{shelfName}</1>"
 
 #: src/pages/Account.tsx
 msgid "2-30 characters, letters/digits, underscores inside only"
@@ -178,15 +174,13 @@ msgstr "Acquisition"
 msgid "Add"
 msgstr "Add"
 
-#. placeholder {0}: r.name
 #: src/components/catalog/SearchPicker.tsx
-msgid "Add {0}"
-msgstr "Add {0}"
+msgid "Add {name}"
+msgstr "Add {name}"
 
-#. placeholder {0}: r.name
 #: src/pages/Recommendations.tsx
-msgid "Add {0} to collection"
-msgstr "Add {0} to collection"
+msgid "Add {name} to collection"
+msgstr "Add {name} to collection"
 
 #: src/components/social/CommentComposer.tsx
 msgid "Add a comment"
@@ -439,15 +433,13 @@ msgstr "Collection"
 msgid "Collection sections"
 msgstr "Collection sections"
 
-#. placeholder {0}: money.currency
 #: src/components/insights/StatCards.tsx
-msgid "Collection value ({0})"
-msgstr "Collection value ({0})"
+msgid "Collection value ({currency})"
+msgstr "Collection value ({currency})"
 
-#. placeholder {0}: money.currency
 #: src/components/insights/ValueOverTime.tsx
-msgid "Collection value in {0} (last 90 days)"
-msgstr "Collection value in {0} (last 90 days)"
+msgid "Collection value in {currency} (last 90 days)"
+msgstr "Collection value in {currency} (last 90 days)"
 
 #: src/components/insights/ValueOverTime.tsx
 msgid "Collection value over time"
@@ -464,10 +456,6 @@ msgstr "Comment deleted - <0>Undo</0>"
 #: src/components/social/CommentComposer.tsx
 msgid "Comment limit reached - try again later."
 msgstr "Comment limit reached - try again later."
-
-#: src/pages/Feed.tsx
-msgid "commented on"
-msgstr "commented on"
 
 #: src/components/social/CommentList.tsx
 msgid "Comments"
@@ -543,16 +531,13 @@ msgstr "Consoles"
 msgid "Continue"
 msgstr "Continue"
 
-#. placeholder {0}: providerNames[p] ?? p
 #: src/pages/Login.tsx
-msgid "Continue with {0}"
-msgstr "Continue with {0}"
+msgid "Continue with {providerName}"
+msgstr "Continue with {providerName}"
 
-#. placeholder {0}: money.rateDate
-#. placeholder {1}: money.rateStale ? t`; more than a week old` : ''
 #: src/components/entry/PricingPanel.tsx
-msgid "Converted from USD at ECB rates ({0}{1})."
-msgstr "Converted from USD at ECB rates ({0}{1})."
+msgid "Converted from USD at ECB rates ({rateDate}{staleNote})."
+msgstr "Converted from USD at ECB rates ({rateDate}{staleNote})."
 
 #: src/components/CopyButton.tsx
 msgid "Copied"
@@ -666,10 +651,9 @@ msgstr "Delete this shelf?"
 msgid "Delete your account? Your collection, tags, shelves, linked logins, and profile will be permanently removed."
 msgstr "Delete your account? Your collection, tags, shelves, linked logins, and profile will be permanently removed."
 
-#. placeholder {0}: truncateBody(c.body)
 #: src/components/social/CommentList.tsx
-msgid "Delete your comment: {0}"
-msgstr "Delete your comment: {0}"
+msgid "Delete your comment: {bodyPreview}"
+msgstr "Delete your comment: {bodyPreview}"
 
 #: src/components/social/CommentList.tsx
 msgid "Deleted user"
@@ -713,10 +697,9 @@ msgstr "Display currency"
 msgid "Display mode"
 msgstr "Display mode"
 
-#. placeholder {0}: entry.display_name
 #: src/components/collection/BacklogBoard.tsx
-msgid "Drag {0}"
-msgstr "Drag {0}"
+msgid "Drag {displayName}"
+msgstr "Drag {displayName}"
 
 #: src/components/entry/EntryForm.tsx
 #: src/components/insights/BreakdownCharts.tsx
@@ -737,10 +720,9 @@ msgstr "Edition"
 msgid "Edition or variant"
 msgstr "Edition or variant"
 
-#. placeholder {0}: me.data.email
 #: src/pages/Account.tsx
-msgid "Email: {0}"
-msgstr "Email: {0}"
+msgid "Email: {email}"
+msgstr "Email: {email}"
 
 #: src/components/collection/BulkEditBar.tsx
 msgid "Empty clears the location."
@@ -831,18 +813,13 @@ msgstr "First release date"
 msgid "Fix mapping"
 msgstr "Fix mapping"
 
-#. placeholder {0}: product.name
 #: src/components/admin/MappingFix.tsx
-msgid "Fix mapping for {0}"
-msgstr "Fix mapping for {0}"
+msgid "Fix mapping for {productName}"
+msgstr "Fix mapping for {productName}"
 
 #: src/components/social/FollowButton.tsx
 msgid "Follow"
 msgstr "Follow"
-
-#: src/pages/Feed.tsx
-msgid "followed"
-msgstr "followed"
 
 #: src/components/social/FollowButton.tsx
 #: src/pages/Feed.tsx
@@ -971,15 +948,13 @@ msgstr "Language"
 msgid "Last confirmed"
 msgstr "Last confirmed"
 
-#. placeholder {0}: formatCents(dollarsToCents(value.customValue), inputCurrency)
 #: src/components/entry/PricingPanel.tsx
-msgid "Last custom price: {0}"
-msgstr "Last custom price: {0}"
+msgid "Last custom price: {lastCustomPrice}"
+msgstr "Last custom price: {lastCustomPrice}"
 
-#. placeholder {0}: targetProduct.data?.name ?? value.productId
 #: src/components/entry/PricingPanel.tsx
-msgid "Last price proxy: {0}"
-msgstr "Last price proxy: {0}"
+msgid "Last price proxy: {proxyName}"
+msgstr "Last price proxy: {proxyName}"
 
 #: src/pages/Account.tsx
 msgid "Leave empty to use your initial instead."
@@ -993,14 +968,9 @@ msgstr "Leave unchanged"
 msgid "Like"
 msgstr "Like"
 
-#: src/pages/Feed.tsx
-msgid "liked"
-msgstr "liked"
-
-#. placeholder {0}: providerNames[p] ?? p
 #: src/pages/Account.tsx
-msgid "Link {0}"
-msgstr "Link {0}"
+msgid "Link {providerName}"
+msgstr "Link {providerName}"
 
 #: src/pages/Account.tsx
 msgid "Link a dev fixture"
@@ -1030,10 +1000,9 @@ msgstr "Listed"
 msgid "Listed - appears in Explore and search"
 msgstr "Listed - appears in Explore and search"
 
-#. placeholder {0}: listing.name
 #: src/components/admin/PromotePanel.tsx
-msgid "Listing: {0}"
-msgstr "Listing: {0}"
+msgid "Listing: {listingName}"
+msgstr "Listing: {listingName}"
 
 #: src/components/admin/CommunityProducts.tsx
 #: src/components/admin/PromoteCandidates.tsx
@@ -1148,16 +1117,10 @@ msgstr "loose"
 msgid "Loose"
 msgstr "Loose"
 
-#. placeholder {0}: money.format(pc.loose_cents) ?? '-'
-#. placeholder {0}: money.format(r.loose_cents) ?? '-'
-#. placeholder {1}: money.format(pc.cib_cents) ?? '-'
-#. placeholder {1}: money.format(r.cib_cents) ?? '-'
-#. placeholder {2}: money.format(pc.new_cents) ?? '-'
-#. placeholder {2}: money.format(r.new_cents) ?? '-'
 #: src/components/catalog/SearchPicker.tsx
 #: src/components/entry/PricingPanel.tsx
-msgid "Loose {0} / CIB {1} / New {2}"
-msgstr "Loose {0} / CIB {1} / New {2}"
+msgid "Loose {loose} / CIB {cib} / New {newPrice}"
+msgstr "Loose {loose} / CIB {cib} / New {newPrice}"
 
 #: src/components/collection/ShelfManager.tsx
 msgid "Manage shelves"
@@ -1168,19 +1131,13 @@ msgstr "Manage shelves"
 msgid "Manual condition"
 msgstr "Manual condition"
 
-#. placeholder {0}: pc.pc_name
-#. placeholder {1}: pc.console_name
-#. placeholder {2}: Math.round(pc.match_confidence * 100)
 #: src/components/admin/MappingFix.tsx
-msgid "Mapped to \"{0}\" ({1}), match {2}%"
-msgstr "Mapped to \"{0}\" ({1}), match {2}%"
+msgid "Mapped to \"{pcName}\" ({consoleName}), match {confidence}%"
+msgstr "Mapped to \"{pcName}\" ({consoleName}), match {confidence}%"
 
-#. placeholder {0}: pc.pc_name
-#. placeholder {1}: pc.console_name
-#. placeholder {2}: Math.round(pc.match_confidence * 100)
 #: src/components/admin/MappingFix.tsx
-msgid "Mapped to \"{0}\" ({1}), match {2}%, verified"
-msgstr "Mapped to \"{0}\" ({1}), match {2}%, verified"
+msgid "Mapped to \"{pcName}\" ({consoleName}), match {confidence}%, verified"
+msgstr "Mapped to \"{pcName}\" ({consoleName}), match {confidence}%, verified"
 
 #: src/pages/Admin.tsx
 msgid "Mappings"
@@ -1216,15 +1173,13 @@ msgstr "Member"
 msgid "Mint"
 msgstr "Mint"
 
-#. placeholder {0}: entry.display_name
 #: src/components/collection/BacklogBoard.tsx
-msgid "Move {0} down"
-msgstr "Move {0} down"
+msgid "Move {displayName} down"
+msgstr "Move {displayName} down"
 
-#. placeholder {0}: entry.display_name
 #: src/components/collection/BacklogBoard.tsx
-msgid "Move {0} up"
-msgstr "Move {0} up"
+msgid "Move {displayName} up"
+msgstr "Move {displayName} up"
 
 #: src/components/catalog/PlatformPicker.tsx
 msgid "My platform isn't listed"
@@ -1370,10 +1325,9 @@ msgstr "NTSC-J"
 msgid "NTSC-U"
 msgstr "NTSC-U"
 
-#. placeholder {0}: (state.order ?? 'desc') === 'desc' ? t`descending` : t`ascending`
 #: src/components/collection/ListControls.tsx
-msgid "Order: {0}"
-msgstr "Order: {0}"
+msgid "Order: {direction}"
+msgstr "Order: {direction}"
 
 #: src/components/wizard/DetailsStep.tsx
 msgid "Otherwise auto-match picks the listing."
@@ -1477,44 +1431,32 @@ msgstr "Price listing match (optional)"
 msgid "Price paid"
 msgstr "Price paid"
 
-#. placeholder {0}: entry.currency
 #: src/components/entry/EntryForm.tsx
-msgid "Price paid ({0})"
-msgstr "Price paid ({0})"
-
 #: src/components/wizard/DetailsStep.tsx
 msgid "Price paid ({currency})"
 msgstr "Price paid ({currency})"
 
-#. placeholder {0}: new Date(entry.custom_value_set_at).toLocaleDateString()
 #: src/components/entry/PricingPanel.tsx
-msgid "Price set on {0}."
-msgstr "Price set on {0}."
+msgid "Price set on {priceSetDate}."
+msgstr "Price set on {priceSetDate}."
 
-#. placeholder {0}: targetProduct.data?.name ?? value.productId
 #: src/components/entry/PricingPanel.tsx
-msgid "Price source: <0>{0}</0>"
-msgstr "Price source: <0>{0}</0>"
+msgid "Price source: <0>{proxyName}</0>"
+msgstr "Price source: <0>{proxyName}</0>"
 
 #: src/components/admin/MappingFix.tsx
 msgid "PriceCharting does not know that listing."
 msgstr "PriceCharting does not know that listing."
 
-#. placeholder {0}: pc.pc_name
-#. placeholder {1}: pc.console_name
-#. placeholder {2}: Math.round(pc.match_confidence * 100)
 #: src/components/entry/PricingPanel.tsx
 #: src/components/wizard/ConfirmStep.tsx
-msgid "Priced as \"{0}\" ({1}) - match {2}%, verified."
-msgstr "Priced as \"{0}\" ({1}) - match {2}%, verified."
+msgid "Priced as \"{pcName}\" ({consoleName}) - match {confidence}%, verified."
+msgstr "Priced as \"{pcName}\" ({consoleName}) - match {confidence}%, verified."
 
-#. placeholder {0}: pc.pc_name
-#. placeholder {1}: pc.console_name
-#. placeholder {2}: Math.round(pc.match_confidence * 100)
 #: src/components/entry/PricingPanel.tsx
 #: src/components/wizard/ConfirmStep.tsx
-msgid "Priced as \"{0}\" ({1}) - match {2}%."
-msgstr "Priced as \"{0}\" ({1}) - match {2}%."
+msgid "Priced as \"{pcName}\" ({consoleName}) - match {confidence}%."
+msgstr "Priced as \"{pcName}\" ({consoleName}) - match {confidence}%."
 
 #: src/components/entry/PricingPanel.tsx
 msgid "Pricing"
@@ -1567,10 +1509,9 @@ msgstr "Profile"
 msgid "Profile visibility"
 msgstr "Profile visibility"
 
-#. placeholder {0}: product.name
 #: src/components/admin/PromotePanel.tsx
-msgid "Promote {0}"
-msgstr "Promote {0}"
+msgid "Promote {productName}"
+msgstr "Promote {productName}"
 
 #: src/components/admin/PromoteCandidates.tsx
 msgid "Promote candidates"
@@ -1591,10 +1532,6 @@ msgstr "Proposed name"
 #: src/components/entry/PricingPanel.tsx
 msgid "proxy (another listing prices this copy)"
 msgstr "proxy (another listing prices this copy)"
-
-#: src/pages/Feed.tsx
-msgid "published"
-msgstr "published"
 
 #: src/components/collection/ListControls.tsx
 msgid "Purchase date"
@@ -1705,10 +1642,9 @@ msgstr "Release date"
 msgid "Remove"
 msgstr "Remove"
 
-#. placeholder {0}: truncateBody(c.body)
 #: src/components/social/CommentList.tsx
-msgid "Remove comment: {0}"
-msgstr "Remove comment: {0}"
+msgid "Remove comment: {bodyPreview}"
+msgstr "Remove comment: {bodyPreview}"
 
 #: src/components/collection/BulkEditBar.tsx
 msgid "Remove tags"
@@ -1731,15 +1667,13 @@ msgstr "Resubmit to catalog"
 msgid "Review"
 msgstr "Review"
 
-#. placeholder {0}: submission.display_name
 #: src/components/admin/ReviewPanel.tsx
-msgid "Review {0}"
-msgstr "Review {0}"
+msgid "Review {displayName}"
+msgstr "Review {displayName}"
 
-#. placeholder {0}: submission.display_name
 #: src/components/admin/ReviewPanel.tsx
-msgid "Review: {0}"
-msgstr "Review: {0}"
+msgid "Review: {displayName}"
+msgstr "Review: {displayName}"
 
 #: src/pages/Account.tsx
 msgid "Save"
@@ -1763,10 +1697,9 @@ msgstr "Saved."
 msgid "Saving failed. Please try again."
 msgstr "Saving failed. Please try again."
 
-#. placeholder {0}: r.score.toFixed(1)
 #: src/pages/Recommendations.tsx
-msgid "score {0}"
-msgstr "score {0}"
+msgid "score {score}"
+msgstr "score {score}"
 
 #: src/pages/Recommendations.tsx
 msgid "Scoring ran degraded - some candidates were skipped. Try again later for a fuller list."
@@ -1790,22 +1723,17 @@ msgstr "Sealed"
 msgid "Search"
 msgstr "Search"
 
-#. placeholder {0}: nouns.join('')
 #: src/components/catalog/SearchPicker.tsx
-msgid "Search for {0}"
-msgstr "Search for {0}"
+msgid "Search for {allButLast}, and {last}"
+msgstr "Search for {allButLast}, and {last}"
 
-#. placeholder {0}: nouns[0]
-#. placeholder {1}: nouns[1]
 #: src/components/catalog/SearchPicker.tsx
-msgid "Search for {0} and {1}"
-msgstr "Search for {0} and {1}"
+msgid "Search for {first} and {second}"
+msgstr "Search for {first} and {second}"
 
-#. placeholder {0}: nouns.slice(0, -1).join(', ')
-#. placeholder {1}: nouns[nouns.length - 1]
 #: src/components/catalog/SearchPicker.tsx
-msgid "Search for {0}, and {1}"
-msgstr "Search for {0}, and {1}"
+msgid "Search for {noun}"
+msgstr "Search for {noun}"
 
 #: src/pages/Explore.tsx
 msgid "Search for people"
@@ -1840,10 +1768,9 @@ msgstr "Searching..."
 msgid "See all recommendations"
 msgstr "See all recommendations"
 
-#. placeholder {0}: e.display_name
 #: src/components/collection/EntryTable.tsx
-msgid "Select {0}"
-msgstr "Select {0}"
+msgid "Select {displayName}"
+msgstr "Select {displayName}"
 
 #: src/components/collection/EntryTable.tsx
 msgid "Select all"
@@ -1947,10 +1874,9 @@ msgstr "Status"
 msgid "Storage location"
 msgstr "Storage location"
 
-#. placeholder {0}: sub.reject_reason
 #: src/components/entry/CatalogSubmission.tsx
-msgid "Submission rejected: {0}"
-msgstr "Submission rejected: {0}"
+msgid "Submission rejected: {rejectReason}"
+msgstr "Submission rejected: {rejectReason}"
 
 #: src/components/entry/CatalogSubmission.tsx
 msgid "Submission rejected."
@@ -2283,10 +2209,9 @@ msgstr "Updated"
 msgid "Updated {n} entries."
 msgstr "Updated {n} entries."
 
-#. placeholder {0}: r.name
 #: src/components/catalog/SearchPicker.tsx
-msgid "Use {0}"
-msgstr "Use {0}"
+msgid "Use {name}"
+msgstr "Use {name}"
 
 #: src/components/admin/ReviewPanel.tsx
 msgid "Use as existing"
@@ -2297,10 +2222,9 @@ msgstr "Use as existing"
 msgid "Value"
 msgstr "Value"
 
-#. placeholder {0}: money.currency
 #: src/components/collection/EntryTable.tsx
-msgid "Value ({0})"
-msgstr "Value ({0})"
+msgid "Value ({currency})"
+msgstr "Value ({currency})"
 
 #: src/components/insights/ValueOverTime.tsx
 msgid "Value history appears when price snapshots accumulate for your collection."
@@ -2343,11 +2267,9 @@ msgstr "Your account has been deleted."
 msgid "Your account needs at least one login"
 msgstr "Your account needs at least one login"
 
-#. placeholder {0}: state.custom.displayName
-#. placeholder {0}: state.pick.name
 #: src/pages/AddWizard.tsx
-msgid "Your copy of {0}"
-msgstr "Your copy of {0}"
+msgid "Your copy of {itemName}"
+msgstr "Your copy of {itemName}"
 
 #: src/pages/Account.tsx
 msgid "Your profile could not be loaded."

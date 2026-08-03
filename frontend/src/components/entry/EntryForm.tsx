@@ -210,6 +210,7 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
     )
   }
   const custom = !entry.product_id
+  const currency = entry.currency
 
   const selectClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
   const inputClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
@@ -333,7 +334,7 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
 
       <section aria-label={t`Acquisition`} className="flex flex-wrap gap-3">
         <label className={labelClass}>
-          <Trans>Price paid ({entry.currency})</Trans>
+          <Trans>Price paid ({currency})</Trans>
           <input inputMode="decimal" value={v.pricePaid} onChange={(e) => set('pricePaid', e.target.value)} placeholder={t`59.99`} className={inputClass} />
         </label>
         <label className={labelClass}>

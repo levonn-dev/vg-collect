@@ -83,8 +83,10 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
   }
 
   const seed = candidates[0]?.name ?? product.name
+  const listingName = listing?.name
+  const productName = product.name
   return (
-    <div aria-label={t(i18n)`Promote ${product.name}`} className="mt-2 rounded border border-gray-200 p-3 text-sm">
+    <div aria-label={t(i18n)`Promote ${productName}`} className="mt-2 rounded border border-gray-200 p-3 text-sm">
       {candidates.length > 0 && (
         <ul className="mb-2">
           {candidates.map((c) => (
@@ -120,7 +122,7 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
                 body at the two provider ids. */}
             {listing ? (
               <p className="mt-2 flex items-center gap-2 text-sm">
-                <span><Trans>Listing: {listing.name}</Trans></span>
+                <span><Trans>Listing: {listingName}</Trans></span>
                 <button
                   type="button"
                   onClick={() => setListing(null)}

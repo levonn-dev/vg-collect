@@ -23,6 +23,7 @@ function SortableRow({
 }) {
   const { t } = useLingui()
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: entry.id })
+  const displayName = entry.display_name
   return (
     <li
       ref={setNodeRef}
@@ -33,7 +34,7 @@ function SortableRow({
         type="button"
         {...attributes}
         {...listeners}
-        aria-label={t`Drag ${entry.display_name}`}
+        aria-label={t`Drag ${displayName}`}
         className="cursor-grab text-gray-400"
       >
         {'::'}
@@ -47,7 +48,7 @@ function SortableRow({
           type="button"
           onClick={() => onMove(entry.id, -1)}
           disabled={atTop || pending}
-          aria-label={t`Move ${entry.display_name} up`}
+          aria-label={t`Move ${displayName} up`}
           className="rounded border border-gray-300 px-2 text-xs disabled:opacity-30"
         >
           {'^'}
@@ -56,7 +57,7 @@ function SortableRow({
           type="button"
           onClick={() => onMove(entry.id, 1)}
           disabled={atBottom || pending}
-          aria-label={t`Move ${entry.display_name} down`}
+          aria-label={t`Move ${displayName} down`}
           className="rounded border border-gray-300 px-2 text-xs disabled:opacity-30"
         >
           {'v'}

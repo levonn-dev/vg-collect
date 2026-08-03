@@ -85,6 +85,9 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
 
   const p = product.data
   const pc = p.pricecharting
+  const pcName = pc?.pc_name
+  const consoleName = pc?.console_name
+  const confidence = pc ? Math.round(pc.match_confidence * 100) : undefined
   return (
     <ConfirmShell
       ariaLabel={t`Confirm`}
@@ -111,11 +114,11 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
           <p>
             {pc.verified ? (
               <Trans>
-                Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%, verified.
+                Priced as "{pcName}" ({consoleName}) - match {confidence}%, verified.
               </Trans>
             ) : (
               <Trans>
-                Priced as "{pc.pc_name}" ({pc.console_name}) - match {Math.round(pc.match_confidence * 100)}%.
+                Priced as "{pcName}" ({consoleName}) - match {confidence}%.
               </Trans>
             )}
           </p>

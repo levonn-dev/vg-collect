@@ -30,7 +30,7 @@ function deleteErrorMessage(e: unknown, i18n: I18n): string {
 export default function CommunityProducts() {
   const { i18n } = useLingui()
   const queryClient = useQueryClient()
-  const [blocked, setBlocked] = useState<Record<string, string>>({})
+  const [blocked, setBlocked] = useState<Record<string, unknown>>({})
   const list = useInfiniteQuery({
     queryKey: ['admin', 'community'],
     queryFn: ({ pageParam }) => fetchCommunityProducts(pageParam),
@@ -55,7 +55,7 @@ export default function CommunityProducts() {
       clearBlocked(productId)
       void queryClient.invalidateQueries({ queryKey: ['admin'] })
     },
-    onError: (e, productId) => setBlocked((prev) => ({ ...prev, [productId]: deleteErrorMessage(e, i18n) })),
+    onError: (e, productId) => setBlocked((prev) => ({ ...prev, [productId]: e })),
   })
 
   const remove = (productId: string) => {
@@ -119,9 +119,9 @@ export default function CommunityProducts() {
                 >
                   <Trans>Delete</Trans>
                 </button>
-                {blocked[p.id] && (
+                {p.id in blocked && (
                   <p role="alert" className="mt-1 text-xs text-red-700">
-                    {blocked[p.id]}
+                    {deleteErrorMessage(blocked[p.id], i18n)}
                   </p>
                 )}
               </td>

@@ -21,10 +21,11 @@ export default function ValueOverTime({ history }: { history: ValueHistory }) {
     )
   }
   const data = history.points.map((p) => ({ date: p.date, cents: p.value_cents }))
+  const currency = money.currency
   return (
     <section aria-label={t`Collection value over time`} className="rounded border border-gray-200 p-4">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-        <Trans>Collection value in {money.currency} (last 90 days)</Trans>
+        <Trans>Collection value in {currency} (last 90 days)</Trans>
       </h3>
       <p className="mb-2 text-xs text-gray-400">
         <Trans>Covers your whole collection; price history does not follow filters.</Trans>

@@ -191,33 +191,37 @@ function LinkedLogins({ identities }: { identities: Identity[] }) {
 
   return (
     <ul className="flex max-w-md flex-col gap-2">
-      {identities.map((identity) => (
-        <li
-          key={identity.id}
-          className="flex items-center justify-between rounded border border-gray-200 px-3 py-2"
-        >
-          <div>
-            <p className="text-sm font-medium capitalize">{identity.provider}</p>
-            <p className="text-xs text-gray-500">
-              <Trans>
-                {identity.email ?? t(i18n)`no email recorded`} - linked{' '}
-                {new Date(identity.created_at).toLocaleDateString()}
-              </Trans>
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              if (window.confirm(t(i18n)`Unlink this login? You will no longer be able to sign in with it.`))
-                unlink.mutate(identity.id)
-            }}
-            disabled={lastOne || unlink.isPending}
-            title={lastOne ? t(i18n)`Your account needs at least one login` : undefined}
-            className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+      {identities.map((identity) => {
+        const email = identity.email ?? t(i18n)`no email recorded`
+        const linkedDate = new Date(identity.created_at).toLocaleDateString()
+        return (
+          <li
+            key={identity.id}
+            className="flex items-center justify-between rounded border border-gray-200 px-3 py-2"
           >
-            <Trans>Unlink</Trans>
-          </button>
-        </li>
-      ))}
+            <div>
+              <p className="text-sm font-medium capitalize">{identity.provider}</p>
+              <p className="text-xs text-gray-500">
+                <Trans>
+                  {email} - linked{' '}
+                  {linkedDate}
+                </Trans>
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                if (window.confirm(t(i18n)`Unlink this login? You will no longer be able to sign in with it.`))
+                  unlink.mutate(identity.id)
+              }}
+              disabled={lastOne || unlink.isPending}
+              title={lastOne ? t(i18n)`Your account needs at least one login` : undefined}
+              className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+            >
+              <Trans>Unlink</Trans>
+            </button>
+          </li>
+        )
+      })}
       {unlink.isError && (
         <li role="alert" className="text-sm text-red-700">
           <Trans>Unlinking failed. Please try again.</Trans>
@@ -248,6 +252,7 @@ export default function Account() {
 
   const linked = params.get('linked')
   const linkError = params.get('link_error')
+  const email = me.data?.email
 
   return (
     <main className="flex flex-col gap-8 py-6">
@@ -279,7 +284,7 @@ export default function Account() {
           </p>
         )}
         {me.data && <ProfileForm key={me.data.id} me={me.data} />}
-        {me.data && <p className="text-sm text-gray-500"><Trans>Email: {me.data.email}</Trans></p>}
+        {me.data && <p className="text-sm text-gray-500"><Trans>Email: {email}</Trans></p>}
       </section>
 
       <section aria-label={t(i18n)`Linked logins`} className="flex flex-col gap-3">
@@ -297,15 +302,18 @@ export default function Account() {
         <div className="flex max-w-md flex-col gap-2">
           {providers.data
             ?.filter((p) => p !== 'dev')
-            .map((p) => (
-              <a
-                key={p}
-                href={`/api/auth/link?provider=${p}`}
-                className="rounded border border-gray-300 px-4 py-2 text-center text-sm font-medium hover:bg-gray-50"
-              >
-                <Trans>Link {providerNames[p] ?? p}</Trans>
-              </a>
-            ))}
+            .map((p) => {
+              const providerName = providerNames[p] ?? p
+              return (
+                <a
+                  key={p}
+                  href={`/api/auth/link?provider=${p}`}
+                  className="rounded border border-gray-300 px-4 py-2 text-center text-sm font-medium hover:bg-gray-50"
+                >
+                  <Trans>Link {providerName}</Trans>
+                </a>
+              )
+            })}
           {providers.data?.includes('dev') && (
             <div className="mt-1 border-t border-gray-200 pt-3">
               <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">

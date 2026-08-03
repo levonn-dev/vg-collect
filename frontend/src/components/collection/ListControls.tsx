@@ -68,6 +68,7 @@ export default function ListControls({
   const sorts = SORTS.filter((s) => s !== 'backlog_rank' || canBacklogSort(state))
   const filterCount = activeFilterCount(state)
   const canClear = filterCount > 0 || !!state.sort || !!state.order || !!state.groupBy
+  const direction = (state.order ?? 'desc') === 'desc' ? t`descending` : t`ascending`
 
   return (
     <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -123,7 +124,7 @@ export default function ListControls({
         onClick={() => onChange({ ...state, order: state.order === 'asc' ? 'desc' : 'asc' })}
         className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
       >
-        <Trans>Order: {(state.order ?? 'desc') === 'desc' ? t`descending` : t`ascending`}</Trans>
+        <Trans>Order: {direction}</Trans>
       </button>
       <label className="flex items-center gap-2 text-sm font-medium">
         <Trans>Group by</Trans>

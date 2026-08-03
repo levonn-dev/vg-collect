@@ -86,9 +86,18 @@ function resolveKindText(v: MessageDescriptor | string, i18n: I18n): string {
 // re-render of SearchPicker on a later locale switch.
 function searchBoxLabel(kinds: SearchKind[], i18n: I18n): string {
   const nouns = kinds.map((k) => resolveKindText(kindNouns[k], i18n))
-  if (nouns.length < 2) return t(i18n)`Search for ${nouns.join('')}`
-  if (nouns.length === 2) return t(i18n)`Search for ${nouns[0]} and ${nouns[1]}`
-  return t(i18n)`Search for ${nouns.slice(0, -1).join(', ')}, and ${nouns[nouns.length - 1]}`
+  if (nouns.length < 2) {
+    const noun = nouns.join('')
+    return t(i18n)`Search for ${noun}`
+  }
+  if (nouns.length === 2) {
+    const first = nouns[0]
+    const second = nouns[1]
+    return t(i18n)`Search for ${first} and ${second}`
+  }
+  const allButLast = nouns.slice(0, -1).join(', ')
+  const last = nouns[nouns.length - 1]
+  return t(i18n)`Search for ${allButLast}, and ${last}`
 }
 
 // SearchPicker is the shared catalog-search surface: the add wizard's
@@ -167,52 +176,76 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
       )}
 
       <ul className="flex flex-col gap-2">
-        {rows.map((r, i) => (
-          <li key={r.product_id ?? i} className="flex items-start gap-3 rounded border border-gray-200 p-2">
-            {r.cover_url ? (
-              <img src={r.cover_url} alt="" className="h-16 w-auto rounded" />
-            ) : (
-              <div aria-hidden="true" className="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-gray-100 text-gray-400">
-                <ItemTypeIcon
-                  type={
-                    r.origin === 'community'
-                      ? (r.item_type ?? 'game')
-                      : r.type === 'game'
-                        ? 'game'
-                        : r.type === 'pc_listing'
-                          ? r.category === 'Systems'
-                            ? 'console'
-                            : r.category === 'Controllers' || r.category === 'Accessories'
-                              ? 'accessory'
-                              : 'game' // no category, or a genre string: a game listing
-                          : r.category === 'Systems'
-                            ? 'console'
-                            : 'accessory'
-                  }
-                  className="h-7 w-7"
-                />
-              </div>
-            )}
-            <div>
-              <p className="text-sm font-medium">
-                {r.name}
-                {releaseYear(r.first_release_date) && (
-                  <span className="ml-2 text-xs text-gray-400">{releaseYear(r.first_release_date)}</span>
-                )}
-                {r.console_name && <span className="ml-2 text-xs text-gray-400">{r.console_name}</span>}
-                {r.category && <span className="ml-2 text-xs text-gray-400">{r.category}</span>}
-                {r.origin === 'community' && (
-                  <span className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-semibold text-indigo-800">
-                    <Trans>community</Trans>
-                  </span>
-                )}
-              </p>
-              {r.origin === 'community' ? (
-                r.platform_name ? (
-                  <p className="mt-1 flex flex-wrap items-center gap-1">
-                    {/* Mirrors the provider game row's chip idiom below:
-                        the chip is the pick target, not the row. */}
-                    <span className="text-xs text-gray-500"><Trans>Add on:</Trans></span>
+        {rows.map((r, i) => {
+          const name = r.name
+          const platformName = r.platform_name
+          const loose = money.format(r.loose_cents) ?? '-'
+          const cib = money.format(r.cib_cents) ?? '-'
+          const newPrice = money.format(r.new_cents) ?? '-'
+          return (
+            <li key={r.product_id ?? i} className="flex items-start gap-3 rounded border border-gray-200 p-2">
+              {r.cover_url ? (
+                <img src={r.cover_url} alt="" className="h-16 w-auto rounded" />
+              ) : (
+                <div aria-hidden="true" className="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-gray-100 text-gray-400">
+                  <ItemTypeIcon
+                    type={
+                      r.origin === 'community'
+                        ? (r.item_type ?? 'game')
+                        : r.type === 'game'
+                          ? 'game'
+                          : r.type === 'pc_listing'
+                            ? r.category === 'Systems'
+                              ? 'console'
+                              : r.category === 'Controllers' || r.category === 'Accessories'
+                                ? 'accessory'
+                                : 'game' // no category, or a genre string: a game listing
+                            : r.category === 'Systems'
+                              ? 'console'
+                              : 'accessory'
+                    }
+                    className="h-7 w-7"
+                  />
+                </div>
+              )}
+              <div>
+                <p className="text-sm font-medium">
+                  {r.name}
+                  {releaseYear(r.first_release_date) && (
+                    <span className="ml-2 text-xs text-gray-400">{releaseYear(r.first_release_date)}</span>
+                  )}
+                  {r.console_name && <span className="ml-2 text-xs text-gray-400">{r.console_name}</span>}
+                  {r.category && <span className="ml-2 text-xs text-gray-400">{r.category}</span>}
+                  {r.origin === 'community' && (
+                    <span className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-semibold text-indigo-800">
+                      <Trans>community</Trans>
+                    </span>
+                  )}
+                </p>
+                {r.origin === 'community' ? (
+                  r.platform_name ? (
+                    <p className="mt-1 flex flex-wrap items-center gap-1">
+                      {/* Mirrors the provider game row's chip idiom below:
+                          the chip is the pick target, not the row. */}
+                      <span className="text-xs text-gray-500"><Trans>Add on:</Trans></span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onPick({
+                            kind: 'community',
+                            productId: r.product_id!,
+                            name: r.name,
+                            itemType: r.item_type ?? 'game',
+                            platformName: r.platform_name,
+                          })
+                        }
+                        aria-label={t`${name} on ${platformName}`}
+                        className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
+                      >
+                        {r.platform_name}
+                      </button>
+                    </p>
+                  ) : (
                     <button
                       type="button"
                       onClick={() =>
@@ -224,90 +257,76 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
                           platformName: r.platform_name,
                         })
                       }
-                      aria-label={t`${r.name} on ${r.platform_name}`}
-                      className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
+                      className="mt-1 rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
                     >
-                      {r.platform_name}
+                      <Trans>Add {name}</Trans>
                     </button>
+                  )
+                ) : r.type === 'game' && r.igdb_game_id !== undefined ? (
+                  <p className="mt-1 flex flex-wrap items-center gap-1">
+                    {/* The chips are the pick targets, not the row; say so. */}
+                    <span className="text-xs text-gray-500"><Trans>Add on:</Trans></span>
+                    {r.platforms?.map((p) => {
+                      const platformName = p.name
+                      return (
+                        <button
+                          key={p.igdb_platform_id}
+                          type="button"
+                          onClick={() =>
+                            onPick({
+                              kind: 'game',
+                              igdbGameId: r.igdb_game_id!,
+                              name: r.name,
+                              platformId: p.igdb_platform_id,
+                              platformName: p.name,
+                            })
+                          }
+                          aria-label={t`${name} on ${platformName}`}
+                          className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
+                        >
+                          {p.name}
+                        </button>
+                      )
+                    })}
                   </p>
-                ) : (
+                ) : r.type === 'pc_listing' && r.pc_product_id !== undefined ? (
+                  <div className="mt-1 flex flex-col gap-1">
+                    <p className="text-xs text-gray-500">
+                      <Trans>
+                        Loose {loose} / CIB {cib} / New{' '}
+                        {newPrice}
+                      </Trans>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onPick({ kind: 'pc_listing', pcProductId: r.pc_product_id!, name: r.name })
+                      }
+                      className="self-start rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
+                    >
+                      <Trans>Use {name}</Trans>
+                    </button>
+                  </div>
+                ) : r.pc_product_id !== undefined ? (
                   <button
                     type="button"
                     onClick={() =>
                       onPick({
-                        kind: 'community',
-                        productId: r.product_id!,
+                        kind: 'hardware',
+                        pcProductId: r.pc_product_id!,
                         name: r.name,
-                        itemType: r.item_type ?? 'game',
-                        platformName: r.platform_name,
+                        category: r.category ?? '',
                       })
                     }
                     className="mt-1 rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
                   >
-                    <Trans>Add {r.name}</Trans>
+                    <Trans>Add {name}</Trans>
                   </button>
-                )
-              ) : r.type === 'game' && r.igdb_game_id !== undefined ? (
-                <p className="mt-1 flex flex-wrap items-center gap-1">
-                  {/* The chips are the pick targets, not the row; say so. */}
-                  <span className="text-xs text-gray-500"><Trans>Add on:</Trans></span>
-                  {r.platforms?.map((p) => (
-                    <button
-                      key={p.igdb_platform_id}
-                      type="button"
-                      onClick={() =>
-                        onPick({
-                          kind: 'game',
-                          igdbGameId: r.igdb_game_id!,
-                          name: r.name,
-                          platformId: p.igdb_platform_id,
-                          platformName: p.name,
-                        })
-                      }
-                      aria-label={t`${r.name} on ${p.name}`}
-                      className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
-                    >
-                      {p.name}
-                    </button>
-                  ))}
-                </p>
-              ) : r.type === 'pc_listing' && r.pc_product_id !== undefined ? (
-                <div className="mt-1 flex flex-col gap-1">
-                  <p className="text-xs text-gray-500">
-                    <Trans>
-                      Loose {money.format(r.loose_cents) ?? '-'} / CIB {money.format(r.cib_cents) ?? '-'} / New{' '}
-                      {money.format(r.new_cents) ?? '-'}
-                    </Trans>
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onPick({ kind: 'pc_listing', pcProductId: r.pc_product_id!, name: r.name })
-                    }
-                    className="self-start rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
-                  >
-                    <Trans>Use {r.name}</Trans>
-                  </button>
-                </div>
-              ) : r.pc_product_id !== undefined ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    onPick({
-                      kind: 'hardware',
-                      pcProductId: r.pc_product_id!,
-                      name: r.name,
-                      category: r.category ?? '',
-                    })
-                  }
-                  className="mt-1 rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
-                >
-                  <Trans>Add {r.name}</Trans>
-                </button>
-              ) : null}
-            </div>
-          </li>
-        ))}
+                ) : null}
+              </div>
+            </li>
+          )
+        })}
       </ul>
       {footer}
     </section>

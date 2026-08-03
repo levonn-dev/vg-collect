@@ -122,6 +122,7 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
                 }
                 const isSelf = me.data?.id === c.author_id
                 const canModerate = !isSelf && me.data?.id === ownerId
+                const bodyPreview = truncateBody(c.body)
                 return (
                   <li key={c.id} className="flex flex-col gap-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -137,7 +138,7 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
                         <button
                           type="button"
                           onClick={() => requestDelete(c.id)}
-                          aria-label={t`Delete your comment: ${truncateBody(c.body)}`}
+                          aria-label={t`Delete your comment: ${bodyPreview}`}
                           className="ml-auto text-xs text-gray-500 hover:text-red-700"
                         >
                           <Trans>Delete</Trans>
@@ -156,7 +157,7 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
                             }
                           }}
                           disabled={ownerRemove.isPending}
-                          aria-label={t`Remove comment: ${truncateBody(c.body)}`}
+                          aria-label={t`Remove comment: ${bodyPreview}`}
                           className="ml-auto text-xs text-gray-500 hover:text-red-700 disabled:opacity-50"
                         >
                           <Trans>Remove</Trans>

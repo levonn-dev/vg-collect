@@ -58,12 +58,13 @@ export default function CatalogSubmission({ entryId }: { entryId: string }) {
     )
   }
   const rejected = sub?.status === 'rejected'
+  const rejectReason = sub?.reject_reason
   return (
     <section aria-label={t`Catalog submission`} className="mt-4 rounded border border-gray-200 p-3 text-sm">
       {rejected && (
         <p className="mb-2">
           {sub?.reject_reason ? (
-            <Trans>Submission rejected: {sub.reject_reason}</Trans>
+            <Trans>Submission rejected: {rejectReason}</Trans>
           ) : (
             <Trans>Submission rejected.</Trans>
           )}
