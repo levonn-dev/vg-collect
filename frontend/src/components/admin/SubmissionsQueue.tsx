@@ -3,20 +3,23 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { fetchSubmissions } from '../../api/admin'
 import type { AdminSubmission } from '../../api/admin'
-import ReviewPanel from './ReviewPanel'
+import type { ApiError } from '../../api/client'
+import ReviewPanel, { verdictErrorMessage } from './ReviewPanel'
 
 // SubmissionsQueue pages the pending catalog submissions oldest
 // first. Proposals are live (the row shows the entry's CURRENT
 // fields); a verdict invalidates the admin queries so resolved rows
 // leave the list.
 export default function SubmissionsQueue() {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
   const [reviewing, setReviewing] = useState<AdminSubmission | null>(null)
   // A transient notice the panel carries up on close: a raced 409
   // unmounts the panel before its inline message paints, so the reason
-  // is shown here, at the queue, after the row leaves.
-  const [notice, setNotice] = useState<string | null>(null)
+  // is shown here, at the queue, after the row leaves. The error is
+  // what is held, not its message, so a locale switch while the notice
+  // is up rephrases it instead of leaving stale text on screen.
+  const [notice, setNotice] = useState<ApiError | null>(null)
   const list = useInfiniteQuery({
     queryKey: ['admin', 'submissions'],
     queryFn: ({ pageParam }) => fetchSubmissions(pageParam),
@@ -27,9 +30,9 @@ export default function SubmissionsQueue() {
     },
   })
 
-  const done = (message?: string) => {
+  const done = (error?: ApiError) => {
     setReviewing(null)
-    setNotice(message ?? null)
+    setNotice(error ?? null)
     void queryClient.invalidateQueries({ queryKey: ['admin'] })
   }
 
@@ -51,7 +54,7 @@ export default function SubmissionsQueue() {
       </h3>
       {notice && (
         <p role="status" className="mt-2 rounded bg-amber-50 p-2 text-sm text-amber-800">
-          {notice}
+          {verdictErrorMessage(notice, i18n)}
         </p>
       )}
       <table className="mt-2 w-full text-left text-sm">

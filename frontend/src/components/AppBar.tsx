@@ -5,7 +5,6 @@ import { logout, type Me } from '../api/client'
 import { site } from '../lib/site'
 import Avatar from './Avatar'
 import CurrencySelect from './CurrencySelect'
-import LocaleSwitch from './LocaleSwitch'
 import Logo from './Logo'
 import ThemeToggle from './ThemeToggle'
 
@@ -67,7 +66,6 @@ export default function AppBar({ me }: { me: Me }) {
         </nav>
       </div>
       <div className="flex items-center gap-3">
-        <LocaleSwitch />
         <CurrencySelect />
         <ThemeToggle />
         <NavLink

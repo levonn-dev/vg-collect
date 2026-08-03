@@ -227,6 +227,16 @@ it('renders the site footer with the Help link', async () => {
   expect(within(footer).getByRole('link', { name: 'Help' })).toHaveAttribute('href', '/help')
 })
 
+it('mounts the language switcher once for a signed-in user, in the footer', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, me)))
+  renderLayout()
+  await screen.findByText('page-content')
+  // One mount point for the whole app: the app bar carries no copy of it.
+  expect(screen.getAllByRole('combobox', { name: 'Language' })).toHaveLength(1)
+  const footer = screen.getByRole('contentinfo', { name: 'Site footer' })
+  expect(within(footer).getByRole('combobox', { name: 'Language' })).toBeInTheDocument()
+})
+
 it('links the brand back to the start page', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, me)))
   renderLayout()

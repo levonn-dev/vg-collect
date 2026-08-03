@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { jsonResponse } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
@@ -61,6 +61,19 @@ it('swaps in the signed-in app bar and Help link when a session exists', async (
   expect(screen.getByText('@alice')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Help' })).toHaveAttribute('href', '/help')
   expect(screen.getByText('public-page')).toBeInTheDocument()
+})
+
+it('offers the language switcher to a visitor with no session', async () => {
+  const fetchSpy = vi.fn().mockResolvedValue(jsonResponse(401, { title: 'unauthorized' }))
+  vi.stubGlobal('fetch', fetchSpy)
+  renderShell()
+  await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+  expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull()
+  const select = screen.getByRole('combobox', { name: 'Language' })
+  // Each option carries the language its endonym is written in, so a
+  // screen reader pronounces it that way for a signed-out visitor too.
+  expect(within(select).getByRole('option', { name: 'English' })).toHaveAttribute('lang', 'en')
+  expect(within(select).getByRole('option', { name: '日本語' })).toHaveAttribute('lang', 'ja')
 })
 
 it('links the brand to the start page', () => {

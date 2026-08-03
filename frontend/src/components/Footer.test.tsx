@@ -33,6 +33,15 @@ it('shows the Help link only when asked', () => {
   expect(screen.getByRole('link', { name: 'Help' })).toHaveAttribute('href', '/help')
 })
 
+it('mounts the language switcher in the footer, outside the page-links nav', () => {
+  renderFooter()
+  const footer = screen.getByRole('contentinfo', { name: 'Site footer' })
+  expect(within(footer).getByRole('combobox', { name: 'Language' })).toBeInTheDocument()
+  // A control, not a page link: it must not sit inside the nav.
+  const nav = within(footer).getByRole('navigation', { name: 'Site' })
+  expect(within(nav).queryByRole('combobox')).toBeNull()
+})
+
 it('renders one credit line per active data source', () => {
   vi.stubEnv('VITE_SITE_DATA_SOURCES', 'igdb,frankfurter')
   renderFooter()

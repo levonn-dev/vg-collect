@@ -3,6 +3,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { AdminSubmission } from '../../api/admin'
 import type { Platform } from '../../api/platforms'
+import { ApiError } from '../../api/client'
 import { jsonResponse, putBody } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import ReviewPanel from './ReviewPanel'
@@ -53,7 +54,8 @@ it('approve-new mints from the curated form', async () => {
     action: 'approve_new',
     product: { type: 'game', name: 'Repro Alpha', platform_name: 'snes', region: 'pal', edition: 'glow cart' },
   })
-  expect(onDone).toHaveBeenCalled()
+  // Argument-free: only the raced-409 path below hands anything up.
+  expect(onDone).toHaveBeenCalledWith()
 })
 
 it('a catalog platform pick shows the confirmed state (not a blank field) and mints the canonical name', async () => {
@@ -216,7 +218,11 @@ it('renders submission_resolved inline and refetches', async () => {
   renderPanel(row, onDone)
   await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('Another admin already resolved this submission.')
-  expect(onDone).toHaveBeenCalled()
+  // The error itself rides up, not a phrased message: the queue holds it
+  // and phrases it at render time, so it survives a locale switch.
+  const [carried] = onDone.mock.calls[0] as [ApiError]
+  expect(carried).toBeInstanceOf(ApiError)
+  expect(carried.code).toBe('submission_resolved')
 })
 
 it('prefills the cover, previews it, and sends it in the approve_new mint', async () => {

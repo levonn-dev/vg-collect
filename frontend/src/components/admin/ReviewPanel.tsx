@@ -17,10 +17,12 @@ import type { CatalogPick } from '../catalog/SearchPicker'
 
 interface ReviewPanelProps {
   submission: AdminSubmission
-  // onDone closes the panel; an optional message rides through to the
+  // onDone closes the panel; an optional error rides through to the
   // queue notice, so a raced-verdict explanation is seen after the panel
-  // (and its inline message) unmounts.
-  onDone: (message?: string) => void
+  // (and its inline message) unmounts. The error travels, not its
+  // message: the queue phrases it at render time, so the notice follows
+  // a locale switch instead of freezing the language it was raised in.
+  onDone: (error?: ApiError) => void
 }
 
 // t(i18n) throughout this file, component included: verdictErrorMessage
@@ -29,7 +31,8 @@ interface ReviewPanelProps {
 // explicit form for its own strings rather than importing a second,
 // same-named t. PotentialDuplicates below has no such helper to collide
 // with, so it uses the plain useLingui()-bound Trans/t as usual.
-function verdictErrorMessage(e: unknown, i18n: I18n): string {
+// eslint-disable-next-line react-refresh/only-export-components -- shared with SubmissionsQueue, which phrases the error this panel hands it, alongside this component.
+export function verdictErrorMessage(e: unknown, i18n: I18n): string {
   if (e instanceof ApiError) {
     if (e.code === 'submission_resolved') return t(i18n)`Another admin already resolved this submission.`
     if (e.code === 'unknown_product') return t(i18n)`No product with that id.`
@@ -158,15 +161,15 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
   const [reason, setReason] = useState('')
   const [adopting, setAdopting] = useState(false)
   const [adoptId, setAdoptId] = useState('')
-  const [resolveError, setResolveError] = useState<string | null>(null)
+  const [resolveError, setResolveError] = useState(false)
 
   const verdict = useMutation({
     mutationFn: (v: VerdictRequest) => submitVerdict(submission.id, v),
     onSuccess: () => onDone(),
     onError: (e) => {
       // A raced verdict is done from this row's perspective: close, and
-      // carry the reason up so the queue can show it once this unmounts.
-      if (e instanceof ApiError && e.code === 'submission_resolved') onDone(verdictErrorMessage(e, i18n))
+      // carry the error up so the queue can show it once this unmounts.
+      if (e instanceof ApiError && e.code === 'submission_resolved') onDone(e)
     },
   })
 
@@ -189,19 +192,20 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
   const adoptExisting = (productId: string) =>
     verdict.mutate({ action: 'approve_existing', product_id: productId })
   const adoptPick = (p: CatalogPick) => {
-    setResolveError(null)
+    setResolveError(false)
     if (p.kind === 'community') {
       adoptExisting(p.productId)
       return
     }
     resolveProduct(resolveRequestFor(p, undefined, undefined))
       .then((prod) => adoptExisting(prod.id))
-      .catch(() => setResolveError(t(i18n)`The pick could not be resolved to a product - try again or paste an id.`))
+      .catch(() => setResolveError(true))
   }
 
+  const displayName = submission.display_name
   return (
-    <div aria-label={t(i18n)`Review ${submission.display_name}`} className="mt-3 rounded border border-gray-300 p-3">
-      <h4 className="text-sm font-semibold"><Trans>Review: {submission.display_name}</Trans></h4>
+    <div aria-label={t(i18n)`Review ${displayName}`} className="mt-3 rounded border border-gray-300 p-3">
+      <h4 className="text-sm font-semibold"><Trans>Review: {displayName}</Trans></h4>
       <PotentialDuplicates submission={submission} onAdopt={adoptPick} pending={verdict.isPending} />
       <div className="mt-2 grid max-w-xl grid-cols-2 gap-2 text-sm">
         <label className="col-span-2">
@@ -304,7 +308,7 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
       )}
       {resolveError && (
         <p role="alert" className="mt-2 text-sm text-red-700">
-          {resolveError}
+          <Trans>The pick could not be resolved to a product - try again or paste an id.</Trans>
         </p>
       )}
       {verdict.isError && (
