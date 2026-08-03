@@ -19,6 +19,9 @@ function En() {
 function Zz() {
   return <main>zz body</main>
 }
+function Ja() {
+  return <main>ja body</main>
+}
 
 // Activation is global on the singleton; every test leaves en active.
 afterEach(() => {
@@ -29,6 +32,11 @@ afterEach(() => {
 function activateZz() {
   i18n.load('zz', {})
   i18n.activate('zz')
+}
+
+function activateJa() {
+  i18n.load('ja', {})
+  i18n.activate('ja')
 }
 
 describe('ProsePage', () => {
@@ -70,5 +78,23 @@ describe('ProsePage', () => {
     const variants = { en: En, zz: Zz } as unknown as ProseVariants
     renderWithI18n(<ProsePage variants={variants} page="help" />)
     expect(recordProseFallback).not.toHaveBeenCalled()
+  })
+
+  it('marks an English fallback page as English under another locale', () => {
+    activateJa()
+    renderWithI18n(<ProsePage variants={{ en: En }} page="about" />)
+    expect(screen.getByText('english body').closest('[lang="en"]')).toBeInTheDocument()
+  })
+
+  it('leaves the page unmarked under en, where it needs no language of its own', () => {
+    const { container } = renderWithI18n(<ProsePage variants={{ en: En }} page="about" />)
+    expect(container.querySelector('[lang="en"]')).toBeNull()
+  })
+
+  it('leaves a translated variant unmarked so it is read in its own language', () => {
+    activateJa()
+    const { container } = renderWithI18n(<ProsePage variants={{ en: En, ja: Ja }} page="about" />)
+    expect(screen.getByText('ja body')).toBeInTheDocument()
+    expect(container.querySelector('[lang="en"]')).toBeNull()
   })
 })

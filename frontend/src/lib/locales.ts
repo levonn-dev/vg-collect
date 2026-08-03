@@ -10,10 +10,10 @@
 // locale.ts) - a `.po` specifier Node cannot resolve on its own.
 // Keeping this list in a module with no such import keeps the CLI
 // config loadable.
-export const SUPPORTED_LOCALES = ['en'] as const
+export const SUPPORTED_LOCALES = ['en', 'ja'] as const
 export type Locale = (typeof SUPPORTED_LOCALES)[number]
 
 // Endonyms: each language's name for itself, shown in the switcher.
 // Never translated - a German speaker hunting the switcher on a
 // device set to Japanese must be able to find "Deutsch".
-export const LOCALE_NAMES: Record<Locale, string> = { en: 'English' }
+export const LOCALE_NAMES: Record<Locale, string> = { en: 'English', ja: '日本語' }

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { recordCatalogFailure, recordLocaleBoot, recordLocaleSwitch } from '../telemetry'
 import {
   activateBoot,
+  CATALOG_LOADERS,
   dynamicActivate,
   formatLocale,
   resolveLocale,
@@ -30,8 +31,23 @@ function stubLanguage(tag: string) {
   vi.spyOn(window.navigator, 'language', 'get').mockReturnValue(tag)
 }
 
+// A rejected loader is what an unreachable catalog chunk looks like to
+// this module, and CATALOG_LOADERS is the only seam that can produce
+// one without a network. The entry is restored even when run throws.
+async function withFailingJaCatalog(run: () => Promise<void>): Promise<void> {
+  const loader = CATALOG_LOADERS.ja
+  CATALOG_LOADERS.ja = () => Promise.reject(new Error('chunk unreachable'))
+  try {
+    await run()
+  } finally {
+    CATALOG_LOADERS.ja = loader
+  }
+}
+
 beforeEach(() => {
   localStorage.clear()
+  // Activation writes <html lang>; start from jsdom's unset default.
+  document.documentElement.lang = ''
 })
 
 afterEach(() => {
@@ -108,6 +124,25 @@ describe('setLocale', () => {
     await setLocale('xx' as never)
     expect(recordLocaleSwitch).not.toHaveBeenCalled()
   })
+
+  it('activates a code-split locale and marks it on the document', async () => {
+    await setLocale('ja')
+    expect(i18n.locale).toBe('ja')
+    expect(document.documentElement.lang).toBe('ja')
+  })
+
+  it('keeps the current locale active and marked when the chunk fails', async () => {
+    await setLocale('en')
+    await withFailingJaCatalog(() => setLocale('ja'))
+    expect(i18n.locale).toBe('en')
+    // <html lang> names the language actually on screen. A failed
+    // switch leaves English text, so it must still name English.
+    expect(document.documentElement.lang).toBe('en')
+    expect(recordCatalogFailure).toHaveBeenCalledTimes(1)
+    expect(recordCatalogFailure).toHaveBeenCalledWith('switch', 'ja')
+    // The choice outlives the failed activation and applies next load.
+    expect(localStorage.getItem('locale')).toBe('ja')
+  })
 })
 
 describe('dynamicActivate', () => {
@@ -124,9 +159,8 @@ describe('activateBoot', () => {
   })
 
   it('falls back to the static en catalog when a locale chunk fails to load', async () => {
-    // No .po file exists for this locale, so dynamicActivate's import
-    // rejects - this exercises the boot fallback branch directly,
-    // the same way an unreachable chunk would in production.
+    // An unregistered locale has no CATALOG_LOADERS entry, so
+    // dynamicActivate rejects the way an unreachable chunk does.
     await activateBoot('xx' as never, 'stored')
     expect(i18n.locale).toBe('en')
   })
@@ -144,6 +178,24 @@ describe('activateBoot', () => {
     expect(recordCatalogFailure).toHaveBeenCalledTimes(1)
     expect(recordCatalogFailure).toHaveBeenCalledWith('boot', 'xx')
     expect(recordLocaleBoot).not.toHaveBeenCalled()
+  })
+
+  it('activates a code-split locale, records the boot counter, and marks the document', async () => {
+    stubLanguage('ja-JP')
+    await activateBoot('ja', 'stored')
+    expect(i18n.locale).toBe('ja')
+    expect(recordLocaleBoot).toHaveBeenCalledTimes(1)
+    expect(recordLocaleBoot).toHaveBeenCalledWith('ja', 'stored', 'ja-JP')
+    expect(document.documentElement.lang).toBe('ja')
+  })
+
+  it('marks the document en when the boot catalog fails and en takes over', async () => {
+    await withFailingJaCatalog(() => activateBoot('ja', 'stored'))
+    expect(i18n.locale).toBe('en')
+    expect(recordCatalogFailure).toHaveBeenCalledTimes(1)
+    expect(recordCatalogFailure).toHaveBeenCalledWith('boot', 'ja')
+    expect(recordLocaleBoot).not.toHaveBeenCalled()
+    expect(document.documentElement.lang).toBe('en')
   })
 })
 

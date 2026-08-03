@@ -40,7 +40,16 @@ export default function ProsePage({ variants, page }: { variants: ProseVariants;
           </Trans>
         </aside>
       )}
-      <Variant />
+      {/* Language of parts: an English page served under another
+          locale is marked so assistive tech reads it with English
+          pronunciation rules instead of the document's. */}
+      {fallback ? (
+        <div lang="en">
+          <Variant />
+        </div>
+      ) : (
+        <Variant />
+      )}
     </>
   )
 }

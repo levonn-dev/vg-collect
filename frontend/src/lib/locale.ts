@@ -27,7 +27,7 @@ export type { Locale }
 // loader here fails `tsc -b`, not just at runtime.
 export const CATALOG_LOADERS: Record<Locale, () => Promise<{ messages: Messages }>> = {
   en: () => Promise.resolve({ messages: enMessages }),
-  // locale #2 adds: de: () => import('../locales/de.po'),
+  ja: () => import('../locales/ja.po'),
 }
 
 // Guards use typeof in case this module is ever loaded outside a
@@ -65,6 +65,13 @@ export function resolveLocale(): Locale {
   return resolveLocaleWithSource().locale
 }
 
+// Assistive tech reads pronunciation rules off <html lang>; index.html
+// ships lang="en" as the pre-boot default and this keeps it true after
+// every activation, including the boot fallback to en.
+function applyDocumentLang(locale: Locale): void {
+  if (typeof document !== 'undefined') document.documentElement.lang = locale
+}
+
 // dynamicActivate loads one locale's catalog through CATALOG_LOADERS
 // and switches to it. Only the dynamic-import loaders code-split, so
 // a visitor only ever downloads a chunk for a locale other than en.
@@ -72,6 +79,7 @@ export async function dynamicActivate(locale: Locale): Promise<void> {
   const { messages } = await CATALOG_LOADERS[locale]()
   i18n.load(locale, messages)
   i18n.activate(locale)
+  applyDocumentLang(locale)
 }
 
 // activateEn activates the statically bundled English catalog - see
@@ -80,6 +88,7 @@ export async function dynamicActivate(locale: Locale): Promise<void> {
 function activateEn(): void {
   i18n.load('en', enMessages)
   i18n.activate('en')
+  applyDocumentLang('en')
 }
 
 // activateBoot is what main.tsx awaits before its first render. A
