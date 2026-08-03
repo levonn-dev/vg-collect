@@ -20,19 +20,28 @@ const FEED_TABS: { key: FeedTab; label: MessageDescriptor }[] = [
   { key: 'you', label: msg`You` },
 ]
 
-// Same module-table-of-descriptors idiom as FEED_TABS just above: verb
-// labels are looked up by FeedRow at render time via i18n._(), not
-// consumed as plain strings here.
-const VERB_TEXT: Record<FeedItem['verb'], MessageDescriptor> = {
-  followed_user: msg`followed`,
-  liked_shelf: msg`liked`,
-  commented_shelf: msg`commented on`,
-  published_shelf: msg`published`,
-}
-
 function shelfHref(shelf: ShelfCardData): string {
   return `/u/${shelf.owner.handle}/shelves/${shelf.slug}`
 }
+
+// Each feed row is one translated sentence - a single Trans per verb
+// with the chips and the shelf link inside it as component
+// placeholders - so the locale controls the whole word order:
+// Japanese needs SOV with its particles flush against the names,
+// which a fixed actor/verb/target sequence of flex items cannot
+// express. The sentence span must flow as inline text, never as a
+// flex container: bare words inside a flex box become anonymous flex
+// items and gap spacing opens around the particles. align-middle
+// keeps the inline-flex chips optically centered on the text line;
+// their natural baseline is the avatar image's bottom edge, which
+// would hang the sentence text below the handles.
+const SENTENCE_CLASS = 'text-gray-500 [&>a]:align-middle'
+
+// The shelf link states its ink explicitly because it sits inside the
+// gray-500 sentence span and would otherwise inherit it; gray-900
+// matches UserChip's own handle color, so names and shelf titles read
+// as one tier against the connective words.
+const SHELF_LINK_CLASS = 'font-medium text-gray-900 hover:underline'
 
 // FeedRow renders one activity row by verb. actor always attaches;
 // shelf/followed_user/comment_excerpt ride along only for the verbs
@@ -43,35 +52,35 @@ function shelfHref(shelf: ShelfCardData): string {
 // instead of crashing the list. The excerpt clamps to two lines via
 // line-clamp-2 (same idiom as CoverGrid's card titles).
 function FeedRow({ item }: { item: FeedItem }) {
-  const { i18n } = useLingui()
   const when = <span className="ml-auto shrink-0 text-xs text-gray-400">{relativeTime(item.created_at)}</span>
 
   if (item.verb === 'followed_user') {
     if (!item.followed_user) return null
     return (
-      <li className="flex flex-wrap items-center gap-1.5 border-b border-gray-100 py-3 text-sm">
-        <UserChip profile={item.actor} />
-        <span className="text-gray-500">{i18n._(VERB_TEXT.followed_user)}</span>
-        <UserChip profile={item.followed_user} />
+      <li className="flex items-center gap-1.5 border-b border-gray-100 py-3 text-sm">
+        <span className={SENTENCE_CLASS}>
+          <Trans>
+            <UserChip profile={item.actor} /> followed <UserChip profile={item.followed_user} />
+          </Trans>
+        </span>
         {when}
       </li>
     )
   }
 
   if (!item.shelf) return null
-  const shelfLink = (
-    <Link to={shelfHref(item.shelf)} className="font-medium hover:underline">
-      {item.shelf.name}
-    </Link>
-  )
+  const shelfName = item.shelf.name
+  const href = shelfHref(item.shelf)
 
   if (item.verb === 'commented_shelf') {
     return (
       <li className="flex flex-col gap-1 border-b border-gray-100 py-3 text-sm">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <UserChip profile={item.actor} />
-          <span className="text-gray-500">{i18n._(VERB_TEXT.commented_shelf)}</span>
-          {shelfLink}
+        <div className="flex items-center gap-1.5">
+          <span className={SENTENCE_CLASS}>
+            <Trans>
+              <UserChip profile={item.actor} /> commented on <Link to={href} className={SHELF_LINK_CLASS}>{shelfName}</Link>
+            </Trans>
+          </span>
           {when}
         </div>
         {item.comment_excerpt && (
@@ -82,10 +91,18 @@ function FeedRow({ item }: { item: FeedItem }) {
   }
 
   return (
-    <li className="flex flex-wrap items-center gap-1.5 border-b border-gray-100 py-3 text-sm">
-      <UserChip profile={item.actor} />
-      <span className="text-gray-500">{i18n._(VERB_TEXT[item.verb])}</span>
-      {shelfLink}
+    <li className="flex items-center gap-1.5 border-b border-gray-100 py-3 text-sm">
+      <span className={SENTENCE_CLASS}>
+        {item.verb === 'liked_shelf' ? (
+          <Trans>
+            <UserChip profile={item.actor} /> liked <Link to={href} className={SHELF_LINK_CLASS}>{shelfName}</Link>
+          </Trans>
+        ) : (
+          <Trans>
+            <UserChip profile={item.actor} /> published <Link to={href} className={SHELF_LINK_CLASS}>{shelfName}</Link>
+          </Trans>
+        )}
+      </span>
       {when}
     </li>
   )

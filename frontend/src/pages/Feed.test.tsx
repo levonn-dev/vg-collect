@@ -1,8 +1,10 @@
+import { i18n } from '@lingui/core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { FeedItem, ProfileCard, ShelfCard as ShelfCardData } from '../api/social'
+import { messages as jaMessages } from '../locales/ja.po'
 import { jsonResponse } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Feed from './Feed'
@@ -35,6 +37,9 @@ function stubFetch(routes: Record<string, unknown>) {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  // The Japanese-sentence test switches the shared Lingui singleton;
+  // every test starts from the English catalog setup.ts activated.
+  i18n.activate('en')
   const missed = unstubbed
   unstubbed = []
   expect(missed).toEqual([])
@@ -100,20 +105,25 @@ it('renders verb-shaped rows on the Following tab: two profile links for a follo
   const rows = await screen.findAllByRole('listitem')
   expect(rows).toHaveLength(3)
 
+  // Each row is one translated sentence, so beyond the words being
+  // present the actor/verb/target reading order is part of the
+  // contract; toHaveTextContent regexes pin that order (the .* gaps
+  // absorb the avatar-fallback initials the chips render in jsdom).
+
   // Follow row: "@Alice_Prime followed @Bob_Prime" - two distinct profile links.
   expect(within(rows[0]).getByRole('link', { name: '@Alice_Prime' })).toHaveAttribute('href', '/u/Alice_Prime')
   expect(within(rows[0]).getByRole('link', { name: '@Bob_Prime' })).toHaveAttribute('href', '/u/Bob_Prime')
-  expect(within(rows[0]).getByText('followed')).toBeInTheDocument()
+  expect(rows[0]).toHaveTextContent(/@Alice_Prime.*followed.*@Bob_Prime/)
 
   // Like row: the shelf itself is the link target.
   expect(within(rows[1]).getByRole('link', { name: 'Backlog Wall' }))
     .toHaveAttribute('href', '/u/Alice_Prime/shelves/backlog-wall')
-  expect(within(rows[1]).getByText('liked')).toBeInTheDocument()
+  expect(rows[1]).toHaveTextContent(/@Bob_Prime.*liked.*Backlog Wall/)
 
   // Comment row: shelf link plus the truncated excerpt text.
   expect(within(rows[2]).getByRole('link', { name: 'Hall of Fame' }))
     .toHaveAttribute('href', '/u/Alice_Prime/shelves/hall-of-fame')
-  expect(within(rows[2]).getByText('commented on')).toBeInTheDocument()
+  expect(rows[2]).toHaveTextContent(/@Alice_Prime.*commented on.*Hall of Fame/)
   expect(within(rows[2]).getByText('Nice picks, love the SNES lineup!')).toBeInTheDocument()
 })
 
@@ -124,8 +134,42 @@ it('renders a published_shelf row linking the shelf', async () => {
     },
   })
   renderFeed()
-  expect(await screen.findByText('published')).toBeInTheDocument()
+  const row = await screen.findByRole('listitem')
+  expect(row).toHaveTextContent(/@Bob_Prime.*published.*Backlog Wall/)
   expect(screen.getByRole('link', { name: 'Backlog Wall' })).toHaveAttribute('href', '/u/Alice_Prime/shelves/backlog-wall')
+})
+
+it('renders Japanese rows as whole SOV sentences, particles flush against the links', async () => {
+  stubFetch({
+    '/api/feed?tab=following': {
+      items: [
+        feedItem({ id: 'f1', verb: 'followed_user', actor: alice, followed_user: bob }),
+        feedItem({ id: 'f2', verb: 'liked_shelf', actor: bob, shelf: shelf() }),
+        feedItem({ id: 'f3', verb: 'commented_shelf', actor: alice, shelf: shelf() }),
+        feedItem({ id: 'f4', verb: 'published_shelf', actor: bob, shelf: shelf() }),
+      ],
+    },
+  })
+  renderFeed()
+  const rows = await screen.findAllByRole('listitem')
+  act(() => {
+    i18n.load('ja', jaMessages)
+    i18n.activate('ja')
+  })
+
+  // The regexes pin word order AND that each particle sits directly
+  // against its neighbor in the text layer - the reason the sentence
+  // is one Trans instead of per-word flex items. (The follow row needs
+  // a .* gap where the followee chip's avatar-fallback initial lands.)
+  expect(rows[0]).toHaveTextContent(/@Alice_Primeが.*@Bob_Primeをフォローしました/)
+  expect(rows[1]).toHaveTextContent(/@Bob_PrimeがBacklog Wallをいいねしました/)
+  expect(rows[2]).toHaveTextContent(/@Alice_PrimeがBacklog Wallにコメントしました/)
+  expect(rows[3]).toHaveTextContent(/@Bob_PrimeがBacklog Wallを公開しました/)
+
+  // The embedded pieces stay live links under the translated sentence.
+  expect(within(rows[0]).getByRole('link', { name: '@Bob_Prime' })).toHaveAttribute('href', '/u/Bob_Prime')
+  expect(within(rows[1]).getByRole('link', { name: 'Backlog Wall' }))
+    .toHaveAttribute('href', '/u/Alice_Prime/shelves/backlog-wall')
 })
 
 it('skips a malformed followed_user row missing its followee, without crashing the list', async () => {
