@@ -1,5 +1,7 @@
-import { screen } from '@testing-library/react'
+import { i18n } from '@lingui/core'
+import { screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
+import { messages as jaMessages } from '../locales/ja.po'
 import { renderWithI18n } from '../test/i18n'
 import Privacy from './Privacy'
 
@@ -13,7 +15,14 @@ function renderPrivacy() {
 
 afterEach(() => {
   vi.unstubAllEnvs()
+  // Activation is global on the singleton; every test leaves en active.
+  i18n.activate('en')
 })
+
+function activateJa() {
+  i18n.load('ja', jaMessages)
+  i18n.activate('ja')
+}
 
 it('renders the heading, cookie name, and avatar-link wording', () => {
   renderPrivacy()
@@ -53,4 +62,23 @@ it('routes data questions to the contact when set and to the operator otherwise'
   vi.stubEnv('VITE_SITE_CONTACT', 'sam@example.test')
   renderPrivacy()
   expect(screen.getByText(/go to sam@example.test/)).toBeInTheDocument()
+})
+
+it('shows no translation notice under en', () => {
+  renderPrivacy()
+  expect(screen.queryByRole('complementary')).toBeNull()
+})
+
+it('serves the Japanese page with the controlling-text notice under ja', () => {
+  vi.stubEnv('VITE_SITE_DATA_SOURCES', 'igdb')
+  vi.stubEnv('VITE_SITE_AUTH_PROVIDERS', 'google,twitch')
+  activateJa()
+  renderPrivacy()
+  expect(screen.getByRole('heading', { name: 'プライバシーポリシー' })).toBeInTheDocument()
+  const aside = screen.getByRole('complementary', { name: 'この翻訳について' })
+  expect(
+    within(aside).getByText('この翻訳は参考のために提供されています。正文は英語版です。'),
+  ).toBeInTheDocument()
+  expect(screen.getByText(/カバーアート/)).toBeInTheDocument()
+  expect(screen.getByText(/GoogleまたはTwitch/)).toBeInTheDocument()
 })
