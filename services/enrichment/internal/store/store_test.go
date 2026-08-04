@@ -20,7 +20,20 @@ import (
 	"github.com/levonn-dev/vgkeep/services/enrichment/migrations"
 )
 
-// newTestStore boots a migrated MongoDB and returns the Store plus the
+// One MongoDB container serves this whole package. The per-test
+// containers this replaces spent most of the package's runtime booting
+// mongo:8. Each test still gets exactly what the old fixture gave it -
+// a freshly migrated database and its own client - via the
+// drop-database + re-migrate reset in newTestStore. No Terminate: the
+// testcontainers reaper collects the container when the test process
+// exits.
+var sharedMongo struct {
+	once sync.Once
+	url  string
+	err  error
+}
+
+// newTestStore returns a Store on a freshly migrated database plus the
 // raw database handle for direct assertions. Skipped under -short.
 func newTestStore(t *testing.T) (*store.Store, *mongo.Database) {
 	t.Helper()
@@ -28,23 +41,31 @@ func newTestStore(t *testing.T) (*store.Store, *mongo.Database) {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
-	mc, err := tcmongo.Run(ctx, "mongo:8")
-	if err != nil {
-		t.Fatal(err)
+	sharedMongo.once.Do(func() {
+		mc, err := tcmongo.Run(ctx, "mongo:8")
+		if err != nil {
+			sharedMongo.err = err
+			return
+		}
+		sharedMongo.url, sharedMongo.err = mc.ConnectionString(ctx)
+	})
+	if sharedMongo.err != nil {
+		t.Fatal(sharedMongo.err)
 	}
-	t.Cleanup(func() { _ = mc.Terminate(ctx) })
-	url, err := mc.ConnectionString(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Migrate(ctx, url, "enrichment", migrations.FS, "."); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	client, err := db.Connect(ctx, url)
+	client, err := db.Connect(ctx, sharedMongo.url)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
+	// Reset: drop everything the previous test left (the migration
+	// version collection included) and re-run the embedded migrations,
+	// so each test opens on a fresh, fully migrated database.
+	if err := client.Database("enrichment").Drop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrate(ctx, sharedMongo.url, "enrichment", migrations.FS, "."); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
 	mdb := client.Database("enrichment")
 	return store.New(mdb), mdb
 }

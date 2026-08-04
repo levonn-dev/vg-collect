@@ -714,6 +714,16 @@ type stack struct {
 	client     *http.Client
 }
 
+// One Valkey container serves this whole package. Each test still
+// starts on an empty keyspace via the FlushAll in newStack. No
+// Terminate: the testcontainers reaper collects the container when
+// the test process exits.
+var sharedVK struct {
+	once sync.Once
+	url  string
+	err  error
+}
+
 // newStack wires the whole bff vertical: a Valkey container behind
 // cache.New, the authclient/userclient against httptest stubs, and the
 // codec + Handlers + router on an httptest server. Skips on -short.
@@ -724,20 +734,25 @@ func newStack(t *testing.T) *stack {
 	}
 	ctx := context.Background()
 
-	vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine")
-	if err != nil {
-		t.Fatal(err)
+	sharedVK.once.Do(func() {
+		vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine")
+		if err != nil {
+			sharedVK.err = err
+			return
+		}
+		sharedVK.url, sharedVK.err = vk.ConnectionString(ctx)
+	})
+	if sharedVK.err != nil {
+		t.Fatal(sharedVK.err)
 	}
-	t.Cleanup(func() { _ = vk.Terminate(ctx) })
-	url, err := vk.ConnectionString(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, err := valkeykit.Connect(ctx, url)
+	client, err := valkeykit.Connect(ctx, sharedVK.url)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
+	if err := client.FlushAll(ctx).Err(); err != nil {
+		t.Fatal(err)
+	}
 	c := cache.New(client)
 
 	fa := newStubAuthService(t)

@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,26 +11,41 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 )
 
+// One Valkey container serves this whole package. Each test still
+// starts on an empty keyspace via the FlushAll in newTestCache. No
+// Terminate: the testcontainers reaper collects the container when
+// the test process exits.
+var sharedVK struct {
+	once sync.Once
+	url  string
+	err  error
+}
+
 func newTestCache(t *testing.T) *Cache {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
-	vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine")
-	if err != nil {
-		t.Fatal(err)
+	sharedVK.once.Do(func() {
+		vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine")
+		if err != nil {
+			sharedVK.err = err
+			return
+		}
+		sharedVK.url, sharedVK.err = vk.ConnectionString(ctx)
+	})
+	if sharedVK.err != nil {
+		t.Fatal(sharedVK.err)
 	}
-	t.Cleanup(func() { _ = vk.Terminate(ctx) })
-	url, err := vk.ConnectionString(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, err := valkeykit.Connect(ctx, url)
+	client, err := valkeykit.Connect(ctx, sharedVK.url)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
+	if err := client.FlushAll(ctx).Err(); err != nil {
+		t.Fatal(err)
+	}
 	return New(client)
 }
 

@@ -11,11 +11,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -27,6 +29,20 @@ import (
 	"github.com/levonn-dev/vgkeep/services/user/migrations"
 )
 
+// One Postgres container serves this whole package. The per-test
+// containers this replaces spent most of the package's runtime on
+// boots, and that churn was the bulk of the Docker-daemon load behind
+// the WSL2 connection-refused flakes. Each test still gets exactly
+// what the old fixture gave it - a freshly migrated database and its
+// own pool - via the drop-schema + re-migrate reset below.
+// No Terminate: the testcontainers reaper collects the container when
+// the test process exits.
+var sharedPG struct {
+	once sync.Once
+	url  string
+	err  error
+}
+
 // newTestStore duplicates the fixture in internal/store/store_test.go
 // (Go test packages can't share helpers across packages).
 func newTestStore(t *testing.T) *store.Store {
@@ -35,24 +51,42 @@ func newTestStore(t *testing.T) *store.Store {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
-	pg, err := tcpostgres.Run(ctx, "postgres:17-alpine",
-		tcpostgres.WithDatabase("user"), tcpostgres.WithUsername("u"), tcpostgres.WithPassword("p"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(60*time.Second),
-			wait.ForListeningPort("5432/tcp")))
+	sharedPG.once.Do(func() {
+		pg, err := tcpostgres.Run(ctx, "postgres:17-alpine",
+			tcpostgres.WithDatabase("user"), tcpostgres.WithUsername("u"), tcpostgres.WithPassword("p"),
+			testcontainers.WithWaitStrategy(
+				wait.ForLog("database system is ready to accept connections").
+					WithOccurrence(2).WithStartupTimeout(60*time.Second),
+				wait.ForListeningPort("5432/tcp")))
+		if err != nil {
+			sharedPG.err = err
+			return
+		}
+		sharedPG.url, sharedPG.err = pg.ConnectionString(ctx, "sslmode=disable")
+	})
+	if sharedPG.err != nil {
+		t.Fatal(sharedPG.err)
+	}
+	// Reset: drop everything the previous test left (schema_migrations
+	// included) and re-run the embedded migrations, so each test opens
+	// on a fresh, fully migrated database - migration-seeded rows and
+	// all. Two Execs because pgx's extended protocol takes one
+	// statement at a time.
+	conn, err := pgx.Connect(ctx, sharedPG.url)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = pg.Terminate(ctx) })
-	url, err := pg.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatal(err)
+	for _, stmt := range []string{"DROP SCHEMA public CASCADE", "CREATE SCHEMA public"} {
+		if _, err := conn.Exec(ctx, stmt); err != nil {
+			_ = conn.Close(ctx)
+			t.Fatal(err)
+		}
 	}
-	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
+	_ = conn.Close(ctx)
+	if err := pgkit.Migrate(sharedPG.url, migrations.FS, "."); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	pool, err := pgkit.Connect(ctx, url)
+	pool, err := pgkit.Connect(ctx, sharedPG.url)
 	if err != nil {
 		t.Fatal(err)
 	}

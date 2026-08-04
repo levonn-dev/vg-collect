@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -487,6 +488,26 @@ type stack struct {
 	client *http.Client
 }
 
+// One MongoDB and one valkey container serve this whole package (the
+// same shared-container pattern as the store package's fixture): the
+// per-test containers this replaces spent most of the package's
+// runtime on boots. Each test still opens on a fresh, fully migrated
+// database and an empty keyspace via the drop + re-migrate and
+// FlushAll resets in newStack. No Terminate: the testcontainers
+// reaper collects both containers when the test process exits.
+var (
+	sharedMongo struct {
+		once sync.Once
+		url  string
+		err  error
+	}
+	sharedVK struct {
+		once sync.Once
+		url  string
+		err  error
+	}
+)
+
 func newStack(t *testing.T) *stack {
 	t.Helper()
 	if testing.Short() {
@@ -494,40 +515,50 @@ func newStack(t *testing.T) *stack {
 	}
 	ctx := context.Background()
 
-	mc, err := tcmongo.Run(ctx, "mongo:8")
-	if err != nil {
-		t.Fatal(err)
+	sharedMongo.once.Do(func() {
+		mc, err := tcmongo.Run(ctx, "mongo:8")
+		if err != nil {
+			sharedMongo.err = err
+			return
+		}
+		sharedMongo.url, sharedMongo.err = mc.ConnectionString(ctx)
+	})
+	if sharedMongo.err != nil {
+		t.Fatal(sharedMongo.err)
 	}
-	t.Cleanup(func() { _ = mc.Terminate(ctx) })
-	murl, err := mc.ConnectionString(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Migrate(ctx, murl, "enrichment", migrations.FS, "."); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	mclient, err := db.Connect(ctx, murl)
+	mclient, err := db.Connect(ctx, sharedMongo.url)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = mclient.Disconnect(context.Background()) })
+	if err := mclient.Database("enrichment").Drop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrate(ctx, sharedMongo.url, "enrichment", migrations.FS, "."); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
 	mdb := mclient.Database("enrichment")
 	st := store.New(mdb)
 
-	vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine")
-	if err != nil {
-		t.Fatal(err)
+	sharedVK.once.Do(func() {
+		vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine")
+		if err != nil {
+			sharedVK.err = err
+			return
+		}
+		sharedVK.url, sharedVK.err = vk.ConnectionString(ctx)
+	})
+	if sharedVK.err != nil {
+		t.Fatal(sharedVK.err)
 	}
-	t.Cleanup(func() { _ = vk.Terminate(ctx) })
-	vurl, err := vk.ConnectionString(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rdb, err := valkeykit.Connect(ctx, vurl)
+	rdb, err := valkeykit.Connect(ctx, sharedVK.url)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = rdb.Close() })
+	if err := rdb.FlushAll(ctx).Err(); err != nil {
+		t.Fatal(err)
+	}
 
 	games, err := igdb.NewStub()
 	if err != nil {
