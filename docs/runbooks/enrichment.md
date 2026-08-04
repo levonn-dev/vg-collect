@@ -104,12 +104,12 @@ on `secret-store`, `enrichment-mongo`, `enrichment-valkey` and `auth`;
 `services/enrichment/Dockerfile` with only `libs/go` and
 `services/enrichment` in context, so edits elsewhere do not roll it.
 
-| Where | What |
-|---|---|
-| Service | localhost:8084 -> pod 8080 (Tilt port-forward) |
-| Mongo | localhost:27018 -> 27017 |
-| Valkey | no port-forward (TLS-only, in-cluster callers) |
-| Gateway | not published; call 8084 directly with a JWT |
+| Where       | What                                                                                                |
+| ----------- | --------------------------------------------------------------------------------------------------- |
+| Service     | localhost:8084 -> pod 8080 (Tilt port-forward)                                                      |
+| Mongo       | localhost:27018 -> 27017                                                                            |
+| Valkey      | no port-forward (TLS-only, in-cluster callers)                                                      |
+| Gateway     | not published; call 8084 directly with a JWT                                                        |
 | Bruno flows | `bruno/enrichment/` (search, resolve, prices, history, recommendations, admin refresh, admin remap) |
 
 Task targets: root `task lint`, `task build`, `task test:short`,
@@ -149,26 +149,26 @@ and wired by `deploy/charts/enrichment/templates/deployment.yaml`.
 Secret material flows .env -> Tilt's `vg-fake` ClusterSecretStore ->
 ExternalSecret `enrichment-secrets` (refreshInterval 1m) -> pod env.
 
-| Env var | Value / source |
-|---|---|
-| `HTTP_ADDR` | code default `:8080` (chart does not set it) |
-| `MONGO_URL` | chart-composed: `mongodb://enrichment-mongo:27017/enrichment?tls=true&tlsCAFile=/etc/vg/mongo-ca/ca.crt&authSource=admin` |
-| `MONGO_DB` | chart `mongo.database` = `enrichment` |
-| `MONGO_USERNAME` | chart `mongo.username` = `enrichment` |
-| `MONGO_PASSWORD` | secret key `enrichment/mongo-password` (.env `MONGO_ENRICHMENT_PASSWORD`) |
-| `VALKEY_URL` | chart `env.valkeyUrl` = `rediss://enrichment-valkey:6379/0` |
-| `VALKEY_CA_FILE` | `/etc/vg/valkey-ca/ca.crt` when `valkey.enabled`; config refuses a `rediss://` URL without it |
-| `JWKS_URL` | `http://auth:8080/.well-known/jwks.json` |
-| `JWT_ISSUER` / `JWT_AUDIENCE` | `vgkeep-auth` / `vgkeep` |
-| `INTERNAL_REFRESH_SECRETS` | CSV composed from secret keys `enrichment/internal-refresh-token` (+ `-previous` when `refresh.previousTokenEnabled`); .env `ENRICHMENT_INTERNAL_REFRESH_TOKEN` (+ `_PREVIOUS`) |
-| `IGDB_MODE` | `stub` (default) or `real`; real requires `IGDB_CLIENT_ID` + `IGDB_CLIENT_SECRET` from secret keys |
-| `PRICECHARTING_MODE` | `stub` or `real`; real requires `PRICECHARTING_API_KEY` |
-| `FX_MODE` | chart default `real` (frankfurter.dev is credential-less); code default `stub` |
-| `SEARCH_CACHE_TTL` | `24h` (search + platform catalog cache) |
-| `PRODUCT_CACHE_TTL` | `5m` |
-| `IGDB_REFRESH_AFTER` | `720h` (IGDB projection and platform-catalog staleness horizon) |
-| `SERVICE_VERSION` | image tag, stamped on telemetry as service.version |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otel-agent.vg-platform.svc.cluster.local:4317`; empty string disables export (JSON logs to stdout only) |
+| Env var                       | Value / source                                                                                                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HTTP_ADDR`                   | code default `:8080` (chart does not set it)                                                                                                                                    |
+| `MONGO_URL`                   | chart-composed: `mongodb://enrichment-mongo:27017/enrichment?tls=true&tlsCAFile=/etc/vg/mongo-ca/ca.crt&authSource=admin`                                                       |
+| `MONGO_DB`                    | chart `mongo.database` = `enrichment`                                                                                                                                           |
+| `MONGO_USERNAME`              | chart `mongo.username` = `enrichment`                                                                                                                                           |
+| `MONGO_PASSWORD`              | secret key `enrichment/mongo-password` (.env `MONGO_ENRICHMENT_PASSWORD`)                                                                                                       |
+| `VALKEY_URL`                  | chart `env.valkeyUrl` = `rediss://enrichment-valkey:6379/0`                                                                                                                     |
+| `VALKEY_CA_FILE`              | `/etc/vg/valkey-ca/ca.crt` when `valkey.enabled`; config refuses a `rediss://` URL without it                                                                                   |
+| `JWKS_URL`                    | `http://auth:8080/.well-known/jwks.json`                                                                                                                                        |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | `vgkeep-auth` / `vgkeep`                                                                                                                                                        |
+| `INTERNAL_REFRESH_SECRETS`    | CSV composed from secret keys `enrichment/internal-refresh-token` (+ `-previous` when `refresh.previousTokenEnabled`); .env `ENRICHMENT_INTERNAL_REFRESH_TOKEN` (+ `_PREVIOUS`) |
+| `IGDB_MODE`                   | `stub` (default) or `real`; real requires `IGDB_CLIENT_ID` + `IGDB_CLIENT_SECRET` from secret keys                                                                              |
+| `PRICECHARTING_MODE`          | `stub` or `real`; real requires `PRICECHARTING_API_KEY`                                                                                                                         |
+| `FX_MODE`                     | chart default `real` (frankfurter.dev is credential-less); code default `stub`                                                                                                  |
+| `SEARCH_CACHE_TTL`            | `24h` (search + platform catalog cache)                                                                                                                                         |
+| `PRODUCT_CACHE_TTL`           | `5m`                                                                                                                                                                            |
+| `IGDB_REFRESH_AFTER`          | `720h` (IGDB projection and platform-catalog staleness horizon)                                                                                                                 |
+| `SERVICE_VERSION`             | image tag, stamped on telemetry as service.version                                                                                                                              |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otel-agent.vg-platform.svc.cluster.local:4317`; empty string disables export (JSON logs to stdout only)                                                                 |
 
 Absent optional pieces: stub providers serve embedded fixtures, so a
 credential-less checkout runs the whole feature set deterministically.
@@ -219,13 +219,13 @@ Pool metrics: the valkeykit client registers the shared pool
 instruments, scoped to this service by the `service_name` resource
 attribute:
 
-| OTel name | Prometheus name | Answers |
-|---|---|---|
-| `vg.valkeykit.pool.hits` | `vg_valkeykit_pool_hits_total` | acquires served by a free connection |
-| `vg.valkeykit.pool.misses` | `vg_valkeykit_pool_misses_total` | acquires that dialed a new connection |
-| `vg.valkeykit.pool.timeouts` | `vg_valkeykit_pool_timeouts_total` | callers that gave up waiting (hard saturation) |
-| `vg.valkeykit.pool.connections` | `vg_valkeykit_pool_connections` | open connections |
-| `vg.valkeykit.pool.connections.idle` | `vg_valkeykit_pool_connections_idle` | idle headroom |
+| OTel name                            | Prometheus name                      | Answers                                        |
+| ------------------------------------ | ------------------------------------ | ---------------------------------------------- |
+| `vg.valkeykit.pool.hits`             | `vg_valkeykit_pool_hits_total`       | acquires served by a free connection           |
+| `vg.valkeykit.pool.misses`           | `vg_valkeykit_pool_misses_total`     | acquires that dialed a new connection          |
+| `vg.valkeykit.pool.timeouts`         | `vg_valkeykit_pool_timeouts_total`   | callers that gave up waiting (hard saturation) |
+| `vg.valkeykit.pool.connections`      | `vg_valkeykit_pool_connections`      | open connections                               |
+| `vg.valkeykit.pool.connections.idle` | `vg_valkeykit_pool_connections_idle` | idle headroom                                  |
 
 There are no `vg.pgkit.pool.*` series for this service: enrichment has
 no Postgres. The Mongo driver exposes no app-side pool gauges here;
@@ -244,26 +244,26 @@ and the Twitch token endpoint.
 
 Emitted today (Prometheus-side names):
 
-| Metric | Source | Labels | Answers |
-|---|---|---|---|
-| `http_server_request_duration_seconds_{count,sum,bucket}` | otelhttp middleware | `http_route`, `http_response_status_code` (+ `service_name="enrichment"` resource attr) | RED for every route |
-| `go_goroutine_count`, `go_memory_used_bytes` | otel runtime instrumentation | `service_name` | runtime health |
-| `vg_valkeykit_pool_*` (table above) | valkeykit | none | client pool health |
-| `mongodb_up`, `mongodb_ss_opcounters`, `mongodb_ss_connections`, `mongodb_ss_mem_resident` | mongo exporter sidecar | `service="enrichment-mongo"` | server-side Mongo health |
-| `redis_memory_used_bytes`, `redis_keyspace_hits_total`, `redis_keyspace_misses_total`, `redis_evicted_keys_total`, `redis_connected_clients` | redis exporter sidecar | `service="enrichment-valkey"` | server-side cache health |
+| Metric                                                                                                                                       | Source                       | Labels                                                                                  | Answers                  |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------- | ------------------------ |
+| `http_server_request_duration_seconds_{count,sum,bucket}`                                                                                    | otelhttp middleware          | `http_route`, `http_response_status_code` (+ `service_name="enrichment"` resource attr) | RED for every route      |
+| `go_goroutine_count`, `go_memory_used_bytes`                                                                                                 | otel runtime instrumentation | `service_name`                                                                          | runtime health           |
+| `vg_valkeykit_pool_*` (table above)                                                                                                          | valkeykit                    | none                                                                                    | client pool health       |
+| `mongodb_up`, `mongodb_ss_opcounters`, `mongodb_ss_connections`, `mongodb_ss_mem_resident`                                                   | mongo exporter sidecar       | `service="enrichment-mongo"`                                                            | server-side Mongo health |
+| `redis_memory_used_bytes`, `redis_keyspace_hits_total`, `redis_keyspace_misses_total`, `redis_evicted_keys_total`, `redis_connected_clients` | redis exporter sidecar       | `service="enrichment-valkey"`                                                           | server-side cache health |
 
 Domain instruments, meter
 `github.com/levonn-dev/vgkeep/services/enrichment`, held as
 `Handlers` fields with best-effort registration (the bff
 `vg.bff.cache.fail_open` pattern):
 
-| Metric | Instrument | Unit | Labels (bounded) | Prometheus name | Question it answers |
-|---|---|---|---|---|---|
-| `vg.enrichment.cache.fail_open` | Int64Counter | `{event}` | `op`: search_get, search_decode, search_put, product_get, product_put, platforms_get, platforms_put, community_search, refresh_invalidate, rematch_invalidate, reprojection_invalidate, mapping_invalidate, promote_invalidate, delete_invalidate | `vg_enrichment_cache_fail_open_total` | is Valkey failing and which operation absorbs it |
-| `vg.enrichment.search.requests` | Int64Counter | `{request}` | `kind`: game, hardware, pc_listing; `source`: cache, provider, degraded | `vg_enrichment_search_requests_total` | search cache effectiveness per kind, and the user-visible degraded share (provider outage) |
-| `vg.enrichment.match.outcomes` | Int64Counter | `{attempt}` | `source`: resolve, rematch; `outcome`: matched, below_threshold, provider_down | `vg_enrichment_match_outcomes_total` | is the auto-matcher landing matches at its usual rate, or regressing into unmatched members |
-| `vg.enrichment.refresh.items` | Int64Counter | `{item}` | `step`: prices, rematch, reprojection, sweep; `outcome`: ok, failed, skipped, flagged | `vg_enrichment_refresh_items_total` | how much of the catalog the nightly walk processed and what share failed |
-| `vg.enrichment.refresh.walk.duration` | Float64Histogram | `s` | `step`: prices, rematch, reprojection, sweep | `vg_enrichment_refresh_walk_duration_seconds_{count,sum,bucket}` | did each walk step run today, and how close the walk is to its 30m budget |
+| Metric                                | Instrument       | Unit        | Labels (bounded)                                                                                                                                                                                                                                  | Prometheus name                                                  | Question it answers                                                                         |
+| ------------------------------------- | ---------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `vg.enrichment.cache.fail_open`       | Int64Counter     | `{event}`   | `op`: search_get, search_decode, search_put, product_get, product_put, platforms_get, platforms_put, community_search, refresh_invalidate, rematch_invalidate, reprojection_invalidate, mapping_invalidate, promote_invalidate, delete_invalidate | `vg_enrichment_cache_fail_open_total`                            | is Valkey failing and which operation absorbs it                                            |
+| `vg.enrichment.search.requests`       | Int64Counter     | `{request}` | `kind`: game, hardware, pc_listing; `source`: cache, provider, degraded                                                                                                                                                                           | `vg_enrichment_search_requests_total`                            | search cache effectiveness per kind, and the user-visible degraded share (provider outage)  |
+| `vg.enrichment.match.outcomes`        | Int64Counter     | `{attempt}` | `source`: resolve, rematch; `outcome`: matched, below_threshold, provider_down                                                                                                                                                                    | `vg_enrichment_match_outcomes_total`                             | is the auto-matcher landing matches at its usual rate, or regressing into unmatched members |
+| `vg.enrichment.refresh.items`         | Int64Counter     | `{item}`    | `step`: prices, rematch, reprojection, sweep; `outcome`: ok, failed, skipped, flagged                                                                                                                                                             | `vg_enrichment_refresh_items_total`                              | how much of the catalog the nightly walk processed and what share failed                    |
+| `vg.enrichment.refresh.walk.duration` | Float64Histogram | `s`         | `step`: prices, rematch, reprojection, sweep                                                                                                                                                                                                      | `vg_enrichment_refresh_walk_duration_seconds_{count,sum,bucket}` | did each walk step run today, and how close the walk is to its 30m budget                   |
 
 Emission sites, all in `internal/server/handlers.go`:
 
@@ -297,9 +297,9 @@ Emission sites, all in `internal/server/handlers.go`:
 
 Log additions (slog, JSON, trace ids attached): one new line.
 
-| Event | Level | Fields | Emission site |
-|---|---|---|---|
-| `refresh walk started` | INFO | `trigger` = admin or internal | `startRefresh`, immediately after winning the in-flight guard |
+| Event                  | Level | Fields                        | Emission site                                                 |
+| ---------------------- | ----- | ----------------------------- | ------------------------------------------------------------- |
+| `refresh walk started` | INFO  | `trigger` = admin or internal | `startRefresh`, immediately after winning the in-flight guard |
 
 It pairs with the existing per-step "finished" summaries: a started
 line without finished lines inside the 30m budget is the signature of

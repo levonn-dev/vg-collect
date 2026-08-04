@@ -36,17 +36,17 @@ to size anonymous traffic.
 
 ### Metrics
 
-| Prometheus name | Instrument | Unit | Attrs (bounded values) | Answers |
-|---|---|---|---|---|
-| `vg_frontend_locale_boot_total` | counter (`vg.frontend.locale.boot`) | (none) | `locale`; `source`: `stored`, `browser`, `fallback`; `browser_language` (primary subtag only, e.g. `en`) | which locale activates at boot and how it was resolved; a rising `source="fallback"` share means the stored-choice and browser-language rungs are missing more often than they should. Summed without any label filter, this counter is also the boot-count denominator - see below |
-| `vg_frontend_locale_catalog_failures_total` | counter (`vg.frontend.locale.catalog_failures`) | (none) | `stage`: `boot`, `switch`; `locale` | how often a locale catalog chunk fails to fetch, and whether it happened at boot or a mid-session switch |
-| `vg_frontend_locale_switches_total` | counter (`vg.frontend.locale.switches`) | (none) | `from`, `to` | mid-session locale changes and which locales they land on |
-| `vg_frontend_prose_fallback_served_total` | counter (`vg.frontend.prose.fallback_served`) | (none) | `page` | which informational pages serve English prose because the active locale has no contributed translation for it |
-| `vg_frontend_errors_total` | counter (`vg.frontend.errors`) | (none) | `kind`: `error`, `unhandledrejection`, `boundary`; `version` (present only when the image was built with `VITE_BUILD_VERSION` set) | uncaught errors and unhandled promise rejections reaching `window`, plus render crashes an error boundary caught, by kind; sliceable by build version to catch a stale-cache deploy spike |
-| `vg_frontend_api_failures_total` | counter (`vg.frontend.api_failures`) | (none) | none | fetch calls that rejected at the network level (DNS, connection refused, CORS), as opposed to completing with an HTTP error status - see below |
-| `vg_frontend_web_vitals_lcp_milliseconds_{count,sum,bucket}` | histogram (`vg.frontend.web_vitals.lcp`) | ms | `rating`: `good`, `needs-improvement`, `poor`; `version` (same condition as above) | Largest Contentful Paint, final value per page load - loading performance |
-| `vg_frontend_web_vitals_inp_milliseconds_{count,sum,bucket}` | histogram (`vg.frontend.web_vitals.inp`) | ms | same as LCP | Interaction to Next Paint, final value per page load - responsiveness |
-| `vg_frontend_web_vitals_cls_{count,sum,bucket}` | histogram (`vg.frontend.web_vitals.cls`) | (unitless score) | same as LCP | Cumulative Layout Shift, final value per page load - visual stability |
+| Prometheus name                                              | Instrument                                      | Unit             | Attrs (bounded values)                                                                                                             | Answers                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------ | ----------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vg_frontend_locale_boot_total`                              | counter (`vg.frontend.locale.boot`)             | (none)           | `locale`; `source`: `stored`, `browser`, `fallback`; `browser_language` (primary subtag only, e.g. `en`)                           | which locale activates at boot and how it was resolved; a rising `source="fallback"` share means the stored-choice and browser-language rungs are missing more often than they should. Summed without any label filter, this counter is also the boot-count denominator - see below |
+| `vg_frontend_locale_catalog_failures_total`                  | counter (`vg.frontend.locale.catalog_failures`) | (none)           | `stage`: `boot`, `switch`; `locale`                                                                                                | how often a locale catalog chunk fails to fetch, and whether it happened at boot or a mid-session switch                                                                                                                                                                            |
+| `vg_frontend_locale_switches_total`                          | counter (`vg.frontend.locale.switches`)         | (none)           | `from`, `to`                                                                                                                       | mid-session locale changes and which locales they land on                                                                                                                                                                                                                           |
+| `vg_frontend_prose_fallback_served_total`                    | counter (`vg.frontend.prose.fallback_served`)   | (none)           | `page`                                                                                                                             | which informational pages serve English prose because the active locale has no contributed translation for it                                                                                                                                                                       |
+| `vg_frontend_errors_total`                                   | counter (`vg.frontend.errors`)                  | (none)           | `kind`: `error`, `unhandledrejection`, `boundary`; `version` (present only when the image was built with `VITE_BUILD_VERSION` set) | uncaught errors and unhandled promise rejections reaching `window`, plus render crashes an error boundary caught, by kind; sliceable by build version to catch a stale-cache deploy spike                                                                                           |
+| `vg_frontend_api_failures_total`                             | counter (`vg.frontend.api_failures`)            | (none)           | none                                                                                                                               | fetch calls that rejected at the network level (DNS, connection refused, CORS), as opposed to completing with an HTTP error status - see below                                                                                                                                      |
+| `vg_frontend_web_vitals_lcp_milliseconds_{count,sum,bucket}` | histogram (`vg.frontend.web_vitals.lcp`)        | ms               | `rating`: `good`, `needs-improvement`, `poor`; `version` (same condition as above)                                                 | Largest Contentful Paint, final value per page load - loading performance                                                                                                                                                                                                           |
+| `vg_frontend_web_vitals_inp_milliseconds_{count,sum,bucket}` | histogram (`vg.frontend.web_vitals.inp`)        | ms               | same as LCP                                                                                                                        | Interaction to Next Paint, final value per page load - responsiveness                                                                                                                                                                                                               |
+| `vg_frontend_web_vitals_cls_{count,sum,bucket}`              | histogram (`vg.frontend.web_vitals.cls`)        | (unitless score) | same as LCP                                                                                                                        | Cumulative Layout Shift, final value per page load - visual stability                                                                                                                                                                                                               |
 
 The `_milliseconds_` infix on the two ms-unit histograms is the
 OTel-to-Prometheus translator expanding the `ms` unit into a name
@@ -120,11 +120,11 @@ not just wherever a latency-tuned SDK default happens to fall.
 Official thresholds - the same bounds the buckets straddle and the
 dashboard's stat panels color by:
 
-| Vital | Good | Poor |
-|---|---|---|
-| LCP | under 2500 ms | over 4000 ms |
-| INP | under 200 ms | over 500 ms |
-| CLS | under 0.1 | over 0.25 |
+| Vital | Good          | Poor         |
+| ----- | ------------- | ------------ |
+| LCP   | under 2500 ms | over 4000 ms |
+| INP   | under 200 ms  | over 500 ms  |
+| CLS   | under 0.1     | over 0.25    |
 
 The `version` attribute (present only when the image was built with
 `VITE_BUILD_VERSION` set - `services/bff/Dockerfile` declares the
@@ -165,23 +165,23 @@ datastores, then pods and logs) does not apply: there is no HTTP RED,
 no datastore, and no pod, so the panels run metric family to metric
 family.
 
-| Panel | Type | Reads |
-|---|---|---|
-| Locale boots by source | timeseries | `sum by (source) (rate(vg_frontend_locale_boot_total[5m]))` |
-| Browser languages hitting fallback, 24h | table | `topk(10, sum by (browser_language) (increase(vg_frontend_locale_boot_total{source="fallback"}[24h])))` |
-| Catalog failures by stage | timeseries | `sum by (stage) (increase(vg_frontend_locale_catalog_failures_total[5m]))` |
-| Catalog failures, 24h | stat, red on nonzero | `sum(increase(vg_frontend_locale_catalog_failures_total[24h]))` |
-| Locale switches by target | timeseries | `sum by (to) (increase(vg_frontend_locale_switches_total[5m]))` |
-| Prose fallbacks by page, 24h | barchart | `sum by (page) (increase(vg_frontend_prose_fallback_served_total[24h]))` |
-| Uncaught errors | timeseries | `sum by (kind) (rate(vg_frontend_errors_total[5m]))` |
-| Uncaught errors, 24h | stat, red on nonzero | `sum(increase(vg_frontend_errors_total[24h]))` |
-| API network failures | timeseries | `rate(vg_frontend_api_failures_total[5m])` |
-| LCP p75, 1h | stat, colored at 2500/4000 ms | `histogram_quantile(0.75, sum by (le) (rate(vg_frontend_web_vitals_lcp_milliseconds_bucket[1h])))` |
-| INP p75, 1h | stat, colored at 200/500 ms | `histogram_quantile(0.75, sum by (le) (rate(vg_frontend_web_vitals_inp_milliseconds_bucket[1h])))` |
-| CLS p75, 1h | stat, colored at 0.1/0.25 | `histogram_quantile(0.75, sum by (le) (rate(vg_frontend_web_vitals_cls_bucket[1h])))` |
-| LCP p75 trend | timeseries | same query as the LCP stat |
-| INP p75 trend | timeseries | same query as the INP stat |
-| CLS p75 trend | timeseries | same query as the CLS stat |
+| Panel                                   | Type                          | Reads                                                                                                   |
+| --------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Locale boots by source                  | timeseries                    | `sum by (source) (rate(vg_frontend_locale_boot_total[5m]))`                                             |
+| Browser languages hitting fallback, 24h | table                         | `topk(10, sum by (browser_language) (increase(vg_frontend_locale_boot_total{source="fallback"}[24h])))` |
+| Catalog failures by stage               | timeseries                    | `sum by (stage) (increase(vg_frontend_locale_catalog_failures_total[5m]))`                              |
+| Catalog failures, 24h                   | stat, red on nonzero          | `sum(increase(vg_frontend_locale_catalog_failures_total[24h]))`                                         |
+| Locale switches by target               | timeseries                    | `sum by (to) (increase(vg_frontend_locale_switches_total[5m]))`                                         |
+| Prose fallbacks by page, 24h            | barchart                      | `sum by (page) (increase(vg_frontend_prose_fallback_served_total[24h]))`                                |
+| Uncaught errors                         | timeseries                    | `sum by (kind) (rate(vg_frontend_errors_total[5m]))`                                                    |
+| Uncaught errors, 24h                    | stat, red on nonzero          | `sum(increase(vg_frontend_errors_total[24h]))`                                                          |
+| API network failures                    | timeseries                    | `rate(vg_frontend_api_failures_total[5m])`                                                              |
+| LCP p75, 1h                             | stat, colored at 2500/4000 ms | `histogram_quantile(0.75, sum by (le) (rate(vg_frontend_web_vitals_lcp_milliseconds_bucket[1h])))`      |
+| INP p75, 1h                             | stat, colored at 200/500 ms   | `histogram_quantile(0.75, sum by (le) (rate(vg_frontend_web_vitals_inp_milliseconds_bucket[1h])))`      |
+| CLS p75, 1h                             | stat, colored at 0.1/0.25     | `histogram_quantile(0.75, sum by (le) (rate(vg_frontend_web_vitals_cls_bucket[1h])))`                   |
+| LCP p75 trend                           | timeseries                    | same query as the LCP stat                                                                              |
+| INP p75 trend                           | timeseries                    | same query as the INP stat                                                                              |
+| CLS p75 trend                           | timeseries                    | same query as the CLS stat                                                                              |
 
 The three vitals land as six panels rather than three or one combined
 panel: LCP and INP share a unit (ms) but differ by an order of

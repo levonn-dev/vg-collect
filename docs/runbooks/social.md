@@ -93,14 +93,14 @@ under `libs/go/` or `services/social/`, depends on `secret-store`,
 route until auth serves its JWKS, and `upstream_error` 502s on writes
 until collection and user are both ready.
 
-| Surface | Where |
-|---|---|
-| Service in-cluster | `social:8080` (vgkeep namespace) |
-| Direct dev port | `localhost:8086` (Tilt port-forward; the 8090 gateway fronts only the bff) |
-| Postgres | `localhost:5436` -> `social-pg:5432` |
-| Liveness | `GET /healthz`, static ok, no auth |
-| Readiness | `GET /readyz`, pings the pg pool, no auth; JWKS is deliberately not checked |
-| Bruno | none yet; mint a bearer token with `auth/dev-token` and call `localhost:8086` directly |
+| Surface            | Where                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| Service in-cluster | `social:8080` (vgkeep namespace)                                                       |
+| Direct dev port    | `localhost:8086` (Tilt port-forward; the 8090 gateway fronts only the bff)             |
+| Postgres           | `localhost:5436` -> `social-pg:5432`                                                   |
+| Liveness           | `GET /healthz`, static ok, no auth                                                     |
+| Readiness          | `GET /readyz`, pings the pg pool, no auth; JWKS is deliberately not checked            |
+| Bruno              | none yet; mint a bearer token with `auth/dev-token` and call `localhost:8086` directly |
 
 Task targets that touch this module:
 
@@ -125,21 +125,21 @@ All config is environment variables parsed at startup
 (`internal/config`); a missing required variable is a fatal error
 before the listener opens.
 
-| Variable | Required | Default | Source | Notes |
-|---|---|---|---|---|
-| `HTTP_ADDR` | no | `:8080` | binary default | |
-| `DATABASE_URL` | yes | none | composed in `deploy/charts/social/templates/deployment.yaml` from chart values plus `$(PG_PASSWORD)` | carries `sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt` |
-| `PG_PASSWORD` | chart-internal | none | secret `social-pg-credentials`, key `password` | filled by the ExternalSecret; only ever referenced inside `DATABASE_URL` |
-| `JWKS_URL` | yes | none | chart value `env.jwksUrl`, default `http://auth:8080/.well-known/jwks.json` | keys fetched lazily and cached by kid; unknown-kid refetch at most every 30s |
-| `JWT_ISSUER` | no | `vgkeep-auth` | chart value `env.jwtIssuer` | |
-| `JWT_AUDIENCE` | no | `vgkeep` | chart value `env.jwtAudience` | |
-| `COLLECTION_SERVICE_URL` | yes | none | chart value `env.collectionServiceUrl`, default `http://collection:8080` | shelf resolve for likes, comments, and publish events |
-| `USER_SERVICE_URL` | yes | none | chart value `env.userServiceUrl`, default `http://user:8080` | profile cards for follow and like visibility checks |
-| `SOCIAL_CAP_COMMENTS_24H` | no | `50` | chart value `env.capComments24h` | rolling 24h cap; tombstones still count |
-| `SOCIAL_CAP_FOLLOWS_24H` | no | `100` | chart value `env.capFollows24h` | rolling 24h cap |
-| `SOCIAL_CAP_LIKES_24H` | no | `200` | chart value `env.capLikes24h` | rolling 24h cap |
-| `SERVICE_VERSION` | no | `dev` | chart sets it to the image tag | stamped onto telemetry as `service.version` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | no | unset | chart value `otel.exporterEndpoint`, default `http://otel-agent.vg-platform.svc.cluster.local:4317` | empty disables all export: logs stay on stdout as JSON, every metric and trace in this document goes dark |
+| Variable                      | Required       | Default       | Source                                                                                               | Notes                                                                                                     |
+| ----------------------------- | -------------- | ------------- | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `HTTP_ADDR`                   | no             | `:8080`       | binary default                                                                                       |                                                                                                           |
+| `DATABASE_URL`                | yes            | none          | composed in `deploy/charts/social/templates/deployment.yaml` from chart values plus `$(PG_PASSWORD)` | carries `sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt`                                            |
+| `PG_PASSWORD`                 | chart-internal | none          | secret `social-pg-credentials`, key `password`                                                       | filled by the ExternalSecret; only ever referenced inside `DATABASE_URL`                                  |
+| `JWKS_URL`                    | yes            | none          | chart value `env.jwksUrl`, default `http://auth:8080/.well-known/jwks.json`                          | keys fetched lazily and cached by kid; unknown-kid refetch at most every 30s                              |
+| `JWT_ISSUER`                  | no             | `vgkeep-auth` | chart value `env.jwtIssuer`                                                                          |                                                                                                           |
+| `JWT_AUDIENCE`                | no             | `vgkeep`      | chart value `env.jwtAudience`                                                                        |                                                                                                           |
+| `COLLECTION_SERVICE_URL`      | yes            | none          | chart value `env.collectionServiceUrl`, default `http://collection:8080`                             | shelf resolve for likes, comments, and publish events                                                     |
+| `USER_SERVICE_URL`            | yes            | none          | chart value `env.userServiceUrl`, default `http://user:8080`                                         | profile cards for follow and like visibility checks                                                       |
+| `SOCIAL_CAP_COMMENTS_24H`     | no             | `50`          | chart value `env.capComments24h`                                                                     | rolling 24h cap; tombstones still count                                                                   |
+| `SOCIAL_CAP_FOLLOWS_24H`      | no             | `100`         | chart value `env.capFollows24h`                                                                      | rolling 24h cap                                                                                           |
+| `SOCIAL_CAP_LIKES_24H`        | no             | `200`         | chart value `env.capLikes24h`                                                                        | rolling 24h cap                                                                                           |
+| `SERVICE_VERSION`             | no             | `dev`         | chart sets it to the image tag                                                                       | stamped onto telemetry as `service.version`                                                               |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | no             | unset         | chart value `otel.exporterEndpoint`, default `http://otel-agent.vg-platform.svc.cluster.local:4317`  | empty disables all export: logs stay on stdout as JSON, every metric and trace in this document goes dark |
 
 Secret chain in dev: `.env` `PG_SOCIAL_PASSWORD` (listed in
 `.env.example`) -> Tiltfile publishes it into ClusterSecretStore
@@ -192,36 +192,36 @@ scrape endpoint. All app series: `service_name="social"`.
 
 Shared plumbing, already emitted today:
 
-| Metric (Prometheus name) | Instrument | Unit | Labels | Answers |
-|---|---|---|---|---|
-| `http_server_request_duration_seconds_{count,sum,bucket}` | histogram (otelhttp) | s | `http_route` (matched mux pattern including the method, e.g. `PUT /follows/{userId}`, `GET /feed`), `http_response_status_code` | RED for every route: rate, errors, duration; exemplars link buckets to traces |
-| `go_goroutine_count`, `go_memory_used_bytes` (among the runtime set) | gauge (otel runtime) | short / bytes | none | leak or runaway-allocation checks |
+| Metric (Prometheus name)                                             | Instrument           | Unit          | Labels                                                                                                                          | Answers                                                                       |
+| -------------------------------------------------------------------- | -------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `http_server_request_duration_seconds_{count,sum,bucket}`            | histogram (otelhttp) | s             | `http_route` (matched mux pattern including the method, e.g. `PUT /follows/{userId}`, `GET /feed`), `http_response_status_code` | RED for every route: rate, errors, duration; exemplars link buckets to traces |
+| `go_goroutine_count`, `go_memory_used_bytes` (among the runtime set) | gauge (otel runtime) | short / bytes | none                                                                                                                            | leak or runaway-allocation checks                                             |
 
 PG pool, emitted since pgkit gained pool instrumentation (no labels;
 `service_name` scopes them):
 
-| Prometheus name | Instrument | Unit | Answers |
-|---|---|---|---|
-| `vg_pgkit_pool_connections` | observable gauge | {connection} | connections held (constructing + acquired + idle) |
-| `vg_pgkit_pool_connections_idle` | observable gauge | {connection} | idle headroom right now |
-| `vg_pgkit_pool_connections_max` | observable gauge | {connection} | configured ceiling; saturation denominator |
-| `vg_pgkit_pool_acquires_total` | observable counter | {acquire} | pool demand rate; mean-wait denominator |
-| `vg_pgkit_pool_empty_acquires_total` | observable counter | {acquire} | acquires that had to wait on a drained pool |
-| `vg_pgkit_pool_acquire_wait_seconds_total` | observable counter | s | total wait; divided by acquires = mean acquire latency |
+| Prometheus name                            | Instrument         | Unit         | Answers                                                |
+| ------------------------------------------ | ------------------ | ------------ | ------------------------------------------------------ |
+| `vg_pgkit_pool_connections`                | observable gauge   | {connection} | connections held (constructing + acquired + idle)      |
+| `vg_pgkit_pool_connections_idle`           | observable gauge   | {connection} | idle headroom right now                                |
+| `vg_pgkit_pool_connections_max`            | observable gauge   | {connection} | configured ceiling; saturation denominator             |
+| `vg_pgkit_pool_acquires_total`             | observable counter | {acquire}    | pool demand rate; mean-wait denominator                |
+| `vg_pgkit_pool_empty_acquires_total`       | observable counter | {acquire}    | acquires that had to wait on a drained pool            |
+| `vg_pgkit_pool_acquire_wait_seconds_total` | observable counter | s            | total wait; divided by acquires = mean acquire latency |
 
 Domain metrics, meter `github.com/levonn-dev/vgkeep/services/social`
 (this service has no Valkey, so no `vg_valkeykit_*` series exist for
 it):
 
-| Metric | Prometheus name | Instrument | Unit | Labels (bounded) | Answers |
-|---|---|---|---|---|---|
-| `vg.social.follows` | `vg_social_follows_total` | counter | {op} | `op` = `create` \| `delete` | follow/unfollow rate |
-| `vg.social.likes` | `vg_social_likes_total` | counter | {op} | `op` = `create` \| `delete` | like/unlike rate |
-| `vg.social.comments` | `vg_social_comments_total` | counter | {op} | `op` = `create` \| `self_delete` \| `owner_delete` | comment volume, and which path retracted each deletion (self vs shelf-owner removal) |
-| `vg.social.feed.reads` | `vg_social_feed_reads_total` | counter | {read} | `tab` = `following` \| `you` | which feed tab gets read |
-| `vg.social.caps.rejections` | `vg_social_caps_rejections_total` | counter | {rejection} | `kind` = `follows` \| `likes` \| `comments` | rate-cap pressure per surface; a sustained climb that is not an abuse pattern is the signal to revisit the cap values in config |
-| `vg.social.publish.events` | `vg_social_publish_events_total` | counter | {event} | `outcome` = `created` \| `refreshed` \| `throttled` | shelf-publish activity; see failure scenario 3 for reading this against the bff's fail-open counter |
-| `vg.social.purge.runs` | `vg_social_purge_runs_total` | counter | {run} | `outcome` = `ok` | account-deletion leg volume - this service's side of DeleteMe |
+| Metric                      | Prometheus name                   | Instrument | Unit        | Labels (bounded)                                    | Answers                                                                                                                         |
+| --------------------------- | --------------------------------- | ---------- | ----------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `vg.social.follows`         | `vg_social_follows_total`         | counter    | {op}        | `op` = `create` \| `delete`                         | follow/unfollow rate                                                                                                            |
+| `vg.social.likes`           | `vg_social_likes_total`           | counter    | {op}        | `op` = `create` \| `delete`                         | like/unlike rate                                                                                                                |
+| `vg.social.comments`        | `vg_social_comments_total`        | counter    | {op}        | `op` = `create` \| `self_delete` \| `owner_delete`  | comment volume, and which path retracted each deletion (self vs shelf-owner removal)                                            |
+| `vg.social.feed.reads`      | `vg_social_feed_reads_total`      | counter    | {read}      | `tab` = `following` \| `you`                        | which feed tab gets read                                                                                                        |
+| `vg.social.caps.rejections` | `vg_social_caps_rejections_total` | counter    | {rejection} | `kind` = `follows` \| `likes` \| `comments`         | rate-cap pressure per surface; a sustained climb that is not an abuse pattern is the signal to revisit the cap values in config |
+| `vg.social.publish.events`  | `vg_social_publish_events_total`  | counter    | {event}     | `outcome` = `created` \| `refreshed` \| `throttled` | shelf-publish activity; see failure scenario 3 for reading this against the bff's fail-open counter                             |
+| `vg.social.purge.runs`      | `vg_social_purge_runs_total`      | counter    | {run}       | `outcome` = `ok`                                    | account-deletion leg volume - this service's side of DeleteMe                                                                   |
 
 Emission sites: all seven counters are fields on `server.Handlers`,
 created in `server.New` (registration failure is logged and does not

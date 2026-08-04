@@ -123,10 +123,10 @@ task bootstrap:cluster:down  # remove the platform: helm uninstalls + the vg-pla
 
 What each tier preserves:
 
-| Command | Removes | Survives |
-|---|---|---|
-| `task down` | running Tilt resources | vgkeep namespace, datastore PVCs, issued TLS secrets, the platform |
-| `task nuke` | vgkeep namespace, its PVCs and TLS secrets | the platform (vg-platform), CRDs |
+| Command                       | Removes                                                   | Survives                                                                                                                                      |
+| ----------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task down`                   | running Tilt resources                                    | vgkeep namespace, datastore PVCs, issued TLS secrets, the platform                                                                            |
+| `task nuke`                   | vgkeep namespace, its PVCs and TLS secrets                | the platform (vg-platform), CRDs                                                                                                              |
 | `task bootstrap:cluster:down` | both platform helm releases and the vg-platform namespace | cert-manager and APISIX ingress CRDs (re-adopted by the next bootstrap), the hand-applied kps CRDs, the vgkeep namespace and everything in it |
 
 Reinstalling the platform mints a fresh dev CA, and cert-manager does
@@ -141,24 +141,24 @@ until their renewal window. For platform down/up cycles run
 All dev-tier Tilt port-forwards; in-cluster, every service listens on
 8080 and the gateway is the only published entrypoint.
 
-| Port | What |
-|---|---|
-| 8090 | APISIX gateway: the app's entrypoint (browser and Bruno `bff/`) |
-| 8083 | bff, direct (bypasses the gateway; for debugging) |
-| 8082 | auth, direct (Bruno `auth/` Bearer flows) |
-| 8081 | user, direct (Bruno `user/` Bearer flows) |
-| 8084 | enrichment, direct (Bruno `enrichment/` Bearer flows) |
-| 8085 | collection, direct (Bruno `collection/` Bearer flows) |
-| 8086 | social, direct (no Bruno flows yet; mint a bearer token with `auth/dev-token` and call it directly) |
-| 5173 | Vite dev server (manual `frontend-dev` resource; proxies `/api` to 8090) |
-| 3000 | Grafana (anonymous admin in dev) |
-| 9090 | Prometheus |
-| 16686 | Jaeger |
-| 5433 | user-pg (`psql -h localhost -p 5433 -U user user`) |
-| 5434 | auth-pg (`psql -h localhost -p 5434 -U auth auth`) |
-| 5435 | collection-pg (`psql -h localhost -p 5435 -U collection collection`) |
-| 5436 | social-pg (`psql -h localhost -p 5436 -U social social`) |
-| 27018 | enrichment-mongo |
+| Port  | What                                                                                                |
+| ----- | --------------------------------------------------------------------------------------------------- |
+| 8090  | APISIX gateway: the app's entrypoint (browser and Bruno `bff/`)                                     |
+| 8083  | bff, direct (bypasses the gateway; for debugging)                                                   |
+| 8082  | auth, direct (Bruno `auth/` Bearer flows)                                                           |
+| 8081  | user, direct (Bruno `user/` Bearer flows)                                                           |
+| 8084  | enrichment, direct (Bruno `enrichment/` Bearer flows)                                               |
+| 8085  | collection, direct (Bruno `collection/` Bearer flows)                                               |
+| 8086  | social, direct (no Bruno flows yet; mint a bearer token with `auth/dev-token` and call it directly) |
+| 5173  | Vite dev server (manual `frontend-dev` resource; proxies `/api` to 8090)                            |
+| 3000  | Grafana (anonymous admin in dev)                                                                    |
+| 9090  | Prometheus                                                                                          |
+| 16686 | Jaeger                                                                                              |
+| 5433  | user-pg (`psql -h localhost -p 5433 -U user user`)                                                  |
+| 5434  | auth-pg (`psql -h localhost -p 5434 -U auth auth`)                                                  |
+| 5435  | collection-pg (`psql -h localhost -p 5435 -U collection collection`)                                |
+| 5436  | social-pg (`psql -h localhost -p 5436 -U social social`)                                            |
+| 27018 | enrichment-mongo                                                                                    |
 
 The three Valkey instances have no port-forward: TLS-only listeners,
 in-cluster callers only (triage goes through `kubectl exec` and
@@ -176,20 +176,20 @@ cross-service RED dashboard: service-level rate, 5xx ratio, and p99
 sit on vg-overview, and per-route breakdowns sit on each service
 dashboard.
 
-| Dashboard | uid | Answers | Goes deeper |
-|---|---|---|---|
-| Overview | `vg-overview` | is the application healthy right now: the one pane across edge, services, and datastores; start here | this document, then the service runbook the failing panel names |
-| APISIX Edge | `vg-apisix-edge` | what the edge sees: gateway traffic, status codes, 429 rate limiting | [bff.md](bff.md#8-rate-limiting-at-the-gateway) |
-| Datastores | `vg-datastores` | server-side health of every Postgres, MongoDB, and Valkey instance | [Postgres saturation](#6-postgres-connections-above-80-percent-of-max), [Valkey pressure](#7-valkey-evicting-keys-or-memory-unusually-high), [enrichment.md](enrichment.md#2-mongo-down) |
-| Pod Details | `vg-pod-details` | per-pod CPU, memory, restarts | [Pod restart churn](#4-pod-restart-churn-or-oom-kill) |
-| Node Details | `vg-node-details` | node pressure and capacity | [Node pressure](#5-node-under-memory-disk-or-pid-pressure) |
-| Auth Service | `vg-auth` | logins, token refreshes, signing keys, provider hops, auth-pg | [auth.md](auth.md) |
-| Bff Service | `vg-bff` | sessions, composition caches, denylist fail-open, bff-valkey | [bff.md](bff.md) |
-| Collection Service | `vg-collection` | pricing composition, submissions queue, collection-pg and its cache | [collection.md](collection.md) |
-| Enrichment Service | `vg-enrichment` | search sources, auto-matching, the nightly walk, mongo and valkey | [enrichment.md](enrichment.md) |
-| Social Service | `vg-social` | follow/like/comment rates, feed reads, cap rejections, publish outcomes, social-pg | [social.md](social.md) |
-| User Service | `vg-user` | account upserts, currency seeds, deletions, user-pg | [user.md](user.md) |
-| Frontend Telemetry | `vg-frontend` | locale boots by source, browser languages hitting fallback, catalog fetch failures, mid-session locale switches, prose pages served in English, uncaught errors, network failures, and web-vitals health | [frontend.md](frontend.md) |
+| Dashboard          | uid               | Answers                                                                                                                                                                                                  | Goes deeper                                                                                                                                                                              |
+| ------------------ | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overview           | `vg-overview`     | is the application healthy right now: the one pane across edge, services, and datastores; start here                                                                                                     | this document, then the service runbook the failing panel names                                                                                                                          |
+| APISIX Edge        | `vg-apisix-edge`  | what the edge sees: gateway traffic, status codes, 429 rate limiting                                                                                                                                     | [bff.md](bff.md#8-rate-limiting-at-the-gateway)                                                                                                                                          |
+| Datastores         | `vg-datastores`   | server-side health of every Postgres, MongoDB, and Valkey instance                                                                                                                                       | [Postgres saturation](#6-postgres-connections-above-80-percent-of-max), [Valkey pressure](#7-valkey-evicting-keys-or-memory-unusually-high), [enrichment.md](enrichment.md#2-mongo-down) |
+| Pod Details        | `vg-pod-details`  | per-pod CPU, memory, restarts                                                                                                                                                                            | [Pod restart churn](#4-pod-restart-churn-or-oom-kill)                                                                                                                                    |
+| Node Details       | `vg-node-details` | node pressure and capacity                                                                                                                                                                               | [Node pressure](#5-node-under-memory-disk-or-pid-pressure)                                                                                                                               |
+| Auth Service       | `vg-auth`         | logins, token refreshes, signing keys, provider hops, auth-pg                                                                                                                                            | [auth.md](auth.md)                                                                                                                                                                       |
+| Bff Service        | `vg-bff`          | sessions, composition caches, denylist fail-open, bff-valkey                                                                                                                                             | [bff.md](bff.md)                                                                                                                                                                         |
+| Collection Service | `vg-collection`   | pricing composition, submissions queue, collection-pg and its cache                                                                                                                                      | [collection.md](collection.md)                                                                                                                                                           |
+| Enrichment Service | `vg-enrichment`   | search sources, auto-matching, the nightly walk, mongo and valkey                                                                                                                                        | [enrichment.md](enrichment.md)                                                                                                                                                           |
+| Social Service     | `vg-social`       | follow/like/comment rates, feed reads, cap rejections, publish outcomes, social-pg                                                                                                                       | [social.md](social.md)                                                                                                                                                                   |
+| User Service       | `vg-user`         | account upserts, currency seeds, deletions, user-pg                                                                                                                                                      | [user.md](user.md)                                                                                                                                                                       |
+| Frontend Telemetry | `vg-frontend`     | locale boots by source, browser languages hitting fallback, catalog fetch failures, mid-session locale switches, prose pages served in English, uncaught errors, network failures, and web-vitals health | [frontend.md](frontend.md)                                                                                                                                                               |
 
 The six service dashboards share one layout contract: HTTP RED per
 route first, then domain metrics, then datastores from that service's
@@ -299,17 +299,17 @@ ExternalSecret resources) is in
 Symptoms that cross service boundaries, and the order to read the
 runbooks in:
 
-| Symptom | Start | Then |
-|---|---|---|
-| Nobody can log in | [bff.md](bff.md#4-login-failures-at-the-edge) "Login and link outcomes" | [auth.md](auth.md#1-logins-failing-at-the-provider-hop) for the provider hop, [user.md](user.md#1-logins-fail-at-the-upsert-leg) for the upsert leg, [auth.md](auth.md#5-429s-on-login-at-the-edge) for edge rate limiting |
-| Every service answers 401 | [auth.md](auth.md#6-platform-wide-401s-jwks-trouble) | consumer views: [collection.md](collection.md#4-401-storm), [enrichment.md](enrichment.md#7-401s-across-every-route), [user.md](user.md#2-every-route-answers-401) |
-| Users logged out mid-session | [bff.md](bff.md#3-refresh-failure-storm-mass-logout) | [auth.md](auth.md#3-refresh-reuse-detections) if reuse detections climb too |
-| Revoked tokens still usable | [bff.md](bff.md#1-valkey-unreachable) | exposure is bounded: a revoked token outlives revocation by its remaining TTL, 5 minutes max |
-| Prices null, stale, or thin search results | [collection.md](collection.md#1-enrichment-unreachable) | [enrichment.md](enrichment.md#3-search-degraded), [enrichment.md](enrichment.md#4-nightly-walk-missing) |
-| Like/follower counts missing from shelf or profile pages, or feed and social writes failing | [social.md](social.md#1-social-down) | [social.md](social.md#2-collection-or-user-down) if only writes 502 |
-| One service erroring or slow | [5xx ratio](#1-service-5xx-ratio-above-5-percent), [p99 latency](#2-service-p99-latency-above-500ms) below | that service's runbook failure modes |
-| A datastore down or saturated | [enrichment.md](enrichment.md#2-mongo-down), [Postgres saturation](#6-postgres-connections-above-80-percent-of-max), [Valkey pressure](#7-valkey-evicting-keys-or-memory-unusually-high) | the owning service runbook for readiness behavior and blast radius |
-| Dashboards blank, service healthy | [Telemetry pipeline operations](#telemetry-pipeline-operations) above | the four-step walk there, ending at the backend pods |
+| Symptom                                                                                     | Start                                                                                                                                                                                    | Then                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Nobody can log in                                                                           | [bff.md](bff.md#4-login-failures-at-the-edge) "Login and link outcomes"                                                                                                                  | [auth.md](auth.md#1-logins-failing-at-the-provider-hop) for the provider hop, [user.md](user.md#1-logins-fail-at-the-upsert-leg) for the upsert leg, [auth.md](auth.md#5-429s-on-login-at-the-edge) for edge rate limiting |
+| Every service answers 401                                                                   | [auth.md](auth.md#6-platform-wide-401s-jwks-trouble)                                                                                                                                     | consumer views: [collection.md](collection.md#4-401-storm), [enrichment.md](enrichment.md#7-401s-across-every-route), [user.md](user.md#2-every-route-answers-401)                                                         |
+| Users logged out mid-session                                                                | [bff.md](bff.md#3-refresh-failure-storm-mass-logout)                                                                                                                                     | [auth.md](auth.md#3-refresh-reuse-detections) if reuse detections climb too                                                                                                                                                |
+| Revoked tokens still usable                                                                 | [bff.md](bff.md#1-valkey-unreachable)                                                                                                                                                    | exposure is bounded: a revoked token outlives revocation by its remaining TTL, 5 minutes max                                                                                                                               |
+| Prices null, stale, or thin search results                                                  | [collection.md](collection.md#1-enrichment-unreachable)                                                                                                                                  | [enrichment.md](enrichment.md#3-search-degraded), [enrichment.md](enrichment.md#4-nightly-walk-missing)                                                                                                                    |
+| Like/follower counts missing from shelf or profile pages, or feed and social writes failing | [social.md](social.md#1-social-down)                                                                                                                                                     | [social.md](social.md#2-collection-or-user-down) if only writes 502                                                                                                                                                        |
+| One service erroring or slow                                                                | [5xx ratio](#1-service-5xx-ratio-above-5-percent), [p99 latency](#2-service-p99-latency-above-500ms) below                                                                               | that service's runbook failure modes                                                                                                                                                                                       |
+| A datastore down or saturated                                                               | [enrichment.md](enrichment.md#2-mongo-down), [Postgres saturation](#6-postgres-connections-above-80-percent-of-max), [Valkey pressure](#7-valkey-evicting-keys-or-memory-unusually-high) | the owning service runbook for readiness behavior and blast radius                                                                                                                                                         |
+| Dashboards blank, service healthy                                                           | [Telemetry pipeline operations](#telemetry-pipeline-operations) above                                                                                                                    | the four-step walk there, ending at the backend pods                                                                                                                                                                       |
 
 The dependency chain behind most of these: browser -> gateway -> bff
 -> auth -> user for anything session-shaped, bff -> collection ->

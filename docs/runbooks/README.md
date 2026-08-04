@@ -55,29 +55,29 @@ so the number you read while triaging is the number that fired. When
 a rule fires, follow its `runbook_url` from the alert instance or
 from Alerting > Alert rules in Grafana (localhost:3000).
 
-| Rule | Severity | Triage |
-|---|---|---|
-| vg-service-5xx - Service 5xx ratio above 5 percent | page | [stack.md](stack.md#1-service-5xx-ratio-above-5-percent) |
-| vg-service-p99 - Service p99 latency above 500ms | warn | [stack.md](stack.md#2-service-p99-latency-above-500ms) |
-| vg-pod-churn - Pod restart churn or OOM kill | warn | [stack.md](stack.md#4-pod-restart-churn-or-oom-kill) |
-| vg-node-pressure - Node under memory, disk or PID pressure | page | [stack.md](stack.md#5-node-under-memory-disk-or-pid-pressure) |
-| vg-pg-saturation - Postgres connections above 80 percent of max | warn | [stack.md](stack.md#6-postgres-connections-above-80-percent-of-max) |
-| vg-valkey-pressure - Valkey evicting keys or memory unusually high | warn | [stack.md](stack.md#7-valkey-evicting-keys-or-memory-unusually-high) |
-| vg-mongo-down - MongoDB unreachable | page | [enrichment.md](enrichment.md#2-mongo-down) |
-| vg-collector-drops - OTel collector dropping telemetry | warn | [stack.md](stack.md#telemetry-pipeline-operations) |
-| vg-denylist-failopen - BFF denylist failing open | page | [bff.md](bff.md#1-valkey-unreachable) |
-| vg-loki-errors - Error log spike | warn | [stack.md](stack.md#3-error-log-spike) |
-| vg-auth-jwks-empty - Auth JWKS has no active signing keys | page | [auth.md](auth.md#6-platform-wide-401s-jwks-trouble) |
-| vg-auth-refresh-reuse - Auth refresh token reuse detected | warn | [auth.md](auth.md#3-refresh-reuse-detections) |
-| vg-auth-provider-errors - Auth login provider failing | warn | [auth.md](auth.md#1-logins-failing-at-the-provider-hop) |
-| vg-bff-refresh-failures - BFF session refresh failures spiking | warn | [bff.md](bff.md#3-refresh-failure-storm-mass-logout) |
-| vg-bff-valkey-pool-timeouts - BFF Valkey client pool exhausted | warn | [bff.md](bff.md#5-valkey-client-pool-exhaustion) |
-| vg-collection-pricing-degraded - Collection pricing composition degraded | warn | [collection.md](collection.md#1-enrichment-unreachable) |
-| vg-collection-submissions-backlog - Collection submission queue not draining | warn | [collection.md](collection.md#6-submission-queue-not-draining) |
-| vg-enrichment-refresh-stalled - Enrichment nightly price walk has not completed in 26h | warn | [enrichment.md](enrichment.md#4-nightly-walk-missing) |
-| vg-enrichment-search-degraded - Enrichment search serving degraded answers | warn | [enrichment.md](enrichment.md#3-search-degraded) |
-| vg-user-upsert-5xx - User profile upsert failing (logins blocked) | page | [user.md](user.md#1-logins-fail-at-the-upsert-leg) |
-| vg-social-down - social service down | page | [social.md](social.md#1-social-down) |
+| Rule                                                                                   | Severity | Triage                                                               |
+| -------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------- |
+| vg-service-5xx - Service 5xx ratio above 5 percent                                     | page     | [stack.md](stack.md#1-service-5xx-ratio-above-5-percent)             |
+| vg-service-p99 - Service p99 latency above 500ms                                       | warn     | [stack.md](stack.md#2-service-p99-latency-above-500ms)               |
+| vg-pod-churn - Pod restart churn or OOM kill                                           | warn     | [stack.md](stack.md#4-pod-restart-churn-or-oom-kill)                 |
+| vg-node-pressure - Node under memory, disk or PID pressure                             | page     | [stack.md](stack.md#5-node-under-memory-disk-or-pid-pressure)        |
+| vg-pg-saturation - Postgres connections above 80 percent of max                        | warn     | [stack.md](stack.md#6-postgres-connections-above-80-percent-of-max)  |
+| vg-valkey-pressure - Valkey evicting keys or memory unusually high                     | warn     | [stack.md](stack.md#7-valkey-evicting-keys-or-memory-unusually-high) |
+| vg-mongo-down - MongoDB unreachable                                                    | page     | [enrichment.md](enrichment.md#2-mongo-down)                          |
+| vg-collector-drops - OTel collector dropping telemetry                                 | warn     | [stack.md](stack.md#telemetry-pipeline-operations)                   |
+| vg-denylist-failopen - BFF denylist failing open                                       | page     | [bff.md](bff.md#1-valkey-unreachable)                                |
+| vg-loki-errors - Error log spike                                                       | warn     | [stack.md](stack.md#3-error-log-spike)                               |
+| vg-auth-jwks-empty - Auth JWKS has no active signing keys                              | page     | [auth.md](auth.md#6-platform-wide-401s-jwks-trouble)                 |
+| vg-auth-refresh-reuse - Auth refresh token reuse detected                              | warn     | [auth.md](auth.md#3-refresh-reuse-detections)                        |
+| vg-auth-provider-errors - Auth login provider failing                                  | warn     | [auth.md](auth.md#1-logins-failing-at-the-provider-hop)              |
+| vg-bff-refresh-failures - BFF session refresh failures spiking                         | warn     | [bff.md](bff.md#3-refresh-failure-storm-mass-logout)                 |
+| vg-bff-valkey-pool-timeouts - BFF Valkey client pool exhausted                         | warn     | [bff.md](bff.md#5-valkey-client-pool-exhaustion)                     |
+| vg-collection-pricing-degraded - Collection pricing composition degraded               | warn     | [collection.md](collection.md#1-enrichment-unreachable)              |
+| vg-collection-submissions-backlog - Collection submission queue not draining           | warn     | [collection.md](collection.md#6-submission-queue-not-draining)       |
+| vg-enrichment-refresh-stalled - Enrichment nightly price walk has not completed in 26h | warn     | [enrichment.md](enrichment.md#4-nightly-walk-missing)                |
+| vg-enrichment-search-degraded - Enrichment search serving degraded answers             | warn     | [enrichment.md](enrichment.md#3-search-degraded)                     |
+| vg-user-upsert-5xx - User profile upsert failing (logins blocked)                      | page     | [user.md](user.md#1-logins-fail-at-the-upsert-leg)                   |
+| vg-social-down - social service down                                                   | page     | [social.md](social.md#1-social-down)                                 |
 
 `page` marks user-visible breakage worth interrupting someone for;
 `warn` is everything else worth investigating on the next pass. The

@@ -94,14 +94,14 @@ sequenceDiagram
 
 Dev stack facts (Tilt resource `collection`, labels `services`):
 
-| Surface | Address |
-|---|---|
-| collection HTTP (direct) | localhost:8085 -> pod 8080 |
-| via gateway | none: APISIX (8090) publishes only the bff |
-| collection-pg | localhost:5435 -> pod 5432 |
-| collection-valkey | no port-forward (in-cluster only, TLS) |
-| health | GET /healthz (liveness, always 200 when the process is up) |
-| readiness | GET /readyz (Postgres ping via pgkit.Health; Valkey is deliberately NOT checked: the cache fails open per request) |
+| Surface                  | Address                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| collection HTTP (direct) | localhost:8085 -> pod 8080                                                                                         |
+| via gateway              | none: APISIX (8090) publishes only the bff                                                                         |
+| collection-pg            | localhost:5435 -> pod 5432                                                                                         |
+| collection-valkey        | no port-forward (in-cluster only, TLS)                                                                             |
+| health                   | GET /healthz (liveness, always 200 when the process is up)                                                         |
+| readiness                | GET /readyz (Postgres ping via pgkit.Health; Valkey is deliberately NOT checked: the cache fails open per request) |
 
 Both health endpoints sit outside JWT auth; everything else is inside
 it. Tilt rebuilds the image from `services/collection/Dockerfile` on
@@ -134,20 +134,20 @@ blocks the rollout while the old pod keeps serving.
 
 ## Configuration
 
-| Env var | Default | Source | Notes |
-|---|---|---|---|
-| HTTP_ADDR | :8080 | code default | not set by the chart |
-| DATABASE_URL | required | composed in deployment.yaml: user `collection`, db `collection`, host `collection-pg`, `sslmode=verify-full`, `sslrootcert=/etc/vg/pg-ca/ca.crt` | password expands from env `PG_PASSWORD` |
-| PG_PASSWORD | required | Secret `collection-pg-credentials` key `password`, filled by the ExternalSecret from ClusterSecretStore `vg-fake` key `collection/pg-password`; dev value comes from `.env` `PG_COLLECTION_PASSWORD` via the Tiltfile | refreshInterval 1m |
-| VALKEY_URL | required | chart `env.valkeyUrl` = rediss://collection-valkey:6379/0 | |
-| VALKEY_CA_FILE | /etc/vg/valkey-ca/ca.crt | set when `valkey.enabled` | config.Load rejects a rediss:// URL without it |
-| JWKS_URL | required | chart `env.jwksUrl` = http://auth:8080/.well-known/jwks.json | |
-| JWT_ISSUER | vgkeep-auth | chart `env.jwtIssuer` | |
-| JWT_AUDIENCE | vgkeep | chart `env.jwtAudience` | |
-| ENRICHMENT_SERVICE_URL | required | chart `env.enrichmentServiceUrl` = http://enrichment:8080 | 10s client timeout |
-| DASHBOARD_CACHE_TTL | 5m | chart `env.dashboardCacheTtl` | also the value-history TTL |
-| SERVICE_VERSION | dev | chart sets it to the image tag | stamped as service.version on telemetry |
-| OTEL_EXPORTER_OTLP_ENDPOINT | unset | chart `otel.exporterEndpoint` = http://otel-agent.vg-platform.svc.cluster.local:4317 | empty disables export entirely; the service then logs JSON to stdout only |
+| Env var                     | Default                  | Source                                                                                                                                                                                                                | Notes                                                                     |
+| --------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| HTTP_ADDR                   | :8080                    | code default                                                                                                                                                                                                          | not set by the chart                                                      |
+| DATABASE_URL                | required                 | composed in deployment.yaml: user `collection`, db `collection`, host `collection-pg`, `sslmode=verify-full`, `sslrootcert=/etc/vg/pg-ca/ca.crt`                                                                      | password expands from env `PG_PASSWORD`                                   |
+| PG_PASSWORD                 | required                 | Secret `collection-pg-credentials` key `password`, filled by the ExternalSecret from ClusterSecretStore `vg-fake` key `collection/pg-password`; dev value comes from `.env` `PG_COLLECTION_PASSWORD` via the Tiltfile | refreshInterval 1m                                                        |
+| VALKEY_URL                  | required                 | chart `env.valkeyUrl` = rediss://collection-valkey:6379/0                                                                                                                                                             |                                                                           |
+| VALKEY_CA_FILE              | /etc/vg/valkey-ca/ca.crt | set when `valkey.enabled`                                                                                                                                                                                             | config.Load rejects a rediss:// URL without it                            |
+| JWKS_URL                    | required                 | chart `env.jwksUrl` = http://auth:8080/.well-known/jwks.json                                                                                                                                                          |                                                                           |
+| JWT_ISSUER                  | vgkeep-auth              | chart `env.jwtIssuer`                                                                                                                                                                                                 |                                                                           |
+| JWT_AUDIENCE                | vgkeep                   | chart `env.jwtAudience`                                                                                                                                                                                               |                                                                           |
+| ENRICHMENT_SERVICE_URL      | required                 | chart `env.enrichmentServiceUrl` = http://enrichment:8080                                                                                                                                                             | 10s client timeout                                                        |
+| DASHBOARD_CACHE_TTL         | 5m                       | chart `env.dashboardCacheTtl`                                                                                                                                                                                         | also the value-history TTL                                                |
+| SERVICE_VERSION             | dev                      | chart sets it to the image tag                                                                                                                                                                                        | stamped as service.version on telemetry                                   |
+| OTEL_EXPORTER_OTLP_ENDPOINT | unset                    | chart `otel.exporterEndpoint` = http://otel-agent.vg-platform.svc.cluster.local:4317                                                                                                                                  | empty disables export entirely; the service then logs JSON to stdout only |
 
 There are no provider or mode flags. Absence behavior worth knowing:
 Valkey must be reachable at startup (Connect fails the boot; a Valkey
@@ -190,13 +190,13 @@ Postgres and enrichment. The redis-exporter sidecar serves :9121.
 Client-side pool telemetry now comes from the shared libs on every
 pool, scoped by the resource attribute `service_name="collection"`:
 
-| Instrument | Prometheus name |
-|---|---|
-| vg.pgkit.pool.connections / .idle / .max | vg_pgkit_pool_connections, vg_pgkit_pool_connections_idle, vg_pgkit_pool_connections_max |
-| vg.pgkit.pool.acquires / .empty_acquires | vg_pgkit_pool_acquires_total, vg_pgkit_pool_empty_acquires_total |
-| vg.pgkit.pool.acquire_wait | vg_pgkit_pool_acquire_wait_seconds_total |
+| Instrument                                   | Prometheus name                                                                                |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| vg.pgkit.pool.connections / .idle / .max     | vg_pgkit_pool_connections, vg_pgkit_pool_connections_idle, vg_pgkit_pool_connections_max       |
+| vg.pgkit.pool.acquires / .empty_acquires     | vg_pgkit_pool_acquires_total, vg_pgkit_pool_empty_acquires_total                               |
+| vg.pgkit.pool.acquire_wait                   | vg_pgkit_pool_acquire_wait_seconds_total                                                       |
 | vg.valkeykit.pool.hits / .misses / .timeouts | vg_valkeykit_pool_hits_total, vg_valkeykit_pool_misses_total, vg_valkeykit_pool_timeouts_total |
-| vg.valkeykit.pool.connections / .idle | vg_valkeykit_pool_connections, vg_valkeykit_pool_connections_idle |
+| vg.valkeykit.pool.connections / .idle        | vg_valkeykit_pool_connections, vg_valkeykit_pool_connections_idle                              |
 
 ## Telemetry
 
@@ -211,26 +211,26 @@ and follow the `vg.collection.<area>.<name>` convention.
 From shared instrumentation (otelhttp, the runtime metrics, the pool
 libs, the exporter sidecars):
 
-| Metric (Prometheus name) | Instrument | Unit | Labels | Question it answers |
-|---|---|---|---|---|
-| http_server_request_duration_seconds_{count,sum,bucket} | histogram (otelhttp) | s | service_name="collection", http_route, http_response_status_code | RED per route; the 502/429/409 codes carry the domain outcomes |
-| go_goroutine_count, go_memory_used_bytes (and the other runtime metrics) | runtime instrumentation | short / bytes | service_name | goroutine leaks, heap growth |
-| vg_pgkit_pool_* (table above) | observable gauges + counters | {connection}, {acquire}, s | service_name | pg pool saturation, contention share, mean acquire wait |
-| vg_valkeykit_pool_* (table above) | observable counters + gauges | {hit}, {miss}, {timeout}, {connection} | service_name | valkey pool reuse ratio, hard saturation (timeouts) |
-| pg_stat_activity_count, pg_settings_max_connections, ... | postgres-exporter | short | service="collection-pg" | server-side connection load (exporter view) |
-| redis_memory_used_bytes, redis_evicted_keys_total, ... | redis-exporter | bytes / short | service="collection-valkey" | cache instance memory and evictions |
+| Metric (Prometheus name)                                                 | Instrument                   | Unit                                   | Labels                                                           | Question it answers                                            |
+| ------------------------------------------------------------------------ | ---------------------------- | -------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------- |
+| http_server_request_duration_seconds_{count,sum,bucket}                  | histogram (otelhttp)         | s                                      | service_name="collection", http_route, http_response_status_code | RED per route; the 502/429/409 codes carry the domain outcomes |
+| go_goroutine_count, go_memory_used_bytes (and the other runtime metrics) | runtime instrumentation      | short / bytes                          | service_name                                                     | goroutine leaks, heap growth                                   |
+| vg_pgkit_pool_* (table above)                                            | observable gauges + counters | {connection}, {acquire}, s             | service_name                                                     | pg pool saturation, contention share, mean acquire wait        |
+| vg_valkeykit_pool_* (table above)                                        | observable counters + gauges | {hit}, {miss}, {timeout}, {connection} | service_name                                                     | valkey pool reuse ratio, hard saturation (timeouts)            |
+| pg_stat_activity_count, pg_settings_max_connections, ...                 | postgres-exporter            | short                                  | service="collection-pg"                                          | server-side connection load (exporter view)                    |
+| redis_memory_used_bytes, redis_evicted_keys_total, ...                   | redis-exporter               | bytes / short                          | service="collection-valkey"                                      | cache instance memory and evictions                            |
 
 Domain instruments (created in server.New, stored on the Handlers
 struct, logged and skipped on registration error so telemetry never
 stops the service):
 
-| Metric | Instrument | Unit | Labels (bounded values) | Prometheus name | Question it answers |
-|---|---|---|---|---|---|
-| vg.collection.pricing.compose | Int64Counter | {request} | op = entry, list, dashboard, value_history; outcome = ok, degraded | vg_collection_pricing_compose_total | Is read-time value composition healthy? Enrichment being down never produces a 5xx on these paths (responses degrade to null values / available=false), so RED is blind to it; degraded/(ok+degraded) is the feature's failure rate, split by surface |
-| vg.collection.cache.lookups | Int64Counter | {lookup} | cache = dashboard, value_history; outcome = hit, miss | vg_collection_cache_lookups_total | Is the cache saving recompute? A collapsed hit ratio explains a dashboard latency regression and extra enrichment load. The surface key is cache (matching the bff's lookups counter) so hit ratios group cross-service on one key |
-| vg.collection.cache.fail_open | Int64Counter | {event} | op = dashboard_get, dashboard_put, dashboard_invalidate, value_history_get, value_history_put | vg_collection_cache_fail_open_total | Is Valkey failing from this service's seat? (mirror of the bff's fail-open counter) |
-| vg.collection.submissions.events | Int64Counter | {event} | event = created, cancelled, approved, rejected | vg_collection_submissions_events_total | Is the community catalog lane alive: are submissions arriving, and how do verdicts split? |
-| vg.collection.submissions.pending | Int64ObservableGauge | {submission} | none | vg_collection_submissions_pending | Is the admin review queue draining or backing up? |
+| Metric                            | Instrument           | Unit         | Labels (bounded values)                                                                       | Prometheus name                        | Question it answers                                                                                                                                                                                                                                   |
+| --------------------------------- | -------------------- | ------------ | --------------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| vg.collection.pricing.compose     | Int64Counter         | {request}    | op = entry, list, dashboard, value_history; outcome = ok, degraded                            | vg_collection_pricing_compose_total    | Is read-time value composition healthy? Enrichment being down never produces a 5xx on these paths (responses degrade to null values / available=false), so RED is blind to it; degraded/(ok+degraded) is the feature's failure rate, split by surface |
+| vg.collection.cache.lookups       | Int64Counter         | {lookup}     | cache = dashboard, value_history; outcome = hit, miss                                         | vg_collection_cache_lookups_total      | Is the cache saving recompute? A collapsed hit ratio explains a dashboard latency regression and extra enrichment load. The surface key is cache (matching the bff's lookups counter) so hit ratios group cross-service on one key                    |
+| vg.collection.cache.fail_open     | Int64Counter         | {event}      | op = dashboard_get, dashboard_put, dashboard_invalidate, value_history_get, value_history_put | vg_collection_cache_fail_open_total    | Is Valkey failing from this service's seat? (mirror of the bff's fail-open counter)                                                                                                                                                                   |
+| vg.collection.submissions.events  | Int64Counter         | {event}      | event = created, cancelled, approved, rejected                                                | vg_collection_submissions_events_total | Is the community catalog lane alive: are submissions arriving, and how do verdicts split?                                                                                                                                                             |
+| vg.collection.submissions.pending | Int64ObservableGauge | {submission} | none                                                                                          | vg_collection_submissions_pending      | Is the admin review queue draining or backing up?                                                                                                                                                                                                     |
 
 Emission sites:
 
@@ -259,28 +259,28 @@ Emission sites:
 Events (JSON stdout + OTLP; Loki label
 `service_name="collection"`, level in `severity_text`):
 
-| Event | Level | Fields | Site |
-|---|---|---|---|
-| http request | INFO | method, path, status, duration_ms | httpkit.RequestLogger, every request |
-| valkey unavailable; failing open | WARN | op, err | failOpen helper |
-| value composition unavailable | WARN | err | respondEntry |
-| list value composition unavailable | WARN | err | ListEntries |
-| dashboard pricing unavailable | WARN | err | GetDashboard |
-| value history unavailable | WARN | err | GetValueHistory |
-| resnapshot: product fetch failed / entry update failed | WARN | product or entry, err | InternalResnapshot |
-| normalize: entry update failed | WARN | entry, err | InternalNormalizePlatforms |
-| panic recovered | ERROR | panic, path | httpkit.Recover |
+| Event                                                  | Level | Fields                            | Site                                 |
+| ------------------------------------------------------ | ----- | --------------------------------- | ------------------------------------ |
+| http request                                           | INFO  | method, path, status, duration_ms | httpkit.RequestLogger, every request |
+| valkey unavailable; failing open                       | WARN  | op, err                           | failOpen helper                      |
+| value composition unavailable                          | WARN  | err                               | respondEntry                         |
+| list value composition unavailable                     | WARN  | err                               | ListEntries                          |
+| dashboard pricing unavailable                          | WARN  | err                               | GetDashboard                         |
+| value history unavailable                              | WARN  | err                               | GetValueHistory                      |
+| resnapshot: product fetch failed / entry update failed | WARN  | product or entry, err             | InternalResnapshot                   |
+| normalize: entry update failed                         | WARN  | entry, err                        | InternalNormalizePlatforms           |
+| panic recovered                                        | ERROR | panic, path                       | httpkit.Recover                      |
 
 Domain lifecycle and outcome events (same pipeline and labels):
 
-| Event | Level | Fields | Site |
-|---|---|---|---|
-| internal error | ERROR | detail, err | a shared helper in server.go used by every branch that answers 500 (detail is the problem body's generic detail; err is the cause, which the response never carries); without this line the error-logs panel and the vg-loki-errors rule see nothing for a 500 |
-| submission created | INFO | submission_id, entry_id | CreateSubmission success path |
-| submission cap hit | WARN | user_id, cap (pending or rate) | CreateSubmission cap branches; identifies who is hitting the abuse caps |
-| submission verdict | INFO | submission_id, entry_id, action, product_id (when resolved) | SubmitVerdict reject arm and adoptAndApprove; the admin audit trail |
-| resnapshot complete | INFO | products_seen, products_failed, entries_updated | InternalResnapshot, before writing the response; makes the lever's outcome durable in Loki |
-| normalize-platforms complete | INFO | scanned, normalized, skipped | InternalNormalizePlatforms, same reason |
+| Event                        | Level | Fields                                                      | Site                                                                                                                                                                                                                                                           |
+| ---------------------------- | ----- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| internal error               | ERROR | detail, err                                                 | a shared helper in server.go used by every branch that answers 500 (detail is the problem body's generic detail; err is the cause, which the response never carries); without this line the error-logs panel and the vg-loki-errors rule see nothing for a 500 |
+| submission created           | INFO  | submission_id, entry_id                                     | CreateSubmission success path                                                                                                                                                                                                                                  |
+| submission cap hit           | WARN  | user_id, cap (pending or rate)                              | CreateSubmission cap branches; identifies who is hitting the abuse caps                                                                                                                                                                                        |
+| submission verdict           | INFO  | submission_id, entry_id, action, product_id (when resolved) | SubmitVerdict reject arm and adoptAndApprove; the admin audit trail                                                                                                                                                                                            |
+| resnapshot complete          | INFO  | products_seen, products_failed, entries_updated             | InternalResnapshot, before writing the response; makes the lever's outcome durable in Loki                                                                                                                                                                     |
+| normalize-platforms complete | INFO  | scanned, normalized, skipped                                | InternalNormalizePlatforms, same reason                                                                                                                                                                                                                        |
 
 ## Dashboard: vg-collection
 

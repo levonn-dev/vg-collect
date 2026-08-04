@@ -149,25 +149,25 @@ values fill most of them; secrets arrive through the ExternalSecret
 `auth-secrets` (ClusterSecretStore `vg-fake` in dev, refreshed every
 1m), whose store keys Tilt renders from `.env` (see `.env.example`).
 
-| Env var | Default | Comes from |
-|---|---|---|
-| `HTTP_ADDR` | `:8080` | code default; the chart does not set it |
-| `DATABASE_URL` | required | assembled in deployment.yaml: `postgres://auth:$(PG_PASSWORD)@auth-pg:5432/auth?sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt`; `PG_PASSWORD` from Secret `auth-secrets` key `pg-password` (store key `auth/pg-password`, `.env` `PG_AUTH_PASSWORD`) |
-| `JWT_SIGNING_KEY` | required | Secret `auth-secrets` key `jwt-signing-key` (store key `auth/jwt-signing-key`, `.env` `AUTH_JWT_SIGNING_KEY`); base64 (std) 32-byte Ed25519 seed |
-| `JWT_ISSUER` | `vgkeep-auth` | values `env.jwtIssuer` |
-| `JWT_AUDIENCE` | `vgkeep` | values `env.jwtAudience` |
-| `ACCESS_TOKEN_TTL` | `5m` | values `env.accessTokenTtl` |
-| `REFRESH_TOKEN_TTL` | `720h` | values `env.refreshTokenTtl` |
-| `USER_SERVICE_URL` | required | values `env.userServiceUrl` (`http://user:8080`) |
-| `JWKS_URL` | `http://localhost:8080/.well-known/jwks.json` | code default; the self-service Bearer verifier reads the pod's own JWKS |
-| `OAUTH_REDIRECT_URL` | empty | values `env.oauthRedirectUrl`; Tilt sets it when a provider pair exists |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | empty | Secret keys `google-client-id` / `google-client-secret`, rendered only when `providers.google.enabled` |
-| `GOOGLE_ISSUER_URL` | `https://accounts.google.com` | values `env.googleIssuerUrl` |
-| `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | empty | Secret keys `twitch-client-id` / `twitch-client-secret`, rendered only when `providers.twitch.enabled` |
-| `TWITCH_ISSUER_URL` | `https://id.twitch.tv/oauth2` | values `env.twitchIssuerUrl` |
-| `DEV_PROVIDER_ENABLED` | `false` | values `env.devProviderEnabled` (chart default `true`; production values files must set `false`) |
-| `SERVICE_VERSION` | `dev` | the image tag, stamped onto telemetry as `service.version` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | values `otel.exporterEndpoint` (otel-agent in vg-platform); empty disables export, JSON logs still go to stdout |
+| Env var                                     | Default                                       | Comes from                                                                                                                                                                                                                                                  |
+| ------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HTTP_ADDR`                                 | `:8080`                                       | code default; the chart does not set it                                                                                                                                                                                                                     |
+| `DATABASE_URL`                              | required                                      | assembled in deployment.yaml: `postgres://auth:$(PG_PASSWORD)@auth-pg:5432/auth?sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt`; `PG_PASSWORD` from Secret `auth-secrets` key `pg-password` (store key `auth/pg-password`, `.env` `PG_AUTH_PASSWORD`) |
+| `JWT_SIGNING_KEY`                           | required                                      | Secret `auth-secrets` key `jwt-signing-key` (store key `auth/jwt-signing-key`, `.env` `AUTH_JWT_SIGNING_KEY`); base64 (std) 32-byte Ed25519 seed                                                                                                            |
+| `JWT_ISSUER`                                | `vgkeep-auth`                                 | values `env.jwtIssuer`                                                                                                                                                                                                                                      |
+| `JWT_AUDIENCE`                              | `vgkeep`                                      | values `env.jwtAudience`                                                                                                                                                                                                                                    |
+| `ACCESS_TOKEN_TTL`                          | `5m`                                          | values `env.accessTokenTtl`                                                                                                                                                                                                                                 |
+| `REFRESH_TOKEN_TTL`                         | `720h`                                        | values `env.refreshTokenTtl`                                                                                                                                                                                                                                |
+| `USER_SERVICE_URL`                          | required                                      | values `env.userServiceUrl` (`http://user:8080`)                                                                                                                                                                                                            |
+| `JWKS_URL`                                  | `http://localhost:8080/.well-known/jwks.json` | code default; the self-service Bearer verifier reads the pod's own JWKS                                                                                                                                                                                     |
+| `OAUTH_REDIRECT_URL`                        | empty                                         | values `env.oauthRedirectUrl`; Tilt sets it when a provider pair exists                                                                                                                                                                                     |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | empty                                         | Secret keys `google-client-id` / `google-client-secret`, rendered only when `providers.google.enabled`                                                                                                                                                      |
+| `GOOGLE_ISSUER_URL`                         | `https://accounts.google.com`                 | values `env.googleIssuerUrl`                                                                                                                                                                                                                                |
+| `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | empty                                         | Secret keys `twitch-client-id` / `twitch-client-secret`, rendered only when `providers.twitch.enabled`                                                                                                                                                      |
+| `TWITCH_ISSUER_URL`                         | `https://id.twitch.tv/oauth2`                 | values `env.twitchIssuerUrl`                                                                                                                                                                                                                                |
+| `DEV_PROVIDER_ENABLED`                      | `false`                                       | values `env.devProviderEnabled` (chart default `true`; production values files must set `false`)                                                                                                                                                            |
+| `SERVICE_VERSION`                           | `dev`                                         | the image tag, stamped onto telemetry as `service.version`                                                                                                                                                                                                  |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`               | unset                                         | values `otel.exporterEndpoint` (otel-agent in vg-platform); empty disables export, JSON logs still go to stdout                                                                                                                                             |
 
 What happens when optional pieces are absent:
 
@@ -232,12 +232,12 @@ is no /metrics endpoint and no scrape config for the service itself.
 
 Platform-provided signals:
 
-| Prometheus name | Source | Answers |
-|---|---|---|
-| `http_server_request_duration_seconds_{count,sum,bucket}` | otelhttp in the router stack; labels `http_route`, `http_response_status_code`, resource `service_name="auth"` | RED per route (probe routes `/healthz` and `/readyz` included) |
-| `go_goroutine_count`, `go_memory_used_bytes` (runtime set) | otel runtime instrumentation from Setup() | leaks and memory pressure |
-| `vg_pgkit_pool_*` (six series above) | pgkit pool registration | client-side pool demand, headroom, wait |
-| `pg_*` exporter set (`service="auth-pg"`) | postgres-exporter sidecar | server-side connections, tx, cache, locks |
+| Prometheus name                                            | Source                                                                                                         | Answers                                                        |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `http_server_request_duration_seconds_{count,sum,bucket}`  | otelhttp in the router stack; labels `http_route`, `http_response_status_code`, resource `service_name="auth"` | RED per route (probe routes `/healthz` and `/readyz` included) |
+| `go_goroutine_count`, `go_memory_used_bytes` (runtime set) | otel runtime instrumentation from Setup()                                                                      | leaks and memory pressure                                      |
+| `vg_pgkit_pool_*` (six series above)                       | pgkit pool registration                                                                                        | client-side pool demand, headroom, wait                        |
+| `pg_*` exporter set (`service="auth-pg"`)                  | postgres-exporter sidecar                                                                                      | server-side connections, tx, cache, locks                      |
 
 ### Domain metrics
 
@@ -247,12 +247,12 @@ as the bff cache counter); the provider histogram is recorded inside
 `internal/oidc`. All label values are bounded sets listed here; none
 carry user ids or free-form strings.
 
-| OTel name | Instrument | Unit | Labels | Prometheus name | Answers |
-|---|---|---|---|---|---|
-| `vg.auth.login.outcomes` | Int64Counter | `{login}` | `provider` (google, twitch, dev); `flow` (login, link); `outcome` (success, rejected, provider_error, upstream_error, internal_error) | `vg_auth_login_outcomes_total` | Are provider dances completing, and which layer broke: the IdP, our verification, the user service, or our storage |
-| `vg.auth.token.refreshes` | Int64Counter | `{refresh}` | `outcome` (success, rejected, reuse_detected, upstream_error, internal_error) | `vg_auth_token_refreshes_total` | Is session refresh healthy (every bff session depends on it), and is reuse detection firing |
-| `vg.auth.provider.request.duration` | Float64Histogram | `s` | `provider` (google, twitch); `op` (discovery, token_exchange, jwks); `outcome` (ok, error) | `vg_auth_provider_request_duration_seconds_{count,sum,bucket}` | Which IdP hop is slow or failing; splits "login is slow" into provider vs us |
-| `vg.auth.signing_keys.active` | Int64ObservableGauge | `{key}` | none | `vg_auth_signing_keys_active` | How many keys the JWKS serves right now; verifies rotation (1 -> 2 -> 1) and catches an empty JWKS before every service's validation dies |
+| OTel name                           | Instrument           | Unit        | Labels                                                                                                                                | Prometheus name                                                | Answers                                                                                                                                   |
+| ----------------------------------- | -------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `vg.auth.login.outcomes`            | Int64Counter         | `{login}`   | `provider` (google, twitch, dev); `flow` (login, link); `outcome` (success, rejected, provider_error, upstream_error, internal_error) | `vg_auth_login_outcomes_total`                                 | Are provider dances completing, and which layer broke: the IdP, our verification, the user service, or our storage                        |
+| `vg.auth.token.refreshes`           | Int64Counter         | `{refresh}` | `outcome` (success, rejected, reuse_detected, upstream_error, internal_error)                                                         | `vg_auth_token_refreshes_total`                                | Is session refresh healthy (every bff session depends on it), and is reuse detection firing                                               |
+| `vg.auth.provider.request.duration` | Float64Histogram     | `s`         | `provider` (google, twitch); `op` (discovery, token_exchange, jwks); `outcome` (ok, error)                                            | `vg_auth_provider_request_duration_seconds_{count,sum,bucket}` | Which IdP hop is slow or failing; splits "login is slow" into provider vs us                                                              |
+| `vg.auth.signing_keys.active`       | Int64ObservableGauge | `{key}`     | none                                                                                                                                  | `vg_auth_signing_keys_active`                                  | How many keys the JWKS serves right now; verifies rotation (1 -> 2 -> 1) and catches an empty JWKS before every service's validation dies |
 
 Emission sites, precisely:
 
@@ -292,12 +292,12 @@ server side carries them: four structured events (slog, JSON, trace ids
 attached by the shared handler) alongside the per-request `http request`
 line and panic reports:
 
-| Event | Level | Fields | Emitted from |
-|---|---|---|---|
-| `provider request failed` | ERROR | `provider`, `err` (the ProviderError string carries op and status) | 502 branches of `OauthStart`, `OauthLinkStart`, `OauthCallback` |
-| `auth store error` | ERROR | `op`, `err` | every handler branch that answers 500 `internal` |
-| `user service unavailable` | ERROR | `op`, `err` | user-service failure branches of `completeLogin`, `completeLink`, `RefreshToken` (502 `user_service_error`, 503 `user_unavailable`) |
-| `refresh reuse detected` | WARN | `user_id` (empty on the revoked-family short-circuit, which never learns it), `jti_count` | both reuse branches of `RefreshToken` |
+| Event                      | Level | Fields                                                                                    | Emitted from                                                                                                                        |
+| -------------------------- | ----- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `provider request failed`  | ERROR | `provider`, `err` (the ProviderError string carries op and status)                        | 502 branches of `OauthStart`, `OauthLinkStart`, `OauthCallback`                                                                     |
+| `auth store error`         | ERROR | `op`, `err`                                                                               | every handler branch that answers 500 `internal`                                                                                    |
+| `user service unavailable` | ERROR | `op`, `err`                                                                               | user-service failure branches of `completeLogin`, `completeLink`, `RefreshToken` (502 `user_service_error`, 503 `user_unavailable`) |
+| `refresh reuse detected`   | WARN  | `user_id` (empty on the revoked-family short-circuit, which never learns it), `jti_count` | both reuse branches of `RefreshToken`                                                                                               |
 
 Never log token material: no refresh tokens, no hashes, no minted JWTs.
 

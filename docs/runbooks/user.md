@@ -80,14 +80,14 @@ Tilt resource `user` (label `services`), image rebuilt on changes under
 `user-pg`. Auth depends on user, so user comes up first; expect 401s
 from bearer routes until auth serves its JWKS.
 
-| Surface | Where |
-|---|---|
-| Service in-cluster | `user:8080` (vgkeep namespace) |
-| Direct dev port | `localhost:8081` (Tilt port-forward; the 8090 gateway fronts only the bff) |
-| Postgres | `localhost:5433` -> `user-pg:5432` |
-| Liveness | `GET /healthz`, static ok, no auth |
-| Readiness | `GET /readyz`, pings the pg pool, no auth; JWKS is deliberately not checked |
-| Bruno | `bruno/user/` (`get-self`, `update-self`); run `auth/dev-token` first to fill `access_token` and `user_id`; `user_url` is `http://localhost:8081` in the local environment |
+| Surface            | Where                                                                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Service in-cluster | `user:8080` (vgkeep namespace)                                                                                                                                             |
+| Direct dev port    | `localhost:8081` (Tilt port-forward; the 8090 gateway fronts only the bff)                                                                                                 |
+| Postgres           | `localhost:5433` -> `user-pg:5432`                                                                                                                                         |
+| Liveness           | `GET /healthz`, static ok, no auth                                                                                                                                         |
+| Readiness          | `GET /readyz`, pings the pg pool, no auth; JWKS is deliberately not checked                                                                                                |
+| Bruno              | `bruno/user/` (`get-self`, `update-self`); run `auth/dev-token` first to fill `access_token` and `user_id`; `user_url` is `http://localhost:8081` in the local environment |
 
 Task targets that touch this module:
 
@@ -113,16 +113,16 @@ All config is environment variables parsed at startup
 (`internal/config`); a missing required variable is a fatal error
 before the listener opens.
 
-| Variable | Required | Default | Source | Notes |
-|---|---|---|---|---|
-| `HTTP_ADDR` | no | `:8080` | binary default | |
-| `DATABASE_URL` | yes | none | composed in `deploy/charts/user/templates/deployment.yaml` from chart values plus `$(PG_PASSWORD)` | carries `sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt` |
-| `PG_PASSWORD` | chart-internal | none | secret `user-pg-credentials`, key `password` | filled by the ExternalSecret; only ever referenced inside `DATABASE_URL` |
-| `JWKS_URL` | yes | none | chart value `env.jwksUrl`, default `http://auth:8080/.well-known/jwks.json` | keys fetched lazily and cached by kid; unknown-kid refetch at most every 30s |
-| `JWT_ISSUER` | no | `vgkeep-auth` | chart value `env.jwtIssuer` | |
-| `JWT_AUDIENCE` | no | `vgkeep` | chart value `env.jwtAudience` | |
-| `SERVICE_VERSION` | no | `dev` | chart sets it to the image tag | stamped onto telemetry as `service.version` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | no | unset | chart value `otel.exporterEndpoint`, default `http://otel-agent.vg-platform.svc.cluster.local:4317` | empty disables all export: logs stay on stdout as JSON, every metric and trace in this document goes dark |
+| Variable                      | Required       | Default       | Source                                                                                              | Notes                                                                                                     |
+| ----------------------------- | -------------- | ------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `HTTP_ADDR`                   | no             | `:8080`       | binary default                                                                                      |                                                                                                           |
+| `DATABASE_URL`                | yes            | none          | composed in `deploy/charts/user/templates/deployment.yaml` from chart values plus `$(PG_PASSWORD)`  | carries `sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt`                                            |
+| `PG_PASSWORD`                 | chart-internal | none          | secret `user-pg-credentials`, key `password`                                                        | filled by the ExternalSecret; only ever referenced inside `DATABASE_URL`                                  |
+| `JWKS_URL`                    | yes            | none          | chart value `env.jwksUrl`, default `http://auth:8080/.well-known/jwks.json`                         | keys fetched lazily and cached by kid; unknown-kid refetch at most every 30s                              |
+| `JWT_ISSUER`                  | no             | `vgkeep-auth` | chart value `env.jwtIssuer`                                                                         |                                                                                                           |
+| `JWT_AUDIENCE`                | no             | `vgkeep`      | chart value `env.jwtAudience`                                                                       |                                                                                                           |
+| `SERVICE_VERSION`             | no             | `dev`         | chart sets it to the image tag                                                                      | stamped onto telemetry as `service.version`                                                               |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | no             | unset         | chart value `otel.exporterEndpoint`, default `http://otel-agent.vg-platform.svc.cluster.local:4317` | empty disables all export: logs stay on stdout as JSON, every metric and trace in this document goes dark |
 
 Secret chain in dev: `.env` `PG_USER_PASSWORD` (listed in
 `.env.example`) -> Tiltfile publishes it into ClusterSecretStore
@@ -171,32 +171,32 @@ scrape endpoint. All app series: `service_name="user"`.
 
 Shared plumbing, already emitted today:
 
-| Metric (Prometheus name) | Instrument | Unit | Labels | Answers |
-|---|---|---|---|---|
-| `http_server_request_duration_seconds_{count,sum,bucket}` | histogram (otelhttp) | s | `http_route` (matched mux pattern including the method, e.g. `POST /internal/users/upsert`, `GET /users/{userId}`), `http_response_status_code` | RED for every route: rate, errors, duration; exemplars link buckets to traces |
-| `go_goroutine_count`, `go_memory_used_bytes` (among the runtime set) | gauge (otel runtime) | short / bytes | none | leak or runaway-allocation checks |
+| Metric (Prometheus name)                                             | Instrument           | Unit          | Labels                                                                                                                                          | Answers                                                                       |
+| -------------------------------------------------------------------- | -------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `http_server_request_duration_seconds_{count,sum,bucket}`            | histogram (otelhttp) | s             | `http_route` (matched mux pattern including the method, e.g. `POST /internal/users/upsert`, `GET /users/{userId}`), `http_response_status_code` | RED for every route: rate, errors, duration; exemplars link buckets to traces |
+| `go_goroutine_count`, `go_memory_used_bytes` (among the runtime set) | gauge (otel runtime) | short / bytes | none                                                                                                                                            | leak or runaway-allocation checks                                             |
 
 PG pool, emitted since pgkit gained pool instrumentation (no labels;
 `service_name` scopes them):
 
-| Prometheus name | Instrument | Unit | Answers |
-|---|---|---|---|
-| `vg_pgkit_pool_connections` | observable gauge | {connection} | connections held (constructing + acquired + idle) |
-| `vg_pgkit_pool_connections_idle` | observable gauge | {connection} | idle headroom right now |
-| `vg_pgkit_pool_connections_max` | observable gauge | {connection} | configured ceiling; saturation denominator |
-| `vg_pgkit_pool_acquires_total` | observable counter | {acquire} | pool demand rate; mean-wait denominator |
-| `vg_pgkit_pool_empty_acquires_total` | observable counter | {acquire} | acquires that had to wait on a drained pool |
-| `vg_pgkit_pool_acquire_wait_seconds_total` | observable counter | s | total wait; divided by acquires = mean acquire latency |
+| Prometheus name                            | Instrument         | Unit         | Answers                                                |
+| ------------------------------------------ | ------------------ | ------------ | ------------------------------------------------------ |
+| `vg_pgkit_pool_connections`                | observable gauge   | {connection} | connections held (constructing + acquired + idle)      |
+| `vg_pgkit_pool_connections_idle`           | observable gauge   | {connection} | idle headroom right now                                |
+| `vg_pgkit_pool_connections_max`            | observable gauge   | {connection} | configured ceiling; saturation denominator             |
+| `vg_pgkit_pool_acquires_total`             | observable counter | {acquire}    | pool demand rate; mean-wait denominator                |
+| `vg_pgkit_pool_empty_acquires_total`       | observable counter | {acquire}    | acquires that had to wait on a drained pool            |
+| `vg_pgkit_pool_acquire_wait_seconds_total` | observable counter | s            | total wait; divided by acquires = mean acquire latency |
 
 Domain metrics, meter `github.com/levonn-dev/vgkeep/services/user`
 (this service has no Valkey, so no `vg_valkeykit_*` series exist for
 it):
 
-| Metric | Prometheus name | Instrument | Unit | Labels (bounded) | Answers |
-|---|---|---|---|---|---|
-| `vg.user.account.upserts` | `vg_user_account_upserts_total` | counter | {upsert} | `outcome` = `created` \| `existing` | signup rate vs returning-login rate; the counter mirrors login volume from the profile side, so zero here while auth still handles logins means the auth-to-user leg is broken |
-| `vg.user.currency.seeds` | `vg_user_currency_seeds_total` | counter | {seed} | `source` = `locale` \| `fallback` | is the Accept-Language to preferred_currency plumbing alive; a fallback share of 100 percent means auth stopped forwarding locale hints or the mapping regressed |
-| `vg.user.account.deletes` | `vg_user_account_deletes_total` | counter | {delete} | `outcome` = `deleted` \| `noop` | account-deletion leg health; a noop is a retry converging on an already-deleted row |
+| Metric                    | Prometheus name                 | Instrument | Unit     | Labels (bounded)                    | Answers                                                                                                                                                                        |
+| ------------------------- | ------------------------------- | ---------- | -------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `vg.user.account.upserts` | `vg_user_account_upserts_total` | counter    | {upsert} | `outcome` = `created` \| `existing` | signup rate vs returning-login rate; the counter mirrors login volume from the profile side, so zero here while auth still handles logins means the auth-to-user leg is broken |
+| `vg.user.currency.seeds`  | `vg_user_currency_seeds_total`  | counter    | {seed}   | `source` = `locale` \| `fallback`   | is the Accept-Language to preferred_currency plumbing alive; a fallback share of 100 percent means auth stopped forwarding locale hints or the mapping regressed               |
+| `vg.user.account.deletes` | `vg_user_account_deletes_total` | counter    | {delete} | `outcome` = `deleted` \| `noop`     | account-deletion leg health; a noop is a retry converging on an already-deleted row                                                                                            |
 
 Emission sites, precisely: all three counters are fields on
 `server.Handlers`, created in `server.New` (registration failure is
@@ -222,11 +222,11 @@ request), `user service listening` (INFO: addr), `panic recovered`
 Additions, closing the gap that a 500 today leaves no server-side
 cause anywhere:
 
-| Event | Level | Fields | Emission site |
-|---|---|---|---|
-| `store error` | ERROR | `op` = `upsert` \| `get` \| `update` \| `delete`, `err` | each handler path that answers a 500, logged with the request context before the problem response |
-| `account created` | INFO | `user_id`, `preferred_currency`, `currency_source` | `UpsertUser`, created branch only |
-| `account deleted` | INFO | `user_id`, `outcome` | `DeleteUser` |
+| Event             | Level | Fields                                                  | Emission site                                                                                     |
+| ----------------- | ----- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `store error`     | ERROR | `op` = `upsert` \| `get` \| `update` \| `delete`, `err` | each handler path that answers a 500, logged with the request context before the problem response |
+| `account created` | INFO  | `user_id`, `preferred_currency`, `currency_source`      | `UpsertUser`, created branch only                                                                 |
+| `account deleted` | INFO  | `user_id`, `outcome`                                    | `DeleteUser`                                                                                      |
 
 Emails stay out of log fields.
 

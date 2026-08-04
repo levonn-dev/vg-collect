@@ -38,7 +38,7 @@ graph LR
     B[Browser SPA] -->|8090| G[APISIX gateway]
     B -.->|OAuth redirects| IDP[Identity provider]
     G -->|:8080| BFF[bff]
-    BR[Bruno bruno/bff/] -->|8090| G
+    BR["Bruno bruno/bff/"] -->|8090| G
     BFF -->|http :8080| AUTH[auth]
     BFF -->|http :8080| USER[user]
     BFF -->|http :8080| COLL[collection]
@@ -91,12 +91,12 @@ Availability wins over that edge while the cache is out.
 
 ## Running it
 
-| Port | What |
-|---|---|
-| 8090 | APISIX gateway, the app's entrypoint (browser and Bruno) |
+| Port | What                                                               |
+| ---- | ------------------------------------------------------------------ |
+| 8090 | APISIX gateway, the app's entrypoint (browser and Bruno)           |
 | 8083 | bff direct via Tilt port-forward (bypasses the gateway; debugging) |
-| 8080 | container port inside the cluster (`HTTP_ADDR` default) |
-| 5173 | Vite dev server (`frontend-dev` Tilt resource, manual trigger) |
+| 8080 | container port inside the cluster (`HTTP_ADDR` default)            |
+| 5173 | Vite dev server (`frontend-dev` Tilt resource, manual trigger)     |
 
 Under Tilt the image rebuilds on edits to `libs/go`, `services/bff`, or
 `frontend` (the Dockerfile bakes the Vite output into the binary), and the
@@ -129,26 +129,26 @@ All env comes from `deploy/charts/bff/values.yaml` except the cookie key,
 which arrives through the `bff-secrets` ExternalSecret. Dev values for local
 runs are in `.env.example`.
 
-| Var | Value in dev | Source | Notes |
-|---|---|---|---|
-| `HTTP_ADDR` | `:8080` | code default | |
-| `COOKIE_KEY` | base64 32-byte AES key | ExternalSecret `bff-secrets` key `cookie-key`, store key `bff/cookie-key`, filled from `BFF_COOKIE_KEY` in `.env` by Tilt | required; rotating it kills every live session |
-| `COOKIE_SECURE` | `true` | `env.cookieSecure` | stays on in dev; browsers trust `http://localhost` |
-| `PUBLIC_ORIGINS` | `http://localhost:8090,http://localhost:5173` | `env.publicOrigins` | origins allowed to send mutating requests (CSRF check) |
-| `AUTH_SERVICE_URL` | `http://auth:8080` | `env.authServiceUrl` | required |
-| `USER_SERVICE_URL` | `http://user:8080` | `env.userServiceUrl` | required |
-| `ENRICHMENT_SERVICE_URL` | `http://enrichment:8080` | `env.enrichmentServiceUrl` | required |
-| `COLLECTION_SERVICE_URL` | `http://collection:8080` | `env.collectionServiceUrl` | required |
-| `VALKEY_URL` | `rediss://bff-valkey:6379/0` | `env.valkeyUrl` | required; `rediss://` demands `VALKEY_CA_FILE` |
-| `VALKEY_CA_FILE` | `/etc/vg/valkey-ca/ca.crt` | set by the chart when `valkey.enabled` | CA from the `bff-valkey-tls` secret |
-| `ACCESS_TOKEN_TTL` | `5m` | `env.accessTokenTtl` | must match the auth chart's `accessTokenTtl`; bounds denylist entry TTLs |
-| `REFRESH_WINDOW` | `30s` | `env.refreshWindow` | refresh starts when less than this remains on the access token |
-| `ME_CACHE_TTL` | `45s` | `env.meCacheTtl` | `/api/me` cache |
-| `RECS_CACHE_TTL` | `1h` | `env.recsCacheTtl` | recommendations cache |
-| `SERVE_STATIC` | `true` in-cluster | `env.serveStatic` | `false` means the Vite dev server owns the frontend and `/` answers 404 |
-| `OTLP_PROXY_URL` | `http://otel-agent.vg-platform.svc.cluster.local:4318` | `otel.proxyUrl` | empty disables the browser telemetry relay: payloads are accepted and dropped |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otel-agent.vg-platform.svc.cluster.local:4317` | `otel.exporterEndpoint` | empty disables the service's own OTLP export (JSON stdout logs only) |
-| `SERVICE_VERSION` | image tag | deployment | stamped on telemetry as `service.version` |
+| Var                           | Value in dev                                           | Source                                                                                                                    | Notes                                                                         |
+| ----------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `HTTP_ADDR`                   | `:8080`                                                | code default                                                                                                              |                                                                               |
+| `COOKIE_KEY`                  | base64 32-byte AES key                                 | ExternalSecret `bff-secrets` key `cookie-key`, store key `bff/cookie-key`, filled from `BFF_COOKIE_KEY` in `.env` by Tilt | required; rotating it kills every live session                                |
+| `COOKIE_SECURE`               | `true`                                                 | `env.cookieSecure`                                                                                                        | stays on in dev; browsers trust `http://localhost`                            |
+| `PUBLIC_ORIGINS`              | `http://localhost:8090,http://localhost:5173`          | `env.publicOrigins`                                                                                                       | origins allowed to send mutating requests (CSRF check)                        |
+| `AUTH_SERVICE_URL`            | `http://auth:8080`                                     | `env.authServiceUrl`                                                                                                      | required                                                                      |
+| `USER_SERVICE_URL`            | `http://user:8080`                                     | `env.userServiceUrl`                                                                                                      | required                                                                      |
+| `ENRICHMENT_SERVICE_URL`      | `http://enrichment:8080`                               | `env.enrichmentServiceUrl`                                                                                                | required                                                                      |
+| `COLLECTION_SERVICE_URL`      | `http://collection:8080`                               | `env.collectionServiceUrl`                                                                                                | required                                                                      |
+| `VALKEY_URL`                  | `rediss://bff-valkey:6379/0`                           | `env.valkeyUrl`                                                                                                           | required; `rediss://` demands `VALKEY_CA_FILE`                                |
+| `VALKEY_CA_FILE`              | `/etc/vg/valkey-ca/ca.crt`                             | set by the chart when `valkey.enabled`                                                                                    | CA from the `bff-valkey-tls` secret                                           |
+| `ACCESS_TOKEN_TTL`            | `5m`                                                   | `env.accessTokenTtl`                                                                                                      | must match the auth chart's `accessTokenTtl`; bounds denylist entry TTLs      |
+| `REFRESH_WINDOW`              | `30s`                                                  | `env.refreshWindow`                                                                                                       | refresh starts when less than this remains on the access token                |
+| `ME_CACHE_TTL`                | `45s`                                                  | `env.meCacheTtl`                                                                                                          | `/api/me` cache                                                               |
+| `RECS_CACHE_TTL`              | `1h`                                                   | `env.recsCacheTtl`                                                                                                        | recommendations cache                                                         |
+| `SERVE_STATIC`                | `true` in-cluster                                      | `env.serveStatic`                                                                                                         | `false` means the Vite dev server owns the frontend and `/` answers 404       |
+| `OTLP_PROXY_URL`              | `http://otel-agent.vg-platform.svc.cluster.local:4318` | `otel.proxyUrl`                                                                                                           | empty disables the browser telemetry relay: payloads are accepted and dropped |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otel-agent.vg-platform.svc.cluster.local:4317` | `otel.exporterEndpoint`                                                                                                   | empty disables the service's own OTLP export (JSON stdout logs only)          |
+| `SERVICE_VERSION`             | image tag                                              | deployment                                                                                                                | stamped on telemetry as `service.version`                                     |
 
 The two optional pieces degrade cleanly: with `OTLP_PROXY_URL` empty the relay
 returns 200 and drops payloads; with `OTEL_EXPORTER_OTLP_ENDPOINT` empty the
@@ -166,13 +166,13 @@ scraped through the `bff-valkey` ServiceMonitor; those series carry
 
 Key families, all written by the bff:
 
-| Pattern | Holds | TTL |
-|---|---|---|
-| `denylist:<jti>` | revoked access-token ids | access-token life + 1 min leeway |
-| `refresh:lock:<sha256(refresh)>` | rotation singleflight lock | 10s |
-| `refresh:result:<sha256(refresh)>` | published rotation result (AES-GCM sealed cookie) | 60s |
-| `me:v4:<sub>` | composed `/api/me` body | `ME_CACHE_TTL` (45s) |
-| `recs:<sub>` | composed recommendations body | `RECS_CACHE_TTL` (1h) |
+| Pattern                            | Holds                                             | TTL                              |
+| ---------------------------------- | ------------------------------------------------- | -------------------------------- |
+| `denylist:<jti>`                   | revoked access-token ids                          | access-token life + 1 min leeway |
+| `refresh:lock:<sha256(refresh)>`   | rotation singleflight lock                        | 10s                              |
+| `refresh:result:<sha256(refresh)>` | published rotation result (AES-GCM sealed cookie) | 60s                              |
+| `me:v4:<sub>`                      | composed `/api/me` body                           | `ME_CACHE_TTL` (45s)             |
+| `recs:<sub>`                       | composed recommendations body                     | `RECS_CACHE_TTL` (1h)            |
 
 Nothing secret rests in Valkey in the clear: the published rotation result is
 the same ciphertext the browser holds. Every key carries a TTL, so memory
@@ -181,13 +181,13 @@ growth beyond steady state means traffic growth, not a leak.
 Client-side pool health comes from the valkeykit instruments registered at
 connect time (no pgkit metrics exist for this service; it has no Postgres):
 
-| Prometheus name | What it answers |
-|---|---|
-| `vg_valkeykit_pool_hits_total` | acquires served by a free connection; with misses, the reuse ratio |
-| `vg_valkeykit_pool_misses_total` | acquires that dialed a new connection (rising rate: pool too small or connections being dropped) |
-| `vg_valkeykit_pool_timeouts_total` | callers that gave up waiting; hard saturation, investigate any nonzero value |
-| `vg_valkeykit_pool_connections` | connections currently open to Valkey |
-| `vg_valkeykit_pool_connections_idle` | idle connections available for reuse; zero under load means the pool is exhausted |
+| Prometheus name                      | What it answers                                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `vg_valkeykit_pool_hits_total`       | acquires served by a free connection; with misses, the reuse ratio                               |
+| `vg_valkeykit_pool_misses_total`     | acquires that dialed a new connection (rising rate: pool too small or connections being dropped) |
+| `vg_valkeykit_pool_timeouts_total`   | callers that gave up waiting; hard saturation, investigate any nonzero value                     |
+| `vg_valkeykit_pool_connections`      | connections currently open to Valkey                                                             |
+| `vg_valkeykit_pool_connections_idle` | idle connections available for reuse; zero under load means the pool is exhausted                |
 
 All five are scoped by `service_name="bff"` (resource attribute), no other
 labels.
@@ -208,17 +208,17 @@ instrumentation; domain counters are registered on the meter
 `github.com/levonn-dev/vgkeep/services/bff`. `http_route` values are the
 mux patterns, method-prefixed (`GET /api/me`, `POST /api/otlp/v1/traces`).
 
-| Prometheus name | Instrument | Unit | Labels (bounded values) | Answers |
-|---|---|---|---|---|
-| `http_server_request_duration_seconds_{count,sum,bucket}` | histogram | s | `http_route`, `http_response_status_code` | RED for every route; 502s are upstream faults |
-| `go_goroutine_count` | gauge | goroutines | none | leak or stall detection |
-| `go_memory_used_bytes` | gauge | bytes | none | heap pressure against the 128Mi limit |
-| `vg_valkeykit_pool_*` (five series above) | counters + gauges | mixed | none | client pool sizing and saturation |
-| `redis_memory_used_bytes`, `redis_evicted_keys_total`, `redis_connected_clients` | exporter | mixed | `service="bff-valkey"` | server-side cache health |
-| `vg_bff_cache_fail_open_total` | counter (`vg.bff.cache.fail_open`) | (none) | `op`: `denylist_add`, `denylist_check`, `me_get`, `me_put`, `me_invalidate`, `recs_get`, `recs_put`, `recs_invalidate`, `refresh_lock`, `refresh_unlock`, `refresh_publish`, `refresh_result`, `social_summary`, `social_publish_event`, `comment_authors` | Valkey operations skipped by failing open, plus non-Valkey composition calls that degrade the same way (social counts, the publish event, and batched comment-author cards); the denylist ops feed a page alert |
-| `vg_bff_auth_logins_total` | counter (`vg.bff.auth.logins`) | `{login}` | `flow`: `login`, `link`; `outcome`: `success`, `failed`, `email_unverified`, `provider_error`, `conflict` | did logins or account links regress, and how are they failing |
-| `vg_bff_session_refreshes_total` | counter (`vg.bff.session.refreshes`) | `{refresh}` | `outcome`: `rotated`, `adopted`, `deferred`, `rejected`, `reuse_revoked`, `failed`, `adopt_timeout` | are sessions staying alive; a `rejected`/`reuse_revoked`/`failed` climb is users being logged out |
-| `vg_bff_cache_lookups_total` | counter (`vg.bff.cache.lookups`) | `{lookup}` | `cache`: `me`, `recs`; `outcome`: `hit`, `miss` | are the two composition caches absorbing load; a hit-ratio drop after a deploy means a key-version bump or TTL misconfig |
+| Prometheus name                                                                  | Instrument                           | Unit        | Labels (bounded values)                                                                                                                                                                                                                                    | Answers                                                                                                                                                                                                         |
+| -------------------------------------------------------------------------------- | ------------------------------------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `http_server_request_duration_seconds_{count,sum,bucket}`                        | histogram                            | s           | `http_route`, `http_response_status_code`                                                                                                                                                                                                                  | RED for every route; 502s are upstream faults                                                                                                                                                                   |
+| `go_goroutine_count`                                                             | gauge                                | goroutines  | none                                                                                                                                                                                                                                                       | leak or stall detection                                                                                                                                                                                         |
+| `go_memory_used_bytes`                                                           | gauge                                | bytes       | none                                                                                                                                                                                                                                                       | heap pressure against the 128Mi limit                                                                                                                                                                           |
+| `vg_valkeykit_pool_*` (five series above)                                        | counters + gauges                    | mixed       | none                                                                                                                                                                                                                                                       | client pool sizing and saturation                                                                                                                                                                               |
+| `redis_memory_used_bytes`, `redis_evicted_keys_total`, `redis_connected_clients` | exporter                             | mixed       | `service="bff-valkey"`                                                                                                                                                                                                                                     | server-side cache health                                                                                                                                                                                        |
+| `vg_bff_cache_fail_open_total`                                                   | counter (`vg.bff.cache.fail_open`)   | (none)      | `op`: `denylist_add`, `denylist_check`, `me_get`, `me_put`, `me_invalidate`, `recs_get`, `recs_put`, `recs_invalidate`, `refresh_lock`, `refresh_unlock`, `refresh_publish`, `refresh_result`, `social_summary`, `social_publish_event`, `comment_authors` | Valkey operations skipped by failing open, plus non-Valkey composition calls that degrade the same way (social counts, the publish event, and batched comment-author cards); the denylist ops feed a page alert |
+| `vg_bff_auth_logins_total`                                                       | counter (`vg.bff.auth.logins`)       | `{login}`   | `flow`: `login`, `link`; `outcome`: `success`, `failed`, `email_unverified`, `provider_error`, `conflict`                                                                                                                                                  | did logins or account links regress, and how are they failing                                                                                                                                                   |
+| `vg_bff_session_refreshes_total`                                                 | counter (`vg.bff.session.refreshes`) | `{refresh}` | `outcome`: `rotated`, `adopted`, `deferred`, `rejected`, `reuse_revoked`, `failed`, `adopt_timeout`                                                                                                                                                        | are sessions staying alive; a `rejected`/`reuse_revoked`/`failed` climb is users being logged out                                                                                                               |
+| `vg_bff_cache_lookups_total`                                                     | counter (`vg.bff.cache.lookups`)     | `{lookup}`  | `cache`: `me`, `recs`; `outcome`: `hit`, `miss`                                                                                                                                                                                                            | are the two composition caches absorbing load; a hit-ratio drop after a deploy means a key-version bump or TTL misconfig                                                                                        |
 
 Emission sites for the three domain counters beyond `fail_open`:
 

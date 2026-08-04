@@ -40,17 +40,17 @@ Note: the fixture's handle is literally `admin` on dev databases created before 
 
 ## Dev commands
 
-| Command | What |
-|---|---|
-| `task lint` | golangci-lint every Go module + helm lint every chart + eslint the frontend |
-| `task test` | go test every module (testcontainers need Docker) + frontend vitest |
-| `task test:cover` | tests + the 80% coverage gate (generated code and cmd/ wiring excluded) |
-| `task gen` | regenerate OpenAPI server stubs/types + the frontend's typed API client |
-| `task tidy` | go mod tidy every module |
-| `task build` | compile every module + the frontend bundle |
-| `task e2e` | Playwright smoke suite against the running stack (login, collection journey, currency, account, admin, social, submissions) |
-| `task run` / `task down` | tilt up / down |
-| `task nuke` | full app-stack reset: tilt down + the vgkeep namespace (see Teardown) |
+| Command                  | What                                                                                                                        |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `task lint`              | golangci-lint every Go module + helm lint every chart + eslint the frontend                                                 |
+| `task test`              | go test every module (testcontainers need Docker) + frontend vitest                                                         |
+| `task test:cover`        | tests + the 80% coverage gate (generated code and cmd/ wiring excluded)                                                     |
+| `task gen`               | regenerate OpenAPI server stubs/types + the frontend's typed API client                                                     |
+| `task tidy`              | go mod tidy every module                                                                                                    |
+| `task build`             | compile every module + the frontend bundle                                                                                  |
+| `task e2e`               | Playwright smoke suite against the running stack (login, collection journey, currency, account, admin, social, submissions) |
+| `task run` / `task down` | tilt up / down                                                                                                              |
+| `task nuke`              | full app-stack reset: tilt down + the vgkeep namespace (see Teardown)                                                       |
 
 ## Teardown
 
@@ -81,19 +81,19 @@ credential-adjacent surface), looser on the rest of `/api/*`, none on
 static assets. Everything the browser touches goes through that gateway;
 the other services are reachable in dev only via Tilt port-forwards.
 
-| Port | What |
-|---|---|
-| 8090 | APISIX gateway: the app's entrypoint (browser and Bruno `bff/`) |
-| 8083 | bff, direct (bypasses the gateway; for debugging) |
-| 8082 | auth, direct (Bruno `auth/` Bearer flows) |
-| 8081 | user, direct (Bruno `user/` Bearer flows) |
-| 8084 | enrichment, direct (Bruno `enrichment/` Bearer flows) |
-| 8085 | collection, direct (Bruno `collection/` Bearer flows) |
-| 8086 | social, direct (no Bruno flows yet) |
-| 5173 | Vite dev server (the manual `frontend-dev` Tilt resource; proxies `/api` to 8090) |
-| 3000 | Grafana (anonymous admin in dev) |
-| 9090 | Prometheus |
-| 16686 | Jaeger |
+| Port  | What                                                                              |
+| ----- | --------------------------------------------------------------------------------- |
+| 8090  | APISIX gateway: the app's entrypoint (browser and Bruno `bff/`)                   |
+| 8083  | bff, direct (bypasses the gateway; for debugging)                                 |
+| 8082  | auth, direct (Bruno `auth/` Bearer flows)                                         |
+| 8081  | user, direct (Bruno `user/` Bearer flows)                                         |
+| 8084  | enrichment, direct (Bruno `enrichment/` Bearer flows)                             |
+| 8085  | collection, direct (Bruno `collection/` Bearer flows)                             |
+| 8086  | social, direct (no Bruno flows yet)                                               |
+| 5173  | Vite dev server (the manual `frontend-dev` Tilt resource; proxies `/api` to 8090) |
+| 3000  | Grafana (anonymous admin in dev)                                                  |
+| 9090  | Prometheus                                                                        |
+| 16686 | Jaeger                                                                            |
 
 ## Frontend
 
