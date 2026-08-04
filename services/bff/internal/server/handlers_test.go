@@ -841,7 +841,7 @@ func TestUnitGetMe_IncludesProfileVisibility(t *testing.T) {
 		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
 		h.users = &stubUsersFull{user: userapi.User{
 			Id: uid, Email: "alice@example.test", Handle: "alice",
-			Roles: []userapi.UserRoles{"user"}, ProfileVisibility: userapi.Listed,
+			Roles: []userapi.UserRoles{"user"}, ProfileVisibility: userapi.UserProfileVisibilityListed,
 		}}
 		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 		r := httptest.NewRequest(http.MethodGet, "/api/me", nil)
