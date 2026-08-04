@@ -1,5 +1,5 @@
 import { i18n } from '@lingui/core'
-import { screen } from '@testing-library/react'
+import { cleanup, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderWithI18n } from '../test/i18n'
 import { recordProseFallback } from '../telemetry'
@@ -25,6 +25,10 @@ function Ja() {
 
 // Activation is global on the singleton; every test leaves en active.
 afterEach(() => {
+  // Unmount before touching the singleton: this hook runs ahead of
+  // RTL's auto-cleanup, and re-activating against a mounted tree is
+  // an I18nProvider update outside act.
+  cleanup()
   i18n.activate('en')
   vi.clearAllMocks()
 })

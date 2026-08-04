@@ -1,5 +1,5 @@
 import { i18n } from '@lingui/core'
-import { screen } from '@testing-library/react'
+import { cleanup, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { messages as zzMessages } from '../locales/zz.po'
 import NotFound from '../pages/NotFound'
@@ -25,6 +25,11 @@ import { renderWithI18n } from '../test/i18n'
 // test fails on is a deeper pipeline break (leaked ids, broken tag
 // markup).
 afterEach(() => {
+  // Unmount before touching the shared singleton: this hook runs
+  // ahead of RTL's auto-cleanup (afterEach hooks are LIFO), and
+  // re-activating against a still-mounted tree is an I18nProvider
+  // update outside act.
+  cleanup()
   i18n.activate('en')
 })
 

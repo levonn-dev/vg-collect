@@ -1,6 +1,6 @@
 import { i18n } from '@lingui/core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, screen } from '@testing-library/react'
+import { act, cleanup, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { messages as jaMessages } from '../../locales/ja.po'
 import { jsonResponse } from '../../test/fixtures'
@@ -25,7 +25,10 @@ function renderQueue() {
 afterEach(() => {
   vi.unstubAllGlobals()
   // Tests share the module-level singleton; leave en active for the
-  // rest of this file and every other one.
+  // rest of this file and every other one. Unmount first: this hook
+  // runs ahead of RTL's auto-cleanup, and re-activating against a
+  // mounted tree is an I18nProvider update outside act.
+  cleanup()
   i18n.activate('en')
 })
 

@@ -1,6 +1,6 @@
 import { i18n } from '@lingui/core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, screen, within } from '@testing-library/react'
+import { act, cleanup, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { FeedItem, ProfileCard, ShelfCard as ShelfCardData } from '../api/social'
@@ -39,6 +39,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
   // The Japanese-sentence test switches the shared Lingui singleton;
   // every test starts from the English catalog setup.ts activated.
+  // Unmount first: this hook runs ahead of RTL's auto-cleanup, and
+  // re-activating against a mounted tree is an I18nProvider update
+  // outside act.
+  cleanup()
   i18n.activate('en')
   const missed = unstubbed
   unstubbed = []

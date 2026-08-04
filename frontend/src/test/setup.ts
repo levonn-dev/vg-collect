@@ -3,10 +3,23 @@ import { i18n } from '@lingui/core'
 import { messages } from '../locales/en.po'
 
 // Recharts' ResponsiveContainer needs a ResizeObserver; jsdom has
-// none. Charts render zero-sized here - tests assert our own regions
-// and copy, not SVG geometry.
+// none. The stub reports a fixed size on observe so charts render
+// real SVG under test instead of measuring the layoutless DOM at 0x0
+// (recharts overwrites its own initialDimension with a mount-time
+// getBoundingClientRect, so a sized observation is the only seam).
+// The synchronous callback batches with that mount measurement inside
+// the same effect, which is what keeps the 0x0 warn path unreached.
 class ResizeObserverStub {
-  observe() {}
+  #callback: ResizeObserverCallback
+  constructor(callback: ResizeObserverCallback) {
+    this.#callback = callback
+  }
+  observe(target: Element) {
+    this.#callback(
+      [{ target, contentRect: { width: 600, height: 256 } } as ResizeObserverEntry],
+      this,
+    )
+  }
   unobserve() {}
   disconnect() {}
 }

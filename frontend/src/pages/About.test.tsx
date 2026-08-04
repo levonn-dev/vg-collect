@@ -1,5 +1,5 @@
 import { i18n } from '@lingui/core'
-import { screen, within } from '@testing-library/react'
+import { cleanup, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { messages as jaMessages } from '../locales/ja.po'
 import { renderWithI18n } from '../test/i18n'
@@ -16,7 +16,10 @@ function renderAbout() {
 
 afterEach(() => {
   vi.unstubAllEnvs()
-  // Activation is global on the singleton; every test leaves en active.
+  // Unmount before touching the singleton (this hook runs ahead of
+  // RTL's auto-cleanup; re-activating against a mounted tree is an
+  // I18nProvider update outside act), then leave en active.
+  cleanup()
   i18n.activate('en')
 })
 
