@@ -28,6 +28,14 @@ export default defineConfig({
     lingui(),
     tailwindcss(),
   ],
+  build: {
+    // The entry chunk sits at ~750 kB minified (217 kB gzip) after the
+    // telemetry-SDK and admin-route splits - React, router, TanStack,
+    // and Lingui in one deliberate chunk. Baseline the size-advisory
+    // just above that so it stays quiet at today's shape but trips
+    // again if the entry ever grows meaningfully.
+    chunkSizeWarningLimit: 800,
+  },
   server: {
     proxy: { '/api': 'http://localhost:8090' },
   },

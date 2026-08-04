@@ -8,7 +8,11 @@ import ErrorBoundary from './components/ErrorBoundary'
 import App from './App'
 import './index.css'
 
-initTelemetry()
+// Fired without awaiting: first render must never wait on the lazy
+// telemetry chunk. Records that happen before it lands (the locale
+// boot count below, notably) buffer inside the telemetry facade and
+// replay once init completes.
+void initTelemetry()
 
 // The catalog must be active before first render: no flash of
 // untranslated content, and no render before a catalog is loaded.

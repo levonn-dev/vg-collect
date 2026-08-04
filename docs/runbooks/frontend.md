@@ -6,7 +6,10 @@ its own dashboard (`vg-frontend`) and nine browser-side telemetry
 instruments dense enough to deserve a document of their own instead of
 a paragraph inside [stack.md](stack.md). Everything below - metrics,
 dashboard, failure scenarios - concerns code in
-`frontend/src/telemetry.ts`; there is no architecture, running-it,
+`frontend/src/telemetry.ts` (the record* facade every page imports)
+and `frontend/src/telemetryImpl.ts` (the OTel SDK half, loaded as its
+own lazy chunk so the SDK stays off the entry bundle); there is no
+architecture, running-it,
 configuration, datastore, admin-lever, or capacity story to tell,
 because there is no running process on the other end of these pages,
 only a browser.
@@ -14,8 +17,12 @@ only a browser.
 ## Telemetry
 
 Nine instruments - six counters and three web-vitals histograms - are
-created once in `frontend/src/telemetry.ts` and pushed through the
-same OTLP pipeline every backend service uses, with one browser-specific
+created once in `frontend/src/telemetryImpl.ts` (held and recorded
+into by the `telemetry.ts` facade; records that fire before the impl
+chunk lands, like the boot counter, buffer in the facade and replay on
+init, so the boots denominator survives the lazy load) and pushed
+through the same OTLP pipeline every backend service uses, with one
+browser-specific
 hop: browser -> bff `POST /api/otlp/v1/metrics` (session-gated relay,
 1 MiB cap, the same handler and semantics as the traces leg -
 [bff.md](bff.md#7-browser-telemetry-relay-failing)) -> otel-agent ->
@@ -82,7 +89,7 @@ backend's 5xx ratio points at the client's own network path (offline,
 DNS, a misbehaving proxy, CORS), not a backend incident.
 
 `vg_frontend_errors_total`'s `kind` attribute is `error` or
-`unhandledrejection` from the two `window` listeners `initTelemetry`
+`unhandledrejection` from the two `window` listeners telemetry init
 registers, or `boundary` from `ErrorBoundary.componentDidCatch`
 (`frontend/src/components/ErrorBoundary.tsx`): a render crash React
 caught, where the user saw the fallback screen instead of a blank
@@ -96,7 +103,7 @@ The three histograms feed from the `web-vitals` package's default
 reporting mode (no `reportAllChanges`): one data point per vital per
 page load, recorded when the browser finalizes that vital's value. LCP
 and CLS (and in practice INP too) only finalize once the page is
-hidden or backgrounded, so `initTelemetry` also registers a
+hidden or backgrounded, so telemetry init also registers a
 `visibilitychange` listener that force-flushes the metric reader on
 the hidden transition - a best-effort tail flush. A tab that closes
 without ever backgrounding (killed process, crash) loses that

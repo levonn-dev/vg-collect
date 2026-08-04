@@ -29,7 +29,7 @@ describe('initTelemetry', () => {
     fetchStub = vi.fn().mockResolvedValue(okResponse())
     vi.stubGlobal('fetch', fetchStub)
     const { initTelemetry } = await import('./telemetry')
-    initTelemetry(new SimpleSpanProcessor(exporter))
+    await initTelemetry(new SimpleSpanProcessor(exporter))
   })
 
   afterEach(() => {
@@ -60,7 +60,7 @@ describe('initTelemetry', () => {
 
   it('is idempotent: a second init never double-instruments', async () => {
     const { initTelemetry } = await import('./telemetry')
-    initTelemetry(new SimpleSpanProcessor(exporter))
+    await initTelemetry(new SimpleSpanProcessor(exporter))
     await fetch('/api/tags')
     await vi.waitFor(() => expect(exporter.getFinishedSpans().length).toBe(1))
   })
@@ -75,6 +75,34 @@ describe('locale and prose metric counters', () => {
     expect(() => recordCatalogFailure('boot', 'en')).not.toThrow()
     expect(() => recordLocaleSwitch('en', 'de')).not.toThrow()
     expect(() => recordProseFallback('about')).not.toThrow()
+  })
+
+  it('replays a record buffered while init is pending', async () => {
+    // The boot counter's survival path: main.tsx fires initTelemetry
+    // without awaiting and activateBoot records during that same gap,
+    // so the facade must buffer the event and deliver it once the impl
+    // chunk lands - a dropped boot would skew the dashboard's
+    // boots-denominator recipe.
+    vi.resetModules()
+    const telemetry = await import('./telemetry')
+    telemetry.recordLocaleBoot('ja', 'stored', 'ja-JP')
+    const metricExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE)
+    const metricReader = new PeriodicExportingMetricReader({
+      exporter: metricExporter,
+      exportIntervalMillis: NEVER_TICK_MILLIS,
+    })
+    await telemetry.initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()), metricReader)
+    await metricReader.forceFlush()
+    const points =
+      metricExporter
+        .getMetrics()[0]
+        ?.scopeMetrics.flatMap((sm) => sm.metrics)
+        .find((m) => m.descriptor.name === 'vg.frontend.locale.boot')?.dataPoints ?? []
+    expect(points).toHaveLength(1)
+    expect(points[0].attributes).toEqual({ locale: 'ja', source: 'stored', browser_language: 'ja' })
+    trace.disable()
+    context.disable()
+    propagation.disable()
   })
 
   describe('once initialized', () => {
@@ -95,7 +123,7 @@ describe('locale and prose metric counters', () => {
         exportIntervalMillis: NEVER_TICK_MILLIS,
       })
       telemetry = await import('./telemetry')
-      telemetry.initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()), metricReader)
+      await telemetry.initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()), metricReader)
     })
 
     afterEach(() => {
@@ -190,7 +218,7 @@ describe('uncaught-error and network-failure counters', () => {
         exportIntervalMillis: NEVER_TICK_MILLIS,
       })
       telemetry = await import('./telemetry')
-      telemetry.initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()), metricReader)
+      await telemetry.initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()), metricReader)
     })
 
     afterEach(() => {
@@ -298,7 +326,7 @@ describe('uncaught-error and network-failure counters', () => {
         exportIntervalMillis: NEVER_TICK_MILLIS,
       })
       const telemetry = await import('./telemetry')
-      telemetry.initTelemetry(new SimpleSpanProcessor(spanExporter), metricReader)
+      await telemetry.initTelemetry(new SimpleSpanProcessor(spanExporter), metricReader)
       return { telemetry, spanExporter, metricExporter, metricReader }
     }
 
@@ -365,7 +393,7 @@ describe('web vitals histograms', () => {
     vi.resetModules()
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse()))
     const { initTelemetry, handleWebVital } = await import('./telemetry')
-    expect(() => initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()))).not.toThrow()
+    await expect(initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()))).resolves.toBeUndefined()
     // The onLCP/onINP/onCLS calls above never fire under jsdom (no
     // observer support), but the seam they would have delegated to is
     // live either way.
@@ -389,7 +417,7 @@ describe('web vitals histograms', () => {
         exportIntervalMillis: NEVER_TICK_MILLIS,
       })
       telemetry = await import('./telemetry')
-      telemetry.initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()), metricReader)
+      await telemetry.initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()), metricReader)
     })
 
     afterEach(() => {
@@ -489,7 +517,7 @@ describe('web vitals histograms', () => {
         exportIntervalMillis: NEVER_TICK_MILLIS,
       })
       const telemetry = await import('./telemetry')
-      telemetry.initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()), metricReader)
+      await telemetry.initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()), metricReader)
       telemetry.handleWebVital('CLS', 0.02, 'good')
       await metricReader.forceFlush()
       const [resourceMetrics] = metricExporter.getMetrics()
