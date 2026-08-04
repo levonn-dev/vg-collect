@@ -1,4 +1,4 @@
-import { expect, Page, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 // One serial journey: the scenarios share dev-fixture identity state
 // (who owns dev-bob changes mid-test), so ordering is the test.
