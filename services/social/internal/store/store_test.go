@@ -30,7 +30,8 @@ func newTestStore(t *testing.T) *store.Store {
 		tcpostgres.WithDatabase("social"), tcpostgres.WithUsername("s"), tcpostgres.WithPassword("p"),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(60*time.Second)))
+				WithOccurrence(2).WithStartupTimeout(60*time.Second),
+			wait.ForListeningPort("5432/tcp")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +291,7 @@ func TestComments_CursorPaging(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	owner, author, shelf := uuid.New(), uuid.New(), uuid.New()
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if _, err := s.CreateComment(ctx, shelf, owner, author, fmt.Sprintf("c%d", i), 50); err != nil {
 			t.Fatalf("create %d: %v", i, err)
 		}

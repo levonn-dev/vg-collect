@@ -78,6 +78,7 @@ func Migrate(ctx context.Context, url, dbName string, fsys fs.FS, dir string) er
 	// this same client a second time (the iofs source holds nothing).
 	defer func() { _ = client.Disconnect(context.Background()) }()
 
+	//goland:noinspection GoResourceLeak
 	driver, err := mongodb.WithInstance(client, &mongodb.Config{
 		DatabaseName: dbName,
 		Locking:      mongodb.Locking{Enabled: true},

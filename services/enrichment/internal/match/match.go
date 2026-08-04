@@ -4,6 +4,7 @@
 package match
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -119,10 +120,8 @@ func forms(s string) []string {
 // counting a possessive and its dropped form as the same name.
 func SameName(a, b string) bool {
 	for _, x := range forms(a) {
-		for _, y := range forms(b) {
-			if x == y {
-				return true
-			}
+		if slices.Contains(forms(b), x) {
+			return true
 		}
 	}
 	return false
@@ -176,7 +175,7 @@ func stripBrackets(s string) string {
 
 func tokenSet(s string) map[string]bool {
 	out := map[string]bool{}
-	for _, t := range strings.Fields(s) {
+	for t := range strings.FieldsSeq(s) {
 		out[t] = true
 	}
 	return out
@@ -203,12 +202,7 @@ func dice(a, b string) float64 {
 func ConsoleMatches(platformName, consoleName string) bool {
 	p, c := Normalize(platformName), Normalize(consoleName)
 	if aliases, ok := consoleAliases[p]; ok {
-		for _, a := range aliases {
-			if a == c {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(aliases, c)
 	}
 	return p == c
 }

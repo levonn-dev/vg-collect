@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,8 +21,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
 )
 
-// ErrUpstream: the enrichment service answered outside its relayed
-// contract (or an infrastructure layer answered for it).
+// ErrUpstream means the enrichment service answered outside its
+// relayed contract (or an infrastructure layer answered for it).
 var ErrUpstream = errors.New("enrichmentclient: upstream failure")
 
 // Result is one relayable upstream answer.
@@ -61,10 +62,8 @@ func bearerEditor(bearer string) enrichapi.RequestEditorFn {
 // 401/403/5xx from a service the bff holds a valid session for is an
 // infrastructure fault, not a user condition.
 func relay(status int, contentType string, body []byte, allowed ...int) (Result, error) {
-	for _, a := range allowed {
-		if status == a {
-			return Result{Status: status, ContentType: contentType, Body: body}, nil
-		}
+	if slices.Contains(allowed, status) {
+		return Result{Status: status, ContentType: contentType, Body: body}, nil
 	}
 	return Result{}, fmt.Errorf("%w: status %d", ErrUpstream, status)
 }

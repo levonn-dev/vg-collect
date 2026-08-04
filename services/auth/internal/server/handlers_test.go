@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -50,19 +51,20 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 		tcpostgres.WithDatabase("auth"), tcpostgres.WithUsername("a"), tcpostgres.WithPassword("p"),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(60*time.Second)))
+				WithOccurrence(2).WithStartupTimeout(60*time.Second),
+			wait.ForListeningPort("5432/tcp")))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = pg.Terminate(ctx) })
-	url, err := pg.ConnectionString(ctx, "sslmode=disable")
+	dsn, err := pg.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
+	if err := pgkit.Migrate(dsn, migrations.FS, "."); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	pool, err := pgkit.Connect(ctx, url)
+	pool, err := pgkit.Connect(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,9 +310,7 @@ func (f *stubIDP) registerCode(code, nonce string, extra jwt.MapClaims) {
 		"iss": f.srv.URL, "aud": "client-1", "nonce": nonce,
 		"exp": time.Now().Add(time.Hour).Unix(),
 	}
-	for k, v := range extra {
-		claims[k] = v
-	}
+	maps.Copy(claims, extra)
 	f.codes[code] = claims
 }
 
@@ -946,7 +946,7 @@ func TestDevLink_RequiresBearerAndEnabledProvider(t *testing.T) {
 func TestDevLink_SameUserIsIdempotent(t *testing.T) {
 	e := newEnv(t, true)
 	alice := devLogin(t, e, "alice")
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		resp := postAuth(t, e.srv.URL+"/oauth/dev/link", alice.AccessToken, map[string]string{"user": "bob"})
 		if resp.StatusCode != 200 {
 			t.Fatalf("link attempt %d: %d", i+1, resp.StatusCode)
@@ -1192,8 +1192,11 @@ func TestHealthEndpoints(t *testing.T) {
 	e := newEnv(t, false)
 	for _, path := range []string{"/healthz", "/readyz"} {
 		resp, err := http.Get(e.srv.URL + path)
-		if err != nil || resp.StatusCode != 200 {
-			t.Fatalf("%s: %v %d", path, err, resp.StatusCode)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		if resp.StatusCode != 200 {
+			t.Fatalf("%s: status %d", path, resp.StatusCode)
 		}
 		_ = resp.Body.Close()
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -18,12 +19,7 @@ type Claims struct {
 
 // HasRole reports whether the Claims include the named role.
 func (c Claims) HasRole(role string) bool {
-	for _, r := range c.Roles {
-		if r == role {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.Roles, role)
 }
 
 // Validator validates vgkeep access JWTs against a JWKS endpoint.

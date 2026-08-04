@@ -995,7 +995,7 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request, entr
 	if !ok {
 		return
 	}
-	entry, err := h.store.GetEntry(r.Context(), userID, uuid.UUID(entryId))
+	entry, err := h.store.GetEntry(r.Context(), userID, entryId)
 	if errors.Is(err, store.ErrNotFound) {
 		problem(w, r, http.StatusNotFound, "entry_not_found", "no such entry")
 		return
@@ -1030,7 +1030,7 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request, entr
 			fmt.Sprintf("at most %d submissions per rolling 24h; try again later", submissionDailyCap))
 		return
 	}
-	sub, err := h.store.CreateSubmission(r.Context(), userID, uuid.UUID(entryId))
+	sub, err := h.store.CreateSubmission(r.Context(), userID, entryId)
 	if errors.Is(err, store.ErrSubmissionPending) {
 		problem(w, r, http.StatusConflict, "submission_pending", "a submission is already pending for this entry")
 		return
@@ -1050,14 +1050,14 @@ func (h *Handlers) GetSubmission(w http.ResponseWriter, r *http.Request, entryId
 	if !ok {
 		return
 	}
-	if _, err := h.store.GetEntry(r.Context(), userID, uuid.UUID(entryId)); errors.Is(err, store.ErrNotFound) {
+	if _, err := h.store.GetEntry(r.Context(), userID, entryId); errors.Is(err, store.ErrNotFound) {
 		problem(w, r, http.StatusNotFound, "entry_not_found", "no such entry")
 		return
 	} else if err != nil {
 		h.internalError(w, r, "get failed", err)
 		return
 	}
-	sub, err := h.store.LatestSubmissionForEntry(r.Context(), userID, uuid.UUID(entryId))
+	sub, err := h.store.LatestSubmissionForEntry(r.Context(), userID, entryId)
 	if errors.Is(err, store.ErrNotFound) {
 		problem(w, r, http.StatusNotFound, "submission_not_found", "the entry has no submissions")
 		return
@@ -1080,14 +1080,14 @@ func (h *Handlers) AckSubmissionResolution(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	if _, err := h.store.GetEntry(r.Context(), userID, uuid.UUID(entryId)); errors.Is(err, store.ErrNotFound) {
+	if _, err := h.store.GetEntry(r.Context(), userID, entryId); errors.Is(err, store.ErrNotFound) {
 		problem(w, r, http.StatusNotFound, "entry_not_found", "no such entry")
 		return
 	} else if err != nil {
 		h.internalError(w, r, "get failed", err)
 		return
 	}
-	sub, err := h.store.LatestApprovedSubmissionForEntry(r.Context(), userID, uuid.UUID(entryId))
+	sub, err := h.store.LatestApprovedSubmissionForEntry(r.Context(), userID, entryId)
 	if errors.Is(err, store.ErrNotFound) {
 		problem(w, r, http.StatusNotFound, "submission_not_found", "the entry has no approved submission")
 		return
@@ -1111,7 +1111,7 @@ func (h *Handlers) CancelSubmission(w http.ResponseWriter, r *http.Request, entr
 	if !ok {
 		return
 	}
-	err := h.store.CancelSubmission(r.Context(), userID, uuid.UUID(entryId))
+	err := h.store.CancelSubmission(r.Context(), userID, entryId)
 	if errors.Is(err, store.ErrNotFound) {
 		problem(w, r, http.StatusNotFound, "submission_not_found", "nothing is pending for this entry")
 		return
@@ -1421,7 +1421,7 @@ func toAPITag(t store.Tag) api.Tag {
 
 // toAPIView maps a stored view; Params round-trips verbatim.
 func toAPIView(v store.View) (api.SavedView, error) {
-	var params map[string]interface{}
+	var params map[string]any
 	if err := json.Unmarshal(v.Params, &params); err != nil {
 		return api.SavedView{}, err
 	}
@@ -1984,7 +1984,7 @@ func (h *Handlers) CountProductReferences(w http.ResponseWriter, r *http.Request
 		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
 		return
 	}
-	n, err := h.store.CountEntriesByProduct(r.Context(), uuid.UUID(productId))
+	n, err := h.store.CountEntriesByProduct(r.Context(), productId)
 	if err != nil {
 		h.internalError(w, r, "count failed", err)
 		return
@@ -2063,7 +2063,7 @@ func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submiss
 		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
 		return
 	}
-	sub, err := h.store.GetSubmission(r.Context(), uuid.UUID(submissionId))
+	sub, err := h.store.GetSubmission(r.Context(), submissionId)
 	if errors.Is(err, store.ErrNotFound) {
 		problem(w, r, http.StatusNotFound, "submission_not_found", "no such submission")
 		return

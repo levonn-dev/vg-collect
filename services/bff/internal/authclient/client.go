@@ -32,14 +32,14 @@ var (
 	// ErrUserUnavailable means refresh could not consult the role
 	// source; the token was NOT consumed and the same one retries.
 	ErrUserUnavailable = errors.New("authclient: role source unavailable")
-	// ErrLinkConflict: the identity being linked already belongs to
-	// another account (auth answers 409 identity_already_linked).
+	// ErrLinkConflict means the identity being linked already belongs
+	// to another account (auth answers 409 identity_already_linked).
 	ErrLinkConflict = errors.New("authclient: identity already linked to another account")
 	// ErrLinkEmailUnverified is the verified-email policy refusing a link.
 	ErrLinkEmailUnverified = errors.New("authclient: provider did not assert a verified email for link")
-	// ErrLastIdentity: refusing to unlink an account's only login.
+	// ErrLastIdentity is the refusal to unlink an account's only login.
 	ErrLastIdentity = errors.New("authclient: cannot unlink the last login")
-	// ErrIdentityNotFound: no such identity on this account.
+	// ErrIdentityNotFound means no such identity on this account.
 	ErrIdentityNotFound = errors.New("authclient: identity not found")
 )
 

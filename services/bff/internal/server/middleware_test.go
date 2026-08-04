@@ -498,14 +498,15 @@ func (f *stubUserService) get(w http.ResponseWriter, _ *http.Request) {
 			"type": "about:blank", "title": "Not Found", "status": 404, "code": "user_not_found",
 		})
 		return
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": f.id, "email": f.email, "handle": f.handle,
+			"roles": []string{"user"}, "created_at": "2026-01-01T00:00:00Z",
+			"updated_at": "2026-01-01T00:00:00Z",
+		})
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"id": f.id, "email": f.email, "handle": f.handle,
-		"roles": []string{"user"}, "created_at": "2026-01-01T00:00:00Z",
-		"updated_at": "2026-01-01T00:00:00Z",
-	})
 }
 
 // stubEnrichmentService answers GET /search with a canned SearchResults

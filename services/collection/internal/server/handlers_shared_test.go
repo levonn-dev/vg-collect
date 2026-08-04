@@ -18,8 +18,6 @@ import (
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-func ptrInt64(v int64) *int64 { return &v }
-
 // TestSharedEntryWhitelist pins the projection: the SharedEntry
 // contract type must expose exactly these JSON fields. A new field
 // here is a privacy decision, not a convenience - update the spec
@@ -32,10 +30,10 @@ func TestSharedEntryWhitelist(t *testing.T) {
 		"box_condition", "manual_condition", "item_condition",
 		"pinned", "tags", "created_at",
 	}
-	typ := reflect.TypeOf(api.SharedEntry{})
+	typ := reflect.TypeFor[api.SharedEntry]()
 	got := []string{}
-	for i := 0; i < typ.NumField(); i++ {
-		tag := typ.Field(i).Tag.Get("json")
+	for field := range typ.Fields() {
+		tag := field.Tag.Get("json")
 		got = append(got, strings.Split(tag, ",")[0])
 	}
 	sort.Strings(want)
@@ -93,7 +91,7 @@ func TestUnitSharedShelfEntries_ExecutesStoredParams(t *testing.T) {
 	var gotUser uuid.UUID
 	entry := store.Entry{ID: uuid.New(), ItemType: "game", MediaType: "physical",
 		DisplayName: "Chrono Trigger", Region: "ntsc_u", Packaging: "cib",
-		Status: "backlog", PricePaidCents: ptrInt64(12345), CreatedAt: time.Now(), UpdatedAt: time.Now()}
+		Status: "backlog", PricePaidCents: new(int64(12345)), CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	st := &stubStore{
 		getSharedShelf: func(context.Context, uuid.UUID) (store.View, error) { return shelf, nil },
 		listEntries: func(_ context.Context, userID uuid.UUID, f store.Filters) ([]store.Entry, error) {
@@ -340,7 +338,7 @@ func TestUnitListSharedShelves(t *testing.T) {
 		// owner_ids over its maxItems bound (5000) gets its own code -
 		// the generated param binder does not enforce maxItems.
 		q := url.Values{}
-		for i := 0; i < 5001; i++ {
+		for range 5001 {
 			q.Add("owner_ids", uuid.NewString())
 		}
 		resp := do(t, http.MethodGet, srv.URL+"/shared/shelves?"+q.Encode(), tok, nil)
@@ -383,7 +381,7 @@ func TestUnitListSharedShelves(t *testing.T) {
 		// single repeated key, no per-iteration string concatenation),
 		// same idiom as the 5001-id rejection case above.
 		q := url.Values{}
-		for i := 0; i < 5000; i++ {
+		for range 5000 {
 			q.Add("owner_ids", uuid.NewString())
 		}
 		resp := do(t, http.MethodGet, srv.URL+"/shared/shelves?"+q.Encode(), a.token(t, "viewer"), nil)
@@ -436,7 +434,7 @@ func TestUnitGetSharedShelvesByIds(t *testing.T) {
 
 	t.Run("too many ids is a 400 before the store is touched", func(t *testing.T) {
 		q := url.Values{}
-		for i := 0; i < 101; i++ {
+		for range 101 {
 			q.Add("ids", uuid.NewString())
 		}
 		srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
@@ -446,7 +444,7 @@ func TestUnitGetSharedShelvesByIds(t *testing.T) {
 
 	t.Run("exactly the max (100 ids) is accepted", func(t *testing.T) {
 		q := url.Values{}
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			q.Add("ids", uuid.NewString())
 		}
 		st := &stubStore{sharedShelvesByIDs: func(context.Context, []uuid.UUID) ([]store.View, error) {

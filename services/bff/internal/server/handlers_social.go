@@ -422,9 +422,9 @@ func (h *Handlers) relaySocial(w http.ResponseWriter, r *http.Request, res socia
 	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
 
-// Follow/Unfollow/Like/Unlike are thin relays; the social service
-// validates the target (self-follow, shelf visibility) itself, so
-// there is no effectiveShelf call here.
+// Follow and its siblings (Unfollow, Like, Unlike) are thin relays;
+// the social service validates the target (self-follow, shelf
+// visibility) itself, so there is no effectiveShelf call here.
 func (h *Handlers) Follow(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID) {
 	sess, _, ok := session.FromContext(r.Context())
 	if !ok {
@@ -649,12 +649,12 @@ func validFeedCursor(s string) bool {
 // cursor by index. Every lookup here is a hard dependency (an error
 // aborts the whole page, no fail-open): unlike a page's decorative
 // social counts elsewhere, the gate itself depends on this data, and
-// failing open would risk naming a gated object. viewerID identifies
-// the caller for parity with the rest of the composition helpers in
-// this file; the gating rule itself needs only the tab and the
-// batched cards/summaries, because social already scopes tab=you's
+// failing open would risk naming a gated object. The unused identity
+// argument keeps call-site parity with the rest of the composition
+// helpers in this file; the gating rule itself needs only the tab and
+// the batched cards/summaries, because social already scopes tab=you's
 // events to ones targeting the caller.
-func (h *Handlers) hydrateFeed(ctx context.Context, bearer, viewerID, tab string, events []socialapi.ActivityEvent) ([]*api.FeedItem, error) {
+func (h *Handlers) hydrateFeed(ctx context.Context, bearer, _, tab string, events []socialapi.ActivityEvent) ([]*api.FeedItem, error) {
 	var shelfIDs []uuid.UUID
 	seenShelf := map[uuid.UUID]bool{}
 	var commentIDs []uuid.UUID

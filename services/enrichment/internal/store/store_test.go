@@ -172,7 +172,7 @@ func TestProduct_ConcurrentCreate_SingleWinner(t *testing.T) {
 	ids := make([]string, n)
 	errs := make([]error, n)
 	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
+	for i := range n {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -181,7 +181,7 @@ func TestProduct_ConcurrentCreate_SingleWinner(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if errs[i] != nil {
 			t.Fatalf("racer %d errored: %v", i, errs[i])
 		}
@@ -286,8 +286,11 @@ func TestProduct_SetPriceChartingIfMissing_FillsExactlyOnce(t *testing.T) {
 		t.Fatalf("first fill must land: landed=%v err=%v", landed, err)
 	}
 	got, err := s.GetProduct(ctx, created.ID)
-	if err != nil || got.PriceCharting == nil || got.PriceCharting.PCProductID != 7001 {
-		t.Fatalf("fill must persist the mapping: %+v, %v", got.PriceCharting, err)
+	if err != nil {
+		t.Fatalf("fill must persist the mapping: %v", err)
+	}
+	if got.PriceCharting == nil || got.PriceCharting.PCProductID != 7001 {
+		t.Fatalf("fill must persist the mapping: %+v", got.PriceCharting)
 	}
 
 	// Mapped now: a second fill must not land and must change nothing.
@@ -300,8 +303,11 @@ func TestProduct_SetPriceChartingIfMissing_FillsExactlyOnce(t *testing.T) {
 		t.Fatalf("second fill must not land: landed=%v err=%v", landed, err)
 	}
 	got, err = s.GetProduct(ctx, created.ID)
-	if err != nil || got.PriceCharting.PCProductID != 7001 {
-		t.Fatalf("existing mapping must be untouched: %+v, %v", got.PriceCharting, err)
+	if err != nil {
+		t.Fatalf("existing mapping must be untouched: %v", err)
+	}
+	if got.PriceCharting.PCProductID != 7001 {
+		t.Fatalf("existing mapping must be untouched: %+v", got.PriceCharting)
 	}
 
 	// A mapping cleared by the admin path is missing again, but the
@@ -953,7 +959,7 @@ func TestDeleteUnmatchedProduct(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		if err := s.AppendSnapshot(ctx, store.Snapshot{ProductID: orphan.ID, CapturedAt: time.Now().UTC()}); err != nil {
 			t.Fatal(err)
 		}

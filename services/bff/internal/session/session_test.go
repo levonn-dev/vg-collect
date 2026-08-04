@@ -116,9 +116,9 @@ func TestCookieAttributes(t *testing.T) {
 	if !ck.HttpOnly || !ck.Secure || ck.SameSite != http.SameSiteLaxMode || ck.Path != "/" {
 		t.Fatalf("cookie attributes = %+v", ck)
 	}
-	clear := codec.ClearCookie()
-	if clear.MaxAge != -1 || clear.Value != "" || !clear.HttpOnly {
-		t.Fatalf("clear cookie = %+v", clear)
+	cleared := codec.ClearCookie()
+	if cleared.MaxAge != -1 || cleared.Value != "" || !cleared.HttpOnly {
+		t.Fatalf("clear cookie = %+v", cleared)
 	}
 
 	insecure, _ := NewCodec(testKey, false)

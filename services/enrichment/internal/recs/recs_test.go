@@ -2,8 +2,6 @@ package recs
 
 import "testing"
 
-func intp(v int) *int { return &v }
-
 func TestOwnerWeights_ThroughScore(t *testing.T) {
 	// Three owners of the same edge with the three weight cases:
 	// rated 9 (2.0), plain (1.0), dropped (0.5). No genre data, so the
@@ -15,10 +13,10 @@ func TestOwnerWeights_ThroughScore(t *testing.T) {
 		4: {Similar: []int64{104}},
 	}
 	lib := []LibraryGame{
-		{GameID: 1, Rating: intp(9)},
+		{GameID: 1, Rating: new(9)},
 		{GameID: 2},
 		{GameID: 3, Status: "dropped"},
-		{GameID: 4, Rating: intp(9), Status: "dropped"}, // dropped wins
+		{GameID: 4, Rating: new(9), Status: "dropped"}, // dropped wins
 	}
 	got := Score(lib, meta, []int64{101, 102, 103, 104})
 	want := map[int64]float64{101: 2.0, 102: 1.0, 103: 0.5, 104: 0.5}
@@ -44,8 +42,8 @@ func TestOwnerWeight_Rating8BoundaryThroughScore(t *testing.T) {
 		2: {Similar: []int64{202}},
 	}
 	lib := []LibraryGame{
-		{GameID: 1, Rating: intp(8)},
-		{GameID: 2, Rating: intp(7)},
+		{GameID: 1, Rating: new(8)},
+		{GameID: 2, Rating: new(7)},
 	}
 	got := Score(lib, meta, []int64{201, 202})
 	want := map[int64]float64{201: 2.0, 202: 1.0}
@@ -64,7 +62,7 @@ func TestScore_EdgesAccumulateAndOwnedExcluded(t *testing.T) {
 		1: {Similar: []int64{100, 2}}, // 2 is owned: never a candidate
 		2: {Similar: []int64{100}},
 	}
-	lib := []LibraryGame{{GameID: 1, Rating: intp(10)}, {GameID: 2}}
+	lib := []LibraryGame{{GameID: 1, Rating: new(10)}, {GameID: 2}}
 	got := Score(lib, meta, []int64{100, 2, 100}) // dupes and owned filtered
 	if len(got) != 1 || got[0].GameID != 100 || got[0].Score != 3.0 {
 		t.Fatalf("accumulate/exclude: %+v", got)
@@ -107,7 +105,7 @@ func TestCandidateIDs_WeightOrderedAndCapped(t *testing.T) {
 		1: {Similar: []int64{100, 101}},
 		2: {Similar: []int64{101, 102, 3}}, // 3 is owned
 	}
-	lib := []LibraryGame{{GameID: 1, Rating: intp(9)}, {GameID: 2}, {GameID: 3}}
+	lib := []LibraryGame{{GameID: 1, Rating: new(9)}, {GameID: 2}, {GameID: 3}}
 	got := CandidateIDs(lib, meta, 10)
 	// 101: 2.0+1.0=3.0; 100: 2.0; 102: 1.0. Owned 3 excluded.
 	if len(got) != 3 || got[0] != 101 || got[1] != 100 || got[2] != 102 {
@@ -125,7 +123,7 @@ func TestTopGenres(t *testing.T) {
 		3: {GenreIDs: []int64{31}},
 	}
 	lib := []LibraryGame{
-		{GameID: 1, Rating: intp(9)},   // 12: +2, 31: +2
+		{GameID: 1, Rating: new(9)},    // 12: +2, 31: +2
 		{GameID: 2},                    // 12: +1
 		{GameID: 3, Status: "dropped"}, // 31: +0.5
 	}

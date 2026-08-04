@@ -459,8 +459,6 @@ func (s *stubCache) InvalidateDashboard(_ context.Context, sub string) error {
 
 // ---- fixtures ----
 
-func ptr[T any](v T) *T { return &v }
-
 func jsonBody(m map[string]any) *bytes.Reader {
 	b, _ := json.Marshal(m)
 	return bytes.NewReader(b)
@@ -471,7 +469,7 @@ func gameProduct(id uuid.UUID) enrichapi.Product {
 	released := openapi_types.Date{Time: time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC)}
 	return enrichapi.Product{
 		Id:   id,
-		Type: enrichapi.ProductType("game"),
+		Type: "game",
 		Name: "Chrono Trigger",
 		Platform: &enrichapi.PlatformRef{
 			IgdbPlatformId: 6, Name: "SNES",
@@ -489,7 +487,7 @@ func gameProduct(id uuid.UUID) enrichapi.Product {
 func consoleProduct(id uuid.UUID) enrichapi.Product {
 	return enrichapi.Product{
 		Id:   id,
-		Type: enrichapi.ProductType("console"),
+		Type: "console",
 		Name: "Super NES Console",
 	}
 }
@@ -647,7 +645,7 @@ func TestUnitCreateEntry_CoverFallsBackToPlatformLogo(t *testing.T) {
 	hardware := &stubEnrichment{
 		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
 			return enrichapi.Product{
-				Id: id, Type: enrichapi.ProductType("console"), Name: "Gamecube System",
+				Id: id, Type: "console", Name: "Gamecube System",
 				Platform: &enrichapi.PlatformRef{IgdbPlatformId: 21, Name: "Nintendo GameCube", LogoUrl: &logo},
 			}, nil
 		},
@@ -1154,7 +1152,8 @@ func newStack(t *testing.T) *stack {
 		tcpostgres.WithDatabase("collection"), tcpostgres.WithUsername("c"), tcpostgres.WithPassword("p"),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(60*time.Second)))
+				WithOccurrence(2).WithStartupTimeout(60*time.Second),
+			wait.ForListeningPort("5432/tcp")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1259,7 +1258,7 @@ func TestCreateEntryPersistsThroughTheStack(t *testing.T) {
 func storedGameEntry(userID uuid.UUID) store.Entry {
 	rank := "n"
 	return store.Entry{
-		ID: uuid.New(), UserID: userID, ProductID: ptr(uuid.New()),
+		ID: uuid.New(), UserID: userID, ProductID: new(uuid.New()),
 		ItemType: "game", MediaType: "physical", DisplayName: "Chrono Trigger",
 		Region: "ntsc_u", Packaging: "cib", Currency: "USD",
 		PricingMode: "auto", Status: "backlog", BacklogRank: &rank,
@@ -1517,7 +1516,7 @@ func TestUnitUpdateEntry(t *testing.T) {
 		cust.ProductID = nil
 		cust.PricingMode = "proxy"
 		cust.PricingProductID = &target
-		cust.IGDBGameID = ptr(int64(1000))
+		cust.IGDBGameID = new(int64(1000))
 		var productCalls int
 		var updated store.Entry
 		st := &stubStore{
@@ -1645,8 +1644,8 @@ func TestUnitUpdateEntry(t *testing.T) {
 			t.Fatalf("proxy adoption: %d %v", resp.StatusCode, updated.IGDBGameID)
 		}
 		cust.PricingMode = "proxy"
-		cust.PricingProductID = ptr(uuid.New())
-		cust.IGDBGameID = ptr(int64(1000))
+		cust.PricingProductID = new(uuid.New())
+		cust.IGDBGameID = new(int64(1000))
 		resp = do(t, http.MethodPut, srv.URL+"/entries/"+cust.ID.String(), a.token(t, owner.String()),
 			updateBody(func(m map[string]any) {
 				m["pricing_mode"] = "disabled"
@@ -1679,8 +1678,8 @@ func TestUnitUpdateEntry(t *testing.T) {
 		cust := storedGameEntry(owner)
 		cust.ProductID = nil
 		cust.PricingMode = "disabled"
-		cust.PlatformName = ptr("SNES")
-		cust.PlatformIGDBID = ptr(int64(19))
+		cust.PlatformName = new("SNES")
+		cust.PlatformIGDBID = new(int64(19))
 		st := &stubStore{
 			getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return cust, nil },
 			updateEntry: func(context.Context, store.Entry, []uuid.UUID) (store.Entry, error) {
@@ -1732,7 +1731,7 @@ func TestUnitUpdateEntry(t *testing.T) {
 
 	t.Run("narrow product re-match", func(t *testing.T) {
 		gameProd := func(id uuid.UUID, gameID, platformID int64, matched bool) enrichapi.Product {
-			p := enrichapi.Product{Id: id, Type: enrichapi.ProductType("game"),
+			p := enrichapi.Product{Id: id, Type: "game",
 				Igdb:     &enrichapi.IgdbMeta{GameId: gameID},
 				Platform: &enrichapi.PlatformRef{IgdbPlatformId: platformID, Name: "SNES"}}
 			if matched {
@@ -1912,7 +1911,7 @@ func TestUnitUpdateEntry_RegionScopedReleaseDate(t *testing.T) {
 	// the precondition for a region edit to be fetch-eligible at all.
 	gameBacked := func() store.Entry {
 		e := storedGameEntry(user)
-		e.IGDBGameID = ptr(int64(1000))
+		e.IGDBGameID = new(int64(1000))
 		d := naDate
 		e.FirstReleaseDate = &d
 		return e
@@ -2226,7 +2225,7 @@ func TestReorderThroughTheStack(t *testing.T) {
 func listedEntry(user uuid.UUID, name string, mut func(*store.Entry)) store.Entry {
 	e := storedGameEntry(user)
 	e.ID = uuid.New()
-	e.ProductID = ptr(uuid.New())
+	e.ProductID = new(uuid.New())
 	e.DisplayName = name
 	if mut != nil {
 		mut(&e)
@@ -2426,11 +2425,11 @@ func TestUnitListEntries_GroupingDimensions(t *testing.T) {
 	t.Run("platform: named groups ascending, Unknown last", func(t *testing.T) {
 		snes := listedEntry(user, "SNES Game", func(e *store.Entry) {
 			e.PricingMode = "disabled"
-			e.PlatformName = ptr("SNES")
+			e.PlatformName = new("SNES")
 		})
 		genesis := listedEntry(user, "Genesis Game", func(e *store.Entry) {
 			e.PricingMode = "disabled"
-			e.PlatformName = ptr("Genesis")
+			e.PlatformName = new("Genesis")
 		})
 		unknown := listedEntry(user, "No Platform Game", func(e *store.Entry) {
 			e.PricingMode = "disabled"
@@ -2465,11 +2464,11 @@ func TestUnitListEntries_GroupingDimensions(t *testing.T) {
 	t.Run("location: named groups ascending, Unassigned last", func(t *testing.T) {
 		closet := listedEntry(user, "Closet Game", func(e *store.Entry) {
 			e.PricingMode = "disabled"
-			e.StorageLocation = ptr("Closet")
+			e.StorageLocation = new("Closet")
 		})
 		shelf := listedEntry(user, "Shelf Game", func(e *store.Entry) {
 			e.PricingMode = "disabled"
-			e.StorageLocation = ptr("Shelf A")
+			e.StorageLocation = new("Shelf A")
 		})
 		unassigned := listedEntry(user, "No Location Game", func(e *store.Entry) {
 			e.PricingMode = "disabled"
@@ -3270,7 +3269,7 @@ func TestTagsAndViewsThroughTheStack(t *testing.T) {
 	}
 }
 
-func dashboardStore(user uuid.UUID, rows []store.PricingRow) *stubStore {
+func dashboardStore(_ uuid.UUID, rows []store.PricingRow) *stubStore {
 	return &stubStore{
 		dashboardCounts: func(context.Context, uuid.UUID, store.Filters) (store.DashboardCounts, error) {
 			return store.DashboardCounts{
@@ -3287,12 +3286,12 @@ func dashboardStore(user uuid.UUID, rows []store.PricingRow) *stubStore {
 
 func TestUnitDashboard_ComposesAndCaches(t *testing.T) {
 	user := uuid.New()
-	auto := store.PricingRow{EntryID: uuid.New(), Packaging: "cib", PricingMode: "auto", ProductID: ptr(uuid.New())}
+	auto := store.PricingRow{EntryID: uuid.New(), Packaging: "cib", PricingMode: "auto", ProductID: new(uuid.New())}
 	proxyTarget := uuid.New()
 	// A custom entry: no own product, priced through the proxy.
 	proxy := store.PricingRow{EntryID: uuid.New(), Packaging: "loose", PricingMode: "proxy", PricingProductID: &proxyTarget}
-	disabled := store.PricingRow{EntryID: uuid.New(), Packaging: "cib", PricingMode: "disabled", ProductID: ptr(uuid.New())}
-	unpriced := store.PricingRow{EntryID: uuid.New(), Packaging: "sealed", PricingMode: "auto", ProductID: ptr(uuid.New())}
+	disabled := store.PricingRow{EntryID: uuid.New(), Packaging: "cib", PricingMode: "disabled", ProductID: new(uuid.New())}
+	unpriced := store.PricingRow{EntryID: uuid.New(), Packaging: "sealed", PricingMode: "auto", ProductID: new(uuid.New())}
 
 	st := dashboardStore(user, []store.PricingRow{auto, proxy, disabled, unpriced})
 	enrich := &stubEnrichment{batchPrices: func(_ context.Context, _ string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error) {
@@ -3356,7 +3355,7 @@ func TestUnitDashboard_CacheHitShortCircuits(t *testing.T) {
 
 func TestUnitDashboard_DegradedIsNotCached(t *testing.T) {
 	user := uuid.New()
-	rows := []store.PricingRow{{EntryID: uuid.New(), Packaging: "cib", PricingMode: "auto", ProductID: ptr(uuid.New())}}
+	rows := []store.PricingRow{{EntryID: uuid.New(), Packaging: "cib", PricingMode: "auto", ProductID: new(uuid.New())}}
 	st := dashboardStore(user, rows)
 	enrich := &stubEnrichment{batchPrices: func(context.Context, string, []uuid.UUID) (map[string]enrichapi.ProductPrices, error) {
 		return nil, enrichmentclient.ErrUnavailable
@@ -3975,7 +3974,7 @@ func TestUnitCustomPricing_MaxValueAccepted(t *testing.T) {
 		r := "n"
 		e.BacklogRank = &r
 		e.Tags = []store.TagRef{}
-		e.CustomValueSetAt = ptr(time.Now())
+		e.CustomValueSetAt = new(time.Now())
 		return e, nil
 	}}
 	enrich := &stubEnrichment{getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
@@ -4016,7 +4015,7 @@ func TestUnitEntryValue_CustomModeShortCircuitsEnrichment(t *testing.T) {
 			r := "n"
 			e.BacklogRank = &r
 			e.Tags = []store.TagRef{}
-			e.CustomValueSetAt = ptr(time.Now()) // the store SQL stamps this server-side
+			e.CustomValueSetAt = new(time.Now()) // the store SQL stamps this server-side
 			created = e
 			return e, nil
 		},
@@ -4102,7 +4101,7 @@ func TestUnitEnteredPair_PassthroughOnCreate(t *testing.T) {
 			r := "n"
 			e.BacklogRank = &r
 			e.Tags = []store.TagRef{}
-			e.CustomValueSetAt = ptr(time.Now())
+			e.CustomValueSetAt = new(time.Now())
 			return e, nil
 		},
 	}
@@ -4152,7 +4151,7 @@ func TestUnitListEntries_MixedCustomAndProxyComposition(t *testing.T) {
 	})
 	custom := listedEntry(user, "Custom", func(e *store.Entry) {
 		e.PricingMode = "custom"
-		e.CustomValueCents = ptr(int64(5000))
+		e.CustomValueCents = new(int64(5000))
 	})
 	st := &stubStore{listEntries: func(_ context.Context, _ uuid.UUID, f store.Filters) ([]store.Entry, error) {
 		if f.Sort != "value" || f.Order != "asc" {
@@ -4193,7 +4192,7 @@ func TestUnitListEntries_MixedCustomAndProxyComposition(t *testing.T) {
 func TestUnitDashboard_CustomOnlyNeedsNoEnrichment(t *testing.T) {
 	user := uuid.New()
 	rows := []store.PricingRow{
-		{EntryID: uuid.New(), PricingMode: "custom", CustomValueCents: ptr(int64(7700)), CustomValueSetAt: ptr(time.Now())},
+		{EntryID: uuid.New(), PricingMode: "custom", CustomValueCents: new(int64(7700)), CustomValueSetAt: new(time.Now())},
 	}
 	st := dashboardStore(user, rows)
 	enrich := &stubEnrichment{batchPrices: func(context.Context, string, []uuid.UUID) (map[string]enrichapi.ProductPrices, error) {
@@ -4227,9 +4226,9 @@ func TestUnitDashboard_CustomOnlyNeedsNoEnrichment(t *testing.T) {
 func TestUnitDashboard_MixedCustomProxyDisabled(t *testing.T) {
 	user := uuid.New()
 	proxyTarget := uuid.New()
-	custom := store.PricingRow{EntryID: uuid.New(), PricingMode: "custom", CustomValueCents: ptr(int64(7700)), CustomValueSetAt: ptr(time.Now())}
+	custom := store.PricingRow{EntryID: uuid.New(), PricingMode: "custom", CustomValueCents: new(int64(7700)), CustomValueSetAt: new(time.Now())}
 	proxy := store.PricingRow{EntryID: uuid.New(), Packaging: "loose", PricingMode: "proxy", PricingProductID: &proxyTarget}
-	disabled := store.PricingRow{EntryID: uuid.New(), Packaging: "cib", PricingMode: "disabled", ProductID: ptr(uuid.New())}
+	disabled := store.PricingRow{EntryID: uuid.New(), Packaging: "cib", PricingMode: "disabled", ProductID: new(uuid.New())}
 	st := dashboardStore(user, []store.PricingRow{custom, proxy, disabled})
 	enrich := &stubEnrichment{batchPrices: func(_ context.Context, _ string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error) {
 		if len(ids) != 1 || ids[0] != proxyTarget {
@@ -4275,7 +4274,7 @@ func TestUnitCreateEntry_CustomOffCatalogWithCustomModeAndPCListingProxyBorrowsN
 			r := "n"
 			e.BacklogRank = &r
 			e.Tags = []store.TagRef{}
-			e.CustomValueSetAt = ptr(time.Now())
+			e.CustomValueSetAt = new(time.Now())
 			return e, nil
 		}}
 		// Both enrichment fields deliberately nil: a call would panic.
@@ -4325,7 +4324,7 @@ func TestUnitCreateEntry_CustomOffCatalogWithCustomModeAndPCListingProxyBorrowsN
 		}}
 		enrich := &stubEnrichment{
 			getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
-				return enrichapi.Product{Id: id, Type: enrichapi.ProductType("pc_listing"), Name: "eBay: repro cart"}, nil
+				return enrichapi.Product{Id: id, Type: "pc_listing", Name: "eBay: repro cart"}, nil
 			},
 			batchPrices: pricedAs(1500, 4200, 9900),
 		}
@@ -4390,9 +4389,9 @@ func TestUnitInternalResnapshot_HappyPath(t *testing.T) {
 
 	refs := []store.GameEntryRef{
 		// stale stored date -> the ntsc_u chain hit (north_america) differs, must update.
-		{EntryID: entry1, ProductID: productA, Region: "ntsc_u", FirstReleaseDate: ptr(time.Date(1990, time.January, 1, 0, 0, 0, 0, time.UTC))},
+		{EntryID: entry1, ProductID: productA, Region: "ntsc_u", FirstReleaseDate: new(time.Date(1990, time.January, 1, 0, 0, 0, 0, time.UTC))},
 		// stored date already matches the pal chain hit (europe) -> no write.
-		{EntryID: entry2, ProductID: productA, Region: "pal", FirstReleaseDate: ptr(euDate)},
+		{EntryID: entry2, ProductID: productA, Region: "pal", FirstReleaseDate: new(euDate)},
 		// region_free has no chain, falls back to the scalar; unset -> must update.
 		{EntryID: entry3, ProductID: productB, Region: "region_free", FirstReleaseDate: nil},
 	}

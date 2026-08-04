@@ -32,7 +32,8 @@ func TestConnectMigrateHealth(t *testing.T) {
 		tcpostgres.WithDatabase("t"), tcpostgres.WithUsername("t"), tcpostgres.WithPassword("t"),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(60*time.Second)))
+				WithOccurrence(2).WithStartupTimeout(60*time.Second),
+			wait.ForListeningPort("5432/tcp")))
 	if err != nil {
 		t.Fatal(err)
 	}

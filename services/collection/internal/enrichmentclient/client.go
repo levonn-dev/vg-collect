@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"time"
 
@@ -19,9 +20,9 @@ import (
 )
 
 var (
-	// ErrUnknownProduct: enrichment answered 404 for the requested id.
+	// ErrUnknownProduct means enrichment answered 404 for the requested id.
 	ErrUnknownProduct = errors.New("enrichmentclient: unknown product")
-	// ErrUnavailable: a transport failure or an out-of-contract answer.
+	// ErrUnavailable means a transport failure or an out-of-contract answer.
 	ErrUnavailable = errors.New("enrichmentclient: enrichment unavailable")
 )
 
@@ -138,9 +139,7 @@ func (c *Client) BatchPrices(ctx context.Context, bearer string, ids []uuid.UUID
 		if resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
 			return nil, fmt.Errorf("%w: status %d", ErrUnavailable, resp.StatusCode())
 		}
-		for k, v := range resp.JSON200.Prices {
-			out[k] = v
-		}
+		maps.Copy(out, resp.JSON200.Prices)
 	}
 	return out, nil
 }
@@ -169,9 +168,7 @@ func (c *Client) PriceHistory(ctx context.Context, bearer string, ids []uuid.UUI
 		if resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
 			return nil, fmt.Errorf("%w: status %d", ErrUnavailable, resp.StatusCode())
 		}
-		for k, v := range resp.JSON200.Series {
-			out[k] = v
-		}
+		maps.Copy(out, resp.JSON200.Series)
 	}
 	return out, nil
 }

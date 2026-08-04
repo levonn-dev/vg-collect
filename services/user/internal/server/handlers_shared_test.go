@@ -204,7 +204,7 @@ func TestUnitSharedByIds_TooManyIds_BadRequest(t *testing.T) {
 	// binder does not enforce it, so the handler must reject 101+ entries
 	// itself before the store is touched (the empty stubStore proves it).
 	q := url.Values{}
-	for i := 0; i < 101; i++ {
+	for range 101 {
 		q.Add("ids", uuid.New().String())
 	}
 	srv, a := newUnitServer(t, &stubStore{})

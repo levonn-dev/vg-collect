@@ -91,7 +91,7 @@ func filtersFromViewParams(params []byte) (store.Filters, string) {
 }
 
 func toSharedShelf(v store.View) (api.SharedShelf, error) {
-	var params map[string]interface{}
+	var params map[string]any
 	if err := json.Unmarshal(v.Params, &params); err != nil {
 		return api.SharedShelf{}, err
 	}

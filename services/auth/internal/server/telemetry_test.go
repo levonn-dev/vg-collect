@@ -663,7 +663,7 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 func logLines(t *testing.T, buf *bytes.Buffer, msg string) []map[string]any {
 	t.Helper()
 	var out []map[string]any
-	for _, raw := range bytes.Split(buf.Bytes(), []byte("\n")) {
+	for raw := range bytes.SplitSeq(buf.Bytes(), []byte("\n")) {
 		if len(raw) == 0 {
 			continue
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -29,9 +30,7 @@ func writeProblem(w http.ResponseWriter, status int, code string, extra map[stri
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(status)
 	body := map[string]any{"type": "about:blank", "title": http.StatusText(status), "status": status, "code": code}
-	for k, v := range extra {
-		body[k] = v
-	}
+	maps.Copy(body, extra)
 	_ = json.NewEncoder(w).Encode(body)
 }
 
@@ -143,7 +142,6 @@ func TestCallbackErrorMapping(t *testing.T) {
 		{http.StatusBadGateway, "provider_error", authclient.ErrProviderError},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.code, func(t *testing.T) {
 			c := stubAuth(t, func(w http.ResponseWriter, r *http.Request) {
 				writeProblem(w, tc.status, tc.code, nil)

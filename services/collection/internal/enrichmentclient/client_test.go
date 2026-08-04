@@ -200,7 +200,7 @@ func TestBatchPricesChunksAndMerges(t *testing.T) {
 	f := newStubEnrichment(t)
 	c := newClient(t, f)
 	ids := make([]uuid.UUID, 0, 750)
-	for i := 0; i < 750; i++ {
+	for range 750 {
 		ids = append(ids, uuid.New())
 	}
 	// Duplicates collapse before chunking.

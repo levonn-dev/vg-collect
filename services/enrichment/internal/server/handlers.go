@@ -64,7 +64,7 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 			h.failOpen(ctx, "search_decode", err)
 		} else {
 			h.countSearch(ctx, kind, "cache")
-			h.interleaveCommunityResults(ctx, w, r, kind, q, out)
+			h.interleaveCommunityResults(ctx, w, kind, q, out)
 			return
 		}
 	}
@@ -111,7 +111,7 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 			h.failOpen(ctx, "search_put", err)
 		}
 	}
-	h.interleaveCommunityResults(ctx, w, r, kind, q, out)
+	h.interleaveCommunityResults(ctx, w, kind, q, out)
 }
 
 // communityResult maps an admin-minted community product onto the
@@ -122,15 +122,14 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 func communityResult(p store.Product) api.SearchResult {
 	res := api.SearchResult{Name: p.Name}
 	if p.Type == "game" {
-		res.Type = api.SearchResultType("game")
+		res.Type = "game"
 	} else {
-		res.Type = api.SearchResultType("hardware")
+		res.Type = "hardware"
 	}
 	o := api.SearchResultOrigin("community")
 	res.Origin = &o
 	if id, err := uuid.Parse(p.ID); err == nil {
-		pid := openapi_types.UUID(id)
-		res.ProductId = &pid
+		res.ProductId = &id
 	}
 	it := api.SearchResultItemType(p.Type)
 	res.ItemType = &it
@@ -160,7 +159,7 @@ func communityResult(p store.Product) api.SearchResult {
 // provider cache stays a provider-only unit and a fresh mint still
 // appears immediately. Game and hardware searches only; pc_listing
 // picks price anchors, which community products never have.
-func (h *Handlers) interleaveCommunityResults(ctx context.Context, w http.ResponseWriter, r *http.Request, kind, q string, out api.SearchResults) {
+func (h *Handlers) interleaveCommunityResults(ctx context.Context, w http.ResponseWriter, kind, q string, out api.SearchResults) {
 	var types []string
 	switch kind {
 	case "game":
@@ -289,7 +288,7 @@ func (h *Handlers) searchHardware(ctx context.Context, q string) ([]api.SearchRe
 		}
 		id, console, cat := p.ID, p.ConsoleName, p.Genre
 		out = append(out, api.SearchResult{
-			Type: api.SearchResultType("hardware"), Name: p.Name,
+			Type: "hardware", Name: p.Name,
 			PcProductId: &id, ConsoleName: &console, Category: &cat,
 		})
 		if len(out) == searchLimit {
@@ -1656,7 +1655,7 @@ func (h *Handlers) startRefresh(w http.ResponseWriter, r *http.Request, trigger 
 		h.runReprojection(ctx)
 		h.runCandidateSweep(ctx)
 	}()
-	writeJSON(w, http.StatusAccepted, api.RefreshAccepted{Status: api.RefreshAcceptedStatus("started")})
+	writeJSON(w, http.StatusAccepted, api.RefreshAccepted{Status: "started"})
 }
 
 // runRefresh walks every mapped product: current prices updated, one
@@ -2012,8 +2011,6 @@ func (h *Handlers) runCandidateSweep(ctx context.Context) {
 	h.logger.InfoContext(ctx, "candidate sweep complete", "swept", swept, "flagged", flagged, "failed", failed)
 }
 
-// SetProductMapping is the moderated correction: validate the mapping
-// against the provider, fetch prices, snapshot, mark verified.
 // DeleteProduct is the residue mop: it permanently removes an
 // unmatched product (and its snapshots) that exploration or stale
 // matching left behind. Matched products refuse - clear first - and
@@ -2084,6 +2081,8 @@ func withHolder(ctx context.Context, st Store, detail string, key store.ProductK
 	return fmt.Sprintf("%s (holder: %s %q)", detail, holder.ID, holder.Name)
 }
 
+// SetProductMapping is the moderated correction: validate the mapping
+// against the provider, fetch prices, snapshot, mark verified.
 func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
 	ctx := r.Context()
 	claims, _ := jwtauth.FromContext(ctx)

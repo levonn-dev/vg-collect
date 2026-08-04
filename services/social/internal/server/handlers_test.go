@@ -523,7 +523,7 @@ func TestUnitSummaries(t *testing.T) {
 		// param binder does not enforce it, so the handler must reject
 		// 101+ entries itself (the empty stubStore proves it).
 		q := url.Values{}
-		for i := 0; i < 101; i++ {
+		for range 101 {
 			q.Add("ids", uuid.New().String())
 		}
 		srv, a := newUnitServer(t, &stubStore{}, &stubCollection{}, &stubUsers{})
@@ -533,7 +533,7 @@ func TestUnitSummaries(t *testing.T) {
 
 	t.Run("exactly the max (100 ids) is accepted", func(t *testing.T) {
 		q := url.Values{}
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			q.Add("ids", uuid.New().String())
 		}
 		st := &stubStore{shelfSummaries: func(_ context.Context, ids []uuid.UUID, _ uuid.UUID) ([]store.ShelfSummary, error) {
@@ -820,7 +820,7 @@ func TestUnitCommentsByIds(t *testing.T) {
 		// param binder does not enforce it, so the handler must reject
 		// 101+ entries itself (the empty stubStore proves it).
 		q := url.Values{}
-		for i := 0; i < 101; i++ {
+		for range 101 {
 			q.Add("ids", uuid.New().String())
 		}
 		srv, a := newUnitServer(t, &stubStore{}, &stubCollection{}, &stubUsers{})
@@ -830,7 +830,7 @@ func TestUnitCommentsByIds(t *testing.T) {
 
 	t.Run("exactly the max (100 ids) is accepted", func(t *testing.T) {
 		q := url.Values{}
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			q.Add("ids", uuid.New().String())
 		}
 		st := &stubStore{commentsByIDs: func(_ context.Context, ids []uuid.UUID) ([]store.Comment, error) {

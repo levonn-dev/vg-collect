@@ -383,14 +383,14 @@ func (c *stubCache) InvalidateProduct(_ context.Context, id string) error {
 	return nil
 }
 
-func (c *stubCache) GetPlatforms(ctx context.Context) ([]byte, error) {
+func (c *stubCache) GetPlatforms(_ context.Context) ([]byte, error) {
 	if c.err != nil {
 		return nil, c.err
 	}
 	return c.platforms, nil
 }
 
-func (c *stubCache) PutPlatforms(ctx context.Context, body []byte, ttl time.Duration) error {
+func (c *stubCache) PutPlatforms(_ context.Context, body []byte, _ time.Duration) error {
 	if c.err != nil {
 		return c.err
 	}
@@ -3343,7 +3343,7 @@ func TestAdminCommunityWorklist(t *testing.T) {
 		t.Fatalf("order: %v then %v", page.Products[0].Id, page.Products[1].Id)
 	}
 	for _, p := range page.Products {
-		if p.Origin == nil || *p.Origin != api.ProductOrigin("community") {
+		if p.Origin == nil || *p.Origin != "community" {
 			t.Fatalf("every product must carry origin community: %+v", p)
 		}
 	}
@@ -3442,7 +3442,7 @@ func TestAdminMapping_HoldUnmatched(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		got := decodeBody[api.Product](t, s.do(http.MethodPut,
 			"/admin/products/"+orphan.ID+"/pricecharting", s.adminToken(),
 			map[string]any{"pc_product_id": nil}))

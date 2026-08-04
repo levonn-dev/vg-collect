@@ -28,8 +28,8 @@ var ErrUserNotFound = errors.New("userclient: user not found")
 // private handles are deliberately indistinguishable.
 var ErrProfileNotFound = errors.New("userclient: profile not found")
 
-// ErrUpstream: the user service answered outside its relayed contract
-// (or an infrastructure layer answered for it).
+// ErrUpstream means the user service answered outside its relayed
+// contract (or an infrastructure layer answered for it).
 var ErrUpstream = errors.New("userclient: upstream failure")
 
 // Result relays a raw upstream answer so validation problems from the

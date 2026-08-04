@@ -24,7 +24,8 @@ func newTestDB(t *testing.T) string {
 		tcpostgres.WithDatabase("social"), tcpostgres.WithUsername("s"), tcpostgres.WithPassword("p"),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(60*time.Second)))
+				WithOccurrence(2).WithStartupTimeout(60*time.Second),
+			wait.ForListeningPort("5432/tcp")))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -150,7 +150,7 @@ func TestUnitShelfPage_EffectiveVisibility(t *testing.T) {
 	shelfID, ownerID := uuid.New(), uuid.New()
 	shelf := collectionapi.SharedShelf{
 		Id: shelfID, Name: "Backlog", Slug: "backlog", OwnerId: ownerID,
-		Visibility: "unlisted", Params: map[string]interface{}{},
+		Visibility: "unlisted", Params: map[string]any{},
 	}
 	listedOwner := userapi.ProfileCard{UserId: ownerID, Handle: "alice", ProfileVisibility: "listed"}
 	privateOwner := userapi.ProfileCard{UserId: ownerID, Handle: "alice", ProfileVisibility: "private"}
@@ -384,7 +384,7 @@ func TestUnitSocialRelays_PassProblemsVerbatim(t *testing.T) {
 		h.collection = &stubCollection{sharedShelf: func(context.Context, string, uuid.UUID) (collectionapi.SharedShelf, error) {
 			return collectionapi.SharedShelf{
 				Id: shelfID, Name: "Backlog", Slug: "backlog", OwnerId: ownerID,
-				Visibility: "listed", Params: map[string]interface{}{},
+				Visibility: "listed", Params: map[string]any{},
 			}, nil
 		}}
 		h.users = &stubUsersFull{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
@@ -456,7 +456,7 @@ func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 
 	shelf := collectionapi.SharedShelf{
 		Id: shelfID, Name: "Backlog", Slug: "backlog", OwnerId: ownerID,
-		Visibility: "listed", Params: map[string]interface{}{},
+		Visibility: "listed", Params: map[string]any{},
 	}
 	owner := userapi.ProfileCard{UserId: ownerID, Handle: "owner", ProfileVisibility: "listed"}
 	alice := userapi.ProfileCard{UserId: aliceID, Handle: "alice", ProfileVisibility: "listed"}

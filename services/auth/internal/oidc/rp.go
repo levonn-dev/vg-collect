@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -193,9 +194,7 @@ func (p *RP) AuthorizeURL(ctx context.Context, state, nonce, challenge string) (
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
 	}
-	for k, vs := range p.cfg.ExtraAuthParams {
-		q[k] = vs
-	}
+	maps.Copy(q, p.cfg.ExtraAuthParams)
 	return d.AuthorizationEndpoint + "?" + q.Encode(), nil
 }
 

@@ -16,7 +16,7 @@ func TestSnapshots_AppendIntoTimeSeries(t *testing.T) {
 
 	loose := int64(4200)
 	base := time.Date(2026, 7, 1, 6, 0, 0, 0, time.UTC)
-	for day := 0; day < 3; day++ {
+	for day := range 3 {
 		v := loose + int64(day)*10
 		snap := store.Snapshot{
 			ProductID:  "11111111-1111-1111-1111-111111111111",

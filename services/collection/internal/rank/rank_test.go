@@ -57,7 +57,7 @@ func TestBetweenPropertyRandomInsertions(t *testing.T) {
 	// Deterministic seed: this is a property proof, not a fuzzer.
 	rng := rand.New(rand.NewSource(42)) //nolint:gosec
 	keys := []string{}
-	for i := 0; i < 3000; i++ {
+	for range 3000 {
 		pos := 0
 		if len(keys) > 0 {
 			pos = rng.Intn(len(keys) + 1)

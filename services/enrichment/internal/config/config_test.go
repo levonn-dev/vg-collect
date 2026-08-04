@@ -99,8 +99,11 @@ func TestLoad_InternalRefreshSecrets(t *testing.T) {
 	setBase(t)
 	t.Setenv("INTERNAL_REFRESH_SECRETS", "current-token,previous-token")
 	cfg, err := Load()
-	if err != nil || len(cfg.InternalRefreshSecrets) != 2 {
-		t.Fatalf("A/B pair must parse: %+v, %v", cfg.InternalRefreshSecrets, err)
+	if err != nil {
+		t.Fatalf("A/B pair must parse: %v", err)
+	}
+	if len(cfg.InternalRefreshSecrets) != 2 {
+		t.Fatalf("A/B pair must parse: %+v", cfg.InternalRefreshSecrets)
 	}
 	t.Setenv("INTERNAL_REFRESH_SECRETS", "")
 	if _, err := Load(); err == nil {

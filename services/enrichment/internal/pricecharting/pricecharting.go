@@ -12,7 +12,8 @@ import (
 	"strings"
 )
 
-// ErrNotFound: the provider answered but does not know the product id.
+// ErrNotFound means the provider answered but does not know the
+// product id.
 var ErrNotFound = errors.New("pricecharting: product not found")
 
 // Product mirrors the API's product object: hyphenated field names,

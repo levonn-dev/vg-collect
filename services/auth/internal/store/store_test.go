@@ -30,7 +30,8 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 		tcpostgres.WithDatabase("auth"), tcpostgres.WithUsername("a"), tcpostgres.WithPassword("p"),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(60*time.Second)))
+				WithOccurrence(2).WithStartupTimeout(60*time.Second),
+			wait.ForListeningPort("5432/tcp")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -667,7 +668,10 @@ func TestState_CarriesLinkUserID(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err = s.ConsumeState(ctx, "st-login")
-	if err != nil || got.LinkUserID != nil {
-		t.Fatalf("login state LinkUserID = %v (err %v)", got.LinkUserID, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LinkUserID != nil {
+		t.Fatalf("login state LinkUserID = %v", got.LinkUserID)
 	}
 }

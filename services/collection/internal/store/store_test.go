@@ -31,7 +31,8 @@ func newTestStore(t *testing.T) *store.Store {
 		tcpostgres.WithDatabase("collection"), tcpostgres.WithUsername("c"), tcpostgres.WithPassword("p"),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(60*time.Second)))
+				WithOccurrence(2).WithStartupTimeout(60*time.Second),
+			wait.ForListeningPort("5432/tcp")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +57,7 @@ func newTestStore(t *testing.T) *store.Store {
 func baseEntry(userID uuid.UUID) store.Entry {
 	return store.Entry{
 		UserID:      userID,
-		ProductID:   ptr(uuid.New()),
+		ProductID:   new(uuid.New()),
 		ItemType:    "game",
 		MediaType:   "physical",
 		DisplayName: "Chrono Trigger",
@@ -74,7 +75,7 @@ func customEntry(userID uuid.UUID) store.Entry {
 	e := baseEntry(userID)
 	e.ProductID = nil
 	e.DisplayName = "Chrono Trigger (fan translation cart)"
-	e.PlatformName = ptr("SNES")
+	e.PlatformName = new("SNES")
 	e.PricingMode = "disabled"
 	return e
 }
@@ -155,11 +156,11 @@ func TestCustomEntryLifecycle(t *testing.T) {
 	// carries the recommendation identity (igdb_game_id) with it.
 	released := time.Date(1995, time.September, 30, 0, 0, 0, 0, time.UTC)
 	created.DisplayName = "Chrono Trigger (repro cart, v2 patch)"
-	created.PlatformName = ptr("Super Famicom")
+	created.PlatformName = new("Super Famicom")
 	created.FirstReleaseDate = &released
 	created.PricingMode = "proxy"
-	created.PricingProductID = ptr(uuid.New())
-	created.IGDBGameID = ptr(int64(1000))
+	created.PricingProductID = new(uuid.New())
+	created.IGDBGameID = new(int64(1000))
 	updated, err := s.UpdateEntry(ctx, created, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -194,9 +195,9 @@ func TestEntryCoverURLPersistsThroughCreateAndList(t *testing.T) {
 
 	e := baseEntry(userID)
 	e.CoverURL = &cover
-	e.CustomValueCents = ptr(int64(5400))
-	e.CustomValueEnteredCents = ptr(int64(6000))
-	e.CustomValueEnteredCurrency = ptr("EUR")
+	e.CustomValueCents = new(int64(5400))
+	e.CustomValueEnteredCents = new(int64(6000))
+	e.CustomValueEnteredCurrency = new("EUR")
 	created := mustCreate(t, s, e, nil)
 	if created.CoverURL == nil || *created.CoverURL != cover {
 		t.Fatalf("create must return the cover snapshot, got %v", created.CoverURL)
@@ -246,7 +247,7 @@ func TestUpdateRankLifecycle(t *testing.T) {
 	origARank := rankOf(t, a)
 
 	// Staying in backlog keeps the position.
-	a.Notes = ptr("still first")
+	a.Notes = new("still first")
 	kept, err := s.UpdateEntry(ctx, a, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -342,7 +343,7 @@ func TestListGameBackedRefs(t *testing.T) {
 	// returns the (a) game entry so the assertions below can key off it.
 	seedTrio := func(user uuid.UUID, released time.Time) store.Entry {
 		game := baseEntry(user)
-		game.IGDBGameID = ptr(int64(1000))
+		game.IGDBGameID = new(int64(1000))
 		game.FirstReleaseDate = &released
 		gameEntry := mustCreate(t, s, game, nil)
 
@@ -369,7 +370,7 @@ func TestListGameBackedRefs(t *testing.T) {
 	gameA2 := baseEntry(userA)
 	gameA2.ProductID = gameA.ProductID
 	gameA2.Region = "pal"
-	gameA2.IGDBGameID = ptr(int64(1000))
+	gameA2.IGDBGameID = new(int64(1000))
 	gameA2.FirstReleaseDate = &dateA2
 	gameA2Entry := mustCreate(t, s, gameA2, nil)
 
@@ -432,8 +433,8 @@ func TestSetFirstReleaseDate(t *testing.T) {
 	ctx := context.Background()
 	user := uuid.New()
 	e := baseEntry(user)
-	e.IGDBGameID = ptr(int64(1000))
-	e.FirstReleaseDate = ptr(time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC))
+	e.IGDBGameID = new(int64(1000))
+	e.FirstReleaseDate = new(time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC))
 	created := mustCreate(t, s, e, nil)
 
 	newDate := time.Date(1995, time.August, 22, 0, 0, 0, 0, time.UTC)
@@ -544,8 +545,6 @@ func TestReorder(t *testing.T) {
 	}
 }
 
-func ptr[T any](v T) *T { return &v }
-
 // paramsEqual compares two JSON byte slices for semantic equality.
 func paramsEqual(t *testing.T, got, want []byte) bool {
 	t.Helper()
@@ -588,38 +587,38 @@ func seedMatrix(t *testing.T, s *store.Store) (user uuid.UUID, byName map[string
 	}
 	byName = map[string]store.Entry{}
 	byName["chrono"] = mk("Chrono Trigger", func(e *store.Entry) {
-		e.PlatformIGDBID, e.PlatformName = ptr(int64(6)), ptr("SNES")
-		e.IGDBGameID = ptr(int64(1000))
-		e.FirstReleaseDate = ptr(time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC))
-		e.Rating, e.PricePaidCents = ptr(9), ptr(int64(5000))
-		e.ItemCondition = ptr("mint")
-		e.PurchasedAt = ptr(time.Date(2020, time.January, 15, 0, 0, 0, 0, time.UTC))
+		e.PlatformIGDBID, e.PlatformName = new(int64(6)), new("SNES")
+		e.IGDBGameID = new(int64(1000))
+		e.FirstReleaseDate = new(time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC))
+		e.Rating, e.PricePaidCents = new(9), new(int64(5000))
+		e.ItemCondition = new("mint")
+		e.PurchasedAt = new(time.Date(2020, time.January, 15, 0, 0, 0, 0, time.UTC))
 	}, rpg.ID, fav.ID)
 	byName["alundra"] = mk("Alundra", func(e *store.Entry) {
-		e.PlatformIGDBID, e.PlatformName = ptr(int64(7)), ptr("PS1")
-		e.IGDBGameID = ptr(int64(1001))
-		e.FirstReleaseDate = ptr(time.Date(1997, time.April, 11, 0, 0, 0, 0, time.UTC))
+		e.PlatformIGDBID, e.PlatformName = new(int64(7)), new("PS1")
+		e.IGDBGameID = new(int64(1001))
+		e.FirstReleaseDate = new(time.Date(1997, time.April, 11, 0, 0, 0, 0, time.UTC))
 		e.Status, e.Packaging, e.Region = "playing", "loose", "pal"
-		e.PurchasedAt = ptr(time.Date(2021, time.June, 1, 0, 0, 0, 0, time.UTC))
+		e.PurchasedAt = new(time.Date(2021, time.June, 1, 0, 0, 0, 0, time.UTC))
 	}, rpg.ID)
 	byName["snes"] = mk("Super Nintendo", func(e *store.Entry) {
 		e.ItemType = "console"
-		e.PlatformIGDBID, e.PlatformName = ptr(int64(6)), ptr("SNES")
-		e.Status, e.PricePaidCents = "shelved", ptr(int64(12000))
-		e.PurchasedAt = ptr(time.Date(2019, time.March, 10, 0, 0, 0, 0, time.UTC))
+		e.PlatformIGDBID, e.PlatformName = new(int64(6)), new("SNES")
+		e.Status, e.PricePaidCents = "shelved", new(int64(12000))
+		e.PurchasedAt = new(time.Date(2019, time.March, 10, 0, 0, 0, 0, time.UTC))
 	})
 	byName["terra"] = mk("Terranigma", func(e *store.Entry) {
-		e.PlatformIGDBID, e.PlatformName = ptr(int64(6)), ptr("SNES")
-		e.IGDBGameID = ptr(int64(1002))
-		e.FirstReleaseDate = ptr(time.Date(1996, time.October, 19, 0, 0, 0, 0, time.UTC))
+		e.PlatformIGDBID, e.PlatformName = new(int64(6)), new("SNES")
+		e.IGDBGameID = new(int64(1002))
+		e.FirstReleaseDate = new(time.Date(1996, time.October, 19, 0, 0, 0, 0, time.UTC))
 		e.Packaging, e.Region = "sealed", "ntsc_j"
-		e.Rating, e.Pinned = ptr(3), true
-		e.ItemCondition = ptr("good")
+		e.Rating, e.Pinned = new(3), true
+		e.ItemCondition = new("good")
 	}, fav.ID)
 	byName["pad"] = mk("Controller", func(e *store.Entry) {
 		e.ItemType = "accessory"
 		e.Status, e.Packaging, e.Region = "shelved", "loose", "region_free"
-		e.PricePaidCents, e.Currency = ptr(int64(2000)), "EUR"
+		e.PricePaidCents, e.Currency = new(int64(2000)), "EUR"
 	})
 	return user, byName, tagIDs
 }
@@ -767,15 +766,15 @@ func TestLibrarySummary(t *testing.T) {
 
 	// Two copies of game 2000: one dropped rating 5, one playing rating 8.
 	c1 := baseEntry(user)
-	c1.IGDBGameID, c1.Status, c1.Rating = ptr(int64(2000)), "dropped", ptr(5)
+	c1.IGDBGameID, c1.Status, c1.Rating = new(int64(2000)), "dropped", new(5)
 	mustCreate(t, s, c1, nil)
 	c2 := baseEntry(user)
-	c2.IGDBGameID, c2.Status, c2.Rating = ptr(int64(2000)), "playing", ptr(8)
+	c2.IGDBGameID, c2.Status, c2.Rating = new(int64(2000)), "playing", new(8)
 	mustCreate(t, s, c2, nil)
 
 	// One fully dropped game, unrated.
 	d := baseEntry(user)
-	d.IGDBGameID, d.Status = ptr(int64(2001)), "dropped"
+	d.IGDBGameID, d.Status = new(int64(2001)), "dropped"
 	mustCreate(t, s, d, nil)
 
 	// Hardware and id-less games stay out.
@@ -894,7 +893,7 @@ func TestCreateTag_PerUserCap(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	user := uuid.New()
-	for i := 0; i < store.TagCap; i++ {
+	for i := range store.TagCap {
 		if _, err := s.CreateTag(ctx, user, fmt.Sprintf("tag-%03d", i)); err != nil {
 			t.Fatalf("tag %d: %v", i, err)
 		}
@@ -930,7 +929,7 @@ func TestBulkUpdateEntries_ScalarActionsAndOwnershipFiltering(t *testing.T) {
 	user, stranger := uuid.New(), uuid.New()
 
 	mine := baseEntry(user)
-	mine.StorageLocation = ptr("shelf A")
+	mine.StorageLocation = new("shelf A")
 	created := mustCreate(t, s, mine, nil)
 	theirs := mustCreate(t, s, baseEntry(stranger), nil)
 	unknown := uuid.New()
@@ -1568,7 +1567,7 @@ func TestCoverURLs(t *testing.T) {
 
 	mustCreate(t, s, baseEntry(user), nil) // no cover: excluded
 	withEmpty := baseEntry(user)
-	withEmpty.CoverURL = ptr("")
+	withEmpty.CoverURL = new("")
 	mustCreate(t, s, withEmpty, nil) // empty cover: excluded
 
 	covers := []string{
@@ -1579,7 +1578,7 @@ func TestCoverURLs(t *testing.T) {
 	}
 	for _, c := range covers {
 		e := baseEntry(user)
-		e.CoverURL = ptr(c)
+		e.CoverURL = new(c)
 		mustCreate(t, s, e, nil)
 	}
 
@@ -1612,7 +1611,7 @@ func TestDashboardAggregates(t *testing.T) {
 	stranger := uuid.New()
 	strangerEntry := baseEntry(stranger)
 	strangerEntry.Status = "playing"
-	strangerEntry.PricePaidCents = ptr(int64(99999))
+	strangerEntry.PricePaidCents = new(int64(99999))
 	mustCreate(t, s, strangerEntry, nil)
 	mustCreate(t, s, baseEntry(stranger), nil)
 
@@ -1818,7 +1817,7 @@ func TestCountEntriesByProduct(t *testing.T) {
 	// (another product, a custom entry) that must not count.
 	for _, user := range []uuid.UUID{uuid.New(), uuid.New()} {
 		e := baseEntry(user)
-		e.ProductID = ptr(productID)
+		e.ProductID = new(productID)
 		mustCreate(t, s, e, nil)
 	}
 	mustCreate(t, s, baseEntry(uuid.New()), nil)
@@ -2011,22 +2010,22 @@ func TestApproveSubmission_PreservesUserOwnedFields(t *testing.T) {
 
 	e := customEntry(userID)
 	// Acquisition.
-	e.PricePaidCents = ptr(int64(3599))
+	e.PricePaidCents = new(int64(3599))
 	e.Currency = "GBP"
-	e.PurchasedAt = ptr(time.Date(2020, 6, 1, 0, 0, 0, 0, time.UTC))
-	e.PurchasedFrom = ptr("Local Game Shop")
+	e.PurchasedAt = new(time.Date(2020, 6, 1, 0, 0, 0, 0, time.UTC))
+	e.PurchasedFrom = new("Local Game Shop")
 	// Condition.
 	e.Packaging = "sealed"
 	e.HasBox = true
 	e.HasManual = true
-	e.BoxCondition = ptr("good")
-	e.ManualCondition = ptr("very_good")
-	e.ItemCondition = ptr("acceptable")
+	e.BoxCondition = new("good")
+	e.ManualCondition = new("very_good")
+	e.ItemCondition = new("acceptable")
 	// Pricing.
 	e.PricingMode = "custom"
-	e.CustomValueCents = ptr(int64(4200))
-	e.CustomValueEnteredCents = ptr(int64(5000))
-	e.CustomValueEnteredCurrency = ptr("EUR")
+	e.CustomValueCents = new(int64(4200))
+	e.CustomValueEnteredCents = new(int64(5000))
+	e.CustomValueEnteredCurrency = new("EUR")
 	created := mustCreate(t, s, e, nil)
 	origRank := rankOf(t, created) // Rank.
 
@@ -2188,9 +2187,9 @@ func TestListPendingSubmissions_ReflectsLiveEntryEdits(t *testing.T) {
 
 	edited := entry
 	edited.DisplayName = "Retitled Cart"
-	edited.PlatformName = ptr("SNES (PAL)")
+	edited.PlatformName = new("SNES (PAL)")
 	edited.Region = "pal"
-	edited.Edition = ptr("Player's Choice")
+	edited.Edition = new("Player's Choice")
 	rd := time.Date(1996, 3, 1, 0, 0, 0, 0, time.UTC)
 	edited.FirstReleaseDate = &rd
 	if _, err := s.UpdateEntry(ctx, edited, nil); err != nil {

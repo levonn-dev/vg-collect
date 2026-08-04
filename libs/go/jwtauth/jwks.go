@@ -94,7 +94,7 @@ func (c *keyCache) fetchLocked(ctx context.Context) error {
 		if err != nil || len(raw) != ed25519.PublicKeySize {
 			continue
 		}
-		keys[k.Kid] = ed25519.PublicKey(raw)
+		keys[k.Kid] = raw
 	}
 	c.keys = keys
 	c.lastFetch = time.Now()

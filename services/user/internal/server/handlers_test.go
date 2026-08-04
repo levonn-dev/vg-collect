@@ -39,7 +39,8 @@ func newTestStore(t *testing.T) *store.Store {
 		tcpostgres.WithDatabase("user"), tcpostgres.WithUsername("u"), tcpostgres.WithPassword("p"),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(60*time.Second)))
+				WithOccurrence(2).WithStartupTimeout(60*time.Second),
+			wait.ForListeningPort("5432/tcp")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,8 +189,11 @@ func TestHealthEndpointsUnauthenticated(t *testing.T) {
 	srv, _ := newTestServer(t)
 	for _, path := range []string{"/healthz", "/readyz"} {
 		resp, err := http.Get(srv.URL + path)
-		if err != nil || resp.StatusCode != 200 {
-			t.Fatalf("%s: %v %d", path, err, resp.StatusCode)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		if resp.StatusCode != 200 {
+			t.Fatalf("%s: status %d", path, resp.StatusCode)
 		}
 		_ = resp.Body.Close()
 	}

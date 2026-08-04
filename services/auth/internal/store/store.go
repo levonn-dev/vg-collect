@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -252,13 +253,7 @@ func (s *Store) DeleteIdentity(ctx context.Context, userID, identityID uuid.UUID
 		if err := rows.Err(); err != nil {
 			return err
 		}
-		found := false
-		for _, id := range ids {
-			if id == identityID {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(ids, identityID)
 		if !found {
 			return ErrIdentityNotFound
 		}

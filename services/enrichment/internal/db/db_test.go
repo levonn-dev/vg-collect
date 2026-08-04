@@ -74,28 +74,28 @@ func newTestMongoURL(t *testing.T) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = mc.Terminate(ctx) })
-	url, err := mc.ConnectionString(ctx)
+	uri, err := mc.ConnectionString(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return url
+	return uri
 }
 
 func TestMigrate_CreatesCatalogAndIsIdempotent(t *testing.T) {
-	url := newTestMongoURL(t)
+	uri := newTestMongoURL(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	if err := db.Migrate(ctx, url, "enrichment", migrations.FS, "."); err != nil {
+	if err := db.Migrate(ctx, uri, "enrichment", migrations.FS, "."); err != nil {
 		t.Fatalf("first migrate: %v", err)
 	}
 	// Second run must be a clean no-op (init containers re-run on every
 	// pod start).
-	if err := db.Migrate(ctx, url, "enrichment", migrations.FS, "."); err != nil {
+	if err := db.Migrate(ctx, uri, "enrichment", migrations.FS, "."); err != nil {
 		t.Fatalf("second migrate: %v", err)
 	}
 
-	client, err := db.Connect(ctx, url)
+	client, err := db.Connect(ctx, uri)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,9 +145,9 @@ func TestMigrate_CreatesCatalogAndIsIdempotent(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
-	url := newTestMongoURL(t)
+	uri := newTestMongoURL(t)
 	ctx := context.Background()
-	client, err := db.Connect(ctx, url)
+	client, err := db.Connect(ctx, uri)
 	if err != nil {
 		t.Fatal(err)
 	}

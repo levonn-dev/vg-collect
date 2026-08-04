@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,7 +21,7 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/socialapi"
 )
 
-// ErrUpstream: the social service answered outside its relayed
+// ErrUpstream means the social service answered outside its relayed
 // contract (or an infrastructure layer answered for it).
 var ErrUpstream = errors.New("socialclient: upstream failure")
 
@@ -62,10 +63,8 @@ func bearerEditor(bearer string) socialapi.RequestEditorFn {
 // a user condition (a 401/403/5xx from a service the bff holds a
 // valid session for).
 func relay(status int, contentType string, body []byte, allowed ...int) (Result, error) {
-	for _, a := range allowed {
-		if status == a {
-			return Result{Status: status, ContentType: contentType, Body: body}, nil
-		}
+	if slices.Contains(allowed, status) {
+		return Result{Status: status, ContentType: contentType, Body: body}, nil
 	}
 	return Result{}, fmt.Errorf("%w: status %d", ErrUpstream, status)
 }

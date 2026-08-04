@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"maps"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -117,9 +118,7 @@ func (f *fakeIDP) registerCode(code, clientID, nonce string, claims jwt.MapClaim
 		"iss": f.srv.URL, "aud": clientID, "nonce": nonce,
 		"exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(),
 	}
-	for k, v := range claims {
-		merged[k] = v
-	}
+	maps.Copy(merged, claims)
 	f.codes[code] = merged
 }
 

@@ -596,7 +596,7 @@ func (h *Handlers) DevToken(w http.ResponseWriter, r *http.Request) {
 // ListProviders reports which login options exist right now, so a login
 // page renders exactly the buttons that can succeed. Order is stable:
 // real providers first, dev last.
-func (h *Handlers) ListProviders(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) ListProviders(w http.ResponseWriter, _ *http.Request) {
 	names := []string{}
 	for _, name := range []string{"google", "twitch"} {
 		if _, ok := h.providers[name]; ok {

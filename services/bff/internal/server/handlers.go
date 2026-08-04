@@ -143,10 +143,7 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	if ck, err := r.Cookie(session.CookieName); err == nil {
 		if sess, err := h.codec.Open(ck.Value); err == nil {
 			if claims, err := session.ParseClaims(sess.AccessToken); err == nil {
-				ttl := time.Until(claims.Exp) + time.Minute
-				if ttl < time.Minute {
-					ttl = time.Minute
-				}
+				ttl := max(time.Until(claims.Exp)+time.Minute, time.Minute)
 				if derr := h.cache.DenylistAdd(r.Context(), []string{claims.JTI}, ttl); derr != nil {
 					h.failOpenEvent(r.Context(), "denylist_add", derr)
 				}
@@ -380,10 +377,7 @@ func (h *Handlers) DeleteMe(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "account delete failed; retry")
 		return
 	}
-	ttl := time.Until(claims.Exp) + time.Minute
-	if ttl < time.Minute {
-		ttl = time.Minute
-	}
+	ttl := max(time.Until(claims.Exp)+time.Minute, time.Minute)
 	if derr := h.cache.DenylistAdd(r.Context(), []string{claims.JTI}, ttl); derr != nil {
 		h.failOpenEvent(r.Context(), "denylist_add", derr)
 	}

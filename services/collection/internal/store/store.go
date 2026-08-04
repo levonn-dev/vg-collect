@@ -27,17 +27,18 @@ var (
 	ErrNameTaken        = errors.New("store: name taken")
 	ErrNotInBacklog     = errors.New("store: not in backlog")
 	ErrConflictingOrder = errors.New("store: conflicting order")
-	// ErrSubmissionPending: the entry already has a pending submission.
+	// ErrSubmissionPending means the entry already has a pending
+	// submission.
 	ErrSubmissionPending = errors.New("store: submission pending")
-	// ErrSubmissionResolved: a verdict raced this one; the row is no
-	// longer pending.
+	// ErrSubmissionResolved means a verdict raced this one; the row is
+	// no longer pending.
 	ErrSubmissionResolved = errors.New("store: submission resolved")
-	// ErrTagCapExceeded: a bulk-update's tag additions would leave a
-	// targeted entry holding more than entryTagCap tags; the whole
+	// ErrTagCapExceeded means a bulk-update's tag additions would leave
+	// a targeted entry holding more than entryTagCap tags; the whole
 	// transaction rolls back.
 	ErrTagCapExceeded = errors.New("store: entry tag cap exceeded")
-	// ErrUserTagCapExceeded: the caller already holds TagCap distinct
-	// tags; CreateTag rolls back rather than minting one more.
+	// ErrUserTagCapExceeded means the caller already holds TagCap
+	// distinct tags; CreateTag rolls back rather than minting one more.
 	ErrUserTagCapExceeded = errors.New("store: user tag cap exceeded")
 )
 
