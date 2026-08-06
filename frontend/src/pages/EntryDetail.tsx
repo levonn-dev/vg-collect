@@ -11,6 +11,7 @@ import ApprovalNotice from '../components/entry/ApprovalNotice'
 import CatalogSubmission from '../components/entry/CatalogSubmission'
 import EntryForm from '../components/entry/EntryForm'
 import { releaseYear } from '../lib/format'
+import { entryCover, entrySecondary, entryTitle, entryTitleLang, titleFormFor } from '../lib/productTitle'
 
 // Identity-preserving: the byline has never been prettified, so the
 // item-type word stays the raw wire value. An unknown future wire
@@ -23,6 +24,7 @@ const itemTypeLabels: Record<string, MessageDescriptor> = {
 
 export default function EntryDetail() {
   const { t, i18n } = useLingui()
+  const form = titleFormFor(i18n.locale)
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -69,6 +71,7 @@ export default function EntryDetail() {
   }
 
   const e = entry.data
+  const cover = entryCover(e)
   return (
     <main className="py-6" aria-label={t`Entry detail`}>
       {justAdded && (
@@ -77,9 +80,9 @@ export default function EntryDetail() {
         </p>
       )}
       <header className="mb-6 flex items-start gap-4">
-        {e.cover_url ? (
+        {cover ? (
           <img
-            src={e.cover_url}
+            src={cover}
             alt=""
             // Hardware images are platform logos: contain, never crop.
             className={e.item_type === 'game' ? 'h-24 w-auto rounded shadow' : 'h-24 w-24 rounded bg-gray-50 object-contain p-1'}
@@ -90,7 +93,12 @@ export default function EntryDetail() {
           </div>
         )}
         <div>
-          <h2 className="text-2xl font-bold">{e.display_name}</h2>
+          <h2 className="text-2xl font-bold">
+            <span lang={entryTitleLang(e, form)}>{entryTitle(e, form)}</span>
+          </h2>
+          {entrySecondary(e, form) && (
+            <p className="text-sm text-gray-500">{entrySecondary(e, form)}</p>
+          )}
           <p className="text-sm text-gray-600">
             {[
               e.platform?.name,

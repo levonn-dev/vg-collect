@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { Entry } from '../../api/collection'
 import { formatCents, releaseYear } from '../../lib/format'
+import { entryTitle, entryTitleLang, titleFormFor } from '../../lib/productTitle'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import { isFullEntry, rowMeta, type EntryRow } from './rowMeta'
 
@@ -59,6 +60,7 @@ export default function EntryTable({
   const { t, i18n } = useLingui()
   const money = useDisplayMoney()
   const currency = money.currency
+  const form = titleFormFor(i18n.locale)
   // Only meaningful while selectable (nothing reads them otherwise),
   // so these skip re-deriving that from selectable itself.
   const selectedCount = entries.filter((e) => selected?.has(e.id)).length
@@ -104,7 +106,13 @@ export default function EntryTable({
       <tbody>
         {entries.map((e, i) => {
           const meta = rowMeta(e, money, i18n, { pinSlot, pinTrailingSpace: true })
-          const displayName = e.display_name
+          // Same value the row title renders (entryTitle(e, form)), not
+          // the raw display_name - the checkbox must announce whatever
+          // text is actually on screen. The interpolated identifier
+          // stays named displayName on purpose: the msgid ("Select
+          // {displayName}") is keyed off that source-expression name, so
+          // renaming it would churn the catalog for zero benefit.
+          const displayName = entryTitle(e, form)
           return (
             <tr key={e.id} className="border-b border-gray-100">
               {selectable && (
@@ -121,8 +129,12 @@ export default function EntryTable({
               <td className="py-2 pr-3">
                 {meta.pin}
                 {linkTo?.(e) === null
-                  ? <span className="font-medium">{e.display_name}</span>
-                  : <Link to={(linkTo ?? (x => `/entries/${x.id}`))(e)!} className="font-medium hover:underline">{e.display_name}</Link>}
+                  ? <span className="font-medium"><span lang={entryTitleLang(e, form)}>{entryTitle(e, form)}</span></span>
+                  : (
+                    <Link to={(linkTo ?? (x => `/entries/${x.id}`))(e)!} className="font-medium hover:underline">
+                      <span lang={entryTitleLang(e, form)}>{entryTitle(e, form)}</span>
+                    </Link>
+                  )}
                 {e.edition && <span className="ml-2 text-xs text-gray-500">{e.edition}</span>}
                 {releaseYear(e.first_release_date) && (
                   <span className="ml-2 text-xs text-gray-400">{releaseYear(e.first_release_date)}</span>

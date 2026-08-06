@@ -2,6 +2,7 @@ import { useLingui } from '@lingui/react/macro'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { Entry } from '../../api/collection'
+import { entryCover, entryTitle, entryTitleLang, titleFormFor } from '../../lib/productTitle'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import ItemTypeIcon from '../ItemTypeIcon'
 import { rowMeta, type EntryRow } from './rowMeta'
@@ -25,15 +26,17 @@ export default function CoverGrid({ entries, pinSlot, linkTo, shared }: CoverGri
   // going stale after a live locale switch.
   const { i18n } = useLingui()
   const money = useDisplayMoney()
+  const form = titleFormFor(i18n.locale)
   return (
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
       {entries.map((e) => {
         const meta = rowMeta(e, money, i18n, { pinSlot })
+        const coverUrl = entryCover(e)
         const cover = (
           <>
-            {e.cover_url ? (
+            {coverUrl ? (
               <img
-                src={e.cover_url}
+                src={coverUrl}
                 alt=""
                 // Hardware images are platform logos: contain, never crop.
                 className={`mb-2 aspect-[3/4] w-full rounded ${
@@ -48,7 +51,9 @@ export default function CoverGrid({ entries, pinSlot, linkTo, shared }: CoverGri
                 <ItemTypeIcon type={e.item_type} className="h-10 w-10" />
               </div>
             )}
-            <span className="line-clamp-2 text-sm font-medium">{e.display_name}</span>
+            <span className="line-clamp-2 text-sm font-medium">
+              <span lang={entryTitleLang(e, form)}>{entryTitle(e, form)}</span>
+            </span>
           </>
         )
         return (

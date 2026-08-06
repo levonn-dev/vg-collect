@@ -1,5 +1,8 @@
-import { screen } from '@testing-library/react'
+import { i18n } from '@lingui/core'
+import { cleanup, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
+import type { Entry } from '../../api/collection'
+import { messages as jaMessages } from '../../locales/ja.po'
 import { entryFixture, sharedEntryFixture } from '../../test/fixtures'
 import { renderWithMoney } from '../../test/money'
 import CoverGrid from './CoverGrid'
@@ -11,6 +14,30 @@ const renderGrid = (entries = [entryFixture()], opts: { currency?: string } = {}
     </MemoryRouter>,
     opts,
   )
+
+afterEach(() => {
+  // Order matters: cleanup() before activate() - see EntryTable.test.tsx's
+  // afterEach for why (I18nProvider update outside act otherwise).
+  cleanup()
+  i18n.activate('en')
+})
+
+function activateJa() {
+  i18n.load('ja', jaMessages)
+  i18n.activate('ja')
+}
+
+// JP-trio fixture (see EntryTable.test.tsx / productTitle.test.ts);
+// cover_url is also set so the localized-cover assertion proves
+// precedence, not absence.
+const jp: Partial<Entry> = {
+  display_name: 'Trials of Mana',
+  localized_name: '聖剣伝説 3',
+  localized_name_translit: 'Seiken Densetsu 3',
+  localized_cover_url: 'https://x/jp.jpg',
+  cover_url: 'https://x/na.jpg',
+  region: 'ntsc_j',
+}
 
 it('renders cover art when the snapshot exists', () => {
   renderGrid([entryFixture({ display_name: 'Chrono Trigger', cover_url: 'https://img.example/ct.jpg' })])
@@ -88,4 +115,21 @@ it('omits the value line when shared, keeping the platform label', () => {
   expect(screen.getByText('Someone Elses Game')).toBeInTheDocument()
   expect(screen.getByText('SNES')).toBeInTheDocument()
   expect(screen.queryByText('-')).not.toBeInTheDocument()
+})
+
+it('renders the romanized title, ja-Latn lang, and the localized cover by default', () => {
+  renderGrid([entryFixture(jp)])
+  expect(screen.getByText('Seiken Densetsu 3')).toHaveAttribute('lang', 'ja-Latn')
+  expect(document.querySelector('img')).toHaveAttribute('src', 'https://x/jp.jpg')
+})
+
+it('renders the native title with a ja lang attribute under the ja locale', () => {
+  activateJa()
+  renderGrid([entryFixture(jp)])
+  expect(screen.getByText('聖剣伝説 3')).toHaveAttribute('lang', 'ja')
+})
+
+it('leaves the lang attribute off a canonical-only tile title', () => {
+  renderGrid([entryFixture({ display_name: 'Chrono Trigger' })])
+  expect(screen.getByText('Chrono Trigger')).not.toHaveAttribute('lang')
 })

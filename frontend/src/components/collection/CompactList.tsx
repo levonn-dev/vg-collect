@@ -2,6 +2,7 @@ import { useLingui } from '@lingui/react/macro'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { Entry } from '../../api/collection'
+import { entryTitle, entryTitleLang, titleFormFor } from '../../lib/productTitle'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import { statusLabels } from './EntryTable'
 import { isFullEntry, rowMeta, type EntryRow } from './rowMeta'
@@ -20,6 +21,7 @@ interface CompactListProps {
 export default function CompactList({ entries, pinSlot, linkTo, shared }: CompactListProps) {
   const { i18n } = useLingui()
   const money = useDisplayMoney()
+  const form = titleFormFor(i18n.locale)
   return (
     <ul className="divide-y divide-gray-100 text-sm">
       {entries.map((e) => {
@@ -28,8 +30,12 @@ export default function CompactList({ entries, pinSlot, linkTo, shared }: Compac
           <li key={e.id} className="flex items-center gap-2 py-1">
             {meta.pin}
             {linkTo?.(e) === null
-              ? <span className="font-medium">{e.display_name}</span>
-              : <Link to={(linkTo ?? (x => `/entries/${x.id}`))(e)!} className="font-medium hover:underline">{e.display_name}</Link>}
+              ? <span className="font-medium"><span lang={entryTitleLang(e, form)}>{entryTitle(e, form)}</span></span>
+              : (
+                <Link to={(linkTo ?? (x => `/entries/${x.id}`))(e)!} className="font-medium hover:underline">
+                  <span lang={entryTitleLang(e, form)}>{entryTitle(e, form)}</span>
+                </Link>
+              )}
             <span className="text-gray-400">{meta.platform}</span>
             {isFullEntry(e) && <span className="text-gray-400">{i18n._(statusLabels[e.status])}</span>}
             {!shared && <span className="ml-auto text-gray-500">{meta.value}</span>}

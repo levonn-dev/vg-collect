@@ -1,8 +1,10 @@
-import { screen, within } from '@testing-library/react'
+import { i18n } from '@lingui/core'
+import { act, cleanup, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import type { Entry } from '../../api/collection'
+import { messages as jaMessages } from '../../locales/ja.po'
 import { entryFixture, sharedEntryFixture } from '../../test/fixtures'
 import { renderWithMoney } from '../../test/money'
 import EntryTable from './EntryTable'
@@ -14,6 +16,31 @@ const renderTable = (entries: Entry[], opts: { currency?: string } = {}) =>
     </MemoryRouter>,
     opts,
   )
+
+afterEach(() => {
+  // Unmount before touching the singleton (this hook runs ahead of
+  // RTL's auto-cleanup; re-activating against a mounted tree is an
+  // I18nProvider update outside act), then leave en active for every
+  // other file sharing the module-level singleton.
+  cleanup()
+  i18n.activate('en')
+})
+
+function activateJa() {
+  i18n.load('ja', jaMessages)
+  i18n.activate('ja')
+}
+
+// The JP trio: a region-localized entry carrying both a native-script
+// title and its transliteration plus its own box art, matching the
+// fixture productTitle.test.ts exercises.
+const jp: Partial<Entry> = {
+  display_name: 'Trials of Mana',
+  localized_name: '聖剣伝説 3',
+  localized_name_translit: 'Seiken Densetsu 3',
+  localized_cover_url: 'https://x/jp.jpg',
+  region: 'ntsc_j',
+}
 
 it('renders values converted into the display currency, header labeled', () => {
   renderTable([entryFixture({ value_cents: 4200 })], { currency: 'EUR' })
@@ -261,4 +288,38 @@ it('shares one selection Set across independently-managed per-table select-all c
   await userEvent.click(groupB.getByRole('checkbox', { name: 'Select all' }))
   expect(groupA.getByRole('checkbox', { name: 'Select A1' })).toBeChecked() // untouched by B's select-all
   expect(groupB.getByRole('checkbox', { name: 'Select B1' })).toBeChecked()
+})
+
+it('renders the romanized title with a ja-Latn lang attribute by default', () => {
+  renderTable([entryFixture(jp)])
+  expect(screen.getByText('Seiken Densetsu 3')).toHaveAttribute('lang', 'ja-Latn')
+})
+
+it('renders the native title with a ja lang attribute under the ja locale', () => {
+  activateJa()
+  renderTable([entryFixture(jp)])
+  expect(screen.getByText('聖剣伝説 3')).toHaveAttribute('lang', 'ja')
+})
+
+it('leaves the lang attribute off a canonical-only title', () => {
+  renderTable([entryFixture({ display_name: 'Chrono Trigger' })])
+  expect(screen.getByText('Chrono Trigger')).not.toHaveAttribute('lang')
+})
+
+it('tracks a live locale switch on the same mounted row without remounting', () => {
+  renderTable([entryFixture(jp)])
+  expect(screen.getByText('Seiken Densetsu 3')).toBeInTheDocument()
+  act(() => activateJa())
+  expect(screen.getByText('聖剣伝説 3')).toBeInTheDocument()
+  expect(screen.queryByText('Seiken Densetsu 3')).not.toBeInTheDocument()
+})
+
+it('names a row checkbox for the localized title shown in the row, not the raw display_name', () => {
+  renderWithMoney(
+    <MemoryRouter>
+      <EntryTable entries={[entryFixture(jp)]} selectable selected={new Set()} onToggleSelect={vi.fn()} />
+    </MemoryRouter>,
+  )
+  expect(screen.getByRole('checkbox', { name: 'Select Seiken Densetsu 3' })).toBeInTheDocument()
+  expect(screen.queryByRole('checkbox', { name: 'Select Trials of Mana' })).not.toBeInTheDocument()
 })

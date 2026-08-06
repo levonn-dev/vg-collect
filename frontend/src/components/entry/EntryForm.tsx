@@ -6,6 +6,7 @@ import type { Entry, EntryUpdate } from '../../api/collection'
 import { centsToDollars, dollarsToCents, enteredCentsToUsdCents, usdCentsToMajor } from '../../lib/format'
 import { entryToUpdate } from '../../lib/entryUpdate'
 import { CONDITIONS, PACKAGINGS, REGIONS, STATUSES } from '../../lib/listParams'
+import { regionLabels } from '../../lib/regionLabels'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import PlatformPicker from '../catalog/PlatformPicker'
 import type { PricingValue } from './PricingPanel'
@@ -143,13 +144,6 @@ const conditionLabels: Record<Condition, MessageDescriptor> = {
   good: msg`Good`,
   acceptable: msg`Acceptable`,
   poor: msg`Poor`,
-}
-
-const regionLabels: Record<Entry['region'], MessageDescriptor> = {
-  ntsc_u: msg`NTSC-U`,
-  ntsc_j: msg`NTSC-J`,
-  pal: msg`PAL`,
-  region_free: msg`Region free`,
 }
 
 // Identity-preserving: these two selects have never been prettified,

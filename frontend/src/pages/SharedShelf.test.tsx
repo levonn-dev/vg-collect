@@ -140,7 +140,17 @@ it('renders entries read-only, numbered 1-based, for a rank-sorted table stub', 
     }),
     '/api/shelves/shelf1/entries': {
       total_count: 2,
-      entries: [sharedEntryFixture({ display_name: 'First Up' }), sharedEntryFixture({ display_name: 'Second Up' })],
+      entries: [
+        sharedEntryFixture({ display_name: 'First Up' }),
+        // JP-trio fixture: see EntryTable.test.tsx / productTitle.test.ts.
+        sharedEntryFixture({
+          display_name: 'Trials of Mana',
+          localized_name: '聖剣伝説 3',
+          localized_name_translit: 'Seiken Densetsu 3',
+          localized_cover_url: 'https://x/jp.jpg',
+          region: 'ntsc_j',
+        }),
+      ],
     },
     '/api/shelves/shelf1/comments': { comments: [] },
     '/api/fx': fxRatesFixture(),
@@ -155,6 +165,10 @@ it('renders entries read-only, numbered 1-based, for a rank-sorted table stub', 
   const rows = screen.getAllByRole('row').slice(1) // drop the header row
   expect(within(rows[0]).getByRole('cell', { name: '1' })).toBeInTheDocument()
   expect(within(rows[1]).getByRole('cell', { name: '2' })).toBeInTheDocument()
+
+  // The second row's region-localized title passes through unchanged:
+  // romanized text (default locale), tagged ja-Latn.
+  expect(within(rows[1]).getByText('Seiken Densetsu 3')).toHaveAttribute('lang', 'ja-Latn')
 })
 
 it('renders no selection checkboxes, even in table mode (bulk edit is owner-only)', async () => {
