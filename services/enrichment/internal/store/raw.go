@@ -13,14 +13,21 @@ import (
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 )
 
+// RawFieldsVersion stamps which gameFields generation fetched a raw
+// payload. Raws below the current version predate fields the
+// projection needs and must be refetched, not reprojected; bump it
+// whenever gameFields widens.
+const RawFieldsVersion = 2
+
 // RawGame is the igdb_raw document: the full provider payload keyed by
 // IGDB game id, shared across products (one IGDB game fans out to N
 // PriceCharting-grained products) and holding recommendation
 // candidates that are not products yet.
 type RawGame struct {
-	GameID    int64     `bson:"_id"`
-	Game      igdb.Game `bson:"game"`
-	FetchedAt time.Time `bson:"fetched_at"`
+	GameID        int64     `bson:"_id"`
+	Game          igdb.Game `bson:"game"`
+	FetchedAt     time.Time `bson:"fetched_at"`
+	FieldsVersion int       `bson:"fields_version"`
 }
 
 // UpsertRaw stores payloads by game id, replacing stale copies.
@@ -36,7 +43,7 @@ func (s *Store) UpsertRaw(ctx context.Context, games []igdb.Game, fetchedAt time
 		if g.ReleaseDates == nil {
 			g.ReleaseDates = []igdb.ReleaseDate{}
 		}
-		doc := RawGame{GameID: g.ID, Game: g, FetchedAt: fetchedAt.UTC().Truncate(time.Millisecond)}
+		doc := RawGame{GameID: g.ID, Game: g, FetchedAt: fetchedAt.UTC().Truncate(time.Millisecond), FieldsVersion: RawFieldsVersion}
 		models = append(models, mongo.NewReplaceOneModel().
 			SetFilter(bson.D{{Key: "_id", Value: g.ID}}).
 			SetReplacement(doc).

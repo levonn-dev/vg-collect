@@ -53,6 +53,27 @@ func (s *Stub) SearchGames(_ context.Context, q string, limit int) ([]Game, erro
 	return out, nil
 }
 
+// SearchLocalizations is a case-insensitive substring match over each
+// fixture game's game_localizations[].name, in fixture order (mirrors
+// the real endpoint: the game_localizations rows themselves, never the
+// merged/translit-mined bundle).
+func (s *Stub) SearchLocalizations(_ context.Context, q string, limit int) ([]int64, error) {
+	needle := strings.ToLower(strings.TrimSpace(q))
+	var out []int64
+	for _, g := range s.games {
+		for _, loc := range g.GameLocalizations {
+			if loc.Name != "" && strings.Contains(strings.ToLower(loc.Name), needle) {
+				out = append(out, g.ID)
+				break
+			}
+		}
+		if len(out) == limit {
+			break
+		}
+	}
+	return out, nil
+}
+
 // GamesByIDs returns the fixtures it knows; unknown ids are silently
 // absent (mirrors the real endpoint).
 func (s *Stub) GamesByIDs(_ context.Context, ids []int64) ([]Game, error) {

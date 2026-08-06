@@ -8,6 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
 
 func TestRaw_UpsertReplaceAndMissingAbsent(t *testing.T) {
@@ -105,6 +106,45 @@ func TestRaw_UpsertReplaceDropsFieldsAbsentFromReplacement(t *testing.T) {
 	}
 	if _, present := raw["legacy_unused_field"]; present {
 		t.Fatalf("ReplaceOneModel must drop fields absent from the replacement document: %+v", raw)
+	}
+}
+
+// FieldsVersion lets later reprojection tell a raw doc fetched under
+// the current gameFields generation from one that predates it (which
+// must be refetched, not reprojected).
+func TestRaw_UpsertStampsFieldsVersion(t *testing.T) {
+	s, mdb := newTestStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 7, 1, 6, 0, 0, 0, time.UTC)
+
+	g := igdb.Game{ID: 3001, Name: "Trials of Mana"}
+	if err := s.UpsertRaw(ctx, []igdb.Game{g}, at); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.RawByIDs(ctx, []int64{3001})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].FieldsVersion != store.RawFieldsVersion {
+		t.Fatalf("want fields_version %d, got %+v", store.RawFieldsVersion, got)
+	}
+
+	// A doc written before this field existed (hand-inserted, no
+	// fields_version key) must read back the zero value: "predates the
+	// feature", the sentinel the refetch sweep keys on.
+	if _, err := mdb.Collection("igdb_raw").InsertOne(ctx, bson.D{
+		{Key: "_id", Value: int64(3002)},
+		{Key: "game", Value: bson.D{{Key: "id", Value: int64(3002)}, {Key: "name", Value: "Legacy Game"}}},
+		{Key: "fetched_at", Value: at},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.RawByIDs(ctx, []int64{3002})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].FieldsVersion != 0 {
+		t.Fatalf("pre-feature doc must read back fields_version 0, got %+v", got)
 	}
 }
 

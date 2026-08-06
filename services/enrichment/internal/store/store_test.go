@@ -595,6 +595,39 @@ func TestProduct_ByIDsAndSearch(t *testing.T) {
 	}
 }
 
+// TestSearchByName_MatchesLocalizationNameAndTranslit is the degraded
+// path's other half: a query that hits neither the canonical Name nor
+// any Name substring still finds the product via its stored
+// igdb.localizations native name or transliteration (case-insensitive,
+// like the canonical-name match).
+func TestSearchByName_MatchesLocalizationNameAndTranslit(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+
+	p := gameProduct(1001, 4, "The Legend of Zelda: Ocarina of Time", "Nintendo 64", "")
+	p.IGDB.Localizations = []store.MetaLocalization{
+		{Region: "ja-JP", Name: "ゼルダの伝説 時のオカリナ", Translit: "Zelda no Densetsu: Toki no Ocarina"},
+	}
+	if _, err := s.CreateProduct(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+
+	byName, err := s.SearchByName(ctx, "ゼルダの伝説", 10)
+	if err != nil || len(byName) != 1 || byName[0].Name != "The Legend of Zelda: Ocarina of Time" {
+		t.Fatalf("localization name match: %d, %v", len(byName), err)
+	}
+
+	byTranslit, err := s.SearchByName(ctx, "TOKI NO OCARINA", 10)
+	if err != nil || len(byTranslit) != 1 || byTranslit[0].Name != "The Legend of Zelda: Ocarina of Time" {
+		t.Fatalf("translit match (case-insensitive): %d, %v", len(byTranslit), err)
+	}
+
+	none, err := s.SearchByName(ctx, "no such text", 10)
+	if err != nil || len(none) != 0 {
+		t.Fatalf("want no match, got %d, %v", len(none), err)
+	}
+}
+
 func TestSnapshotsSinceWindowsAndOrders(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
@@ -781,6 +814,35 @@ func TestNewIGDBMeta_FoldsTwinPlatformRows(t *testing.T) {
 	}
 }
 
+// The localization bundles derived from a game's rows and alternative
+// names land in the projection 1:1; a game with no localization data
+// projects an empty, non-nil slice (matches the ReleaseDates and
+// SimilarGames convention: absent-but-fetched, not pre-feature).
+func TestNewIGDBMeta_Localizations(t *testing.T) {
+	g := igdb.Game{
+		ID: 1011, Name: "Chrono Trigger",
+		GameLocalizations: []igdb.GameLocalization{
+			{Name: "クロノ・トリガー", Region: igdb.LocalizationRegion{Identifier: "ja-JP"}, Cover: &igdb.Cover{ImageID: "co_fx1011jp"}},
+		},
+		AlternativeNames: []igdb.AlternativeName{
+			{Name: "Kurono Torigaa", Comment: "Japanese title - romanization"},
+		},
+	}
+	m := store.NewIGDBMeta(g, 19, time.Now())
+	want := []store.MetaLocalization{{
+		Region: "ja-JP", Name: "クロノ・トリガー", Translit: "Kurono Torigaa",
+		CoverURL: "https://images.igdb.com/igdb/image/upload/t_cover_big/co_fx1011jp.jpg",
+	}}
+	if len(m.Localizations) != 1 || m.Localizations[0] != want[0] {
+		t.Fatalf("localizations: %+v", m.Localizations)
+	}
+
+	empty := store.NewIGDBMeta(igdb.Game{ID: 1, Name: "X"}, 19, time.Now())
+	if len(empty.Localizations) != 0 || empty.Localizations == nil {
+		t.Fatalf("want empty non-nil localizations, got %#v", empty.Localizations)
+	}
+}
+
 // SameProjection is the reprojection walk's diff gate: two projections
 // that differ only by FetchedAt are the same; differing rows are not;
 // and a nil release table is NOT the same as an empty one (that exact
@@ -788,13 +850,14 @@ func TestNewIGDBMeta_FoldsTwinPlatformRows(t *testing.T) {
 func TestIGDBMeta_SameProjection(t *testing.T) {
 	base := store.IGDBMeta{
 		GameID: 1011, Name: "Chrono Trigger",
-		Genres:       []store.Genre{{ID: 12, Name: "Role-playing (RPG)"}},
-		Themes:       []string{"Fantasy"},
-		Franchises:   []string{"Chrono"},
-		SimilarGames: []int64{1012},
-		Companies:    []store.Company{{Name: "Square", Developer: true, Publisher: true}},
-		ReleaseDates: []store.MetaReleaseDate{{Region: "japan", Date: time.Unix(794880000, 0).UTC()}},
-		FetchedAt:    time.Unix(1000, 0).UTC(),
+		Genres:        []store.Genre{{ID: 12, Name: "Role-playing (RPG)"}},
+		Themes:        []string{"Fantasy"},
+		Franchises:    []string{"Chrono"},
+		SimilarGames:  []int64{1012},
+		Companies:     []store.Company{{Name: "Square", Developer: true, Publisher: true}},
+		ReleaseDates:  []store.MetaReleaseDate{{Region: "japan", Date: time.Unix(794880000, 0).UTC()}},
+		Localizations: []store.MetaLocalization{{Region: "ja-JP", Name: "クロノ・トリガー"}},
+		FetchedAt:     time.Unix(1000, 0).UTC(),
 	}
 	sameButNewer := base
 	sameButNewer.FetchedAt = time.Unix(9_999_999, 0).UTC() // provider stamp differs only
@@ -814,6 +877,14 @@ func TestIGDBMeta_SameProjection(t *testing.T) {
 	emptyTable.ReleaseDates = []store.MetaReleaseDate{}
 	if nilTable.SameProjection(emptyTable) {
 		t.Fatal("nil vs empty release table must compare unequal (pre-feature vs fetched-none)")
+	}
+
+	nilLoc := base
+	nilLoc.Localizations = nil
+	emptyLoc := base
+	emptyLoc.Localizations = []store.MetaLocalization{}
+	if nilLoc.SameProjection(emptyLoc) {
+		t.Fatal("nil vs empty localizations must compare unequal (pre-feature vs fetched-none)")
 	}
 }
 

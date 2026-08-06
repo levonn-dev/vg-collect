@@ -84,20 +84,32 @@ type MetaReleaseDate struct {
 	Date   time.Time `bson:"date"`
 }
 
+// MetaLocalization is one region's presentation of the game: IGDB
+// region identifier (ja-JP, EU, ko-KR - open-world, stored verbatim),
+// native-script name, latin transliteration, and regional box art.
+// Fields are independently optional; readers fall back per field.
+type MetaLocalization struct {
+	Region   string `bson:"region"`
+	Name     string `bson:"name,omitempty"`
+	Translit string `bson:"translit,omitempty"`
+	CoverURL string `bson:"cover_url,omitempty"`
+}
+
 // IGDBMeta is the game-metadata projection embedded in a product; it
 // refreshes on its own cadence via SetIGDB (partial update).
 type IGDBMeta struct {
-	GameID           int64             `bson:"game_id"`
-	Name             string            `bson:"name"`
-	CoverURL         string            `bson:"cover_url,omitempty"`
-	Genres           []Genre           `bson:"genres"`
-	Themes           []string          `bson:"themes"`
-	Franchises       []string          `bson:"franchises"`
-	SimilarGames     []int64           `bson:"similar_games"`
-	Companies        []Company         `bson:"companies"`
-	FirstReleaseDate time.Time         `bson:"first_release_date,omitempty"`
-	ReleaseDates     []MetaReleaseDate `bson:"release_dates"`
-	FetchedAt        time.Time         `bson:"fetched_at"`
+	GameID           int64              `bson:"game_id"`
+	Name             string             `bson:"name"`
+	CoverURL         string             `bson:"cover_url,omitempty"`
+	Genres           []Genre            `bson:"genres"`
+	Themes           []string           `bson:"themes"`
+	Franchises       []string           `bson:"franchises"`
+	SimilarGames     []int64            `bson:"similar_games"`
+	Companies        []Company          `bson:"companies"`
+	FirstReleaseDate time.Time          `bson:"first_release_date,omitempty"`
+	ReleaseDates     []MetaReleaseDate  `bson:"release_dates"`
+	Localizations    []MetaLocalization `bson:"localizations"`
+	FetchedAt        time.Time          `bson:"fetched_at"`
 }
 
 // PriceQuote holds one condition triple in integer cents; nil means
@@ -280,6 +292,12 @@ func NewIGDBMeta(g igdb.Game, platformIGDBID int64, fetchedAt time.Time) IGDBMet
 	m.ReleaseDates = platformReleaseDates(g, platformIGDBID)
 	if len(m.ReleaseDates) > 0 {
 		m.FirstReleaseDate = m.ReleaseDates[0].Date // sorted ascending: [0] is the earliest
+	}
+	m.Localizations = []MetaLocalization{}
+	for _, b := range igdb.BundleLocalizations(g) {
+		m.Localizations = append(m.Localizations, MetaLocalization{
+			Region: b.Region, Name: b.Name, Translit: b.Translit, CoverURL: b.CoverURL,
+		})
 	}
 	return m
 }
@@ -678,17 +696,22 @@ func (s *Store) ProductsByIDs(ctx context.Context, ids []string) ([]Product, err
 }
 
 // SearchByName is the degraded-mode fallback: a case-insensitive
-// substring match over the local provider catalog. A collection scan
-// is accepted here (small catalog, cold-cache-and-provider-down only).
-// Provider-origin only: this fallback stands in for provider search,
-// so community docs (which have no provider identity) must not surface
-// here as dead rows.
+// substring match over the local provider catalog, over the canonical
+// name or either localization field (native-script name or latin
+// transliteration) - the same fields the live non-latin search leg
+// covers, so a provider outage does not also lose native-script
+// finds. A collection scan is accepted here (small catalog,
+// cold-cache-and-provider-down only). Provider-origin only: this
+// fallback stands in for provider search, so community docs (which
+// have no provider identity) must not surface here as dead rows.
 func (s *Store) SearchByName(ctx context.Context, q string, limit int) ([]Product, error) {
+	rx := bson.D{{Key: "$regex", Value: regexp.QuoteMeta(q)}, {Key: "$options", Value: "i"}}
 	filter := bson.D{
 		{Key: "origin", Value: "provider"},
-		{Key: "name", Value: bson.D{
-			{Key: "$regex", Value: regexp.QuoteMeta(q)},
-			{Key: "$options", Value: "i"},
+		{Key: "$or", Value: bson.A{
+			bson.D{{Key: "name", Value: rx}},
+			bson.D{{Key: "igdb.localizations.name", Value: rx}},
+			bson.D{{Key: "igdb.localizations.translit", Value: rx}},
 		}},
 	}
 	cur, err := s.db.Collection(colProducts).Find(ctx, filter,

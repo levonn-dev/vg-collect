@@ -123,6 +123,40 @@ func TestClient_GamesByIDsChunkErrorPropagates(t *testing.T) {
 	}
 }
 
+// TestClient_SearchLocalizationsQuoteStripAndShape pins the
+// game_localizations where-body shape after the quote/backslash strip
+// (see SearchLocalizations for why), distinct game ids in response
+// order, and the empty-after-strip short-circuit that must not spend
+// a provider call.
+func TestClient_SearchLocalizationsQuoteStripAndShape(t *testing.T) {
+	var body string
+	var calls atomic.Int64
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		_, _ = w.Write([]byte(`[{"game":1001},{"game":1001},{"game":1016}]`))
+	})
+
+	got, err := c.SearchLocalizations(context.Background(), `ゼルダ"の"伝説\`, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, `where name ~ *"ゼルダの伝説"*;`) || !strings.Contains(body, "limit 20;") {
+		t.Fatalf("bad where body (quotes and backslashes must be stripped): %s", body)
+	}
+	if len(got) != 2 || got[0] != 1001 || got[1] != 1016 {
+		t.Fatalf("want distinct ids in response order, got %v", got)
+	}
+
+	if _, err := c.SearchLocalizations(context.Background(), `"""\`, 20); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("an all-quotes-and-backslashes (empty-after-strip) query must not call the provider, got %d calls", calls.Load())
+	}
+}
+
 func TestClient_PlatformsQueryShape(t *testing.T) {
 	var body string
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {

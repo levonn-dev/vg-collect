@@ -80,6 +80,48 @@ func TestStub_SearchGames(t *testing.T) {
 	}
 }
 
+// TestStub_SearchLocalizations pins the fixture behavior against the
+// real fixture data: game 1001's ja-JP game_localizations row carries
+// the query as a substring, while its canonical Name does not (so a
+// hit here proves the localization-row match, not a Name match).
+func TestStub_SearchLocalizations(t *testing.T) {
+	s := newStub(t)
+	got, err := s.SearchLocalizations(context.Background(), "ゼルダの伝説", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != 1001 {
+		t.Fatalf("want [1001], got %v", got)
+	}
+	none, err := s.SearchLocalizations(context.Background(), "no such fixture text", 20)
+	if err != nil || len(none) != 0 {
+		t.Fatalf("want empty result, got %v (%v)", none, err)
+	}
+}
+
+// TestStub_SearchLocalizations_CaseInsensitiveAndLimit builds a
+// synthetic stub (kana has no case, so the embedded fixtures cannot
+// exercise case-folding) to pin case-insensitive substring matching,
+// fixture order, and the limit independently of fixture content.
+func TestStub_SearchLocalizations_CaseInsensitiveAndLimit(t *testing.T) {
+	s := &Stub{games: []Game{
+		{ID: 1, GameLocalizations: []GameLocalization{{Name: "Alpha Quest", Region: LocalizationRegion{Identifier: "EU"}}}},
+		{ID: 2, GameLocalizations: []GameLocalization{{Name: "ALPHA Rising", Region: LocalizationRegion{Identifier: "EU"}}}},
+		{ID: 3, GameLocalizations: []GameLocalization{{Name: "Beta Quest", Region: LocalizationRegion{Identifier: "EU"}}}},
+	}}
+	got, err := s.SearchLocalizations(context.Background(), "alpha", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Fatalf("case-insensitive substring in fixture order: got %v", got)
+	}
+	limited, err := s.SearchLocalizations(context.Background(), "alpha", 1)
+	if err != nil || len(limited) != 1 || limited[0] != 1 {
+		t.Fatalf("limit not applied: got %v (%v)", limited, err)
+	}
+}
+
 func TestStub_GamesByIDs_UnknownAbsent(t *testing.T) {
 	s := newStub(t)
 	got, err := s.GamesByIDs(context.Background(), []int64{1001, 999999, 1044})

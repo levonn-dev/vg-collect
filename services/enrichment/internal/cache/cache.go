@@ -29,10 +29,12 @@ func New(rdb *redis.Client) *Cache {
 }
 
 // searchKey hashes the (caller-normalized) query so keys stay clean
-// regardless of query content or length.
+// regardless of query content or length. The version segment bumps
+// whenever the cached result schema changes; old entries simply age
+// out via TTL rather than being decoded under the new shape.
 func searchKey(kind, q string) string {
 	sum := sha256.Sum256([]byte(q))
-	return "search:v1:" + kind + ":" + hex.EncodeToString(sum[:])
+	return "search:v3:" + kind + ":" + hex.EncodeToString(sum[:])
 }
 
 func productKey(id string) string { return "product:v1:" + id }

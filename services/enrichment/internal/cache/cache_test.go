@@ -2,6 +2,8 @@ package cache_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"sync"
 	"testing"
 	"time"
@@ -63,6 +65,18 @@ func TestSearch_RoundTripKindsAndExpiry(t *testing.T) {
 	hit, err := c.GetSearch(ctx, "game", "zelda")
 	if err != nil || string(hit) != `{"degraded":false}` {
 		t.Fatalf("hit: %s, %v", hit, err)
+	}
+	// Pins the exact versioned key (search:v3:...), so forgetting the
+	// version bump on a future schema change is caught here.
+	raw, err := valkeykit.Connect(ctx, sharedVK.url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = raw.Close() })
+	sum := sha256.Sum256([]byte("zelda"))
+	wantKey := "search:v3:game:" + hex.EncodeToString(sum[:])
+	if n, err := raw.Exists(ctx, wantKey).Result(); err != nil || n != 1 {
+		t.Fatalf("expected key %q under the versioned prefix: n=%d err=%v", wantKey, n, err)
 	}
 	// Kind and query are both part of the key.
 	if hit, _ := c.GetSearch(ctx, "hardware", "zelda"); hit != nil {

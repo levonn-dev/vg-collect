@@ -62,6 +62,7 @@ type Store interface {
 // IGDB_MODE).
 type GameProvider interface {
 	SearchGames(ctx context.Context, q string, limit int) ([]igdb.Game, error)
+	SearchLocalizations(ctx context.Context, q string, limit int) ([]int64, error)
 	GamesByIDs(ctx context.Context, ids []int64) ([]igdb.Game, error)
 	PopularGames(ctx context.Context, genreIDs []int64, excludeIDs []int64, limit int) ([]igdb.Game, error)
 	Platforms(ctx context.Context) ([]igdb.Platform, error)
@@ -138,11 +139,12 @@ type Handlers struct {
 	// Domain instruments, registered best-effort in New; the emission
 	// helpers below guard the nils, so a telemetry hiccup never blocks
 	// serving (the bff cache counter set the pattern).
-	cacheFailOpen  metric.Int64Counter
-	searchRequests metric.Int64Counter
-	matchOutcomes  metric.Int64Counter
-	refreshItems   metric.Int64Counter
-	walkDuration   metric.Float64Histogram
+	cacheFailOpen   metric.Int64Counter
+	searchRequests  metric.Int64Counter
+	localizationLeg metric.Int64Counter
+	matchOutcomes   metric.Int64Counter
+	refreshItems    metric.Int64Counter
+	walkDuration    metric.Float64Histogram
 
 	// refreshing guards the walk: one at a time, concurrent triggers
 	// answer 409.
@@ -183,6 +185,11 @@ func New(st Store, games GameProvider, prices PriceProvider, fxRates FXProvider,
 		metric.WithDescription("Answered catalog searches by kind and answer source"),
 		metric.WithUnit("{request}")); err != nil {
 		opts.Logger.Error("search requests counter unavailable", "err", err)
+	}
+	if h.localizationLeg, err = meter.Int64Counter("vg.enrichment.search.localization_leg",
+		metric.WithDescription("Supplementary localization-title search legs by outcome"),
+		metric.WithUnit("{leg}")); err != nil {
+		opts.Logger.Error("localization leg counter unavailable", "err", err)
 	}
 	if h.matchOutcomes, err = meter.Int64Counter("vg.enrichment.match.outcomes",
 		metric.WithDescription("Auto-match attempts by calling flow and outcome"),
@@ -238,6 +245,14 @@ func (h *Handlers) countSearch(ctx context.Context, kind, source string) {
 	if h.searchRequests != nil {
 		h.searchRequests.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("kind", kind), attribute.String("source", source)))
+	}
+}
+
+// countLocalizationLeg records one supplementary localization-title
+// search leg's outcome (merged, empty or error).
+func (h *Handlers) countLocalizationLeg(ctx context.Context, outcome string) {
+	if h.localizationLeg != nil {
+		h.localizationLeg.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
 	}
 }
 

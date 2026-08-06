@@ -21,7 +21,7 @@ const (
 	defaultTokenURL = "https://id.twitch.tv/oauth2/token" //nolint:gosec // G101: public OAuth token endpoint URL, not a credential
 	// Expanded references always include ids, so genres.name yields
 	// {id, name} pairs without asking for genres.id.
-	gameFields     = "name,cover.image_id,genres.name,themes.name,franchises.name,similar_games,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,first_release_date,release_dates.date,release_dates.platform,release_dates.release_region,platforms.name,total_rating,total_rating_count"
+	gameFields     = "name,cover.image_id,genres.name,themes.name,franchises.name,similar_games,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,first_release_date,release_dates.date,release_dates.platform,release_dates.release_region,platforms.name,total_rating,total_rating_count,alternative_names.name,alternative_names.comment,game_localizations.name,game_localizations.region.identifier,game_localizations.cover.image_id"
 	platformFields = "name,abbreviation,generation,platform_logo.image_id"
 )
 
@@ -149,6 +149,35 @@ func (c *Client) SearchGames(ctx context.Context, q string, limit int) ([]Game, 
 		return nil, err
 	}
 	return out, nil
+}
+
+// SearchLocalizations finds games by localized (native-script) title:
+// IGDB's search index covers name + alternative_names but NOT
+// game_localizations, so native-script queries need this where-filter
+// leg. Returns distinct game ids; double quotes and backslashes are
+// stripped from the query (a quote would close the APICalypse string
+// literal, and a trailing backslash would escape that closing quote).
+func (c *Client) SearchLocalizations(ctx context.Context, q string, limit int) ([]int64, error) {
+	clean := strings.ReplaceAll(strings.ReplaceAll(q, `"`, ""), `\`, "")
+	if strings.TrimSpace(clean) == "" {
+		return nil, nil
+	}
+	body := fmt.Sprintf(`fields game; where name ~ *"%s"*; limit %d;`, clean, limit)
+	var out []struct {
+		Game int64 `json:"game"`
+	}
+	if err := c.query(ctx, "game_localizations", body, &out); err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(out))
+	seen := make(map[int64]bool, len(out))
+	for _, row := range out {
+		if row.Game != 0 && !seen[row.Game] {
+			seen[row.Game] = true
+			ids = append(ids, row.Game)
+		}
+	}
+	return ids, nil
 }
 
 // maxIDsPerQuery caps one where-id query; the API rejects any larger

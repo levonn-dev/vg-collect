@@ -4,7 +4,12 @@
 // picks which one main.go wires in; both expose the same method set.
 package igdb
 
-import "time"
+import (
+	"sort"
+	"strings"
+	"time"
+	"unicode"
+)
 
 // Named is any IGDB reference expanded to {id, name} (genres, themes,
 // franchises, platforms, companies).
@@ -35,22 +40,54 @@ type ReleaseDate struct {
 	Region   int   `json:"release_region,omitempty" bson:"release_region,omitempty"`
 }
 
+// AlternativeName is one alternate title with IGDB's free-text
+// comment taxonomy ("Japanese title - romanization", "Acronym", ...).
+type AlternativeName struct {
+	Name    string `json:"name" bson:"name"`
+	Comment string `json:"comment,omitempty" bson:"comment,omitempty"`
+}
+
+// LocalizationRegion arrives identifier-expanded (ja-JP, EU, ko-KR):
+// self-describing, so no enum map can go stale when IGDB adds rows.
+type LocalizationRegion struct {
+	Identifier string `json:"identifier" bson:"identifier"`
+}
+
+// GameLocalization is one region's presentation of a game; name and
+// cover are independently optional (rows are sparse).
+type GameLocalization struct {
+	Name   string             `json:"name,omitempty" bson:"name,omitempty"`
+	Region LocalizationRegion `json:"region" bson:"region"`
+	Cover  *Cover             `json:"cover,omitempty" bson:"cover,omitempty"`
+}
+
+// CoverURL builds the t_cover_big URL for the localization's own box
+// art, or "" without one.
+func (l GameLocalization) CoverURL() string {
+	if l.Cover == nil || l.Cover.ImageID == "" {
+		return ""
+	}
+	return imageBase + "t_cover_big/" + l.Cover.ImageID + ".jpg"
+}
+
 // Game is the projection this service requests from /v4/games (and the
 // shape igdb_raw persists). Expanded references always include ids.
 type Game struct {
-	ID                int64             `json:"id" bson:"id"`
-	Name              string            `json:"name" bson:"name"`
-	Cover             *Cover            `json:"cover,omitempty" bson:"cover,omitempty"`
-	Genres            []Named           `json:"genres,omitempty" bson:"genres,omitempty"`
-	Themes            []Named           `json:"themes,omitempty" bson:"themes,omitempty"`
-	Franchises        []Named           `json:"franchises,omitempty" bson:"franchises,omitempty"`
-	SimilarGames      []int64           `json:"similar_games,omitempty" bson:"similar_games,omitempty"`
-	InvolvedCompanies []InvolvedCompany `json:"involved_companies,omitempty" bson:"involved_companies,omitempty"`
-	FirstReleaseDate  int64             `json:"first_release_date,omitempty" bson:"first_release_date,omitempty"`
-	ReleaseDates      []ReleaseDate     `json:"release_dates" bson:"release_dates"`
-	Platforms         []Named           `json:"platforms,omitempty" bson:"platforms,omitempty"`
-	TotalRating       float64           `json:"total_rating,omitempty" bson:"total_rating,omitempty"`
-	TotalRatingCount  int               `json:"total_rating_count,omitempty" bson:"total_rating_count,omitempty"`
+	ID                int64              `json:"id" bson:"id"`
+	Name              string             `json:"name" bson:"name"`
+	Cover             *Cover             `json:"cover,omitempty" bson:"cover,omitempty"`
+	Genres            []Named            `json:"genres,omitempty" bson:"genres,omitempty"`
+	Themes            []Named            `json:"themes,omitempty" bson:"themes,omitempty"`
+	Franchises        []Named            `json:"franchises,omitempty" bson:"franchises,omitempty"`
+	SimilarGames      []int64            `json:"similar_games,omitempty" bson:"similar_games,omitempty"`
+	InvolvedCompanies []InvolvedCompany  `json:"involved_companies,omitempty" bson:"involved_companies,omitempty"`
+	FirstReleaseDate  int64              `json:"first_release_date,omitempty" bson:"first_release_date,omitempty"`
+	ReleaseDates      []ReleaseDate      `json:"release_dates" bson:"release_dates"`
+	Platforms         []Named            `json:"platforms,omitempty" bson:"platforms,omitempty"`
+	AlternativeNames  []AlternativeName  `json:"alternative_names,omitempty" bson:"alternative_names,omitempty"`
+	GameLocalizations []GameLocalization `json:"game_localizations,omitempty" bson:"game_localizations,omitempty"`
+	TotalRating       float64            `json:"total_rating,omitempty" bson:"total_rating,omitempty"`
+	TotalRatingCount  int                `json:"total_rating_count,omitempty" bson:"total_rating_count,omitempty"`
 }
 
 // Platform is the /v4/platforms projection, persisted as-is into the
@@ -94,6 +131,101 @@ var regionNames = map[int]string{
 func RegionName(r int) (string, bool) {
 	name, ok := regionNames[r]
 	return name, ok
+}
+
+// altTagRule mines a region's titles out of the free-text
+// alternative_names comment taxonomy: comments starting with prefix
+// feed the region's bundle; the exclude substring drops English
+// translations ("Japanese title - translated"), which are neither the
+// native form nor a transliteration.
+type altTagRule struct {
+	prefix  string
+	exclude string
+}
+
+// altTagFamilies is the per-region mining table. Korea is pre-filled
+// so its entry region later is a chain-table change only; regions
+// without a family (EU) mine nothing and use their row fields alone.
+var altTagFamilies = map[string]altTagRule{
+	"ja-JP": {prefix: "japanese title", exclude: "translat"},
+	"ko-KR": {prefix: "korean title", exclude: "translat"},
+}
+
+// LocalizationBundle is one region's presentation of a game, merged
+// from its game_localizations row (authoritative for the native name
+// and cover) and tag-family alternative names (ASCII names fill the
+// transliteration slot; non-Latin names fall back into the native
+// slot when the row has none).
+type LocalizationBundle struct {
+	Region   string
+	Name     string
+	Translit string
+	CoverURL string
+}
+
+func matchesFamily(comment string, rule altTagRule) bool {
+	c := strings.ToLower(comment)
+	return strings.HasPrefix(c, rule.prefix) && !strings.Contains(c, rule.exclude)
+}
+
+// asciiOnly classifies the transliteration slot; anything carrying a
+// non-ASCII letter is a native-script form.
+func asciiOnly(s string) bool {
+	for _, r := range s {
+		if r > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
+}
+
+// BundleLocalizations derives the per-region bundles, sorted by
+// region; only bundles with at least one non-empty field survive.
+func BundleLocalizations(g Game) []LocalizationBundle {
+	byRegion := map[string]*LocalizationBundle{}
+	get := func(region string) *LocalizationBundle {
+		if b := byRegion[region]; b != nil {
+			return b
+		}
+		b := &LocalizationBundle{Region: region}
+		byRegion[region] = b
+		return b
+	}
+	for _, loc := range g.GameLocalizations {
+		if loc.Region.Identifier == "" {
+			continue
+		}
+		b := get(loc.Region.Identifier)
+		if loc.Name != "" {
+			b.Name = loc.Name
+		}
+		if cu := loc.CoverURL(); cu != "" {
+			b.CoverURL = cu
+		}
+	}
+	for region, rule := range altTagFamilies {
+		for _, alt := range g.AlternativeNames {
+			if alt.Name == "" || !matchesFamily(alt.Comment, rule) {
+				continue
+			}
+			b := get(region)
+			if asciiOnly(alt.Name) {
+				if b.Translit == "" {
+					b.Translit = alt.Name
+				}
+			} else if b.Name == "" {
+				b.Name = alt.Name
+			}
+		}
+	}
+	var out []LocalizationBundle
+	for _, b := range byRegion {
+		if b.Name != "" || b.Translit != "" || b.CoverURL != "" {
+			out = append(out, *b)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Region < out[j].Region })
+	return out
 }
 
 // twinPlatforms pairs the JP regional twins IGDB models as separate

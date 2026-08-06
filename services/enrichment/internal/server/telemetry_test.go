@@ -11,6 +11,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -186,6 +188,80 @@ func TestUnitTelemetry_SearchAnswersByKindAndSource(t *testing.T) {
 	}
 	if total := counterSum(t, reader, name); total != 3 {
 		t.Fatalf("one count per answer: total = %d, want 3", total)
+	}
+}
+
+// The supplementary localization leg counts exactly one outcome per
+// non-latin query: merged (a leg id got folded into the results, or
+// every leg id was already present), empty (the leg found nothing), or
+// error (the leg or its follow-up GamesByIDs fetch failed). Each
+// scenario uses a distinct query string so the search cache cannot
+// turn a later call into a no-op cache hit that skips the leg.
+func TestUnitTelemetry_LocalizationLegOutcomes(t *testing.T) {
+	reader := newTestMeter(t)
+	env := newAuthEnv(t)
+	st := &stubStore{searchCommunityProducts: func(context.Context, []string, string, int) ([]store.Product, error) { return nil, nil }}
+	games := &stubGames{
+		searchGames: func(context.Context, string, int) ([]igdb.Game, error) { return nil, nil },
+		gamesByIDs: func(context.Context, []int64) ([]igdb.Game, error) {
+			return []igdb.Game{{ID: 1001, Name: "The Legend of Zelda: Ocarina of Time"}}, nil
+		},
+	}
+	h := newUnitHandlers(st, games, nil, newStubCache())
+	tok := env.token(t, "u1", []string{"user"})
+	get := func(q string) *httptest.ResponseRecorder {
+		return serveUnit(t, h, env, http.MethodGet, "/search?type=game&q="+url.QueryEscape(q), tok, nil)
+	}
+
+	// merged: the leg finds an id absent from the (empty) primary results.
+	games.searchLocalizations = func(context.Context, string, int) ([]int64, error) { return []int64{1001}, nil }
+	if rec := get("ゼルダの伝説1"); rec.Code != http.StatusOK {
+		t.Fatalf("merged: %d", rec.Code)
+	}
+
+	// empty: the leg finds nothing.
+	games.searchLocalizations = func(context.Context, string, int) ([]int64, error) { return nil, nil }
+	if rec := get("ゼルダの伝説2"); rec.Code != http.StatusOK {
+		t.Fatalf("empty: %d", rec.Code)
+	}
+
+	// error: the leg itself fails.
+	games.searchLocalizations = func(context.Context, string, int) ([]int64, error) { return nil, errors.New("igdb down") }
+	if rec := get("ゼルダの伝説3"); rec.Code != http.StatusOK {
+		t.Fatalf("error: %d", rec.Code)
+	}
+
+	const name = "vg.enrichment.search.localization_leg"
+	for _, outcome := range []string{"merged", "empty", "error"} {
+		if got := counterSum(t, reader, name, attribute.String("outcome", outcome)); got != 1 {
+			t.Fatalf("localization_leg{outcome=%s} = %d, want 1", outcome, got)
+		}
+	}
+}
+
+// TestUnitTelemetry_LocalizationLegMergedSkipsFetchWhenNothingMissing
+// pins the merged outcome's other branch: every leg id is already
+// present in the primary results, so no GamesByIDs fetch is needed -
+// the nil gamesByIDs field would panic if the code fetched anyway,
+// so this test cannot pass by accident.
+func TestUnitTelemetry_LocalizationLegMergedSkipsFetchWhenNothingMissing(t *testing.T) {
+	reader := newTestMeter(t)
+	env := newAuthEnv(t)
+	games := &stubGames{
+		searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
+			return []igdb.Game{{ID: 1001, Name: "The Legend of Zelda: Ocarina of Time"}}, nil
+		},
+		searchLocalizations: func(context.Context, string, int) ([]int64, error) { return []int64{1001}, nil },
+	}
+	st := &stubStore{searchCommunityProducts: func(context.Context, []string, string, int) ([]store.Product, error) { return nil, nil }}
+	h := newUnitHandlers(st, games, nil, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=game&q="+url.QueryEscape("ゼルダの伝説"), env.token(t, "u1", []string{"user"}), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := counterSum(t, reader, "vg.enrichment.search.localization_leg", attribute.String("outcome", "merged")); got != 1 {
+		t.Fatalf("localization_leg{outcome=merged} = %d, want 1", got)
 	}
 }
 
@@ -595,6 +671,7 @@ func TestUnitTelemetry_RegistrationFailureIsBestEffort(t *testing.T) {
 	ctx := context.Background()
 	h.failOpen(ctx, "search_get", errors.New("valkey down"))
 	h.countSearch(ctx, "game", "provider")
+	h.countLocalizationLeg(ctx, "merged")
 	h.countMatch(ctx, "resolve", "matched")
 	h.countRefreshItem(ctx, "prices", "ok")
 	h.recordWalkDuration(ctx, "prices", 1.5)
@@ -603,6 +680,7 @@ func TestUnitTelemetry_RegistrationFailureIsBestEffort(t *testing.T) {
 	for _, want := range []string{
 		"cache fail-open counter unavailable",
 		"search requests counter unavailable",
+		"localization leg counter unavailable",
 		"match outcomes counter unavailable",
 		"refresh items counter unavailable",
 		"walk duration histogram unavailable",

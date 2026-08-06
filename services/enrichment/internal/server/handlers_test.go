@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -270,10 +271,11 @@ func (s *stubStore) SnapshotsSince(ctx context.Context, ids []string, since time
 
 // stubGames implements GameProvider via function fields.
 type stubGames struct {
-	searchGames  func(ctx context.Context, q string, limit int) ([]igdb.Game, error)
-	gamesByIDs   func(ctx context.Context, ids []int64) ([]igdb.Game, error)
-	popularGames func(ctx context.Context, genreIDs []int64, excludeIDs []int64, limit int) ([]igdb.Game, error)
-	platforms    func(ctx context.Context) ([]igdb.Platform, error)
+	searchGames         func(ctx context.Context, q string, limit int) ([]igdb.Game, error)
+	gamesByIDs          func(ctx context.Context, ids []int64) ([]igdb.Game, error)
+	popularGames        func(ctx context.Context, genreIDs []int64, excludeIDs []int64, limit int) ([]igdb.Game, error)
+	platforms           func(ctx context.Context) ([]igdb.Platform, error)
+	searchLocalizations func(ctx context.Context, q string, limit int) ([]int64, error)
 }
 
 var _ GameProvider = (*stubGames)(nil)
@@ -283,6 +285,13 @@ func (s *stubGames) SearchGames(ctx context.Context, q string, limit int) ([]igd
 		panic("unexpected SearchGames")
 	}
 	return s.searchGames(ctx, q, limit)
+}
+
+func (s *stubGames) SearchLocalizations(ctx context.Context, q string, limit int) ([]int64, error) {
+	if s.searchLocalizations == nil {
+		panic("unexpected SearchLocalizations")
+	}
+	return s.searchLocalizations(ctx, q, limit)
 }
 
 func (s *stubGames) GamesByIDs(ctx context.Context, ids []int64) ([]igdb.Game, error) {
@@ -685,6 +694,86 @@ func TestSearch_GameThroughStubAndCache(t *testing.T) {
 	}
 }
 
+// TestSearch_GameResultCarriesReleaseRegions pins gameResult's platform
+// refs: OoT (fixture 1001) has three dated release_dates rows on
+// platform 4 (Nintendo 64) - japan, north_america, then europe by
+// date - so the platform ref's release_regions must carry that exact
+// order. Hardware results never carry a platform ref at all, so
+// release_regions can never leak onto them.
+func TestSearch_GameResultCarriesReleaseRegions(t *testing.T) {
+	s := newStack(t)
+
+	resp := s.do(http.MethodGet, "/search?type=game&q=zelda", s.userToken(), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("search: %d", resp.StatusCode)
+	}
+	res := decodeBody[api.SearchResults](t, resp)
+	if len(res.Results) == 0 {
+		t.Fatal("want at least the OoT hit")
+	}
+	first := res.Results[0] // pinned to OoT by TestSearch_GameThroughStubAndCache
+	if first.Platforms == nil || len(*first.Platforms) == 0 {
+		t.Fatalf("want at least one platform ref, got %+v", first.Platforms)
+	}
+	n64 := (*first.Platforms)[0]
+	if n64.IgdbPlatformId != 4 {
+		t.Fatalf("want the Nintendo 64 platform ref, got %+v", n64)
+	}
+	if n64.ReleaseRegions == nil {
+		t.Fatal("want release_regions populated on a game platform ref")
+	}
+	want := []string{"japan", "north_america", "europe"}
+	if !slices.Equal(*n64.ReleaseRegions, want) {
+		t.Fatalf("release_regions order: got %v, want %v", *n64.ReleaseRegions, want)
+	}
+
+	hw := s.do(http.MethodGet, "/search?type=hardware&q=nintendo+64", s.userToken(), nil)
+	hwRes := decodeBody[api.SearchResults](t, hw)
+	if len(hwRes.Results) == 0 {
+		t.Fatal("want at least one hardware hit")
+	}
+	for _, r := range hwRes.Results {
+		if r.Platforms != nil {
+			t.Fatalf("hardware results must carry no platform ref at all: %+v", r)
+		}
+	}
+}
+
+// TestSearch_GameResultCarriesBundlesWithoutAnnotation asserts a
+// canonical-name search returns the game's localization bundles but no
+// matched_region: the query recognized the canonical name, so nothing
+// needs flagging or preselecting. The stub provider matches Name only,
+// so this exercises the canonical-match path; matchedRegion's own
+// containment/translit logic is unit-tested directly.
+func TestSearch_GameResultCarriesBundlesWithoutAnnotation(t *testing.T) {
+	s := newStack(t)
+
+	resp := s.do(http.MethodGet, "/search?type=game&q=Secret+of+Mana", s.userToken(), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("search: %d", resp.StatusCode)
+	}
+	res := decodeBody[api.SearchResults](t, resp)
+	if len(res.Results) != 1 {
+		t.Fatalf("want the single Secret of Mana hit, got %d: %+v", len(res.Results), res.Results)
+	}
+	r := res.Results[0]
+	if r.MatchedRegion != nil {
+		t.Fatalf("canonical-name match must not annotate a region: %+v", *r.MatchedRegion)
+	}
+	if r.Localizations == nil || len(*r.Localizations) != 2 {
+		t.Fatalf("want the JP + EU bundles, got %+v", r.Localizations)
+	}
+	locs := *r.Localizations
+	// Sorted by region: EU before ja-JP.
+	if locs[0].Region != "EU" || locs[0].CoverUrl == nil {
+		t.Fatalf("EU bundle: %+v", locs[0])
+	}
+	if locs[1].Region != "ja-JP" || locs[1].Name == nil || *locs[1].Name != "聖剣伝説2" ||
+		locs[1].Translit == nil || *locs[1].Translit != "Seiken Densetsu 2" {
+		t.Fatalf("ja-JP bundle: %+v", locs[1])
+	}
+}
+
 func TestSearch_HardwareFiltersToHardware(t *testing.T) {
 	s := newStack(t)
 	resp := s.do(http.MethodGet, "/search?type=hardware&q=nintendo+64", s.userToken(), nil)
@@ -852,6 +941,299 @@ func TestUnitSearch_PossessiveNamesRankExact(t *testing.T) {
 	}
 	if len(res.Results) != 2 || *res.Results[0].IgdbGameId != 2 {
 		t.Fatalf("possessive name must rank exact for the bare query: %+v", res.Results)
+	}
+}
+
+func TestMatchedRegion(t *testing.T) {
+	g := igdb.Game{Name: "Trials of Mana",
+		AlternativeNames:  []igdb.AlternativeName{{Name: "Seiken Densetsu 3", Comment: "Japanese title - romanization"}},
+		GameLocalizations: []igdb.GameLocalization{{Name: "聖剣伝説 3", Region: igdb.LocalizationRegion{Identifier: "ja-JP"}}}}
+	cases := []struct{ q, want string }{
+		{"Trials of Mana", ""},         // canonical wins, no annotation
+		{"trials of mana", ""},         // normalized canonical
+		{"Seiken Densetsu 3", "ja-JP"}, // translit exact
+		{"seiken densetsu", "ja-JP"},   // containment
+		{"聖剣伝説 3", "ja-JP"},            // native exact
+		{"聖剣", "ja-JP"},                // native containment, 2-rune non-latin guard
+		{"se", ""},                     // below 3-rune latin guard
+		{"a", ""},
+		{"final fantasy", ""}, // no relation
+	}
+	for _, tc := range cases {
+		if got := matchedRegion(tc.q, g); got != tc.want {
+			t.Fatalf("matchedRegion(%q) = %q want %q", tc.q, got, tc.want)
+		}
+	}
+}
+
+// TestGameResult_MapsLocalizationBundles pins gameResult's localization
+// mapping: the same non-empty-only pointer idiom toAPIProduct uses,
+// never a pointer to an empty string.
+func TestGameResult_MapsLocalizationBundles(t *testing.T) {
+	g := igdb.Game{ID: 1016, Name: "Secret of Mana",
+		AlternativeNames: []igdb.AlternativeName{{Name: "Seiken Densetsu 2", Comment: "Japanese title - romanization"}},
+		GameLocalizations: []igdb.GameLocalization{
+			{Name: "聖剣伝説2", Region: igdb.LocalizationRegion{Identifier: "ja-JP"}},
+			{Region: igdb.LocalizationRegion{Identifier: "EU"}, Cover: &igdb.Cover{ImageID: "stub-eu-cover"}},
+		},
+	}
+	res := gameResult(g)
+	if res.Localizations == nil || len(*res.Localizations) != 2 {
+		t.Fatalf("want the JP + EU bundles, got %+v", res.Localizations)
+	}
+	// Sorted by region: EU before ja-JP.
+	eu, jp := (*res.Localizations)[0], (*res.Localizations)[1]
+	if eu.Region != "EU" || eu.Name != nil || eu.Translit != nil {
+		t.Fatalf("EU bundle must carry no name/translit pointer: %+v", eu)
+	}
+	wantEUCover := "https://images.igdb.com/igdb/image/upload/t_cover_big/stub-eu-cover.jpg"
+	if eu.CoverUrl == nil || *eu.CoverUrl != wantEUCover {
+		t.Fatalf("EU bundle cover_url: %+v", eu.CoverUrl)
+	}
+	if jp.Region != "ja-JP" || jp.CoverUrl != nil {
+		t.Fatalf("ja-JP bundle must carry no cover pointer: %+v", jp)
+	}
+	if jp.Name == nil || *jp.Name != "聖剣伝説2" {
+		t.Fatalf("ja-JP bundle name: %+v", jp.Name)
+	}
+	if jp.Translit == nil || *jp.Translit != "Seiken Densetsu 2" {
+		t.Fatalf("ja-JP bundle translit: %+v", jp.Translit)
+	}
+}
+
+// TestPlatformReleaseRegions pins platformReleaseRegions's contract
+// (see its doc for the ordering and twin-platform rules) against the
+// Mr. Gimmick NES/Famicom shape, Puyo Puyo SUN's repeated-region
+// shape, dedup, and the platform-0 / unknown-region edge cases.
+func TestPlatformReleaseRegions(t *testing.T) {
+	day := func(y int, m time.Month, d int) int64 {
+		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC).Unix()
+	}
+	cases := []struct {
+		name       string
+		game       igdb.Game
+		platformID int64
+		want       []string
+	}{
+		{
+			name: "Mr Gimmick shape: NES row, not folded with its Famicom twin",
+			game: igdb.Game{ReleaseDates: []igdb.ReleaseDate{
+				{Date: day(1992, time.July, 3), Platform: 18, Region: 1},  // NES europe
+				{Date: day(1992, time.April, 3), Platform: 99, Region: 5}, // Famicom japan
+			}},
+			platformID: 18,
+			want:       []string{"europe"},
+		},
+		{
+			name: "Mr Gimmick shape: the Famicom row, not folded onto its NES twin",
+			game: igdb.Game{ReleaseDates: []igdb.ReleaseDate{
+				{Date: day(1992, time.July, 3), Platform: 18, Region: 1},
+				{Date: day(1992, time.April, 3), Platform: 99, Region: 5},
+			}},
+			platformID: 99,
+			want:       []string{"japan"},
+		},
+		{
+			name: "Puyo Puyo SUN shape: japan-only release repeated across platforms",
+			game: igdb.Game{ReleaseDates: []igdb.ReleaseDate{
+				{Date: day(1993, time.June, 25), Platform: 200, Region: 5},
+				{Date: day(1993, time.June, 25), Platform: 201, Region: 5},
+				{Date: day(1993, time.June, 25), Platform: 202, Region: 5},
+			}},
+			platformID: 201,
+			want:       []string{"japan"},
+		},
+		{
+			name: "worldwide served verbatim",
+			game: igdb.Game{ReleaseDates: []igdb.ReleaseDate{
+				{Date: day(2010, time.May, 1), Platform: 400, Region: 8},
+			}},
+			platformID: 400,
+			want:       []string{"worldwide"},
+		},
+		{
+			name: "ordering: earliest date first, dateless last, ties alphabetical",
+			game: igdb.Game{ReleaseDates: []igdb.ReleaseDate{
+				{Date: day(2000, time.January, 10), Platform: 500, Region: 2}, // north_america
+				{Date: day(2000, time.January, 10), Platform: 500, Region: 1}, // europe, same date
+				{Date: day(2000, time.March, 1), Platform: 500, Region: 5},    // japan, later
+				{Platform: 500, Region: 9},                                    // korea, dateless
+				{Platform: 500, Region: 6},                                    // china, dateless
+			}},
+			platformID: 500,
+			want:       []string{"europe", "north_america", "japan", "china", "korea"},
+		},
+		{
+			name: "dedupe: two rows same platform+region collapse to one, earliest governs order",
+			game: igdb.Game{ReleaseDates: []igdb.ReleaseDate{
+				{Date: day(2005, time.December, 1), Platform: 600, Region: 5}, // japan, seen first, later date
+				{Date: day(2005, time.January, 1), Platform: 600, Region: 5},  // japan dup, earlier date wins
+				{Date: day(2005, time.June, 1), Platform: 600, Region: 1},     // europe, in between
+			}},
+			platformID: 600,
+			want:       []string{"japan", "europe"},
+		},
+		{
+			name: "unknown region enum dropped",
+			game: igdb.Game{ReleaseDates: []igdb.ReleaseDate{
+				{Date: day(2010, time.May, 1), Platform: 700, Region: 999},
+				{Date: day(2010, time.May, 1), Platform: 700, Region: 1},
+			}},
+			platformID: 700,
+			want:       []string{"europe"},
+		},
+		{
+			name: "platform-0 row dropped, even when queried as platform 0",
+			game: igdb.Game{ReleaseDates: []igdb.ReleaseDate{
+				{Date: day(2010, time.May, 1), Platform: 0, Region: 5},
+			}},
+			platformID: 0,
+			want:       nil,
+		},
+		{
+			name:       "no rows",
+			game:       igdb.Game{},
+			platformID: 4,
+			want:       nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := platformReleaseRegions(tc.game, tc.platformID)
+			if tc.want == nil {
+				if got != nil {
+					t.Fatalf("platformReleaseRegions() = %v, want nil", got)
+				}
+				return
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("platformReleaseRegions() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestUnitSearch_LocalizationExactNameRanksFirst extends the
+// exact-match float-to-top treatment to a region bundle's name or
+// transliteration: a game whose own name is not exact but whose
+// localized title exactly matches the query ranks with the other
+// exacts, ahead of plain provider-order matches.
+func TestUnitSearch_LocalizationExactNameRanksFirst(t *testing.T) {
+	env := newAuthEnv(t)
+	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
+		return []igdb.Game{
+			{ID: 1, Name: "Trials of Mana Collection", TotalRatingCount: 500},
+			{ID: 2, Name: "Trials of Mana",
+				AlternativeNames:  []igdb.AlternativeName{{Name: "Seiken Densetsu 3", Comment: "Japanese title - romanization"}},
+				GameLocalizations: []igdb.GameLocalization{{Name: "聖剣伝説 3", Region: igdb.LocalizationRegion{Identifier: "ja-JP"}}},
+			},
+		}, nil
+	}}
+	// Empty lane: this test is about provider rank order, not the lane.
+	st := &stubStore{searchCommunityProducts: func(context.Context, []string, string, int) ([]store.Product, error) { return nil, nil }}
+	h := newUnitHandlers(st, games, nil, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=game&q=Seiken+Densetsu+3", env.token(t, "u1", []string{"user"}), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search: %d %s", rec.Code, rec.Body.String())
+	}
+	var res api.SearchResults
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	got := make([]int64, 0, len(res.Results))
+	for _, r := range res.Results {
+		got = append(got, *r.IgdbGameId)
+	}
+	if want := []int64{2, 1}; !slices.Equal(got, want) {
+		t.Fatalf("rank order: got %v, want %v", got, want)
+	}
+}
+
+// TestSearch_NonLatinQueryReachesViaLocalizationLeg proves the
+// supplementary leg end to end over the real stub: "ゼルダの伝説" is not
+// a substring of fixture 1001's canonical Name ("The Legend of Zelda:
+// Ocarina of Time"), so the primary provider search alone finds
+// nothing - only the leg's match against the ja-JP game_localizations
+// row surfaces the game.
+func TestSearch_NonLatinQueryReachesViaLocalizationLeg(t *testing.T) {
+	s := newStack(t)
+	resp := s.do(http.MethodGet, "/search?type=game&q="+url.QueryEscape("ゼルダの伝説"), s.userToken(), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("search: %d", resp.StatusCode)
+	}
+	res := decodeBody[api.SearchResults](t, resp)
+	if res.Degraded {
+		t.Fatal("leg-served results must not be degraded")
+	}
+	if len(res.Results) != 1 || res.Results[0].IgdbGameId == nil || *res.Results[0].IgdbGameId != 1001 {
+		t.Fatalf("want game 1001 via the localization leg, got %+v", res.Results)
+	}
+}
+
+// TestUnitSearch_LatinQueryNeverCallsLocalizationLeg proves the
+// non-latin trigger gate (hasNonLatinLetter): an all-latin query must
+// cost zero SearchLocalizations calls.
+func TestUnitSearch_LatinQueryNeverCallsLocalizationLeg(t *testing.T) {
+	env := newAuthEnv(t)
+	var legCalls int
+	games := &stubGames{
+		searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
+			return []igdb.Game{{ID: 1011, Name: "Chrono Trigger"}}, nil
+		},
+		searchLocalizations: func(context.Context, string, int) ([]int64, error) {
+			legCalls++
+			return nil, nil
+		},
+	}
+	st := &stubStore{searchCommunityProducts: func(context.Context, []string, string, int) ([]store.Product, error) { return nil, nil }}
+	h := newUnitHandlers(st, games, nil, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=game&q=chrono", env.token(t, "u1", []string{"user"}), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search: %d %s", rec.Code, rec.Body.String())
+	}
+	if legCalls != 0 {
+		t.Fatalf("a latin query must never call the localization leg, got %d calls", legCalls)
+	}
+}
+
+// TestUnitSearch_LocalizationLegErrorServesPrimaryResults proves the
+// leg's failure mode: a SearchLocalizations error must never degrade
+// or fail the request - the primary provider's results still serve,
+// unflagged. legCalls pins that the leg actually ran (not merely
+// absent) so this test cannot pass by accident.
+func TestUnitSearch_LocalizationLegErrorServesPrimaryResults(t *testing.T) {
+	env := newAuthEnv(t)
+	var legCalls int
+	games := &stubGames{
+		searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
+			return []igdb.Game{{ID: 1001, Name: "The Legend of Zelda: Ocarina of Time"}}, nil
+		},
+		searchLocalizations: func(context.Context, string, int) ([]int64, error) {
+			legCalls++
+			return nil, errors.New("igdb down")
+		},
+	}
+	st := &stubStore{searchCommunityProducts: func(context.Context, []string, string, int) ([]store.Product, error) { return nil, nil }}
+	h := newUnitHandlers(st, games, nil, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=game&q="+url.QueryEscape("ゼルダの伝説"), env.token(t, "u1", []string{"user"}), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search: %d %s", rec.Code, rec.Body.String())
+	}
+	if legCalls != 1 {
+		t.Fatalf("want the leg to have run once, got %d calls", legCalls)
+	}
+	var res api.SearchResults
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Degraded {
+		t.Fatal("a leg failure must never degrade the answer")
+	}
+	if len(res.Results) != 1 || res.Results[0].IgdbGameId == nil || *res.Results[0].IgdbGameId != 1001 {
+		t.Fatalf("primary results must still serve: %+v", res.Results)
 	}
 }
 
@@ -1258,6 +1640,35 @@ func TestResolve_GameCreatesMatchedProductIdempotently(t *testing.T) {
 	}
 }
 
+// TestResolve_GameLocalizationsMapped pins toAPIProduct's localizations
+// projection for a real fixture: game 1001 (Ocarina of Time) carries one
+// IGDB game_localizations row (ja-JP) that BundleLocalizations merges
+// with the alternative_names romanization tag, and toAPIProduct must
+// serve that bundle on the wire unchanged.
+func TestResolve_GameLocalizationsMapped(t *testing.T) {
+	s := newStack(t)
+
+	// Ocarina of Time (fixture 1001) on Nintendo 64 (4).
+	p := s.resolveGame(1001, 4)
+	if p.Igdb == nil || p.Igdb.Localizations == nil || len(*p.Igdb.Localizations) != 1 {
+		t.Fatalf("localizations not mapped: %+v", p.Igdb)
+	}
+	loc := (*p.Igdb.Localizations)[0]
+	if loc.Region != "ja-JP" {
+		t.Fatalf("localization region: %+v", loc)
+	}
+	if loc.Name == nil || *loc.Name != "ゼルダの伝説 時のオカリナ" {
+		t.Fatalf("localization name: %+v", loc)
+	}
+	if loc.Translit == nil || *loc.Translit != "Zelda no Densetsu: Toki no Ocarina" {
+		t.Fatalf("localization translit: %+v", loc)
+	}
+	wantCover := "https://images.igdb.com/igdb/image/upload/t_cover_big/stub-oot-jp.jpg"
+	if loc.CoverUrl == nil || *loc.CoverUrl != wantCover {
+		t.Fatalf("localization cover_url: %+v", loc)
+	}
+}
+
 // TestResolve_HealsPreFeatureRawReleaseDates pins gamePayloadFor's
 // self-heal: a raw doc predating this feature (no release_dates key on
 // the stored game subdocument at all, decoding to a nil Go slice) does
@@ -1353,6 +1764,70 @@ func TestResolve_HealsPreFeatureRawReleaseDates(t *testing.T) {
 	}
 	if p2.Igdb.ReleaseDates != nil {
 		t.Fatalf("no dated rows for the platform must serve release_dates absent: %+v", *p2.Igdb.ReleaseDates)
+	}
+}
+
+// TestResolve_HealsBelowVersionRaw pins gamePayloadFor's version-based
+// heal: a raw doc that already carries a real release table (so the
+// nil-table check alone would treat it as fetched) but predates
+// fields_version tracking - and the localization arrays that generation
+// added - is still a miss. One refetch repairs it and the healed
+// localizations reach the minted product.
+func TestResolve_HealsBelowVersionRaw(t *testing.T) {
+	s := newStack(t)
+	ctx := context.Background()
+	const gid = 424243
+	const platformID = 8802
+	naDate := time.Date(2003, time.September, 9, 0, 0, 0, 0, time.UTC)
+
+	// Hand-write the raw doc: release_dates is real (the nil-table case
+	// is TestResolve_HealsPreFeatureRawReleaseDates's job), but
+	// fields_version and the localization arrays a newer generation added
+	// are absent - the below-version case this test exists for.
+	if _, err := s.mdb.Collection("igdb_raw").InsertOne(ctx, bson.M{
+		"_id": gid,
+		"game": bson.M{
+			"id":            gid,
+			"name":          "Regional Quest II",
+			"platforms":     []bson.M{{"id": platformID, "name": "Test Platform"}},
+			"release_dates": []bson.M{{"date": naDate.Unix(), "platform": platformID, "release_region": 2}},
+		},
+		"fetched_at": time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Pre-warm the platform catalog: resolve's platformLogoFor otherwise
+	// reaches for h.games.Platforms below, which this stub does not
+	// carry (matching the counter-case in HealsPreFeatureRawReleaseDates).
+	if err := s.store.UpsertPlatforms(ctx, []igdb.Platform{{ID: platformID, Name: "Test Platform"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	var calls int
+	s.h.games = &stubGames{gamesByIDs: func(_ context.Context, ids []int64) ([]igdb.Game, error) {
+		calls++
+		if len(ids) != 1 || ids[0] != gid {
+			t.Fatalf("unexpected refetch ids: %v", ids)
+		}
+		return []igdb.Game{{
+			ID:        gid,
+			Name:      "Regional Quest II",
+			Platforms: []igdb.Named{{ID: platformID, Name: "Test Platform"}},
+			ReleaseDates: []igdb.ReleaseDate{
+				{Date: naDate.Unix(), Platform: platformID, Region: 2}, // north_america
+			},
+			GameLocalizations: []igdb.GameLocalization{
+				{Name: "地域限定クエスト", Region: igdb.LocalizationRegion{Identifier: "ja-JP"}},
+			},
+		}}, nil
+	}}
+
+	p := s.resolveGame(gid, platformID)
+	if calls != 1 {
+		t.Fatalf("below-version raw must trigger exactly one refetch, got %d", calls)
+	}
+	if p.Igdb == nil || p.Igdb.Localizations == nil || len(*p.Igdb.Localizations) != 1 {
+		t.Fatalf("minted product must carry the refetched localizations: %+v", p.Igdb)
 	}
 }
 
@@ -1613,6 +2088,77 @@ func TestUnitResolve_PreFeatureRawServesStaleWhenProviderDown(t *testing.T) {
 	}
 	if len(created.IGDB.ReleaseDates) != 0 {
 		t.Fatalf("a pre-feature stale payload has no dated rows: %+v", created.IGDB.ReleaseDates)
+	}
+}
+
+// TestUnitResolve_BelowVersionRawServesStaleWhenProviderDown pins the
+// stale-serve arm for the new miss reason: a raw already carrying a
+// real release table (the nil-table check alone would treat it as a
+// hit) but below fields_version is still a miss, and when the provider
+// is down for the repair attempt the existing stale-serve arm must
+// still serve it rather than fail resolve outright.
+func TestUnitResolve_BelowVersionRawServesStaleWhenProviderDown(t *testing.T) {
+	env := newAuthEnv(t)
+	tok := env.token(t, "u1", []string{"user"})
+	stale := igdb.Game{
+		ID:        1011,
+		Name:      "Chrono Trigger",
+		Platforms: []igdb.Named{{ID: 19, Name: "Super Nintendo Entertainment System"}},
+		ReleaseDates: []igdb.ReleaseDate{
+			{Date: 809049600, Platform: 19, Region: 2}, // real table: not the nil-table case
+		},
+		// FieldsVersion left at the RawGame literal's zero value below:
+		// below store.RawFieldsVersion, the case under test.
+	}
+	var created store.Product
+	st := &stubStore{
+		findProduct: func(context.Context, store.ProductKey) (store.Product, error) {
+			return store.Product{}, store.ErrNotFound
+		},
+		rawByIDs: func(context.Context, []int64) ([]store.RawGame, error) {
+			return []store.RawGame{{GameID: 1011, Game: stale, FetchedAt: time.Unix(1000, 0).UTC()}}, nil
+		},
+		// upsertRaw left nil: serving stale must not refetch or re-upsert.
+		createProduct: func(_ context.Context, p store.Product) (store.Product, error) {
+			p.ID = "88888888-8888-8888-8888-888888888888"
+			created = p
+			return p, nil
+		},
+		platformsFetchedAt: func(context.Context) (time.Time, error) { return time.Now(), nil },
+		listPlatforms: func(context.Context) ([]store.CatalogPlatform, error) {
+			return []store.CatalogPlatform{{ID: 19, Name: "Super Nintendo Entertainment System"}}, nil
+		},
+	}
+	var calls int
+	games := &stubGames{gamesByIDs: func(context.Context, []int64) ([]igdb.Game, error) {
+		calls++
+		return nil, errors.New("igdb down") // refetch fails; the stale raw must be served
+	}}
+	prices := &stubPrices{search: func(context.Context, string) ([]pricecharting.Product, error) {
+		return nil, errors.New("pricecharting down") // auto-match lands on the unmatched member
+	}}
+	h := newUnitHandlers(st, games, prices, newStubCache())
+	rec := serveUnit(t, h, env, http.MethodPost, "/products/resolve", tok,
+		map[string]any{"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("below-version raw must resolve from the stale payload when the provider is down: %d %s", rec.Code, rec.Body.String())
+	}
+	// The differentiator from the pre-existing hit path: a below-version
+	// raw with a real release table must still attempt (and fail) a
+	// refetch, not serve straight from the read like an already-current
+	// raw would. Without the version check this raw satisfies the old
+	// nil-table-only hit condition and calls never fires.
+	if calls != 1 {
+		t.Fatalf("below-version raw must attempt exactly one refetch before falling back to stale, got %d", calls)
+	}
+	if created.IGDB == nil || created.IGDB.GameID != 1011 {
+		t.Fatalf("stale payload must build the projection: %+v", created.IGDB)
+	}
+	if !created.IGDB.FetchedAt.Equal(time.Unix(1000, 0).UTC()) {
+		t.Fatalf("stale projection must keep the raw's own stamp: %v", created.IGDB.FetchedAt)
+	}
+	if len(created.IGDB.ReleaseDates) == 0 {
+		t.Fatalf("a below-version stale payload still carries its real release rows: %+v", created.IGDB.ReleaseDates)
 	}
 }
 
@@ -2991,7 +3537,7 @@ func TestUnitReprojection_DiffGateSkipsUnchangedProjection(t *testing.T) {
 	st := &stubStore{
 		listIGDBProducts: func(context.Context) ([]store.Product, error) { return []store.Product{prod}, nil },
 		rawByIDs: func(context.Context, []int64) ([]store.RawGame, error) {
-			return []store.RawGame{{GameID: 1011, Game: g, FetchedAt: rawStamp}}, nil
+			return []store.RawGame{{GameID: 1011, Game: g, FetchedAt: rawStamp, FieldsVersion: store.RawFieldsVersion}}, nil
 		},
 		// setIGDB and upsertRaw left nil: a call to either panics, proving
 		// the gate wrote nothing.
@@ -3040,7 +3586,7 @@ func TestUnitReprojection_FoldsTwinRowKeepingRawStamp(t *testing.T) {
 	st := &stubStore{
 		listIGDBProducts: func(context.Context) ([]store.Product, error) { return []store.Product{prod}, nil },
 		rawByIDs: func(context.Context, []int64) ([]store.RawGame, error) {
-			return []store.RawGame{{GameID: 1011, Game: full, FetchedAt: rawStamp}}, nil
+			return []store.RawGame{{GameID: 1011, Game: full, FetchedAt: rawStamp, FieldsVersion: store.RawFieldsVersion}}, nil
 		},
 		setIGDB: func(_ context.Context, _ string, m store.IGDBMeta) error { setCalled, setMeta = true, m; return nil },
 	}
@@ -3069,6 +3615,88 @@ func TestUnitReprojection_FoldsTwinRowKeepingRawStamp(t *testing.T) {
 	}
 	if !setMeta.FetchedAt.Equal(rawStamp) {
 		t.Fatalf("a raw-sourced rebuild must keep the raw's stamp, not bump it: got %v want %v", setMeta.FetchedAt, rawStamp)
+	}
+}
+
+// TestReprojection_HealsBelowVersionRaw pins the walk's version-based
+// heal: a raw doc that already carries a real release table (so the
+// pre-feature nil-table check alone would miss it) but predates
+// fields_version tracking - and the localization arrays that generation
+// added - is still refetched. The refetch replaces it with a
+// current-version raw and the rebuilt projection carries the healed
+// localizations.
+func TestReprojection_HealsBelowVersionRaw(t *testing.T) {
+	s := newStack(t)
+	ctx := context.Background()
+	const gid = 424242
+	const platformID = 8801
+	naDate := time.Date(2001, time.June, 20, 0, 0, 0, 0, time.UTC)
+
+	// Hand-write the raw doc: release_dates is real (not the pre-feature
+	// nil case the sibling reprojection test covers), but fields_version
+	// and the localization arrays a newer generation added are absent - the
+	// below-version case this test exists for.
+	if _, err := s.mdb.Collection("igdb_raw").InsertOne(ctx, bson.M{
+		"_id": gid,
+		"game": bson.M{
+			"id":            gid,
+			"name":          "Regional Quest",
+			"platforms":     []bson.M{{"id": platformID, "name": "Test Platform"}},
+			"release_dates": []bson.M{{"date": naDate.Unix(), "platform": platformID, "release_region": 2}},
+		},
+		"fetched_at": time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	prod, err := s.store.CreateProduct(ctx, store.Product{
+		Type:     "game",
+		Name:     "Regional Quest",
+		Platform: &store.Platform{IGDBID: platformID, Name: "Test Platform"},
+		IGDB:     &store.IGDBMeta{GameID: gid, Name: "Regional Quest"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var calls int
+	var gotIDs []int64
+	s.h.games = &stubGames{gamesByIDs: func(_ context.Context, ids []int64) ([]igdb.Game, error) {
+		calls++
+		gotIDs = append([]int64{}, ids...)
+		return []igdb.Game{{
+			ID:        gid,
+			Name:      "Regional Quest",
+			Platforms: []igdb.Named{{ID: platformID, Name: "Test Platform"}},
+			ReleaseDates: []igdb.ReleaseDate{
+				{Date: naDate.Unix(), Platform: platformID, Region: 2}, // north_america
+			},
+			GameLocalizations: []igdb.GameLocalization{
+				{Name: "リージョン限定版", Region: igdb.LocalizationRegion{Identifier: "ja-JP"}},
+			},
+		}}, nil
+	}}
+
+	s.h.runReprojection(ctx)
+
+	if calls != 1 {
+		t.Fatalf("below-version raw must trigger exactly one refetch, got %d", calls)
+	}
+	if len(gotIDs) != 1 || gotIDs[0] != gid {
+		t.Fatalf("unexpected refetch ids: %v", gotIDs)
+	}
+	raws, err := s.store.RawByIDs(ctx, []int64{gid})
+	if err != nil || len(raws) != 1 {
+		t.Fatalf("raw read: %d, %v", len(raws), err)
+	}
+	if raws[0].FieldsVersion != store.RawFieldsVersion {
+		t.Fatalf("healed raw must be stamped at the current fields_version: got %d want %d", raws[0].FieldsVersion, store.RawFieldsVersion)
+	}
+	got, err := s.store.GetProduct(ctx, prod.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.IGDB == nil || len(got.IGDB.Localizations) == 0 {
+		t.Fatalf("healed product must carry the refetched localizations: %+v", got.IGDB)
 	}
 }
 

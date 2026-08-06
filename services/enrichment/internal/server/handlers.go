@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -218,10 +220,54 @@ func (h *Handlers) searchGames(ctx context.Context, q string) ([]api.SearchResul
 	if err != nil {
 		return nil, err
 	}
+	// Non-latin queries get the supplementary localization leg; latin
+	// queries stay on the primary search alone (see hasNonLatinLetter).
+	// A leg or fetch failure serves the primary results as-is - this is a
+	// best-effort widening, never a hard dependency.
+	if hasNonLatinLetter(q) {
+		ids, lerr := h.games.SearchLocalizations(ctx, q, searchLimit)
+		switch {
+		case lerr != nil:
+			h.logger.WarnContext(ctx, "localization search leg failed; serving primary results", "err", lerr)
+			h.countLocalizationLeg(ctx, "error")
+		case len(ids) == 0:
+			h.countLocalizationLeg(ctx, "empty")
+		default:
+			have := make(map[int64]bool, len(games))
+			for _, g := range games {
+				have[g.ID] = true
+			}
+			var missing []int64
+			for _, id := range ids {
+				if !have[id] {
+					missing = append(missing, id)
+				}
+			}
+			if len(missing) > 0 {
+				extra, gerr := h.games.GamesByIDs(ctx, missing)
+				if gerr != nil {
+					h.logger.WarnContext(ctx, "localization leg fetch failed; serving primary results", "err", gerr)
+					h.countLocalizationLeg(ctx, "error")
+				} else {
+					games = append(games, extra...)
+					h.countLocalizationLeg(ctx, "merged")
+				}
+			} else {
+				h.countLocalizationLeg(ctx, "merged")
+			}
+		}
+	}
 	games = rankExactFirst(q, games)
+	if len(games) > searchLimit {
+		games = games[:searchLimit]
+	}
 	out := make([]api.SearchResult, 0, len(games))
 	for _, g := range games {
-		out = append(out, gameResult(g))
+		res := gameResult(g)
+		if mr := matchedRegion(q, g); mr != "" {
+			res.MatchedRegion = &mr
+		}
+		out = append(out, res)
 	}
 	return out, nil
 }
@@ -232,10 +278,21 @@ func (h *Handlers) searchGames(ctx context.Context, q string) ([]api.SearchResul
 // count ordering the exacts so the widely known release leads.
 // Everything else keeps provider order.
 func rankExactFirst(q string, games []igdb.Game) []igdb.Game {
+	exactName := func(g igdb.Game) bool {
+		if match.SameName(g.Name, q) {
+			return true
+		}
+		for _, b := range igdb.BundleLocalizations(g) {
+			if (b.Name != "" && match.SameName(b.Name, q)) || (b.Translit != "" && match.SameName(b.Translit, q)) {
+				return true
+			}
+		}
+		return false
+	}
 	exact := make([]igdb.Game, 0, len(games))
 	rest := make([]igdb.Game, 0, len(games))
 	for _, g := range games {
-		if match.SameName(g.Name, q) {
+		if exactName(g) {
 			exact = append(exact, g)
 		} else {
 			rest = append(rest, g)
@@ -247,6 +304,115 @@ func rankExactFirst(q string, games []igdb.Game) []igdb.Game {
 	return append(exact, rest...)
 }
 
+// matchedRegion reports which region's localized title recognized the
+// query, or "" when the canonical name did (or nothing did). Equality
+// and containment over normQuery-folded strings - never the Dice
+// scorer, which is whitespace-token-shaped and cannot grade CJK text.
+// Guards: latin queries need 3+ runes, non-latin 2+ (so one
+// character cannot annotate everything it appears in).
+func matchedRegion(q string, g igdb.Game) string {
+	nq := normQuery(q)
+	minRunes := 3
+	if !asciiOnlyQuery(nq) {
+		minRunes = 2
+	}
+	if utf8.RuneCountInString(nq) < minRunes {
+		return ""
+	}
+	contains := func(name string) bool {
+		nn := normQuery(name)
+		return nn != "" && (strings.Contains(nn, nq) || strings.Contains(nq, nn))
+	}
+	if contains(g.Name) {
+		return ""
+	}
+	for _, b := range igdb.BundleLocalizations(g) {
+		if (b.Name != "" && contains(b.Name)) || (b.Translit != "" && contains(b.Translit)) {
+			return b.Region
+		}
+	}
+	return ""
+}
+
+func asciiOnlyQuery(s string) bool {
+	for _, r := range s {
+		if r > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
+}
+
+// hasNonLatinLetter gates the supplementary localization leg: IGDB's
+// own search already matches latin names and alternative names, so
+// only queries carrying a non-latin letter (kana, Han, Hangul, ...)
+// pay the extra provider call.
+func hasNonLatinLetter(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) && !unicode.Is(unicode.Latin, r) {
+			return true
+		}
+	}
+	return false
+}
+
+// platformReleaseRegions returns the distinct canonical regions this
+// game released in on one platform, ordered by that region's earliest
+// release date on the platform (a dateless row still asserts the
+// region: it sorts after every dated region, ties broken
+// alphabetically). Unlike platformReleaseDates, this is
+// platform-exact: JP twin platforms (Famicom/NES, Super
+// Famicom/SNES) are deliberately NOT folded together here, because a
+// search result badges the actual physical release per platform row,
+// not the collector's-console equivalence platformReleaseDates folds
+// for the product projection's single scoped date.
+func platformReleaseRegions(g igdb.Game, platformID int64) []string {
+	type regionSpan struct {
+		earliest time.Time
+		hasDate  bool
+	}
+	byRegion := map[string]*regionSpan{}
+	var order []string
+	for _, rd := range g.ReleaseDates {
+		// A platform-0 row matches no real platform; skipping it also
+		// defends a platformID of 0 from matching every unplatformed row.
+		if rd.Platform == 0 || rd.Platform != platformID {
+			continue
+		}
+		name, ok := igdb.RegionName(rd.Region)
+		if !ok {
+			continue
+		}
+		span, seen := byRegion[name]
+		if !seen {
+			span = &regionSpan{}
+			byRegion[name] = span
+			order = append(order, name)
+		}
+		if rd.Date != 0 {
+			d := time.Unix(rd.Date, 0).UTC().Truncate(24 * time.Hour)
+			if !span.hasDate || d.Before(span.earliest) {
+				span.earliest = d
+				span.hasDate = true
+			}
+		}
+	}
+	if len(order) == 0 {
+		return nil
+	}
+	sort.Slice(order, func(i, j int) bool {
+		a, b := byRegion[order[i]], byRegion[order[j]]
+		if a.hasDate != b.hasDate {
+			return a.hasDate // dated regions before dateless ones
+		}
+		if a.hasDate && !a.earliest.Equal(b.earliest) {
+			return a.earliest.Before(b.earliest)
+		}
+		return order[i] < order[j]
+	})
+	return order
+}
+
 func gameResult(g igdb.Game) api.SearchResult {
 	res := api.SearchResult{Type: api.SearchResultType("game"), Name: g.Name}
 	id := g.ID
@@ -254,7 +420,11 @@ func gameResult(g igdb.Game) api.SearchResult {
 	if len(g.Platforms) > 0 {
 		prs := make([]api.PlatformRef, 0, len(g.Platforms))
 		for _, p := range g.Platforms {
-			prs = append(prs, api.PlatformRef{IgdbPlatformId: p.ID, Name: p.Name})
+			pr := api.PlatformRef{IgdbPlatformId: p.ID, Name: p.Name}
+			if regions := platformReleaseRegions(g, p.ID); len(regions) > 0 {
+				pr.ReleaseRegions = &regions
+			}
+			prs = append(prs, pr)
 		}
 		res.Platforms = &prs
 	}
@@ -264,6 +434,26 @@ func gameResult(g igdb.Game) api.SearchResult {
 	}
 	if cu := g.CoverURL(); cu != "" {
 		res.CoverUrl = &cu
+	}
+	if bundles := igdb.BundleLocalizations(g); len(bundles) > 0 {
+		locs := make([]api.Localization, 0, len(bundles))
+		for _, b := range bundles {
+			al := api.Localization{Region: b.Region}
+			if b.Name != "" {
+				n := b.Name
+				al.Name = &n
+			}
+			if b.Translit != "" {
+				tr := b.Translit
+				al.Translit = &tr
+			}
+			if b.CoverURL != "" {
+				cu := b.CoverURL
+				al.CoverUrl = &cu
+			}
+			locs = append(locs, al)
+		}
+		res.Localizations = &locs
 	}
 	return res
 }
@@ -610,6 +800,26 @@ func toAPIProduct(p store.Product) api.Product {
 			}
 			m.ReleaseDates = &rds
 		}
+		if len(p.IGDB.Localizations) > 0 {
+			locs := make([]api.Localization, 0, len(p.IGDB.Localizations))
+			for _, l := range p.IGDB.Localizations {
+				al := api.Localization{Region: l.Region}
+				if l.Name != "" {
+					n := l.Name
+					al.Name = &n
+				}
+				if l.Translit != "" {
+					tr := l.Translit
+					al.Translit = &tr
+				}
+				if l.CoverURL != "" {
+					cu := l.CoverURL
+					al.CoverUrl = &cu
+				}
+				locs = append(locs, al)
+			}
+			m.Localizations = &locs
+		}
 		out.Igdb = &m
 	}
 	if p.PriceCharting != nil {
@@ -831,10 +1041,12 @@ func (h *Handlers) gamePayloadFor(ctx context.Context, gameID int64) (igdb.Game,
 	if err != nil {
 		return igdb.Game{}, time.Time{}, fmt.Errorf("raw read: %w", err)
 	}
-	// A raw doc without a release table predates this feature; one
-	// refetch repairs it (UpsertRaw stamps the empty array from then
-	// on, so fetched-but-none does not refetch forever).
-	if len(raws) == 1 && raws[0].Game.ReleaseDates != nil {
+	// A raw doc without a release table predates this feature, and one
+	// below fields_version predates fields a newer generation added;
+	// either way one refetch repairs it (UpsertRaw stamps the empty
+	// array and the current version from then on, so a fetched-but-none
+	// current raw does not refetch forever).
+	if len(raws) == 1 && raws[0].Game.ReleaseDates != nil && raws[0].FieldsVersion >= store.RawFieldsVersion {
 		return raws[0].Game, raws[0].FetchedAt, nil
 	}
 	games, err := h.games.GamesByIDs(ctx, []int64{gameID})
@@ -1799,14 +2011,16 @@ func (h *Handlers) runRematch(ctx context.Context) {
 // and rebuilds each one's projection from its raw payload, writing only
 // the ones that actually changed. The raws hold the full unfiltered
 // release table, so a projection-logic change (like the JP-twin fold)
-// redeploys here with zero provider calls; only pre-feature raws (nil
-// release table) or ids with no raw at all are refetched - a set that
-// drains to zero as the catalog heals, which bounds the provider cost of
-// a full sweep. A rebuild sourced from an existing raw keeps that raw's
-// fetch stamp - the projection changed, not the provider data - so
-// read-path staleness math stays honest. The diff gate (SameProjection)
-// makes steady state write-free: once every raw is healed and every
-// projection matches, the nightly sweep reads Mongo and writes nothing.
+// redeploys here with zero provider calls; only raws below
+// fields_version (nil release table, or missing fields a newer
+// generation added) or ids with no raw at all are refetched - a set
+// that drains to zero as the catalog heals, which bounds the provider
+// cost of a full sweep. A rebuild sourced from an existing raw keeps
+// that raw's fetch stamp - the projection changed, not the provider
+// data - so read-path staleness math stays honest. The diff gate
+// (SameProjection) makes steady state write-free: once every raw is
+// healed and every projection matches, the nightly sweep reads Mongo
+// and writes nothing.
 // Detached-walk conventions match runRefresh.
 func (h *Handlers) runReprojection(ctx context.Context) {
 	start := h.now()
@@ -1820,10 +2034,10 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 		return
 	}
 
-	// Distinct game ids, then the raws we already hold. A raw with a nil
-	// release table predates the feature and must be refetched (never
-	// reprojected as fetched-none); an id with no raw at all is fetched
-	// too.
+	// Distinct game ids, then the raws we already hold. A raw below
+	// fields_version - nil release table, or missing fields a newer
+	// generation added - must be refetched, never reprojected as-is; an
+	// id with no raw at all is fetched too.
 	ids := make([]int64, 0, len(prods))
 	seen := make(map[int64]bool, len(prods))
 	for _, p := range prods {
@@ -1843,7 +2057,7 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 	}
 	var fetchIDs []int64
 	for _, id := range ids {
-		if rg, ok := rawByID[id]; !ok || rg.Game.ReleaseDates == nil {
+		if rg, ok := rawByID[id]; !ok || rg.Game.ReleaseDates == nil || rg.FieldsVersion < store.RawFieldsVersion {
 			fetchIDs = append(fetchIDs, id)
 		}
 	}
@@ -1867,7 +2081,7 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 			if g.ReleaseDates == nil {
 				g.ReleaseDates = []igdb.ReleaseDate{}
 			}
-			rawByID[g.ID] = store.RawGame{GameID: g.ID, Game: g, FetchedAt: now}
+			rawByID[g.ID] = store.RawGame{GameID: g.ID, Game: g, FetchedAt: now, FieldsVersion: store.RawFieldsVersion}
 		}
 	}
 
