@@ -172,7 +172,7 @@ transitions into listed, and a generated `slug_key` fold backing the
 per-user unique slug index), and `catalog_submissions`
 (lifecycle rows kept as history; partial unique index enforces one
 pending submission per entry; `(user_id, created_at)` serves the abuse
-caps and `(status, created_at)` the admin queue). Nine embedded
+caps and `(status, created_at)` the admin queue). Ten embedded
 migrations under `services/collection/migrations/`, applied by the
 init container (see migrate mode above). Connections use TLS
 verify-full against the in-cluster CA (secret `collection-pg-tls`);
@@ -532,9 +532,21 @@ OpenAPI contract and not relayed by the bff or gateway: call the
 service directly (dev: the Tilt port-forward on 8085). Both are
 idempotent; re-running after a partial failure is the designed retry.
 
-Release-date resnapshot (JWT required, any user): recomputes every
-game-backed entry's snapshotted first_release_date from its product's
-current per-region dates. Bruno: `bruno/collection/resnapshot.bru`, or:
+Resnapshot (JWT required, any user): recomputes every game-backed
+entry's snapshotted fields from its product's current data - the
+release date (region-chained per `regionChains`: ntsc_u prefers
+north_america, ntsc_j prefers japan, pal prefers europe, each falling
+back through its chain to the platform-level date) and the localized
+presentation trio `localized_name` / `localized_name_translit` /
+`localized_cover_url` (region-chained per `localizationChains`: ntsc_j
+reads the ja-JP bundle, pal reads EU; ntsc_u and region_free chain to
+nothing, since the canonical snapshot already is their presentation).
+Re-run it after enrichment's catalog has actually healed - a nightly
+walk, or an immediate `/admin/refresh` trigger there - so the rollout
+order for a catalog-shape change is deploy, then enrichment's walk (or
+admin refresh), then this lever; that sequence is exactly what lights
+up pre-existing ntsc_j entries with their localized trio once their
+product carries it. Bruno: `bruno/collection/resnapshot.bru`, or:
 
     TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
       -H 'Content-Type: application/json' -d '{"user":"admin"}' \

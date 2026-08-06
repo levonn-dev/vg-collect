@@ -1,5 +1,5 @@
 meta {
-  name: resnapshot release dates
+  name: resnapshot snapshot fields
   type: http
   seq: 19
 }
@@ -22,9 +22,14 @@ assert {
 }
 
 docs {
-  One-shot operator backfill: recomputes every game-backed entry's
-  first_release_date from its product's per-region dates. Idempotent;
-  expect 200 with products_seen/products_failed/entries_updated. Run it
-  once after the release-dates deploy (and after enrichment's refresh
-  walk has healed the products); a second run reports entries_updated 0.
+  Operator backfill, re-runnable any time: recomputes every
+  game-backed entry's snapshotted fields from its product's current
+  data - the region-picked release date and the localized presentation
+  trio (localized_name/localized_name_translit/localized_cover_url).
+  Idempotent; expect 200 with
+  products_seen/products_failed/entries_updated (0 updated once
+  nothing has changed). Run after enrichment's catalog has actually
+  healed - a nightly walk, or an immediate admin refresh trigger there
+  - so the rollout order for a catalog-shape change is deploy, then
+  enrichment's walk (or admin refresh), then this lever.
 }

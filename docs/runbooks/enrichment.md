@@ -34,8 +34,9 @@ Features as an operator sees them:
   (`GET /platforms`).
 - The nightly walk (`POST /internal/refresh`, CronJob at 06:00): price
   refresh + snapshot for every mapped product, re-match of up to 50
-  unmatched games, projection rebuild for every IGDB-bearing product,
-  and the promote-candidate sweep over community products. 30 minute
+  unmatched games, projection rebuild for every IGDB-bearing product
+  (refetching only raws behind the current `fields_version`), and the
+  promote-candidate sweep over community products. 30 minute
   budget, one walk at a time (a concurrent trigger answers 409).
 - Admin moderation (JWT role `admin`): mapping fix, community product
   mint / promote / delete, unmatched and community worklists,
@@ -211,7 +212,7 @@ Valkey (`enrichment-valkey`, StatefulSet, valkey:8-alpine) is a pure
 cache: TLS-only listener on 6379, no client cert auth, no persistence
 (`--save ""`, `--appendonly no`, emptyDir), so a restart starts cold
 and everything rebuilds from providers and Mongo. Keys:
-`search:v1:<kind>:<sha256(query)>` (24h), `product:v1:<uuid>` (5m),
+`search:v3:<kind>:<sha256(query)>` (24h), `product:v1:<uuid>` (5m),
 `platforms:v1` (24h). The redis_exporter sidecar serves 9121
 (`service` label `enrichment-valkey`).
 
@@ -257,13 +258,14 @@ Domain instruments, meter
 `Handlers` fields with best-effort registration (the bff
 `vg.bff.cache.fail_open` pattern):
 
-| Metric                                | Instrument       | Unit        | Labels (bounded)                                                                                                                                                                                                                                  | Prometheus name                                                  | Question it answers                                                                         |
-| ------------------------------------- | ---------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `vg.enrichment.cache.fail_open`       | Int64Counter     | `{event}`   | `op`: search_get, search_decode, search_put, product_get, product_put, platforms_get, platforms_put, community_search, refresh_invalidate, rematch_invalidate, reprojection_invalidate, mapping_invalidate, promote_invalidate, delete_invalidate | `vg_enrichment_cache_fail_open_total`                            | is Valkey failing and which operation absorbs it                                            |
-| `vg.enrichment.search.requests`       | Int64Counter     | `{request}` | `kind`: game, hardware, pc_listing; `source`: cache, provider, degraded                                                                                                                                                                           | `vg_enrichment_search_requests_total`                            | search cache effectiveness per kind, and the user-visible degraded share (provider outage)  |
-| `vg.enrichment.match.outcomes`        | Int64Counter     | `{attempt}` | `source`: resolve, rematch; `outcome`: matched, below_threshold, provider_down                                                                                                                                                                    | `vg_enrichment_match_outcomes_total`                             | is the auto-matcher landing matches at its usual rate, or regressing into unmatched members |
-| `vg.enrichment.refresh.items`         | Int64Counter     | `{item}`    | `step`: prices, rematch, reprojection, sweep; `outcome`: ok, failed, skipped, flagged                                                                                                                                                             | `vg_enrichment_refresh_items_total`                              | how much of the catalog the nightly walk processed and what share failed                    |
-| `vg.enrichment.refresh.walk.duration` | Float64Histogram | `s`         | `step`: prices, rematch, reprojection, sweep                                                                                                                                                                                                      | `vg_enrichment_refresh_walk_duration_seconds_{count,sum,bucket}` | did each walk step run today, and how close the walk is to its 30m budget                   |
+| Metric                                  | Instrument       | Unit        | Labels (bounded)                                                                                                                                                                                                                                  | Prometheus name                                                  | Question it answers                                                                                                                                                            |
+| --------------------------------------- | ---------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `vg.enrichment.cache.fail_open`         | Int64Counter     | `{event}`   | `op`: search_get, search_decode, search_put, product_get, product_put, platforms_get, platforms_put, community_search, refresh_invalidate, rematch_invalidate, reprojection_invalidate, mapping_invalidate, promote_invalidate, delete_invalidate | `vg_enrichment_cache_fail_open_total`                            | is Valkey failing and which operation absorbs it                                                                                                                               |
+| `vg.enrichment.search.requests`         | Int64Counter     | `{request}` | `kind`: game, hardware, pc_listing; `source`: cache, provider, degraded                                                                                                                                                                           | `vg_enrichment_search_requests_total`                            | search cache effectiveness per kind, and the user-visible degraded share (provider outage)                                                                                     |
+| `vg.enrichment.search.localization_leg` | Int64Counter     | `{leg}`     | `outcome`: merged, empty, error                                                                                                                                                                                                                   | `vg_enrichment_search_localization_leg_total`                    | is the non-Latin supplementary search leg running, and how often it merges extra results, finds nothing extra, or fails (error still serves primary results - never an outage) |
+| `vg.enrichment.match.outcomes`          | Int64Counter     | `{attempt}` | `source`: resolve, rematch; `outcome`: matched, below_threshold, provider_down                                                                                                                                                                    | `vg_enrichment_match_outcomes_total`                             | is the auto-matcher landing matches at its usual rate, or regressing into unmatched members                                                                                    |
+| `vg.enrichment.refresh.items`           | Int64Counter     | `{item}`    | `step`: prices, rematch, reprojection, sweep; `outcome`: ok, failed, skipped, flagged                                                                                                                                                             | `vg_enrichment_refresh_items_total`                              | how much of the catalog the nightly walk processed and what share failed                                                                                                       |
+| `vg.enrichment.refresh.walk.duration`   | Float64Histogram | `s`         | `step`: prices, rematch, reprojection, sweep                                                                                                                                                                                                      | `vg_enrichment_refresh_walk_duration_seconds_{count,sum,bucket}` | did each walk step run today, and how close the walk is to its 30m budget                                                                                                      |
 
 Emission sites, all in `internal/server/handlers.go`:
 
@@ -275,6 +277,17 @@ Emission sites, all in `internal/server/handlers.go`:
   answer, or degraded local fallback). The resolve-side
   `searchPCListingsCached` helper does not count; this metric means
   "user-facing search answers".
+- `search.localization_leg`: one increment per `searchGames` call
+  whose query trips `hasNonLatinLetter`; a Latin query never reaches
+  this counter. `outcome` is `merged` when the `game_localizations`
+  where-filter leg (`SearchLocalizations`) answers and its ids are
+  folded into consideration (whether or not any were new), `empty`
+  when it answers with nothing, `error` when the leg call or its
+  follow-up `GamesByIDs` fetch for newly found ids fails. Only
+  `error` is worth a look, and even then the primary IGDB search
+  results already served as-is - the leg is a best-effort widening,
+  never a hard dependency, so this counter is a feature-health
+  signal, not an availability one.
 - `match.outcomes`: in `autoMatchGame`, with the caller passing the
   source (`resolveGame` no-pick path = resolve, `runRematch` =
   rematch). provider_down maps to the existing "auto-match skipped"
@@ -306,6 +319,27 @@ line without finished lines inside the 30m budget is the signature of
 a hung walk. Everything else the walk needs is already logged
 (finished summaries with counts, stopped-early warns, per-product
 failure warns, panic containment).
+
+Region coverage for localized titles is a second, independent
+mechanism from the search leg above: `BundleLocalizations`
+(`internal/igdb/igdb.go`) is what actually builds each region's
+bundle - both the product's `igdb.localizations` payload and a
+search result's `matched_region` read it - by merging a game's
+`game_localizations` rows (authoritative name and cover, no table
+needed; every region IGDB returns is read) with alternative names
+mined from `alternative_names` via the `altTagFamilies` table: a
+per-region prefix/exclude rule (today `ja-JP` prefix "japanese
+title", `ko-KR` prefix "korean title", both excluding comments
+containing "translat" so an English retranslation cannot steal the
+native-name slot). A region whose native title only shows up in
+`alternative_names` - not in `game_localizations` - needs a row in
+this table; that is the extension point for the next region.
+
+Search-result platform refs carry a separate signal, `release_regions`
+(`platformReleaseRegions`, `internal/server/handlers.go`): per-platform
+canonical release-date regions, platform-exact and ordered
+earliest-first, independent of BundleLocalizations above - the field
+the frontend's availability badges key off.
 
 ## Dashboard: vg-enrichment
 
@@ -360,72 +394,79 @@ Feature health:
 
         sum by (source, outcome) (increase(vg_enrichment_match_outcomes_total[1h]))
 
-9. "Refresh walk items by step and outcome" - timeseries, short,
+9. "Localization search legs" - timeseries, short, legend
+   `{{outcome}}` (only non-Latin queries reach this leg; `error`
+   still serves primary results, so this panel is a feature-health
+   signal, not an availability one)
+
+        sum by (outcome) (rate(vg_enrichment_search_localization_leg_total[5m]))
+
+10. "Refresh walk items by step and outcome" - timeseries, short,
    legend `{{step}} {{outcome}}`
 
         sum by (step, outcome) (increase(vg_enrichment_refresh_items_total[1h]))
 
-10. "Refresh walk duration by step" - timeseries, s, legend `{{step}}`
+11. "Refresh walk duration by step" - timeseries, s, legend `{{step}}`
    (one walk per day: the 1h increase of the sum is the last walk's
    elapsed seconds at the walk hour, zero elsewhere)
 
         sum by (step) (increase(vg_enrichment_refresh_walk_duration_seconds_sum[1h]))
 
-11. "Valkey fail-open events" - timeseries, short, legend `{{op}}`
+12. "Valkey fail-open events" - timeseries, short, legend `{{op}}`
 
         sum by (op) (increase(vg_enrichment_cache_fail_open_total[5m]))
 
 Datastores and pools:
 
-12. "Valkey client pool connections" - timeseries, short, legends
+13. "Valkey client pool connections" - timeseries, short, legends
     `open` / `idle`
 
         vg_valkeykit_pool_connections{service_name="enrichment"}
         vg_valkeykit_pool_connections_idle{service_name="enrichment"}
 
-13. "Valkey pool reuse ratio" - timeseries, percentunit
+14. "Valkey pool reuse ratio" - timeseries, percentunit
 
         rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) / (rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) + rate(vg_valkeykit_pool_misses_total{service_name="enrichment"}[5m]))
 
-14. "Valkey pool timeouts" - timeseries, short (flat zero is the only
+15. "Valkey pool timeouts" - timeseries, short (flat zero is the only
     healthy shape)
 
         increase(vg_valkeykit_pool_timeouts_total{service_name="enrichment"}[5m])
 
-15. "Mongo up" - stat, short; state thresholds: red below 1, green at
+16. "Mongo up" - stat, short; state thresholds: red below 1, green at
     1 and above
 
         mongodb_up{service="enrichment-mongo"}
 
-16. "Mongo operations" - timeseries, ops, legend `{{legacy_op_type}}`
+17. "Mongo operations" - timeseries, ops, legend `{{legacy_op_type}}`
 
         sum by (legacy_op_type) (rate(mongodb_ss_opcounters{service="enrichment-mongo"}[$__rate_interval]))
 
-17. "Valkey server memory" - timeseries, bytes
+18. "Valkey server memory" - timeseries, bytes
 
         redis_memory_used_bytes{service="enrichment-valkey"}
 
-18. "Valkey keyspace hit ratio" - timeseries, percentunit
+19. "Valkey keyspace hit ratio" - timeseries, percentunit
 
         rate(redis_keyspace_hits_total{service="enrichment-valkey"}[5m]) / (rate(redis_keyspace_hits_total{service="enrichment-valkey"}[5m]) + rate(redis_keyspace_misses_total{service="enrichment-valkey"}[5m]))
 
 Pods and logs:
 
-19. "CPU by pod" - timeseries, short, legend `{{pod}}` (covers the
+20. "CPU by pod" - timeseries, short, legend `{{pod}}` (covers the
     app, mongo, valkey and refresh job pods)
 
         sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"enrichment.*", container!=""}[$__rate_interval]))
 
-20. "Working-set memory by pod" - timeseries, bytes, legend `{{pod}}`
+21. "Working-set memory by pod" - timeseries, bytes, legend `{{pod}}`
 
         sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"enrichment.*", container!=""})
 
-21. "Restarts (15m windows) by pod" - timeseries, short, legend
+22. "Restarts (15m windows) by pod" - timeseries, short, legend
     `{{pod}}`
 
         sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"enrichment.*"}[15m]))
 
-22. "Recent error logs" - logs panel, Loki datasource
+23. "Recent error logs" - logs panel, Loki datasource
 
         {service_name="enrichment"} | severity_text="ERROR"
 
@@ -603,7 +644,16 @@ Both run all four steps: prices, re-match, reprojection, candidate
 sweep. The reprojection step is the catalog's self-healing backfill:
 any projection-logic change redeploys through it with zero provider
 calls in steady state, so "re-run the walk" is the answer to most
-catalog-shape drift.
+catalog-shape drift. A raw whose `fields_version` trails the running
+build, or that predates the field entirely, is refetched once as
+part of the same sweep - a set that drains to zero as the catalog
+heals, so shipping a new IGDB field costs one walk's worth of
+provider calls and nothing after. `gamePayloadFor` runs the same
+check on resolve and promote (the paths that build a fresh IGDB
+projection), so a single product can heal ahead of its next nightly
+walk too; the plain `GET /products/{id}` staleness refetch is a
+separate, age-only mechanism (`IGDB_REFRESH_AFTER`) that does not
+look at `fields_version`.
 
 Moderated mapping fix (validates against the provider, snapshots,
 marks verified; `{}` clears the mapping):

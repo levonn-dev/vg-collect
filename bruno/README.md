@@ -258,15 +258,19 @@ the token's user owns - entries, tags, saved views - in one idempotent
 deletion and doubles as cleanup: run it to wipe the debris this folder
 created before a fresh run.
 
-`resnapshot release dates` is an operator one-shot, not part of the
+`resnapshot snapshot fields` is an operator lever, not part of the
 happy path: it POSTs to the manually-mounted `/internal/resnapshot`
 (behind the same JWT middleware, so run `auth / dev token` first) and
-recomputes every game-backed entry's release date from its product's
-per-region dates. Run it ONCE after the release-dates deploy has healed
-the products (enrichment's refresh walk repairs their per-region
-dates), and only then; it is idempotent, so a second run reports
-`entries_updated: 0`. Expect 200 with
-`products_seen`/`products_failed`/`entries_updated`.
+recomputes every game-backed entry's snapshotted fields from its
+product's current data - the region-picked release date and the
+localized presentation trio (native-script name, transliteration,
+regional cover). It is idempotent and re-runnable any time; re-run it
+after enrichment's catalog has actually healed - a nightly walk, or an
+immediate admin refresh trigger there - so the rollout order for a
+catalog-shape change is deploy, then enrichment's walk (or admin
+refresh), then this lever. Expect 200 with
+`products_seen`/`products_failed`/`entries_updated` (0 updated once
+nothing has changed).
 
 Through the gateway, `bff/collection entries`, `bff/collection value
 history`, and `bff/recommendations` exercise the same domain with the

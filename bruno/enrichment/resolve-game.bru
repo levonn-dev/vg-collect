@@ -1,5 +1,5 @@
 meta {
-  name: resolve game (find-or-create, auto-matched)
+  name: resolve game (find-or-create, localized)
   type: http
   seq: 3
 }
@@ -17,9 +17,14 @@ auth:bearer {
 body:json {
   {
     "type": "game",
-    "igdb_game_id": 1011,
+    "igdb_game_id": 11227,
     "platform_igdb_id": 19
   }
+}
+
+assert {
+  res.status: eq 200
+  res.body.igdb.localizations: isDefined
 }
 
 script:post-response {
@@ -29,7 +34,15 @@ script:post-response {
 }
 
 docs {
-  Expect 200; on a fresh catalog the fixture game auto-matches its
-  PriceCharting product (pc_product_id 5011, match_confidence >= 0.75,
-  verified false) and stores the product id into the product_id env var.
+  Expect 200; Trials of Mana (Seiken Densetsu 3) on Super Nintendo
+  Entertainment System - a real IGDB id/platform pair (not a stub
+  fixture), so this resolves against the live catalog path in every
+  provider mode. res.body.igdb.localizations carries its ja-JP bundle
+  (name 聖剣伝説 3, translit Seiken Densetsu 3), asserted present above -
+  the same matched_region search case frontend/e2e/region-locale.spec.ts
+  exercises through the app. PriceCharting matching is independent of
+  this resolve and is not asserted here: on this stack the product
+  currently resolves with no pricecharting match (this dev deployment's
+  PriceCharting coverage for the title, not a contract of the endpoint).
+  The resolved product id is stored into the product_id env var.
 }

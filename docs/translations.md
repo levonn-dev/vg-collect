@@ -25,6 +25,15 @@ issue - for a maintainer or another contributor to turn into the page
 file. Page translations are optional and can be added later, one page
 at a time; they are not required to start a language.
 
+One more thing worth knowing before you start: game and hardware
+titles, and their cover art, are not part of either catalog and never
+go through translation. That text and imagery come from the game data
+provider (IGDB) and are picked by region, not by language - a
+Japanese release shows its Japanese title because that is the title
+IGDB has for that region, not because someone translated it into
+Japanese. Nothing you write in a `.po` file changes a product's title
+or cover.
+
 ## Reading a catalog entry
 
 Catalogs live under `frontend/src/locales/`, one file per language.

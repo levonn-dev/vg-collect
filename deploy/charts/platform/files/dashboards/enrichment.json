@@ -161,10 +161,27 @@
       ]
     },
     {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Localization search legs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (outcome) (rate(vg_enrichment_search_localization_leg_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
       "id": 8,
       "type": "timeseries",
       "title": "Refresh walk items by step and outcome",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
@@ -181,7 +198,7 @@
       "id": 9,
       "type": "timeseries",
       "title": "Refresh walk duration by step",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "targets": [
@@ -198,7 +215,7 @@
       "id": 10,
       "type": "timeseries",
       "title": "Valkey fail-open events",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 40 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 48 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
@@ -215,7 +232,7 @@
       "id": 11,
       "type": "timeseries",
       "title": "Valkey client pool connections",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 56 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
@@ -239,7 +256,7 @@
       "id": 12,
       "type": "timeseries",
       "title": "Valkey pool reuse ratio",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 56 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
       "targets": [
@@ -256,7 +273,7 @@
       "id": 13,
       "type": "timeseries",
       "title": "Valkey pool timeouts",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 56 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 64 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
@@ -273,7 +290,7 @@
       "id": 14,
       "type": "stat",
       "title": "Mongo up",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 56 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 64 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -302,7 +319,7 @@
       "id": 15,
       "type": "timeseries",
       "title": "Mongo operations",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 64 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 72 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
       "targets": [
@@ -319,7 +336,7 @@
       "id": 16,
       "type": "timeseries",
       "title": "Valkey server memory",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 64 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 72 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
       "targets": [
@@ -336,7 +353,7 @@
       "id": 17,
       "type": "timeseries",
       "title": "Valkey keyspace hit ratio",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 72 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 80 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
       "targets": [
@@ -353,7 +370,7 @@
       "id": 18,
       "type": "timeseries",
       "title": "CPU by pod",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 80 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 88 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
@@ -370,7 +387,7 @@
       "id": 19,
       "type": "timeseries",
       "title": "Working-set memory by pod",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 80 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 88 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
       "targets": [
@@ -387,7 +404,7 @@
       "id": 20,
       "type": "timeseries",
       "title": "Restarts (15m windows) by pod",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 88 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 96 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
@@ -404,7 +421,7 @@
       "id": 21,
       "type": "logs",
       "title": "Recent error logs",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 96 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 104 },
       "datasource": { "type": "loki", "uid": "loki" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [

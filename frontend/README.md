@@ -83,4 +83,18 @@ in both shells, so signed-out visitors can switch languages on the
 public pages too. See `docs/translations.md` for the
 contributor-facing guide.
 
+Product titles and cover art sit outside all of the above: they are
+IGDB data, picked per region, not catalog strings, so none of this
+machinery translates them. A locale only picks which FORM of that
+data to show - `titleFormFor` in `src/lib/productTitle.ts` maps a
+locale to `translit` (romanized) or `native` (original script); an
+unmapped locale defaults to `translit`. A new locale that wants the
+other default adds one row to that table. Search-result platform
+chips are the region picker: each lists the entry regions its
+release actually shipped in (`AVAILABILITY_REGIONS` and
+`platformEntryRegions` in the same module; a worldwide release lists
+all of them), the picked chip's set leads the wizard's grouped Region
+select, and `LOCALIZATION_CHAINS` gives the details heading its
+region-appropriate title.
+
 See the root README for the full stack (task run / task down).
