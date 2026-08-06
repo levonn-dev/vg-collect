@@ -73,6 +73,10 @@ msgstr "{name}の運営者は{operator}です（<0>{contact}</0>）"
 msgid "{name} on {platformName}"
 msgstr "{name}（{platformName}）"
 
+#: src/components/catalog/SearchPicker.tsx
+msgid "{name} on {platformName} ({regionText})"
+msgstr "{name}（{platformName}）（{regionText}）"
+
 #: src/components/insights/StatCards.tsx
 msgid "{pricedCount} priced - {unpricedCount} unpriced - {excludedCount} excluded"
 msgstr "価格あり{pricedCount}件 - 価格なし{unpricedCount}件 - 対象外{excludedCount}件"
@@ -1316,18 +1320,22 @@ msgid "Nothing yet. <0>Explore</0> people to follow."
 msgstr "まだ何もありません。<0>見つける</0>からフォローするユーザーを探しましょう。"
 
 #: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/regionLabels.ts
 msgid "NTSC-J"
 msgstr "NTSC-J"
 
 #: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/regionLabels.ts
 msgid "NTSC-U"
 msgstr "NTSC-U"
 
 #: src/components/collection/ListControls.tsx
 msgid "Order: {direction}"
 msgstr "順序：{direction}"
+
+#: src/components/wizard/DetailsStep.tsx
+msgid "Other regions"
+msgstr "その他のリージョン"
 
 #: src/components/wizard/DetailsStep.tsx
 msgid "Otherwise auto-match picks the listing."
@@ -1353,7 +1361,7 @@ msgid "Paid"
 msgstr "購入価格"
 
 #: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/regionLabels.ts
 msgid "PAL"
 msgstr "PAL"
 
@@ -1616,7 +1624,7 @@ msgid "Region / edition / variant"
 msgstr "リージョン / エディション / バリエーション"
 
 #: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/regionLabels.ts
 msgid "Region free"
 msgstr "リージョンフリー"
 
@@ -1637,6 +1645,10 @@ msgstr "発売年"
 #: src/components/wizard/CustomStep.tsx
 msgid "Release date"
 msgstr "発売日"
+
+#: src/components/wizard/DetailsStep.tsx
+msgid "Released on {groupPlatformName}"
+msgstr "{groupPlatformName}で発売"
 
 #: src/components/social/CommentList.tsx
 msgid "Remove"
@@ -2267,9 +2279,9 @@ msgstr "アカウントを削除しました。"
 msgid "Your account needs at least one login"
 msgstr "アカウントには少なくとも1つのログインが必要です"
 
-#: src/pages/AddWizard.tsx
-msgid "Your copy of {itemName}"
-msgstr "お手持ちの{itemName}"
+#: src/components/wizard/DetailsStep.tsx
+msgid "Your copy of <0>{titleText}</0>"
+msgstr "お手持ちの<0>{titleText}</0>"
 
 #: src/pages/Account.tsx
 msgid "Your profile could not be loaded."

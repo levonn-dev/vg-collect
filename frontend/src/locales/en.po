@@ -73,6 +73,10 @@ msgstr "{name} is run by {operator} (<0>{contact}</0>)"
 msgid "{name} on {platformName}"
 msgstr "{name} on {platformName}"
 
+#: src/components/catalog/SearchPicker.tsx
+msgid "{name} on {platformName} ({regionText})"
+msgstr "{name} on {platformName} ({regionText})"
+
 #: src/components/insights/StatCards.tsx
 msgid "{pricedCount} priced - {unpricedCount} unpriced - {excludedCount} excluded"
 msgstr "{pricedCount} priced - {unpricedCount} unpriced - {excludedCount} excluded"
@@ -1316,18 +1320,22 @@ msgid "Nothing yet. <0>Explore</0> people to follow."
 msgstr "Nothing yet. <0>Explore</0> people to follow."
 
 #: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/regionLabels.ts
 msgid "NTSC-J"
 msgstr "NTSC-J"
 
 #: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/regionLabels.ts
 msgid "NTSC-U"
 msgstr "NTSC-U"
 
 #: src/components/collection/ListControls.tsx
 msgid "Order: {direction}"
 msgstr "Order: {direction}"
+
+#: src/components/wizard/DetailsStep.tsx
+msgid "Other regions"
+msgstr "Other regions"
 
 #: src/components/wizard/DetailsStep.tsx
 msgid "Otherwise auto-match picks the listing."
@@ -1353,7 +1361,7 @@ msgid "Paid"
 msgstr "Paid"
 
 #: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/regionLabels.ts
 msgid "PAL"
 msgstr "PAL"
 
@@ -1616,7 +1624,7 @@ msgid "Region / edition / variant"
 msgstr "Region / edition / variant"
 
 #: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/regionLabels.ts
 msgid "Region free"
 msgstr "Region free"
 
@@ -1637,6 +1645,10 @@ msgstr "Release"
 #: src/components/wizard/CustomStep.tsx
 msgid "Release date"
 msgstr "Release date"
+
+#: src/components/wizard/DetailsStep.tsx
+msgid "Released on {groupPlatformName}"
+msgstr "Released on {groupPlatformName}"
 
 #: src/components/social/CommentList.tsx
 msgid "Remove"
@@ -2267,9 +2279,9 @@ msgstr "Your account has been deleted."
 msgid "Your account needs at least one login"
 msgstr "Your account needs at least one login"
 
-#: src/pages/AddWizard.tsx
-msgid "Your copy of {itemName}"
-msgstr "Your copy of {itemName}"
+#: src/components/wizard/DetailsStep.tsx
+msgid "Your copy of <0>{titleText}</0>"
+msgstr "Your copy of <0>{titleText}</0>"
 
 #: src/pages/Account.tsx
 msgid "Your profile could not be loaded."
