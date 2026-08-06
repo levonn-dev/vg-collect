@@ -13,6 +13,18 @@ const searchAnswer = {
     platforms: [{ igdb_platform_id: 6, name: 'SNES' }],
   }],
 }
+// Same shape as searchAnswer, but this result carries a matched_region
+// and a matching localizations bundle, so its game pick suggests a
+// wizard region and the heading derives from the bundle.
+const jpMatchedSearchAnswer = {
+  degraded: false,
+  results: [{
+    type: 'game', name: 'Chrono Trigger', igdb_game_id: 1000,
+    matched_region: 'ja-JP',
+    localizations: [{ region: 'ja-JP', name: '聖剣伝説', translit: 'Seiken Densetsu' }],
+    platforms: [{ igdb_platform_id: 6, name: 'SNES' }],
+  }],
+}
 const product = {
   id: 'p1', type: 'game', name: 'Chrono Trigger',
   platform: { igdb_platform_id: 6, name: 'SNES' },
@@ -71,7 +83,7 @@ it('walks search, details, and match confirmation to a created entry', async () 
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
 
-  expect(await screen.findByText(/your copy of chrono trigger/i)).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /your copy of chrono trigger/i })).toBeInTheDocument()
   await userEvent.selectOptions(screen.getByLabelText('Status'), 'beaten')
   await userEvent.selectOptions(screen.getByLabelText('Rating'), '9')
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -87,6 +99,40 @@ it('walks search, details, and match confirmation to a created entry', async () 
   expect(body.status).toBe('beaten')
   expect(body.rating).toBe(9)
   expect(body.display_name).toBeUndefined() // catalog facts come from the product
+})
+
+it('seeds the details region select from a matched-region game pick', async () => {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    const u = String(url)
+    if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, jpMatchedSearchAnswer))
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWizard()
+
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'chrono')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
+
+  expect(await screen.findByRole('heading', { name: 'Your copy of Seiken Densetsu' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Region')).toHaveValue('ntsc_j')
+})
+
+it('defaults the details region select to ntsc_u when the pick carries no region suggestion', async () => {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    const u = String(url)
+    if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, searchAnswer))
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWizard()
+
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'chrono')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
+
+  expect(await screen.findByRole('heading', { name: /your copy of chrono trigger/i })).toBeInTheDocument()
+  expect(screen.getByLabelText('Region')).toHaveValue('ntsc_u')
 })
 
 it('stamps the created entry with the profile currency', async () => {
@@ -108,7 +154,7 @@ it('stamps the created entry with the profile currency', async () => {
   await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'chrono')
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
-  expect(await screen.findByText(/your copy of chrono trigger/i)).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /your copy of chrono trigger/i })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
   expect(await screen.findByText(/match 93%/i)).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
@@ -137,7 +183,7 @@ it('invalidates the dashboard and recommendations caches on create', async () =>
   await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'chrono')
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
-  expect(await screen.findByText(/your copy of chrono trigger/i)).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /your copy of chrono trigger/i })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
   expect(await screen.findByText(/match 93%/i)).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
@@ -161,7 +207,7 @@ it('keeps typed details across a Confirm Back, and each Back returns to the prev
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
 
-  expect(await screen.findByText(/your copy of chrono trigger/i)).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /your copy of chrono trigger/i })).toBeInTheDocument()
   await userEvent.type(screen.getByLabelText(/edition or variant/i), 'first print')
   await userEvent.type(screen.getByLabelText(/price paid/i), '42.50')
   await userEvent.selectOptions(screen.getByLabelText('Status'), 'beaten')
@@ -201,7 +247,7 @@ it('keeps a manual match across Continue and Back', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
 
-  expect(await screen.findByText(/your copy of chrono trigger/i)).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /your copy of chrono trigger/i })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Match manually' }))
   await userEvent.click(await screen.findByRole('button', { name: /use chrono trigger \[pal\]/i }))
   expect(screen.getByText('Chrono Trigger [PAL]')).toBeInTheDocument()
@@ -258,7 +304,7 @@ it('fills a missing match from the confirm step', async () => {
   await userEvent.type(screen.getByRole('searchbox', { name: /search for games and hardware/i }), 'chrono')
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
-  expect(await screen.findByText(/your copy of chrono trigger/i)).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /your copy of chrono trigger/i })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
   // Auto-match missed; the card offers the remedy.
@@ -430,7 +476,7 @@ it('keeps typed values across both custom Back hops, in a full round trip', asyn
   fireEvent.change(screen.getByLabelText(/release date/i), { target: { value: '1995-03-11' } })
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
-  expect(await screen.findByText(/your copy of chrono trigger repro/i)).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /your copy of chrono trigger repro/i })).toBeInTheDocument()
   await userEvent.type(screen.getByLabelText(/edition or variant/i), 'first print')
   await userEvent.type(screen.getByLabelText(/price paid/i), '42.50')
   await userEvent.selectOptions(screen.getByLabelText('Status'), 'beaten')
@@ -489,7 +535,7 @@ it('adds a community pick straight from fetchProduct, never posting a resolve', 
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Repro Alpha on SNES' }))
 
-  expect(await screen.findByText(/your copy of repro alpha/i)).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /your copy of repro alpha/i })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
   // The community product is already minted: confirm fetches it
@@ -502,4 +548,73 @@ it('adds a community pick straight from fetchProduct, never posting a resolve', 
   const body = putBody<Record<string, unknown>>(post?.[1] as RequestInit)
   expect(body.product_id).toBe(communityProduct.id)
   expect(fetchMock.mock.calls.some((c) => String(c[0]) === '/api/products/resolve')).toBe(false)
+})
+
+it('groups the details region select from the picked chip and defaults platform-first', async () => {
+  const groupedAnswer = {
+    degraded: false,
+    results: [{
+      type: 'game', name: 'Secret of Mana', igdb_game_id: 1001,
+      matched_region: 'ja-JP',
+      localizations: [{ region: 'ja-JP', translit: 'Seiken Densetsu 2' }],
+      platforms: [{ igdb_platform_id: 6, name: 'SNES', release_regions: ['north_america', 'europe'] }],
+    }],
+  }
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    const u = String(url)
+    if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, groupedAnswer))
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWizard()
+
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'seiken')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Secret of Mana on SNES (NTSC-U/PAL)' }))
+
+  // Platform-first: ja-JP is not in the SNES chip's set, so the
+  // earliest chip region wins and the heading stays canonical.
+  expect(await screen.findByRole('heading', { name: 'Your copy of Secret of Mana' })).toBeInTheDocument()
+  const select = screen.getByLabelText('Region')
+  expect(select).toHaveValue('ntsc_u')
+  expect(select.querySelectorAll('optgroup')[0]).toHaveAttribute('label', 'Released on SNES')
+})
+
+it('restores the typed search when Back returns from the details step', async () => {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    const u = String(url)
+    if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, searchAnswer))
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWizard()
+
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'chrono')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Back' }))
+
+  // The query and its results are back without retyping anything.
+  expect(await screen.findByRole('searchbox', { name: /search/i })).toHaveValue('chrono')
+  expect(await screen.findByText('Chrono Trigger')).toBeInTheDocument()
+})
+
+it('prefers the wizard snapshot over the q deep link on Back', async () => {
+  // mockImplementation, not mockResolvedValue: this test's two distinct
+  // searches ('zelda' then 'mario') both hit the mock for real, and a
+  // Response body can only be read once - a single shared instance
+  // would fail the second read.
+  const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse(200, searchAnswer)))
+  vi.stubGlobal('fetch', fetchMock)
+  renderWizard('/add?q=zelda')
+
+  // The deep link auto-ran; the user then searches something else.
+  expect(await screen.findByText('Chrono Trigger')).toBeInTheDocument()
+  await userEvent.clear(screen.getByRole('searchbox', { name: /search/i }))
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'mario')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Back' }))
+
+  expect(await screen.findByRole('searchbox', { name: /search/i })).toHaveValue('mario')
 })

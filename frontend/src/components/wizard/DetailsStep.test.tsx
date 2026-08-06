@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
@@ -9,7 +9,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 it('submits the collected values', async () => {
   const onNext = vi.fn()
-  renderWithI18n(<DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={onNext} />)
+  renderWithI18n(<DetailsStep product={{ name: 'Chrono Trigger' }} currency="USD" onBack={vi.fn()} onNext={onNext} />)
   await userEvent.selectOptions(screen.getByLabelText('Packaging'), 'sealed')
   await userEvent.type(screen.getByLabelText(/price paid/i), '129.50')
   await userEvent.selectOptions(screen.getByLabelText('Status'), 'shelved')
@@ -21,7 +21,7 @@ it('submits the collected values', async () => {
 
 it('clears box and manual when packaging goes loose', async () => {
   const onNext = vi.fn()
-  renderWithI18n(<DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={onNext} />)
+  renderWithI18n(<DetailsStep product={{ name: 'Chrono Trigger' }} currency="USD" onBack={vi.fn()} onNext={onNext} />)
   // The cib default carries both flags on.
   expect(screen.getByRole('checkbox', { name: /has box/i })).toBeChecked()
   expect(screen.getByRole('checkbox', { name: /has manual/i })).toBeChecked()
@@ -37,7 +37,7 @@ it('clears box and manual when packaging goes loose', async () => {
 
 it('checks box and manual when packaging goes cib or sealed', async () => {
   const onNext = vi.fn()
-  renderWithI18n(<DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={onNext} />)
+  renderWithI18n(<DetailsStep product={{ name: 'Chrono Trigger' }} currency="USD" onBack={vi.fn()} onNext={onNext} />)
   await userEvent.selectOptions(screen.getByLabelText('Packaging'), 'loose')
   expect(screen.getByRole('checkbox', { name: /has box/i })).not.toBeChecked()
   await userEvent.selectOptions(screen.getByLabelText('Packaging'), 'sealed')
@@ -47,6 +47,14 @@ it('checks box and manual when packaging goes cib or sealed', async () => {
   expect(onNext).toHaveBeenCalledWith(expect.objectContaining({
     packaging: 'sealed', hasBox: true, hasManual: true,
   }))
+})
+
+it('defaults the region to ntsc_u with no suggestion', () => {
+  expect(defaultDetails().region).toBe('ntsc_u')
+})
+
+it('seeds the region from the given suggestion', () => {
+  expect(defaultDetails('ntsc_j').region).toBe('ntsc_j')
 })
 
 it('detailsToCreate maps values onto the create contract', () => {
@@ -71,13 +79,13 @@ it('stamps the create payload with the given currency', () => {
 })
 
 it('does not render a currency input and labels price paid with the given currency', () => {
-  renderWithI18n(<DetailsStep heading="Copy details" currency="EUR" onBack={vi.fn()} onNext={vi.fn()} />)
+  renderWithI18n(<DetailsStep product={{ name: 'Chrono Trigger' }} currency="EUR" onBack={vi.fn()} onNext={vi.fn()} />)
   expect(screen.queryByLabelText(/^currency$/i)).not.toBeInTheDocument()
   expect(screen.getByText(/price paid \(eur\)/i)).toBeInTheDocument()
 })
 
 it('renders no listing-match row without the callback (custom and hardware paths)', () => {
-  renderWithI18n(<DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={vi.fn()} />)
+  renderWithI18n(<DetailsStep product={{ name: 'Chrono Trigger' }} currency="USD" onBack={vi.fn()} onNext={vi.fn()} />)
   expect(screen.queryByText(/price listing match/i)).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Match manually' })).not.toBeInTheDocument()
 })
@@ -93,7 +101,7 @@ it('opens the listing dialog, stores the pick, and clears it', async () => {
   ))
   const onManualMatchChange = vi.fn()
   renderWithMoney(
-    <DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={vi.fn()}
+    <DetailsStep product={{ name: 'Chrono Trigger' }} currency="USD" onBack={vi.fn()} onNext={vi.fn()}
       manualMatch={null} onManualMatchChange={onManualMatchChange} manualMatchQuery="Chrono Trigger" />,
   )
   expect(screen.getByText('Price listing match (optional)')).toBeInTheDocument()
@@ -109,7 +117,7 @@ it('opens the listing dialog, stores the pick, and clears it', async () => {
 it('renders the stored choice as a chip and clears it', async () => {
   const onManualMatchChange = vi.fn()
   renderWithI18n(
-    <DetailsStep heading="Copy details" currency="USD" onBack={vi.fn()} onNext={vi.fn()}
+    <DetailsStep product={{ name: 'Chrono Trigger' }} currency="USD" onBack={vi.fn()} onNext={vi.fn()}
       manualMatch={{ pcProductId: 7042, name: 'Chrono Trigger [PAL]' }}
       onManualMatchChange={onManualMatchChange} manualMatchQuery="Chrono Trigger" />,
   )
@@ -117,4 +125,47 @@ it('renders the stored choice as a chip and clears it', async () => {
   expect(screen.queryByRole('button', { name: 'Match manually' })).not.toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
   expect(onManualMatchChange).toHaveBeenCalledWith(null)
+})
+
+const somBundles = [
+  { region: 'ja-JP', name: '聖剣伝説 2', translit: 'Seiken Densetsu 2' },
+]
+
+it('groups the region select by the platform set and defaults from initialValues', () => {
+  renderWithI18n(
+    <DetailsStep product={{ name: 'Secret of Mana' }} currency="USD" onBack={vi.fn()} onNext={vi.fn()}
+      initialValues={defaultDetails('ntsc_u')}
+      regionGroup={{ platformName: 'SNES', regions: ['ntsc_u', 'pal'] }} />,
+  )
+  const select = screen.getByLabelText('Region')
+  expect(select).toHaveValue('ntsc_u')
+  const groups = select.querySelectorAll('optgroup')
+  expect(groups).toHaveLength(2)
+  expect(groups[0]).toHaveAttribute('label', 'Released on SNES')
+  expect(Array.from(groups[0].querySelectorAll('option')).map((o) => o.getAttribute('value')))
+    .toEqual(['ntsc_u', 'pal'])
+  expect(groups[1]).toHaveAttribute('label', 'Other regions')
+  expect(Array.from(groups[1].querySelectorAll('option')).map((o) => o.getAttribute('value')))
+    .toEqual(['ntsc_j', 'region_free'])
+})
+
+it('renders the flat ungrouped select without a regionGroup', () => {
+  renderWithI18n(<DetailsStep product={{ name: 'Chrono Trigger' }} currency="USD" onBack={vi.fn()} onNext={vi.fn()} />)
+  const select = screen.getByLabelText('Region')
+  expect(select.querySelector('optgroup')).toBeNull()
+  expect(select.querySelectorAll('option')).toHaveLength(4)
+})
+
+it('derives the heading from the selected region and follows a region change live', async () => {
+  renderWithI18n(
+    <DetailsStep product={{ name: 'Secret of Mana', localizations: somBundles }} currency="USD"
+      onBack={vi.fn()} onNext={vi.fn()} initialValues={defaultDetails('ntsc_j')}
+      regionGroup={{ platformName: 'Super Famicom', regions: ['ntsc_j'] }} />,
+  )
+  const heading = screen.getByRole('heading', { name: 'Your copy of Seiken Densetsu 2' })
+  expect(within(heading).getByText('Seiken Densetsu 2')).toHaveAttribute('lang', 'ja-Latn')
+  await userEvent.selectOptions(screen.getByLabelText('Region'), 'pal')
+  expect(screen.getByRole('heading', { name: 'Your copy of Secret of Mana' })).toBeInTheDocument()
+  expect(within(screen.getByRole('heading', { name: 'Your copy of Secret of Mana' })).getByText('Secret of Mana'))
+    .not.toHaveAttribute('lang')
 })

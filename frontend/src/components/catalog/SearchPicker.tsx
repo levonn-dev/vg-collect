@@ -7,6 +7,9 @@ import { useState } from 'react'
 import type { SearchKind } from '../../api/catalog'
 import { searchCatalog } from '../../api/catalog'
 import { releaseYear } from '../../lib/format'
+import type { EntryRegion } from '../../lib/productTitle'
+import { bundleLang, homeRegionFor, platformEntryRegions, REGION_FROM_MATCH, titleFormFor } from '../../lib/productTitle'
+import { regionLabels } from '../../lib/regionLabels'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import ItemTypeIcon from '../ItemTypeIcon'
 
@@ -16,6 +19,18 @@ export interface GamePick {
   name: string
   platformId: number
   platformName: string
+  // Platform-first region seeding: the matched-region mapping when the
+  // clicked chip's own region set contains it, else the UI locale's
+  // home region when the set contains that, else the chip's earliest
+  // release region, else the matched mapping alone (unmappable chip),
+  // else nothing (the wizard defaults ntsc_u).
+  suggestedRegion?: 'ntsc_u' | 'ntsc_j' | 'pal' | 'region_free'
+  // The clicked chip's mapped region list (absent when it has none):
+  // drives the details step's grouped Region select.
+  regions?: EntryRegion[]
+  // The result's localization bundles, verbatim: the details heading
+  // derives the region-appropriate identity from them.
+  localizations?: { region: string; name?: string; translit?: string; cover_url?: string }[]
 }
 
 export interface HardwarePick {
@@ -41,8 +56,20 @@ export interface CommunityPick {
 
 export type CatalogPick = GamePick | HardwarePick | PCListingPick | CommunityPick
 
+// The picker's full user-entered state, snapshotable by a caller that
+// unmounts this component (the add wizard's step machine) and handed
+// back as initialState so Back lands on the same query and results.
+export interface SearchPickerState {
+  kind: SearchKind
+  text: string
+  submitted: string
+}
+
 interface SearchPickerProps {
   initialQuery?: string
+  // The last-reported onStateChange snapshot; wins over initialQuery
+  // when present.
+  initialState?: SearchPickerState
   onPick: (pick: CatalogPick) => void
   footer?: ReactNode
   // Which search kinds to offer; the add wizard keeps the default,
@@ -52,6 +79,9 @@ interface SearchPickerProps {
   // surface it); the price proxy picker hides it, since community
   // products are priceless and cannot serve as a price source.
   communityLane?: 'shown' | 'hidden'
+  // Fires on every kind/text/submit change with the full next state,
+  // so the caller's snapshot is always current.
+  onStateChange?: (s: SearchPickerState) => void
 }
 
 // pc_listing's label/noun is the PriceCharting brand name - a proper
@@ -104,12 +134,13 @@ function searchBoxLabel(kinds: SearchKind[], i18n: I18n): string {
 // first step and the pricing proxy picker. Picking a game means
 // picking a platform (a product is game-on-platform); hardware and
 // pc_listing picks are the listing itself.
-export default function SearchPicker({ initialQuery = '', onPick, footer, kinds = ['game', 'hardware'], communityLane = 'shown' }: SearchPickerProps) {
+export default function SearchPicker({ initialQuery = '', initialState, onPick, footer, kinds = ['game', 'hardware'], communityLane = 'shown', onStateChange }: SearchPickerProps) {
   const { t, i18n } = useLingui()
   const money = useDisplayMoney()
-  const [kind, setKind] = useState<SearchKind>(kinds[0])
-  const [text, setText] = useState(initialQuery)
-  const [submitted, setSubmitted] = useState(initialQuery.trim())
+  const [kind, setKind] = useState<SearchKind>(initialState?.kind ?? kinds[0])
+  const [text, setText] = useState(initialState?.text ?? initialQuery)
+  const [submitted, setSubmitted] = useState(initialState?.submitted ?? initialQuery.trim())
+  const report = (next: Partial<SearchPickerState>) => onStateChange?.({ kind, text, submitted, ...next })
 
   const search = useQuery({
     queryKey: ['search', kind, submitted],
@@ -131,6 +162,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
         onSubmit={(e) => {
           e.preventDefault()
           setSubmitted(text.trim())
+          report({ submitted: text.trim() })
         }}
         className="flex flex-wrap items-center gap-2"
       >
@@ -138,7 +170,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
           <fieldset className="flex gap-2" aria-label={t`Search type`}>
             {kinds.map((k) => (
               <label key={k} className="flex items-center gap-1 text-sm">
-                <input type="radio" name="kind" checked={kind === k} onChange={() => setKind(k)} />
+                <input type="radio" name="kind" checked={kind === k} onChange={() => { setKind(k); report({ kind: k }) }} />
                 {resolveKindText(kindLabels[k], i18n)}
               </label>
             ))}
@@ -148,7 +180,7 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
           type="search"
           aria-label={searchBoxLabel(kinds, i18n)}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => { setText(e.target.value); report({ text: e.target.value }) }}
           placeholder={i18n._(kindPlaceholders[kind])}
           className="w-64 rounded border border-gray-300 px-2 py-1 text-sm"
         />
@@ -182,10 +214,33 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
           const loose = money.format(r.loose_cents) ?? '-'
           const cib = money.format(r.cib_cents) ?? '-'
           const newPrice = money.format(r.new_cents) ?? '-'
+          // Region-localized presentation (game results only): a
+          // matched_region hit picks its bundle and swaps the title,
+          // secondary name, and cover; a plain canonical-name match
+          // (no matched_region) renders r.name/r.cover_url untouched
+          // even when localizations are present, so browsing never
+          // flips a title the query did not ask for.
+          const matchedBundle = r.matched_region
+            ? r.localizations?.find((l) => l.region === r.matched_region)
+            : undefined
+          const form = titleFormFor(i18n.locale)
+          const title = matchedBundle
+            ? (form === 'native'
+                ? (matchedBundle.name ?? matchedBundle.translit ?? r.name)
+                : (matchedBundle.translit ?? matchedBundle.name ?? r.name))
+            : r.name
+          // bundleLang is undefined for a continent-form identifier
+          // (EU); guarded here so a translit title never renders the
+          // literal string "undefined-Latn".
+          const bundleLangTag = matchedBundle ? bundleLang(matchedBundle.region) : undefined
+          const titleLang = matchedBundle && title !== r.name
+            ? (title === matchedBundle.name ? bundleLangTag : (bundleLangTag ? `${bundleLangTag}-Latn` : undefined))
+            : undefined
+          const cover = matchedBundle?.cover_url ?? r.cover_url
           return (
             <li key={r.product_id ?? i} className="flex items-start gap-3 rounded border border-gray-200 p-2">
-              {r.cover_url ? (
-                <img src={r.cover_url} alt="" className="h-16 w-auto rounded" />
+              {cover ? (
+                <img src={cover} alt="" className="h-16 w-auto rounded" />
               ) : (
                 <div aria-hidden="true" className="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-gray-100 text-gray-400">
                   <ItemTypeIcon
@@ -210,7 +265,8 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
               )}
               <div>
                 <p className="text-sm font-medium">
-                  {r.name}
+                  <span lang={titleLang}>{title}</span>
+                  {title !== r.name && <span className="ml-2 text-xs text-gray-400">{r.name}</span>}
                   {releaseYear(r.first_release_date) && (
                     <span className="ml-2 text-xs text-gray-400">{releaseYear(r.first_release_date)}</span>
                   )}
@@ -268,6 +324,22 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
                     <span className="text-xs text-gray-500"><Trans>Add on:</Trans></span>
                     {r.platforms?.map((p) => {
                       const platformName = p.name
+                      // The chips are the region picker: each shows its platform's full
+                      // mapped region list (worldwide expands - a picker shows the whole
+                      // choice set), and the pick seeds the wizard platform-first: the
+                      // matched-region mapping wins within the chip's set, else the UI
+                      // locale's home region within the set, else the earliest release
+                      // region. The shadow of the outer platformName is the file's chip
+                      // idiom.
+                      const regions = platformEntryRegions(p.release_regions)
+                      const regionText = regions.map((b) => i18n._(regionLabels[b])).join('/')
+                      const matched = r.matched_region ? REGION_FROM_MATCH[r.matched_region] : undefined
+                      const home = homeRegionFor(i18n.locale)
+                      const suggestedRegion =
+                        matched !== undefined && regions.some((x) => x === matched) ? matched
+                        : home !== undefined && regions.includes(home) ? home
+                        : regions.length > 0 ? regions[0]
+                        : matched
                       return (
                         <button
                           key={p.igdb_platform_id}
@@ -279,12 +351,20 @@ export default function SearchPicker({ initialQuery = '', onPick, footer, kinds 
                               name: r.name,
                               platformId: p.igdb_platform_id,
                               platformName: p.name,
+                              suggestedRegion,
+                              regions: regions.length > 0 ? regions : undefined,
+                              localizations: r.localizations,
                             })
                           }
-                          aria-label={t`${name} on ${platformName}`}
+                          aria-label={
+                            regions.length > 0
+                              ? t`${name} on ${platformName} (${regionText})`
+                              : t`${name} on ${platformName}`
+                          }
                           className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
                         >
                           {p.name}
+                          {regions.length > 0 && <span className="ml-1 text-gray-400">{regionText}</span>}
                         </button>
                       )
                     })}

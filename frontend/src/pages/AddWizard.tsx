@@ -3,14 +3,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { createEntry } from '../api/collection'
-import type { CatalogPick } from '../components/catalog/SearchPicker'
+import type { CatalogPick, SearchPickerState } from '../components/catalog/SearchPicker'
 import SearchPicker from '../components/catalog/SearchPicker'
 import ConfirmShell from '../components/wizard/ConfirmShell'
 import ConfirmStep from '../components/wizard/ConfirmStep'
 import type { CustomValues } from '../components/wizard/CustomStep'
 import CustomStep from '../components/wizard/CustomStep'
 import type { DetailsValues } from '../components/wizard/DetailsStep'
-import DetailsStep, { detailsToCreate } from '../components/wizard/DetailsStep'
+import DetailsStep, { defaultDetails, detailsToCreate } from '../components/wizard/DetailsStep'
 import type { ManualMatch } from '../lib/catalog'
 import { useDisplayMoney } from '../lib/useDisplayMoney'
 
@@ -27,10 +27,11 @@ export default function AddWizard() {
   const [searchParams] = useSearchParams()
   const [state, setState] = useState<WizardStep>({ step: 'search' })
   const money = useDisplayMoney()
-  const itemName =
-    state.step === 'details' ? state.pick.name
-    : state.step === 'custom-details' ? state.custom.displayName
-    : undefined
+  // Survives the step machine: SearchPicker unmounts on every step
+  // change, so its state lives here and Back re-seeds it (the TanStack
+  // search cache brings the results straight back). Wins over the ?q=
+  // deep link, which only seeds a fresh wizard.
+  const [searchState, setSearchState] = useState<SearchPickerState | undefined>(undefined)
 
   return (
     <main className="py-6" aria-label={t`Add to collection`}>
@@ -38,6 +39,8 @@ export default function AddWizard() {
       {state.step === 'search' && (
         <SearchPicker
           initialQuery={searchParams.get('q') ?? ''}
+          initialState={searchState}
+          onStateChange={setSearchState}
           onPick={(pick) => setState({ step: 'details', pick })}
           footer={
             <p className="mt-2 border-t border-gray-100 pt-3 text-sm">
@@ -54,9 +57,18 @@ export default function AddWizard() {
       )}
       {state.step === 'details' && (
         <DetailsStep
-          heading={t`Your copy of ${itemName}`}
+          product={
+            state.pick.kind === 'game'
+              ? { name: state.pick.name, localizations: state.pick.localizations }
+              : { name: state.pick.name }
+          }
+          regionGroup={
+            state.pick.kind === 'game' && state.pick.regions !== undefined
+              ? { platformName: state.pick.platformName, regions: state.pick.regions }
+              : undefined
+          }
           currency={money.profileCurrency}
-          initialValues={state.details}
+          initialValues={state.details ?? (state.pick.kind === 'game' ? defaultDetails(state.pick.suggestedRegion) : undefined)}
           manualMatch={state.pick.kind === 'game' ? state.manualMatch : undefined}
           onManualMatchChange={
             state.pick.kind === 'game' ? (m) => setState({ ...state, manualMatch: m ?? undefined }) : undefined
@@ -84,7 +96,7 @@ export default function AddWizard() {
       )}
       {state.step === 'custom-details' && (
         <DetailsStep
-          heading={t`Your copy of ${itemName}`}
+          product={{ name: state.custom.displayName }}
           currency={money.profileCurrency}
           initialValues={state.details}
           onBack={() => setState({ step: 'custom', custom: state.custom, details: state.details })}

@@ -4,6 +4,8 @@ import type { EntryCreate } from '../../api/collection'
 import type { ManualMatch } from '../../lib/catalog'
 import { dollarsToCents } from '../../lib/format'
 import { CONDITIONS, PACKAGINGS, REGIONS, STATUSES } from '../../lib/listParams'
+import type { EntryRegion, LocalizationBundle } from '../../lib/productTitle'
+import { regionTitle, titleFormFor } from '../../lib/productTitle'
 import ManualMatchPicker from './ManualMatchPicker'
 
 type Condition = NonNullable<EntryCreate['item_condition']>
@@ -28,9 +30,9 @@ export interface DetailsValues {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- shared with ConfirmStep and the test, alongside this component.
-export function defaultDetails(): DetailsValues {
+export function defaultDetails(region: DetailsValues['region'] = 'ntsc_u'): DetailsValues {
   return {
-    region: 'ntsc_u', edition: '', packaging: 'cib', hasBox: true, hasManual: true,
+    region, edition: '', packaging: 'cib', hasBox: true, hasManual: true,
     boxCondition: '', manualCondition: '', itemCondition: '', pricePaid: '',
     purchasedAt: '', purchasedFrom: '', status: 'backlog',
     rating: '', notes: '', storageLocation: '', pinned: false,
@@ -69,7 +71,15 @@ export function detailsToCreate(d: DetailsValues, currency: string): Omit<EntryC
 }
 
 interface DetailsStepProps {
-  heading: string
+  // The product identity the heading names: the canonical name plus
+  // any localization bundles off the search result. The heading
+  // follows the currently selected region through regionTitle, so a
+  // JP copy reads by its JP identity while the select sits on ntsc_j.
+  product: { name: string; localizations?: LocalizationBundle[] }
+  // The picked platform's own region set (game picks with known
+  // regions only): renders the Region select grouped, that set first.
+  // Guidance, not enforcement - every region stays selectable.
+  regionGroup?: { platformName: string; regions: EntryRegion[] }
   // Label only: the price-paid field is stamped with this at create
   // time (detailsToCreate takes it separately), never edited here.
   currency: string
@@ -88,8 +98,8 @@ interface DetailsStepProps {
   onNext: (d: DetailsValues) => void
 }
 
-export default function DetailsStep({ heading, currency, initialValues, manualMatch, onManualMatchChange, manualMatchQuery, onBack, onNext }: DetailsStepProps) {
-  const { t } = useLingui()
+export default function DetailsStep({ product, regionGroup, currency, initialValues, manualMatch, onManualMatchChange, manualMatchQuery, onBack, onNext }: DetailsStepProps) {
+  const { t, i18n } = useLingui()
   const [v, setV] = useState<DetailsValues>(() => initialValues ?? defaultDetails())
   const [matchOpen, setMatchOpen] = useState(false)
   const set = <K extends keyof DetailsValues>(key: K, value: DetailsValues[K]) =>
@@ -104,8 +114,24 @@ export default function DetailsStep({ heading, currency, initialValues, manualMa
         : { ...prev, packaging, hasBox: true, hasManual: true },
     )
 
+  // The heading's identity follows the live-selected region, so a
+  // region change (e.g. off a JP default) re-derives it on every render.
+  const form = titleFormFor(i18n.locale)
+  const title = regionTitle(product.name, product.localizations, v.region, form)
+  const titleText = title.text
+
   const inputClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
   const labelClass = 'flex flex-col gap-1 text-sm font-medium'
+  const group = regionGroup && regionGroup.regions.length > 0 ? regionGroup : undefined
+  // Bare identifier for the Lingui macro: named placeholders need a
+  // plain variable, and the group-branch render below guarantees it.
+  const groupPlatformName = group?.platformName ?? ''
+  const otherRegions = group ? REGIONS.filter((r) => !group.regions.some((g) => g === r)) : REGIONS
+  const regionOption = (r: (typeof REGIONS)[number]) => (
+    <option key={r} value={r}>
+      {r.replace('_', '-').toUpperCase()}
+    </option>
+  )
   const conditionSelect = (label: string, key: 'boxCondition' | 'manualCondition' | 'itemCondition') => (
     <label className={labelClass}>
       {label}
@@ -130,16 +156,21 @@ export default function DetailsStep({ heading, currency, initialValues, manualMa
         aria-label={t`Copy details`}
         className="flex flex-col gap-4"
       >
-        <h3 className="text-lg font-semibold">{heading}</h3>
+        <h3 className="text-lg font-semibold">
+          <Trans>Your copy of <span lang={title.lang}>{titleText}</span></Trans>
+        </h3>
         <div className="flex flex-wrap gap-3">
           <label className={labelClass}>
             <Trans>Region</Trans>
             <select value={v.region} onChange={(e) => set('region', e.target.value as DetailsValues['region'])} className={inputClass}>
-              {REGIONS.map((r) => (
-                <option key={r} value={r}>
-                  {r.replace('_', '-').toUpperCase()}
-                </option>
-              ))}
+              {group ? (
+                <>
+                  <optgroup label={t`Released on ${groupPlatformName}`}>{group.regions.map(regionOption)}</optgroup>
+                  <optgroup label={t`Other regions`}>{otherRegions.map(regionOption)}</optgroup>
+                </>
+              ) : (
+                REGIONS.map(regionOption)
+              )}
             </select>
           </label>
           <label className={labelClass}>
