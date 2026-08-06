@@ -58,7 +58,7 @@ type Store interface {
 	PricingRows(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.PricingRow, error)
 	PurgeUserData(ctx context.Context, userID uuid.UUID) error
 	ListGameBackedRefs(ctx context.Context) ([]store.GameEntryRef, error)
-	SetFirstReleaseDate(ctx context.Context, entryID uuid.UUID, d *time.Time) error
+	SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string) error
 	ListNameOnlyPlatformEntries(ctx context.Context) ([]store.PlatformEntryRef, error)
 	SetEntryPlatformIdentity(ctx context.Context, entryID uuid.UUID, igdbID int64, name string) error
 	CountEntriesByProduct(ctx context.Context, productID uuid.UUID) (int64, error)

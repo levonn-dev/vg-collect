@@ -57,6 +57,55 @@ func TestPickReleaseDate(t *testing.T) {
 	}
 }
 
+// TestPickLocalization pins the region-picked presentation trio the
+// same way TestPickReleaseDate pins the date: chain hits per region,
+// sparse bundles (a region that ships only box art), the regions with
+// no chain at all, and the empty-string guard - a provider's empty
+// string is "no localized form", never a stored empty.
+func TestPickLocalization(t *testing.T) {
+	name, translit, cover := "聖剣伝説3", "Seiken Densetsu 3", "https://x/jp.jpg"
+	meta := &enrichapi.IgdbMeta{Localizations: &[]enrichapi.Localization{
+		{Region: "ja-JP", Name: &name, Translit: &translit, CoverUrl: &cover},
+		{Region: "EU", CoverUrl: new("https://x/eu.jpg")},
+		{Region: "ko-KR", Name: new("성검전설 3")},
+	}}
+	empty := &enrichapi.IgdbMeta{Localizations: &[]enrichapi.Localization{
+		{Region: "ja-JP", Name: new(""), Translit: new(""), CoverUrl: new("")},
+	}}
+
+	cases := []struct {
+		name                      string
+		meta                      *enrichapi.IgdbMeta
+		region                    string
+		wantName, wantTr, wantCov *string
+	}{
+		{"ntsc_j takes the ja-JP bundle whole", meta, "ntsc_j", &name, &translit, &cover},
+		{"pal takes the EU bundle, sparse fields stay nil", meta, "pal", nil, nil, new("https://x/eu.jpg")},
+		{"ntsc_u has no chain", meta, "ntsc_u", nil, nil, nil},
+		{"region_free has no chain", meta, "region_free", nil, nil, nil},
+		{"ko-KR is in no chain", meta, "ko-KR", nil, nil, nil},
+		{"nil meta", nil, "ntsc_j", nil, nil, nil},
+		{"nil localizations", &enrichapi.IgdbMeta{}, "ntsc_j", nil, nil, nil},
+		{"empty localizations", &enrichapi.IgdbMeta{Localizations: &[]enrichapi.Localization{}}, "ntsc_j", nil, nil, nil},
+		{"empty strings never store", empty, "ntsc_j", nil, nil, nil},
+	}
+	strEq := func(got, want *string) bool {
+		if got == nil || want == nil {
+			return got == want
+		}
+		return *got == *want
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotName, gotTr, gotCov := pickLocalization(tc.meta, tc.region)
+			if !strEq(gotName, tc.wantName) || !strEq(gotTr, tc.wantTr) || !strEq(gotCov, tc.wantCov) {
+				t.Fatalf("got %v/%v/%v want %v/%v/%v",
+					gotName, gotTr, gotCov, tc.wantName, tc.wantTr, tc.wantCov)
+			}
+		})
+	}
+}
+
 // TestUnitValidCoverURL_LengthBoundary pins the 512-char boundary
 // directly, same direct-unit style as TestPickReleaseDate above (this
 // file's tests live in package server, unlike handlers_test.go's

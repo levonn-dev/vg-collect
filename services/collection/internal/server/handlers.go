@@ -135,6 +135,44 @@ func pickReleaseDate(meta *enrichapi.IgdbMeta, region string) *time.Time {
 	return dateToTime(meta.FirstReleaseDate)
 }
 
+// localizationChains orders IGDB localization regions per entry
+// region; the first bundle present wins. Values are game_localizations
+// region identifiers (ja-JP), NOT the release_region names (japan) -
+// two provider vocabularies answering different questions, which is
+// why this table stays separate from regionChains. ntsc_u and
+// region_free have no chain: the canonical presentation is theirs.
+var localizationChains = map[string][]string{
+	"ntsc_j": {"ja-JP"},
+	"pal":    {"EU"},
+}
+
+// pickLocalization resolves an entry's region-picked presentation
+// from the product's localization bundles: nil fields mean "no
+// localized form" and display falls back to the canonical snapshot.
+func pickLocalization(meta *enrichapi.IgdbMeta, region string) (name, translit, cover *string) {
+	if meta == nil || meta.Localizations == nil {
+		return nil, nil, nil
+	}
+	byRegion := make(map[string]enrichapi.Localization, len(*meta.Localizations))
+	for _, l := range *meta.Localizations {
+		byRegion[l.Region] = l
+	}
+	for _, want := range localizationChains[region] {
+		l, ok := byRegion[want]
+		if !ok {
+			continue
+		}
+		nonEmpty := func(s *string) *string {
+			if s == nil || *s == "" {
+				return nil
+			}
+			return s
+		}
+		return nonEmpty(l.Name), nonEmpty(l.Translit), nonEmpty(l.CoverUrl)
+	}
+	return nil, nil, nil
+}
+
 // catalogSnapshot derives the entry snapshot from a product. The
 // precedence rule: provider blocks (platform, igdb) win per-field
 // where present; community facts fill what providers do not supply.
@@ -156,6 +194,7 @@ func catalogSnapshot(product enrichapi.Product, region string) store.CatalogSnap
 		snap.IGDBGameID = &product.Igdb.GameId
 		snap.FirstReleaseDate = pickReleaseDate(product.Igdb, region)
 		snap.CoverURL = product.Igdb.CoverUrl
+		snap.LocalizedName, snap.LocalizedNameTranslit, snap.LocalizedCoverURL = pickLocalization(product.Igdb, region)
 	} else if product.Community != nil && product.Community.FirstReleaseDate != nil {
 		d := product.Community.FirstReleaseDate.Time
 		snap.FirstReleaseDate = &d
@@ -179,6 +218,13 @@ func datesEqual(a, b *time.Time) bool {
 		return a == b
 	}
 	return a.Equal(*b)
+}
+
+func strPtrEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func uuidsFrom(ids *[]openapi_types.UUID) []uuid.UUID {
@@ -405,6 +451,9 @@ func toAPIEntry(e store.Entry, valueCents *int64) api.Entry {
 		MediaType:                  api.EntryMediaType(e.MediaType),
 		DisplayName:                e.DisplayName,
 		CoverUrl:                   e.CoverURL,
+		LocalizedName:              e.LocalizedName,
+		LocalizedNameTranslit:      e.LocalizedNameTranslit,
+		LocalizedCoverUrl:          e.LocalizedCoverURL,
 		IgdbGameId:                 e.IGDBGameID,
 		Region:                     api.EntryRegion(e.Region),
 		Edition:                    e.Edition,
@@ -580,6 +629,9 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		e.FirstReleaseDate = snap.FirstReleaseDate
 		e.IGDBGameID = snap.IGDBGameID
 		e.CoverURL = snap.CoverURL
+		e.LocalizedName = snap.LocalizedName
+		e.LocalizedNameTranslit = snap.LocalizedNameTranslit
+		e.LocalizedCoverURL = snap.LocalizedCoverURL
 	}
 	// A NEW proxy reference must exist in the catalog (the entry's own
 	// product was just fetched, so proxying to itself needs no check).
@@ -700,10 +752,11 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		}
 	}
 
-	// The snapshotted date is region-scoped: a repoint or a region
-	// change re-picks it from the product. Game-backed entries only -
-	// hardware has no igdb dates, and a console's region edit must not
-	// depend on enrichment being up.
+	// The snapshotted date and the localized presentation are both
+	// region-scoped: a repoint or a region change re-picks them from
+	// the product. Game-backed entries only - hardware has no igdb
+	// block, and a console's region edit must not depend on enrichment
+	// being up.
 	var pickProd *enrichapi.Product
 
 	// Narrow re-match: product_id may move an auto-priced entry off an
@@ -802,6 +855,9 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 	}
 	if pickProd != nil {
 		e.FirstReleaseDate = pickReleaseDate(pickProd.Igdb, e.Region)
+		// A region with no localized form clears what the old one
+		// stored, rather than keeping a title the entry no longer has.
+		e.LocalizedName, e.LocalizedNameTranslit, e.LocalizedCoverURL = pickLocalization(pickProd.Igdb, e.Region)
 	}
 	if custom {
 		e.DisplayName = *body.DisplayName
@@ -2224,12 +2280,13 @@ func (h *Handlers) GetLibrarySummary(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, api.LibrarySummary{Library: games})
 }
 
-// InternalResnapshot recomputes every game-backed entry's snapshotted
-// first_release_date from its product's current per-region dates: the
-// operator's one-shot backfill after the release-dates deploy.
+// InternalResnapshot recomputes every game-backed entry's
+// product-derived snapshot fields: the region-picked release date and
+// the localized presentation trio (name, transliteration, cover url).
 // Hand-routed outside the contract but behind the normal JWT guard;
-// the caller's bearer rides the enrichment hops. Idempotent - rows are
-// written only when the recomputed pick differs.
+// the caller's bearer rides the enrichment hops. Idempotent and
+// re-runnable - rows are written only when the recomputed date or
+// trio differs from what is stored.
 func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 	_, bearer, ok := h.caller(w, r)
 	if !ok {
@@ -2255,10 +2312,14 @@ func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, ref := range group {
 			pick := pickReleaseDate(prod.Igdb, ref.Region)
-			if datesEqual(pick, ref.FirstReleaseDate) {
+			name, translit, cover := pickLocalization(prod.Igdb, ref.Region)
+			if datesEqual(pick, ref.FirstReleaseDate) &&
+				strPtrEqual(name, ref.LocalizedName) &&
+				strPtrEqual(translit, ref.LocalizedNameTranslit) &&
+				strPtrEqual(cover, ref.LocalizedCoverURL) {
 				continue
 			}
-			if err := h.store.SetFirstReleaseDate(r.Context(), ref.EntryID, pick); err != nil {
+			if err := h.store.SetSnapshotFields(r.Context(), ref.EntryID, pick, name, translit, cover); err != nil {
 				h.logger.WarnContext(r.Context(), "resnapshot: entry update failed", "entry", ref.EntryID, "err", err)
 				continue
 			}

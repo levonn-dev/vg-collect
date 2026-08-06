@@ -272,6 +272,64 @@ func TestEntryCoverURLPersistsThroughCreateAndList(t *testing.T) {
 	}
 }
 
+// TestEntryLocalizedFieldsPersistThroughCreateAndUpdate covers the
+// region-picked presentation trio: it round-trips through create and
+// read back, an update rewrites it (a region edit re-picks, including
+// back to nothing), and an entry whose region has no localized
+// presentation stores NULLs.
+func TestEntryLocalizedFieldsPersistThroughCreateAndUpdate(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	userID := uuid.New()
+
+	e := baseEntry(userID)
+	e.Region = "ntsc_j"
+	e.LocalizedName = new("聖剣伝説3")
+	e.LocalizedNameTranslit = new("Seiken Densetsu 3")
+	e.LocalizedCoverURL = new("https://images.igdb.example/jp.jpg")
+	created := mustCreate(t, s, e, nil)
+	if created.LocalizedName == nil || *created.LocalizedName != "聖剣伝説3" ||
+		created.LocalizedNameTranslit == nil || *created.LocalizedNameTranslit != "Seiken Densetsu 3" ||
+		created.LocalizedCoverURL == nil || *created.LocalizedCoverURL != "https://images.igdb.example/jp.jpg" {
+		t.Fatalf("create must return the localized snapshot: %v %v %v",
+			created.LocalizedName, created.LocalizedNameTranslit, created.LocalizedCoverURL)
+	}
+	got, err := s.GetEntry(ctx, userID, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LocalizedName == nil || *got.LocalizedName != "聖剣伝説3" ||
+		got.LocalizedNameTranslit == nil || *got.LocalizedNameTranslit != "Seiken Densetsu 3" ||
+		got.LocalizedCoverURL == nil || *got.LocalizedCoverURL != "https://images.igdb.example/jp.jpg" {
+		t.Fatalf("read back: %v %v %v", got.LocalizedName, got.LocalizedNameTranslit, got.LocalizedCoverURL)
+	}
+
+	// A region edit re-picks: a sparse bundle (cover only) overwrites
+	// the whole trio rather than leaving the previous region's title
+	// behind.
+	got.Region = "pal"
+	got.LocalizedName = nil
+	got.LocalizedNameTranslit = nil
+	got.LocalizedCoverURL = new("https://images.igdb.example/eu.jpg")
+	updated, err := s.UpdateEntry(ctx, got, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.LocalizedName != nil || updated.LocalizedNameTranslit != nil ||
+		updated.LocalizedCoverURL == nil || *updated.LocalizedCoverURL != "https://images.igdb.example/eu.jpg" {
+		t.Fatalf("update must rewrite the whole trio: %v %v %v",
+			updated.LocalizedName, updated.LocalizedNameTranslit, updated.LocalizedCoverURL)
+	}
+
+	// No localized presentation means NULLs (the ntsc_u and
+	// region_free case, and every hardware entry).
+	bare := mustCreate(t, s, baseEntry(userID), nil)
+	if bare.LocalizedName != nil || bare.LocalizedNameTranslit != nil || bare.LocalizedCoverURL != nil {
+		t.Fatalf("no localized snapshot means nulls: %v %v %v",
+			bare.LocalizedName, bare.LocalizedNameTranslit, bare.LocalizedCoverURL)
+	}
+}
+
 func TestUpdateRankLifecycle(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -367,7 +425,9 @@ func TestUpdateEntry_PersistsProductRepoint(t *testing.T) {
 // walk sees exactly the game-backed rows from BOTH users (the method
 // is deliberately unscoped) and nothing else, ordered product_id then
 // id (the shared product_id pair exercises the id tie-break), with
-// each row's own region read back correctly.
+// each row's own region and stored localized trio read back correctly
+// (gameA carries a non-nil trio, the other two rows carry nil - both
+// round trips get exercised).
 func TestListGameBackedRefs(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -375,10 +435,16 @@ func TestListGameBackedRefs(t *testing.T) {
 
 	// seedTrio mirrors the brief's (a)/(b)/(c) shapes for one user and
 	// returns the (a) game entry so the assertions below can key off it.
-	seedTrio := func(user uuid.UUID, released time.Time) store.Entry {
+	// name/translit/cover seed the (a) entry's stored localized trio
+	// (nil for callers that don't care), exercising both the non-nil
+	// and nil round trip through ListGameBackedRefs.
+	seedTrio := func(user uuid.UUID, released time.Time, name, translit, cover *string) store.Entry {
 		game := baseEntry(user)
 		game.IGDBGameID = new(int64(1000))
 		game.FirstReleaseDate = &released
+		game.LocalizedName = name
+		game.LocalizedNameTranslit = translit
+		game.LocalizedCoverURL = cover
 		gameEntry := mustCreate(t, s, game, nil)
 
 		hardware := baseEntry(user)
@@ -393,8 +459,9 @@ func TestListGameBackedRefs(t *testing.T) {
 	dateA := time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC)
 	dateA2 := time.Date(1996, time.January, 1, 0, 0, 0, 0, time.UTC)
 	dateB := time.Date(1998, time.November, 21, 0, 0, 0, 0, time.UTC)
-	gameA := seedTrio(userA, dateA)
-	gameB := seedTrio(userB, dateB)
+	jaName, jaTranslit, jaCover := new("クロノ・トリガー"), new("Kurono Torigaa"), new("https://x/ja-cover.jpg")
+	gameA := seedTrio(userA, dateA, jaName, jaTranslit, jaCover)
+	gameB := seedTrio(userB, dateB, nil, nil, nil)
 
 	// A second game-backed entry on gameA's SAME product_id (a second
 	// copy of the same cart), with a different region (pal). This gives
@@ -433,14 +500,21 @@ func TestListGameBackedRefs(t *testing.T) {
 		}
 	}
 
+	strEq := func(a, b *string) bool {
+		if a == nil || b == nil {
+			return a == b
+		}
+		return *a == *b
+	}
 	want := map[uuid.UUID]struct {
-		productID uuid.UUID
-		region    string
-		release   time.Time
+		productID             uuid.UUID
+		region                string
+		release               time.Time
+		name, translit, cover *string
 	}{
-		gameA.ID:       {*gameA.ProductID, "ntsc_u", dateA},
-		gameA2Entry.ID: {*gameA.ProductID, "pal", dateA2},
-		gameB.ID:       {*gameB.ProductID, "ntsc_u", dateB},
+		gameA.ID:       {*gameA.ProductID, "ntsc_u", dateA, jaName, jaTranslit, jaCover},
+		gameA2Entry.ID: {*gameA.ProductID, "pal", dateA2, nil, nil, nil},
+		gameB.ID:       {*gameB.ProductID, "ntsc_u", dateB, nil, nil, nil},
 	}
 	for _, r := range refs {
 		w, ok := want[r.EntryID]
@@ -456,13 +530,23 @@ func TestListGameBackedRefs(t *testing.T) {
 		if r.FirstReleaseDate == nil || !r.FirstReleaseDate.Equal(w.release) {
 			t.Fatalf("first_release_date for %s: got %v, want %v", r.EntryID, r.FirstReleaseDate, w.release)
 		}
+		if !strEq(r.LocalizedName, w.name) {
+			t.Fatalf("localized_name for %s: got %v, want %v", r.EntryID, r.LocalizedName, w.name)
+		}
+		if !strEq(r.LocalizedNameTranslit, w.translit) {
+			t.Fatalf("localized_name_translit for %s: got %v, want %v", r.EntryID, r.LocalizedNameTranslit, w.translit)
+		}
+		if !strEq(r.LocalizedCoverURL, w.cover) {
+			t.Fatalf("localized_cover_url for %s: got %v, want %v", r.EntryID, r.LocalizedCoverURL, w.cover)
+		}
 	}
 }
 
-// TestSetFirstReleaseDate covers the resnapshot walk's only write: it
-// rewrites the date and bumps updated_at, and a nil argument clears the
-// column back to NULL.
-func TestSetFirstReleaseDate(t *testing.T) {
+// TestSetSnapshotFields covers the resnapshot walk's only write: it
+// rewrites the date and the localized presentation trio in one UPDATE
+// and bumps updated_at, and all-nil arguments clear every column back
+// to NULL.
+func TestSetSnapshotFields(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	user := uuid.New()
@@ -472,7 +556,8 @@ func TestSetFirstReleaseDate(t *testing.T) {
 	created := mustCreate(t, s, e, nil)
 
 	newDate := time.Date(1995, time.August, 22, 0, 0, 0, 0, time.UTC)
-	if err := s.SetFirstReleaseDate(ctx, created.ID, &newDate); err != nil {
+	name, translit, cover := new("クロノ・トリガー"), new("Kurono Torigaa"), new("https://x/ja-cover.jpg")
+	if err := s.SetSnapshotFields(ctx, created.ID, &newDate, name, translit, cover); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.GetEntry(ctx, user, created.ID)
@@ -482,19 +567,29 @@ func TestSetFirstReleaseDate(t *testing.T) {
 	if got.FirstReleaseDate == nil || !got.FirstReleaseDate.Equal(newDate) {
 		t.Fatalf("date: got %v, want %v", got.FirstReleaseDate, newDate)
 	}
+	if got.LocalizedName == nil || *got.LocalizedName != *name {
+		t.Fatalf("localized_name: got %v, want %v", got.LocalizedName, *name)
+	}
+	if got.LocalizedNameTranslit == nil || *got.LocalizedNameTranslit != *translit {
+		t.Fatalf("localized_name_translit: got %v, want %v", got.LocalizedNameTranslit, *translit)
+	}
+	if got.LocalizedCoverURL == nil || *got.LocalizedCoverURL != *cover {
+		t.Fatalf("localized_cover_url: got %v, want %v", got.LocalizedCoverURL, *cover)
+	}
 	if !got.UpdatedAt.After(created.UpdatedAt) {
 		t.Fatalf("updated_at must move: %v -> %v", created.UpdatedAt, got.UpdatedAt)
 	}
 
-	if err := s.SetFirstReleaseDate(ctx, created.ID, nil); err != nil {
+	if err := s.SetSnapshotFields(ctx, created.ID, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	cleared, err := s.GetEntry(ctx, user, created.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cleared.FirstReleaseDate != nil {
-		t.Fatalf("date must clear to NULL, got %v", cleared.FirstReleaseDate)
+	if cleared.FirstReleaseDate != nil || cleared.LocalizedName != nil ||
+		cleared.LocalizedNameTranslit != nil || cleared.LocalizedCoverURL != nil {
+		t.Fatalf("all four columns must clear to NULL, got %+v", cleared)
 	}
 }
 
@@ -2073,6 +2168,8 @@ func TestApproveSubmission_PreservesUserOwnedFields(t *testing.T) {
 	appr, err := s.ApproveSubmission(ctx, sub.ID, store.CatalogSnapshot{
 		ProductID: productID, ItemType: "game", DisplayName: "Curated Name",
 		PlatformName: &platName, FirstReleaseDate: &rd,
+		LocalizedName: new("聖剣伝説3"), LocalizedNameTranslit: new("Seiken Densetsu 3"),
+		LocalizedCoverURL: new("https://images.igdb.example/jp.jpg"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2090,7 +2187,10 @@ func TestApproveSubmission_PreservesUserOwnedFields(t *testing.T) {
 	if adopted.ProductID == nil || *adopted.ProductID != productID ||
 		adopted.DisplayName != "Curated Name" ||
 		adopted.PlatformName == nil || *adopted.PlatformName != "SNES" ||
-		adopted.FirstReleaseDate == nil || !adopted.FirstReleaseDate.Equal(rd) {
+		adopted.FirstReleaseDate == nil || !adopted.FirstReleaseDate.Equal(rd) ||
+		adopted.LocalizedName == nil || *adopted.LocalizedName != "聖剣伝説3" ||
+		adopted.LocalizedNameTranslit == nil || *adopted.LocalizedNameTranslit != "Seiken Densetsu 3" ||
+		adopted.LocalizedCoverURL == nil || *adopted.LocalizedCoverURL != "https://images.igdb.example/jp.jpg" {
 		t.Fatalf("adoption must write the catalog snapshot: %+v", adopted)
 	}
 

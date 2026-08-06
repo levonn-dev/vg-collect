@@ -26,6 +26,7 @@ func TestSharedEntryWhitelist(t *testing.T) {
 	want := []string{
 		"id", "product_id", "item_type", "media_type", "display_name",
 		"platform", "first_release_date", "cover_url", "igdb_game_id",
+		"localized_name", "localized_name_translit", "localized_cover_url",
 		"region", "edition", "packaging", "has_box", "has_manual",
 		"box_condition", "manual_condition", "item_condition",
 		"pinned", "tags", "created_at",
@@ -80,6 +81,55 @@ func TestUnitSharedShelf_Gate(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestUnitSharedShelfEntries_CarriesLocalizedSnapshot pins the
+// localized trio on the public projection: a visitor reading someone
+// else's shelf sees the same region-picked presentation the owner
+// does. The whitelist above is the privacy side of this decision;
+// this is the wiring side.
+func TestUnitSharedShelfEntries_CarriesLocalizedSnapshot(t *testing.T) {
+	owner := uuid.New()
+	shelf := store.View{ID: uuid.New(), UserID: owner, Name: "Imports", Slug: "Imports",
+		Visibility: "listed", Params: []byte(`{"v":1}`)}
+	entry := store.Entry{ID: uuid.New(), ItemType: "game", MediaType: "physical",
+		DisplayName: "Seiken Densetsu 3", Region: "ntsc_j", Packaging: "cib",
+		Status: "beaten", CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		LocalizedName:         new("聖剣伝説3"),
+		LocalizedNameTranslit: new("Seiken Densetsu 3"),
+		LocalizedCoverURL:     new("https://images.igdb.example/jp.jpg"),
+	}
+	st := &stubStore{
+		getSharedShelf: func(context.Context, uuid.UUID) (store.View, error) { return shelf, nil },
+		listEntries: func(context.Context, uuid.UUID, store.Filters) ([]store.Entry, error) {
+			return []store.Entry{entry}, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodGet, srv.URL+"/shared/shelves/"+shelf.ID.String()+"/entries", a.token(t, "viewer"), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	var got struct {
+		Entries []struct {
+			LocalizedName         *string `json:"localized_name"`
+			LocalizedNameTranslit *string `json:"localized_name_translit"`
+			LocalizedCoverURL     *string `json:"localized_cover_url"`
+		} `json:"entries"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(got.Entries))
+	}
+	e := got.Entries[0]
+	if e.LocalizedName == nil || *e.LocalizedName != "聖剣伝説3" ||
+		e.LocalizedNameTranslit == nil || *e.LocalizedNameTranslit != "Seiken Densetsu 3" ||
+		e.LocalizedCoverURL == nil || *e.LocalizedCoverURL != "https://images.igdb.example/jp.jpg" {
+		t.Fatalf("shared entry localized snapshot: %v %v %v",
+			e.LocalizedName, e.LocalizedNameTranslit, e.LocalizedCoverURL)
+	}
 }
 
 func TestUnitSharedShelfEntries_ExecutesStoredParams(t *testing.T) {

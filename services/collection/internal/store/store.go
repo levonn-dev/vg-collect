@@ -119,6 +119,14 @@ type Entry struct {
 	ExternalRef *string
 	CoverURL    *string
 
+	// The region-picked presentation snapshot, derived from the
+	// product's localization bundles by the entry's region. All nil
+	// when the region has no localized form; display falls back to
+	// DisplayName / CoverURL.
+	LocalizedName         *string
+	LocalizedNameTranslit *string
+	LocalizedCoverURL     *string
+
 	Tags []TagRef
 
 	CreatedAt time.Time
@@ -142,6 +150,7 @@ const entryCols = `id, user_id, product_id, item_type, media_type,
 	pricing_mode, pricing_product_id,
 	status, rating, notes, storage_location, pinned, backlog_rank,
 	source, external_ref, created_at, updated_at, cover_url,
+	localized_name, localized_name_translit, localized_cover_url,
 	custom_value_cents, custom_value_set_at,
 	custom_value_entered_cents, custom_value_entered_currency`
 
@@ -156,6 +165,7 @@ func scanEntry(row pgx.Row) (Entry, error) {
 		&e.PricingMode, &e.PricingProductID,
 		&e.Status, &e.Rating, &e.Notes, &e.StorageLocation, &e.Pinned, &e.BacklogRank,
 		&e.Source, &e.ExternalRef, &e.CreatedAt, &e.UpdatedAt, &e.CoverURL,
+		&e.LocalizedName, &e.LocalizedNameTranslit, &e.LocalizedCoverURL,
 		&e.CustomValueCents, &e.CustomValueSetAt,
 		&e.CustomValueEnteredCents, &e.CustomValueEnteredCurrency,
 	)
@@ -259,12 +269,15 @@ func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			 price_paid_cents, currency, purchased_at, purchased_from,
 			 pricing_mode, pricing_product_id,
 			 status, rating, notes, storage_location, pinned, backlog_rank,
-			 source, external_ref, cover_url, custom_value_cents, custom_value_set_at,
+			 source, external_ref, cover_url,
+			 localized_name, localized_name_translit, localized_cover_url,
+			 custom_value_cents, custom_value_set_at,
 			 custom_value_entered_cents, custom_value_entered_currency)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
 			        $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,
-			        $33, CASE WHEN $33::bigint IS NULL THEN NULL ELSE now() END,
-			        $34, $35)
+			        $33,$34,$35,
+			        $36, CASE WHEN $36::bigint IS NULL THEN NULL ELSE now() END,
+			        $37, $38)
 			RETURNING `+entryCols,
 			e.UserID, e.ProductID, e.ItemType, e.MediaType,
 			e.DisplayName, e.PlatformIGDBID, e.PlatformName, e.FirstReleaseDate, e.IGDBGameID,
@@ -273,7 +286,9 @@ func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			e.PricePaidCents, e.Currency, e.PurchasedAt, e.PurchasedFrom,
 			e.PricingMode, e.PricingProductID,
 			e.Status, e.Rating, e.Notes, e.StorageLocation, e.Pinned, e.BacklogRank,
-			e.Source, e.ExternalRef, e.CoverURL, e.CustomValueCents,
+			e.Source, e.ExternalRef, e.CoverURL,
+			e.LocalizedName, e.LocalizedNameTranslit, e.LocalizedCoverURL,
+			e.CustomValueCents,
 			e.CustomValueEnteredCents, e.CustomValueEnteredCurrency)
 		created, err := scanEntry(row)
 		if err != nil {
@@ -363,6 +378,8 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			 display_name = $23, platform_name = $24, first_release_date = $25,
 			 igdb_game_id = $26, product_id = $30,
 			 cover_url = $31, platform_igdb_id = $32,
+			 localized_name = $33, localized_name_translit = $34,
+			 localized_cover_url = $35,
 			 custom_value_cents = $27,
 			 custom_value_set_at = CASE
 			   WHEN $27::bigint IS NOT DISTINCT FROM custom_value_cents THEN custom_value_set_at
@@ -383,7 +400,8 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			e.DisplayName, e.PlatformName, e.FirstReleaseDate,
 			e.IGDBGameID, e.CustomValueCents,
 			e.CustomValueEnteredCents, e.CustomValueEnteredCurrency,
-			e.ProductID, e.CoverURL, e.PlatformIGDBID)
+			e.ProductID, e.CoverURL, e.PlatformIGDBID,
+			e.LocalizedName, e.LocalizedNameTranslit, e.LocalizedCoverURL)
 		updated, err := scanEntry(row)
 		if err != nil {
 			return fmt.Errorf("store: update entry: %w", err)
@@ -569,12 +587,19 @@ func (s *Store) BulkUpdateEntries(ctx context.Context, userID uuid.UUID, entryID
 }
 
 // GameEntryRef is the resnapshot walk's row: just enough to recompute
-// one game-backed entry's date pick.
+// one game-backed entry's date pick and localized presentation trio.
 type GameEntryRef struct {
 	EntryID          uuid.UUID
 	ProductID        uuid.UUID
 	Region           string
 	FirstReleaseDate *time.Time
+
+	// The entry's currently stored snapshot trio, read back so the walk
+	// can diff a freshly recomputed pick against it and skip an
+	// unchanged row.
+	LocalizedName         *string
+	LocalizedNameTranslit *string
+	LocalizedCoverURL     *string
 }
 
 // CountEntriesByProduct counts entries referencing the product across
@@ -591,12 +616,15 @@ func (s *Store) CountEntriesByProduct(ctx context.Context, productID uuid.UUID) 
 }
 
 // ListGameBackedRefs lists every user's game-backed entries (product
-// and igdb game both present) for the one-shot release-date
-// resnapshot; deliberately unscoped - the pick derives from product +
+// and igdb game both present) for the resnapshot walk, current
+// snapshot trio included so the walk can diff against a freshly
+// picked one; deliberately unscoped - the pick derives from product +
 // entry region, nothing user-private.
 func (s *Store) ListGameBackedRefs(ctx context.Context) ([]GameEntryRef, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, product_id, region, first_release_date FROM entries
+		SELECT id, product_id, region, first_release_date,
+			localized_name, localized_name_translit, localized_cover_url
+		FROM entries
 		WHERE product_id IS NOT NULL AND igdb_game_id IS NOT NULL
 		ORDER BY product_id, id`)
 	if err != nil {
@@ -606,7 +634,8 @@ func (s *Store) ListGameBackedRefs(ctx context.Context) ([]GameEntryRef, error) 
 	var out []GameEntryRef
 	for rows.Next() {
 		var r GameEntryRef
-		if err := rows.Scan(&r.EntryID, &r.ProductID, &r.Region, &r.FirstReleaseDate); err != nil {
+		if err := rows.Scan(&r.EntryID, &r.ProductID, &r.Region, &r.FirstReleaseDate,
+			&r.LocalizedName, &r.LocalizedNameTranslit, &r.LocalizedCoverURL); err != nil {
 			return nil, fmt.Errorf("store: list game-backed refs: %w", err)
 		}
 		out = append(out, r)
@@ -617,14 +646,17 @@ func (s *Store) ListGameBackedRefs(ctx context.Context) ([]GameEntryRef, error) 
 	return out, nil
 }
 
-// SetFirstReleaseDate narrowly rewrites one entry's snapshotted date
-// (the resnapshot walk's only write).
-func (s *Store) SetFirstReleaseDate(ctx context.Context, entryID uuid.UUID, d *time.Time) error {
-	_, err := s.pool.Exec(ctx,
-		`UPDATE entries SET first_release_date = $2, updated_at = now() WHERE id = $1`,
-		entryID, d)
+// SetSnapshotFields narrowly rewrites one entry's product-derived
+// snapshot fields (the resnapshot walk's only write): the region-picked
+// date and localized presentation trio.
+func (s *Store) SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE entries SET first_release_date = $2, localized_name = $3,
+			localized_name_translit = $4, localized_cover_url = $5, updated_at = now()
+		WHERE id = $1`,
+		entryID, d, name, translit, cover)
 	if err != nil {
-		return fmt.Errorf("store: set first release date: %w", err)
+		return fmt.Errorf("store: set snapshot fields: %w", err)
 	}
 	return nil
 }
@@ -1558,14 +1590,17 @@ type SubmissionProposal struct {
 // CatalogSnapshot is the product-derived snapshot adoption writes -
 // the same fields product-backed creation snapshots.
 type CatalogSnapshot struct {
-	ProductID        uuid.UUID
-	ItemType         string
-	DisplayName      string
-	PlatformIGDBID   *int64
-	PlatformName     *string
-	FirstReleaseDate *time.Time
-	IGDBGameID       *int64
-	CoverURL         *string
+	ProductID             uuid.UUID
+	ItemType              string
+	DisplayName           string
+	PlatformIGDBID        *int64
+	PlatformName          *string
+	FirstReleaseDate      *time.Time
+	IGDBGameID            *int64
+	CoverURL              *string
+	LocalizedName         *string
+	LocalizedNameTranslit *string
+	LocalizedCoverURL     *string
 }
 
 const submissionCols = `id, entry_id, user_id, status, reject_reason, product_id,
@@ -1808,11 +1843,14 @@ func (s *Store) ApproveSubmission(ctx context.Context, id uuid.UUID, snap Catalo
 			SET product_id = $2, item_type = $3, display_name = $4,
 			    platform_igdb_id = $5, platform_name = $6,
 			    first_release_date = $7, igdb_game_id = $8, cover_url = $9,
+			    localized_name = $10, localized_name_translit = $11,
+			    localized_cover_url = $12,
 			    updated_at = now()
 			WHERE id = $1`,
 			sub.EntryID, snap.ProductID, snap.ItemType, snap.DisplayName,
 			snap.PlatformIGDBID, snap.PlatformName,
-			snap.FirstReleaseDate, snap.IGDBGameID, snap.CoverURL); err != nil {
+			snap.FirstReleaseDate, snap.IGDBGameID, snap.CoverURL,
+			snap.LocalizedName, snap.LocalizedNameTranslit, snap.LocalizedCoverURL); err != nil {
 			return fmt.Errorf("store: adopt entry: %w", err)
 		}
 		out = sub

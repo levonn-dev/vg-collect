@@ -67,7 +67,7 @@ type stubStore struct {
 	coverURLs            func(ctx context.Context, userID uuid.UUID, f store.Filters, limit int) ([]string, error)
 
 	listGameBackedRefs    func(ctx context.Context) ([]store.GameEntryRef, error)
-	setFirstReleaseDate   func(ctx context.Context, entryID uuid.UUID, d *time.Time) error
+	setSnapshotFields     func(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string) error
 	countEntriesByProduct func(ctx context.Context, productID uuid.UUID) (int64, error)
 
 	listNameOnlyPlatformEntries func(ctx context.Context) ([]store.PlatformEntryRef, error)
@@ -258,11 +258,11 @@ func (s *stubStore) CountEntriesByProduct(ctx context.Context, productID uuid.UU
 	}
 	return s.countEntriesByProduct(ctx, productID)
 }
-func (s *stubStore) SetFirstReleaseDate(ctx context.Context, entryID uuid.UUID, d *time.Time) error {
-	if s.setFirstReleaseDate == nil {
-		panic("unexpected SetFirstReleaseDate")
+func (s *stubStore) SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string) error {
+	if s.setSnapshotFields == nil {
+		panic("unexpected SetSnapshotFields")
 	}
-	return s.setFirstReleaseDate(ctx, entryID, d)
+	return s.setSnapshotFields(ctx, entryID, d, name, translit, cover)
 }
 func (s *stubStore) ListNameOnlyPlatformEntries(ctx context.Context) ([]store.PlatformEntryRef, error) {
 	if s.listNameOnlyPlatformEntries == nil {
@@ -481,6 +481,24 @@ func gameProduct(id uuid.UUID) enrichapi.Product {
 			Companies: []enrichapi.CompanyCredit{}, FirstReleaseDate: &released,
 		},
 	}
+}
+
+// localizedGameProduct is gameProduct plus per-region presentation
+// bundles: a full ja-JP one (native-script title, transliteration,
+// regional box art) and a cover-only EU one, the sparse shape the
+// provider actually serves.
+func localizedGameProduct(id uuid.UUID) enrichapi.Product {
+	p := gameProduct(id)
+	p.Igdb.Localizations = &[]enrichapi.Localization{
+		{
+			Region:   "ja-JP",
+			Name:     new("聖剣伝説3"),
+			Translit: new("Seiken Densetsu 3"),
+			CoverUrl: new("https://images.igdb.example/jp.jpg"),
+		},
+		{Region: "EU", CoverUrl: new("https://images.igdb.example/eu.jpg")},
+	}
+	return p
 }
 
 // consoleProduct is a hardware fixture: a valid proxy pricing target
@@ -1017,6 +1035,88 @@ func TestUnitCreateEntry_SnapshotsRegionScopedReleaseDate(t *testing.T) {
 		want := time.Date(1994, time.December, 25, 0, 0, 0, 0, time.UTC) // the scalar; region_free chains nowhere
 		if stored.FirstReleaseDate == nil || !stored.FirstReleaseDate.Equal(want) {
 			t.Fatalf("scalar fallback: %v", stored.FirstReleaseDate)
+		}
+	})
+}
+
+// TestUnitCreateEntry_SnapshotsRegionPickedLocalization pins the
+// create-time localized snapshot: an ntsc_j entry against a product
+// carrying a ja-JP bundle stores and returns the whole trio, while
+// the same product under ntsc_u (a region with no localization chain)
+// stores nothing and serializes nothing - the client never supplies
+// these, so an absent field is the only way to say "no localized
+// form".
+func TestUnitCreateEntry_SnapshotsRegionPickedLocalization(t *testing.T) {
+	productID := uuid.New()
+	newStore := func(stored *store.Entry) *stubStore {
+		return &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			*stored = e
+			e.ID = uuid.New()
+			r := "n"
+			e.BacklogRank = &r
+			e.Tags = []store.TagRef{}
+			return e, nil
+		}}
+	}
+	newEnrich := func() *stubEnrichment {
+		return &stubEnrichment{
+			getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+				return localizedGameProduct(id), nil
+			},
+			batchPrices: pricedAs(1500, 4200, 9900),
+		}
+	}
+
+	t.Run("ntsc_j snapshots the ja-JP bundle", func(t *testing.T) {
+		var stored store.Entry
+		srv, a := newUnitServer(t, newStore(&stored), newEnrich(), newStubCache())
+		resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()),
+			createBody(productID, func(m map[string]any) { m["region"] = "ntsc_j" }))
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("status %d", resp.StatusCode)
+		}
+		if stored.LocalizedName == nil || *stored.LocalizedName != "聖剣伝説3" ||
+			stored.LocalizedNameTranslit == nil || *stored.LocalizedNameTranslit != "Seiken Densetsu 3" ||
+			stored.LocalizedCoverURL == nil || *stored.LocalizedCoverURL != "https://images.igdb.example/jp.jpg" {
+			t.Fatalf("stored localized snapshot: %v %v %v",
+				stored.LocalizedName, stored.LocalizedNameTranslit, stored.LocalizedCoverURL)
+		}
+		// The canonical snapshot is untouched: the localized fields are
+		// an addition to the display name and cover, not a replacement.
+		if stored.DisplayName != "Chrono Trigger" {
+			t.Fatalf("display_name must stay canonical: %q", stored.DisplayName)
+		}
+		var got struct {
+			LocalizedName         *string `json:"localized_name"`
+			LocalizedNameTranslit *string `json:"localized_name_translit"`
+			LocalizedCoverURL     *string `json:"localized_cover_url"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got.LocalizedName == nil || *got.LocalizedName != "聖剣伝説3" ||
+			got.LocalizedNameTranslit == nil || *got.LocalizedNameTranslit != "Seiken Densetsu 3" ||
+			got.LocalizedCoverURL == nil || *got.LocalizedCoverURL != "https://images.igdb.example/jp.jpg" {
+			t.Fatalf("response localized snapshot: %v %v %v",
+				got.LocalizedName, got.LocalizedNameTranslit, got.LocalizedCoverURL)
+		}
+	})
+
+	t.Run("ntsc_u has no chain: nothing stored, nothing serialized", func(t *testing.T) {
+		var stored store.Entry
+		srv, a := newUnitServer(t, newStore(&stored), newEnrich(), newStubCache())
+		resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()),
+			createBody(productID, nil)) // region ntsc_u
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("status %d", resp.StatusCode)
+		}
+		if stored.LocalizedName != nil || stored.LocalizedNameTranslit != nil || stored.LocalizedCoverURL != nil {
+			t.Fatalf("ntsc_u must snapshot no localized form: %v %v %v",
+				stored.LocalizedName, stored.LocalizedNameTranslit, stored.LocalizedCoverURL)
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		if strings.Contains(string(raw), "localized_") {
+			t.Fatalf("absent fields must not serialize: %s", raw)
 		}
 	})
 }
@@ -1876,6 +1976,49 @@ func TestUnitUpdateEntry(t *testing.T) {
 				t.Fatalf("GetProduct calls: got %d, want 2 (current product + new product)", productCalls)
 			}
 		})
+		t.Run("repoint re-picks the localized trio from the new product", func(t *testing.T) {
+			// Region unchanged (pal on both sides), so the repoint is the
+			// only trigger - the region-edit trigger has its own coverage
+			// in TestUnitUpdateEntry_RegionEditRePicksLocalization.
+			pal := e
+			pal.Region = "pal"
+			var updated store.Entry
+			st := &stubStore{
+				getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return pal, nil },
+				updateEntry: func(_ context.Context, in store.Entry, _ []uuid.UUID) (store.Entry, error) {
+					updated = in
+					in.Tags = []store.TagRef{}
+					return in, nil
+				},
+			}
+			enrich := &stubEnrichment{
+				getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+					if id == *e.ProductID {
+						return gameProd(*e.ProductID, 1011, 19, false), nil
+					}
+					if id == target {
+						p := gameProd(target, 1011, 19, true)
+						p.Igdb.Localizations = &[]enrichapi.Localization{
+							{Region: "EU", CoverUrl: new("https://images.igdb.example/eu.jpg")},
+						}
+						return p, nil
+					}
+					return enrichapi.Product{}, enrichmentclient.ErrUnknownProduct
+				},
+				batchPrices: pricedAs(1500, 4200, 9900),
+			}
+			srv, a := newUnitServer(t, st, enrich, newStubCache())
+			resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+				repointBody(target.String(), func(m map[string]any) { m["region"] = "pal" }))
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status %d", resp.StatusCode)
+			}
+			if updated.LocalizedCoverURL == nil || *updated.LocalizedCoverURL != "https://images.igdb.example/eu.jpg" ||
+				updated.LocalizedName != nil || updated.LocalizedNameTranslit != nil {
+				t.Fatalf("repoint must re-pick the EU bundle: %v %v %v",
+					updated.LocalizedName, updated.LocalizedNameTranslit, updated.LocalizedCoverURL)
+			}
+		})
 		t.Run("same id is a no-op, no catalog calls", func(t *testing.T) {
 			srv, a := newUnitServer(t, okStore(nil), &stubEnrichment{batchPrices: pricedAs(1, 2, 3)}, newStubCache())
 			resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
@@ -2081,6 +2224,102 @@ func TestUnitUpdateEntry_RegionScopedReleaseDate(t *testing.T) {
 		}
 		if updated.FirstReleaseDate != nil {
 			t.Fatalf("hardware date must stay untouched: %v", updated.FirstReleaseDate)
+		}
+		if updated.LocalizedName != nil || updated.LocalizedNameTranslit != nil || updated.LocalizedCoverURL != nil {
+			t.Fatalf("hardware localized fields must stay untouched: %v %v %v",
+				updated.LocalizedName, updated.LocalizedNameTranslit, updated.LocalizedCoverURL)
+		}
+	})
+}
+
+// TestUnitUpdateEntry_RegionEditRePicksLocalization is the PUT-side
+// half of the localized snapshot: the region edit that re-picks the
+// date re-picks the presentation trio from the same fetch, and moving
+// into a region with no localized form clears what the old region
+// stored instead of leaving a stale native-script title behind.
+func TestUnitUpdateEntry_RegionEditRePicksLocalization(t *testing.T) {
+	user := uuid.New()
+	gameBacked := func(region string) store.Entry {
+		e := storedGameEntry(user)
+		e.Region = region
+		e.IGDBGameID = new(int64(1000))
+		return e
+	}
+	newEnrich := func(calls *int) *stubEnrichment {
+		return &stubEnrichment{
+			getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+				*calls++
+				return localizedGameProduct(id), nil
+			},
+			batchPrices: pricedAs(1500, 4200, 9900),
+		}
+	}
+	newStore := func(e store.Entry, updated *store.Entry) *stubStore {
+		return &stubStore{
+			getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return e, nil },
+			updateEntry: func(_ context.Context, in store.Entry, _ []uuid.UUID) (store.Entry, error) {
+				*updated = in
+				in.Tags = []store.TagRef{}
+				return in, nil
+			},
+		}
+	}
+
+	t.Run("ntsc_u to ntsc_j picks the ja-JP bundle", func(t *testing.T) {
+		e := gameBacked("ntsc_u")
+		var calls int
+		var updated store.Entry
+		srv, a := newUnitServer(t, newStore(e, &updated), newEnrich(&calls), newStubCache())
+		resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+			updateBody(func(m map[string]any) { m["region"] = "ntsc_j" }))
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status %d: %s", resp.StatusCode, body)
+		}
+		if calls != 1 {
+			t.Fatalf("GetProduct calls: %d", calls)
+		}
+		if updated.LocalizedName == nil || *updated.LocalizedName != "聖剣伝説3" ||
+			updated.LocalizedNameTranslit == nil || *updated.LocalizedNameTranslit != "Seiken Densetsu 3" ||
+			updated.LocalizedCoverURL == nil || *updated.LocalizedCoverURL != "https://images.igdb.example/jp.jpg" {
+			t.Fatalf("re-picked localized snapshot: %v %v %v",
+				updated.LocalizedName, updated.LocalizedNameTranslit, updated.LocalizedCoverURL)
+		}
+		var got struct {
+			LocalizedName         *string `json:"localized_name"`
+			LocalizedNameTranslit *string `json:"localized_name_translit"`
+			LocalizedCoverURL     *string `json:"localized_cover_url"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got.LocalizedName == nil || *got.LocalizedName != "聖剣伝説3" ||
+			got.LocalizedNameTranslit == nil || *got.LocalizedNameTranslit != "Seiken Densetsu 3" ||
+			got.LocalizedCoverURL == nil || *got.LocalizedCoverURL != "https://images.igdb.example/jp.jpg" {
+			t.Fatalf("response localized snapshot: %v %v %v",
+				got.LocalizedName, got.LocalizedNameTranslit, got.LocalizedCoverURL)
+		}
+	})
+
+	t.Run("ntsc_j to ntsc_u clears the previous region's pick", func(t *testing.T) {
+		e := gameBacked("ntsc_j")
+		e.LocalizedName = new("聖剣伝説3")
+		e.LocalizedNameTranslit = new("Seiken Densetsu 3")
+		e.LocalizedCoverURL = new("https://images.igdb.example/jp.jpg")
+		var calls int
+		var updated store.Entry
+		srv, a := newUnitServer(t, newStore(e, &updated), newEnrich(&calls), newStubCache())
+		resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+			updateBody(nil)) // region defaults to ntsc_u, which chains nowhere
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status %d", resp.StatusCode)
+		}
+		if calls != 1 {
+			t.Fatalf("GetProduct calls: %d", calls)
+		}
+		if updated.LocalizedName != nil || updated.LocalizedNameTranslit != nil || updated.LocalizedCoverURL != nil {
+			t.Fatalf("stale localized snapshot survived the region edit: %v %v %v",
+				updated.LocalizedName, updated.LocalizedNameTranslit, updated.LocalizedCoverURL)
 		}
 	})
 }
@@ -4449,7 +4688,7 @@ func TestUnitInternalResnapshot_HappyPath(t *testing.T) {
 
 	st := &stubStore{
 		listGameBackedRefs: func(context.Context) ([]store.GameEntryRef, error) { return refs, nil },
-		setFirstReleaseDate: func(_ context.Context, entryID uuid.UUID, d *time.Time) error {
+		setSnapshotFields: func(_ context.Context, entryID uuid.UUID, d *time.Time, _, _, _ *string) error {
 			mu.Lock()
 			defer mu.Unlock()
 			updated[entryID] = d
@@ -4526,7 +4765,7 @@ func TestUnitInternalResnapshot_FailedProductIsPartialProgress(t *testing.T) {
 	updated := map[uuid.UUID]bool{}
 	st := &stubStore{
 		listGameBackedRefs: func(context.Context) ([]store.GameEntryRef, error) { return refs, nil },
-		setFirstReleaseDate: func(_ context.Context, entryID uuid.UUID, _ *time.Time) error {
+		setSnapshotFields: func(_ context.Context, entryID uuid.UUID, _ *time.Time, _, _, _ *string) error {
 			mu.Lock()
 			updated[entryID] = true
 			mu.Unlock()
@@ -4582,7 +4821,7 @@ func TestUnitInternalResnapshot_Idempotent(t *testing.T) {
 			defer mu.Unlock()
 			return []store.GameEntryRef{{EntryID: entry6, ProductID: productE, Region: "ntsc_u", FirstReleaseDate: stored}}, nil
 		},
-		setFirstReleaseDate: func(_ context.Context, entryID uuid.UUID, d *time.Time) error {
+		setSnapshotFields: func(_ context.Context, entryID uuid.UUID, d *time.Time, _, _, _ *string) error {
 			mu.Lock()
 			defer mu.Unlock()
 			if entryID != entry6 {
@@ -4620,6 +4859,102 @@ func TestUnitInternalResnapshot_Idempotent(t *testing.T) {
 	}
 	if got2.EntriesUpdated != 0 {
 		t.Fatalf("second run must be a no-op once the stored date reflects the pick: %+v", got2)
+	}
+}
+
+// TestUnitInternalResnapshot_LocalizedTrio covers the localized side
+// of the walk: two entries share one product, one ntsc_j and one
+// ntsc_u, and the product carries a ja-JP localization bundle. Both
+// entries' stored date already matches the pick (the product sets no
+// per-region release dates, so both regions fall back to the same
+// scalar), which isolates the write trigger to the localization diff
+// alone. A second run against the now-backfilled state is a no-op.
+func TestUnitInternalResnapshot_LocalizedTrio(t *testing.T) {
+	productF := uuid.New()
+	entryJ, entryU := uuid.New(), uuid.New()
+	scalar := time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC) // matches gameProduct's default
+
+	prod := gameProduct(productF)
+	jaName, jaTranslit, jaCover := "クロノ・トリガー", "Kurono Torigaa", "https://x/ja-cover.jpg"
+	prod.Igdb.Localizations = &[]enrichapi.Localization{
+		{Region: "ja-JP", Name: &jaName, Translit: &jaTranslit, CoverUrl: &jaCover},
+	}
+
+	var mu sync.Mutex
+	storedJ := store.GameEntryRef{EntryID: entryJ, ProductID: productF, Region: "ntsc_j", FirstReleaseDate: &scalar}
+	storedU := store.GameEntryRef{EntryID: entryU, ProductID: productF, Region: "ntsc_u", FirstReleaseDate: &scalar}
+
+	st := &stubStore{
+		listGameBackedRefs: func(context.Context) ([]store.GameEntryRef, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			return []store.GameEntryRef{storedJ, storedU}, nil
+		},
+		setSnapshotFields: func(_ context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			switch entryID {
+			case entryJ:
+				storedJ.FirstReleaseDate, storedJ.LocalizedName = d, name
+				storedJ.LocalizedNameTranslit, storedJ.LocalizedCoverURL = translit, cover
+			case entryU:
+				storedU.FirstReleaseDate, storedU.LocalizedName = d, name
+				storedU.LocalizedNameTranslit, storedU.LocalizedCoverURL = translit, cover
+			default:
+				t.Fatalf("unexpected entry %s", entryID)
+			}
+			return nil
+		},
+	}
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			if id != productF {
+				t.Fatalf("unexpected product id %s", id)
+			}
+			return prod, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	tok := a.token(t, uuid.NewString())
+
+	first := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", tok, nil)
+	var got1 struct {
+		ProductsSeen   int `json:"products_seen"`
+		ProductsFailed int `json:"products_failed"`
+		EntriesUpdated int `json:"entries_updated"`
+	}
+	if err := json.NewDecoder(first.Body).Decode(&got1); err != nil {
+		t.Fatal(err)
+	}
+	if got1.ProductsSeen != 1 || got1.ProductsFailed != 0 || got1.EntriesUpdated != 1 {
+		t.Fatalf("first run counts: %+v", got1)
+	}
+
+	mu.Lock()
+	gotJ, gotU := storedJ, storedU
+	mu.Unlock()
+	if gotJ.LocalizedName == nil || *gotJ.LocalizedName != jaName {
+		t.Fatalf("ntsc_j must gain the localized name: %v", gotJ.LocalizedName)
+	}
+	if gotJ.LocalizedNameTranslit == nil || *gotJ.LocalizedNameTranslit != jaTranslit {
+		t.Fatalf("ntsc_j must gain the transliteration: %v", gotJ.LocalizedNameTranslit)
+	}
+	if gotJ.LocalizedCoverURL == nil || *gotJ.LocalizedCoverURL != jaCover {
+		t.Fatalf("ntsc_j must gain the localized cover: %v", gotJ.LocalizedCoverURL)
+	}
+	if gotU.LocalizedName != nil || gotU.LocalizedNameTranslit != nil || gotU.LocalizedCoverURL != nil {
+		t.Fatalf("ntsc_u has no localization chain and must stay untouched: %+v", gotU)
+	}
+
+	second := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", tok, nil)
+	var got2 struct {
+		EntriesUpdated int `json:"entries_updated"`
+	}
+	if err := json.NewDecoder(second.Body).Decode(&got2); err != nil {
+		t.Fatal(err)
+	}
+	if got2.EntriesUpdated != 0 {
+		t.Fatalf("second run must be a no-op once the trio is backfilled: %+v", got2)
 	}
 }
 
