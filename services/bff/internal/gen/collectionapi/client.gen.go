@@ -1569,14 +1569,23 @@ type Entry struct {
 	Id               openapi_types.UUID  `json:"id"`
 
 	// IgdbGameId The recommendation identity: snapshotted from the entry's own product, or from the proxy target on custom game entries (owning a reproduction of X means playing X).
-	IgdbGameId      *int64                `json:"igdb_game_id,omitempty"`
-	ItemCondition   *EntryItemCondition   `json:"item_condition,omitempty"`
-	ItemType        EntryItemType         `json:"item_type"`
-	ManualCondition *EntryManualCondition `json:"manual_condition,omitempty"`
-	MediaType       EntryMediaType        `json:"media_type"`
-	Notes           *string               `json:"notes,omitempty"`
-	Packaging       EntryPackaging        `json:"packaging"`
-	Pinned          bool                  `json:"pinned"`
+	IgdbGameId    *int64              `json:"igdb_game_id,omitempty"`
+	ItemCondition *EntryItemCondition `json:"item_condition,omitempty"`
+	ItemType      EntryItemType       `json:"item_type"`
+
+	// LocalizedCoverUrl Region-picked box art URL (server-derived).
+	LocalizedCoverUrl *string `json:"localized_cover_url,omitempty"`
+
+	// LocalizedName Region-picked native-script title (server-derived from the entry's region; absent when the region has none).
+	LocalizedName *string `json:"localized_name,omitempty"`
+
+	// LocalizedNameTranslit Latin transliteration of localized_name's title (server-derived).
+	LocalizedNameTranslit *string               `json:"localized_name_translit,omitempty"`
+	ManualCondition       *EntryManualCondition `json:"manual_condition,omitempty"`
+	MediaType             EntryMediaType        `json:"media_type"`
+	Notes                 *string               `json:"notes,omitempty"`
+	Packaging             EntryPackaging        `json:"packaging"`
+	Pinned                bool                  `json:"pinned"`
 
 	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
 	Platform         *EntryPlatform      `json:"platform,omitempty"`
@@ -1857,22 +1866,31 @@ type SavedViewVisibility string
 
 // SharedEntry The cross-user entry projection - a strict whitelist. No money fields (price paid, values, currency, purchase provenance, pricing mode) and no personal fields (status, rating, notes, location, backlog rank, external refs) may ever be added here without a deliberate privacy decision.
 type SharedEntry struct {
-	BoxCondition     *SharedEntryBoxCondition    `json:"box_condition,omitempty"`
-	CoverUrl         *string                     `json:"cover_url,omitempty"`
-	CreatedAt        time.Time                   `json:"created_at"`
-	DisplayName      string                      `json:"display_name"`
-	Edition          *string                     `json:"edition,omitempty"`
-	FirstReleaseDate *openapi_types.Date         `json:"first_release_date,omitempty"`
-	HasBox           bool                        `json:"has_box"`
-	HasManual        bool                        `json:"has_manual"`
-	Id               openapi_types.UUID          `json:"id"`
-	IgdbGameId       *int64                      `json:"igdb_game_id,omitempty"`
-	ItemCondition    *SharedEntryItemCondition   `json:"item_condition,omitempty"`
-	ItemType         SharedEntryItemType         `json:"item_type"`
-	ManualCondition  *SharedEntryManualCondition `json:"manual_condition,omitempty"`
-	MediaType        SharedEntryMediaType        `json:"media_type"`
-	Packaging        SharedEntryPackaging        `json:"packaging"`
-	Pinned           bool                        `json:"pinned"`
+	BoxCondition     *SharedEntryBoxCondition  `json:"box_condition,omitempty"`
+	CoverUrl         *string                   `json:"cover_url,omitempty"`
+	CreatedAt        time.Time                 `json:"created_at"`
+	DisplayName      string                    `json:"display_name"`
+	Edition          *string                   `json:"edition,omitempty"`
+	FirstReleaseDate *openapi_types.Date       `json:"first_release_date,omitempty"`
+	HasBox           bool                      `json:"has_box"`
+	HasManual        bool                      `json:"has_manual"`
+	Id               openapi_types.UUID        `json:"id"`
+	IgdbGameId       *int64                    `json:"igdb_game_id,omitempty"`
+	ItemCondition    *SharedEntryItemCondition `json:"item_condition,omitempty"`
+	ItemType         SharedEntryItemType       `json:"item_type"`
+
+	// LocalizedCoverUrl Region-picked box art URL (server-derived).
+	LocalizedCoverUrl *string `json:"localized_cover_url,omitempty"`
+
+	// LocalizedName Region-picked native-script title (server-derived from the entry's region; absent when the region has none).
+	LocalizedName *string `json:"localized_name,omitempty"`
+
+	// LocalizedNameTranslit Latin transliteration of localized_name's title (server-derived).
+	LocalizedNameTranslit *string                     `json:"localized_name_translit,omitempty"`
+	ManualCondition       *SharedEntryManualCondition `json:"manual_condition,omitempty"`
+	MediaType             SharedEntryMediaType        `json:"media_type"`
+	Packaging             SharedEntryPackaging        `json:"packaging"`
+	Pinned                bool                        `json:"pinned"`
 
 	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
 	Platform  *EntryPlatform      `json:"platform,omitempty"`

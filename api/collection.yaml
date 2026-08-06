@@ -1064,6 +1064,15 @@ components:
             Custom entries may set their own (https, shape-validated).
             Absent on hardware and products without art (render a
             placeholder).
+        localized_name:
+          type: string
+          description: Region-picked native-script title (server-derived from the entry's region; absent when the region has none).
+        localized_name_translit:
+          type: string
+          description: Latin transliteration of localized_name's title (server-derived).
+        localized_cover_url:
+          type: string
+          description: Region-picked box art URL (server-derived).
         igdb_game_id:
           type: integer
           format: int64
@@ -1556,6 +1565,15 @@ components:
         platform: { $ref: "#/components/schemas/EntryPlatform" }
         first_release_date: { type: string, format: date }
         cover_url: { type: string }
+        localized_name:
+          type: string
+          description: Region-picked native-script title (server-derived from the entry's region; absent when the region has none).
+        localized_name_translit:
+          type: string
+          description: Latin transliteration of localized_name's title (server-derived).
+        localized_cover_url:
+          type: string
+          description: Region-picked box art URL (server-derived).
         igdb_game_id: { type: integer, format: int64 }
         region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
         edition: { type: string }

@@ -1007,6 +1007,8 @@ export interface components {
             name: string;
             /** @description IGDB platform logo; the display fallback for products without cover art. */
             logo_url?: string;
+            /** @description Distinct canonical IGDB release regions for this game on this platform (japan, north_america, europe, ...), ordered by that region's earliest release date on the platform (dateless rows last, then alphabetical). Platform-exact: JP twin platforms are NOT folded here (a Famicom row stays on Famicom), unlike the product projection's date fold - the physical release is platform-specific. Populated on game search results only; absent on product payloads and hardware results. */
+            release_regions?: string[];
         };
         /** @description One platform-catalog row with its known aliases. */
         CatalogPlatform: {
@@ -1030,6 +1032,10 @@ export interface components {
             /** Format: date */
             first_release_date?: string;
             cover_url?: string;
+            /** @description Per-region presentations of a game result (games only). */
+            localizations?: components["schemas"]["Localization"][];
+            /** @description Set when the query matched a region's localized name or transliteration rather than the canonical name: that bundle's region identifier. Clients may present the region's data and preselect a matching entry region. Absent on canonical-name matches, hardware, pc_listing, and community results. */
+            matched_region?: string;
             /** Format: int64 */
             pc_product_id?: number;
             console_name?: string;
@@ -1074,6 +1080,8 @@ export interface components {
             first_release_date?: string;
             /** @description Per-region release dates for the product's platform, the earliest concrete date per region. Region values are canonical IGDB names (europe, north_america, australia, new_zealand, japan, china, asia, worldwide, korea, brazil). JP twin platforms fold into their sibling (SNES/Super Famicom, NES/Famicom). */
             release_dates?: components["schemas"]["ReleaseDate"][];
+            /** @description Per-region presentations; absent both on projections predating the feature and on games with no localizations at all (an empty slice is omitted rather than sent). */
+            localizations?: components["schemas"]["Localization"][];
             /** Format: date-time */
             fetched_at: string;
         };
@@ -1086,6 +1094,13 @@ export interface components {
             region: string;
             /** Format: date */
             date: string;
+        };
+        /** @description One region's presentation of the game, merged from IGDB game_localizations and tagged alternative names. region is an IGDB region identifier served verbatim (ja-JP, EU, ko-KR; open-world - new identifiers pass through). name is the native-script title, translit its latin transliteration, cover_url the region's own box art; each is independently optional (rows are sparse - readers fall back per field). */
+        Localization: {
+            region: string;
+            name?: string;
+            translit?: string;
+            cover_url?: string;
         };
         /** @description The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin. */
         PricechartingMeta: {
@@ -1283,6 +1298,12 @@ export interface components {
             first_release_date?: string;
             /** @description Cover art URL. For product-backed entries it is snapshotted from the product at creation (and refreshed on adoption). Custom entries may set their own (https, shape-validated). Absent on hardware and products without art (render a placeholder). */
             cover_url?: string;
+            /** @description Region-picked native-script title (server-derived from the entry's region; absent when the region has none). */
+            localized_name?: string;
+            /** @description Latin transliteration of localized_name's title (server-derived). */
+            localized_name_translit?: string;
+            /** @description Region-picked box art URL (server-derived). */
+            localized_cover_url?: string;
             /**
              * Format: int64
              * @description The recommendation identity: snapshotted from the entry's own product, or from the proxy target on custom game entries (owning a reproduction of X means playing X).
@@ -1821,6 +1842,12 @@ export interface components {
             /** Format: date */
             first_release_date?: string;
             cover_url?: string;
+            /** @description Region-picked native-script title (server-derived from the entry's region; absent when the region has none). */
+            localized_name?: string;
+            /** @description Latin transliteration of localized_name's title (server-derived). */
+            localized_name_translit?: string;
+            /** @description Region-picked box art URL (server-derived). */
+            localized_cover_url?: string;
             /** Format: int64 */
             igdb_game_id?: number;
             /** @enum {string} */

@@ -311,7 +311,10 @@ type IgdbMeta struct {
 	Franchises       []string            `json:"franchises"`
 	GameId           int64               `json:"game_id"`
 	Genres           []string            `json:"genres"`
-	Name             string              `json:"name"`
+
+	// Localizations Per-region presentations; absent both on projections predating the feature and on games with no localizations at all (an empty slice is omitted rather than sent).
+	Localizations *[]Localization `json:"localizations,omitempty"`
+	Name          string          `json:"name"`
 
 	// ReleaseDates Per-region release dates for the product's platform, the earliest concrete date per region. Region values are canonical IGDB names (europe, north_america, australia, new_zealand, japan, china, asia, worldwide, korea, brazil). JP twin platforms fold into their sibling (SNES/Super Famicom, NES/Famicom).
 	ReleaseDates *[]ReleaseDate `json:"release_dates,omitempty"`
@@ -326,6 +329,14 @@ type LibraryEntry struct {
 
 	// Status The caller's own status vocabulary; scoring only distinguishes "dropped".
 	Status *string `json:"status,omitempty"`
+}
+
+// Localization One region's presentation of the game, merged from IGDB game_localizations and tagged alternative names. region is an IGDB region identifier served verbatim (ja-JP, EU, ko-KR; open-world - new identifiers pass through). name is the native-script title, translit its latin transliteration, cover_url the region's own box art; each is independently optional (rows are sparse - readers fall back per field).
+type Localization struct {
+	CoverUrl *string `json:"cover_url,omitempty"`
+	Name     *string `json:"name,omitempty"`
+	Region   string  `json:"region"`
+	Translit *string `json:"translit,omitempty"`
 }
 
 // MappingRequest defines model for MappingRequest.
@@ -346,6 +357,9 @@ type PlatformRef struct {
 	// LogoUrl IGDB platform logo; the display fallback for products without cover art.
 	LogoUrl *string `json:"logo_url,omitempty"`
 	Name    string  `json:"name"`
+
+	// ReleaseRegions Distinct canonical IGDB release regions for this game on this platform (japan, north_america, europe, ...), ordered by that region's earliest release date on the platform (dateless rows last, then alphabetical). Platform-exact: JP twin platforms are NOT folded here (a Famicom row stays on Famicom), unlike the product projection's date fold - the physical release is platform-specific. Populated on game search results only; absent on product payloads and hardware results.
+	ReleaseRegions *[]string `json:"release_regions,omitempty"`
 }
 
 // PriceHistoryRequest defines model for PriceHistoryRequest.
@@ -537,9 +551,15 @@ type SearchResult struct {
 	FirstReleaseDate *openapi_types.Date   `json:"first_release_date,omitempty"`
 	IgdbGameId       *int64                `json:"igdb_game_id,omitempty"`
 	ItemType         *SearchResultItemType `json:"item_type,omitempty"`
-	LooseCents       *int64                `json:"loose_cents,omitempty"`
-	Name             string                `json:"name"`
-	NewCents         *int64                `json:"new_cents,omitempty"`
+
+	// Localizations Per-region presentations of a game result (games only).
+	Localizations *[]Localization `json:"localizations,omitempty"`
+	LooseCents    *int64          `json:"loose_cents,omitempty"`
+
+	// MatchedRegion Set when the query matched a region's localized name or transliteration rather than the canonical name: that bundle's region identifier. Clients may present the region's data and preselect a matching entry region. Absent on canonical-name matches, hardware, pc_listing, and community results.
+	MatchedRegion *string `json:"matched_region,omitempty"`
+	Name          string  `json:"name"`
+	NewCents      *int64  `json:"new_cents,omitempty"`
 
 	// Origin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick and community.cover_url as cover_url. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
 	Origin       *SearchResultOrigin `json:"origin,omitempty"`
