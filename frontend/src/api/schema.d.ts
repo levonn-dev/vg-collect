@@ -641,6 +641,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/rematch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trigger an immediate entry rematch (relay; collection enforces role admin) */
+        post: operations["triggerRematch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/submissions": {
         parameters: {
             query?: never;
@@ -1280,6 +1297,10 @@ export interface components {
             pc_product_id: number | null;
         };
         RefreshAccepted: {
+            /** @enum {string} */
+            status: "started";
+        };
+        RematchAccepted: {
             /** @enum {string} */
             status: "started";
         };
@@ -3555,6 +3576,46 @@ export interface operations {
                 };
             };
             /** @description A refresh is already running (code refresh_in_progress) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    triggerRematch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rematch started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RematchAccepted"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An entry rematch is already running (code rematch_in_progress) */
             409: {
                 headers: {
                     [name: string]: unknown;

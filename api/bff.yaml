@@ -1239,6 +1239,28 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/rematch:
+    post:
+      operationId: triggerRematch
+      summary: Trigger an immediate entry rematch (relay; collection enforces role admin)
+      responses:
+        "202":
+          description: Rematch started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RematchAccepted" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: An entry rematch is already running (code rematch_in_progress)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
   /api/admin/submissions:
     get:
       operationId: listSubmissions
@@ -2372,6 +2394,11 @@ components:
           nullable: true
           description: Null clears the mapping (the product becomes unmatched and held).
     RefreshAccepted:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [started] }
+    RematchAccepted:
       type: object
       required: [status]
       properties:

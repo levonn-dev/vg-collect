@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -506,6 +507,12 @@ func TestUnitRematchMetrics(t *testing.T) {
 	}
 	if len(hist.DataPoints) != 1 {
 		t.Fatalf("duration points = %d, want exactly one (the single completed run)", len(hist.DataPoints))
+	}
+	// Widened like enrichment's refresh.step_duration: the SDK defaults
+	// top out at 10s and would flatten a multi-minute run into the last
+	// bucket.
+	if want := []float64{1, 5, 15, 60, 300, 900, 1800}; !slices.Equal(hist.DataPoints[0].Bounds, want) {
+		t.Fatalf("duration bounds = %v, want %v", hist.DataPoints[0].Bounds, want)
 	}
 }
 

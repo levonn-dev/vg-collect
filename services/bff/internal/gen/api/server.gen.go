@@ -1004,13 +1004,28 @@ func (e PromoteCandidateProvider) Valid() bool {
 
 // Defines values for RefreshAcceptedStatus.
 const (
-	Started RefreshAcceptedStatus = "started"
+	RefreshAcceptedStatusStarted RefreshAcceptedStatus = "started"
 )
 
 // Valid indicates whether the value is a known member of the RefreshAcceptedStatus enum.
 func (e RefreshAcceptedStatus) Valid() bool {
 	switch e {
-	case Started:
+	case RefreshAcceptedStatusStarted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RematchAcceptedStatus.
+const (
+	RematchAcceptedStatusStarted RematchAcceptedStatus = "started"
+)
+
+// Valid indicates whether the value is a known member of the RematchAcceptedStatus enum.
+func (e RematchAcceptedStatus) Valid() bool {
+	switch e {
+	case RematchAcceptedStatusStarted:
 		return true
 	default:
 		return false
@@ -2546,6 +2561,14 @@ type ReleaseDate struct {
 	Region string             `json:"region"`
 }
 
+// RematchAccepted defines model for RematchAccepted.
+type RematchAccepted struct {
+	Status RematchAcceptedStatus `json:"status"`
+}
+
+// RematchAcceptedStatus defines model for RematchAccepted.Status.
+type RematchAcceptedStatus string
+
 // ReorderRequest Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid.
 type ReorderRequest struct {
 	AfterId  *openapi_types.UUID `json:"after_id,omitempty"`
@@ -3118,6 +3141,9 @@ type ServerInterface interface {
 	// TriggerRefresh Trigger an immediate catalog refresh (relay; enrichment enforces role admin)
 	// (POST /api/admin/refresh)
 	TriggerRefresh(w http.ResponseWriter, r *http.Request)
+	// TriggerRematch Trigger an immediate entry rematch (relay; collection enforces role admin)
+	// (POST /api/admin/rematch)
+	TriggerRematch(w http.ResponseWriter, r *http.Request)
 	// ListSubmissions Pending catalog submissions with live proposals (relay; collection enforces role admin)
 	// (GET /api/admin/submissions)
 	ListSubmissions(w http.ResponseWriter, r *http.Request, params ListSubmissionsParams)
@@ -3571,6 +3597,20 @@ func (siw *ServerInterfaceWrapper) TriggerRefresh(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.TriggerRefresh(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TriggerRematch operation middleware
+func (siw *ServerInterfaceWrapper) TriggerRematch(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TriggerRematch(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5448,6 +5488,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/admin/products/{productId}", wrapper.DeleteProduct)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/admin/products/{productId}/pricecharting", wrapper.SetProductMapping)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/admin/refresh", wrapper.TriggerRefresh)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/admin/rematch", wrapper.TriggerRematch)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/admin/submissions", wrapper.ListSubmissions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/admin/submissions/{submissionId}/verdict", wrapper.SubmitVerdict)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/admin/products", wrapper.CreateCommunityProduct)
