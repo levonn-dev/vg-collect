@@ -26,6 +26,13 @@ import { expect, test, type Page } from '@playwright/test'
 // wizard's region default the same way, no matched_region involved.
 // It stops at the details step - no submit, so no created entry and
 // no teardown either.
+//
+// A fourth test below covers the hardware axis: a hardware pick has
+// neither a matched_region nor a platform chip, so the console-name
+// derivation (consoleRegionFor) is the only default source. The
+// "Super Famicom Console" listing prices under its JP-market console
+// name, seeding ntsc_j straight off the pick. It stops at the details
+// step too - no submit, so no teardown either.
 const stamp = `e2e-region-${Date.now()}`
 
 async function login(page: Page) {
@@ -90,11 +97,12 @@ test('region-localized add: matched_region search card, wizard region default, l
     await page.getByLabel('Notes').fill(stamp)
     await page.getByRole('button', { name: 'Continue' }).click()
 
-    // --- Confirm and add. This product carries no PriceCharting match
-    // on this stack yet (a first-time resolve against the live
-    // catalog), so the confirm card is the unmatched variant; the
-    // wizard still completes the add either way; this journey is about
-    // localization, not pricing.
+    // --- Confirm: the live catalog now resolves a PriceCharting match
+    // for this listing (verified: "Seiken Densetsu 3" on Super
+    // Famicom), so the confirm card shows the price-half before the
+    // add completes; the assertion only proves the match surfaced -
+    // this journey is about localization, not pricing depth.
+    await expect(page.getByText('Priced as "Seiken Densetsu 3" (Super Famicom)', { exact: false })).toBeVisible()
     await page.getByRole('button', { name: 'Add to collection' }).click()
     await expect(page).toHaveURL(/\/entries\//)
     entryUrl = page.url()
@@ -199,4 +207,31 @@ test('region picker chips: canonical-name search lists Puyo Puyo SUN Sega Saturn
   const saturnGroup = page.locator('optgroup[label="Released on Sega Saturn"]')
   await expect(saturnGroup.locator('option')).toHaveText(['NTSC-J'])
   await expect(page.locator('optgroup[label="Other regions"] option')).toHaveText(['NTSC-U', 'PAL', 'REGION-FREE'])
+})
+
+test('hardware add defaults the region from the listing console axis', async ({ page }) => {
+  test.setTimeout(30_000)
+  await login(page)
+
+  // Super Famicom Console (a PriceCharting hardware listing) prices
+  // under its JP-market console name only, so consoleRegionFor seeds
+  // the wizard's region default straight off the listing itself -
+  // hardware picks carry no matched_region and no platform chip, unlike
+  // the game journeys above. first(): real hardware search also returns
+  // regional/bundled variants of the same console.
+  await page.getByRole('link', { name: 'Add', exact: true }).click()
+  await page.getByRole('radio', { name: /hardware/i }).check()
+  await page.getByRole('searchbox', { name: /search for games and hardware/i }).fill('super famicom console')
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
+
+  const addName = /Add Super Famicom Console/
+  const row = page.getByRole('listitem').filter({ has: page.getByRole('button', { name: addName }) }).first()
+  await expect(row).toBeVisible()
+  await row.getByRole('button', { name: addName }).click()
+
+  // --- Details: the hardware pick's own suggestedRegion is the only
+  // default source in play, and it lands directly - ntsc_j off the
+  // "Super Famicom" console axis. Ends here: nothing created, nothing
+  // to tear down.
+  await expect(page.getByLabel('Region')).toHaveValue('ntsc_j')
 })
