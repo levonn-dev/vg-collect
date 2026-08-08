@@ -135,7 +135,7 @@ admin@example.com.
 Enrichment's two `admin -` requests need this same grant: run the
 `psql` insert above, then run `auth / dev token` again as `admin` (a
 fresh login is what puts the role in the JWT) before `admin - trigger
-refresh walk` and `admin - correct product mapping` will pass their
+catalog refresh` and `admin - correct product mapping` will pass their
 role check. Before the grant, or with `alice`'s or `bob`'s token, both
 answer 403.
 
@@ -150,8 +150,8 @@ in seq order. It logs in as the `admin` fixture (a fresh login is
 what puts the granted role in the JWT), lists the unmatched worklist,
 and walks a clear/re-set round trip on a fixture hardware product
 whose variant is reserved for this flow, so re-runs never collide
-with other data. The final pair triggers a refresh walk and asserts
-the second call observes the in-flight lock (409
+with other data. The final pair triggers a catalog refresh and
+asserts the second call observes the in-flight lock (409
 refresh_in_progress).
 
 The folder continues (seq 9+) into the catalog-submissions flow:
@@ -164,7 +164,8 @@ community product, promotes it onto a live game identity captured at
 runtime from the catalog search, and proves the provider-twin 409. Role switches are re-logins (one cookie jar).
 A clean run deletes everything it created. The submission caps and
 the candidate sweep are asserted in the Go suites and e2e, not here
-(the caps need bulk creates; the sweep rides the async walk).
+(the caps need bulk creates; the sweep rides the async catalog
+refresh).
 
 The folder continues (seq 47+) with the submissions-ux polish: it
 reads the platform catalog (/api/platforms, with aliases), then runs
@@ -212,7 +213,7 @@ environment selected, run `auth / dev token` once, then the folder in
    local catalog if the provider errors), and `resolve pc listing
    (price anchor)` mints the listing-backed product any entry can
    proxy its price from.
-5. `admin - trigger refresh walk` and `admin - correct product mapping`
+5. `admin - trigger catalog refresh` and `admin - correct product mapping`
    need the admin role grant described above.
 
 `price history batch` returns a product's snapshot series (default 90
@@ -265,10 +266,10 @@ recomputes every game-backed entry's snapshotted fields from its
 product's current data - the region-picked release date and the
 localized presentation trio (native-script name, transliteration,
 regional cover). It is idempotent and re-runnable any time; re-run it
-after enrichment's catalog has actually healed - a nightly walk, or an
-immediate admin refresh trigger there - so the rollout order for a
-catalog-shape change is deploy, then enrichment's walk (or admin
-refresh), then this lever. Expect 200 with
+after enrichment's catalog has actually healed - the nightly catalog
+refresh, or an immediate admin refresh trigger there - so the rollout
+order for a catalog-shape change is deploy, then the catalog refresh
+(nightly or admin-triggered), then this lever. Expect 200 with
 `products_seen`/`products_failed`/`entries_updated` (0 updated once
 nothing has changed).
 

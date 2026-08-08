@@ -1,5 +1,5 @@
 meta {
-  name: admin - trigger refresh walk (role admin)
+  name: admin - trigger catalog refresh (role admin)
   type: http
   seq: 9
 }
@@ -16,5 +16,5 @@ auth:bearer {
 
 docs {
   Expect 202 with status started when the caller's JWT carries the admin
-  role (403 without it); a second call while a walk runs answers 409.
+  role (403 without it); a second call while a refresh runs answers 409.
 }

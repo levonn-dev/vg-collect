@@ -271,16 +271,16 @@ test('approve, community lane, candidate sweep, promote, cleanup', async ({ page
   // promote it from the candidates worklist.
   await login(page, 'admin')
   await page.getByRole('link', { name: 'Admin', exact: true }).click()
-  await page.getByRole('button', { name: 'Trigger refresh walk' }).click()
-  await expect(page.getByText('Walk started.')).toBeVisible()
-  // Settle before the reload storm below: the walk is detached (202) and
+  await page.getByRole('button', { name: 'Trigger catalog refresh' }).click()
+  await expect(page.getByText('Refresh started.')).toBeVisible()
+  // Settle before the reload storm below: the refresh is detached (202) and
   // runs server-side during this wait, so the front-half login traffic ages
   // out of the /api/* window and the poll loop starts against a cool bucket
   // (and usually flags on its first reload). See API_PACE_MS above.
   await paceApiBucket()
   const candidates = page.getByRole('region', { name: 'Promote candidates' })
   const candRow = candidates.locator('tbody tr').filter({ hasText: 'Chrono Trigger' })
-  // The walk is detached (202) and its candidate sweep is the last
+  // The refresh is detached (202) and its candidate sweep is the last
   // phase, so the flag lands seconds later. The admin queries carry a 5
   // minute staleTime, so a same-session remount (tab switch, SPA nav)
   // repaints from cache without refetching; only a full reload rebuilds

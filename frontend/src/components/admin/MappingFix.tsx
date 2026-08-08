@@ -34,7 +34,7 @@ function fixErrorMessage(e: unknown, i18n: I18n): string {
 // mapping through the same listing picker the add wizard uses, clear
 // it (a clear sets match_hold, so it asks first), or - for unmatched
 // residue whose listings all belong to siblings - park it with Hold
-// (the same PUT null; the walk stops retrying, any set lifts it).
+// (the same PUT null; the entry rematch stops retrying, any set lifts it).
 export default function MappingFix({ product, onDone }: MappingFixProps) {
   const { i18n } = useLingui()
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -46,7 +46,7 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
   const clear = () => {
     if (
       !window.confirm(
-        t(i18n)`Clear this mapping? The product becomes unmatched and is held out of the nightly re-match walk.`,
+        t(i18n)`Clear this mapping? The product becomes unmatched and is held out of the nightly entry rematch.`,
       )
     )
       return
@@ -56,7 +56,7 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
   const hold = () => {
     if (
       !window.confirm(
-        t(i18n)`Hold this product out of the nightly re-match walk? Setting any mapping lifts the hold.`,
+        t(i18n)`Hold this product out of the nightly entry rematch? Setting any mapping lifts the hold.`,
       )
     )
       return

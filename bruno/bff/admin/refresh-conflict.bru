@@ -16,8 +16,8 @@ assert {
 }
 
 docs {
-  Runs immediately after the 202: the walk outlives the request by
+  Runs immediately after the 202: the refresh outlives the request by
   design, so the second trigger observes the in-flight lock. If the
-  stack's catalog were empty the walk could in principle finish
+  stack's catalog were empty the refresh could in principle finish
   first; the dev stack seeds products long before this flow runs.
 }

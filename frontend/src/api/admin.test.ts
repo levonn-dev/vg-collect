@@ -44,7 +44,7 @@ it('setProductMapping puts null to clear', async () => {
   expect(p.match_hold).toBe(true)
 })
 
-it('triggerRefresh posts the walk trigger', async () => {
+it('triggerRefresh posts the refresh trigger', async () => {
   const fetchMock = vi.fn().mockResolvedValue(jsonResponse(202, { status: 'started' }))
   vi.stubGlobal('fetch', fetchMock)
   const r = await triggerRefresh()

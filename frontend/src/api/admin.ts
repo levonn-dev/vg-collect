@@ -21,7 +21,7 @@ export function fetchCommunityProducts(offset = 0): Promise<CommunityProductsPag
 }
 
 // null clears the mapping: the product becomes unmatched and held out
-// of the nightly re-match walk until a mapping is set again.
+// of the nightly entry rematch until a mapping is set again.
 export function setProductMapping(productId: string, pcProductId: number | null): Promise<Product> {
   return sendJSON<Product>('PUT', `/api/admin/products/${productId}/pricecharting`, {
     pc_product_id: pcProductId,

@@ -8,7 +8,7 @@ import { fetchMe } from '../api/client'
 import CommunityProducts from '../components/admin/CommunityProducts'
 import ProductLookup from '../components/admin/ProductLookup'
 import PromoteCandidates from '../components/admin/PromoteCandidates'
-import RefreshWalk from '../components/admin/RefreshWalk'
+import RefreshTrigger from '../components/admin/RefreshTrigger'
 import SubmissionsQueue from '../components/admin/SubmissionsQueue'
 import UnmatchedWorklist from '../components/admin/UnmatchedWorklist'
 import Tabs, { type Tab } from '../components/Tabs'
@@ -54,7 +54,7 @@ export default function Admin() {
           <UnmatchedWorklist />
           <PromoteCandidates />
           <ProductLookup />
-          <RefreshWalk />
+          <RefreshTrigger />
         </>
       ) : (
         <>
