@@ -135,6 +135,31 @@ it('defaults the details region select to ntsc_u when the pick carries no region
   expect(screen.getByLabelText('Region')).toHaveValue('ntsc_u')
 })
 
+it('seeds the details region select from a hardware pick', async () => {
+  const hardwareSearchAnswer = {
+    degraded: false,
+    results: [{
+      type: 'hardware', name: 'Super Famicom Console', pc_product_id: 6101,
+      console_name: 'Super Famicom', category: 'Systems',
+    }],
+  }
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    const u = String(url)
+    if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, hardwareSearchAnswer))
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWizard()
+
+  await userEvent.click(screen.getByRole('radio', { name: /hardware/i }))
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'famicom')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Add Super Famicom Console' }))
+
+  expect(await screen.findByRole('heading', { name: /your copy of super famicom console/i })).toBeInTheDocument()
+  expect(screen.getByLabelText('Region')).toHaveValue('ntsc_j')
+})
+
 it('stamps the created entry with the profile currency', async () => {
   const created = entryFixture({ display_name: 'Chrono Trigger', currency: 'EUR' })
   const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {

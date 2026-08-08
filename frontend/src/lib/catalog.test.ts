@@ -21,7 +21,10 @@ it('ignores a manual match for non-game picks', () => {
     resolveRequestFor({ kind: 'pc_listing', pcProductId: 5099, name: 'X' }, { pcProductId: 7042, name: 'Y' }),
   ).toEqual({ type: 'pc_listing', pc_product_id: 5099 })
   expect(
-    resolveRequestFor({ kind: 'hardware', pcProductId: 6001, name: 'SNES', category: 'Systems' }, { pcProductId: 7042, name: 'Y' }),
+    resolveRequestFor(
+      { kind: 'hardware', pcProductId: 6001, name: 'SNES', category: 'Systems', suggestedRegion: 'ntsc_u' },
+      { pcProductId: 7042, name: 'Y' },
+    ),
   ).toEqual({ type: 'console', pc_product_id: 6001 })
 })
 
@@ -41,4 +44,13 @@ it('omits an empty or whitespace hint', () => {
 
 it('ignores the hint on non-game picks', () => {
   expect(resolveRequestFor(listingPick, null, 'players choice')).not.toHaveProperty('match_hint')
+})
+
+it('game resolves carry the entry region; picker and hardware kinds ignore it', () => {
+  const game = { kind: 'game', igdbGameId: 1016, name: 'Secret of Mana', platformId: 19, platformName: 'SNES' } as const
+  expect(resolveRequestFor(game, undefined, undefined, 'ntsc_j')).toMatchObject({ type: 'game', region: 'ntsc_j' })
+  expect(resolveRequestFor(game, { pcProductId: 5101, name: 'x' }, undefined, 'ntsc_j')).toMatchObject({ pc_product_id: 5101, region: 'ntsc_j' })
+  expect(resolveRequestFor(game)).not.toHaveProperty('region')
+  const hardware = { kind: 'hardware', pcProductId: 6101, name: 'c', category: 'Systems', suggestedRegion: 'ntsc_j' } as const
+  expect(resolveRequestFor(hardware, undefined, undefined, 'ntsc_j')).not.toHaveProperty('region')
 })

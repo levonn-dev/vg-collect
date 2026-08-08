@@ -187,6 +187,48 @@ export const LOCALIZATION_CHAINS: Record<string, string[]> = {
   pal: ['EU'],
 }
 
+// JP_CONSOLE_NAMES are PriceCharting's distinct-name JP market
+// consoles - the ones filed without a "JP " prefix. Sibling of the
+// server-side tables (the enrichment match gate, the collection class
+// guard); a stale row here costs an incorrect NTSC-U tag and a
+// user-correctable wizard default, never a wrong price.
+const JP_CONSOLE_NAMES = new Set(['famicom', 'super famicom', 'famicom disk system'])
+
+// consoleRegionFor derives the entry region a PriceCharting listing
+// prices from its console-name axis: "PAL " prefix, "JP " prefix or a
+// distinct JP market name, else the NA base catalog. Hardware and
+// pc_listing rows show it as their region tag, and a hardware pick
+// seeds the wizard's region default with it - a listing prices
+// exactly one region, so any row that carries its console axis gets a
+// tag; rows without a console name get none.
+export function consoleRegionFor(consoleName: string): 'ntsc_u' | 'ntsc_j' | 'pal' {
+  const c = consoleName.trim().toLowerCase()
+  if (c.startsWith('pal ')) return 'pal'
+  if (c.startsWith('jp ') || JP_CONSOLE_NAMES.has(c)) return 'ntsc_j'
+  return 'ntsc_u'
+}
+
+// REGION_CLASS collapses an entry region to the class consoleRegionFor
+// can actually distinguish: region_free carries no console prefix of
+// its own, so it reads as the same class as ntsc_u (a listing prices
+// exactly one of the three consoleRegionFor classes - never "free").
+const REGION_CLASS: Record<string, 'base' | 'jp' | 'pal'> = {
+  ntsc_u: 'base',
+  region_free: 'base',
+  ntsc_j: 'jp',
+  pal: 'pal',
+}
+
+// True when the listing's console region class and the entry's
+// region class disagree - the standing state after a region change
+// keeps a hand-picked match. Unknown entry regions never flag
+// (open-world, same posture as the server's class rule).
+export function regionMismatch(consoleName: string, region: string): boolean {
+  const entryClass = REGION_CLASS[region]
+  if (!entryClass) return false
+  return REGION_CLASS[consoleRegionFor(consoleName)] !== entryClass
+}
+
 // LocalizationBundle is the structural subset of a search result's
 // localizations this module reads (same reasoning as LocalizedTitled
 // above: neither shape imports the other's generated type).

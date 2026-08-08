@@ -358,9 +358,51 @@ it('searches hardware and picks a listing', async () => {
   await userEvent.click(await screen.findByRole('button', { name: /Gamecube System/ }))
   expect(onPick).toHaveBeenCalledWith({
     kind: 'hardware', pcProductId: 900, name: 'Gamecube System', category: 'Systems',
+    suggestedRegion: 'ntsc_u',
   })
   // Hardware listings ship no artwork; the row shows the type icon.
   expect(document.querySelector('svg[data-icon="console"]')).toBeInTheDocument()
+})
+
+// The region tag rides the console-name axis (productTitle.test.ts's
+// consoleRegionFor table): a distinct-name JP console tags NTSC-J even
+// with no "JP " prefix, and the tag rides the hardware pick as its
+// suggested region.
+it('tags hardware rows with the listing region and seeds the hardware pick', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
+    degraded: false,
+    results: [{
+      type: 'hardware', name: 'Super Famicom Console', pc_product_id: 6101,
+      console_name: 'Super Famicom', category: 'Systems',
+    }],
+  })))
+  const onPick = renderPicker()
+  await userEvent.click(screen.getByRole('radio', { name: /hardware/i }))
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'famicom')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  expect(await screen.findByText('Super Famicom')).toBeInTheDocument()
+  expect(screen.getByText('NTSC-J')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Add Super Famicom Console' }))
+  expect(onPick).toHaveBeenCalledWith({
+    kind: 'hardware', pcProductId: 6101, name: 'Super Famicom Console', category: 'Systems',
+    suggestedRegion: 'ntsc_j',
+  })
+})
+
+it('tags a PAL pc_listing row', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
+    degraded: false,
+    results: [{
+      type: 'pc_listing', name: 'Chrono Trigger [PAL]', pc_product_id: 7042,
+      console_name: 'PAL Super Nintendo', loose_cents: 9800,
+    }],
+  })))
+  renderPicker({ kinds: ['game', 'hardware', 'pc_listing'] })
+  await userEvent.click(screen.getByRole('radio', { name: 'PriceCharting' }))
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'chrono')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  expect(await screen.findByText('PAL Super Nintendo')).toBeInTheDocument()
+  expect(screen.getByText('PAL')).toBeInTheDocument()
 })
 
 it('flags a degraded answer', async () => {

@@ -1,4 +1,4 @@
-import { bundleLang, entryCover, entrySecondary, entryTitle, entryTitleLang, REGION_LANGS, titleFormFor, homeRegionFor, LOCALIZATION_CHAINS, platformEntryRegions, regionTitle } from './productTitle'
+import { bundleLang, consoleRegionFor, entryCover, entrySecondary, entryTitle, entryTitleLang, REGION_LANGS, titleFormFor, homeRegionFor, LOCALIZATION_CHAINS, platformEntryRegions, regionMismatch, regionTitle } from './productTitle'
 
 const jp = {
   display_name: 'Trials of Mana',
@@ -162,4 +162,38 @@ it('homeRegionFor maps each UI locale to its home entry region', () => {
   expect(homeRegionFor('en')).toBe('ntsc_u')
   expect(homeRegionFor('ja')).toBe('ntsc_j')
   expect(homeRegionFor('ko')).toBeUndefined()
+})
+
+describe('consoleRegionFor', () => {
+  it.each([
+    ['Super Nintendo', 'ntsc_u'],
+    ['Playstation 4', 'ntsc_u'],
+    ['PAL Super Nintendo', 'pal'],
+    ['PAL Xbox Series X', 'pal'],
+    ['JP Sega Saturn', 'ntsc_j'],
+    ['JP Nintendo Switch', 'ntsc_j'],
+    ['Super Famicom', 'ntsc_j'],
+    ['Famicom', 'ntsc_j'],
+    ['Famicom Disk System', 'ntsc_j'],
+    ['  Super Famicom  ', 'ntsc_j'],
+    ['Palworld Collection', 'ntsc_u'], // "pal" without the space suffix is not the PAL prefix
+    ['', 'ntsc_u'],
+  ])('%s -> %s', (consoleName, region) => {
+    expect(consoleRegionFor(consoleName)).toBe(region)
+  })
+})
+
+describe('regionMismatch', () => {
+  it.each([
+    ['Super Famicom', 'ntsc_j', false],
+    ['Super Famicom', 'ntsc_u', true],
+    ['Super Nintendo', 'ntsc_j', true],
+    ['Super Nintendo', 'ntsc_u', false],
+    ['Super Nintendo', 'region_free', false],
+    ['PAL Super Nintendo', 'pal', false],
+    ['PAL Super Nintendo', 'ntsc_u', true],
+    ['Super Nintendo', 'someday_region', false],
+  ])('%s vs %s -> %s', (consoleName, region, want) => {
+    expect(regionMismatch(consoleName, region)).toBe(want)
+  })
 })

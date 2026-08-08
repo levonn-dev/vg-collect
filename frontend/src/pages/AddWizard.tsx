@@ -68,7 +68,7 @@ export default function AddWizard() {
               : undefined
           }
           currency={money.profileCurrency}
-          initialValues={state.details ?? (state.pick.kind === 'game' ? defaultDetails(state.pick.suggestedRegion) : undefined)}
+          initialValues={state.details ?? (state.pick.kind === 'game' || state.pick.kind === 'hardware' ? defaultDetails(state.pick.suggestedRegion) : undefined)}
           manualMatch={state.pick.kind === 'game' ? state.manualMatch : undefined}
           onManualMatchChange={
             state.pick.kind === 'game' ? (m) => setState({ ...state, manualMatch: m ?? undefined }) : undefined
@@ -130,6 +130,7 @@ function CustomConfirm({
       createEntry({
         ...detailsToCreate(details, money.profileCurrency),
         pricing_mode: 'disabled',
+        match_provenance: 'auto',
         display_name: custom.displayName,
         item_type: custom.itemType,
         platform_name: custom.platformName.trim() === '' ? undefined : custom.platformName.trim(),

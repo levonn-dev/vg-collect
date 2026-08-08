@@ -8,7 +8,7 @@ import type { SearchKind } from '../../api/catalog'
 import { searchCatalog } from '../../api/catalog'
 import { releaseYear } from '../../lib/format'
 import type { EntryRegion } from '../../lib/productTitle'
-import { bundleLang, homeRegionFor, platformEntryRegions, REGION_FROM_MATCH, titleFormFor } from '../../lib/productTitle'
+import { bundleLang, consoleRegionFor, homeRegionFor, platformEntryRegions, REGION_FROM_MATCH, titleFormFor } from '../../lib/productTitle'
 import { regionLabels } from '../../lib/regionLabels'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import ItemTypeIcon from '../ItemTypeIcon'
@@ -38,6 +38,10 @@ export interface HardwarePick {
   pcProductId: number
   name: string
   category: string
+  // The listing's own region, derived from its console-name axis: a
+  // PriceCharting listing prices exactly one region, so the wizard
+  // seeds its region default with it.
+  suggestedRegion: 'ntsc_u' | 'ntsc_j' | 'pal'
 }
 
 export interface PCListingPick {
@@ -270,7 +274,14 @@ export default function SearchPicker({ initialQuery = '', initialState, onPick, 
                   {releaseYear(r.first_release_date) && (
                     <span className="ml-2 text-xs text-gray-400">{releaseYear(r.first_release_date)}</span>
                   )}
-                  {r.console_name && <span className="ml-2 text-xs text-gray-400">{r.console_name}</span>}
+                  {r.console_name && (
+                    <span className="ml-2 text-xs text-gray-400">
+                      {r.console_name}
+                      {(r.type === 'hardware' || r.type === 'pc_listing') && (
+                        <span className="ml-1">{i18n._(regionLabels[consoleRegionFor(r.console_name)])}</span>
+                      )}
+                    </span>
+                  )}
                   {r.category && <span className="ml-2 text-xs text-gray-400">{r.category}</span>}
                   {r.origin === 'community' && (
                     <span className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-semibold text-indigo-800">
@@ -396,6 +407,7 @@ export default function SearchPicker({ initialQuery = '', initialState, onPick, 
                         pcProductId: r.pc_product_id!,
                         name: r.name,
                         category: r.category ?? '',
+                        suggestedRegion: consoleRegionFor(r.console_name ?? ''),
                       })
                     }
                     className="mt-1 rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
