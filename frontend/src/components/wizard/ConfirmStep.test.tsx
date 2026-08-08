@@ -78,8 +78,57 @@ it('sends the manual match with the resolve', async () => {
   renderConfirm(vi.fn(), { manualMatch: { pcProductId: 7042, name: 'Chrono Trigger [PAL]' } })
   expect(await screen.findByText(/match 100%/i)).toBeInTheDocument()
   expect(putBody(fetchMock.mock.calls[0][1] as RequestInit)).toEqual({
-    type: 'game', igdb_game_id: 1000, platform_igdb_id: 6, pc_product_id: 7042,
+    type: 'game', igdb_game_id: 1000, platform_igdb_id: 6, pc_product_id: 7042, region: 'ntsc_u',
   })
+})
+
+it('sends match_provenance user on create when a manual match is set', async () => {
+  const anchored = {
+    id: 'p1', type: 'game', name: 'Chrono Trigger',
+    platform: { igdb_platform_id: 6, name: 'SNES' },
+    pricecharting: { pc_product_id: 7042, pc_name: 'Chrono Trigger [PAL]', console_name: 'PAL Super Nintendo', match_confidence: 1.0, verified: false, as_of: 'x' },
+    created_at: 'x', updated_at: 'x',
+  }
+  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    const u = String(url)
+    if (u === '/api/products/resolve') return Promise.resolve(jsonResponse(200, anchored))
+    if (u === '/api/entries' && init?.method === 'POST') {
+      return Promise.resolve(jsonResponse(500, { code: 'internal', detail: 'creation failed' }))
+    }
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderConfirm(vi.fn(), { manualMatch: { pcProductId: 7042, name: 'Chrono Trigger [PAL]' } })
+  expect(await screen.findByText(/match 100%/i)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
+  await screen.findByRole('alert')
+  const createCall = fetchMock.mock.calls.find(([url, init]) => String(url) === '/api/entries' && (init as RequestInit)?.method === 'POST')
+  expect(createCall).toBeDefined()
+  expect(putBody(createCall![1] as RequestInit)).toMatchObject({ match_provenance: 'user' })
+})
+
+it('sends match_provenance auto on create when no manual match was made', async () => {
+  const unanchored = {
+    id: 'p1', type: 'game', name: 'Chrono Trigger',
+    platform: { igdb_platform_id: 6, name: 'SNES' },
+    created_at: 'x', updated_at: 'x',
+  }
+  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    const u = String(url)
+    if (u === '/api/products/resolve') return Promise.resolve(jsonResponse(200, unanchored))
+    if (u === '/api/entries' && init?.method === 'POST') {
+      return Promise.resolve(jsonResponse(500, { code: 'internal', detail: 'creation failed' }))
+    }
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderConfirm()
+  expect(await screen.findByText(/no confirmed price listing yet/i)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
+  await screen.findByRole('alert')
+  const createCall = fetchMock.mock.calls.find(([url, init]) => String(url) === '/api/entries' && (init as RequestInit)?.method === 'POST')
+  expect(createCall).toBeDefined()
+  expect(putBody(createCall![1] as RequestInit)).toMatchObject({ match_provenance: 'auto' })
 })
 
 it('offers Match manually on the no-listing card and reports the pick', async () => {

@@ -41,7 +41,7 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
   // recheck pick.kind, rather than branching on communityId, so each
   // stays narrowed to the provider-only picks resolveRequestFor takes.)
   const communityId = pick.kind === 'community' ? pick.productId : null
-  const req = pick.kind === 'community' ? null : resolveRequestFor(pick, manualMatch, details.edition)
+  const req = pick.kind === 'community' ? null : resolveRequestFor(pick, manualMatch, details.edition, details.region)
   const product = useQuery({
     queryKey: ['resolve', communityId ?? JSON.stringify(req)],
     queryFn: () => (communityId ? fetchProduct(communityId) : resolveProduct(req!)),
@@ -51,7 +51,11 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
   const create = useMutation({
     mutationFn: () => {
       if (!product.data) throw new Error('no product')
-      return createEntry({ product_id: product.data.id, ...detailsToCreate(details, money.profileCurrency) })
+      return createEntry({
+        product_id: product.data.id,
+        ...detailsToCreate(details, money.profileCurrency),
+        match_provenance: manualMatch ? 'user' : 'auto',
+      })
     },
     onSuccess: (entry) => {
       void queryClient.invalidateQueries({ queryKey: ['entries'] })

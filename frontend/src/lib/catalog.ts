@@ -17,15 +17,17 @@ export interface ManualMatch {
 // auto-match without changing the search (omitted when blank).
 // Community picks are excluded: they name an already-minted product,
 // so callers fetch it directly instead of resolving.
-export function resolveRequestFor(pick: Exclude<CatalogPick, CommunityPick>, manualMatch?: ManualMatch | null, matchHint?: string): ResolveRequest {
+export function resolveRequestFor(pick: Exclude<CatalogPick, CommunityPick>, manualMatch?: ManualMatch | null, matchHint?: string, region?: string): ResolveRequest {
   if (pick.kind === 'game') {
     const hint = matchHint?.trim() ?? ''
+    // region is the details-step entry region; the server uses it to steer auto-match and ignores it on the picker path.
     return {
       type: 'game',
       igdb_game_id: pick.igdbGameId,
       platform_igdb_id: pick.platformId,
       ...(manualMatch ? { pc_product_id: manualMatch.pcProductId } : {}),
       ...(hint !== '' ? { match_hint: hint } : {}),
+      ...(region !== undefined ? { region } : {}),
     }
   }
   if (pick.kind === 'pc_listing') {
