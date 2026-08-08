@@ -108,11 +108,10 @@ func run() error {
 	st := store.New(client.Database(cfg.MongoDB))
 	v := jwtauth.NewValidator(cfg.JWKSURL, cfg.JWTIssuer, cfg.JWTAudience)
 	h := server.New(st, games, prices, rates, cache.New(rdb), server.Options{
-		SearchCacheTTL:         cfg.SearchCacheTTL,
-		ProductCacheTTL:        cfg.ProductCacheTTL,
-		IGDBRefreshAfter:       cfg.IGDBRefreshAfter,
-		InternalRefreshSecrets: cfg.InternalRefreshSecrets,
-		Logger:                 slog.Default(),
+		SearchCacheTTL:   cfg.SearchCacheTTL,
+		ProductCacheTTL:  cfg.ProductCacheTTL,
+		IGDBRefreshAfter: cfg.IGDBRefreshAfter,
+		Logger:           slog.Default(),
 	})
 	// Readiness = Mongo only: the catalog is a hard dependency, the
 	// cache fails open per-request.

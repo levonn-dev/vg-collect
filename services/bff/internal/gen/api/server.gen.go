@@ -537,6 +537,24 @@ func (e EntryCreateManualCondition) Valid() bool {
 	}
 }
 
+// Defines values for EntryCreateMatchProvenance.
+const (
+	EntryCreateMatchProvenanceAuto EntryCreateMatchProvenance = "auto"
+	EntryCreateMatchProvenanceUser EntryCreateMatchProvenance = "user"
+)
+
+// Valid indicates whether the value is a known member of the EntryCreateMatchProvenance enum.
+func (e EntryCreateMatchProvenance) Valid() bool {
+	switch e {
+	case EntryCreateMatchProvenanceAuto:
+		return true
+	case EntryCreateMatchProvenanceUser:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EntryCreateMediaType.
 const (
 	EntryCreateMediaTypePhysical EntryCreateMediaType = "physical"
@@ -2012,17 +2030,20 @@ type Entry struct {
 	PricingProductId *openapi_types.UUID `json:"pricing_product_id,omitempty"`
 
 	// ProductId Absent on custom entries.
-	ProductId       *openapi_types.UUID `json:"product_id,omitempty"`
-	PurchasedAt     *openapi_types.Date `json:"purchased_at,omitempty"`
-	PurchasedFrom   *string             `json:"purchased_from,omitempty"`
-	Rating          *int                `json:"rating,omitempty"`
-	Region          EntryRegion         `json:"region"`
-	Source          EntrySource         `json:"source"`
-	Status          EntryStatus         `json:"status"`
-	StorageLocation *string             `json:"storage_location,omitempty"`
-	Tags            []TagRef            `json:"tags"`
-	UpdatedAt       time.Time           `json:"updated_at"`
-	ValueCents      *int64              `json:"value_cents,omitempty"`
+	ProductId     *openapi_types.UUID `json:"product_id,omitempty"`
+	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
+	PurchasedFrom *string             `json:"purchased_from,omitempty"`
+	Rating        *int                `json:"rating,omitempty"`
+	Region        EntryRegion         `json:"region"`
+
+	// RegionMismatchAckAt Null until the owner dismisses the region-mismatch banner; cleared whenever region or product changes.
+	RegionMismatchAckAt *time.Time  `json:"region_mismatch_ack_at,omitempty"`
+	Source              EntrySource `json:"source"`
+	Status              EntryStatus `json:"status"`
+	StorageLocation     *string     `json:"storage_location,omitempty"`
+	Tags                []TagRef    `json:"tags"`
+	UpdatedAt           time.Time   `json:"updated_at"`
+	ValueCents          *int64      `json:"value_cents,omitempty"`
 }
 
 // EntryBoxCondition defines model for Entry.BoxCondition.
@@ -2081,6 +2102,9 @@ type EntryCreate struct {
 	// ItemType Custom entries only (required there).
 	ItemType        *EntryCreateItemType        `json:"item_type,omitempty"`
 	ManualCondition *EntryCreateManualCondition `json:"manual_condition,omitempty"`
+
+	// MatchProvenance Whose choice the matched product is. Send user only when the add flow's manual match picked the price listing; automated repoints (region edits, the entry rematch) never touch user rows. Not accepted on update - the server stamps user when the narrow product_id re-match arm fires.
+	MatchProvenance *EntryCreateMatchProvenance `json:"match_provenance,omitempty"`
 	MediaType       *EntryCreateMediaType       `json:"media_type,omitempty"`
 	Notes           *string                     `json:"notes,omitempty"`
 	Packaging       EntryCreatePackaging        `json:"packaging"`
@@ -2117,6 +2141,9 @@ type EntryCreateItemType string
 
 // EntryCreateManualCondition defines model for EntryCreate.ManualCondition.
 type EntryCreateManualCondition string
+
+// EntryCreateMatchProvenance Whose choice the matched product is. Send user only when the add flow's manual match picked the price listing; automated repoints (region edits, the entry rematch) never touch user rows. Not accepted on update - the server stamps user when the narrow product_id re-match arm fires.
+type EntryCreateMatchProvenance string
 
 // EntryCreateMediaType defines model for EntryCreate.MediaType.
 type EntryCreateMediaType string
@@ -2159,7 +2186,7 @@ type EntryPlatform struct {
 	Name           string `json:"name"`
 }
 
-// EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
+// EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. That re-match stamps match_provenance=user; automated region repoints only ever run on match_provenance=auto entries. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
 type EntryUpdate struct {
 	BoxCondition *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
 
@@ -2196,10 +2223,12 @@ type EntryUpdate struct {
 	PricingProductId *openapi_types.UUID    `json:"pricing_product_id,omitempty"`
 
 	// ProductId Narrow re-match. Accepted only when the entry is product-backed with pricing_mode auto, its current product is a game with no price mapping, and the new product is a game of the same family (same igdb game and platform); the same id as the entry already has is a no-op. Anything else answers 400 code invalid_product_change; enrichment unreachable answers 502 code enrichment_unavailable and leaves the entry unchanged. Snapshotted display fields stay as they are.
-	ProductId       *openapi_types.UUID   `json:"product_id,omitempty"`
-	PurchasedAt     *openapi_types.Date   `json:"purchased_at,omitempty"`
-	PurchasedFrom   *string               `json:"purchased_from,omitempty"`
-	Rating          *int                  `json:"rating,omitempty"`
+	ProductId     *openapi_types.UUID `json:"product_id,omitempty"`
+	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
+	PurchasedFrom *string             `json:"purchased_from,omitempty"`
+	Rating        *int                `json:"rating,omitempty"`
+
+	// Region A region change on an auto-priced game-backed entry may repoint the entry to the sibling catalog product whose listing prices that region; snapshotted fields re-derive from it.
 	Region          EntryUpdateRegion     `json:"region"`
 	Status          EntryUpdateStatus     `json:"status"`
 	StorageLocation *string               `json:"storage_location,omitempty"`
@@ -2221,7 +2250,7 @@ type EntryUpdatePackaging string
 // EntryUpdatePricingMode defines model for EntryUpdate.PricingMode.
 type EntryUpdatePricingMode string
 
-// EntryUpdateRegion defines model for EntryUpdate.Region.
+// EntryUpdateRegion A region change on an auto-priced game-backed entry may repoint the entry to the sibling catalog product whose listing prices that region; snapshotted fields re-derive from it.
 type EntryUpdateRegion string
 
 // EntryUpdateStatus defines model for EntryUpdate.Status.
@@ -2402,7 +2431,7 @@ type Product struct {
 	// Igdb Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
 	Igdb *IgdbMeta `json:"igdb,omitempty"`
 
-	// MatchHold Present true when an admin clear holds this product out of the nightly re-match walk.
+	// MatchHold Present true when an admin clear holds this product's mapping against a future automated match (resolve, or the entry-side re-match).
 	MatchHold *bool  `json:"match_hold,omitempty"`
 	Name      string `json:"name"`
 
@@ -2480,7 +2509,7 @@ type PromoteCandidatesPage struct {
 	TotalCount int64 `json:"total_count"`
 }
 
-// PromoteRequest Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the nightly walk or the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant.
+// PromoteRequest Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant.
 type PromoteRequest struct {
 	IgdbGameId     *int64 `json:"igdb_game_id,omitempty"`
 	PcProductId    *int64 `json:"pc_product_id,omitempty"`
@@ -2523,16 +2552,18 @@ type ReorderRequest struct {
 	BeforeId *openapi_types.UUID `json:"before_id,omitempty"`
 }
 
-// ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so region/edition/variant on a game resolve are ignored (entry-level facts, like pc_listing). Without pc_product_id the resolve auto-matches by the plain game name through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
+// ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so edition/variant on a game resolve are ignored (entry-level facts, like pc_listing); region is a matching input only (see the region property) and never joins identity. Without pc_product_id the resolve auto-matches by the game name (region-steered) through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
 type ResolveRequest struct {
-	Edition        *string            `json:"edition,omitempty"`
-	IgdbGameId     *int64             `json:"igdb_game_id,omitempty"`
-	MatchHint      *string            `json:"match_hint,omitempty"`
-	PcProductId    *int64             `json:"pc_product_id,omitempty"`
-	PlatformIgdbId *int64             `json:"platform_igdb_id,omitempty"`
-	Region         *string            `json:"region,omitempty"`
-	Type           ResolveRequestType `json:"type"`
-	Variant        *string            `json:"variant,omitempty"`
+	Edition        *string `json:"edition,omitempty"`
+	IgdbGameId     *int64  `json:"igdb_game_id,omitempty"`
+	MatchHint      *string `json:"match_hint,omitempty"`
+	PcProductId    *int64  `json:"pc_product_id,omitempty"`
+	PlatformIgdbId *int64  `json:"platform_igdb_id,omitempty"`
+
+	// Region For console/accessory: part of hardware identity, distinguishing physical variants. For game: a matching input only - the entry region (ntsc_u, ntsc_j, pal, region_free) steers which PriceCharting listing auto-match lands on (JP and PAL listings live under region-prefixed or JP-named console axes) and is never stored on the product; ignored when pc_product_id is present; unknown values behave like ntsc_u. Ignored for pc_listing.
+	Region  *string            `json:"region,omitempty"`
+	Type    ResolveRequestType `json:"type"`
+	Variant *string            `json:"variant,omitempty"`
 }
 
 // ResolveRequestType defines model for ResolveRequest.Type.
@@ -3084,7 +3115,7 @@ type ServerInterface interface {
 	// DismissPromoteCandidate Dismiss one promote candidate (relay; enrichment enforces role admin)
 	// (POST /api/admin/products/{productId}/promote-candidates/dismiss)
 	DismissPromoteCandidate(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
-	// TriggerRefresh Trigger an immediate price refresh walk (relay; enrichment enforces role admin)
+	// TriggerRefresh Trigger an immediate catalog refresh (relay; enrichment enforces role admin)
 	// (POST /api/admin/refresh)
 	TriggerRefresh(w http.ResponseWriter, r *http.Request)
 	// ListSubmissions Pending catalog submissions with live proposals (relay; collection enforces role admin)
@@ -3135,6 +3166,9 @@ type ServerInterface interface {
 	// UpdateEntry Replace an entry's mutable state (proxied, uncached)
 	// (PUT /api/entries/{entryId})
 	UpdateEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
+	// AckEntryRegionMismatch Dismiss the region-mismatch banner for the entry's current choice (relay)
+	// (POST /api/entries/{entryId}/region-mismatch-ack)
+	AckEntryRegionMismatch(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
 	// ReorderEntry Move a backlog entry between two neighbors (proxied)
 	// (POST /api/entries/{entryId}/reorder)
 	ReorderEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
@@ -4208,6 +4242,32 @@ func (siw *ServerInterfaceWrapper) UpdateEntry(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateEntry(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AckEntryRegionMismatch operation middleware
+func (siw *ServerInterfaceWrapper) AckEntryRegionMismatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AckEntryRegionMismatch(w, r, entryId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5365,6 +5425,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/entries/{entryId}", wrapper.GetEntry)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/entries/{entryId}", wrapper.UpdateEntry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/entries/{entryId}/reorder", wrapper.ReorderEntry)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/entries/{entryId}/region-mismatch-ack", wrapper.AckEntryRegionMismatch)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/entries/{entryId}/submission", wrapper.CancelSubmission)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/entries/{entryId}/submission", wrapper.GetSubmission)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/entries/{entryId}/submission", wrapper.CreateSubmission)

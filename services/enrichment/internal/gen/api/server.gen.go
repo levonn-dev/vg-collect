@@ -423,7 +423,7 @@ type Product struct {
 	// Igdb Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
 	Igdb *IgdbMeta `json:"igdb,omitempty"`
 
-	// MatchHold Present true when an admin clear holds this product out of the nightly re-match walk.
+	// MatchHold Present true when an admin clear holds this product's mapping against a future automated match (resolve, or the entry-side re-match).
 	MatchHold *bool  `json:"match_hold,omitempty"`
 	Name      string `json:"name"`
 
@@ -480,7 +480,7 @@ type PromoteCandidatesPage struct {
 	TotalCount int64 `json:"total_count"`
 }
 
-// PromoteRequest Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the nightly walk or the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant.
+// PromoteRequest Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant.
 type PromoteRequest struct {
 	IgdbGameId     *int64 `json:"igdb_game_id,omitempty"`
 	PcProductId    *int64 `json:"pc_product_id,omitempty"`
@@ -511,16 +511,18 @@ type ReleaseDate struct {
 	Region string             `json:"region"`
 }
 
-// ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so region/edition/variant on a game resolve are ignored (entry-level facts, like pc_listing). Without pc_product_id the resolve auto-matches by the plain game name through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
+// ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so edition/variant on a game resolve are ignored (entry-level facts, like pc_listing); region is a matching input only (see the region property) and never joins identity. Without pc_product_id the resolve auto-matches by the game name (region-steered) through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
 type ResolveRequest struct {
-	Edition        *string            `json:"edition,omitempty"`
-	IgdbGameId     *int64             `json:"igdb_game_id,omitempty"`
-	MatchHint      *string            `json:"match_hint,omitempty"`
-	PcProductId    *int64             `json:"pc_product_id,omitempty"`
-	PlatformIgdbId *int64             `json:"platform_igdb_id,omitempty"`
-	Region         *string            `json:"region,omitempty"`
-	Type           ResolveRequestType `json:"type"`
-	Variant        *string            `json:"variant,omitempty"`
+	Edition        *string `json:"edition,omitempty"`
+	IgdbGameId     *int64  `json:"igdb_game_id,omitempty"`
+	MatchHint      *string `json:"match_hint,omitempty"`
+	PcProductId    *int64  `json:"pc_product_id,omitempty"`
+	PlatformIgdbId *int64  `json:"platform_igdb_id,omitempty"`
+
+	// Region For console/accessory: part of hardware identity, distinguishing physical variants. For game: a matching input only - the entry region (ntsc_u, ntsc_j, pal, region_free) steers which PriceCharting listing auto-match lands on (JP and PAL listings live under region-prefixed or JP-named console axes) and is never stored on the product; ignored when pc_product_id is present; unknown values behave like ntsc_u. Ignored for pc_listing.
+	Region  *string            `json:"region,omitempty"`
+	Type    ResolveRequestType `json:"type"`
+	Variant *string            `json:"variant,omitempty"`
 }
 
 // ResolveRequestType defines model for ResolveRequest.Type.
@@ -681,12 +683,15 @@ type ServerInterface interface {
 	// DismissPromoteCandidate Dismiss one promote candidate permanently (role admin)
 	// (POST /admin/products/{productId}/promote-candidates/dismiss)
 	DismissPromoteCandidate(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID)
-	// TriggerRefresh Trigger an immediate price refresh walk (role admin)
+	// TriggerRefresh Trigger an immediate catalog refresh (role admin)
 	// (POST /admin/refresh)
 	TriggerRefresh(w http.ResponseWriter, r *http.Request)
 	// GetFxLatest Latest USD-based exchange rates (cached daily snapshot)
 	// (GET /fx/latest)
 	GetFxLatest(w http.ResponseWriter, r *http.Request)
+	// InternalRefresh Catalog refresh trigger (CronJob)
+	// (POST /internal/refresh)
+	InternalRefresh(w http.ResponseWriter, r *http.Request)
 	// ListPlatforms The canonical platform catalog with alias knowledge
 	// (GET /platforms)
 	ListPlatforms(w http.ResponseWriter, r *http.Request)
@@ -1016,6 +1021,20 @@ func (siw *ServerInterfaceWrapper) GetFxLatest(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// InternalRefresh operation middleware
+func (siw *ServerInterfaceWrapper) InternalRefresh(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InternalRefresh(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListPlatforms operation middleware
 func (siw *ServerInterfaceWrapper) ListPlatforms(w http.ResponseWriter, r *http.Request) {
 
@@ -1287,6 +1306,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/fx/latest", wrapper.GetFxLatest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/platforms", wrapper.ListPlatforms)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/refresh", wrapper.TriggerRefresh)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/internal/refresh", wrapper.InternalRefresh)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/products", wrapper.CreateCommunityProduct)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/admin/products/{productId}/pricecharting", wrapper.SetProductMapping)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/products/{productId}/promote", wrapper.PromoteProduct)

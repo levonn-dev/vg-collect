@@ -286,75 +286,11 @@ func TestProduct_SubdocUpdates(t *testing.T) {
 	}
 }
 
-func TestProduct_SetPriceChartingIfMissing_FillsExactlyOnce(t *testing.T) {
-	s, _ := newTestStore(t)
-	ctx := context.Background()
-
-	created, err := s.CreateProduct(ctx, gameProduct(1018, 19, "Terranigma", "Super Nintendo Entertainment System", ""))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	loose := int64(9800)
-	meta := &store.PCMeta{
-		PCProductID: 7001, PCName: "Terranigma [PAL]", ConsoleName: "PAL Super Nintendo",
-		MatchConfidence: 1.0, Verified: false,
-		Current: store.PriceQuote{LooseCents: &loose},
-		AsOf:    time.Now().UTC().Truncate(time.Millisecond),
-	}
-	landed, err := s.SetPriceChartingIfMissing(ctx, created.ID, meta)
-	if err != nil || !landed {
-		t.Fatalf("first fill must land: landed=%v err=%v", landed, err)
-	}
-	got, err := s.GetProduct(ctx, created.ID)
-	if err != nil {
-		t.Fatalf("fill must persist the mapping: %v", err)
-	}
-	if got.PriceCharting == nil || got.PriceCharting.PCProductID != 7001 {
-		t.Fatalf("fill must persist the mapping: %+v", got.PriceCharting)
-	}
-
-	// Mapped now: a second fill must not land and must change nothing.
-	// This is the guard that fails if the conditional filter is ever
-	// swapped for the unconditional SetPriceCharting.
-	other := &store.PCMeta{PCProductID: 7002, PCName: "Wrong", ConsoleName: "Wrong",
-		MatchConfidence: 1.0, Verified: false, AsOf: meta.AsOf}
-	landed, err = s.SetPriceChartingIfMissing(ctx, created.ID, other)
-	if err != nil || landed {
-		t.Fatalf("second fill must not land: landed=%v err=%v", landed, err)
-	}
-	got, err = s.GetProduct(ctx, created.ID)
-	if err != nil {
-		t.Fatalf("existing mapping must be untouched: %v", err)
-	}
-	if got.PriceCharting.PCProductID != 7001 {
-		t.Fatalf("existing mapping must be untouched: %+v", got.PriceCharting)
-	}
-
-	// A mapping cleared by the admin path is missing again, but the
-	// clear also holds it (SetPriceCharting's own $unset/$set pair,
-	// untouched by this method): the fill must not land. The hold-lift
-	// walkthrough lives in TestProduct_MappingWritesHoldAndIdentityTaken.
-	if err := s.SetPriceCharting(ctx, created.ID, nil); err != nil {
-		t.Fatal(err)
-	}
-	landed, err = s.SetPriceChartingIfMissing(ctx, created.ID, other)
-	if err != nil || landed {
-		t.Fatalf("a held clear must not be fillable: landed=%v err=%v", landed, err)
-	}
-
-	// Unknown product id: no landing, no error.
-	landed, err = s.SetPriceChartingIfMissing(ctx, "00000000-0000-0000-0000-000000000000", meta)
-	if err != nil || landed {
-		t.Fatalf("unknown id: landed=%v err=%v", landed, err)
-	}
-}
-
 // Mapping writes are identity moves now: a taken (game, platform,
 // listing) slot surfaces ErrIdentityTaken instead of a generic error,
 // clears set the walk hold, and any set lifts it.
 func TestProduct_MappingWritesHoldAndIdentityTaken(t *testing.T) {
-	s, mdb := newTestStore(t)
+	s, _ := newTestStore(t)
 	ctx := context.Background()
 
 	meta := func(pcID int64) *store.PCMeta {
@@ -376,55 +312,24 @@ func TestProduct_MappingWritesHoldAndIdentityTaken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Filling the unmatched member with a taken listing is refused.
-	landed, err := s.SetPriceChartingIfMissing(ctx, unmatched.ID, meta(5005))
-	if landed || !errors.Is(err, store.ErrIdentityTaken) {
-		t.Fatalf("want ErrIdentityTaken, got landed=%v err=%v", landed, err)
-	}
-
 	// Clearing the matched member collides with the existing unmatched
 	// member (two null keys in one family).
 	if err := s.SetPriceCharting(ctx, matched.ID, nil); !errors.Is(err, store.ErrIdentityTaken) {
 		t.Fatalf("clear onto an occupied null slot: want ErrIdentityTaken, got %v", err)
 	}
 
-	// A held product is skipped by the fill: the walk must never undo
-	// a deliberate admin clear that lands mid-walk, even one landing
-	// after the walk already holds this product in its worklist.
-	if _, err := mdb.Collection("products").UpdateByID(ctx, unmatched.ID,
-		bson.D{{Key: "$set", Value: bson.D{{Key: "match_hold", Value: true}}}}); err != nil {
+	// Mapping the unmatched member frees the family's null slot, so
+	// the matched member's clear below now lands instead of colliding.
+	if err := s.SetPriceCharting(ctx, unmatched.ID, meta(5099)); err != nil {
 		t.Fatal(err)
 	}
-	landed, err = s.SetPriceChartingIfMissing(ctx, unmatched.ID, meta(5099))
-	if err != nil || landed {
-		t.Fatalf("held product must not be filled: landed=%v err=%v", landed, err)
-	}
-	got, err := s.GetProduct(ctx, unmatched.ID)
-	if err != nil || got.PriceCharting != nil || !got.MatchHold {
-		t.Fatalf("held product must stay unmatched and held: %+v, %v", got, err)
-	}
 
-	// Lifting the hold (as the admin's own set path would) makes the
-	// same fill land.
-	if _, err := mdb.Collection("products").UpdateByID(ctx, unmatched.ID,
-		bson.D{{Key: "$unset", Value: bson.D{{Key: "match_hold", Value: ""}}}}); err != nil {
-		t.Fatal(err)
-	}
-	landed, err = s.SetPriceChartingIfMissing(ctx, unmatched.ID, meta(5099))
-	if err != nil || !landed {
-		t.Fatalf("fill must land once the hold lifts: landed=%v err=%v", landed, err)
-	}
-	got, err = s.GetProduct(ctx, unmatched.ID)
-	if err != nil || got.PriceCharting == nil || got.PriceCharting.PCProductID != 5099 || got.MatchHold {
-		t.Fatalf("fill must persist: %+v, %v", got, err)
-	}
-
-	// The admin clear is now free (the family's null slot emptied when
-	// the fill landed) and sets the hold; a following set lifts it.
+	// The admin clear is now free (the family's null slot emptied
+	// above) and sets the hold; a following set lifts it.
 	if err := s.SetPriceCharting(ctx, matched.ID, nil); err != nil {
 		t.Fatal(err)
 	}
-	got, err = s.GetProduct(ctx, matched.ID)
+	got, err := s.GetProduct(ctx, matched.ID)
 	if err != nil || got.PriceCharting != nil || !got.MatchHold {
 		t.Fatalf("clear must unmap and hold: %+v, %v", got, err)
 	}
@@ -434,48 +339,6 @@ func TestProduct_MappingWritesHoldAndIdentityTaken(t *testing.T) {
 	got, err = s.GetProduct(ctx, matched.ID)
 	if err != nil || got.PriceCharting == nil || got.MatchHold {
 		t.Fatalf("set must map and lift the hold: %+v, %v", got, err)
-	}
-}
-
-// The walk's worklist: unmatched games only, holds excluded, oldest
-// updated_at first, capped.
-func TestProduct_ListUnmatchedGames(t *testing.T) {
-	s, _ := newTestStore(t)
-	ctx := context.Background()
-
-	oldest, err := s.CreateProduct(ctx, gameProduct(1011, 19, "Chrono Trigger", "Super Nintendo Entertainment System", ""))
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(5 * time.Millisecond)
-	newest, err := s.CreateProduct(ctx, gameProduct(1005, 4, "Super Mario 64", "Nintendo 64", ""))
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(5 * time.Millisecond)
-	held, err := s.CreateProduct(ctx, gameProduct(1014, 19, "Final Fantasy VI", "Super Nintendo Entertainment System", ""))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.SetPriceCharting(ctx, held.ID, nil); err != nil { // clear = hold
-		t.Fatal(err)
-	}
-	m := gameProduct(1013, 7, "Final Fantasy VII", "PlayStation", "")
-	m.PriceCharting = &store.PCMeta{PCProductID: 5013, PCName: "Final Fantasy VII", ConsoleName: "Playstation", MatchConfidence: 1, AsOf: time.Now().UTC()}
-	if _, err := s.CreateProduct(ctx, m); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := s.ListUnmatchedGames(ctx, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 2 || got[0].ID != oldest.ID || got[1].ID != newest.ID {
-		t.Fatalf("want [oldest newest] without held/matched, got %+v", got)
-	}
-	capped, err := s.ListUnmatchedGames(ctx, 1)
-	if err != nil || len(capped) != 1 || capped[0].ID != oldest.ID {
-		t.Fatalf("cap must keep the oldest: %+v, %v", capped, err)
 	}
 }
 
@@ -1014,7 +877,8 @@ func TestListUnmatchedProducts(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A deliberate clear sets match_hold; held products MUST appear in
-	// the admin worklist (the walk's exclusion does not apply here).
+	// the admin worklist regardless (a hold only pins the mapping
+	// against automated change, it does not hide the product here).
 	if err := s.SetPriceCharting(ctx, heldConsole.ID, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -1146,30 +1010,8 @@ func TestCommunityOrigin_TwinsInsertAndExclusions(t *testing.T) {
 		t.Fatal("provider identity must still find-or-mint one doc")
 	}
 
-	// Community products are unmatched forever by definition: both
-	// walk and worklist reads exclude them.
-	games, err := s.ListUnmatchedGames(ctx, 100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, g := range games {
-		if g.Origin == "community" {
-			t.Fatalf("walk worklist must exclude community products, got %q", g.Name)
-		}
-	}
-	// The negative loop above would also pass on a vacuously empty or
-	// wholly-wrong result set; p1 (the provider game, unmatched, no
-	// hold) must positively be present so the exclusion is proven
-	// against a real hit, not just an absence of community docs.
-	foundP1 := false
-	for _, g := range games {
-		if g.ID == p1.ID {
-			foundP1 = true
-		}
-	}
-	if !foundP1 {
-		t.Fatalf("walk worklist must include the unmatched provider game p1, got %+v", games)
-	}
+	// Community products are unmatched forever by definition: the
+	// admin worklist read excludes them.
 	page, total, err := s.ListUnmatchedProducts(ctx, 100, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -1209,7 +1051,7 @@ func TestListCommunityProductsPage(t *testing.T) {
 	// Creation order fixes updated_at order: communityA is oldest. The
 	// sleep guards against a same-millisecond tie (updated_at truncates
 	// to the millisecond; _id is a random UUID, not a real tiebreak for
-	// creation order), matching TestProduct_ListUnmatchedGames.
+	// creation order).
 	communityA, err := s.CreateProduct(ctx, store.Product{Type: "game", Name: "Community Alpha", Origin: "community"})
 	if err != nil {
 		t.Fatal(err)

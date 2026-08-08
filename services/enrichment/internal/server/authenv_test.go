@@ -76,3 +76,26 @@ func (a *authEnv) token(t *testing.T, sub string, roles []string) string {
 func (a *authEnv) validator() *jwtauth.Validator {
 	return jwtauth.NewValidator(a.srv.URL, "vgkeep-auth", "vgkeep")
 }
+
+// serviceToken mints a valid access JWT carrying token_use=service (no
+// roles) for sub, mirroring how auth's internal service-token endpoint
+// mints a machine credential for the catalog-refresh CronJob.
+func (a *authEnv) serviceToken(t *testing.T, sub string) string {
+	t.Helper()
+	now := time.Now()
+	tok := jwt.NewWithClaims(jwt.SigningMethodEdDSA, jwt.MapClaims{
+		"sub":       sub,
+		"token_use": "service",
+		"iss":       "vgkeep-auth",
+		"aud":       "vgkeep",
+		"jti":       uuid.NewString(),
+		"iat":       now.Unix(),
+		"exp":       now.Add(5 * time.Minute).Unix(),
+	})
+	tok.Header["kid"] = a.kid
+	signed, err := tok.SignedString(a.priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return signed
+}

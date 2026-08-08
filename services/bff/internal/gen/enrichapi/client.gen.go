@@ -426,7 +426,7 @@ type Product struct {
 	// Igdb Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
 	Igdb *IgdbMeta `json:"igdb,omitempty"`
 
-	// MatchHold Present true when an admin clear holds this product out of the nightly re-match walk.
+	// MatchHold Present true when an admin clear holds this product's mapping against a future automated match (resolve, or the entry-side re-match).
 	MatchHold *bool  `json:"match_hold,omitempty"`
 	Name      string `json:"name"`
 
@@ -483,7 +483,7 @@ type PromoteCandidatesPage struct {
 	TotalCount int64 `json:"total_count"`
 }
 
-// PromoteRequest Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the nightly walk or the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant.
+// PromoteRequest Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant.
 type PromoteRequest struct {
 	IgdbGameId     *int64 `json:"igdb_game_id,omitempty"`
 	PcProductId    *int64 `json:"pc_product_id,omitempty"`
@@ -514,16 +514,18 @@ type ReleaseDate struct {
 	Region string             `json:"region"`
 }
 
-// ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so region/edition/variant on a game resolve are ignored (entry-level facts, like pc_listing). Without pc_product_id the resolve auto-matches by the plain game name through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
+// ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so edition/variant on a game resolve are ignored (entry-level facts, like pc_listing); region is a matching input only (see the region property) and never joins identity. Without pc_product_id the resolve auto-matches by the game name (region-steered) through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
 type ResolveRequest struct {
-	Edition        *string            `json:"edition,omitempty"`
-	IgdbGameId     *int64             `json:"igdb_game_id,omitempty"`
-	MatchHint      *string            `json:"match_hint,omitempty"`
-	PcProductId    *int64             `json:"pc_product_id,omitempty"`
-	PlatformIgdbId *int64             `json:"platform_igdb_id,omitempty"`
-	Region         *string            `json:"region,omitempty"`
-	Type           ResolveRequestType `json:"type"`
-	Variant        *string            `json:"variant,omitempty"`
+	Edition        *string `json:"edition,omitempty"`
+	IgdbGameId     *int64  `json:"igdb_game_id,omitempty"`
+	MatchHint      *string `json:"match_hint,omitempty"`
+	PcProductId    *int64  `json:"pc_product_id,omitempty"`
+	PlatformIgdbId *int64  `json:"platform_igdb_id,omitempty"`
+
+	// Region For console/accessory: part of hardware identity, distinguishing physical variants. For game: a matching input only - the entry region (ntsc_u, ntsc_j, pal, region_free) steers which PriceCharting listing auto-match lands on (JP and PAL listings live under region-prefixed or JP-named console axes) and is never stored on the product; ignored when pc_product_id is present; unknown values behave like ntsc_u. Ignored for pc_listing.
+	Region  *string            `json:"region,omitempty"`
+	Type    ResolveRequestType `json:"type"`
+	Variant *string            `json:"variant,omitempty"`
 }
 
 // ResolveRequestType defines model for ResolveRequest.Type.
@@ -734,7 +736,7 @@ type ClientInterface interface {
 
 	// CreateCommunityProductWithBody Mint a community product from an approved submission (role admin)
 	//
-	// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the nightly re-match walk or the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
+	// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -743,7 +745,7 @@ type ClientInterface interface {
 
 	// CreateCommunityProduct Mint a community product from an approved submission (role admin)
 	//
-	// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the nightly re-match walk or the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
+	// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -780,7 +782,7 @@ type ClientInterface interface {
 
 	// SetProductMappingWithBody Correct a product's PriceCharting mapping and mark it verified (role admin)
 	//
-	// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so the nightly re-match walk never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
+	// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so a future automated match (resolve, or the entry-side re-match) never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -789,7 +791,7 @@ type ClientInterface interface {
 
 	// SetProductMapping Correct a product's PriceCharting mapping and mark it verified (role admin)
 	//
-	// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so the nightly re-match walk never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
+	// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so a future automated match (resolve, or the entry-side re-match) never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -798,7 +800,7 @@ type ClientInterface interface {
 
 	// PromoteProductWithBody Promote a community product to provider identity in place (role admin)
 	//
-	// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: the nightly walk may auto-match a missing game listing, the unmatched worklist includes it, and the mapping fix applies. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
+	// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: a missing game listing leaves it on the unmatched worklist until the mapping fix attaches one. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -807,7 +809,7 @@ type ClientInterface interface {
 
 	// PromoteProduct Promote a community product to provider identity in place (role admin)
 	//
-	// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: the nightly walk may auto-match a missing game listing, the unmatched worklist includes it, and the mapping fix applies. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
+	// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: a missing game listing leaves it on the unmatched worklist until the mapping fix attaches one. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -832,9 +834,9 @@ type ClientInterface interface {
 	// Corresponds with POST /admin/products/{productId}/promote-candidates/dismiss (the `DismissPromoteCandidate` operationId).
 	DismissPromoteCandidate(ctx context.Context, productId openapi_types.UUID, body DismissPromoteCandidateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// TriggerRefresh Trigger an immediate price refresh walk (role admin)
+	// TriggerRefresh Trigger an immediate catalog refresh (role admin)
 	//
-	// Starts the same walk the daily CronJob triggers and returns 202 immediately (the walk outlives the HTTP write timeout at polite provider rates); the runner logs its summary. 409 code refresh_in_progress when a walk is already running.
+	// Starts the same refresh the daily CronJob triggers and returns 202 immediately (the refresh outlives the HTTP write timeout at polite provider rates); the runner logs its summary. 409 code refresh_in_progress when a refresh is already running.
 	//
 	// Corresponds with POST /admin/refresh (the `TriggerRefresh` operationId).
 	TriggerRefresh(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -846,6 +848,13 @@ type ClientInterface interface {
 	// Corresponds with GET /fx/latest (the `GetFxLatest` operationId).
 	GetFxLatest(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// InternalRefresh Catalog refresh trigger (CronJob)
+	//
+	// Machine trigger for the nightly catalog refresh; the gateway never routes it. Guard: a service token (token_use=service) - operators use /admin/refresh. Answers 202 and detaches; one run at a time (409 refresh_in_progress).
+	//
+	// Corresponds with POST /internal/refresh (the `InternalRefresh` operationId).
+	InternalRefresh(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListPlatforms The canonical platform catalog with alias knowledge
 	//
 	// The IGDB platform catalog (igdb id + name) joined with the alias table - PriceCharting console spellings plus curated abbreviations (SNES, PSX, N64, ...) - sorted by name. Reference data for the custom-entry platform picker and the collection normalize-platforms lever: consumers filter and match against name + aliases and never hard-code aliases themselves. Cached 24h (the search-cache idiom); the catalog changes only when the platform sweep lands new rows. A cold catalog with the provider down is the only 502.
@@ -855,7 +864,7 @@ type ClientInterface interface {
 
 	// BatchPriceHistoryWithBody Price snapshot series for a set of products (value-over-time composition)
 	//
-	// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily refresh walk plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
+	// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily catalog refresh plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -864,7 +873,7 @@ type ClientInterface interface {
 
 	// BatchPriceHistory Price snapshot series for a set of products (value-over-time composition)
 	//
-	// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily refresh walk plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
+	// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily catalog refresh plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -942,7 +951,7 @@ type ClientInterface interface {
 
 // CreateCommunityProductWithBody Mint a community product from an approved submission (role admin)
 //
-// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the nightly re-match walk or the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
+// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
 //
 // Takes any type of body and a specified content type.
 //
@@ -961,7 +970,7 @@ func (c *Client) CreateCommunityProductWithBody(ctx context.Context, contentType
 
 // CreateCommunityProduct Mint a community product from an approved submission (role admin)
 //
-// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the nightly re-match walk or the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
+// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1048,7 +1057,7 @@ func (c *Client) DeleteProduct(ctx context.Context, productId openapi_types.UUID
 
 // SetProductMappingWithBody Correct a product's PriceCharting mapping and mark it verified (role admin)
 //
-// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so the nightly re-match walk never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
+// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so a future automated match (resolve, or the entry-side re-match) never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
 //
 // Takes any type of body and a specified content type.
 //
@@ -1067,7 +1076,7 @@ func (c *Client) SetProductMappingWithBody(ctx context.Context, productId openap
 
 // SetProductMapping Correct a product's PriceCharting mapping and mark it verified (role admin)
 //
-// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so the nightly re-match walk never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
+// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so a future automated match (resolve, or the entry-side re-match) never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1086,7 +1095,7 @@ func (c *Client) SetProductMapping(ctx context.Context, productId openapi_types.
 
 // PromoteProductWithBody Promote a community product to provider identity in place (role admin)
 //
-// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: the nightly walk may auto-match a missing game listing, the unmatched worklist includes it, and the mapping fix applies. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
+// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: a missing game listing leaves it on the unmatched worklist until the mapping fix attaches one. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
 //
 // Takes any type of body and a specified content type.
 //
@@ -1105,7 +1114,7 @@ func (c *Client) PromoteProductWithBody(ctx context.Context, productId openapi_t
 
 // PromoteProduct Promote a community product to provider identity in place (role admin)
 //
-// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: the nightly walk may auto-match a missing game listing, the unmatched worklist includes it, and the mapping fix applies. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
+// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: a missing game listing leaves it on the unmatched worklist until the mapping fix attaches one. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1160,9 +1169,9 @@ func (c *Client) DismissPromoteCandidate(ctx context.Context, productId openapi_
 	return c.Client.Do(req)
 }
 
-// TriggerRefresh Trigger an immediate price refresh walk (role admin)
+// TriggerRefresh Trigger an immediate catalog refresh (role admin)
 //
-// Starts the same walk the daily CronJob triggers and returns 202 immediately (the walk outlives the HTTP write timeout at polite provider rates); the runner logs its summary. 409 code refresh_in_progress when a walk is already running.
+// Starts the same refresh the daily CronJob triggers and returns 202 immediately (the refresh outlives the HTTP write timeout at polite provider rates); the runner logs its summary. 409 code refresh_in_progress when a refresh is already running.
 //
 // Corresponds with POST /admin/refresh (the `TriggerRefresh` operationId).
 func (c *Client) TriggerRefresh(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1194,6 +1203,23 @@ func (c *Client) GetFxLatest(ctx context.Context, reqEditors ...RequestEditorFn)
 	return c.Client.Do(req)
 }
 
+// InternalRefresh Catalog refresh trigger (CronJob)
+//
+// Machine trigger for the nightly catalog refresh; the gateway never routes it. Guard: a service token (token_use=service) - operators use /admin/refresh. Answers 202 and detaches; one run at a time (409 refresh_in_progress).
+//
+// Corresponds with POST /internal/refresh (the `InternalRefresh` operationId).
+func (c *Client) InternalRefresh(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInternalRefreshRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListPlatforms The canonical platform catalog with alias knowledge
 //
 // The IGDB platform catalog (igdb id + name) joined with the alias table - PriceCharting console spellings plus curated abbreviations (SNES, PSX, N64, ...) - sorted by name. Reference data for the custom-entry platform picker and the collection normalize-platforms lever: consumers filter and match against name + aliases and never hard-code aliases themselves. Cached 24h (the search-cache idiom); the catalog changes only when the platform sweep lands new rows. A cold catalog with the provider down is the only 502.
@@ -1213,7 +1239,7 @@ func (c *Client) ListPlatforms(ctx context.Context, reqEditors ...RequestEditorF
 
 // BatchPriceHistoryWithBody Price snapshot series for a set of products (value-over-time composition)
 //
-// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily refresh walk plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
+// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily catalog refresh plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
 //
 // Takes any type of body and a specified content type.
 //
@@ -1232,7 +1258,7 @@ func (c *Client) BatchPriceHistoryWithBody(ctx context.Context, contentType stri
 
 // BatchPriceHistory Price snapshot series for a set of products (value-over-time composition)
 //
-// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily refresh walk plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
+// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily catalog refresh plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1876,6 +1902,33 @@ func NewGetFxLatestRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewInternalRefreshRequest constructs an http.Request for the InternalRefresh method
+func NewInternalRefreshRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/internal/refresh")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListPlatformsRequest constructs an http.Request for the ListPlatforms method
 func NewListPlatformsRequest(server string) (*http.Request, error) {
 	var err error
@@ -2201,7 +2254,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateCommunityProductWithBodyWithResponse Mint a community product from an approved submission (role admin)
 	//
-	// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the nightly re-match walk or the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
+	// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2210,7 +2263,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateCommunityProductWithResponse Mint a community product from an approved submission (role admin)
 	//
-	// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the nightly re-match walk or the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
+	// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2255,7 +2308,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProductMappingWithBodyWithResponse Correct a product's PriceCharting mapping and mark it verified (role admin)
 	//
-	// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so the nightly re-match walk never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
+	// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so a future automated match (resolve, or the entry-side re-match) never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2264,7 +2317,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProductMappingWithResponse Correct a product's PriceCharting mapping and mark it verified (role admin)
 	//
-	// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so the nightly re-match walk never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
+	// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so a future automated match (resolve, or the entry-side re-match) never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2273,7 +2326,7 @@ type ClientWithResponsesInterface interface {
 
 	// PromoteProductWithBodyWithResponse Promote a community product to provider identity in place (role admin)
 	//
-	// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: the nightly walk may auto-match a missing game listing, the unmatched worklist includes it, and the mapping fix applies. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
+	// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: a missing game listing leaves it on the unmatched worklist until the mapping fix attaches one. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2282,7 +2335,7 @@ type ClientWithResponsesInterface interface {
 
 	// PromoteProductWithResponse Promote a community product to provider identity in place (role admin)
 	//
-	// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: the nightly walk may auto-match a missing game listing, the unmatched worklist includes it, and the mapping fix applies. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
+	// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: a missing game listing leaves it on the unmatched worklist until the mapping fix attaches one. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2307,9 +2360,9 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /admin/products/{productId}/promote-candidates/dismiss (the `DismissPromoteCandidate` operationId).
 	DismissPromoteCandidateWithResponse(ctx context.Context, productId openapi_types.UUID, body DismissPromoteCandidateJSONRequestBody, reqEditors ...RequestEditorFn) (*DismissPromoteCandidateResponse, error)
 
-	// TriggerRefreshWithResponse Trigger an immediate price refresh walk (role admin)
+	// TriggerRefreshWithResponse Trigger an immediate catalog refresh (role admin)
 	//
-	// Starts the same walk the daily CronJob triggers and returns 202 immediately (the walk outlives the HTTP write timeout at polite provider rates); the runner logs its summary. 409 code refresh_in_progress when a walk is already running.
+	// Starts the same refresh the daily CronJob triggers and returns 202 immediately (the refresh outlives the HTTP write timeout at polite provider rates); the runner logs its summary. 409 code refresh_in_progress when a refresh is already running.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2325,6 +2378,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /fx/latest (the `GetFxLatest` operationId).
 	GetFxLatestWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetFxLatestResponse, error)
 
+	// InternalRefreshWithResponse Catalog refresh trigger (CronJob)
+	//
+	// Machine trigger for the nightly catalog refresh; the gateway never routes it. Guard: a service token (token_use=service) - operators use /admin/refresh. Answers 202 and detaches; one run at a time (409 refresh_in_progress).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /internal/refresh (the `InternalRefresh` operationId).
+	InternalRefreshWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InternalRefreshResponse, error)
+
 	// ListPlatformsWithResponse The canonical platform catalog with alias knowledge
 	//
 	// The IGDB platform catalog (igdb id + name) joined with the alias table - PriceCharting console spellings plus curated abbreviations (SNES, PSX, N64, ...) - sorted by name. Reference data for the custom-entry platform picker and the collection normalize-platforms lever: consumers filter and match against name + aliases and never hard-code aliases themselves. Cached 24h (the search-cache idiom); the catalog changes only when the platform sweep lands new rows. A cold catalog with the provider down is the only 502.
@@ -2336,7 +2398,7 @@ type ClientWithResponsesInterface interface {
 
 	// BatchPriceHistoryWithBodyWithResponse Price snapshot series for a set of products (value-over-time composition)
 	//
-	// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily refresh walk plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
+	// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily catalog refresh plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2345,7 +2407,7 @@ type ClientWithResponsesInterface interface {
 
 	// BatchPriceHistoryWithResponse Price snapshot series for a set of products (value-over-time composition)
 	//
-	// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily refresh walk plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
+	// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily catalog refresh plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -3059,6 +3121,68 @@ func (r GetFxLatestResponse) ContentType() string {
 	return ""
 }
 
+type InternalRefreshResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *RefreshAccepted
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Problem
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r InternalRefreshResponse) GetJSON202() *RefreshAccepted {
+	return r.JSON202
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r InternalRefreshResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r InternalRefreshResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r InternalRefreshResponse) GetApplicationproblemJSON409() *Problem {
+	return r.ApplicationproblemJSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r InternalRefreshResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r InternalRefreshResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r InternalRefreshResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r InternalRefreshResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListPlatformsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3460,7 +3584,7 @@ func (r SearchCatalogResponse) ContentType() string {
 
 // CreateCommunityProductWithBodyWithResponse Mint a community product from an approved submission (role admin)
 //
-// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the nightly re-match walk or the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
+// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3475,7 +3599,7 @@ func (c *ClientWithResponses) CreateCommunityProductWithBodyWithResponse(ctx con
 
 // CreateCommunityProductWithResponse Mint a community product from an approved submission (role admin)
 //
-// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the nightly re-match walk or the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
+// Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3550,7 +3674,7 @@ func (c *ClientWithResponses) DeleteProductWithResponse(ctx context.Context, pro
 
 // SetProductMappingWithBodyWithResponse Correct a product's PriceCharting mapping and mark it verified (role admin)
 //
-// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so the nightly re-match walk never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
+// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so a future automated match (resolve, or the entry-side re-match) never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3565,7 +3689,7 @@ func (c *ClientWithResponses) SetProductMappingWithBodyWithResponse(ctx context.
 
 // SetProductMappingWithResponse Correct a product's PriceCharting mapping and mark it verified (role admin)
 //
-// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so the nightly re-match walk never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
+// Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so a future automated match (resolve, or the entry-side re-match) never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3580,7 +3704,7 @@ func (c *ClientWithResponses) SetProductMappingWithResponse(ctx context.Context,
 
 // PromoteProductWithBodyWithResponse Promote a community product to provider identity in place (role admin)
 //
-// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: the nightly walk may auto-match a missing game listing, the unmatched worklist includes it, and the mapping fix applies. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
+// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: a missing game listing leaves it on the unmatched worklist until the mapping fix attaches one. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3595,7 +3719,7 @@ func (c *ClientWithResponses) PromoteProductWithBodyWithResponse(ctx context.Con
 
 // PromoteProductWithResponse Promote a community product to provider identity in place (role admin)
 //
-// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: the nightly walk may auto-match a missing game listing, the unmatched worklist includes it, and the mapping fix applies. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
+// Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: a missing game listing leaves it on the unmatched worklist until the mapping fix attaches one. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3638,9 +3762,9 @@ func (c *ClientWithResponses) DismissPromoteCandidateWithResponse(ctx context.Co
 	return ParseDismissPromoteCandidateResponse(rsp)
 }
 
-// TriggerRefreshWithResponse Trigger an immediate price refresh walk (role admin)
+// TriggerRefreshWithResponse Trigger an immediate catalog refresh (role admin)
 //
-// Starts the same walk the daily CronJob triggers and returns 202 immediately (the walk outlives the HTTP write timeout at polite provider rates); the runner logs its summary. 409 code refresh_in_progress when a walk is already running.
+// Starts the same refresh the daily CronJob triggers and returns 202 immediately (the refresh outlives the HTTP write timeout at polite provider rates); the runner logs its summary. 409 code refresh_in_progress when a refresh is already running.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3668,6 +3792,21 @@ func (c *ClientWithResponses) GetFxLatestWithResponse(ctx context.Context, reqEd
 	return ParseGetFxLatestResponse(rsp)
 }
 
+// InternalRefreshWithResponse Catalog refresh trigger (CronJob)
+//
+// Machine trigger for the nightly catalog refresh; the gateway never routes it. Guard: a service token (token_use=service) - operators use /admin/refresh. Answers 202 and detaches; one run at a time (409 refresh_in_progress).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /internal/refresh (the `InternalRefresh` operationId).
+func (c *ClientWithResponses) InternalRefreshWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InternalRefreshResponse, error) {
+	rsp, err := c.InternalRefresh(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseInternalRefreshResponse(rsp)
+}
+
 // ListPlatformsWithResponse The canonical platform catalog with alias knowledge
 //
 // The IGDB platform catalog (igdb id + name) joined with the alias table - PriceCharting console spellings plus curated abbreviations (SNES, PSX, N64, ...) - sorted by name. Reference data for the custom-entry platform picker and the collection normalize-platforms lever: consumers filter and match against name + aliases and never hard-code aliases themselves. Cached 24h (the search-cache idiom); the catalog changes only when the platform sweep lands new rows. A cold catalog with the provider down is the only 502.
@@ -3685,7 +3824,7 @@ func (c *ClientWithResponses) ListPlatformsWithResponse(ctx context.Context, req
 
 // BatchPriceHistoryWithBodyWithResponse Price snapshot series for a set of products (value-over-time composition)
 //
-// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily refresh walk plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
+// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily catalog refresh plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3700,7 +3839,7 @@ func (c *ClientWithResponses) BatchPriceHistoryWithBodyWithResponse(ctx context.
 
 // BatchPriceHistoryWithResponse Price snapshot series for a set of products (value-over-time composition)
 //
-// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily refresh walk plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
+// Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily catalog refresh plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -4317,6 +4456,53 @@ func ParseGetFxLatestResponse(rsp *http.Response) (*GetFxLatestResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseInternalRefreshResponse parses an HTTP response from a InternalRefreshWithResponse call
+func ParseInternalRefreshResponse(rsp *http.Response) (*InternalRefreshResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &InternalRefreshResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest RefreshAccepted
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	}
 

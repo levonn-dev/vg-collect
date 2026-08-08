@@ -175,14 +175,16 @@ type Product struct {
 	Variant       string    `bson:"variant"`
 	IGDB          *IGDBMeta `bson:"igdb,omitempty"`
 	PriceCharting *PCMeta   `bson:"pricecharting,omitempty"`
-	// MatchHold marks a deliberate admin mapping clear: the nightly
-	// re-match walk skips held products. Any mapping set lifts it.
+	// MatchHold marks a deliberate admin mapping clear: a hold pins
+	// the mapping against automated change; matching runs only with
+	// a region in hand and lands on sibling members. Any mapping set
+	// lifts it.
 	MatchHold bool `bson:"match_hold,omitempty"`
 	// Origin separates provider-identified products from admin-minted
 	// community products. Community docs live outside the identity
 	// indexes (their curated name is their identity), never join the
-	// re-match walk or the admin worklist, and surface via the search
-	// community lane until promoted.
+	// admin worklist, and surface via the search community lane until
+	// promoted.
 	Origin    string         `bson:"origin"`
 	Community *CommunityMeta `bson:"community,omitempty"`
 	// PromoteCandidates is the sweep's flag-only output, stored
@@ -303,7 +305,7 @@ func NewIGDBMeta(g igdb.Game, platformIGDBID int64, fetchedAt time.Time) IGDBMet
 }
 
 // SameProjection reports whether two projections are identical ignoring
-// FetchedAt: the reprojection walk's diff gate, so a rebuild that only
+// FetchedAt: the reprojection's diff gate, so a rebuild that only
 // re-stamps the fetch time is not a write. A nil ReleaseDates compares
 // UNEQUAL to an empty one - that exact difference is a pre-feature
 // projection (one that never carried a release table) which must be
@@ -429,8 +431,8 @@ func (s *Store) SetIGDB(ctx context.Context, id string, m IGDBMeta) error {
 // SetPriceCharting replaces the product's mapping; nil clears it (the
 // product becomes unmatched). A mapping change is an identity move
 // for games, so a write the unique index refuses surfaces
-// ErrIdentityTaken. Clearing sets match_hold - the nightly re-match
-// walk must not undo a deliberate clear - and any set lifts it.
+// ErrIdentityTaken. Clearing sets match_hold - a future automated
+// match must not undo a deliberate clear - and any set lifts it.
 func (s *Store) SetPriceCharting(ctx context.Context, id string, m *PCMeta) error {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	update := bson.D{
@@ -466,7 +468,7 @@ func (s *Store) SetPriceCharting(ctx context.Context, id string, m *PCMeta) erro
 // community product to provider origin. The update's re-entry into
 // the identity indexes adjudicates twins: a duplicate key surfaces as
 // ErrIdentityTaken and nothing changes. Candidate bookkeeping is
-// cleared - the walk and the mapping fix own the product from here.
+// cleared - the catalog refresh and the mapping fix own the product from here.
 func (s *Store) PromoteProduct(ctx context.Context, id string, igdbMeta *IGDBMeta, platform *Platform, pc *PCMeta) error {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	set := bson.D{
@@ -503,41 +505,8 @@ func (s *Store) PromoteProduct(ctx context.Context, id string, igdbMeta *IGDBMet
 	return nil
 }
 
-// SetPriceChartingIfMissing sets the mapping only while the product
-// is unmatched (the bson nil filter matches a missing or null
-// subdocument) AND not admin-held, and reports whether this call
-// landed it. This is the re-match walk's write: a deliberate clear
-// landing between the walk's worklist read and this write sets
-// match_hold, so the filter excludes it and the clear is never
-// overwritten. Racing fillers still converge on one winner (the
-// caller gates side effects on the bool), and a taken (game,
-// platform, listing) slot still surfaces ErrIdentityTaken so the walk
-// skips - never merges.
-func (s *Store) SetPriceChartingIfMissing(ctx context.Context, id string, m *PCMeta) (bool, error) {
-	res, err := s.db.Collection(colProducts).UpdateOne(ctx,
-		bson.D{
-			{Key: "_id", Value: id},
-			{Key: "pricecharting", Value: nil},
-			{Key: "match_hold", Value: bson.D{{Key: "$ne", Value: true}}},
-		},
-		bson.D{
-			{Key: "$set", Value: bson.D{
-				{Key: "pricecharting", Value: m},
-				{Key: "updated_at", Value: time.Now().UTC().Truncate(time.Millisecond)},
-			}},
-		},
-	)
-	if mongo.IsDuplicateKeyError(err) {
-		return false, ErrIdentityTaken
-	}
-	if err != nil {
-		return false, fmt.Errorf("store: set pricecharting if missing: %w", err)
-	}
-	return res.MatchedCount == 1, nil
-}
-
 // SetCurrentPrices updates the mapped product's current prices (the
-// daily walk's partial update). ErrNotFound covers both a missing
+// daily price refresh's partial update). ErrNotFound covers both a missing
 // product and an unmatched one.
 func (s *Store) SetCurrentPrices(ctx context.Context, id string, q PriceQuote, asOf time.Time) error {
 	filter := bson.D{
@@ -561,7 +530,7 @@ func (s *Store) SetCurrentPrices(ctx context.Context, id string, q PriceQuote, a
 }
 
 // ListPriced returns every product with a PriceCharting mapping, in
-// stable id order (the daily walk's worklist; the catalog is small by
+// stable id order (the daily price refresh's worklist; the catalog is small by
 // construction).
 func (s *Store) ListPriced(ctx context.Context) ([]Product, error) {
 	filter := bson.D{{Key: "pricecharting.pc_product_id", Value: bson.D{{Key: "$exists", Value: true}}}}
@@ -572,29 +541,6 @@ func (s *Store) ListPriced(ctx context.Context) ([]Product, error) {
 	var out []Product
 	if err := cur.All(ctx, &out); err != nil {
 		return nil, fmt.Errorf("store: list priced: %w", err)
-	}
-	return out, nil
-}
-
-// ListUnmatchedGames returns game products with no mapping and no
-// match_hold, oldest updated_at first, capped at limit (the re-match
-// walk's rotating worklist). Provider-origin only: a community game
-// reaches a provider identity through the promote path, not this walk.
-func (s *Store) ListUnmatchedGames(ctx context.Context, limit int) ([]Product, error) {
-	filter := bson.D{
-		{Key: "type", Value: "game"},
-		{Key: "origin", Value: "provider"},
-		{Key: "pricecharting", Value: nil},
-		{Key: "match_hold", Value: bson.D{{Key: "$ne", Value: true}}},
-	}
-	cur, err := s.db.Collection(colProducts).Find(ctx, filter,
-		options.Find().SetSort(bson.D{{Key: "updated_at", Value: 1}}).SetLimit(int64(limit)))
-	if err != nil {
-		return nil, fmt.Errorf("store: list unmatched games: %w", err)
-	}
-	var out []Product
-	if err := cur.All(ctx, &out); err != nil {
-		return nil, fmt.Errorf("store: list unmatched games: %w", err)
 	}
 	return out, nil
 }
@@ -625,12 +571,12 @@ func (s *Store) DeleteUnmatchedProduct(ctx context.Context, id string) (bool, er
 
 // ListUnmatchedProducts returns one page of the admin worklist: every
 // provider-origin product with no PriceCharting mapping, regardless of
-// type and INCLUDING match_hold products (the walk's exclusion is
-// deliberate there; an admin revisiting a deliberate clear is
-// deliberate here). Community products never carry a provider mapping,
-// so they ride the promote worklist, not this one. Sorted oldest
-// updated_at first with _id as the tiebreak so offset pages stay
-// deterministic; the second return is the full filtered count.
+// type and INCLUDING match_hold products (a hold pins the mapping
+// against automated change; an admin revisiting a deliberate clear is
+// deliberate here). Community products never carry a provider
+// mapping, so they ride the promote worklist, not this one. Sorted
+// oldest updated_at first with _id as the tiebreak so offset pages
+// stay deterministic; the second return is the full filtered count.
 func (s *Store) ListUnmatchedProducts(ctx context.Context, limit, offset int) ([]Product, int64, error) {
 	filter := bson.D{
 		{Key: "origin", Value: "provider"},
@@ -656,16 +602,16 @@ func (s *Store) ListUnmatchedProducts(ctx context.Context, limit, offset int) ([
 }
 
 // ListIGDBProducts returns every product carrying an IGDB projection,
-// in stable _id order: the reprojection walk's worklist. Uncapped, like
+// in stable _id order: the reprojection's worklist. Uncapped, like
 // ListPriced - a full nightly sweep rather than a capped window, because
-// the walk is read-cheap (Mongo reads plus a DeepEqual diff gate; a
+// the reprojection is read-cheap (Mongo reads plus a DeepEqual diff gate; a
 // provider call fires only for the missing/nil-table raw set, which
 // drains to zero) so sweeping the whole catalog is the honest shape.
 // Unlike the retired missing-release-dates query it does not filter on
-// the release table - the walk rebuilds each projection from the raw
+// the release table - reprojection rebuilds each projection from the raw
 // payload and writes only when it actually changed, so already-healed
 // products must still be revisited (any future projection-logic change
-// then self-deploys on the very next walk, instead of waiting for a
+// then self-deploys on the very next reprojection, instead of waiting for a
 // capped window to drain past them).
 func (s *Store) ListIGDBProducts(ctx context.Context) ([]Product, error) {
 	cur, err := s.db.Collection(colProducts).Find(ctx,
@@ -753,7 +699,7 @@ func (s *Store) SearchCommunityProducts(ctx context.Context, types []string, q s
 }
 
 // ListCommunityProducts returns every community product (the sweep's
-// walk set; tiny by construction - admin-moderated mints only).
+// worklist; tiny by construction - admin-moderated mints only).
 func (s *Store) ListCommunityProducts(ctx context.Context) ([]Product, error) {
 	cur, err := s.db.Collection(colProducts).Find(ctx,
 		bson.D{{Key: "origin", Value: "community"}},

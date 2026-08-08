@@ -601,6 +601,29 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/entries/{entryId}/region-mismatch-ack:
+    post:
+      operationId: ackEntryRegionMismatch
+      summary: Dismiss the region-mismatch banner for the entry's current choice (relay)
+      description: >
+        Relays collection verbatim: stamps region_mismatch_ack_at for
+        the entry's current (region, product) choice. Idempotent (204
+        on every call while the choice stands).
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Acknowledged
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: Not found
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
   /api/entries/{entryId}/submission:
     post:
       operationId: createSubmission
@@ -1146,7 +1169,7 @@ paths:
       description: >
         Relays enrichment's moderated correction verbatim. A null
         pc_product_id clears the mapping (the product becomes
-        unmatched and held out of the nightly re-match walk); setting
+        unmatched and held against a future automated match); setting
         any mapping stores it verified and lifts the hold. 409 code
         identity_taken when another product of the same identity
         already carries the target listing, or a clear would collide
@@ -1197,10 +1220,10 @@ paths:
   /api/admin/refresh:
     post:
       operationId: triggerRefresh
-      summary: Trigger an immediate price refresh walk (relay; enrichment enforces role admin)
+      summary: Trigger an immediate catalog refresh (relay; enrichment enforces role admin)
       responses:
         "202":
-          description: Walk started
+          description: Refresh started
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RefreshAccepted" }
@@ -1211,7 +1234,7 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "409":
-          description: A walk is already running (code refresh_in_progress)
+          description: A refresh is already running (code refresh_in_progress)
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -2149,8 +2172,9 @@ components:
         match_hold:
           type: boolean
           description: >
-            Present true when an admin clear holds this product out of
-            the nightly re-match walk.
+            Present true when an admin clear holds this product's
+            mapping against a future automated match (resolve, or the
+            entry-side re-match).
         origin:
           type: string
           enum: [community]
@@ -2199,8 +2223,8 @@ components:
         Provider identity for an in-place promotion. type game
         products require igdb_game_id + platform_igdb_id and accept
         an optional pc_product_id (the listing can also arrive later
-        via the nightly walk or the mapping fix, once provider);
-        console and accessory products require pc_product_id. The
+        via the mapping fix, once provider); console and accessory
+        products require pc_product_id. The
         identity the product re-enters the index with completes with
         the doc's stored region/edition/variant.
       type: object
@@ -2247,16 +2271,18 @@ components:
         type game requires igdb_game_id + platform_igdb_id (the
         platform must be one the game released on). Game identity is
         listing-keyed - (game, platform, PriceCharting listing) - so
-        region/edition/variant on a game resolve are ignored
-        (entry-level facts, like pc_listing). Without pc_product_id
-        the resolve auto-matches by the plain game name through the
-        shared listing-search cache and lands on the winning listing's
-        product; below the confidence threshold, or with the provider
-        down, it lands on the game+platform's single unmatched product
-        instead - never guessed. Optional match_hint (game only,
-        ignored elsewhere) reweights the scoring toward variant text
-        without changing the search query; a hint nothing matches
-        makes the resolve conservative (unmatched).
+        edition/variant on a game resolve are ignored (entry-level
+        facts, like pc_listing); region is a matching input only (see
+        the region property) and never joins identity. Without
+        pc_product_id the resolve auto-matches by the game name
+        (region-steered) through the shared listing-search cache and
+        lands on the winning listing's product; below the
+        confidence threshold, or with the provider down, it lands on
+        the game+platform's single unmatched product instead - never
+        guessed. Optional match_hint (game only, ignored elsewhere)
+        reweights the scoring toward variant text without changing the
+        search query; a hint nothing matches makes the resolve
+        conservative (unmatched).
         With pc_product_id (a manual match: the exact listing the user
         chose) auto-match is skipped and the resolve finds or mints
         the product carrying that listing (match_confidence 1.0,
@@ -2278,7 +2304,18 @@ components:
         platform_igdb_id: { type: integer, format: int64 }
         pc_product_id: { type: integer, format: int64 }
         match_hint: { type: string, maxLength: 128 }
-        region: { type: string, maxLength: 32 }
+        region:
+          type: string
+          maxLength: 32
+          description: >-
+            For console/accessory: part of hardware identity, distinguishing
+            physical variants. For game: a matching input only - the entry
+            region (ntsc_u, ntsc_j, pal, region_free) steers which
+            PriceCharting listing auto-match lands on (JP and PAL listings
+            live under region-prefixed or JP-named console axes) and is
+            never stored on the product; ignored when pc_product_id is
+            present; unknown values behave like ntsc_u. Ignored for
+            pc_listing.
         edition: { type: string, maxLength: 128 }
         variant: { type: string, maxLength: 128 }
     Recommendation:
@@ -2487,6 +2524,12 @@ components:
         value_cents: { type: integer, format: int64 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        region_mismatch_ack_at:
+          type: string
+          format: date-time
+          description: >
+            Null until the owner dismisses the region-mismatch banner;
+            cleared whenever region or product changes.
     Submission:
       description: >
         One catalog-submission lifecycle row for an entry. Rows
@@ -2642,6 +2685,17 @@ components:
         custom_value_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
         custom_value_entered_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
         custom_value_entered_currency: { type: string, pattern: "^[A-Z]{3}$" }
+        match_provenance:
+          type: string
+          enum: [auto, user]
+          default: auto
+          description: >-
+            Whose choice the matched product is. Send user only when
+            the add flow's manual match picked the price listing;
+            automated repoints (region edits, the entry rematch)
+            never touch user rows. Not accepted on update - the
+            server stamps user when the narrow product_id re-match
+            arm fires.
         status:
           type: string
           enum: [backlog, playing, beaten, completed, dropped, shelved]
@@ -2662,7 +2716,9 @@ components:
         change - re-matching an auto-priced entry off an unmatched
         game product onto a product of the same game and platform
         (see the field description); anything else answers 400 code
-        invalid_product_change. On custom entries
+        invalid_product_change. That re-match stamps
+        match_provenance=user; automated region repoints only ever run
+        on match_provenance=auto entries. On custom entries
         display_name is required and platform_name/first_release_date
         replace like any optional field; on product-backed entries all
         three are rejected. tag_ids replaces the tag set; absent means
@@ -2704,7 +2760,14 @@ components:
             unreachable answers 502 code enrichment_unavailable and
             leaves the entry unchanged. Snapshotted display fields
             stay as they are.
-        region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        region:
+          type: string
+          enum: [ntsc_u, ntsc_j, pal, region_free]
+          description: >
+            A region change on an auto-priced game-backed entry may
+            repoint the entry to the sibling catalog product whose
+            listing prices that region; snapshotted fields re-derive
+            from it.
         edition:
           type: string
           maxLength: 200

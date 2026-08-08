@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
@@ -20,16 +19,11 @@ import (
 // newBareRouter builds a router with nil collaborators: routing and
 // auth-gating tests never reach them (the skeleton handlers answer
 // before any collaborator call).
-// testInternalToken is the accepted internal-caller token across the
-// server tests.
-const testInternalToken = "test-internal-token"
-
 func newBareRouter(t *testing.T, ready func(context.Context) error) (http.Handler, *authEnv) {
 	t.Helper()
 	env := newAuthEnv(t)
 	h := New(nil, nil, nil, nil, nil, Options{
-		InternalRefreshSecrets: []string{testInternalToken},
-		Logger:                 slog.New(slog.DiscardHandler),
+		Logger: slog.New(slog.DiscardHandler),
 	})
 	if ready == nil {
 		ready = func(context.Context) error { return nil }
@@ -108,35 +102,23 @@ func TestRoutes_APIRequiresBearer(t *testing.T) {
 	}
 }
 
-// The CronJob endpoint must be routed and JWT-exempt (its own guard is
-// the internal token, exercised fully in the handler tests). This pins
-// routing + the jwtauth bypass without pinning the handler's eventual
-// status code: a jwtauth rejection would carry missing_token, which
-// must never appear here.
-//
-// InternalRefresh is implemented now (unlike newBareRouter's other
-// callers, which never reach a real handler body): an accepted token
-// detaches a real walk, so newBareRouter's nil Store would panic on a
-// nil interface once that walk starts. A stub Store with an empty
-// catalog stands in instead, keeping the walk a harmless no-op while
-// still proving the route lives outside jwtauth.
-func TestRoutes_InternalRefreshIsJWTExempt(t *testing.T) {
-	env := newAuthEnv(t)
-	st := &stubStore{listPriced: func(context.Context) ([]store.Product, error) { return nil, nil }}
-	h := newUnitHandlers(st, nil, nil, newStubCache())
-	router := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil })
-
+// The CronJob endpoint now rides the SAME blanket JWT guard as every
+// other route (the inverse of its pre-service-token JWT-exempt
+// posture): a bearer-less request 401s with missing_token before
+// InternalRefresh's own requireService check ever runs. The service-
+// token boundary itself (a service token 202s, a plain user token is
+// refused) is exercised fully in the handler tests.
+func TestRoutes_InternalRefreshRequiresBearer(t *testing.T) {
+	router, _ := newBareRouter(t, nil)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/internal/refresh", nil)
-	req.Header.Set("X-Internal-Token", testInternalToken)
-	router.ServeHTTP(rec, req)
-	if rec.Code == http.StatusNotFound || rec.Code == http.StatusMethodNotAllowed {
-		t.Fatalf("internal refresh must be routed, got %d", rec.Code)
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/internal/refresh", nil))
+	if rec.Code != http.StatusUnauthorized || rec.Header().Get("Content-Type") != "application/problem+json" {
+		t.Fatalf("tokenless internal refresh: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	if strings.Contains(rec.Body.String(), "missing_token") {
-		t.Fatalf("internal refresh must not sit behind jwtauth: %s", rec.Body.String())
+	body, _ := io.ReadAll(rec.Body)
+	if !strings.Contains(string(body), "missing_token") {
+		t.Fatalf("internal refresh must sit behind jwtauth like every other route: %s", body)
 	}
-	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 }
 
 func TestRoutes_PlatformsRequiresBearer(t *testing.T) {

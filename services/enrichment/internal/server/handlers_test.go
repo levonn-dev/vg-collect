@@ -46,11 +46,9 @@ type stubStore struct {
 	getProduct                   func(ctx context.Context, id string) (store.Product, error)
 	setIGDB                      func(ctx context.Context, id string, m store.IGDBMeta) error
 	setPriceCharting             func(ctx context.Context, id string, m *store.PCMeta) error
-	setPriceChartingIfMissing    func(ctx context.Context, id string, m *store.PCMeta) (bool, error)
 	promoteProduct               func(ctx context.Context, id string, igdbMeta *store.IGDBMeta, platform *store.Platform, pc *store.PCMeta) error
 	setCurrentPrices             func(ctx context.Context, id string, q store.PriceQuote, asOf time.Time) error
 	listPriced                   func(ctx context.Context) ([]store.Product, error)
-	listUnmatchedGames           func(ctx context.Context, limit int) ([]store.Product, error)
 	listUnmatchedProducts        func(ctx context.Context, limit, offset int) ([]store.Product, int64, error)
 	deleteUnmatchedProduct       func(ctx context.Context, id string) (bool, error)
 	listIGDBProducts             func(ctx context.Context) ([]store.Product, error)
@@ -108,13 +106,6 @@ func (s *stubStore) SetPriceCharting(ctx context.Context, id string, m *store.PC
 	return s.setPriceCharting(ctx, id, m)
 }
 
-func (s *stubStore) SetPriceChartingIfMissing(ctx context.Context, id string, m *store.PCMeta) (bool, error) {
-	if s.setPriceChartingIfMissing == nil {
-		panic("unexpected SetPriceChartingIfMissing")
-	}
-	return s.setPriceChartingIfMissing(ctx, id, m)
-}
-
 func (s *stubStore) PromoteProduct(ctx context.Context, id string, igdbMeta *store.IGDBMeta, platform *store.Platform, pc *store.PCMeta) error {
 	if s.promoteProduct == nil {
 		panic("unexpected PromoteProduct")
@@ -134,13 +125,6 @@ func (s *stubStore) ListPriced(ctx context.Context) ([]store.Product, error) {
 		panic("unexpected ListPriced")
 	}
 	return s.listPriced(ctx)
-}
-
-func (s *stubStore) ListUnmatchedGames(ctx context.Context, limit int) ([]store.Product, error) {
-	if s.listUnmatchedGames == nil {
-		panic("unexpected ListUnmatchedGames")
-	}
-	return s.listUnmatchedGames(ctx, limit)
 }
 
 func (s *stubStore) ListUnmatchedProducts(ctx context.Context, limit, offset int) ([]store.Product, int64, error) {
@@ -429,11 +413,10 @@ func (s *stubFX) Latest(ctx context.Context) (fx.Rates, error) {
 // own configured stub instead.
 func newUnitHandlers(st Store, games GameProvider, prices PriceProvider, c Cache) *Handlers {
 	return New(st, games, prices, &stubFX{}, c, Options{
-		SearchCacheTTL:         time.Hour,
-		ProductCacheTTL:        time.Minute,
-		IGDBRefreshAfter:       720 * time.Hour,
-		InternalRefreshSecrets: []string{testInternalToken},
-		Logger:                 slog.New(slog.DiscardHandler),
+		SearchCacheTTL:   time.Hour,
+		ProductCacheTTL:  time.Minute,
+		IGDBRefreshAfter: 720 * time.Hour,
+		Logger:           slog.New(slog.DiscardHandler),
 	})
 }
 
@@ -472,11 +455,10 @@ func doAuthedFxRequest(t *testing.T, rates FXProvider) *httptest.ResponseRecorde
 	t.Helper()
 	env := newAuthEnv(t)
 	h := New(nil, nil, nil, rates, newStubCache(), Options{
-		SearchCacheTTL:         time.Hour,
-		ProductCacheTTL:        time.Minute,
-		IGDBRefreshAfter:       720 * time.Hour,
-		InternalRefreshSecrets: []string{testInternalToken},
-		Logger:                 slog.New(slog.DiscardHandler),
+		SearchCacheTTL:   time.Hour,
+		ProductCacheTTL:  time.Minute,
+		IGDBRefreshAfter: 720 * time.Hour,
+		Logger:           slog.New(slog.DiscardHandler),
 	})
 	tok := env.token(t, "u1", []string{"user"})
 	return serveUnit(t, h, env, http.MethodGet, "/fx/latest", tok, nil)
@@ -583,11 +565,10 @@ func newStack(t *testing.T) *stack {
 	}
 	env := newAuthEnv(t)
 	h := New(st, games, prices, rates, cache.New(rdb), Options{
-		SearchCacheTTL:         time.Hour,
-		ProductCacheTTL:        time.Minute,
-		IGDBRefreshAfter:       720 * time.Hour,
-		InternalRefreshSecrets: []string{testInternalToken},
-		Logger:                 slog.New(slog.DiscardHandler),
+		SearchCacheTTL:   time.Hour,
+		ProductCacheTTL:  time.Minute,
+		IGDBRefreshAfter: 720 * time.Hour,
+		Logger:           slog.New(slog.DiscardHandler),
 	})
 	router := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler),
 		func(c context.Context) error { return db.Health(c, mclient) })
@@ -603,6 +584,10 @@ func (s *stack) userToken() string {
 
 func (s *stack) adminToken() string {
 	return s.env.token(s.t, "22222222-2222-2222-2222-222222222222", []string{"user", "admin"})
+}
+
+func (s *stack) serviceToken() string {
+	return s.env.serviceToken(s.t, "svc:catalog-refresh")
 }
 
 // do sends a request with an optional Bearer token and JSON body.
@@ -1669,6 +1654,172 @@ func TestResolve_GameLocalizationsMapped(t *testing.T) {
 	}
 }
 
+// A JP-region no-pick resolve queries by the translit form and lands
+// the Super Famicom listing for a SNES pick (gate via the JP twin
+// table), forking a sibling member and leaving ntsc_u resolves on the
+// base listing.
+func TestResolve_RegionJPLandsJPListing(t *testing.T) {
+	s := newStack(t)
+
+	// Secret of Mana (fixture 1016) on SNES (19): its ja-JP alternative
+	// name "Seiken Densetsu 2" is the aligned translit pair with the
+	// Super Famicom fixture listing 5101.
+	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
+		"type": "game", "igdb_game_id": 1016, "platform_igdb_id": 19, "region": "ntsc_j",
+	})
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("ntsc_j resolve: %d %s", resp.StatusCode, b)
+	}
+	jp := decodeBody[api.Product](t, resp)
+	if jp.Pricecharting == nil || jp.Pricecharting.PcProductId != 5101 {
+		t.Fatalf("ntsc_j must land the Super Famicom listing 5101: %+v", jp.Pricecharting)
+	}
+	if jp.Pricecharting.ConsoleName != "Super Famicom" {
+		t.Fatalf("ntsc_j console_name: %q", jp.Pricecharting.ConsoleName)
+	}
+
+	resp = s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
+		"type": "game", "igdb_game_id": 1016, "platform_igdb_id": 19, "region": "ntsc_u",
+	})
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("ntsc_u resolve: %d %s", resp.StatusCode, b)
+	}
+	base := decodeBody[api.Product](t, resp)
+	if base.Pricecharting == nil {
+		t.Fatalf("ntsc_u must land the base listing: %+v", base.Pricecharting)
+	}
+	if base.Pricecharting.ConsoleName != "Super Nintendo" {
+		t.Fatalf("ntsc_u console_name: %q", base.Pricecharting.ConsoleName)
+	}
+	if base.Pricecharting.PcProductId == jp.Pricecharting.PcProductId || base.Id == jp.Id {
+		t.Fatalf("ntsc_j and ntsc_u must fork distinct sibling members: %+v vs %+v", base.Pricecharting, jp.Pricecharting)
+	}
+}
+
+// A pal resolve with no PAL listing in the provider stays unmatched -
+// strict class acceptance never falls back to the NA listing.
+func TestResolve_RegionPALWithoutListingStaysUnmatched(t *testing.T) {
+	s := newStack(t)
+
+	// Chrono Trigger (fixture 1011) on SNES (19) has a base listing
+	// (5011) but no PAL row anywhere in the fixtures.
+	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
+		"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19, "region": "pal",
+	})
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("pal resolve: %d %s", resp.StatusCode, b)
+	}
+	p := decodeBody[api.Product](t, resp)
+	if p.Pricecharting != nil {
+		t.Fatalf("pal resolve without a PAL listing must stay unmatched: %+v", p.Pricecharting)
+	}
+}
+
+// Region is a matching input only: the picker path ignores it, and an
+// unknown region value behaves as base.
+func TestResolve_RegionIgnoredOnPickerPathAndUnknownIsBase(t *testing.T) {
+	s := newStack(t)
+
+	// Picker path: the chosen listing wins regardless of region.
+	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
+		"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19, "pc_product_id": 5011, "region": "ntsc_j",
+	})
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("picker resolve: %d %s", resp.StatusCode, b)
+	}
+	picked := decodeBody[api.Product](t, resp)
+	if picked.Pricecharting == nil || picked.Pricecharting.PcProductId != 5011 {
+		t.Fatalf("the picked listing must win regardless of region: %+v", picked.Pricecharting)
+	}
+
+	// Unknown region value: byte-equal to a regionless resolve of the
+	// same identity. A throwaway resolve creates the product first, so
+	// both calls below take the find path - a fresh create's in-memory
+	// timestamps are never byte-identical to a found doc's Mongo-
+	// round-tripped ones, regardless of region, so comparing a create
+	// against a find would prove nothing about region.
+	warm := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
+		"type": "game", "igdb_game_id": 1016, "platform_igdb_id": 19,
+	})
+	if warm.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(warm.Body)
+		t.Fatalf("warm resolve: %d %s", warm.StatusCode, b)
+	}
+	_, _ = io.ReadAll(warm.Body)
+	_ = warm.Body.Close()
+
+	respNone := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
+		"type": "game", "igdb_game_id": 1016, "platform_igdb_id": 19,
+	})
+	if respNone.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(respNone.Body)
+		t.Fatalf("regionless resolve: %d %s", respNone.StatusCode, b)
+	}
+	noneBody, err := io.ReadAll(respNone.Body)
+	_ = respNone.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	respUnknown := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
+		"type": "game", "igdb_game_id": 1016, "platform_igdb_id": 19, "region": "someday_region",
+	})
+	if respUnknown.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(respUnknown.Body)
+		t.Fatalf("unknown-region resolve: %d %s", respUnknown.StatusCode, b)
+	}
+	unknownBody, err := io.ReadAll(respUnknown.Body)
+	_ = respUnknown.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(noneBody, unknownBody) {
+		t.Fatalf("unknown region must behave byte-identically to no region:\n%s\nvs\n%s", noneBody, unknownBody)
+	}
+}
+
+// The fallback leg: a JP-region resolve whose translit query surfaces
+// nothing the gate admits re-searches by the canonical name and finds
+// the hybrid-named JP listing; the second leg rides the pc_listing
+// search cache.
+func TestResolve_RegionFallbackSearchFindsHybridListing(t *testing.T) {
+	s := newStack(t)
+	ctx := context.Background()
+
+	// Mega Man 2 (fixture 1024) on NES (18): its ja-JP romanization
+	// "Rockman 2" matches no fixture listing, but the canonical name
+	// "Mega Man 2" hits the Famicom-console fixture 5105 that the
+	// ntsc_j gate admits for an NES pick.
+	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
+		"type": "game", "igdb_game_id": 1024, "platform_igdb_id": 18, "region": "ntsc_j",
+	})
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("resolve: %d %s", resp.StatusCode, b)
+	}
+	p := decodeBody[api.Product](t, resp)
+	if p.Pricecharting == nil || p.Pricecharting.PcProductId != 5105 {
+		t.Fatalf("fallback leg must land the Famicom listing 5105: %+v", p.Pricecharting)
+	}
+	if p.Pricecharting.ConsoleName != "Famicom" {
+		t.Fatalf("console_name: %q", p.Pricecharting.ConsoleName)
+	}
+
+	for _, q := range []string{"Rockman 2", "Mega Man 2"} {
+		body, err := s.h.cache.GetSearch(ctx, "pc_listing", normQuery(q))
+		if err != nil {
+			t.Fatalf("GetSearch(%q): %v", q, err)
+		}
+		if body == nil {
+			t.Fatalf("both legs must ride the pc_listing search cache; %q is missing", q)
+		}
+	}
+}
+
 // TestResolve_HealsPreFeatureRawReleaseDates pins gamePayloadFor's
 // self-heal: a raw doc predating this feature (no release_dates key on
 // the stored game subdocument at all, decoding to a nil Go slice) does
@@ -2038,7 +2189,7 @@ func TestUnitResolve_UpstreamDown(t *testing.T) {
 // is a usable stale payload: gamePayloadFor serves it - the projection
 // just misses per-region dates - rather than erroring, matching the
 // read path's serve-stale posture. The nightly reprojection refetches
-// nil-table raws, so the minted product heals on the next walk. This is
+// nil-table raws, so the minted product heals on the next refresh. This is
 // the counterpart to TestUnitResolve_UpstreamDown (no raw -> the error
 // stands).
 func TestUnitResolve_PreFeatureRawServesStaleWhenProviderDown(t *testing.T) {
@@ -2970,7 +3121,7 @@ func TestUnitRecommendations_LimitClamped(t *testing.T) {
 // Refresh runner + admin endpoints
 // ---------------------------------------------------------------
 
-// waitFor polls until check passes (the refresh walk is detached).
+// waitFor polls until check passes (the catalog refresh is detached).
 func waitFor(t *testing.T, timeout time.Duration, check func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -2983,16 +3134,16 @@ func waitFor(t *testing.T, timeout time.Duration, check func() bool) {
 	t.Fatal("condition not reached in time")
 }
 
-// doInternal drives the CronJob path: no JWT, the internal token
-// header instead.
-func (s *stack) doInternal(token string) *http.Response {
+// doInternal drives the CronJob path: a Bearer service token instead
+// of a user's own.
+func (s *stack) doInternal(bearer string) *http.Response {
 	s.t.Helper()
 	req, err := http.NewRequest(http.MethodPost, s.srv.URL+"/internal/refresh", nil)
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	if token != "" {
-		req.Header.Set("X-Internal-Token", token)
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -3002,11 +3153,11 @@ func (s *stack) doInternal(token string) *http.Response {
 }
 
 // serveInternal is the unit-layer equivalent of doInternal.
-func serveInternal(t *testing.T, h *Handlers, env *authEnv, token string) *httptest.ResponseRecorder {
+func serveInternal(t *testing.T, h *Handlers, env *authEnv, bearer string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/internal/refresh", nil)
-	if token != "" {
-		req.Header.Set("X-Internal-Token", token)
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	rec := httptest.NewRecorder()
 	router := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil })
@@ -3018,12 +3169,12 @@ func TestRefresh_InternalWalksCatalogAndSnapshots(t *testing.T) {
 	s := newStack(t)
 	matched := s.resolveGame(1011, 19)
 	s.resolveGame(1013, 7)
-	// One unmatched product: the walk must skip it.
+	// One unmatched product: the refresh must skip it.
 	_ = s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
 		"type": "game", "igdb_game_id": 1018, "platform_igdb_id": 19,
 	}).Body.Close()
 
-	resp := s.doInternal(testInternalToken) // no JWT: the CronJob path
+	resp := s.doInternal(s.serviceToken()) // service token: the CronJob path
 	if resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("internal refresh: %d", resp.StatusCode)
 	}
@@ -3032,20 +3183,20 @@ func TestRefresh_InternalWalksCatalogAndSnapshots(t *testing.T) {
 	ctx := context.Background()
 	waitFor(t, 10*time.Second, func() bool {
 		// Each matched product got its resolve-time snapshot plus one
-		// walk snapshot; Terranigma got none.
+		// refresh snapshot; Terranigma got none.
 		n, err := s.mdb.Collection("price_snapshots").CountDocuments(ctx, map[string]any{})
 		return err == nil && n == 4
 	})
 	got, err := s.store.GetProduct(ctx, matched.Id.String())
 	if err != nil || got.PriceCharting == nil {
-		t.Fatalf("walked product: %v", err)
+		t.Fatalf("processed product: %v", err)
 	}
 	if got.PriceCharting.AsOf.Before(time.Now().Add(-time.Minute)) {
 		t.Fatalf("as_of not refreshed: %v", got.PriceCharting.AsOf)
 	}
 }
 
-// TestRefresh_WalksPCListingProducts pins that the daily walk is not
+// TestRefresh_WalksPCListingProducts pins that the daily refresh is not
 // scoped to "game" products: ListPriced filters on the PriceCharting
 // mapping existing at all, so a pc_listing price-anchor product (no
 // igdb subdoc, created straight off a listing id) must be walked and
@@ -3056,7 +3207,7 @@ func TestRefresh_WalksPCListingProducts(t *testing.T) {
 		s.do(http.MethodPost, "/products/resolve", s.userToken(),
 			map[string]any{"type": "pc_listing", "pc_product_id": 5099}))
 
-	resp := s.doInternal(testInternalToken) // no JWT: the CronJob path
+	resp := s.doInternal(s.serviceToken()) // service token: the CronJob path
 	if resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("internal refresh: %d", resp.StatusCode)
 	}
@@ -3064,7 +3215,7 @@ func TestRefresh_WalksPCListingProducts(t *testing.T) {
 
 	ctx := context.Background()
 	waitFor(t, 10*time.Second, func() bool {
-		// The create-time snapshot plus one walk snapshot.
+		// The create-time snapshot plus one refresh snapshot.
 		n, err := s.mdb.Collection("price_snapshots").CountDocuments(ctx, map[string]any{})
 		return err == nil && n == 2
 	})
@@ -3073,7 +3224,7 @@ func TestRefresh_WalksPCListingProducts(t *testing.T) {
 		map[string]any{"product_ids": []string{created.Id.String()}})
 	series := decodeBody[api.PriceHistoryResponse](t, hist).Series
 	if len(series[created.Id.String()]) < 2 {
-		t.Fatalf("walk must snapshot pc_listing products: got %d points", len(series[created.Id.String()]))
+		t.Fatalf("refresh must snapshot pc_listing products: got %d points", len(series[created.Id.String()]))
 	}
 }
 
@@ -3097,104 +3248,41 @@ func TestRefresh_AdminRBACAndConflict(t *testing.T) {
 	waitFor(t, 10*time.Second, func() bool { return !s.h.refreshing.Load() })
 }
 
-// End to end: the refresh walk upgrades an unmatched member in place
-// (entries light up through live reads - no repointing) and never
-// touches a held product.
-func TestRefresh_RematchUpgradesUnmatchedMembersInPlace(t *testing.T) {
-	s := newStack(t)
-	ctx := context.Background()
-
-	unmatched, err := s.store.CreateProduct(ctx, store.Product{
-		Type: "game", Name: "Super Mario 64",
-		Platform: &store.Platform{IGDBID: 4, Name: "Nintendo 64"},
-		IGDB:     &store.IGDBMeta{GameID: 1005, Name: "Super Mario 64", Genres: []store.Genre{}, Themes: []string{}, Franchises: []string{}, SimilarGames: []int64{}, Companies: []store.Company{}, FetchedAt: time.Now().UTC()},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	held, err := s.store.CreateProduct(ctx, store.Product{
-		Type: "game", Name: "Chrono Trigger",
-		Platform: &store.Platform{IGDBID: 19, Name: "Super Nintendo Entertainment System"},
-		IGDB:     &store.IGDBMeta{GameID: 1011, Name: "Chrono Trigger", Genres: []store.Genre{}, Themes: []string{}, Franchises: []string{}, SimilarGames: []int64{}, Companies: []store.Company{}, FetchedAt: time.Now().UTC()},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.store.SetPriceCharting(ctx, held.ID, nil); err != nil { // deliberate clear = hold
-		t.Fatal(err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, s.srv.URL+"/internal/refresh", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("X-Internal-Token", testInternalToken)
-	resp, err := s.client.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("trigger: %d", resp.StatusCode)
-	}
-
-	// Poll until the walk lands the upgrade.
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		got, err := s.store.GetProduct(ctx, unmatched.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got.PriceCharting != nil {
-			if got.PriceCharting.PCProductID != 5005 || got.PriceCharting.Verified {
-				t.Fatalf("upgrade mapping: %+v", got.PriceCharting)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("re-match never landed")
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	snaps, err := s.store.SnapshotsSince(ctx, []string{unmatched.ID}, time.Time{})
-	if err != nil || len(snaps[unmatched.ID]) != 1 {
-		t.Fatalf("landed upgrade must snapshot once: %+v, %v", snaps, err)
-	}
-	gotHeld, err := s.store.GetProduct(ctx, held.ID)
-	if err != nil || gotHeld.PriceCharting != nil || !gotHeld.MatchHold {
-		t.Fatalf("held product must stay unmatched: %+v, %v", gotHeld, err)
-	}
-}
-
-func TestUnitInternalRefresh_TokenGuard(t *testing.T) {
+// TestUnitInternalRefresh_RequiresServiceToken pins the guard that
+// replaced the retired X-Internal-Token check: a bearer-less request
+// never reaches the handler (jwtauth 401s first, see
+// TestRoutes_InternalRefreshRequiresBearer); a plain user's own
+// access token clears jwtauth but is forbidden by requireService; an
+// ADMIN token is forbidden too - requireService is service-only, the
+// distinguishing case from requireAdminOrService (collection's guard
+// on its admin-or-service levers), so this pins that swapping one
+// for the other here would not go unnoticed; a minted service token
+// (token_use=service) is accepted and 202s.
+func TestUnitInternalRefresh_RequiresServiceToken(t *testing.T) {
 	env := newAuthEnv(t)
 	h := New(&stubStore{
-		listPriced:         func(context.Context) ([]store.Product, error) { return nil, nil },
-		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
-		listIGDBProducts:   func(context.Context) ([]store.Product, error) { return nil, nil },
+		listPriced:       func(context.Context) ([]store.Product, error) { return nil, nil },
+		listIGDBProducts: func(context.Context) ([]store.Product, error) { return nil, nil },
 	},
 		nil, nil, nil, newStubCache(), Options{
-			// An A/B pair mid-rotation: both must be accepted.
-			InternalRefreshSecrets: []string{"new-token", "old-token"},
-			Logger:                 slog.New(slog.DiscardHandler),
+			Logger: slog.New(slog.DiscardHandler),
 		})
 
-	rec := serveInternal(t, h, env, "")
-	if rec.Code != http.StatusUnauthorized || !bytes.Contains(rec.Body.Bytes(), []byte("invalid_internal_token")) {
-		t.Fatalf("missing token: %d %s", rec.Code, rec.Body.String())
+	rec := serveInternal(t, h, env, env.token(t, "11111111-1111-1111-1111-111111111111", []string{"user"}))
+	if rec.Code != http.StatusForbidden || !bytes.Contains(rec.Body.Bytes(), []byte("forbidden")) {
+		t.Fatalf("plain user token: %d %s", rec.Code, rec.Body.String())
 	}
-	rec = serveInternal(t, h, env, "guessed-token")
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("wrong token: %d", rec.Code)
+
+	rec = serveInternal(t, h, env, env.token(t, "22222222-2222-2222-2222-222222222222", []string{"user", "admin"}))
+	if rec.Code != http.StatusForbidden || !bytes.Contains(rec.Body.Bytes(), []byte("forbidden")) {
+		t.Fatalf("admin token must also be refused (service-only guard): %d %s", rec.Code, rec.Body.String())
 	}
-	for _, tok := range []string{"new-token", "old-token"} {
-		rec = serveInternal(t, h, env, tok)
-		if rec.Code != http.StatusAccepted {
-			t.Fatalf("accepted token %q: %d %s", tok, rec.Code, rec.Body.String())
-		}
-		waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
+
+	rec = serveInternal(t, h, env, env.serviceToken(t, "svc:catalog-refresh"))
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("service token: %d %s", rec.Code, rec.Body.String())
 	}
+	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 }
 
 func TestUnitRefresh_ConflictWhileRunning(t *testing.T) {
@@ -3207,17 +3295,17 @@ func TestUnitRefresh_ConflictWhileRunning(t *testing.T) {
 			<-release
 			return nil, nil
 		},
-		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
-		listIGDBProducts:   func(context.Context) ([]store.Product, error) { return nil, nil },
+		listIGDBProducts: func(context.Context) ([]store.Product, error) { return nil, nil },
 	}
 	h := newUnitHandlers(st, nil, nil, newStubCache())
+	tok := env.serviceToken(t, "svc:catalog-refresh")
 
-	rec := serveInternal(t, h, env, testInternalToken)
+	rec := serveInternal(t, h, env, tok)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("first trigger: %d", rec.Code)
 	}
 	<-started
-	rec = serveInternal(t, h, env, testInternalToken)
+	rec = serveInternal(t, h, env, tok)
 	if rec.Code != http.StatusConflict || !bytes.Contains(rec.Body.Bytes(), []byte("refresh_in_progress")) {
 		t.Fatalf("concurrent trigger: %d %s", rec.Code, rec.Body.String())
 	}
@@ -3226,14 +3314,14 @@ func TestUnitRefresh_ConflictWhileRunning(t *testing.T) {
 
 	// The guard resets: a third trigger is accepted again.
 	st.listPriced = func(context.Context) ([]store.Product, error) { return nil, nil }
-	rec = serveInternal(t, h, env, testInternalToken)
+	rec = serveInternal(t, h, env, tok)
 	if rec.Code != http.StatusAccepted {
-		t.Fatalf("post-walk trigger: %d", rec.Code)
+		t.Fatalf("post-refresh trigger: %d", rec.Code)
 	}
 	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 }
 
-func TestUnitRefresh_WalkSurvivesPerProductFailures(t *testing.T) {
+func TestUnitRefresh_RefreshSurvivesPerProductFailures(t *testing.T) {
 	env := newAuthEnv(t)
 	loose := int64(1000)
 	prods := []store.Product{
@@ -3242,9 +3330,8 @@ func TestUnitRefresh_WalkSurvivesPerProductFailures(t *testing.T) {
 	}
 	var snaps int
 	st := &stubStore{
-		listPriced:         func(context.Context) ([]store.Product, error) { return prods, nil },
-		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
-		listIGDBProducts:   func(context.Context) ([]store.Product, error) { return nil, nil },
+		listPriced:       func(context.Context) ([]store.Product, error) { return prods, nil },
+		listIGDBProducts: func(context.Context) ([]store.Product, error) { return nil, nil },
 		setCurrentPrices: func(_ context.Context, id string, _ store.PriceQuote, _ time.Time) error {
 			return nil
 		},
@@ -3258,7 +3345,7 @@ func TestUnitRefresh_WalkSurvivesPerProductFailures(t *testing.T) {
 	}}
 	h := newUnitHandlers(st, nil, prices, newStubCache())
 
-	rec := serveInternal(t, h, env, testInternalToken)
+	rec := serveInternal(t, h, env, env.serviceToken(t, "svc:catalog-refresh"))
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("trigger: %d", rec.Code)
 	}
@@ -3284,9 +3371,9 @@ func TestUnitRunRefresh_StopsEarlyOnContextCancellation(t *testing.T) {
 	prices := &stubPrices{product: func(context.Context, int64) (pricecharting.Product, error) {
 		calls++
 		if calls == 2 {
-			// The budget expires partway through the walk (after the
+			// The budget expires partway through the refresh (after the
 			// 2nd of 5 products): the next iteration's ctx.Err() check
-			// must stop the walk instead of visiting the rest.
+			// must stop the refresh instead of visiting the rest.
 			cancel()
 		}
 		return pricecharting.Product{ID: 1, Name: "P", ConsoleName: "C"}, nil
@@ -3296,24 +3383,24 @@ func TestUnitRunRefresh_StopsEarlyOnContextCancellation(t *testing.T) {
 	h.runRefresh(ctx)
 
 	if calls != 2 {
-		t.Fatalf("walk must stop between products once ctx is done: price provider called %d times, want 2", calls)
+		t.Fatalf("refresh must stop between products once ctx is done: price provider called %d times, want 2", calls)
 	}
 }
 
-func TestUnitRefresh_WalkPanicIsContained(t *testing.T) {
+func TestUnitRefresh_RefreshPanicIsContained(t *testing.T) {
 	env := newAuthEnv(t)
 	st := &stubStore{
 		listPriced: func(context.Context) ([]store.Product, error) {
 			panic("boom")
 		},
-		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
-		listIGDBProducts:   func(context.Context) ([]store.Product, error) { return nil, nil },
+		listIGDBProducts: func(context.Context) ([]store.Product, error) { return nil, nil },
 	}
 	h := newUnitHandlers(st, nil, nil, newStubCache())
+	tok := env.serviceToken(t, "svc:catalog-refresh")
 
-	rec := serveInternal(t, h, env, testInternalToken)
+	rec := serveInternal(t, h, env, tok)
 	if rec.Code != http.StatusAccepted {
-		t.Fatalf("trigger before the panicking walk: %d", rec.Code)
+		t.Fatalf("trigger before the panicking refresh: %d", rec.Code)
 	}
 	// If the panic escaped the goroutine, the whole test binary would
 	// already be dead here; reaching this line at all is part of the
@@ -3323,74 +3410,14 @@ func TestUnitRefresh_WalkPanicIsContained(t *testing.T) {
 	// The guard reset after the panic: a second trigger is accepted
 	// again, not 409 (a leaked guard would answer 409 forever).
 	st.listPriced = func(context.Context) ([]store.Product, error) { return nil, nil }
-	rec = serveInternal(t, h, env, testInternalToken)
+	rec = serveInternal(t, h, env, tok)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("post-panic trigger: %d", rec.Code)
 	}
 	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 }
 
-// The re-match step upgrades unmatched members in place: a landed
-// mapping snapshots once and invalidates the cache; a taken slot or
-// an auto-miss skips without side effects; the worklist is capped.
-func TestUnitRefresh_RematchWalksUnmatchedGames(t *testing.T) {
-	loose := int64(3500)
-	prices := &stubPrices{
-		search: func(_ context.Context, q string) ([]pricecharting.Product, error) {
-			switch q {
-			case "Super Mario 64":
-				return []pricecharting.Product{{ID: 5005, Name: "Super Mario 64", ConsoleName: "Nintendo 64", LoosePriceCents: &loose}}, nil
-			case "Chrono Trigger":
-				return []pricecharting.Product{{ID: 5011, Name: "Chrono Trigger", ConsoleName: "Super Nintendo", LoosePriceCents: &loose}}, nil
-			default:
-				return nil, nil
-			}
-		},
-	}
-	unmatchedSM64 := store.Product{ID: "p-sm64", Type: "game", Name: "Super Mario 64",
-		Platform: &store.Platform{IGDBID: 4, Name: "Nintendo 64"}}
-	unmatchedCT := store.Product{ID: "p-ct", Type: "game", Name: "Chrono Trigger",
-		Platform: &store.Platform{IGDBID: 19, Name: "Super Nintendo Entertainment System"}}
-	unmatchedNothing := store.Product{ID: "p-none", Type: "game", Name: "Totally Unknown Homebrew",
-		Platform: &store.Platform{IGDBID: 19, Name: "Super Nintendo Entertainment System"}}
-
-	var gotLimit int
-	var snapshots []store.Snapshot
-	var setCalls []string
-	st := &stubStore{
-		listPriced: func(context.Context) ([]store.Product, error) { return nil, nil },
-		listUnmatchedGames: func(_ context.Context, limit int) ([]store.Product, error) {
-			gotLimit = limit
-			return []store.Product{unmatchedSM64, unmatchedCT, unmatchedNothing}, nil
-		},
-		setPriceChartingIfMissing: func(_ context.Context, id string, m *store.PCMeta) (bool, error) {
-			setCalls = append(setCalls, id)
-			if id == "p-ct" {
-				return false, store.ErrIdentityTaken // slot taken: skip, never merge
-			}
-			return true, nil
-		},
-		appendSnapshot: func(_ context.Context, s store.Snapshot) error {
-			snapshots = append(snapshots, s)
-			return nil
-		},
-	}
-	h := newUnitHandlers(st, &stubGames{}, prices, newStubCache())
-	h.runRefresh(context.Background())
-	h.runRematch(context.Background())
-
-	if gotLimit != 50 {
-		t.Fatalf("worklist cap must be rematchPerWalk (50), got %d", gotLimit)
-	}
-	if len(setCalls) != 2 { // the auto-miss product never reaches the store
-		t.Fatalf("set calls: %v", setCalls)
-	}
-	if len(snapshots) != 1 || snapshots[0].ProductID != "p-sm64" {
-		t.Fatalf("only the landed upgrade snapshots: %+v", snapshots)
-	}
-}
-
-// The reprojection walk's core repair: a pre-feature product (no raw
+// The reprojection's core repair: a pre-feature product (no raw
 // held yet) is healed via a nil-table-raw refetch. Its SetIGDB call
 // carries a non-nil release table whose scalar is the folded earliest
 // date, the refetched game lands in igdb_raw via UpsertRaw, the rebuilt
@@ -3499,7 +3526,7 @@ func TestUnitReprojection_BatchesSharedGameID(t *testing.T) {
 
 // A product whose game the provider no longer knows is skipped, not
 // failed: no SetIGDB call (a nil stub field panics if it is), and the
-// walk still finishes cleanly.
+// reprojection still finishes cleanly.
 func TestUnitReprojection_MissingGameSkipsWithoutSetIGDB(t *testing.T) {
 	prod := store.Product{ID: "p-missing", Type: "game", Platform: &store.Platform{IGDBID: 19}, IGDB: &store.IGDBMeta{GameID: 9999}}
 	st := &stubStore{
@@ -3521,7 +3548,7 @@ func TestUnitReprojection_MissingGameSkipsWithoutSetIGDB(t *testing.T) {
 
 // The diff gate: a product whose stored projection already equals the
 // one rebuilt from its raw is left untouched - no SetIGDB, no cache
-// invalidation - so a steady-state walk (raw unchanged) writes nothing.
+// invalidation - so a steady-state reprojection (raw unchanged) writes nothing.
 func TestUnitReprojection_DiffGateSkipsUnchangedProjection(t *testing.T) {
 	rawStamp := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 	g := igdb.Game{
@@ -3531,7 +3558,7 @@ func TestUnitReprojection_DiffGateSkipsUnchangedProjection(t *testing.T) {
 			{Date: 809049600, Platform: 19, Region: 2},
 		},
 	}
-	// The stored projection is exactly what the walk will rebuild.
+	// The stored projection is exactly what the reprojection will rebuild.
 	current := store.NewIGDBMeta(g, 19, rawStamp)
 	prod := store.Product{ID: "p-steady", Type: "game", Platform: &store.Platform{IGDBID: 19}, IGDB: &current}
 	st := &stubStore{
@@ -3557,7 +3584,7 @@ func TestUnitReprojection_DiffGateSkipsUnchangedProjection(t *testing.T) {
 
 // The fold reproject: a product healed before the twin fold carries an
 // unfolded projection (its japan date rides the Super Famicom platform,
-// invisible then). The walk rebuilds it from the raw - now folding the
+// invisible then). The reprojection rebuilds it from the raw - now folding the
 // twin row in - and, because the raw was not refetched, keeps the raw's
 // own fetch stamp rather than bumping freshness the provider did not
 // earn.
@@ -3618,7 +3645,7 @@ func TestUnitReprojection_FoldsTwinRowKeepingRawStamp(t *testing.T) {
 	}
 }
 
-// TestReprojection_HealsBelowVersionRaw pins the walk's version-based
+// TestReprojection_HealsBelowVersionRaw pins the reprojection's version-based
 // heal: a raw doc that already carries a real release table (so the
 // pre-feature nil-table check alone would miss it) but predates
 // fields_version tracking - and the localization arrays that generation
@@ -3700,15 +3727,14 @@ func TestReprojection_HealsBelowVersionRaw(t *testing.T) {
 	}
 }
 
-// The nightly walk's third pass is wired into startRefresh: an internal
-// refresh trigger must reach ListIGDBProducts, not just the price and
-// re-match passes.
+// The nightly catalog refresh's second pass is wired into startRefresh: an
+// internal refresh trigger must reach ListIGDBProducts, not just the
+// price pass.
 func TestUnitRefresh_InternalTriggerRunsReprojection(t *testing.T) {
 	env := newAuthEnv(t)
 	var called bool
 	st := &stubStore{
-		listPriced:         func(context.Context) ([]store.Product, error) { return nil, nil },
-		listUnmatchedGames: func(context.Context, int) ([]store.Product, error) { return nil, nil },
+		listPriced: func(context.Context) ([]store.Product, error) { return nil, nil },
 		listIGDBProducts: func(context.Context) ([]store.Product, error) {
 			called = true
 			return nil, nil
@@ -3716,7 +3742,7 @@ func TestUnitRefresh_InternalTriggerRunsReprojection(t *testing.T) {
 	}
 	h := newUnitHandlers(st, nil, nil, newStubCache())
 
-	rec := serveInternal(t, h, env, testInternalToken)
+	rec := serveInternal(t, h, env, env.serviceToken(t, "svc:catalog-refresh"))
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("trigger: %d", rec.Code)
 	}
@@ -3791,7 +3817,7 @@ func TestAdminMapping_CorrectVerifyClearAndErrors(t *testing.T) {
 
 // Mapping changes are identity moves: a taken listing answers 409 on
 // set, a clear that would collide with the family's unmatched member
-// answers 409 too, and a successful clear sets the walk hold.
+// answers 409 too, and a successful clear sets match_hold.
 func TestAdminMapping_IdentityTakenAndHold(t *testing.T) {
 	s := newStack(t)
 	ctx := context.Background()

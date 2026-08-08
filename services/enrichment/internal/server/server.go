@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/cache"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/fx"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
@@ -33,11 +34,9 @@ type Store interface {
 	GetProduct(ctx context.Context, id string) (store.Product, error)
 	SetIGDB(ctx context.Context, id string, m store.IGDBMeta) error
 	SetPriceCharting(ctx context.Context, id string, m *store.PCMeta) error
-	SetPriceChartingIfMissing(ctx context.Context, id string, m *store.PCMeta) (bool, error)
 	PromoteProduct(ctx context.Context, id string, igdbMeta *store.IGDBMeta, platform *store.Platform, pc *store.PCMeta) error
 	SetCurrentPrices(ctx context.Context, id string, q store.PriceQuote, asOf time.Time) error
 	ListPriced(ctx context.Context) ([]store.Product, error)
-	ListUnmatchedGames(ctx context.Context, limit int) ([]store.Product, error)
 	ListUnmatchedProducts(ctx context.Context, limit, offset int) ([]store.Product, int64, error)
 	DeleteUnmatchedProduct(ctx context.Context, id string) (bool, error)
 	ListIGDBProducts(ctx context.Context) ([]store.Product, error)
@@ -115,10 +114,7 @@ type Options struct {
 	SearchCacheTTL   time.Duration
 	ProductCacheTTL  time.Duration
 	IGDBRefreshAfter time.Duration
-	// InternalRefreshSecrets is the accepted X-Internal-Token set for
-	// POST /internal/refresh (an A/B pair during rotation).
-	InternalRefreshSecrets []string
-	Logger                 *slog.Logger
+	Logger           *slog.Logger
 }
 
 // Handlers owns the collaborators and knobs for every HTTP handler in
@@ -134,20 +130,20 @@ type Handlers struct {
 	searchTTL        time.Duration
 	productTTL       time.Duration
 	igdbRefreshAfter time.Duration
-	refreshSecrets   []string
 
 	// Domain instruments, registered best-effort in New; the emission
 	// helpers below guard the nils, so a telemetry hiccup never blocks
 	// serving (the bff cache counter set the pattern).
-	cacheFailOpen   metric.Int64Counter
-	searchRequests  metric.Int64Counter
-	localizationLeg metric.Int64Counter
-	matchOutcomes   metric.Int64Counter
-	refreshItems    metric.Int64Counter
-	walkDuration    metric.Float64Histogram
+	cacheFailOpen       metric.Int64Counter
+	searchRequests      metric.Int64Counter
+	localizationLeg     metric.Int64Counter
+	matchOutcomes       metric.Int64Counter
+	fallbackSearch      metric.Int64Counter
+	refreshItems        metric.Int64Counter
+	refreshStepDuration metric.Float64Histogram
 
-	// refreshing guards the walk: one at a time, concurrent triggers
-	// answer 409.
+	// refreshing guards the catalog refresh: one at a time, concurrent
+	// triggers answer 409.
 	refreshing atomic.Bool
 
 	// now is a test seam (staleness math and snapshot stamps).
@@ -170,7 +166,6 @@ func New(st Store, games GameProvider, prices PriceProvider, fxRates FXProvider,
 		searchTTL:        opts.SearchCacheTTL,
 		productTTL:       opts.ProductCacheTTL,
 		igdbRefreshAfter: opts.IGDBRefreshAfter,
-		refreshSecrets:   opts.InternalRefreshSecrets,
 
 		now: time.Now,
 	}
@@ -196,18 +191,23 @@ func New(st Store, games GameProvider, prices PriceProvider, fxRates FXProvider,
 		metric.WithUnit("{attempt}")); err != nil {
 		opts.Logger.Error("match outcomes counter unavailable", "err", err)
 	}
+	if h.fallbackSearch, err = meter.Int64Counter("vg.enrichment.match.fallback_search",
+		metric.WithDescription("Auto-match fallback name-form searches by outcome"),
+		metric.WithUnit("{search}")); err != nil {
+		opts.Logger.Error("fallback search counter unavailable", "err", err)
+	}
 	if h.refreshItems, err = meter.Int64Counter("vg.enrichment.refresh.items",
-		metric.WithDescription("Nightly walk items by step and outcome"),
+		metric.WithDescription("Nightly refresh items by step and outcome"),
 		metric.WithUnit("{item}")); err != nil {
 		opts.Logger.Error("refresh items counter unavailable", "err", err)
 	}
 	// Explicit boundaries: the SDK defaults top out at 10s and would
-	// flatten every multi-minute walk into the last bucket.
-	if h.walkDuration, err = meter.Float64Histogram("vg.enrichment.refresh.walk.duration",
-		metric.WithDescription("Elapsed seconds per nightly walk step"),
+	// flatten every multi-minute refresh step into the last bucket.
+	if h.refreshStepDuration, err = meter.Float64Histogram("vg.enrichment.refresh.step_duration",
+		metric.WithDescription("Elapsed seconds per catalog refresh step"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(1, 5, 15, 60, 300, 900, 1800)); err != nil {
-		opts.Logger.Error("walk duration histogram unavailable", "err", err)
+		opts.Logger.Error("refresh step duration histogram unavailable", "err", err)
 	}
 	return h
 }
@@ -228,6 +228,22 @@ func problem(w http.ResponseWriter, r *http.Request, status int, code, detail st
 	httpkit.WriteProblem(w, r, httpkit.Problem{
 		Status: status, Title: http.StatusText(status), Code: code, Detail: detail,
 	})
+}
+
+// requireService answers false (and writes the 403 problem) unless
+// the verified claims are a service token (token_use=service): the
+// guard on POST /internal/refresh, the catalog-refresh CronJob's
+// machine-only trigger. Same claims-access path and problem shape as
+// the admin-role gates elsewhere in this file (jwtauth already ran
+// ahead of every handler, so a missing claims value here would be a
+// minting bug, not a caller error).
+func (h *Handlers) requireService(w http.ResponseWriter, r *http.Request) bool {
+	claims, _ := jwtauth.FromContext(r.Context())
+	if !claims.IsService() {
+		problem(w, r, http.StatusForbidden, "forbidden", "a service token is required")
+		return false
+	}
+	return true
 }
 
 // failOpen records a Valkey failure the caller is about to treat as a
@@ -257,16 +273,38 @@ func (h *Handlers) countLocalizationLeg(ctx context.Context, outcome string) {
 }
 
 // countMatch records one auto-match attempt's outcome; source names
-// the calling flow (resolve or rematch).
-func (h *Handlers) countMatch(ctx context.Context, source, outcome string) {
+// the calling flow (resolve today; the label stays for future
+// flows), region the clamped entry region that steered acceptance
+// ("none" when the resolve carried no region). The resolve request's
+// region is free text (maxLength 32, no enum), so anything outside
+// the four known regions clamps to "none" too - matching already
+// treats an unrecognized region as base region (see match.go's
+// acceptedConsoles), so "none" stays honest, and an authenticated
+// user cannot mint an unbounded label series by varying the string.
+func (h *Handlers) countMatch(ctx context.Context, source, outcome, region string) {
+	switch region {
+	case "ntsc_u", "ntsc_j", "pal", "region_free":
+		// known label values pass through unchanged
+	default:
+		region = "none"
+	}
 	if h.matchOutcomes != nil {
 		h.matchOutcomes.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("source", source), attribute.String("outcome", outcome)))
+			attribute.String("source", source), attribute.String("outcome", outcome),
+			attribute.String("region", region)))
 	}
 }
 
-// countRefreshItem records one walked item's outcome for a nightly
-// walk step.
+// countFallbackSearch records one fired fallback name-form search leg
+// (matched, still_empty, or error).
+func (h *Handlers) countFallbackSearch(ctx context.Context, outcome string) {
+	if h.fallbackSearch != nil {
+		h.fallbackSearch.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+	}
+}
+
+// countRefreshItem records one visited item's outcome for a nightly
+// refresh step.
 func (h *Handlers) countRefreshItem(ctx context.Context, step, outcome string) {
 	if h.refreshItems != nil {
 		h.refreshItems.Add(ctx, 1, metric.WithAttributes(
@@ -274,11 +312,12 @@ func (h *Handlers) countRefreshItem(ctx context.Context, step, outcome string) {
 	}
 }
 
-// recordWalkDuration records one walk step's elapsed seconds. Every
-// step defers it, so an aborted or stopped-early step still reports
-// and the count series stays an honest the-step-ran signal.
-func (h *Handlers) recordWalkDuration(ctx context.Context, step string, seconds float64) {
-	if h.walkDuration != nil {
-		h.walkDuration.Record(ctx, seconds, metric.WithAttributes(attribute.String("step", step)))
+// recordRefreshStepDuration records one catalog refresh step's
+// elapsed seconds. Every step defers it, so an aborted or
+// stopped-early step still reports and the count series stays an
+// honest the-step-ran signal.
+func (h *Handlers) recordRefreshStepDuration(ctx context.Context, step string, seconds float64) {
+	if h.refreshStepDuration != nil {
+		h.refreshStepDuration.Record(ctx, seconds, metric.WithAttributes(attribute.String("step", step)))
 	}
 }

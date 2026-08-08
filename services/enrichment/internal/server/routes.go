@@ -13,17 +13,16 @@ import (
 )
 
 // NewRouter wires: Recover -> otelhttp (span) -> RequestLogger -> mux,
-// with /healthz, /readyz and POST /internal/refresh outside JWT auth
-// and every API route inside it.
+// with /healthz and /readyz outside JWT auth and every API route
+// (including POST /internal/refresh) inside it.
 //
-// /internal/refresh is JWT-exempt, not unauthenticated: the CronJob
-// has no JWT source (only the auth service mints, and only for
-// logins), so the handler authenticates a static internal-caller
-// token (X-Internal-Token, constant-time compare against an A/B
-// rotatable set) instead. The NetworkPolicy is the outer layer: it
-// admits the CronJob pod and the known service callers, and the
-// gateway never routes here (it publishes only the bff, which does
-// not proxy this path).
+// /internal/refresh sits behind the same blanket JWT middleware as
+// every other route: the CronJob authenticates as a service token
+// (minted by auth's /internal/service-token), which InternalRefresh's
+// own requireService check then requires. The NetworkPolicy is the
+// outer layer: it admits the CronJob pod and the known service
+// callers, and the gateway never routes here (it publishes only the
+// bff, which does not proxy this path).
 func NewRouter(h *Handlers, v *jwtauth.Validator, logger *slog.Logger, ready func(context.Context) error) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -36,7 +35,6 @@ func NewRouter(h *Handlers, v *jwtauth.Validator, logger *slog.Logger, ready fun
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
-	mux.HandleFunc("POST /internal/refresh", h.InternalRefresh)
 
 	apiMux := http.NewServeMux()
 	apiRoutes := api.HandlerWithOptions(h, api.StdHTTPServerOptions{

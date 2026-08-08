@@ -313,6 +313,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/entries/{entryId}/region-mismatch-ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss the region-mismatch banner for the entry's current choice (relay)
+         * @description Relays collection verbatim: stamps region_mismatch_ack_at for the entry's current (region, product) choice. Idempotent (204 on every call while the choice stands).
+         */
+        post: operations["ackEntryRegionMismatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/entries/{entryId}/submission": {
         parameters: {
             query?: never;
@@ -594,7 +614,7 @@ export interface paths {
         get?: never;
         /**
          * Correct or clear a product's PriceCharting mapping (relay; enrichment enforces role admin)
-         * @description Relays enrichment's moderated correction verbatim. A null pc_product_id clears the mapping (the product becomes unmatched and held out of the nightly re-match walk); setting any mapping stores it verified and lifts the hold. 409 code identity_taken when another product of the same identity already carries the target listing, or a clear would collide with an existing unmatched product of that identity; the 409 detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it (sets match_hold, idempotently) - the admin lever for silencing permanent worklist residue.
+         * @description Relays enrichment's moderated correction verbatim. A null pc_product_id clears the mapping (the product becomes unmatched and held against a future automated match); setting any mapping stores it verified and lifts the hold. 409 code identity_taken when another product of the same identity already carries the target listing, or a clear would collide with an existing unmatched product of that identity; the 409 detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it (sets match_hold, idempotently) - the admin lever for silencing permanent worklist residue.
          */
         put: operations["setProductMapping"];
         post?: never;
@@ -613,7 +633,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Trigger an immediate price refresh walk (relay; enrichment enforces role admin) */
+        /** Trigger an immediate catalog refresh (relay; enrichment enforces role admin) */
         post: operations["triggerRefresh"];
         delete?: never;
         options?: never;
@@ -1132,7 +1152,7 @@ export interface components {
             variant?: string;
             igdb?: components["schemas"]["IgdbMeta"];
             pricecharting?: components["schemas"]["PricechartingMeta"];
-            /** @description Present true when an admin clear holds this product out of the nightly re-match walk. */
+            /** @description Present true when an admin clear holds this product's mapping against a future automated match (resolve, or the entry-side re-match). */
             match_hold?: boolean;
             /**
              * @description Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity.
@@ -1166,7 +1186,7 @@ export interface components {
             /** @description Optional https cover image URL (validated by shape only, never fetched). */
             cover_url?: string;
         };
-        /** @description Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the nightly walk or the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant. */
+        /** @description Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant. */
         PromoteRequest: {
             /** Format: int64 */
             igdb_game_id?: number;
@@ -1204,7 +1224,7 @@ export interface components {
             /** Format: int64 */
             provider_id: number;
         };
-        /** @description type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so region/edition/variant on a game resolve are ignored (entry-level facts, like pc_listing). Without pc_product_id the resolve auto-matches by the plain game name through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant). */
+        /** @description type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so edition/variant on a game resolve are ignored (entry-level facts, like pc_listing); region is a matching input only (see the region property) and never joins identity. Without pc_product_id the resolve auto-matches by the game name (region-steered) through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant). */
         ResolveRequest: {
             /** @enum {string} */
             type: "game" | "console" | "accessory" | "pc_listing";
@@ -1215,6 +1235,7 @@ export interface components {
             /** Format: int64 */
             pc_product_id?: number;
             match_hint?: string;
+            /** @description For console/accessory: part of hardware identity, distinguishing physical variants. For game: a matching input only - the entry region (ntsc_u, ntsc_j, pal, region_free) steers which PriceCharting listing auto-match lands on (JP and PAL listings live under region-prefixed or JP-named console axes) and is never stored on the product; ignored when pc_product_id is present; unknown values behave like ntsc_u. Ignored for pc_listing. */
             region?: string;
             edition?: string;
             variant?: string;
@@ -1368,6 +1389,11 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            /**
+             * Format: date-time
+             * @description Null until the owner dismisses the region-mismatch banner; cleared whenever region or product changes.
+             */
+            region_mismatch_ack_at?: string;
         };
         /** @description One catalog-submission lifecycle row for an entry. Rows persist as history (rejected and cancelled included; the rolling creation cap counts every attempt); deleting the entry removes them with it. product_id is the verdict's resolved product - recorded before adoption so an approve_new retry never mints twice. */
         Submission: {
@@ -1517,6 +1543,12 @@ export interface components {
             custom_value_entered_cents?: number;
             custom_value_entered_currency?: string;
             /**
+             * @description Whose choice the matched product is. Send user only when the add flow's manual match picked the price listing; automated repoints (region edits, the entry rematch) never touch user rows. Not accepted on update - the server stamps user when the narrow product_id re-match arm fires.
+             * @default auto
+             * @enum {string}
+             */
+            match_provenance: "auto" | "user";
+            /**
              * @default backlog
              * @enum {string}
              */
@@ -1528,7 +1560,7 @@ export interface components {
             pinned: boolean;
             tag_ids?: string[];
         };
-        /** @description Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom. */
+        /** @description Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. That re-match stamps match_provenance=user; automated region repoints only ever run on match_provenance=auto entries. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom. */
         EntryUpdate: {
             /** @description Custom entries only (required there). */
             display_name?: string;
@@ -1551,7 +1583,10 @@ export interface components {
              * @description Narrow re-match. Accepted only when the entry is product-backed with pricing_mode auto, its current product is a game with no price mapping, and the new product is a game of the same family (same igdb game and platform); the same id as the entry already has is a no-op. Anything else answers 400 code invalid_product_change; enrichment unreachable answers 502 code enrichment_unavailable and leaves the entry unchanged. Snapshotted display fields stay as they are.
              */
             product_id?: string;
-            /** @enum {string} */
+            /**
+             * @description A region change on an auto-priced game-backed entry may repoint the entry to the sibling catalog product whose listing prices that region; snapshotted fields re-derive from it.
+             * @enum {string}
+             */
             region: "ntsc_u" | "ntsc_j" | "pal" | "region_free";
             /** @description Per-copy variant note; the idiom for variants of cataloged items. */
             edition?: string;
@@ -2678,6 +2713,37 @@ export interface operations {
             502: components["responses"]["UpstreamError"];
         };
     };
+    ackEntryRegionMismatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Acknowledged */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
     getSubmission: {
         parameters: {
             query?: never;
@@ -3469,7 +3535,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Walk started */
+            /** @description Refresh started */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -3488,7 +3554,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description A walk is already running (code refresh_in_progress) */
+            /** @description A refresh is already running (code refresh_in_progress) */
             409: {
                 headers: {
                     [name: string]: unknown;

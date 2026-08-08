@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -10,7 +11,6 @@ func setBase(t *testing.T) {
 	t.Setenv("MONGO_URL", "mongodb://u:p@localhost:27017/enrichment")
 	t.Setenv("VALKEY_URL", "redis://localhost:6379/0")
 	t.Setenv("JWKS_URL", "http://auth:8080/.well-known/jwks.json")
-	t.Setenv("INTERNAL_REFRESH_SECRETS", "dev-refresh-token")
 }
 
 func TestLoad_Defaults(t *testing.T) {
@@ -26,8 +26,24 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 }
 
+// TestLoad_MissingRequired pins that a genuinely absent MONGO_URL
+// fails config loading. caarlos0/env's required tag fires only on an
+// absent key, never a present-but-empty one, so this unsets rather
+// than sets "" - t.Setenv can only represent "present with this
+// value", never "absent". Uncovered while deleting
+// INTERNAL_REFRESH_SECRETS: that field's own required tag was
+// incidentally the one firing here before, since setting
+// MONGO_URL="" never actually failed on its own.
 func TestLoad_MissingRequired(t *testing.T) {
-	t.Setenv("MONGO_URL", "")
+	prev, had := os.LookupEnv("MONGO_URL")
+	if err := os.Unsetenv("MONGO_URL"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if had {
+			_ = os.Setenv("MONGO_URL", prev)
+		}
+	})
 	t.Setenv("VALKEY_URL", "redis://localhost:6379/0")
 	t.Setenv("JWKS_URL", "http://auth:8080/.well-known/jwks.json")
 	if _, err := Load(); err == nil {
@@ -92,26 +108,6 @@ func TestLoad_RedissRequiresCA(t *testing.T) {
 	t.Setenv("VALKEY_CA_FILE", "/etc/vg/valkey-ca/ca.crt")
 	if _, err := Load(); err != nil {
 		t.Fatalf("rediss with CA should load: %v", err)
-	}
-}
-
-func TestLoad_InternalRefreshSecrets(t *testing.T) {
-	setBase(t)
-	t.Setenv("INTERNAL_REFRESH_SECRETS", "current-token,previous-token")
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("A/B pair must parse: %v", err)
-	}
-	if len(cfg.InternalRefreshSecrets) != 2 {
-		t.Fatalf("A/B pair must parse: %+v", cfg.InternalRefreshSecrets)
-	}
-	t.Setenv("INTERNAL_REFRESH_SECRETS", "")
-	if _, err := Load(); err == nil {
-		t.Fatal("want error for missing INTERNAL_REFRESH_SECRETS")
-	}
-	t.Setenv("INTERNAL_REFRESH_SECRETS", "good,,")
-	if _, err := Load(); err == nil {
-		t.Fatal("want error for empty entries in the accepted set")
 	}
 }
 

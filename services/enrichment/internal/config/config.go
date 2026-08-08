@@ -35,11 +35,6 @@ type Config struct {
 	JWTIssuer   string `env:"JWT_ISSUER"   envDefault:"vgkeep-auth"`
 	JWTAudience string `env:"JWT_AUDIENCE" envDefault:"vgkeep"`
 
-	// Accepted internal-caller tokens for POST /internal/refresh (the
-	// CronJob's trigger, which has no JWT source). One or two entries:
-	// an A/B pair makes rotation zero-downtime.
-	InternalRefreshSecrets []string `env:"INTERNAL_REFRESH_SECRETS,required,notEmpty" envSeparator:","`
-
 	// Provider switches: stub serves embedded fixtures (credential-less
 	// dev/e2e); real needs the credentials below.
 	IGDBMode            string `env:"IGDB_MODE"            envDefault:"stub"`
@@ -93,11 +88,6 @@ func Load() (Config, error) {
 	}
 	if strings.HasPrefix(cfg.ValkeyURL, "rediss://") && cfg.ValkeyCAFile == "" {
 		return Config{}, errors.New("config: VALKEY_CA_FILE is required for a rediss:// VALKEY_URL")
-	}
-	for _, s := range cfg.InternalRefreshSecrets {
-		if strings.TrimSpace(s) == "" {
-			return Config{}, errors.New("config: INTERNAL_REFRESH_SECRETS must not contain empty entries")
-		}
 	}
 	return cfg, nil
 }

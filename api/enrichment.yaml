@@ -8,11 +8,12 @@ info:
     API; no other service talks to those providers. Every operation
     requires a Bearer access JWT validated against the auth service's
     JWKS; /admin/* operations additionally require the admin role.
-    The daily price-refresh trigger used by the in-cluster CronJob is
-    deliberately outside this contract (POST /internal/refresh): the
-    CronJob has no JWT source, so that endpoint authenticates a static
-    internal-caller token (X-Internal-Token header) instead, with the
-    NetworkPolicy as the outer layer.
+    The daily catalog-refresh trigger used by the in-cluster CronJob
+    (POST /internal/refresh) rides the same JWT boundary, gated to a
+    service token (token_use=service, minted by auth's
+    /internal/service-token) rather than the admin role - the CronJob
+    has no human session, so it authenticates as a machine caller
+    instead. The NetworkPolicy stays the outer layer.
 security:
   - bearerAuth: []
 paths:
@@ -137,7 +138,7 @@ paths:
       summary: Price snapshot series for a set of products (value-over-time composition)
       description: >
         Each requested product's snapshots inside the window, oldest
-        first. Snapshots accumulate from the daily refresh walk plus
+        first. Snapshots accumulate from the daily catalog refresh plus
         one initial point when a product is created or its mapping is
         corrected. Unknown ids and products with no points in the
         window are absent from the response map.
@@ -223,22 +224,45 @@ paths:
   /admin/refresh:
     post:
       operationId: triggerRefresh
-      summary: Trigger an immediate price refresh walk (role admin)
+      summary: Trigger an immediate catalog refresh (role admin)
       description: >
-        Starts the same walk the daily CronJob triggers and returns 202
-        immediately (the walk outlives the HTTP write timeout at polite
+        Starts the same refresh the daily CronJob triggers and returns 202
+        immediately (the refresh outlives the HTTP write timeout at polite
         provider rates); the runner logs its summary. 409 code
-        refresh_in_progress when a walk is already running.
+        refresh_in_progress when a refresh is already running.
       responses:
         "202":
-          description: Walk started
+          description: Refresh started
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RefreshAccepted" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409":
-          description: A walk is already running (code refresh_in_progress)
+          description: A refresh is already running (code refresh_in_progress)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /internal/refresh:
+    post:
+      operationId: internalRefresh
+      tags: [internal]
+      summary: Catalog refresh trigger (CronJob)
+      description: >
+        Machine trigger for the nightly catalog refresh; the gateway
+        never routes it. Guard: a service token (token_use=service) -
+        operators use /admin/refresh. Answers 202 and detaches; one
+        run at a time (409 refresh_in_progress).
+      responses:
+        "202":
+          description: Refresh started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RefreshAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: A refresh is already running (code refresh_in_progress)
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -252,8 +276,8 @@ paths:
         identity indexes - their curated name is their identity, and
         the review panel's embedded search is the dedup check
         (deliberately no uniqueness machinery). They never join the
-        nightly re-match walk or the unmatched worklist, and they
-        surface to users through the community lane in search. The
+        unmatched worklist, and they surface to users through the
+        community lane in search. The
         single edition field follows the entry idiom (one
         "Edition or variant" note); variant stays empty - the
         region/edition/variant split exists only for provider hardware
@@ -283,9 +307,10 @@ paths:
         against the provider, current prices are fetched, a snapshot is
         appended, and the mapping is stored verified with confidence
         1.0. A null pc_product_id clears the mapping (the product
-        becomes unmatched) and sets match_hold, so the nightly re-match
-        walk never undoes a deliberate clear; setting any mapping lifts
-        match_hold. Identity indexes make a mapping change an identity
+        becomes unmatched) and sets match_hold, so a future automated
+        match (resolve, or the entry-side re-match) never undoes a
+        deliberate clear; setting any mapping lifts match_hold.
+        Identity indexes make a mapping change an identity
         move: when another product of the same identity (for games,
         the same game and platform; for hardware, the same
         region/edition/variant) already carries the target listing, or
@@ -345,9 +370,9 @@ paths:
         detail, and the community product keeps working unpromoted
         (the true-merge case is deliberately not automated). The
         community facts block is retained as gap-fill. After the flip
-        the product is a first-class provider citizen: the nightly
-        walk may auto-match a missing game listing, the unmatched
-        worklist includes it, and the mapping fix applies. Errors:
+        the product is a first-class provider citizen: a missing game
+        listing leaves it on the unmatched worklist until the mapping
+        fix attaches one. Errors:
         404 code product_not_found, unknown_game or
         unknown_pc_product; 409 code product_not_community (already
         provider) or identity_taken; 502 code upstream_unavailable.
@@ -791,8 +816,9 @@ components:
         match_hold:
           type: boolean
           description: >
-            Present true when an admin clear holds this product out of
-            the nightly re-match walk.
+            Present true when an admin clear holds this product's
+            mapping against a future automated match (resolve, or the
+            entry-side re-match).
         origin:
           type: string
           enum: [community]
@@ -841,8 +867,8 @@ components:
         Provider identity for an in-place promotion. type game
         products require igdb_game_id + platform_igdb_id and accept
         an optional pc_product_id (the listing can also arrive later
-        via the nightly walk or the mapping fix, once provider);
-        console and accessory products require pc_product_id. The
+        via the mapping fix, once provider); console and accessory
+        products require pc_product_id. The
         identity the product re-enters the index with completes with
         the doc's stored region/edition/variant.
       type: object
@@ -889,16 +915,18 @@ components:
         type game requires igdb_game_id + platform_igdb_id (the
         platform must be one the game released on). Game identity is
         listing-keyed - (game, platform, PriceCharting listing) - so
-        region/edition/variant on a game resolve are ignored
-        (entry-level facts, like pc_listing). Without pc_product_id
-        the resolve auto-matches by the plain game name through the
-        shared listing-search cache and lands on the winning listing's
-        product; below the confidence threshold, or with the provider
-        down, it lands on the game+platform's single unmatched product
-        instead - never guessed. Optional match_hint (game only,
-        ignored elsewhere) reweights the scoring toward variant text
-        without changing the search query; a hint nothing matches
-        makes the resolve conservative (unmatched).
+        edition/variant on a game resolve are ignored (entry-level
+        facts, like pc_listing); region is a matching input only (see
+        the region property) and never joins identity. Without
+        pc_product_id the resolve auto-matches by the game name
+        (region-steered) through the shared listing-search cache and
+        lands on the winning listing's product; below the
+        confidence threshold, or with the provider down, it lands on
+        the game+platform's single unmatched product instead - never
+        guessed. Optional match_hint (game only, ignored elsewhere)
+        reweights the scoring toward variant text without changing the
+        search query; a hint nothing matches makes the resolve
+        conservative (unmatched).
         With pc_product_id (a manual match: the exact listing the user
         chose) auto-match is skipped and the resolve finds or mints
         the product carrying that listing (match_confidence 1.0,
@@ -920,7 +948,18 @@ components:
         platform_igdb_id: { type: integer, format: int64 }
         pc_product_id: { type: integer, format: int64 }
         match_hint: { type: string, maxLength: 128 }
-        region: { type: string, maxLength: 32 }
+        region:
+          type: string
+          maxLength: 32
+          description: >-
+            For console/accessory: part of hardware identity, distinguishing
+            physical variants. For game: a matching input only - the entry
+            region (ntsc_u, ntsc_j, pal, region_free) steers which
+            PriceCharting listing auto-match lands on (JP and PAL listings
+            live under region-prefixed or JP-named console axes) and is
+            never stored on the product; ignored when pc_product_id is
+            present; unknown values behave like ntsc_u. Ignored for
+            pc_listing.
         edition: { type: string, maxLength: 128 }
         variant: { type: string, maxLength: 128 }
     PricesBatchRequest:

@@ -1,0 +1,43 @@
+meta {
+  name: resolve game jp region (region-aware match)
+  type: http
+  seq: 14
+}
+
+post {
+  url: {{enrichment_url}}/products/resolve
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "type": "game",
+    "igdb_game_id": 11227,
+    "platform_igdb_id": 19,
+    "region": "ntsc_j"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.pricecharting.console_name: eq Super Famicom
+}
+
+docs {
+  Expect 200; Trials of Mana (Seiken Densetsu 3) on Super Nintendo
+  Entertainment System resolved with the ntsc_j entry region. The
+  region steers auto-match onto the JP listing axis: the query runs by
+  the ja-JP transliteration (Seiken Densetsu 3) and the console gate
+  admits the Super Famicom axis for a SNES pick, so the resolve lands
+  the Super Famicom listing as its own sibling member - a different
+  product id than the regionless resolve-game flow's member, which
+  stays unmatched on this stack. 11227/19 is a real IGDB id/platform
+  pair (not a stub fixture), so the assert above expects the live
+  provider; under PRICECHARTING_MODE=stub this identity has no
+  listing and the resolve lands unmatched.
+}
