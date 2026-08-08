@@ -155,8 +155,12 @@ func New(st Store, enrich Enrichment, c Cache, opts Options) *Handlers {
 		}
 		return ctr
 	}
-	histogram := func(name, desc, unit string) metric.Float64Histogram {
-		hg, err := m.Float64Histogram(name, metric.WithDescription(desc), metric.WithUnit(unit))
+	histogram := func(name, desc, unit string, buckets ...float64) metric.Float64Histogram {
+		histOpts := []metric.Float64HistogramOption{metric.WithDescription(desc), metric.WithUnit(unit)}
+		if len(buckets) > 0 {
+			histOpts = append(histOpts, metric.WithExplicitBucketBoundaries(buckets...))
+		}
+		hg, err := m.Float64Histogram(name, histOpts...)
 		if err != nil {
 			opts.Logger.Error("histogram unavailable", "name", name, "err", err)
 		}
@@ -180,9 +184,12 @@ func New(st Store, enrich Enrichment, c Cache, opts Options) *Handlers {
 		submissionEvents: counter("vg.collection.submissions.events",
 			"Catalog submission lifecycle transitions",
 			"{event}"),
+		// Explicit boundaries: the SDK defaults top out at 10s and would
+		// flatten a multi-minute entry-rematch run into the last bucket
+		// (same fix as enrichment's refresh.step_duration histogram).
 		rematchDuration: histogram("vg.collection.rematch.duration",
 			"Elapsed seconds per entry-rematch run",
-			"s"),
+			"s", 1, 5, 15, 60, 300, 900, 1800),
 		rematchTriples: counter("vg.collection.rematch.triples",
 			"Entry-rematch (game, platform, region) triples by outcome",
 			"{triple}"),

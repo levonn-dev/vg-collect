@@ -376,7 +376,7 @@
       ]
     },
     {
-      "id": 21,
+      "id": 20,
       "type": "timeseries",
       "title": "Heap used",
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 56 },
@@ -393,22 +393,7 @@
       ]
     },
     {
-      "id": 20,
-      "type": "logs",
-      "title": "Recent error and warn logs",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 64 },
-      "datasource": { "type": "loki", "uid": "loki" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{service_name=\"collection\"} | severity_text=~\"ERROR|WARN\""
-        }
-      ]
-    },
-    {
-      "id": 22,
+      "id": 21,
       "type": "timeseries",
       "title": "Entry rematch",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 72 },
@@ -428,6 +413,38 @@
           "expr": "increase(vg_collection_rematch_repoints_total[1h])",
           "legendFormat": "repoints",
           "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Entry rematch duration",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 72 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(increase(vg_collection_rematch_duration_seconds_sum[1h]))",
+          "legendFormat": "duration",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "logs",
+      "title": "Recent error and warn logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 64 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{service_name=\"collection\"} | severity_text=~\"ERROR|WARN\""
         }
       ]
     }
