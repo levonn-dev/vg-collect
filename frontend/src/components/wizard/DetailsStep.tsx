@@ -40,11 +40,12 @@ export function defaultDetails(region: DetailsValues['region'] = 'ntsc_u'): Deta
 }
 
 // detailsToCreate maps the step's values onto the shared EntryCreate
-// fields. pricing_mode is auto (the product-backed default); the
-// custom path overrides it to disabled after spreading. currency is
-// the caller's stamp (the signed-in profile's currency) - this step
-// never collects one, and stamping needs no rate, so it still works
-// while conversion is down.
+// fields. pricing_mode and match_provenance are both auto (the
+// product-backed defaults); the custom path overrides pricing_mode to
+// disabled and ConfirmStep overrides match_provenance to user, both
+// after spreading. currency is the caller's stamp (the signed-in
+// profile's currency) - this step never collects one, and stamping
+// needs no rate, so it still works while conversion is down.
 // eslint-disable-next-line react-refresh/only-export-components -- shared with ConfirmStep and the test, alongside this component.
 export function detailsToCreate(d: DetailsValues, currency: string): Omit<EntryCreate, 'product_id' | 'display_name' | 'item_type' | 'platform_name' | 'first_release_date'> {
   return {
@@ -62,6 +63,7 @@ export function detailsToCreate(d: DetailsValues, currency: string): Omit<EntryC
     purchased_at: d.purchasedAt === '' ? undefined : d.purchasedAt,
     purchased_from: d.purchasedFrom.trim() === '' ? undefined : d.purchasedFrom.trim(),
     pricing_mode: 'auto',
+    match_provenance: 'auto',
     status: d.status,
     rating: d.rating === '' ? undefined : Number(d.rating),
     notes: d.notes.trim() === '' ? undefined : d.notes,
