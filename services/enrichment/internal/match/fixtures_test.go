@@ -43,7 +43,7 @@ func TestFixtures_EveryGameResolvesExceptTheUnmatchedOne(t *testing.T) {
 		for _, h := range hits {
 			cands = append(cands, match.Candidate{PCProductID: h.ID, Name: h.Name, ConsoleName: h.ConsoleName})
 		}
-		res := match.Best(g.Name, "", g.Platforms[0].Name, cands)
+		res := match.Best([]string{g.Name}, "", g.Platforms[0].Name, "", cands)
 		if g.Name == unmatchedFixture {
 			unmatchedSeen = true
 			if res.OK {

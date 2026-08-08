@@ -70,19 +70,37 @@ func TestConsoleAliases_MatchFixtureCorpora(t *testing.T) {
 		}
 	}
 
+	for key, values := range jpConsoleAliases {
+		if !normPlatforms[key] {
+			t.Errorf("jp alias key %q is not a fixture IGDB platform name", key)
+		}
+		for _, v := range values {
+			if !normConsoles[v] {
+				t.Errorf("jp alias %q -> %q: no fixture product uses that console-name", key, v)
+			}
+		}
+	}
+
 	// The reverse direction: every corpus platform must reach at least
-	// one corpus console spelling, so no fixture platform silently
-	// prices nothing.
+	// one corpus console spelling in some region class, so no fixture
+	// platform silently prices nothing. A JP-market fixture platform
+	// prices nothing in the base class by design, so the reachability
+	// promise is per some class.
 	for _, pn := range platformNames {
 		matched := false
 		for _, cn := range consoleNames {
-			if ConsoleMatches(pn, cn) {
-				matched = true
+			for _, region := range []string{"", "ntsc_j", "pal"} {
+				if ConsoleMatches(pn, cn, region) {
+					matched = true
+					break
+				}
+			}
+			if matched {
 				break
 			}
 		}
 		if !matched {
-			t.Errorf("fixture platform %q matches no fixture console-name", pn)
+			t.Errorf("fixture platform %q matches no fixture console-name in any region class", pn)
 		}
 	}
 }

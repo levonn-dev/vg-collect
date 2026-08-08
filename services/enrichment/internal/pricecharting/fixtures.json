@@ -60,6 +60,12 @@
     { "id": 6005, "product-name": "Gamecube System", "console-name": "Gamecube", "genre": "Systems" },
     { "id": 6006, "product-name": "Nintendo 64 Controller Gray", "console-name": "Nintendo 64", "genre": "Controllers" },
     { "id": 6007, "product-name": "Gamecube Memory Card 251", "console-name": "Gamecube", "genre": "Accessories" },
-    { "id": 6008, "product-name": "Switch Pro Controller", "console-name": "Nintendo Switch", "genre": "Controllers" }
+    { "id": 6008, "product-name": "Switch Pro Controller", "console-name": "Nintendo Switch", "genre": "Controllers" },
+    { "id": 5101, "product-name": "Seiken Densetsu 2", "console-name": "Super Famicom", "genre": "RPG", "loose-price": 3500, "cib-price": 9800, "new-price": 42000 },
+    { "id": 5102, "product-name": "Secret of Mana", "console-name": "PAL Super Nintendo", "genre": "RPG", "loose-price": 3000, "cib-price": 8000, "new-price": 30000 },
+    { "id": 5103, "product-name": "Zelda no Densetsu 1", "console-name": "Famicom", "genre": "Adventure", "loose-price": 2000, "cib-price": 6000, "new-price": 20000 },
+    { "id": 5104, "product-name": "Zelda no Densetsu 1", "console-name": "Famicom Disk System", "genre": "Adventure", "loose-price": 1800, "cib-price": 5000, "new-price": 15000 },
+    { "id": 5105, "product-name": "Mega Man 2", "console-name": "Famicom" },
+    { "id": 6101, "product-name": "Super Famicom Console", "console-name": "Super Famicom", "genre": "Systems", "loose-price": 9000, "cib-price": 18000, "new-price": 60000 }
   ]
 }

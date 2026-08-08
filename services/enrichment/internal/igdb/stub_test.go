@@ -21,8 +21,8 @@ func TestStub_FixtureShape(t *testing.T) {
 	if len(s.games) != 50 {
 		t.Fatalf("want 50 fixture games, got %d", len(s.games))
 	}
-	if len(s.platforms) != 17 {
-		t.Fatalf("want 17 fixture platforms, got %d", len(s.platforms))
+	if len(s.platforms) != 20 {
+		t.Fatalf("want 20 fixture platforms, got %d", len(s.platforms))
 	}
 	platformIDs := map[int64]bool{}
 	for _, p := range s.platforms {
@@ -177,8 +177,8 @@ func TestStub_Platforms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 17 {
-		t.Fatalf("want 17 fixture platforms, got %d", len(got))
+	if len(got) != 20 {
+		t.Fatalf("want 20 fixture platforms, got %d", len(got))
 	}
 
 	var found bool

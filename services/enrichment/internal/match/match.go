@@ -36,6 +36,51 @@ var consoleAliases = map[string][]string{
 	"nintendo 3ds":                        {"nintendo 3ds"},
 }
 
+// jpConsoleAliases maps normalized IGDB platform names to the
+// distinct-name JP market spellings PriceCharting files JP listings
+// under instead of a "jp " prefix (the Famicom-family markets).
+// Platforms without an entry take the "jp " prefix rule in
+// acceptedConsoles.
+var jpConsoleAliases = map[string][]string{
+	"nintendo entertainment system":       {"famicom"},
+	"family computer":                     {"famicom"},
+	"super nintendo entertainment system": {"super famicom"},
+	"super famicom":                       {"super famicom"},
+	"family computer disk system":         {"famicom disk system"},
+}
+
+// acceptedConsoles is the region-parameterized acceptance set: which
+// normalized console-name spellings can price a platform for an entry
+// region. Base regions (ntsc_u, region_free, empty or unknown values)
+// keep the pre-region behavior. Acceptance is strict per class - a JP
+// resolve never accepts the NA listing - so a missing regional listing
+// lands unmatched, never wrong-region.
+func acceptedConsoles(normPlatform, region string) []string {
+	base, ok := consoleAliases[normPlatform]
+	if !ok {
+		base = []string{normPlatform}
+	}
+	switch region {
+	case "ntsc_j":
+		if jp, ok := jpConsoleAliases[normPlatform]; ok {
+			return jp
+		}
+		return prefixed("jp ", base)
+	case "pal":
+		return prefixed("pal ", base)
+	default:
+		return base
+	}
+}
+
+func prefixed(p string, names []string) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = p + n
+	}
+	return out
+}
+
 // romanNumerals canonicalizes numeral tokens so "Final Fantasy VII"
 // and "Final Fantasy 7" agree. Known tradeoff: "x" conflates with
 // "10" (Mega Man X vs Mega Man 10); the per-console filter and the
@@ -196,15 +241,13 @@ func dice(a, b string) float64 {
 	return 2 * float64(inter) / float64(len(as)+len(bs))
 }
 
-// ConsoleMatches reports whether a PriceCharting console-name belongs
-// to the IGDB platform (hard filter: a perfect name on the wrong
-// console is never a match).
-func ConsoleMatches(platformName, consoleName string) bool {
+// ConsoleMatches reports whether a PriceCharting console-name can
+// price the IGDB platform for the given entry region (hard filter: a
+// perfect name on the wrong console is never a match). Region "" is
+// the base class.
+func ConsoleMatches(platformName, consoleName, region string) bool {
 	p, c := Normalize(platformName), Normalize(consoleName)
-	if aliases, ok := consoleAliases[p]; ok {
-		return slices.Contains(aliases, c)
-	}
-	return p == c
+	return slices.Contains(acceptedConsoles(p, region), c)
 }
 
 // Candidate is one provider search hit under consideration.
@@ -224,29 +267,33 @@ type Result struct {
 	OK          bool
 }
 
-// Best picks the highest-scoring same-console candidate. A non-empty
-// hint is variant text qualifying the target: scoring compares
-// "name hint" strictly, and candidate names keep their bracketed
-// segments as plain tokens (PriceCharting brackets its variants), so
-// the hinted listing can win while candidates without the hinted
-// tokens lose score; a hint nothing carries keeps the product
-// unmatched rather than guessing the plain listing. Brackets in the
-// hint read as their words ("[not for resale]" hints exactly like
-// "not for resale"). Without a hint, bracketed segments stay stripped
-// on both sides, so a plain resolve prices the base listing. Both
-// sides score in their possessive AND possessive-dropped forms (best
-// pair wins), meeting whichever convention the listing's name uses.
-// Deterministic tie-break: lower pc id.
-func Best(name, hint, platformName string, cands []Candidate) Result {
-	raw := name
+// Best picks the highest-scoring candidate the region's console
+// acceptance admits. names carries the target name forms (the primary
+// query form first, e.g. a JP transliteration, then the canonical
+// name); every form contributes its possessive variants and the best
+// pair wins, so a romaji listing scores against the translit while a
+// canonically named listing keeps scoring against the canonical name.
+// A non-empty hint is variant text qualifying every target: scoring
+// compares "name hint" strictly, and candidate names keep their
+// bracketed segments as plain tokens (PriceCharting brackets its
+// variants), so the hinted listing can win while candidates without
+// the hinted tokens lose score; a hint nothing carries keeps the
+// product unmatched rather than guessing the plain listing. Without a
+// hint, bracketed segments stay stripped on both sides. Deterministic
+// tie-break: lower pc id.
+func Best(names []string, hint, platformName, region string, cands []Candidate) Result {
 	hinted := Normalize(keepBracketContent(hint)) != ""
-	if hinted {
-		raw = keepBracketContent(name + " " + hint)
+	var targets []string
+	for _, name := range names {
+		raw := name
+		if hinted {
+			raw = keepBracketContent(name + " " + hint)
+		}
+		targets = append(targets, forms(raw)...)
 	}
-	targets := forms(raw)
 	best := Result{}
 	for _, c := range cands {
-		if !ConsoleMatches(platformName, c.ConsoleName) {
+		if !ConsoleMatches(platformName, c.ConsoleName, region) {
 			continue
 		}
 		cn := c.Name
@@ -264,6 +311,20 @@ func Best(name, hint, platformName string, cands []Candidate) Result {
 		return Result{Confidence: best.Confidence}
 	}
 	return best
+}
+
+// FilterConsole returns the candidates the region's console acceptance
+// admits for the platform. The auto-match fallback decision reads the
+// survivor count before scoring: an empty result means the primary
+// query surfaced nothing the region can price.
+func FilterConsole(platformName, region string, cands []Candidate) []Candidate {
+	out := make([]Candidate, 0, len(cands))
+	for _, c := range cands {
+		if ConsoleMatches(platformName, c.ConsoleName, region) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // Score is the plain name-similarity score, with the same

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +36,43 @@ const communityLaneLimit = 10
 // trimmed original).
 func normQuery(q string) string {
 	return strings.Join(strings.Fields(strings.ToLower(q)), " ")
+}
+
+// regionQueryChains maps an entry region to the localization
+// identifiers whose bundles carry the provider-facing name form for
+// that region's listings (PriceCharting names JP listings in romaji).
+// The enrichment-side sibling of collection's localizationChains,
+// answering a provider-query question rather than a display one.
+var regionQueryChains = map[string][]string{
+	"ntsc_j": {"ja-JP"},
+}
+
+// matchNamesFor returns the auto-match target forms for a game in an
+// entry region: the region's chained transliteration first when a
+// bundle carries one (it becomes the primary provider query), then
+// the canonical name. Base regions and games without a bundle keep
+// the canonical name alone - zero extra provider calls.
+func matchNamesFor(g igdb.Game, region string) []string {
+	for _, id := range regionQueryChains[region] {
+		for _, b := range igdb.BundleLocalizations(g) {
+			if b.Region == id && b.Translit != "" {
+				return []string{b.Translit, g.Name}
+			}
+		}
+	}
+	return []string{g.Name}
+}
+
+// matchCandidates adapts provider search rows to scoring candidates.
+func matchCandidates(results []api.SearchResult) []match.Candidate {
+	cands := make([]match.Candidate, 0, len(results))
+	for _, r := range results {
+		if r.PcProductId == nil || r.ConsoleName == nil {
+			continue
+		}
+		cands = append(cands, match.Candidate{PCProductID: *r.PcProductId, Name: r.Name, ConsoleName: *r.ConsoleName})
+	}
+	return cands
 }
 
 // SearchCatalog is the discovery search: query cache in front of the
@@ -918,8 +954,10 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 }
 
 // resolveGame picks the listing, then finds-or-creates the (game,
-// platform, listing) member. Request region/edition/variant are
-// ignored: they are entry-level facts, not game identity.
+// platform, listing) member. Request edition/variant are ignored
+// (entry-level facts); region is a MATCHING input only - it steers
+// which listing auto-match lands on and never joins identity or the
+// stored product. The picker path ignores it entirely.
 func (h *Handlers) resolveGame(w http.ResponseWriter, r *http.Request, req api.ResolveRequest) {
 	ctx := r.Context()
 	if req.IgdbGameId == nil || req.PlatformIgdbId == nil {
@@ -962,7 +1000,8 @@ func (h *Handlers) resolveGame(w http.ResponseWriter, r *http.Request, req api.R
 		h.resolveError(w, r, err)
 		return
 	}
-	meta := h.autoMatchGame(ctx, "resolve", g.Name, deref(req.MatchHint), platform.Name)
+	region := deref(req.Region)
+	meta := h.autoMatchGame(ctx, "resolve", matchNamesFor(g, region), deref(req.MatchHint), platform.Name, region)
 	if meta != nil {
 		key.PCProductID = meta.PCProductID
 	}
@@ -1056,7 +1095,7 @@ func (h *Handlers) gamePayloadFor(ctx context.Context, gameID int64) (igdb.Game,
 		// the per-region dates - so serve it, matching
 		// refreshIGDBIfStale's serve-stale degrade. This is safe because
 		// the nightly reprojection refetches nil-table raws, so a product
-		// minted from this stale copy is repaired on the next walk. With
+		// minted from this stale copy is repaired on the next refresh. With
 		// no raw at all there is nothing to serve, so the error stands.
 		if len(raws) == 1 {
 			h.logger.WarnContext(ctx, "pre-feature raw refetch failed; serving stale payload", "game", gameID, "err", err)
@@ -1139,36 +1178,53 @@ func (h *Handlers) searchPCListingsCached(ctx context.Context, q string) ([]api.
 }
 
 // autoMatchGame scores the family's listing candidates; nil when the
-// provider is degraded or nothing same-console clears the threshold
-// (never guessed - the resolve then lands on the unmatched member).
-// The winner's prices ride from the search row (cache-aged at worst;
-// the daily walk refreshes them). source names the calling flow
-// (resolve or rematch) on the outcome counter.
-func (h *Handlers) autoMatchGame(ctx context.Context, source, name, hint, platformName string) *store.PCMeta {
-	results, err := h.searchPCListingsCached(ctx, name)
+// provider is degraded or nothing the region admits clears the
+// threshold (never guessed - the resolve then lands on the unmatched
+// member). names come from matchNamesFor: names[0] is the primary
+// provider query; when the region gate admits nothing from it and a
+// second form exists, one fallback search runs with the alternate
+// form - PriceCharting files JP listings under romaji or hybrid
+// names, so either query can be the one that hits. Both legs ride the
+// shared pc_listing search cache. source names the calling flow on
+// the outcome counter; region rides it as a label.
+func (h *Handlers) autoMatchGame(ctx context.Context, source string, names []string, hint, platformName, region string) *store.PCMeta {
+	results, err := h.searchPCListingsCached(ctx, names[0])
 	if err != nil {
-		h.countMatch(ctx, source, "provider_down")
-		h.logger.WarnContext(ctx, "auto-match skipped: price provider unavailable", "name", name, "err", err)
+		h.countMatch(ctx, source, "provider_down", region)
+		h.logger.WarnContext(ctx, "auto-match skipped: price provider unavailable", "name", names[0], "err", err)
 		return nil
 	}
-	cands := make([]match.Candidate, 0, len(results))
-	for _, r := range results {
-		if r.PcProductId == nil || r.ConsoleName == nil {
-			continue
+	fallbackFired := false
+	// names[1] != names[0] guards a bundle whose transliteration equals
+	// the canonical name: it offers no alternate form, so re-searching
+	// it would just repeat the primary query the gate already rejected.
+	if len(names) > 1 && names[1] != names[0] && len(match.FilterConsole(platformName, region, matchCandidates(results))) == 0 {
+		fb, fbErr := h.searchPCListingsCached(ctx, names[1])
+		if fbErr != nil {
+			h.countFallbackSearch(ctx, "error")
+		} else {
+			fallbackFired = true
+			results = append(results, fb...)
 		}
-		cands = append(cands, match.Candidate{PCProductID: *r.PcProductId, Name: r.Name, ConsoleName: *r.ConsoleName})
 	}
-	res := match.Best(name, hint, platformName, cands)
+	res := match.Best(names, hint, platformName, region, matchCandidates(results))
+	if fallbackFired {
+		outcome := "still_empty"
+		if res.OK {
+			outcome = "matched"
+		}
+		h.countFallbackSearch(ctx, outcome)
+	}
 	if !res.OK {
-		h.countMatch(ctx, source, "below_threshold")
+		h.countMatch(ctx, source, "below_threshold", region)
 		h.logger.InfoContext(ctx, "auto-match below threshold; landing on the unmatched member",
-			"name", name, "platform", platformName, "hint", hint,
+			"name", names[0], "platform", platformName, "region", region, "hint", hint,
 			"best_confidence", res.Confidence, "threshold", matchThreshold)
 		return nil
 	}
 	for _, r := range results {
 		if r.PcProductId != nil && *r.PcProductId == res.PCProductID {
-			h.countMatch(ctx, source, "matched")
+			h.countMatch(ctx, source, "matched", region)
 			return &store.PCMeta{
 				PCProductID: res.PCProductID, PCName: res.PCName, ConsoleName: res.ConsoleName,
 				MatchConfidence: res.Confidence, Verified: false,
@@ -1277,7 +1333,7 @@ func (h *Handlers) platformFor(ctx context.Context, consoleName string) *store.P
 		return nil
 	}
 	for _, p := range ps {
-		if match.ConsoleMatches(p.Name, consoleName) {
+		if match.ConsoleMatches(p.Name, consoleName, "") {
 			return &store.Platform{IGDBID: p.ID, Name: p.Name, LogoURL: p.LogoURL}
 		}
 	}
@@ -1301,7 +1357,7 @@ func (h *Handlers) platformLogoFor(ctx context.Context, igdbID int64) string {
 }
 
 // BatchPrices reads current prices straight from the catalog (the
-// daily walk keeps them fresh). Unknown ids are absent from the map;
+// daily refresh keeps them fresh). Unknown ids are absent from the map;
 // unmatched products carry unmatched=true and no price fields.
 func (h *Handlers) BatchPrices(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -1572,8 +1628,8 @@ func (h *Handlers) ensureRaw(ctx context.Context, ids []int64) (map[int64]store.
 	return out, false, nil
 }
 
-// refreshBudget bounds a detached walk (well beyond a full catalog at
-// polite provider rates).
+// refreshBudget bounds a detached catalog refresh (well beyond a full
+// catalog at polite provider rates).
 const refreshBudget = 30 * time.Minute
 
 // TriggerRefresh is the admin's immediate-refresh trigger.
@@ -1654,9 +1710,9 @@ func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusCreated, toAPIProduct(created))
 }
 
-// ListUnmatchedProducts serves the admin worklist. Unlike the walk's
-// ListUnmatchedGames, this read spans all product types and includes
-// held products - surfacing deliberate clears is the point.
+// ListUnmatchedProducts serves the admin worklist: every unmatched
+// product regardless of type, including held ones - surfacing
+// deliberate clears is the point.
 func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request, params api.ListUnmatchedProductsParams) {
 	claims, _ := jwtauth.FromContext(r.Context())
 	if !claims.HasRole("admin") {
@@ -1802,64 +1858,47 @@ func (h *Handlers) DismissPromoteCandidate(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// InternalRefresh is the CronJob's trigger (hand-routed in routes.go,
-// outside the contract and the JWT guard). It authenticates the
-// static internal-caller token; the NetworkPolicy is the outer layer.
+// InternalRefresh is the CronJob's trigger. Contract-described and
+// served by the generated mux behind the blanket JWT middleware,
+// service-token-gated in the handler (operators use TriggerRefresh's
+// admin-role gate on /admin/refresh instead); the NetworkPolicy is the
+// outer layer.
 func (h *Handlers) InternalRefresh(w http.ResponseWriter, r *http.Request) {
-	if !h.internalCallerOK(r) {
-		problem(w, r, http.StatusUnauthorized, "invalid_internal_token", "missing or wrong X-Internal-Token")
+	if !h.requireService(w, r) {
 		return
 	}
 	h.startRefresh(w, r, "internal")
 }
 
-// internalCallerOK checks X-Internal-Token against the accepted set in
-// constant time per candidate. The set holds one entry in steady state
-// and two during a rotation (accept old + new while the CronJob flips).
-func (h *Handlers) internalCallerOK(r *http.Request) bool {
-	got := []byte(r.Header.Get("X-Internal-Token"))
-	if len(got) == 0 {
-		return false
-	}
-	for _, s := range h.refreshSecrets {
-		if subtle.ConstantTimeCompare(got, []byte(s)) == 1 {
-			return true
-		}
-	}
-	return false
-}
-
-// startRefresh answers 202 and detaches the walk: at polite provider
-// rates a real catalog outlives the server's write timeout, so the
-// summary goes to the log, not the response. One walk at a time.
+// startRefresh answers 202 and detaches the catalog refresh: at
+// polite provider rates a real catalog outlives the server's write
+// timeout, so the summary goes to the log, not the response. One
+// refresh at a time.
 func (h *Handlers) startRefresh(w http.ResponseWriter, r *http.Request, trigger string) {
 	if !h.refreshing.CompareAndSwap(false, true) {
-		problem(w, r, http.StatusConflict, "refresh_in_progress", "a refresh walk is already running")
+		problem(w, r, http.StatusConflict, "refresh_in_progress", "a catalog refresh is already running")
 		return
 	}
 	// The started line pairs with the per-step finished summaries: a
-	// start with no finishes inside the budget marks a hung walk.
-	h.logger.InfoContext(r.Context(), "refresh walk started", "trigger", trigger)
-	go func() { //nolint:gosec // G118: the walk deliberately outlives the trigger request (202 + detach)
+	// start with no finishes inside the budget marks a hung refresh.
+	h.logger.InfoContext(r.Context(), "catalog refresh started", "trigger", trigger)
+	go func() { //nolint:gosec // G118: the refresh run deliberately outlives the trigger request (202 + detach)
 		defer h.refreshing.Store(false)
 		// Detached from the request context: the trigger returns at 202.
 		ctx, cancel := context.WithTimeout(context.Background(), refreshBudget)
 		defer cancel()
-		// Registered last so it unwinds first: a panic in the walk (a
-		// malformed doc, a nil field breaking an assumed contract) is
-		// contained here instead of killing the process. The guard
-		// reset and context cancel above still run afterward as usual.
-		// The CronJob retries daily, so an uncontained panic on a
-		// persistently bad doc would otherwise crash-loop.
+		// Registered last so it unwinds first: a panic in the refresh
+		// run (a malformed doc, a nil field breaking an assumed
+		// contract) is contained here instead of killing the process.
+		// The guard reset and context cancel above still run afterward
+		// as usual. The CronJob retries daily, so an uncontained panic
+		// on a persistently bad doc would otherwise crash-loop.
 		defer func() {
 			if v := recover(); v != nil {
-				h.logger.ErrorContext(ctx, "refresh walk panicked", "panic", v)
+				h.logger.ErrorContext(ctx, "catalog refresh panicked", "panic", v)
 			}
 		}()
 		h.runRefresh(ctx)
-		// Price freshness for matched members takes budget priority;
-		// the re-match step runs on what remains.
-		h.runRematch(ctx)
 		// Every igdb-bearing product's projection is rebuilt from its
 		// raw payload on what remains of the budget; only changed
 		// projections are written, so steady state costs no provider
@@ -1877,20 +1916,20 @@ func (h *Handlers) startRefresh(w http.ResponseWriter, r *http.Request, trigger 
 // walk instead of burning a failure for every remaining product.
 func (h *Handlers) runRefresh(ctx context.Context) {
 	start := h.now()
-	defer func() { h.recordWalkDuration(ctx, "prices", h.now().Sub(start).Seconds()) }()
+	defer func() { h.recordRefreshStepDuration(ctx, "prices", h.now().Sub(start).Seconds()) }()
 	prods, err := h.store.ListPriced(ctx)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "refresh walk aborted", "err", err)
+		h.logger.ErrorContext(ctx, "price refresh aborted", "err", err)
 		return
 	}
-	var updated, snapshots, failures, walked int
+	var updated, snapshots, failures, processed int
 	for _, p := range prods {
 		if err := ctx.Err(); err != nil {
-			h.logger.WarnContext(ctx, "refresh walk stopped early: context done",
-				"walked", walked, "remaining", len(prods)-walked, "err", err)
+			h.logger.WarnContext(ctx, "price refresh stopped early: context done",
+				"processed", processed, "remaining", len(prods)-processed, "err", err)
 			break
 		}
-		walked++
+		processed++
 		pc, err := h.prices.Product(ctx, p.PriceCharting.PCProductID)
 		if err != nil {
 			failures++
@@ -1925,89 +1964,13 @@ func (h *Handlers) runRefresh(ctx context.Context) {
 			h.failOpen(ctx, "refresh_invalidate", err)
 		}
 	}
-	h.logger.InfoContext(ctx, "refresh walk finished",
-		"walked", walked, "updated", updated, "snapshots", snapshots,
-		"failures", failures, "duration_ms", h.now().Sub(start).Milliseconds())
-}
-
-// rematchPerWalk caps the nightly re-match step; the worklist rotates
-// oldest-first, so a larger backlog upgrades across runs without
-// starving the priced walk's provider budget.
-const rematchPerWalk = 50
-
-// runRematch walks unmatched game products (admin-held ones are
-// filtered out by the store) and auto-matches each by its plain name
-// through the shared search cache. A landed upgrade snapshots once
-// and invalidates the product cache; a duplicate-key means another
-// member already carries the listing - logged and skipped, never
-// merged. Detached-walk conventions match runRefresh.
-func (h *Handlers) runRematch(ctx context.Context) {
-	start := h.now()
-	defer func() { h.recordWalkDuration(ctx, "rematch", h.now().Sub(start).Seconds()) }()
-	prods, err := h.store.ListUnmatchedGames(ctx, rematchPerWalk)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "re-match walk aborted", "err", err)
-		return
-	}
-	var matched, skipped, failures, walked int
-	for _, p := range prods {
-		if err := ctx.Err(); err != nil {
-			h.logger.WarnContext(ctx, "re-match walk stopped early: context done",
-				"walked", walked, "remaining", len(prods)-walked, "err", err)
-			break
-		}
-		walked++
-		if p.Platform == nil {
-			skipped++
-			h.countRefreshItem(ctx, "rematch", "skipped")
-			continue
-		}
-		meta := h.autoMatchGame(ctx, "rematch", p.Name, "", p.Platform.Name)
-		if meta == nil {
-			skipped++
-			h.countRefreshItem(ctx, "rematch", "skipped")
-			continue
-		}
-		landed, err := h.store.SetPriceChartingIfMissing(ctx, p.ID, meta)
-		if errors.Is(err, store.ErrIdentityTaken) {
-			skipped++
-			h.countRefreshItem(ctx, "rematch", "skipped")
-			h.logger.InfoContext(ctx, "re-match: listing already carried by another member; skipping",
-				"product", p.ID, "pc_product", meta.PCProductID)
-			continue
-		}
-		if err != nil {
-			failures++
-			h.countRefreshItem(ctx, "rematch", "failed")
-			h.logger.WarnContext(ctx, "re-match: mapping update failed", "product", p.ID, "err", err)
-			continue
-		}
-		if !landed {
-			skipped++ // matched by something else since the list read
-			h.countRefreshItem(ctx, "rematch", "skipped")
-			continue
-		}
-		matched++
-		// ok means the mapping landed; the best-effort snapshot below
-		// does not demote it.
-		h.countRefreshItem(ctx, "rematch", "ok")
-		if err := h.store.AppendSnapshot(ctx, store.Snapshot{
-			ProductID: p.ID, CapturedAt: meta.AsOf,
-			LooseCents: meta.Current.LooseCents, CIBCents: meta.Current.CIBCents, NewCents: meta.Current.NewCents,
-		}); err != nil {
-			h.logger.WarnContext(ctx, "re-match: snapshot failed", "product", p.ID, "err", err)
-		}
-		if err := h.cache.InvalidateProduct(ctx, p.ID); err != nil {
-			h.failOpen(ctx, "rematch_invalidate", err)
-		}
-	}
-	h.logger.InfoContext(ctx, "re-match walk finished",
-		"walked", walked, "matched", matched, "skipped", skipped,
+	h.logger.InfoContext(ctx, "price refresh finished",
+		"processed", processed, "updated", updated, "snapshots", snapshots,
 		"failures", failures, "duration_ms", h.now().Sub(start).Milliseconds())
 }
 
 // runReprojection sweeps every igdb-bearing product nightly (an
-// uncapped ListIGDBProducts read, mirroring the price walk's posture)
+// uncapped ListIGDBProducts read, mirroring the price refresh's posture)
 // and rebuilds each one's projection from its raw payload, writing only
 // the ones that actually changed. The raws hold the full unfiltered
 // release table, so a projection-logic change (like the JP-twin fold)
@@ -2021,13 +1984,13 @@ func (h *Handlers) runRematch(ctx context.Context) {
 // (SameProjection) makes steady state write-free: once every raw is
 // healed and every projection matches, the nightly sweep reads Mongo
 // and writes nothing.
-// Detached-walk conventions match runRefresh.
+// Detached-execution conventions match runRefresh.
 func (h *Handlers) runReprojection(ctx context.Context) {
 	start := h.now()
-	defer func() { h.recordWalkDuration(ctx, "reprojection", h.now().Sub(start).Seconds()) }()
+	defer func() { h.recordRefreshStepDuration(ctx, "reprojection", h.now().Sub(start).Seconds()) }()
 	prods, err := h.store.ListIGDBProducts(ctx)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "reprojection walk aborted", "err", err)
+		h.logger.ErrorContext(ctx, "reprojection aborted", "err", err)
 		return
 	}
 	if len(prods) == 0 {
@@ -2048,7 +2011,7 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 	}
 	raws, err := h.store.RawByIDs(ctx, ids)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "reprojection walk aborted: raw read failed", "err", err)
+		h.logger.ErrorContext(ctx, "reprojection aborted: raw read failed", "err", err)
 		return
 	}
 	rawByID := make(map[int64]store.RawGame, len(raws))
@@ -2066,12 +2029,12 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 	if len(fetchIDs) > 0 {
 		games, gerr := h.games.GamesByIDs(ctx, fetchIDs)
 		if gerr != nil {
-			h.logger.ErrorContext(ctx, "reprojection walk aborted: refetch failed", "err", gerr)
+			h.logger.ErrorContext(ctx, "reprojection aborted: refetch failed", "err", gerr)
 			return
 		}
 		fetched = len(games)
 		if err := h.store.UpsertRaw(ctx, games, now); err != nil {
-			h.logger.ErrorContext(ctx, "reprojection walk aborted: raw upsert failed", "err", err)
+			h.logger.ErrorContext(ctx, "reprojection aborted: raw upsert failed", "err", err)
 			return
 		}
 		for _, g := range games {
@@ -2085,33 +2048,33 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 		}
 	}
 
-	var walked, rebuilt, missing, failures int
+	var processed, rebuilt, missing, failures int
 	for _, p := range prods {
 		if err := ctx.Err(); err != nil {
-			h.logger.WarnContext(ctx, "reprojection walk stopped early: context done",
-				"walked", walked, "remaining", len(prods)-walked, "err", err)
+			h.logger.WarnContext(ctx, "reprojection stopped early: context done",
+				"processed", processed, "remaining", len(prods)-processed, "err", err)
 			break
 		}
-		walked++
+		processed++
 		// Defensive: ListIGDBProducts filters on the igdb subdoc, so a
 		// nil projection here should not happen - skip it rather than
 		// deref, for loop-consistency.
 		if p.IGDB == nil {
 			missing++
 			h.countRefreshItem(ctx, "reprojection", "skipped")
-			h.logger.WarnContext(ctx, "reprojection walk: product matched the igdb filter but carries a nil projection",
+			h.logger.WarnContext(ctx, "reprojection: product matched the igdb filter but carries a nil projection",
 				"product", p.ID)
 			continue
 		}
 		// A missing raw (provider never returned it) or one still on the
 		// pre-feature nil table (a refetch the provider could not honor)
 		// carries no honest release data: skip rather than reproject a
-		// nil table as a fetched-none empty. The next walk retries.
+		// nil table as a fetched-none empty. The next reprojection retries.
 		raw, ok := rawByID[p.IGDB.GameID]
 		if !ok || raw.Game.ReleaseDates == nil {
 			missing++
 			h.countRefreshItem(ctx, "reprojection", "skipped")
-			h.logger.WarnContext(ctx, "reprojection walk: no usable raw for product",
+			h.logger.WarnContext(ctx, "reprojection: no usable raw for product",
 				"product", p.ID, "game", p.IGDB.GameID)
 			continue
 		}
@@ -2131,7 +2094,7 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 		if err := h.store.SetIGDB(ctx, p.ID, meta); err != nil {
 			failures++
 			h.countRefreshItem(ctx, "reprojection", "failed")
-			h.logger.WarnContext(ctx, "reprojection walk: projection update failed", "product", p.ID, "err", err)
+			h.logger.WarnContext(ctx, "reprojection: projection update failed", "product", p.ID, "err", err)
 			continue
 		}
 		rebuilt++
@@ -2140,12 +2103,12 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 			h.failOpen(ctx, "reprojection_invalidate", err)
 		}
 	}
-	h.logger.InfoContext(ctx, "reprojection walk finished",
-		"walked", walked, "rebuilt", rebuilt, "fetched", fetched,
+	h.logger.InfoContext(ctx, "reprojection finished",
+		"processed", processed, "rebuilt", rebuilt, "fetched", fetched,
 		"missing", missing, "failures", failures, "duration_ms", h.now().Sub(start).Milliseconds())
 }
 
-// runCandidateSweep is the walk's community pass: for each community
+// runCandidateSweep is the catalog refresh's community pass: for each community
 // product, name-search the promote-relevant provider (games need igdb
 // identity to promote, hardware needs a listing) and stash flag-only
 // candidates at the same never-guess threshold. Never attaches: a
@@ -2154,7 +2117,7 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 // providers propose, admins decide. Dismissed pairs stay silent.
 func (h *Handlers) runCandidateSweep(ctx context.Context) {
 	start := h.now()
-	defer func() { h.recordWalkDuration(ctx, "sweep", h.now().Sub(start).Seconds()) }()
+	defer func() { h.recordRefreshStepDuration(ctx, "sweep", h.now().Sub(start).Seconds()) }()
 	comm, err := h.store.ListCommunityProducts(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "candidate sweep: list failed", "err", err)

@@ -19,8 +19,8 @@ func newStubAt(t *testing.T, at time.Time) *Stub {
 
 func TestStub_FixtureShape(t *testing.T) {
 	s := newStubAt(t, time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC))
-	if len(s.products) != 61 {
-		t.Fatalf("want 61 fixture products (50 game slots minus the unmatched one, plus 3 alias-corpus fillers, plus 1 variant listing, plus 8 hardware), got %d", len(s.products))
+	if len(s.products) != 67 {
+		t.Fatalf("want 67 fixture products (50 game slots minus the unmatched one, plus 3 alias-corpus fillers, plus 1 variant listing, plus 8 hardware, plus 5 region-alias fillers, plus 1 region hardware), got %d", len(s.products))
 	}
 	if _, ok := s.byID[5018]; ok {
 		t.Fatal("5018 must not exist: Terranigma is the designated unmatched fixture")
@@ -33,13 +33,13 @@ func TestStub_FixtureShape(t *testing.T) {
 		switch p.Genre {
 		case "Systems", "Controllers", "Accessories":
 			hardware++
-		case "":
+		case "", "RPG", "Adventure":
 		default:
 			t.Fatalf("product %d has unexpected genre %q", p.ID, p.Genre)
 		}
 	}
-	if hardware != 8 {
-		t.Fatalf("want 8 hardware fixtures, got %d", hardware)
+	if hardware != 9 {
+		t.Fatalf("want 9 hardware fixtures, got %d", hardware)
 	}
 }
 
@@ -85,8 +85,8 @@ func TestStub_SearchAndNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 4 {
-		t.Fatalf("want 4 zelda products, got %d", len(got))
+	if len(got) != 6 {
+		t.Fatalf("want 6 zelda products, got %d", len(got))
 	}
 	for _, p := range got {
 		if p.LoosePriceCents == nil {
