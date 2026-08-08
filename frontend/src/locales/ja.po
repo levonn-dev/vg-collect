@@ -139,9 +139,9 @@ msgstr "59.99"
 msgid "A provider product already holds that identity - nothing changed."
 msgstr "プロバイダー商品がすでにその識別情報を持っているため、何も変更されませんでした。"
 
-#: src/components/admin/RefreshWalk.tsx
-msgid "A walk is already running."
-msgstr "巡回はすでに実行中です。"
+#: src/components/admin/RefreshTrigger.tsx
+msgid "A refresh is already running."
+msgstr "更新はすでに実行中です。"
 
 #: src/components/Footer.tsx
 msgid "About"
@@ -348,6 +348,10 @@ msgstr "キャンセル"
 msgid "Cancel submission"
 msgstr "カタログ申請をキャンセル"
 
+#: src/components/admin/RefreshTrigger.tsx
+msgid "Catalog refresh"
+msgstr "カタログ更新"
+
 #: src/components/entry/CatalogSubmission.tsx
 msgid "Catalog submission"
 msgstr "カタログ申請"
@@ -419,8 +423,8 @@ msgid "Clear mapping"
 msgstr "マッピングをクリア"
 
 #: src/components/admin/MappingFix.tsx
-msgid "Clear this mapping? The product becomes unmatched and is held out of the nightly re-match walk."
-msgstr "このマッピングをクリアしますか？商品は未マッピングになり、保留として毎晩の再照合巡回の対象から外れます。"
+msgid "Clear this mapping? The product becomes unmatched and is held out of the nightly entry rematch."
+msgstr "このマッピングをクリアしますか？商品は未マッピングになり、保留として毎晩のエントリー再照合の対象から外れます。"
 
 #: src/components/entry/ProxyPicker.tsx
 #: src/components/wizard/ManualMatchPicker.tsx
@@ -685,6 +689,7 @@ msgstr "無効（相場なし）"
 
 #: src/components/admin/PromotePanel.tsx
 #: src/components/entry/ApprovalNotice.tsx
+#: src/components/entry/RegionMismatchBanner.tsx
 #: src/pages/Account.tsx
 msgid "Dismiss"
 msgstr "非表示にする"
@@ -692,6 +697,10 @@ msgstr "非表示にする"
 #: src/components/entry/ApprovalNotice.tsx
 msgid "Dismiss approval notice"
 msgstr "承認通知を非表示にする"
+
+#: src/components/entry/RegionMismatchBanner.tsx
+msgid "Dismiss region mismatch notice"
+msgstr "リージョン不一致通知を非表示にする"
 
 #: src/components/CurrencySelect.tsx
 msgid "Display currency"
@@ -909,8 +918,8 @@ msgid "Hold"
 msgstr "保留"
 
 #: src/components/admin/MappingFix.tsx
-msgid "Hold this product out of the nightly re-match walk? Setting any mapping lifts the hold."
-msgstr "この商品を保留にして、毎晩の再照合巡回の対象から外しますか？マッピングを設定すると保留は解除されます。"
+msgid "Hold this product out of the nightly entry rematch? Setting any mapping lifts the hold."
+msgstr "この商品を保留にして、毎晩のエントリー再照合の対象から外しますか？マッピングを設定すると保留は解除されます。"
 
 #: src/components/entry/EntryForm.tsx
 #: src/components/wizard/CustomStep.tsx
@@ -1604,9 +1613,9 @@ msgstr "あなたへのおすすめ"
 msgid "Recommended next"
 msgstr "次のおすすめ"
 
-#: src/components/admin/RefreshWalk.tsx
-msgid "Refresh walk"
-msgstr "更新巡回"
+#: src/components/admin/RefreshTrigger.tsx
+msgid "Refresh started."
+msgstr "更新を開始しました。"
 
 #: src/components/admin/ReviewPanel.tsx
 #: src/components/collection/FilterBar.tsx
@@ -2079,9 +2088,9 @@ msgstr "棚の公開範囲を変更できませんでした。"
 msgid "The tag could not be created."
 msgstr "タグを作成できませんでした。"
 
-#: src/components/admin/RefreshWalk.tsx
+#: src/components/admin/RefreshTrigger.tsx
 msgid "The trigger failed - try again."
-msgstr "巡回を開始できませんでした。もう一度お試しください。"
+msgstr "更新を開始できませんでした。もう一度お試しください。"
 
 #: src/components/admin/ReviewPanel.tsx
 msgid "The verdict failed."
@@ -2106,6 +2115,10 @@ msgstr "このアイテムは存在しません（削除された可能性があ
 #: src/components/wizard/ConfirmStep.tsx
 msgid "This item is no longer available; try searching again."
 msgstr "このアイテムは利用できなくなりました。もう一度検索してください。"
+
+#: src/components/entry/RegionMismatchBanner.tsx
+msgid "This price listing is from a different region than this entry."
+msgstr "この価格リスティングはこのアイテムと異なるリージョンのものです。"
 
 #: src/components/admin/PromotePanel.tsx
 msgid "This product is already provider-identified."
@@ -2143,9 +2156,9 @@ msgstr "合計"
 msgid "Track your game collection."
 msgstr "ゲームコレクションを記録・管理。"
 
-#: src/components/admin/RefreshWalk.tsx
-msgid "Trigger refresh walk"
-msgstr "更新巡回を開始"
+#: src/components/admin/RefreshTrigger.tsx
+msgid "Trigger catalog refresh"
+msgstr "カタログ更新を開始"
 
 #: src/components/admin/PromoteCandidates.tsx
 #: src/components/admin/ReviewPanel.tsx
@@ -2258,10 +2271,6 @@ msgstr "価値を現在表示できません。しばらくしてからもう一
 #: src/components/entry/EntryForm.tsx
 msgid "Very good"
 msgstr "美品"
-
-#: src/components/admin/RefreshWalk.tsx
-msgid "Walk started."
-msgstr "巡回を開始しました。"
 
 #: src/pages/Account.tsx
 msgid "Where the app opens after you sign in."

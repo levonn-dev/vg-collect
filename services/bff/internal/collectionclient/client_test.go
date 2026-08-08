@@ -457,10 +457,14 @@ func TestTransportErrorSurfaces(t *testing.T) {
 			_, err := c.ListEntries(context.Background(), "tok", &collectionapi.ListEntriesParams{})
 			return err
 		},
-		"CreateEntry":     func() error { _, err := c.CreateEntry(context.Background(), "tok", nil); return err },
-		"GetEntry":        func() error { _, err := c.GetEntry(context.Background(), "tok", id); return err },
-		"UpdateEntry":     func() error { _, err := c.UpdateEntry(context.Background(), "tok", id, nil); return err },
-		"DeleteEntry":     func() error { _, err := c.DeleteEntry(context.Background(), "tok", id); return err },
+		"CreateEntry": func() error { _, err := c.CreateEntry(context.Background(), "tok", nil); return err },
+		"GetEntry":    func() error { _, err := c.GetEntry(context.Background(), "tok", id); return err },
+		"UpdateEntry": func() error { _, err := c.UpdateEntry(context.Background(), "tok", id, nil); return err },
+		"DeleteEntry": func() error { _, err := c.DeleteEntry(context.Background(), "tok", id); return err },
+		"AckRegionMismatch": func() error {
+			_, err := c.AckRegionMismatch(context.Background(), "tok", id)
+			return err
+		},
 		"ReorderEntry":    func() error { _, err := c.ReorderEntry(context.Background(), "tok", id, nil); return err },
 		"ListTags":        func() error { _, err := c.ListTags(context.Background(), "tok"); return err },
 		"CreateTag":       func() error { _, err := c.CreateTag(context.Background(), "tok", nil); return err },

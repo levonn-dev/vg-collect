@@ -199,6 +199,16 @@ func (c *Client) DeleteEntry(ctx context.Context, bearer string, id uuid.UUID) (
 	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body, http.StatusNoContent, http.StatusNotFound)
 }
 
+// AckRegionMismatch relays POST /entries/{id}/region-mismatch-ack.
+func (c *Client) AckRegionMismatch(ctx context.Context, bearer string, id uuid.UUID) (Result, error) {
+	resp, err := c.api.AckEntryRegionMismatchWithResponse(ctx, id, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: ack region mismatch: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body,
+		http.StatusNoContent, http.StatusNotFound)
+}
+
 // ReorderEntry relays POST /entries/{id}/reorder.
 func (c *Client) ReorderEntry(ctx context.Context, bearer string, id uuid.UUID, body []byte) (Result, error) {
 	resp, err := c.api.ReorderEntryWithBodyWithResponse(ctx, id, "application/json", bytes.NewReader(body), bearerEditor(bearer))

@@ -1763,6 +1763,9 @@ func (s *stubCollection) UpdateEntry(_ context.Context, bearer string, _ uuid.UU
 func (s *stubCollection) DeleteEntry(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
 	return s.call("delete_entry", bearer)
 }
+func (s *stubCollection) AckRegionMismatch(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
+	return s.call("ack_region_mismatch", bearer)
+}
 func (s *stubCollection) ReorderEntry(_ context.Context, bearer string, _ uuid.UUID, _ []byte) (collectionclient.Result, error) {
 	return s.call("reorder_entry", bearer)
 }
@@ -1915,6 +1918,7 @@ func TestUnitCollectionPassThroughs_RouteMatrix(t *testing.T) {
 		{http.MethodPut, "/api/entries/" + id, "update_entry", `{}`, 200},
 		{http.MethodDelete, "/api/entries/" + id, "delete_entry", "", 204},
 		{http.MethodPost, "/api/entries/" + id + "/reorder", "reorder_entry", `{"after_id":null}`, 200},
+		{http.MethodPost, "/api/entries/" + id + "/region-mismatch-ack", "ack_region_mismatch", "", 204},
 		{http.MethodPost, "/api/entries/bulk-update", "bulk_update_entries", `{"entry_ids":["` + id + `"],"status":"playing"}`, 200},
 		{http.MethodGet, "/api/tags", "list_tags", "", 200},
 		{http.MethodPost, "/api/tags", "create_tag", `{"name":"x"}`, 201},
@@ -3041,6 +3045,33 @@ func TestUnitAckSubmission_RelaysAndForwardsBearer(t *testing.T) {
 	}
 }
 
+// TestUnitAckEntryRegionMismatch_RelaysAndForwardsBearer mirrors
+// TestUnitAckSubmission_RelaysAndForwardsBearer above for the
+// region-mismatch ack: an authed POST relays 204 and forwards the
+// caller's own bearer to collection; no session is 401.
+func TestUnitAckEntryRegionMismatch_RelaysAndForwardsBearer(t *testing.T) {
+	col := &stubCollection{answer: func(op string) (collectionclient.Result, error) {
+		if op != "ack_region_mismatch" {
+			t.Fatalf("routed to %q, want ack_region_mismatch", op)
+		}
+		return collectionclient.Result{Status: http.StatusNoContent}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+	entry := uuid.NewString()
+
+	rec := doAuthedBody(t, h, env, http.MethodPost, "/api/entries/"+entry+"/region-mismatch-ack", "")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("ack relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := col.gotBearer[len(col.gotBearer)-1]; got != env.sessionAccessToken {
+		t.Fatalf("bearer: %q", got)
+	}
+	rec = doUnauthed(t, h, env, http.MethodPost, "/api/entries/"+entry+"/region-mismatch-ack")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", rec.Code)
+	}
+}
+
 // TestUnitHandlers_OwnSessionGuards calls handlers directly, without
 // the Authenticate middleware in front, to prove each one enforces its
 // own session check: the in-handler guard is defense in depth and must
@@ -3049,14 +3080,15 @@ func TestUnitHandlers_OwnSessionGuards(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
 	id := uuid.New()
 	calls := map[string]func(w http.ResponseWriter, r *http.Request){
-		"list_platforms":    func(w http.ResponseWriter, r *http.Request) { h.ListPlatforms(w, r) },
-		"get_product":       func(w http.ResponseWriter, r *http.Request) { h.GetProduct(w, r, id) },
-		"trigger_refresh":   func(w http.ResponseWriter, r *http.Request) { h.TriggerRefresh(w, r) },
-		"create_submission": func(w http.ResponseWriter, r *http.Request) { h.CreateSubmission(w, r, id) },
-		"get_submission":    func(w http.ResponseWriter, r *http.Request) { h.GetSubmission(w, r, id) },
-		"ack_submission":    func(w http.ResponseWriter, r *http.Request) { h.AckSubmissionResolution(w, r, id) },
-		"submit_verdict":    func(w http.ResponseWriter, r *http.Request) { h.SubmitVerdict(w, r, id) },
-		"promote_product":   func(w http.ResponseWriter, r *http.Request) { h.PromoteProduct(w, r, id) },
+		"list_platforms":      func(w http.ResponseWriter, r *http.Request) { h.ListPlatforms(w, r) },
+		"get_product":         func(w http.ResponseWriter, r *http.Request) { h.GetProduct(w, r, id) },
+		"trigger_refresh":     func(w http.ResponseWriter, r *http.Request) { h.TriggerRefresh(w, r) },
+		"create_submission":   func(w http.ResponseWriter, r *http.Request) { h.CreateSubmission(w, r, id) },
+		"get_submission":      func(w http.ResponseWriter, r *http.Request) { h.GetSubmission(w, r, id) },
+		"ack_submission":      func(w http.ResponseWriter, r *http.Request) { h.AckSubmissionResolution(w, r, id) },
+		"submit_verdict":      func(w http.ResponseWriter, r *http.Request) { h.SubmitVerdict(w, r, id) },
+		"promote_product":     func(w http.ResponseWriter, r *http.Request) { h.PromoteProduct(w, r, id) },
+		"ack_region_mismatch": func(w http.ResponseWriter, r *http.Request) { h.AckEntryRegionMismatch(w, r, id) },
 	}
 	for name, call := range calls {
 		t.Run(name, func(t *testing.T) {

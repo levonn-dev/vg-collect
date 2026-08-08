@@ -582,7 +582,7 @@ func (h *Handlers) DeleteProduct(w http.ResponseWriter, r *http.Request, product
 	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
 
-// TriggerRefresh relays the admin's immediate-walk trigger.
+// TriggerRefresh relays the admin's immediate catalog-refresh trigger.
 func (h *Handlers) TriggerRefresh(w http.ResponseWriter, r *http.Request) {
 	sess, _, ok := session.FromContext(r.Context())
 	if !ok {
@@ -945,6 +945,20 @@ func (h *Handlers) DeleteEntry(w http.ResponseWriter, r *http.Request, entryId o
 	}
 	res, err := h.collection.DeleteEntry(r.Context(), sess.AccessToken, entryId)
 	h.relayCollectionMutation(w, r, claims.Sub, res, err)
+}
+
+// AckEntryRegionMismatch proxies the region-mismatch banner dismiss.
+// A stamp-only ack, not a composition change, so it relays plain
+// (no recommendations invalidation) - the same choice as
+// AckSubmissionResolution below.
+func (h *Handlers) AckEntryRegionMismatch(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.AckRegionMismatch(r.Context(), sess.AccessToken, entryId)
+	h.relayCollection(w, r, res, err)
 }
 
 // ReorderEntry proxies the backlog drag.

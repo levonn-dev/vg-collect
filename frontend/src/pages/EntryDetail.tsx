@@ -10,6 +10,7 @@ import ItemTypeIcon from '../components/ItemTypeIcon'
 import ApprovalNotice from '../components/entry/ApprovalNotice'
 import CatalogSubmission from '../components/entry/CatalogSubmission'
 import EntryForm from '../components/entry/EntryForm'
+import RegionMismatchBanner from '../components/entry/RegionMismatchBanner'
 import { releaseYear } from '../lib/format'
 import { entryCover, entrySecondary, entryTitle, entryTitleLang, titleFormFor } from '../lib/productTitle'
 
@@ -118,7 +119,17 @@ export default function EntryDetail() {
           <Trans>Delete entry</Trans>
         </button>
       </header>
-      {e.product_id && <ApprovalNotice entryId={e.id} />}
+      {e.product_id && (
+        <>
+          <ApprovalNotice entryId={e.id} />
+          <RegionMismatchBanner
+            entryId={e.id}
+            productId={e.product_id}
+            region={e.region}
+            regionMismatchAckAt={e.region_mismatch_ack_at}
+          />
+        </>
+      )}
       {!e.product_id && <CatalogSubmission entryId={e.id} />}
       <EntryForm
         entry={e}

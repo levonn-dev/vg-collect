@@ -139,9 +139,9 @@ msgstr "59.99"
 msgid "A provider product already holds that identity - nothing changed."
 msgstr "A provider product already holds that identity - nothing changed."
 
-#: src/components/admin/RefreshWalk.tsx
-msgid "A walk is already running."
-msgstr "A walk is already running."
+#: src/components/admin/RefreshTrigger.tsx
+msgid "A refresh is already running."
+msgstr "A refresh is already running."
 
 #: src/components/Footer.tsx
 msgid "About"
@@ -348,6 +348,10 @@ msgstr "Cancel"
 msgid "Cancel submission"
 msgstr "Cancel submission"
 
+#: src/components/admin/RefreshTrigger.tsx
+msgid "Catalog refresh"
+msgstr "Catalog refresh"
+
 #: src/components/entry/CatalogSubmission.tsx
 msgid "Catalog submission"
 msgstr "Catalog submission"
@@ -419,8 +423,8 @@ msgid "Clear mapping"
 msgstr "Clear mapping"
 
 #: src/components/admin/MappingFix.tsx
-msgid "Clear this mapping? The product becomes unmatched and is held out of the nightly re-match walk."
-msgstr "Clear this mapping? The product becomes unmatched and is held out of the nightly re-match walk."
+msgid "Clear this mapping? The product becomes unmatched and is held out of the nightly entry rematch."
+msgstr "Clear this mapping? The product becomes unmatched and is held out of the nightly entry rematch."
 
 #: src/components/entry/ProxyPicker.tsx
 #: src/components/wizard/ManualMatchPicker.tsx
@@ -685,6 +689,7 @@ msgstr "disabled (no market value)"
 
 #: src/components/admin/PromotePanel.tsx
 #: src/components/entry/ApprovalNotice.tsx
+#: src/components/entry/RegionMismatchBanner.tsx
 #: src/pages/Account.tsx
 msgid "Dismiss"
 msgstr "Dismiss"
@@ -692,6 +697,10 @@ msgstr "Dismiss"
 #: src/components/entry/ApprovalNotice.tsx
 msgid "Dismiss approval notice"
 msgstr "Dismiss approval notice"
+
+#: src/components/entry/RegionMismatchBanner.tsx
+msgid "Dismiss region mismatch notice"
+msgstr "Dismiss region mismatch notice"
 
 #: src/components/CurrencySelect.tsx
 msgid "Display currency"
@@ -909,8 +918,8 @@ msgid "Hold"
 msgstr "Hold"
 
 #: src/components/admin/MappingFix.tsx
-msgid "Hold this product out of the nightly re-match walk? Setting any mapping lifts the hold."
-msgstr "Hold this product out of the nightly re-match walk? Setting any mapping lifts the hold."
+msgid "Hold this product out of the nightly entry rematch? Setting any mapping lifts the hold."
+msgstr "Hold this product out of the nightly entry rematch? Setting any mapping lifts the hold."
 
 #: src/components/entry/EntryForm.tsx
 #: src/components/wizard/CustomStep.tsx
@@ -1604,9 +1613,9 @@ msgstr "Recommended for you"
 msgid "Recommended next"
 msgstr "Recommended next"
 
-#: src/components/admin/RefreshWalk.tsx
-msgid "Refresh walk"
-msgstr "Refresh walk"
+#: src/components/admin/RefreshTrigger.tsx
+msgid "Refresh started."
+msgstr "Refresh started."
 
 #: src/components/admin/ReviewPanel.tsx
 #: src/components/collection/FilterBar.tsx
@@ -2079,7 +2088,7 @@ msgstr "The shelf visibility update failed."
 msgid "The tag could not be created."
 msgstr "The tag could not be created."
 
-#: src/components/admin/RefreshWalk.tsx
+#: src/components/admin/RefreshTrigger.tsx
 msgid "The trigger failed - try again."
 msgstr "The trigger failed - try again."
 
@@ -2106,6 +2115,10 @@ msgstr "This entry does not exist (it may have been deleted)."
 #: src/components/wizard/ConfirmStep.tsx
 msgid "This item is no longer available; try searching again."
 msgstr "This item is no longer available; try searching again."
+
+#: src/components/entry/RegionMismatchBanner.tsx
+msgid "This price listing is from a different region than this entry."
+msgstr "This price listing is from a different region than this entry."
 
 #: src/components/admin/PromotePanel.tsx
 msgid "This product is already provider-identified."
@@ -2143,9 +2156,9 @@ msgstr "Totals"
 msgid "Track your game collection."
 msgstr "Track your game collection."
 
-#: src/components/admin/RefreshWalk.tsx
-msgid "Trigger refresh walk"
-msgstr "Trigger refresh walk"
+#: src/components/admin/RefreshTrigger.tsx
+msgid "Trigger catalog refresh"
+msgstr "Trigger catalog refresh"
 
 #: src/components/admin/PromoteCandidates.tsx
 #: src/components/admin/ReviewPanel.tsx
@@ -2258,10 +2271,6 @@ msgstr "Value unavailable right now; try again shortly."
 #: src/components/entry/EntryForm.tsx
 msgid "Very good"
 msgstr "Very good"
-
-#: src/components/admin/RefreshWalk.tsx
-msgid "Walk started."
-msgstr "Walk started."
 
 #: src/pages/Account.tsx
 msgid "Where the app opens after you sign in."

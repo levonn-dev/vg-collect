@@ -103,6 +103,7 @@ type CollectionAPI interface {
 	GetEntry(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
 	UpdateEntry(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
 	DeleteEntry(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	AckRegionMismatch(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
 	ReorderEntry(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
 	BulkUpdateEntries(ctx context.Context, bearer string, body []byte) (collectionclient.Result, error)
 	ListTags(ctx context.Context, bearer string) (collectionclient.Result, error)

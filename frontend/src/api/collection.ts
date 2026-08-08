@@ -36,6 +36,13 @@ export function deleteEntry(id: string): Promise<void> {
   return sendJSON<void>('DELETE', `/api/entries/${id}`)
 }
 
+// Dismisses the region-mismatch banner for the entry's current
+// (region, product) choice; the collection service clears the stamp
+// again whenever either changes, so the banner notifies once more.
+export function ackRegionMismatch(id: string): Promise<void> {
+  return sendJSON<void>('POST', `/api/entries/${id}/region-mismatch-ack`)
+}
+
 export function reorderEntry(id: string, body: ReorderRequest): Promise<Entry> {
   return sendJSON<Entry>('POST', `/api/entries/${id}/reorder`, body)
 }
