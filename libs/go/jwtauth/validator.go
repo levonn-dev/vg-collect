@@ -10,16 +10,33 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// TokenUseService is the token_use claim value that marks a JWT as a
+// short-lived machine service credential (minted only by auth's
+// internal service-token endpoint) rather than a user's own access
+// token. A dedicated claim, not a role: it identifies the KIND of
+// principal presenting the token, orthogonal to what a user principal
+// is allowed to do.
+const TokenUseService = "service"
+
 // Claims holds the validated, deserialized fields from a vgkeep JWT.
 type Claims struct {
 	Subject string
 	Roles   []string
 	JTI     string
+	// TokenUse is the token_use claim, present only on service tokens
+	// (TokenUseService); empty on every ordinary user access token.
+	TokenUse string
 }
 
 // HasRole reports whether the Claims include the named role.
 func (c Claims) HasRole(role string) bool {
 	return slices.Contains(c.Roles, role)
+}
+
+// IsService reports whether the Claims identify a machine service
+// token (token_use=service) rather than a user's own access token.
+func (c Claims) IsService() bool {
+	return c.TokenUse == TokenUseService
 }
 
 // Validator validates vgkeep access JWTs against a JWKS endpoint.
@@ -75,6 +92,9 @@ func (v *Validator) Validate(ctx context.Context, raw string) (Claims, error) {
 				out.Roles = append(out.Roles, s)
 			}
 		}
+	}
+	if tu, ok := mc["token_use"].(string); ok {
+		out.TokenUse = tu
 	}
 	return out, nil
 }

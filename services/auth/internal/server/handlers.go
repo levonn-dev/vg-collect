@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -570,6 +571,76 @@ func (h *Handlers) GetJwks(w http.ResponseWriter, r *http.Request) {
 		doc.Keys[i] = api.Jwk{Kty: "OKP", Crv: "Ed25519", Kid: k.Kid, X: k.PublicKeyB64}
 	}
 	writeJSON(w, http.StatusOK, doc)
+}
+
+// serviceTokenTTL is the fixed lifetime every minted service token
+// carries, independent of ACCESS_TOKEN_TTL (the login flow's, usually
+// much shorter): a CronJob exchanges for a fresh one on every run, so
+// there is no reason for the credential to outlive one job.
+const serviceTokenTTL = 900 * time.Second
+
+// internalServiceTokenResponse is POST /internal/service-token's 200
+// body. The contract declares this response inline rather than as a
+// named schema, so oapi-codegen emits no struct for the whole shape
+// (only the token_type enum's leaf type); this mirrors it by hand,
+// the same way tokenPairResponse mirrors TokenPair's JSON shape.
+type internalServiceTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	ExpiresIn   int64  `json:"expires_in"`
+}
+
+// InternalServiceToken mints a short-lived service JWT for a cluster
+// maintenance job: machine-to-machine bootstrap, gated by a static
+// internal secret instead of a JWT (the CronJob has no JWT source -
+// enrichment's retired /internal/refresh secret worked the same way).
+// The minted token carries no roles and token_use=service, so
+// requireService/requireAdminOrService downstream can tell it apart
+// from any user's own access token on sight. The gateway never routes
+// this path.
+func (h *Handlers) InternalServiceToken(w http.ResponseWriter, r *http.Request, params api.InternalServiceTokenParams) {
+	if !h.internalServiceCallerOK(params) {
+		problem(w, r, http.StatusUnauthorized, "invalid_internal_token", "missing or wrong X-Internal-Token")
+		return
+	}
+	var req api.InternalServiceTokenJSONRequestBody
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if !req.Service.Valid() {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "service must be catalog-refresh or entry-rematch")
+		return
+	}
+	access, err := h.minter.MintService("svc:"+string(req.Service), serviceTokenTTL)
+	if err != nil {
+		logStoreError(r.Context(), "mint_service_token", err)
+		problem(w, r, http.StatusInternalServerError, "internal", "token mint failed")
+		return
+	}
+	// The system's only machine-credential mint point; an audit line
+	// for every one issued, matching the repo's log-what-you-mint habit.
+	slog.InfoContext(r.Context(), "service token minted", "service", string(req.Service))
+	writeJSON(w, http.StatusOK, internalServiceTokenResponse{
+		AccessToken: access, TokenType: "Bearer", ExpiresIn: int64(serviceTokenTTL.Seconds()),
+	})
+}
+
+// internalServiceCallerOK checks X-Internal-Token against the accepted
+// set in constant time per candidate (ported from enrichment's retired
+// internalCallerOK, deleted there in the same change that added this
+// endpoint): the set holds one entry in steady state and two during a
+// rotation (accept old + new while the CronJobs' secret flips).
+func (h *Handlers) internalServiceCallerOK(params api.InternalServiceTokenParams) bool {
+	got := []byte(params.XInternalToken)
+	if len(got) == 0 {
+		return false
+	}
+	for _, s := range h.internalServiceSecrets {
+		if subtle.ConstantTimeCompare(got, []byte(s)) == 1 {
+			return true
+		}
+	}
+	return false
 }
 
 // DevToken mints a session for a dev fixture. When the dev provider is

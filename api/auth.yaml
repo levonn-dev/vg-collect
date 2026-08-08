@@ -288,6 +288,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Jwks"
+  /internal/service-token:
+    post:
+      operationId: internalServiceToken
+      tags: [internal]
+      summary: Mint a short-lived service JWT for cluster maintenance jobs
+      description: >
+        Machine-to-machine bootstrap; the gateway never routes it.
+        Authenticates the static internal secret (X-Internal-Token,
+        constant-time against a one-or-two-entry accept set for
+        zero-downtime rotation) and mints a standard access token with
+        a service subject and token_use=service, 15 minutes. A wrong
+        secret answers 401 invalid_internal_token; a missing header
+        answers a generated 400 (required parameter validation runs
+        before this check). Consumers: the catalog-refresh and
+        entry-rematch CronJobs.
+      parameters:
+        - name: X-Internal-Token
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service]
+              properties:
+                service: { type: string, enum: [catalog-refresh, entry-rematch] }
+      responses:
+        "200":
+          description: Minted service token
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, token_type, expires_in]
+                properties:
+                  access_token: { type: string }
+                  token_type: { type: string, enum: [Bearer] }
+                  expires_in: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }

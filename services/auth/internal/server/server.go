@@ -52,6 +52,7 @@ type Store interface {
 // this interface backs only the Handlers minter field.
 type Minter interface {
 	Mint(sub string, roles []string, jti string) (string, error)
+	MintService(sub string, ttl time.Duration) (string, error)
 	TTL() time.Duration
 }
 
@@ -92,6 +93,10 @@ type Handlers struct {
 	devEnabled bool
 	refreshTTL time.Duration
 
+	// internalServiceSecrets is the accepted X-Internal-Token set for
+	// POST /internal/service-token (an A/B pair during rotation).
+	internalServiceSecrets []string
+
 	// Domain instruments (best-effort: nil when registration failed,
 	// and the record helpers no-op).
 	loginOutcomes  metric.Int64Counter
@@ -103,10 +108,11 @@ type Handlers struct {
 // are best-effort, like the bff cache counter: a registration failure
 // is logged but never prevents startup.
 func New(st Store, m Minter, users UserService, providers map[string]oidc.Provider,
-	verifier Verifier, devEnabled bool, refreshTTL time.Duration) *Handlers {
+	verifier Verifier, devEnabled bool, refreshTTL time.Duration, internalServiceSecrets []string) *Handlers {
 	h := &Handlers{
 		store: st, minter: m, users: users, providers: providers,
 		verifier: verifier, devEnabled: devEnabled, refreshTTL: refreshTTL,
+		internalServiceSecrets: internalServiceSecrets,
 	}
 	meter := otel.Meter("github.com/levonn-dev/vgkeep/services/auth")
 	var err error

@@ -840,3 +840,23 @@ func TestErrorLogEvents(t *testing.T) {
 		}
 	})
 }
+
+// TestServiceTokenMintedLogFields pins the audit line on the system's
+// only machine-credential mint point: one INFO line per successful
+// mint, naming the service it was minted for.
+func TestServiceTokenMintedLogFields(t *testing.T) {
+	buf := captureLogs(t)
+	h := newUnit(nil, unitMinter(), nil, nil, nil, false)
+	rec := httptest.NewRecorder()
+	h.InternalServiceToken(rec,
+		jsonReq(t, http.MethodPost, "/internal/service-token", map[string]string{"service": "catalog-refresh"}),
+		api.InternalServiceTokenParams{XInternalToken: testInternalServiceToken})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+
+	lines := logLines(t, buf, "service token minted")
+	if len(lines) != 1 || lines[0]["level"] != "INFO" || lines[0]["service"] != "catalog-refresh" {
+		t.Fatalf("lines = %v, want one INFO with service catalog-refresh", lines)
+	}
+}

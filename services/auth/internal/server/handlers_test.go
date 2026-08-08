@@ -383,7 +383,7 @@ func newEnv(t *testing.T, devEnabled bool) *env {
 	// own JWKS, mirrored here from the same minter that signs the
 	// sessions these tests log in with.
 	verifier := newJWKSValidator(t, m)
-	h := server.New(st, m, uc, providers, verifier, devEnabled, 30*24*time.Hour)
+	h := server.New(st, m, uc, providers, verifier, devEnabled, 30*24*time.Hour, []string{testInternalServiceToken})
 	router := server.NewRouter(h, slog.Default(), func(context.Context) error { return nil })
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
@@ -1254,7 +1254,7 @@ func TestListProviders(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := server.New(nil, nil, nil, tc.providers, &stubVerifier{}, tc.devEnabled, 0)
+			h := server.New(nil, nil, nil, tc.providers, &stubVerifier{}, tc.devEnabled, 0, []string{testInternalServiceToken})
 			rec := httptest.NewRecorder()
 			h.ListProviders(rec, httptest.NewRequest(http.MethodGet, "/providers", nil))
 			if rec.Code != http.StatusOK {
@@ -1268,6 +1268,68 @@ func TestListProviders(t *testing.T) {
 				t.Fatalf("providers = %v, want %v", body.Providers, tc.want)
 			}
 		})
+	}
+}
+
+// TestInternalServiceToken pins POST /internal/service-token's whole
+// guard, driven straight at the handler (params built by hand, the
+// same idiom InternalRefresh's retired X-Internal-Token check used):
+// a wrong or empty X-Internal-Token answers 401 invalid_internal_token
+// regardless of body; a service name outside the enum answers 400
+// invalid_body; the current AND previous accepted secrets (A/B
+// rotation) both mint a token the package's own jwtauth validator
+// accepts, carrying sub svc:<service>, no roles, and token_use=service
+// (the machine-caller signal requireService/requireAdminOrService key
+// off downstream), with expires_in fixed at 900 regardless of
+// ACCESS_TOKEN_TTL.
+func TestInternalServiceToken(t *testing.T) {
+	m, err := token.NewMinter(testSeed, "vgkeep-auth", "vgkeep", 5*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := newJWKSValidator(t, m)
+	h := server.New(nil, m, nil, nil, v, false, 0, []string{"current-token", "previous-token"})
+
+	call := func(t *testing.T, xInternalToken, service string) *httptest.ResponseRecorder {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		h.InternalServiceToken(rec,
+			jsonReq(t, http.MethodPost, "/internal/service-token", map[string]string{"service": service}),
+			api.InternalServiceTokenParams{XInternalToken: xInternalToken})
+		return rec
+	}
+
+	for _, tok := range []string{"", "guessed-token"} {
+		wantProblemRec(t, call(t, tok, "catalog-refresh"), http.StatusUnauthorized, "invalid_internal_token")
+	}
+
+	wantProblemRec(t, call(t, "current-token", "not-a-real-service"), http.StatusBadRequest, "invalid_body")
+
+	for _, tok := range []string{"current-token", "previous-token"} {
+		for _, svc := range []string{"catalog-refresh", "entry-rematch"} {
+			rec := call(t, tok, svc)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("token %q service %q: status %d, body %s", tok, svc, rec.Code, rec.Body.String())
+			}
+			var body struct {
+				AccessToken string `json:"access_token"`
+				TokenType   string `json:"token_type"`
+				ExpiresIn   int64  `json:"expires_in"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body.TokenType != "Bearer" || body.ExpiresIn != 900 {
+				t.Fatalf("token %q service %q: body %+v", tok, svc, body)
+			}
+			claims, err := v.Validate(context.Background(), body.AccessToken)
+			if err != nil {
+				t.Fatalf("minted token must validate against the package's own validator: %v", err)
+			}
+			if claims.Subject != "svc:"+svc || !claims.IsService() || len(claims.Roles) != 0 {
+				t.Fatalf("claims = %+v", claims)
+			}
+		}
 	}
 }
 
@@ -1437,6 +1499,13 @@ func (m *stubMinter) Mint(_ string, _ []string, _ string) (string, error) {
 	return m.token, nil
 }
 
+func (m *stubMinter) MintService(_ string, _ time.Duration) (string, error) {
+	if m.mintErr != nil {
+		return "", m.mintErr
+	}
+	return m.token, nil
+}
+
 func (m *stubMinter) TTL() time.Duration { return m.ttl }
 
 // stubUserService implements server.UserService.
@@ -1500,6 +1569,10 @@ var errStub = errors.New("stub failure")
 
 const unitRefreshTTL = 30 * 24 * time.Hour
 
+// testInternalServiceToken is the accepted internal-caller token
+// across the server tests' Handlers constructions.
+const testInternalServiceToken = "test-internal-service-token"
+
 // stubAccessJWT is the canned access token the stub minter returns; the
 // success assertions check the handler hands exactly this value back. It
 // is an opaque placeholder, never validated; named without a
@@ -1510,7 +1583,7 @@ const stubAccessJWT = "stub.access.jwt"
 // newUnit builds Handlers wired to the given stubs for a single test.
 func newUnit(st server.Store, m server.Minter, users server.UserService,
 	providers map[string]oidc.Provider, verifier server.Verifier, devEnabled bool) *server.Handlers {
-	return server.New(st, m, users, providers, verifier, devEnabled, unitRefreshTTL)
+	return server.New(st, m, users, providers, verifier, devEnabled, unitRefreshTTL, []string{testInternalServiceToken})
 }
 
 // stubVerifier implements server.Verifier. validate is nil by default,

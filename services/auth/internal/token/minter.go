@@ -14,6 +14,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 )
 
 // Minter signs access JWTs (EdDSA) with a kid header derived from the
@@ -79,4 +81,26 @@ func (m *Minter) Mint(sub string, roles []string, jti string) (string, error) {
 // calling other vgkeep services (role "service").
 func (m *Minter) ServiceToken() (string, error) {
 	return m.Mint("svc:auth", []string{"service"}, uuid.NewString())
+}
+
+// MintService signs a short-lived machine access JWT for the internal
+// service-token endpoint: no roles (a service is not a user with
+// grantable roles) and token_use=service, the claim that marks it
+// distinguishable from any user's own access token. ttl overrides the
+// minter's configured default: a service token's lifetime (900s for
+// every consumer today) is independent of ACCESS_TOKEN_TTL, the login
+// flow's.
+func (m *Minter) MintService(sub string, ttl time.Duration) (string, error) {
+	now := time.Now()
+	t := jwt.NewWithClaims(jwt.SigningMethodEdDSA, jwt.MapClaims{
+		"iss":       m.issuer,
+		"aud":       m.audience,
+		"sub":       sub,
+		"jti":       uuid.NewString(),
+		"iat":       now.Unix(),
+		"exp":       now.Add(ttl).Unix(),
+		"token_use": jwtauth.TokenUseService,
+	})
+	t.Header["kid"] = m.kid
+	return t.SignedString(m.key)
 }

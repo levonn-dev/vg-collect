@@ -406,6 +406,30 @@
           "expr": "{service_name=\"collection\"} | severity_text=~\"ERROR|WARN\""
         }
       ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Entry rematch",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 72 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (outcome) (increase(vg_collection_rematch_triples_total[1h]))",
+          "legendFormat": "triples/{{outcome}}",
+          "exemplar": false
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "increase(vg_collection_rematch_repoints_total[1h])",
+          "legendFormat": "repoints",
+          "exemplar": false
+        }
+      ]
     }
   ]
 }

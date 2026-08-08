@@ -54,6 +54,39 @@ func (e StartRequestProvider) Valid() bool {
 	}
 }
 
+// Defines values for InternalServiceTokenJSONBodyService.
+const (
+	CatalogRefresh InternalServiceTokenJSONBodyService = "catalog-refresh"
+	EntryRematch   InternalServiceTokenJSONBodyService = "entry-rematch"
+)
+
+// Valid indicates whether the value is a known member of the InternalServiceTokenJSONBodyService enum.
+func (e InternalServiceTokenJSONBodyService) Valid() bool {
+	switch e {
+	case CatalogRefresh:
+		return true
+	case EntryRematch:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InternalServiceToken200JSONResponseBodyTokenType.
+const (
+	Bearer InternalServiceToken200JSONResponseBodyTokenType = "Bearer"
+)
+
+// Valid indicates whether the value is a known member of the InternalServiceToken200JSONResponseBodyTokenType enum.
+func (e InternalServiceToken200JSONResponseBodyTokenType) Valid() bool {
+	switch e {
+	case Bearer:
+		return true
+	default:
+		return false
+	}
+}
+
 // CallbackRequest defines model for CallbackRequest.
 type CallbackRequest struct {
 	Code  string `json:"code"`
@@ -213,6 +246,25 @@ type Unauthorized = Problem
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
 
+// InternalServiceTokenJSONBody defines parameters for InternalServiceToken.
+type InternalServiceTokenJSONBody struct {
+	Service InternalServiceTokenJSONBodyService `json:"service"`
+}
+
+// InternalServiceTokenParams defines parameters for InternalServiceToken.
+type InternalServiceTokenParams struct {
+	XInternalToken string `json:"X-Internal-Token"`
+}
+
+// InternalServiceTokenJSONBodyService defines parameters for InternalServiceToken.
+type InternalServiceTokenJSONBodyService string
+
+// InternalServiceToken200JSONResponseBodyTokenType defines parameters for InternalServiceToken.
+type InternalServiceToken200JSONResponseBodyTokenType string
+
+// InternalServiceTokenJSONRequestBody defines body for InternalServiceToken for application/json ContentType.
+type InternalServiceTokenJSONRequestBody InternalServiceTokenJSONBody
+
 // OauthCallbackJSONRequestBody defines body for OauthCallback for application/json ContentType.
 type OauthCallbackJSONRequestBody = CallbackRequest
 
@@ -317,6 +369,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /identities/{identityId} (the `DeleteIdentity` operationId).
 	DeleteIdentity(ctx context.Context, identityId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// InternalServiceTokenWithBody Mint a short-lived service JWT for cluster maintenance jobs
+	//
+	// Machine-to-machine bootstrap; the gateway never routes it. Authenticates the static internal secret (X-Internal-Token, constant-time against a one-or-two-entry accept set for zero-downtime rotation) and mints a standard access token with a service subject and token_use=service, 15 minutes. A wrong secret answers 401 invalid_internal_token; a missing header answers a generated 400 (required parameter validation runs before this check). Consumers: the catalog-refresh and entry-rematch CronJobs.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /internal/service-token (the `InternalServiceToken` operationId).
+	InternalServiceTokenWithBody(ctx context.Context, params *InternalServiceTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// InternalServiceToken Mint a short-lived service JWT for cluster maintenance jobs
+	//
+	// Machine-to-machine bootstrap; the gateway never routes it. Authenticates the static internal secret (X-Internal-Token, constant-time against a one-or-two-entry accept set for zero-downtime rotation) and mints a standard access token with a service subject and token_use=service, 15 minutes. A wrong secret answers 401 invalid_internal_token; a missing header answers a generated 400 (required parameter validation runs before this check). Consumers: the catalog-refresh and entry-rematch CronJobs.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /internal/service-token (the `InternalServiceToken` operationId).
+	InternalServiceToken(ctx context.Context, params *InternalServiceTokenParams, body InternalServiceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// OauthCallbackWithBody Complete a provider login or account link (code exchange, ID-token verification)
 	//
@@ -452,6 +522,44 @@ func (c *Client) GetJwks(ctx context.Context, reqEditors ...RequestEditorFn) (*h
 // Corresponds with DELETE /identities/{identityId} (the `DeleteIdentity` operationId).
 func (c *Client) DeleteIdentity(ctx context.Context, identityId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteIdentityRequest(c.Server, identityId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// InternalServiceTokenWithBody Mint a short-lived service JWT for cluster maintenance jobs
+//
+// Machine-to-machine bootstrap; the gateway never routes it. Authenticates the static internal secret (X-Internal-Token, constant-time against a one-or-two-entry accept set for zero-downtime rotation) and mints a standard access token with a service subject and token_use=service, 15 minutes. A wrong secret answers 401 invalid_internal_token; a missing header answers a generated 400 (required parameter validation runs before this check). Consumers: the catalog-refresh and entry-rematch CronJobs.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /internal/service-token (the `InternalServiceToken` operationId).
+func (c *Client) InternalServiceTokenWithBody(ctx context.Context, params *InternalServiceTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInternalServiceTokenRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// InternalServiceToken Mint a short-lived service JWT for cluster maintenance jobs
+//
+// Machine-to-machine bootstrap; the gateway never routes it. Authenticates the static internal secret (X-Internal-Token, constant-time against a one-or-two-entry accept set for zero-downtime rotation) and mints a standard access token with a service subject and token_use=service, 15 minutes. A wrong secret answers 401 invalid_internal_token; a missing header answers a generated 400 (required parameter validation runs before this check). Consumers: the catalog-refresh and entry-rematch CronJobs.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /internal/service-token (the `InternalServiceToken` operationId).
+func (c *Client) InternalServiceToken(ctx context.Context, params *InternalServiceTokenParams, body InternalServiceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInternalServiceTokenRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -801,6 +909,59 @@ func NewDeleteIdentityRequest(server string, identityId openapi_types.UUID) (*ht
 	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewInternalServiceTokenRequest calls the generic InternalServiceToken builder with application/json body
+func NewInternalServiceTokenRequest(server string, params *InternalServiceTokenParams, body InternalServiceTokenJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewInternalServiceTokenRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewInternalServiceTokenRequestWithBody constructs an http.Request for the InternalServiceToken method, with any body, and a specified content type
+func NewInternalServiceTokenRequestWithBody(server string, params *InternalServiceTokenParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/internal/service-token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Internal-Token", params.XInternalToken, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("X-Internal-Token", headerParam0)
+
 	}
 
 	return req, nil
@@ -1239,6 +1400,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /identities/{identityId} (the `DeleteIdentity` operationId).
 	DeleteIdentityWithResponse(ctx context.Context, identityId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteIdentityResponse, error)
 
+	// InternalServiceTokenWithBodyWithResponse Mint a short-lived service JWT for cluster maintenance jobs
+	//
+	// Machine-to-machine bootstrap; the gateway never routes it. Authenticates the static internal secret (X-Internal-Token, constant-time against a one-or-two-entry accept set for zero-downtime rotation) and mints a standard access token with a service subject and token_use=service, 15 minutes. A wrong secret answers 401 invalid_internal_token; a missing header answers a generated 400 (required parameter validation runs before this check). Consumers: the catalog-refresh and entry-rematch CronJobs.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /internal/service-token (the `InternalServiceToken` operationId).
+	InternalServiceTokenWithBodyWithResponse(ctx context.Context, params *InternalServiceTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*InternalServiceTokenResponse, error)
+
+	// InternalServiceTokenWithResponse Mint a short-lived service JWT for cluster maintenance jobs
+	//
+	// Machine-to-machine bootstrap; the gateway never routes it. Authenticates the static internal secret (X-Internal-Token, constant-time against a one-or-two-entry accept set for zero-downtime rotation) and mints a standard access token with a service subject and token_use=service, 15 minutes. A wrong secret answers 401 invalid_internal_token; a missing header answers a generated 400 (required parameter validation runs before this check). Consumers: the catalog-refresh and entry-rematch CronJobs.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /internal/service-token (the `InternalServiceToken` operationId).
+	InternalServiceTokenWithResponse(ctx context.Context, params *InternalServiceTokenParams, body InternalServiceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*InternalServiceTokenResponse, error)
+
 	// OauthCallbackWithBodyWithResponse Complete a provider login or account link (code exchange, ID-token verification)
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -1449,6 +1628,69 @@ func (r DeleteIdentityResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r DeleteIdentityResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type InternalServiceTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		AccessToken string                                           `json:"access_token"`
+		ExpiresIn   int                                              `json:"expires_in"`
+		TokenType   InternalServiceToken200JSONResponseBodyTokenType `json:"token_type"`
+	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r InternalServiceTokenResponse) GetJSON200() *struct {
+	AccessToken string                                           `json:"access_token"`
+	ExpiresIn   int                                              `json:"expires_in"`
+	TokenType   InternalServiceToken200JSONResponseBodyTokenType `json:"token_type"`
+} {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r InternalServiceTokenResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r InternalServiceTokenResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r InternalServiceTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r InternalServiceTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r InternalServiceTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r InternalServiceTokenResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2038,6 +2280,36 @@ func (c *ClientWithResponses) DeleteIdentityWithResponse(ctx context.Context, id
 	return ParseDeleteIdentityResponse(rsp)
 }
 
+// InternalServiceTokenWithBodyWithResponse Mint a short-lived service JWT for cluster maintenance jobs
+//
+// Machine-to-machine bootstrap; the gateway never routes it. Authenticates the static internal secret (X-Internal-Token, constant-time against a one-or-two-entry accept set for zero-downtime rotation) and mints a standard access token with a service subject and token_use=service, 15 minutes. A wrong secret answers 401 invalid_internal_token; a missing header answers a generated 400 (required parameter validation runs before this check). Consumers: the catalog-refresh and entry-rematch CronJobs.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /internal/service-token (the `InternalServiceToken` operationId).
+func (c *ClientWithResponses) InternalServiceTokenWithBodyWithResponse(ctx context.Context, params *InternalServiceTokenParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*InternalServiceTokenResponse, error) {
+	rsp, err := c.InternalServiceTokenWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseInternalServiceTokenResponse(rsp)
+}
+
+// InternalServiceTokenWithResponse Mint a short-lived service JWT for cluster maintenance jobs
+//
+// Machine-to-machine bootstrap; the gateway never routes it. Authenticates the static internal secret (X-Internal-Token, constant-time against a one-or-two-entry accept set for zero-downtime rotation) and mints a standard access token with a service subject and token_use=service, 15 minutes. A wrong secret answers 401 invalid_internal_token; a missing header answers a generated 400 (required parameter validation runs before this check). Consumers: the catalog-refresh and entry-rematch CronJobs.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /internal/service-token (the `InternalServiceToken` operationId).
+func (c *ClientWithResponses) InternalServiceTokenWithResponse(ctx context.Context, params *InternalServiceTokenParams, body InternalServiceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*InternalServiceTokenResponse, error) {
+	rsp, err := c.InternalServiceToken(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseInternalServiceTokenResponse(rsp)
+}
+
 // OauthCallbackWithBodyWithResponse Complete a provider login or account link (code exchange, ID-token verification)
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -2322,6 +2594,50 @@ func ParseDeleteIdentityResponse(rsp *http.Response) (*DeleteIdentityResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseInternalServiceTokenResponse parses an HTTP response from a InternalServiceTokenWithResponse call
+func ParseInternalServiceTokenResponse(rsp *http.Response) (*InternalServiceTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &InternalServiceTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			AccessToken string                                           `json:"access_token"`
+			ExpiresIn   int                                              `json:"expires_in"`
+			TokenType   InternalServiceToken200JSONResponseBodyTokenType `json:"token_type"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	}
 

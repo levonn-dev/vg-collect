@@ -50,6 +50,39 @@ func (e StartRequestProvider) Valid() bool {
 	}
 }
 
+// Defines values for InternalServiceTokenJSONBodyService.
+const (
+	CatalogRefresh InternalServiceTokenJSONBodyService = "catalog-refresh"
+	EntryRematch   InternalServiceTokenJSONBodyService = "entry-rematch"
+)
+
+// Valid indicates whether the value is a known member of the InternalServiceTokenJSONBodyService enum.
+func (e InternalServiceTokenJSONBodyService) Valid() bool {
+	switch e {
+	case CatalogRefresh:
+		return true
+	case EntryRematch:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InternalServiceToken200JSONResponseBodyTokenType.
+const (
+	Bearer InternalServiceToken200JSONResponseBodyTokenType = "Bearer"
+)
+
+// Valid indicates whether the value is a known member of the InternalServiceToken200JSONResponseBodyTokenType enum.
+func (e InternalServiceToken200JSONResponseBodyTokenType) Valid() bool {
+	switch e {
+	case Bearer:
+		return true
+	default:
+		return false
+	}
+}
+
 // CallbackRequest defines model for CallbackRequest.
 type CallbackRequest struct {
 	Code  string `json:"code"`
@@ -209,6 +242,25 @@ type Unauthorized = Problem
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Problem
 
+// InternalServiceTokenJSONBody defines parameters for InternalServiceToken.
+type InternalServiceTokenJSONBody struct {
+	Service InternalServiceTokenJSONBodyService `json:"service"`
+}
+
+// InternalServiceTokenParams defines parameters for InternalServiceToken.
+type InternalServiceTokenParams struct {
+	XInternalToken string `json:"X-Internal-Token"`
+}
+
+// InternalServiceTokenJSONBodyService defines parameters for InternalServiceToken.
+type InternalServiceTokenJSONBodyService string
+
+// InternalServiceToken200JSONResponseBodyTokenType defines parameters for InternalServiceToken.
+type InternalServiceToken200JSONResponseBodyTokenType string
+
+// InternalServiceTokenJSONRequestBody defines body for InternalServiceToken for application/json ContentType.
+type InternalServiceTokenJSONRequestBody InternalServiceTokenJSONBody
+
 // OauthCallbackJSONRequestBody defines body for OauthCallback for application/json ContentType.
 type OauthCallbackJSONRequestBody = CallbackRequest
 
@@ -238,6 +290,9 @@ type ServerInterface interface {
 	// DeleteIdentity Unlink a provider login from the caller's account
 	// (DELETE /identities/{identityId})
 	DeleteIdentity(w http.ResponseWriter, r *http.Request, identityId openapi_types.UUID)
+	// InternalServiceToken Mint a short-lived service JWT for cluster maintenance jobs
+	// (POST /internal/service-token)
+	InternalServiceToken(w http.ResponseWriter, r *http.Request, params InternalServiceTokenParams)
 	// OauthCallback Complete a provider login or account link (code exchange, ID-token verification)
 	// (POST /oauth/callback)
 	OauthCallback(w http.ResponseWriter, r *http.Request)
@@ -310,6 +365,51 @@ func (siw *ServerInterfaceWrapper) DeleteIdentity(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteIdentity(w, r, identityId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// InternalServiceToken operation middleware
+func (siw *ServerInterfaceWrapper) InternalServiceToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params InternalServiceTokenParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-Internal-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Internal-Token")]; found {
+		var XInternalToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Internal-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Internal-Token", valueList[0], &XInternalToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Internal-Token", Err: err})
+			return
+		}
+
+		params.XInternalToken = XInternalToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Internal-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Internal-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InternalServiceToken(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -615,6 +715,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/token/refresh", wrapper.RefreshToken)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/token/revoke", wrapper.RevokeToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/.well-known/jwks.json", wrapper.GetJwks)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/internal/service-token", wrapper.InternalServiceToken)
 
 	return m
 }

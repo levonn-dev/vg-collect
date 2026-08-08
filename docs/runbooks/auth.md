@@ -38,12 +38,23 @@ What it serves, as an operator sees it:
 - `GET /.well-known/jwks.json` serves every non-retired Ed25519 public
   key; consumed by bff, user, enrichment, collection, and social via
   jwtauth.
+- `POST /internal/service-token` mints a short-lived (900s) machine
+  credential for the catalog-refresh and entry-rematch CronJobs:
+  machine-to-machine bootstrap, gated by a static internal secret
+  (`X-Internal-Token`) instead of a JWT (a CronJob has no session to
+  present). The minted token carries no roles and claim
+  `token_use=service`, the signal enrichment's and collection's
+  `requireService`/`requireAdminOrService` guards key off downstream.
+  Body `{"service": "catalog-refresh" | "entry-rematch"}`.
 
 No endpoint on this service carries Bearer middleware except the
 self-service ones (link start, dev link, identities, unlink, auth
-wipe): login and JWKS are where tokens come from. Network reachability
-is the access control; the NetworkPolicy admits only bff, user,
-enrichment, collection, and social pods on 8080.
+wipe): login and JWKS are where tokens come from, and
+/internal/service-token authenticates the static secret in-handler
+instead. Network reachability is the access control; the
+NetworkPolicy admits bff, user, enrichment, collection, and social
+pods, plus the catalog-refresh and entry-rematch CronJob pods (their
+one call here is the exchange leg), on 8080.
 
 ## Architecture
 
@@ -159,6 +170,7 @@ values fill most of them; secrets arrive through the ExternalSecret
 | `ACCESS_TOKEN_TTL`                          | `5m`                                          | values `env.accessTokenTtl`                                                                                                                                                                                                                                 |
 | `REFRESH_TOKEN_TTL`                         | `720h`                                        | values `env.refreshTokenTtl`                                                                                                                                                                                                                                |
 | `USER_SERVICE_URL`                          | required                                      | values `env.userServiceUrl` (`http://user:8080`)                                                                                                                                                                                                            |
+| `INTERNAL_SERVICE_SECRETS`                  | required                                      | CSV accept set (A/B pair during rotation) for `POST /internal/service-token`'s `X-Internal-Token`; secret key `auth/internal-service-token` (+ `-previous`), `.env` `AUTH_INTERNAL_SERVICE_TOKEN` (+ `_PREVIOUS`)                                          |
 | `JWKS_URL`                                  | `http://localhost:8080/.well-known/jwks.json` | code default; the self-service Bearer verifier reads the pod's own JWKS                                                                                                                                                                                     |
 | `OAUTH_REDIRECT_URL`                        | empty                                         | values `env.oauthRedirectUrl`; Tilt sets it when a provider pair exists                                                                                                                                                                                     |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | empty                                         | Secret keys `google-client-id` / `google-client-secret`, rendered only when `providers.google.enabled`                                                                                                                                                      |
@@ -565,6 +577,17 @@ renormalization. The levers are:
   what it reads.
 - Dev provider gate: `env.devProviderEnabled` in the auth chart values
   (see failure mode 8 for the verification).
+- Internal service secret rotation, zero downtime: publish the new
+  value under secret key `auth/internal-service-token` and the old one
+  under `auth/internal-service-token-previous` (dev:
+  `AUTH_INTERNAL_SERVICE_TOKEN` / `..._PREVIOUS` in `.env`), enable the
+  previous-token flag so the service accepts both while the two
+  CronJobs (catalog-refresh, entry-rematch) still present the old
+  value. After the next green run of both, drop the previous key and
+  flip the flag back off - the same shape as enrichment's retired
+  internal-refresh-token rotation, now centralized here since both
+  CronJobs exchange for a token at this one endpoint instead of each
+  holding its own service secret.
 
 ## Capacity and rollout
 

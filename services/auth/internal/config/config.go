@@ -3,6 +3,7 @@ package config
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	libconfig "github.com/levonn-dev/vgkeep/libs/go/config"
@@ -22,6 +23,12 @@ type Config struct {
 	RefreshTokenTTL time.Duration `env:"REFRESH_TOKEN_TTL"    envDefault:"720h"`
 
 	UserServiceURL string `env:"USER_SERVICE_URL,required"`
+
+	// Accepted internal-caller tokens for POST /internal/service-token
+	// (the catalog-refresh and entry-rematch CronJobs' bootstrap
+	// trigger, which has no JWT source). One or two entries: an A/B
+	// pair makes rotation zero-downtime.
+	InternalServiceSecrets []string `env:"INTERNAL_SERVICE_SECRETS,required,notEmpty" envSeparator:","`
 
 	// JWKSURL feeds the bearer validator on the self-service endpoints
 	// (identity list/unlink, link start, account wipe). The service
@@ -65,6 +72,11 @@ func Load() (Config, error) {
 	}
 	if (cfg.GoogleEnabled() || cfg.TwitchEnabled()) && cfg.OAuthRedirectURL == "" {
 		return Config{}, errors.New("config: OAUTH_REDIRECT_URL is required when a real OAuth provider is configured")
+	}
+	for _, s := range cfg.InternalServiceSecrets {
+		if strings.TrimSpace(s) == "" {
+			return Config{}, errors.New("config: INTERNAL_SERVICE_SECRETS must not contain empty entries")
+		}
 	}
 	return cfg, nil
 }

@@ -38,18 +38,6 @@ func NewRouter(h *Handlers, v *jwtauth.Validator, logger *slog.Logger, ready fun
 			problem(w, r, http.StatusBadRequest, "invalid_param", err.Error())
 		},
 	})
-	// The resnapshot lever (release date + localized presentation):
-	// operator-invoked, so it rides the normal JWT guard rather than a
-	// CronJob secret; not in the contract (enrichment's /internal/refresh
-	// precedent).
-	mux.Handle("POST /internal/resnapshot", jwtauth.Middleware(v, problemEW)(http.HandlerFunc(h.InternalResnapshot)))
-	// The normalize-platforms lever: operator-invoked mass
-	// canonicalization of free-text custom-entry platforms. Not in the
-	// contract (resnapshot precedent), but admin-gated in the handler -
-	// stricter than resnapshot's JWT-only guard, since it writes across
-	// every user's entries.
-	mux.Handle("POST /internal/normalize-platforms", jwtauth.Middleware(v, problemEW)(http.HandlerFunc(h.InternalNormalizePlatforms)))
-
 	mux.Handle("/", jwtauth.Middleware(v, problemEW)(apiRoutes))
 
 	handler := httpkit.RequestLogger(logger)(mux)

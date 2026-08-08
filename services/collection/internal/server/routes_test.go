@@ -70,6 +70,25 @@ func (a authEnv) token(t *testing.T, sub string, roles ...string) string {
 	return s
 }
 
+// serviceToken mints a valid access token carrying token_use=service
+// (no roles) for sub, mirroring auth's internal service-token
+// endpoint - the CronJob credential requireAdminOrService admits
+// alongside an admin bearer.
+func (a authEnv) serviceToken(t *testing.T, sub string) string {
+	t.Helper()
+	tok := jwt.NewWithClaims(jwt.SigningMethodEdDSA, jwt.MapClaims{
+		"sub": sub, "iss": "vgkeep-auth", "aud": "vgkeep",
+		"jti": uuid.NewString(), "exp": time.Now().Add(5 * time.Minute).Unix(),
+		"token_use": "service",
+	})
+	tok.Header["kid"] = a.kid
+	s, err := tok.SignedString(a.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
 func testLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
 // newUnitServer mounts Handlers behind the real router + middleware.
@@ -191,14 +210,25 @@ func TestUnitBadParamIsProblemJSON(t *testing.T) {
 	wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 }
 
-// TestUnitInternalResnapshotRequiresJWT pins that the one-shot
-// resnapshot route rides the SAME jwtauth guard as the API routes -
-// the inverse of enrichment's /internal/refresh, which is deliberately
-// JWT-exempt behind its own internal-token guard. A bearer-less
-// request here must 401 like every other route in this file.
+// TestUnitInternalResnapshotRequiresJWT pins that the resnapshot route
+// rides the SAME blanket jwtauth guard as every other route (its own
+// admin-or-service check runs after, inside the handler). A
+// bearer-less request here must 401 like every other route in this
+// file.
 func TestUnitInternalResnapshotRequiresJWT(t *testing.T) {
 	srv, _ := newUnitServer(t, nil, nil, nil)
 	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", "", nil)
+	wantProblem(t, resp, http.StatusUnauthorized, "missing_token")
+}
+
+// TestUnitInternalRematchEntriesRequiresJWT pins that the entry
+// rematch route rides the SAME blanket jwtauth guard as every other
+// route (its own admin-or-service check runs after, inside the
+// handler). A bearer-less request here must 401 like every other
+// route in this file.
+func TestUnitInternalRematchEntriesRequiresJWT(t *testing.T) {
+	srv, _ := newUnitServer(t, nil, nil, nil)
+	resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", "", nil)
 	wantProblem(t, resp, http.StatusUnauthorized, "missing_token")
 }
 

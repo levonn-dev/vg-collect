@@ -1,0 +1,39 @@
+meta {
+  name: internal service token
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{auth_url}}/internal/service-token
+  body: json
+  auth: none
+}
+
+headers {
+  X-Internal-Token: {{auth_internal_token}}
+}
+
+body:json {
+  {
+    "service": "entry-rematch"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.access_token: isString
+  res.body.expires_in: eq 900
+}
+
+docs {
+  Machine-to-machine bootstrap: exchanges the static internal secret
+  for a short-lived (900s) service JWT (sub svc:entry-rematch, claim
+  token_use=service), the credential the catalog-refresh and
+  entry-rematch CronJobs present to enrichment's and collection's
+  internal endpoints. Not routed by the gateway.
+
+  auth_internal_token is the dev value from .env
+  (AUTH_INTERNAL_SERVICE_TOKEN); rotate by presenting the previous
+  value too while INTERNAL_SERVICE_SECRETS carries both.
+}

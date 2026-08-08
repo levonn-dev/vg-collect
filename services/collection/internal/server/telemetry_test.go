@@ -429,6 +429,295 @@ func TestUnitPendingSubmissionsGauge(t *testing.T) {
 	})
 }
 
+// TestUnitRematchMetrics pins the entry rematch's three domain
+// instruments: one triples point per outcome (ok: nothing pending or
+// the triple's resolve succeeded; failed: a member fetch or resolve
+// error), one repoints increment per entry actually repointed, and a
+// duration series that exports once the CAS-gated, now-detached run
+// completes. The trigger answers 202 immediately, so the duration
+// histogram gaining its one point (recorded last, deferred) is the
+// external proof the run has fully finished; every other assertion
+// below only runs once that is true.
+func TestUnitRematchMetrics(t *testing.T) {
+	reader := installTestMeter(t)
+	productBase := uuid.New()
+	productJP := uuid.New()
+	entryOK, entryFail := uuid.New(), uuid.New()
+
+	// Base class is region-correct for neither triple below, so both
+	// land on the resolve leg; ntsc_j succeeds (repoints), pal fails
+	// (the resolve stub errors on it).
+	baseMember := pricedGameProduct(productBase, "Super Nintendo")
+	jpMember := pricedGameProduct(productJP, "Super Famicom")
+
+	refs := []store.RematchEntryRef{
+		{EntryID: entryOK, ProductID: productBase, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
+		{EntryID: entryFail, ProductID: productBase, IGDBGameID: 2000, PlatformIGDBID: 7, Region: "pal"},
+	}
+	st := withPendingCount(&stubStore{
+		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
+		repointEntry: func(context.Context, uuid.UUID, uuid.UUID, *time.Time, *string, *string, *string) error {
+			return nil
+		},
+	}, 0)
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			return baseMember, nil
+		},
+		resolve: func(_ context.Context, _ string, req enrichapi.ResolveRequest) (enrichapi.Product, error) {
+			if req.Region != nil && *req.Region == "pal" {
+				return enrichapi.Product{}, enrichmentclient.ErrUnavailable
+			}
+			return jpMember, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", a.token(t, uuid.NewString(), "admin"), nil)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("trigger: %d, want 202 (the sweep now detaches)", resp.StatusCode)
+	}
+
+	waitFor(t, 5*time.Second, func() bool {
+		m, ok := collectDomainMetrics(t, reader)["vg.collection.rematch.duration"]
+		if !ok {
+			return false
+		}
+		hist, ok := m.Data.(metricdata.Histogram[float64])
+		return ok && len(hist.DataPoints) == 1
+	})
+
+	metrics := collectDomainMetrics(t, reader)
+	if v := counterValue(t, metrics, "vg.collection.rematch.triples", attribute.String("outcome", "ok")); v != 1 {
+		t.Fatalf("triples{outcome=ok} = %d, want 1", v)
+	}
+	if v := counterValue(t, metrics, "vg.collection.rematch.triples", attribute.String("outcome", "failed")); v != 1 {
+		t.Fatalf("triples{outcome=failed} = %d, want 1", v)
+	}
+	if v := counterValue(t, metrics, "vg.collection.rematch.repoints"); v != 1 {
+		t.Fatalf("repoints = %d, want 1", v)
+	}
+	m, ok := metrics["vg.collection.rematch.duration"]
+	if !ok {
+		t.Fatal("duration histogram not exported")
+	}
+	hist, ok := m.Data.(metricdata.Histogram[float64])
+	if !ok {
+		t.Fatalf("duration: want Histogram[float64], got %T", m.Data)
+	}
+	if len(hist.DataPoints) != 1 {
+		t.Fatalf("duration points = %d, want exactly one (the single completed run)", len(hist.DataPoints))
+	}
+}
+
+// TestUnitRematchMetrics_MemberFetchFailureCountsFailedTriple pins
+// that a member-fetch failure (not just a resolve failure -
+// TestUnitRematchMetrics's own pal triple) also counts its triple
+// against triples{outcome=failed}: two triples, one healthy and one
+// whose sole member fetch errors, land ok==1 and failed==1.
+func TestUnitRematchMetrics_MemberFetchFailureCountsFailedTriple(t *testing.T) {
+	reader := installTestMeter(t)
+	productOK := uuid.New()
+	productBad := uuid.New()
+	productJP := uuid.New()
+	entryOK, entryBad := uuid.New(), uuid.New()
+
+	okMember := pricedGameProduct(productOK, "Super Nintendo") // base class, not region-correct for ntsc_j
+	jpMember := pricedGameProduct(productJP, "Super Famicom")
+
+	refs := []store.RematchEntryRef{
+		{EntryID: entryOK, ProductID: productOK, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
+		{EntryID: entryBad, ProductID: productBad, IGDBGameID: 2000, PlatformIGDBID: 7, Region: "ntsc_j"},
+	}
+	st := withPendingCount(&stubStore{
+		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
+		repointEntry: func(context.Context, uuid.UUID, uuid.UUID, *time.Time, *string, *string, *string) error {
+			return nil
+		},
+	}, 0)
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			if id == productBad {
+				return enrichapi.Product{}, enrichmentclient.ErrUnavailable
+			}
+			return okMember, nil
+		},
+		resolve: func(_ context.Context, _ string, req enrichapi.ResolveRequest) (enrichapi.Product, error) {
+			return jpMember, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", a.token(t, uuid.NewString(), "admin"), nil)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("trigger: %d, want 202 (the sweep now detaches)", resp.StatusCode)
+	}
+
+	waitFor(t, 5*time.Second, func() bool {
+		m, ok := collectDomainMetrics(t, reader)["vg.collection.rematch.duration"]
+		if !ok {
+			return false
+		}
+		hist, ok := m.Data.(metricdata.Histogram[float64])
+		return ok && len(hist.DataPoints) == 1
+	})
+
+	metrics := collectDomainMetrics(t, reader)
+	if v := counterValue(t, metrics, "vg.collection.rematch.triples", attribute.String("outcome", "ok")); v != 1 {
+		t.Fatalf("triples{outcome=ok} = %d, want 1", v)
+	}
+	if v := counterValue(t, metrics, "vg.collection.rematch.triples", attribute.String("outcome", "failed")); v != 1 {
+		t.Fatalf("triples{outcome=failed} = %d, want 1 (the member-fetch failure)", v)
+	}
+}
+
+// TestUnitRematchMetrics_ConflictNeverRecordsDuration pins that a
+// 409-refused overlapping trigger never runs, so it must never emit a
+// duration point either (only a CAS-won run does): one completed run
+// plus one concurrent 409 must still export exactly one duration
+// point, not two. The trigger itself answers 202 immediately (the CAS
+// happens before the detach), so the first request no longer blocks -
+// the second (409-refused) trigger only needs to land while the
+// detached sweep is still inside listAutoGameRematchRefs.
+func TestUnitRematchMetrics_ConflictNeverRecordsDuration(t *testing.T) {
+	reader := installTestMeter(t)
+	release := make(chan struct{})
+	started := make(chan struct{})
+	st := withPendingCount(&stubStore{
+		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) {
+			close(started)
+			<-release
+			return nil, nil
+		},
+	}, 0)
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	tok := a.token(t, uuid.NewString(), "admin")
+
+	resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", tok, nil)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("first trigger: %d, want 202", resp.StatusCode)
+	}
+
+	<-started
+	if resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", tok, nil); resp.StatusCode != http.StatusConflict {
+		t.Fatalf("concurrent trigger: %d, want 409", resp.StatusCode)
+	}
+	close(release)
+
+	// The duration histogram records last (deferred), so waiting for
+	// its one point proves the detached run has fully finished.
+	waitFor(t, 5*time.Second, func() bool {
+		m, ok := collectDomainMetrics(t, reader)["vg.collection.rematch.duration"]
+		if !ok {
+			return false
+		}
+		hist, ok := m.Data.(metricdata.Histogram[float64])
+		return ok && len(hist.DataPoints) == 1
+	})
+
+	metrics := collectDomainMetrics(t, reader)
+	m, ok := metrics["vg.collection.rematch.duration"]
+	if !ok {
+		t.Fatal("duration histogram not exported after the completed run")
+	}
+	hist, ok := m.Data.(metricdata.Histogram[float64])
+	if !ok {
+		t.Fatalf("duration: want Histogram[float64], got %T", m.Data)
+	}
+	if len(hist.DataPoints) != 1 {
+		t.Fatalf("duration points = %d, want exactly 1 (the 409 must not have recorded)", len(hist.DataPoints))
+	}
+}
+
+// TestUnitRematchMetrics_ResolvedSameIdSkipsRepoint pins the
+// no-in-region-listing convergence case: when the resolve leg's only
+// candidate for the triple is the very same member the entry already
+// sits on (resolved.Id == ref.ProductID), the repoint is a would-be
+// no-op and must never be written. Proven against a row a real
+// repoint would mutate - product_id, updated_at, and the ack stamp
+// RepointEntry always clears - seeded so a wrongly fired repoint
+// would visibly change all three.
+func TestUnitRematchMetrics_ResolvedSameIdSkipsRepoint(t *testing.T) {
+	reader := installTestMeter(t)
+	productUnmatched := uuid.New()
+	entry := uuid.New()
+
+	unmatched := gameProduct(productUnmatched) // no pricecharting -> never region-correct
+	seedUpdatedAt := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	seededAck := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
+
+	var mu sync.Mutex
+	row := struct {
+		productID uuid.UUID
+		updatedAt time.Time
+		ackAt     *time.Time
+	}{productID: productUnmatched, updatedAt: seedUpdatedAt, ackAt: &seededAck}
+	var repointCalls, resolveCalls int
+
+	refs := []store.RematchEntryRef{
+		{EntryID: entry, ProductID: productUnmatched, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
+	}
+	st := withPendingCount(&stubStore{
+		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
+		repointEntry: func(_ context.Context, _, productID uuid.UUID, _ *time.Time, _, _, _ *string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			repointCalls++
+			// A real repoint would land exactly these three changes; wiring
+			// them here means a wrongly fired call is caught below even if
+			// the call-count assertion were ever weakened.
+			row.productID = productID
+			row.updatedAt = time.Now().UTC()
+			row.ackAt = nil
+			return nil
+		},
+	}, 0)
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) { return unmatched, nil },
+		resolve: func(_ context.Context, _ string, req enrichapi.ResolveRequest) (enrichapi.Product, error) {
+			mu.Lock()
+			resolveCalls++
+			mu.Unlock()
+			return unmatched, nil // the resolve's only candidate is the same unmatched member
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", a.token(t, uuid.NewString(), "admin"), nil)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("trigger: %d, want 202 (the sweep now detaches)", resp.StatusCode)
+	}
+
+	waitFor(t, 5*time.Second, func() bool {
+		m, ok := collectDomainMetrics(t, reader)["vg.collection.rematch.duration"]
+		if !ok {
+			return false
+		}
+		hist, ok := m.Data.(metricdata.Histogram[float64])
+		return ok && len(hist.DataPoints) == 1
+	})
+
+	mu.Lock()
+	defer mu.Unlock()
+	if resolveCalls != 1 {
+		t.Fatalf("resolve calls: %d, want 1 (must reach the resolve leg)", resolveCalls)
+	}
+	if repointCalls != 0 {
+		t.Fatalf("resolved.Id == ref.ProductID must skip the repoint: %d calls", repointCalls)
+	}
+	if row.productID != productUnmatched || !row.updatedAt.Equal(seedUpdatedAt) || row.ackAt == nil || !row.ackAt.Equal(seededAck) {
+		t.Fatalf("the skip must leave the row untouched: %+v", row)
+	}
+	metrics := collectDomainMetrics(t, reader)
+	// A never-incremented counter exports no series at all (the same
+	// posture TestUnitPricingComposeCounter_SkipsWhenNothingPriced
+	// pins), so the repoints count for this run is the metric's
+	// absence, not a zero-valued point.
+	if _, ok := metrics["vg.collection.rematch.repoints"]; ok {
+		t.Fatal("the skipped repoint must not export a repoints count")
+	}
+	if v := counterValue(t, metrics, "vg.collection.rematch.triples", attribute.String("outcome", "ok")); v != 1 {
+		t.Fatalf("triples{outcome=ok} = %d, want 1", v)
+	}
+}
+
 // stubErrMeterProvider hands out a meter that refuses every counter
 // registration this service performs; the noop embeds satisfy the
 // rest of the interfaces.
@@ -658,13 +947,15 @@ func TestUnitSubmissionVerdictLogs(t *testing.T) {
 	}
 }
 
-// TestUnitLeverCompletionLogs pins the durable outcome lines both
-// admin levers write before answering.
+// TestUnitLeverCompletionLogs pins the durable outcome lines all
+// three internal levers write before (resnapshot, normalize-platforms)
+// or after (the now-detached rematch) answering.
 func TestUnitLeverCompletionLogs(t *testing.T) {
-	st := &stubStore{
+	st := withPendingCount(&stubStore{
 		listGameBackedRefs:          func(context.Context) ([]store.GameEntryRef, error) { return nil, nil },
 		listNameOnlyPlatformEntries: func(context.Context) ([]store.PlatformEntryRef, error) { return nil, nil },
-	}
+		listAutoGameRematchRefs:     func(context.Context) ([]store.RematchEntryRef, error) { return nil, nil },
+	}, 0)
 	enrich := &stubEnrichment{listPlatforms: func(context.Context, string) ([]enrichmentclient.Platform, error) {
 		return nil, nil
 	}}
@@ -677,6 +968,16 @@ func TestUnitLeverCompletionLogs(t *testing.T) {
 	if resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-platforms", admin, nil); resp.StatusCode != http.StatusOK {
 		t.Fatalf("normalize: %d", resp.StatusCode)
 	}
+	if resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", admin, nil); resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("rematch-entries: %d, want 202 (the sweep now detaches)", resp.StatusCode)
+	}
+
+	// resnapshot and normalize-platforms are still synchronous, so
+	// their lines are already in buf; the rematch's completion line
+	// lands only once its detached sweep finishes.
+	waitFor(t, 5*time.Second, func() bool {
+		return findLine(buf.lines(t), "rematch-entries complete") != nil
+	})
 
 	lines := buf.lines(t)
 	rl := findLine(lines, "resnapshot complete")
@@ -688,5 +989,10 @@ func TestUnitLeverCompletionLogs(t *testing.T) {
 	if nl == nil || nl["level"] != "INFO" || nl["scanned"] != float64(0) ||
 		nl["normalized"] != float64(0) || nl["skipped"] != float64(0) {
 		t.Fatalf("normalize line: %v", nl)
+	}
+	rml := findLine(lines, "rematch-entries complete")
+	if rml == nil || rml["level"] != "INFO" || rml["triples_seen"] != float64(0) ||
+		rml["triples_failed"] != float64(0) || rml["entries_repointed"] != float64(0) {
+		t.Fatalf("rematch-entries line: %v", rml)
 	}
 }

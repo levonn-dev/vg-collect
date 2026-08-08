@@ -29,7 +29,14 @@ docs {
   Idempotent; expect 200 with
   products_seen/products_failed/entries_updated (0 updated once
   nothing has changed). Run after enrichment's catalog has actually
-  healed - a nightly walk, or an immediate admin refresh trigger there
-  - so the rollout order for a catalog-shape change is deploy, then
-  enrichment's walk (or admin refresh), then this lever.
+  healed - the nightly catalog refresh, or an immediate admin refresh
+  trigger there - so the rollout order for a catalog-shape change is
+  deploy, then the catalog refresh (nightly or admin-triggered), then
+  this lever.
+
+  Guard: admin role or a service token (tightened from any valid
+  JWT). The bearer behind {{access_token}} must be an admin - the
+  folder's dev-token flow logs in as alice by default, so run it with
+  body {"user": "admin"} first, or override --env-var access_token
+  with a minted admin or service token.
 }

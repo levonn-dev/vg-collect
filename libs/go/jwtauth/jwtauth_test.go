@@ -104,6 +104,39 @@ func TestValidate_UnknownKidTriggersRefetch(t *testing.T) {
 	}
 }
 
+// TestValidate_ParsesTokenUse pins the service-token signal: a JWT
+// carrying token_use=service round-trips into Claims.IsService(), and
+// an ordinary token (no such claim, like every login/refresh access
+// token minted today) is not mistaken for one.
+func TestValidate_ParsesTokenUse(t *testing.T) {
+	pub, priv := genKey(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(jwksJSON("k1", pub))
+	}))
+	defer srv.Close()
+	v := jwtauth.NewValidator(srv.URL, testIssuer, testAudience)
+
+	claims, err := v.Validate(t.Context(), mint(t, "k1", priv, func(c jwt.MapClaims) {
+		c["sub"] = "svc:catalog-refresh"
+		delete(c, "roles")
+		c["token_use"] = "service"
+	}))
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if !claims.IsService() || claims.TokenUse != "service" || claims.Subject != "svc:catalog-refresh" || len(claims.Roles) != 0 {
+		t.Fatalf("claims = %+v", claims)
+	}
+
+	ordinary, err := v.Validate(t.Context(), mint(t, "k1", priv, nil))
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if ordinary.IsService() || ordinary.TokenUse != "" {
+		t.Fatalf("ordinary token must not read as a service token: %+v", ordinary)
+	}
+}
+
 func TestMiddleware_NoTokenAndRoles(t *testing.T) {
 	pub, priv := genKey(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
