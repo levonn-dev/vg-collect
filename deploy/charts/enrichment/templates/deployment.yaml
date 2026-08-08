@@ -38,22 +38,6 @@ spec:
             {{- end }}
             - name: MONGO_DB
               value: {{ .Values.mongo.database | quote }}
-            # The accepted internal-caller token set: the current one,
-            # plus the previous one mid-rotation (dependent $(VAR)
-            # expansion composes the CSV).
-            - name: INTERNAL_REFRESH_TOKEN
-              valueFrom:
-                secretKeyRef: { name: enrichment-secrets, key: internal-refresh-token }
-            {{- if .Values.refresh.previousTokenEnabled }}
-            - name: INTERNAL_REFRESH_TOKEN_PREVIOUS
-              valueFrom:
-                secretKeyRef: { name: enrichment-secrets, key: internal-refresh-token-previous }
-            - name: INTERNAL_REFRESH_SECRETS
-              value: "$(INTERNAL_REFRESH_TOKEN),$(INTERNAL_REFRESH_TOKEN_PREVIOUS)"
-            {{- else }}
-            - name: INTERNAL_REFRESH_SECRETS
-              value: "$(INTERNAL_REFRESH_TOKEN)"
-            {{- end }}
             - name: VALKEY_URL
               value: {{ .Values.env.valkeyUrl | quote }}
             {{- if .Values.valkey.enabled }}

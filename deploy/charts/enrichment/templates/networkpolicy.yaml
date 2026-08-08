@@ -60,9 +60,10 @@ spec:
 {{- end }}
 # Enrichment's callers: the bff (search/resolve/product pass-throughs),
 # the collection service (product snapshots at entry creation, batch
-# prices for values and the dashboard), and the refresh CronJob (its
-# internal trigger authenticates with the X-Internal-Token secret;
-# this admission is the outer layer).
+# prices for values and the dashboard), and the refresh CronJob (it
+# exchanges the shared secret for a service JWT at auth, then calls
+# this endpoint with a normal bearer; this admission is the outer
+# layer).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

@@ -31,20 +31,21 @@ pricecharting:
 fx:
   mode: real
 
-# The daily price walk: a CronJob POSTs the cluster-internal refresh
-# endpoint, authenticating with the static internal-caller token from
-# the secret store (the NetworkPolicy admits only this CronJob and the
-# known service callers, and the gateway never routes there).
-# Token rotation, zero-downtime: publish the NEW value under the
-# internalRefreshToken store key and the OLD one under
-# internalRefreshTokenPrevious, set previousTokenEnabled=true (the
-# service then accepts both while the CronJob already presents the new
-# one), and once a run has gone green, drop the previous key and flip
-# the flag back off.
+# The daily catalog refresh: a CronJob exchanges the shared internal
+# secret for a short-lived service JWT at auth (POST
+# /internal/service-token), then POSTs the cluster-internal refresh
+# endpoint with that bearer - the service validates JWTs only (the
+# NetworkPolicy admits only this CronJob and the known service
+# callers, and the gateway never routes there).
+# Secret rotation now happens at auth, not here: publish the new value
+# under auth's internalServiceToken store key and the old one under
+# internalServiceTokenPrevious, flip auth's previousTokenEnabled so it
+# accepts both while the two CronJobs still present the old value, and
+# once a run has gone green, drop the previous key and flip the flag
+# back off.
 refresh:
   schedule: "0 6 * * *"
   image: curlimages/curl:8.14.1
-  previousTokenEnabled: false
 
 resources:
   requests: { cpu: 50m, memory: 64Mi }
@@ -79,8 +80,7 @@ secretStore:
   kind: ClusterSecretStore
   keys:
     mongoPassword: enrichment/mongo-password
-    internalRefreshToken: enrichment/internal-refresh-token
-    internalRefreshTokenPrevious: enrichment/internal-refresh-token-previous
+    internalServiceToken: auth/internal-service-token
     igdbClientId: enrichment/igdb-client-id
     igdbClientSecret: enrichment/igdb-client-secret
     pricechartingApiKey: enrichment/pricecharting-api-key

@@ -59,7 +59,10 @@ spec:
 ---
 {{- end }}
 # Collection's callers: the bff (the whole collection surface is
-# browser-driven) and social (shelf resolves for follows/likes/comments).
+# browser-driven), social (shelf resolves for follows/likes/comments),
+# and the rematch CronJob (it exchanges the shared secret for a
+# service JWT at auth, then calls this endpoint with a normal bearer;
+# this admission is the outer layer).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -78,5 +81,8 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: social
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: collection-rematch
       ports:
         - { port: 8080, protocol: TCP }

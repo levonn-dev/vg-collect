@@ -49,10 +49,13 @@ SECRET_KEYS = {k: v for k, v in {
     'auth/google-client-secret': ENV.get('GOOGLE_CLIENT_SECRET', ''),
     'auth/twitch-client-id': ENV.get('TWITCH_CLIENT_ID', ''),
     'auth/twitch-client-secret': ENV.get('TWITCH_CLIENT_SECRET', ''),
+    # The catalog-refresh and entry-rematch CronJobs' shared bootstrap
+    # secret (POST /internal/service-token); auth is its only consumer
+    # now (enrichment's own internal-refresh-token retired with it).
+    'auth/internal-service-token': ENV.get('AUTH_INTERNAL_SERVICE_TOKEN', ''),
+    'auth/internal-service-token-previous': ENV.get('AUTH_INTERNAL_SERVICE_TOKEN_PREVIOUS', ''),
     'bff/cookie-key': ENV.get('BFF_COOKIE_KEY', ''),
     'enrichment/mongo-password': ENV.get('MONGO_ENRICHMENT_PASSWORD', ''),
-    'enrichment/internal-refresh-token': ENV.get('ENRICHMENT_INTERNAL_REFRESH_TOKEN', ''),
-    'enrichment/internal-refresh-token-previous': ENV.get('ENRICHMENT_INTERNAL_REFRESH_TOKEN_PREVIOUS', ''),
     'enrichment/igdb-client-id': ENV.get('IGDB_CLIENT_ID', ''),
     'enrichment/igdb-client-secret': ENV.get('IGDB_CLIENT_SECRET', ''),
     'enrichment/pricecharting-api-key': ENV.get('PRICECHARTING_API_KEY', ''),
@@ -104,6 +107,12 @@ if ENV.get('TWITCH_CLIENT_ID', '') != '' and ENV.get('TWITCH_CLIENT_SECRET', '')
     _auth_set.append('providers.twitch.enabled=true')
 if _auth_set:
     _auth_set.append('env.oauthRedirectUrl=' + ENV.get('OAUTH_REDIRECT_URL', 'http://localhost:8090/api/auth/callback'))
+# Mirrors the old enrichment rotation wiring (retired with
+# internal-refresh-token): a staged previous value in .env means a
+# rotation is in flight, so tell the chart to accept it alongside the
+# current one.
+if ENV.get('AUTH_INTERNAL_SERVICE_TOKEN_PREVIOUS', '') != '':
+    _auth_set.append('previousTokenEnabled=true')
 k8s_yaml(helm('deploy/charts/auth', name='auth', namespace='vgkeep', set=_auth_set))
 k8s_resource('auth', port_forwards=['8082:8080'],
              resource_deps=['secret-store', 'auth-pg', 'user'], labels=['services'])
@@ -190,9 +199,6 @@ if ENV.get('IGDB_CLIENT_ID', '') != '' and ENV.get('IGDB_CLIENT_SECRET', '') != 
     _enrichment_set.append('igdb.mode=real')
 if ENV.get('PRICECHARTING_API_KEY', '') != '':
     _enrichment_set.append('pricecharting.mode=real')
-# Mid-rotation the service accepts the previous internal token too.
-if ENV.get('ENRICHMENT_INTERNAL_REFRESH_TOKEN_PREVIOUS', '') != '':
-    _enrichment_set.append('refresh.previousTokenEnabled=true')
 k8s_yaml(helm('deploy/charts/enrichment', name='enrichment', namespace='vgkeep', set=_enrichment_set))
 k8s_resource('enrichment', port_forwards=['8084:8080'],
              resource_deps=['secret-store', 'enrichment-mongo', 'enrichment-valkey', 'auth'], labels=['services'])

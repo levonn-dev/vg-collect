@@ -17,6 +17,17 @@ resources:
   requests: { cpu: 50m, memory: 64Mi }
   limits: { memory: 128Mi }
 
+# The daily entry rematch: a CronJob exchanges the shared internal
+# secret for a short-lived service JWT at auth (POST
+# /internal/service-token), then POSTs the cluster-internal rematch
+# endpoint with that bearer. Scheduled an hour after enrichment's
+# catalog refresh (0 6): the offset serializes the two nightly jobs
+# against the shared provider budget, though correctness never depends
+# on which one runs first.
+rematch:
+  schedule: "0 7 * * *"
+  image: curlimages/curl:8.14.1
+
 postgres:
   enabled: true            # the prod-path seam: disable + set externalUrl for RDS/CNPG
   image: postgres:17-alpine
@@ -45,3 +56,4 @@ secretStore:
   name: vg-fake
   kind: ClusterSecretStore
   passwordKey: collection/pg-password
+  internalServiceTokenKey: auth/internal-service-token

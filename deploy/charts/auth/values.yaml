@@ -21,6 +21,17 @@ env:
   # (the dev token endpoint then answers 404).
   devProviderEnabled: true
 
+# Internal service-token rotation (zero-downtime, manual): the
+# catalog-refresh and entry-rematch CronJobs both exchange this one
+# secret for a short-lived service JWT at POST /internal/service-token.
+# To rotate: publish the new value under secret store key
+# auth/internal-service-token and the old one under
+# auth/internal-service-token-previous, set this true so the service
+# accepts both while the two CronJobs still present the old value,
+# then after the next green run of both, drop the previous key and
+# flip this back off.
+previousTokenEnabled: false
+
 # Signing-key rotation (manual procedure): generate a new 32-byte seed,
 # update the auth/jwt-signing-key secret value, roll the deployment
 # (the new kid registers itself and joins the JWKS alongside the old
@@ -67,3 +78,5 @@ secretStore:
     googleClientSecret: auth/google-client-secret
     twitchClientId: auth/twitch-client-id
     twitchClientSecret: auth/twitch-client-secret
+    internalServiceToken: auth/internal-service-token
+    internalServiceTokenPrevious: auth/internal-service-token-previous

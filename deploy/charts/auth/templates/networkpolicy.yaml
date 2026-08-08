@@ -28,9 +28,11 @@ spec:
           port: 9187
 {{- end }}
 ---
-# Auth's callers: the bff (login + token lifecycle) and every
+# Auth's callers: the bff (login + token lifecycle), every
 # JWT-validating service fetching the JWKS (today: user, enrichment,
-# collection, social).
+# collection, social), and the two CronJobs (catalog-refresh,
+# entry-rematch) exchanging the shared internal secret for a service
+# JWT at POST /internal/service-token.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -58,5 +60,11 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: social
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: enrichment-refresh
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: collection-rematch
       ports:
         - { port: 8080, protocol: TCP }

@@ -1,10 +1,10 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: enrichment-refresh
-  labels: {{- include "enrichment.labels" . | nindent 4 }}
+  name: collection-rematch
+  labels: {{- include "collection.labels" . | nindent 4 }}
 spec:
-  schedule: {{ .Values.refresh.schedule | quote }}
+  schedule: {{ .Values.rematch.schedule | quote }}
   # The service holds its own in-flight guard (409); Forbid keeps k8s
   # from even starting an overlapping trigger.
   concurrencyPolicy: Forbid
@@ -18,25 +18,25 @@ spec:
       template:
         metadata:
           labels:
-            app.kubernetes.io/name: enrichment-refresh
+            app.kubernetes.io/name: collection-rematch
             app.kubernetes.io/part-of: vgkeep
         spec:
           restartPolicy: Never
           containers:
             - name: trigger
-              image: {{ .Values.refresh.image | quote }}
+              image: {{ .Values.rematch.image | quote }}
               env:
                 - name: INTERNAL_SERVICE_TOKEN
                   valueFrom:
-                    secretKeyRef: { name: enrichment-secrets, key: internal-service-token }
+                    secretKeyRef: { name: collection-secrets, key: internal-service-token }
               command: ["/bin/sh", "-c"]
               # Exchange-then-trigger: mint a 15m service JWT from auth
               # with the one internal secret, then call the trigger with
               # a normal bearer - services validate JWTs only. sed
               # extracts access_token from our own stable JSON shape.
               # -f turns a 401/409 answer into a visible job failure
-              # instead of a silent skip (409 = a refresh already runs;
-              # Forbid already guards overlap). The refresh itself is
+              # instead of a silent skip (409 = a rematch already runs;
+              # Forbid already guards overlap). The rematch itself is
               # detached: 202 arrives immediately and the summary lands
               # in the service log.
               args:
@@ -44,12 +44,12 @@ spec:
                   TOKEN=$(curl -fsS -X POST --max-time 30
                   -H "X-Internal-Token: $INTERNAL_SERVICE_TOKEN"
                   -H "Content-Type: application/json"
-                  -d '{"service":"catalog-refresh"}'
+                  -d '{"service":"entry-rematch"}'
                   http://auth:8080/internal/service-token
                   | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
                   && curl -fsS -X POST --max-time 60
                   -H "Authorization: Bearer $TOKEN"
-                  http://enrichment:8080/internal/refresh
+                  http://collection:8080/internal/rematch-entries
               resources:
                 requests: { cpu: 10m, memory: 16Mi }
                 limits: { memory: 32Mi }

@@ -31,6 +31,23 @@ spec:
             - name: JWT_SIGNING_KEY
               valueFrom:
                 secretKeyRef: { name: auth-secrets, key: jwt-signing-key }
+            # The accepted internal-caller secret set for
+            # POST /internal/service-token: the current one, plus the
+            # previous one mid-rotation (dependent $(VAR) expansion
+            # composes the CSV).
+            - name: INTERNAL_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef: { name: auth-secrets, key: internal-service-token }
+            {{- if .Values.previousTokenEnabled }}
+            - name: INTERNAL_SERVICE_TOKEN_PREVIOUS
+              valueFrom:
+                secretKeyRef: { name: auth-secrets, key: internal-service-token-previous }
+            - name: INTERNAL_SERVICE_SECRETS
+              value: "$(INTERNAL_SERVICE_TOKEN),$(INTERNAL_SERVICE_TOKEN_PREVIOUS)"
+            {{- else }}
+            - name: INTERNAL_SERVICE_SECRETS
+              value: "$(INTERNAL_SERVICE_TOKEN)"
+            {{- end }}
             {{- if .Values.providers.google.enabled }}
             - name: GOOGLE_CLIENT_ID
               valueFrom:
