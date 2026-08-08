@@ -1,0 +1,50 @@
+meta {
+  name: entry rematch
+  type: http
+  seq: 20
+}
+
+post {
+  url: {{collection_url}}/internal/rematch-entries
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+assert {
+  res.status: eq 202
+  res.body.status: eq started
+}
+
+docs {
+  Entry rematch, CronJob-scheduled and operator-runnable any time: sweeps auto-priced game-backed
+  entries grouped by (game, platform, region), re-resolves each triple
+  whose entries sit on an unmatched or cross-region member, and
+  repoints those entries to the region-correct sibling member
+  (snapshot fields re-derive from it). Entries on class-compatible
+  members are skipped, and user-picked matches
+  (match_provenance=user) are never swept at all. Rollout
+  order for region-correct pricing: deploy, then run this rematch
+  (it mints missing JP/PAL members with day-zero price snapshots),
+  then the catalog refresh prices them onward. Idempotent: a second run
+  repoints 0.
+
+  Answers 202 and detaches (mirrors the catalog refresh): a day-one
+  backfill resolves at the provider's polite rate, which would
+  otherwise outlive the write timeout. The three counts - triples
+  seen, triples failed, entries repointed - no longer ride this
+  response; they land in the collection service's "rematch-entries
+  complete" log line and the vg.collection.rematch.* metrics instead.
+  Each repoint is separately logged (entry, from, to, region): the
+  audit trail for reviewing or hand-reversing a run. Single-flight: an
+  overlapping trigger answers 409 rematch_in_progress.
+
+  Guard: admin role or a service token. The bearer behind
+  {{access_token}} must be an admin - the folder's dev-token flow logs
+  in as alice by default, so run it with body {"user": "admin"} first,
+  or override --env-var access_token with a minted admin or service
+  token.
+}

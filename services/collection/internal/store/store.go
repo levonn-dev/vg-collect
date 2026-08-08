@@ -95,6 +95,7 @@ type Entry struct {
 	PurchasedFrom  *string
 
 	PricingMode      string
+	MatchProvenance  string
 	PricingProductID *uuid.UUID
 
 	// The custom-price pair; the DB CHECKs pair them and require the
@@ -127,6 +128,12 @@ type Entry struct {
 	LocalizedNameTranslit *string
 	LocalizedCoverURL     *string
 
+	// When the owner dismissed the region-mismatch banner for the
+	// entry's CURRENT (region, product_id) choice. UpdateEntry and
+	// RepointEntry clear it back to nil whenever either changes, so a
+	// new choice notifies once more.
+	RegionMismatchAckAt *time.Time
+
 	Tags []TagRef
 
 	CreatedAt time.Time
@@ -147,10 +154,11 @@ const entryCols = `id, user_id, product_id, item_type, media_type,
 	region, edition, packaging, has_box, has_manual,
 	box_condition, manual_condition, item_condition,
 	price_paid_cents, currency, purchased_at, purchased_from,
-	pricing_mode, pricing_product_id,
+	pricing_mode, match_provenance, pricing_product_id,
 	status, rating, notes, storage_location, pinned, backlog_rank,
 	source, external_ref, created_at, updated_at, cover_url,
 	localized_name, localized_name_translit, localized_cover_url,
+	region_mismatch_ack_at,
 	custom_value_cents, custom_value_set_at,
 	custom_value_entered_cents, custom_value_entered_currency`
 
@@ -162,10 +170,11 @@ func scanEntry(row pgx.Row) (Entry, error) {
 		&e.Region, &e.Edition, &e.Packaging, &e.HasBox, &e.HasManual,
 		&e.BoxCondition, &e.ManualCondition, &e.ItemCondition,
 		&e.PricePaidCents, &e.Currency, &e.PurchasedAt, &e.PurchasedFrom,
-		&e.PricingMode, &e.PricingProductID,
+		&e.PricingMode, &e.MatchProvenance, &e.PricingProductID,
 		&e.Status, &e.Rating, &e.Notes, &e.StorageLocation, &e.Pinned, &e.BacklogRank,
 		&e.Source, &e.ExternalRef, &e.CreatedAt, &e.UpdatedAt, &e.CoverURL,
 		&e.LocalizedName, &e.LocalizedNameTranslit, &e.LocalizedCoverURL,
+		&e.RegionMismatchAckAt,
 		&e.CustomValueCents, &e.CustomValueSetAt,
 		&e.CustomValueEnteredCents, &e.CustomValueEnteredCurrency,
 	)
@@ -272,12 +281,12 @@ func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			 source, external_ref, cover_url,
 			 localized_name, localized_name_translit, localized_cover_url,
 			 custom_value_cents, custom_value_set_at,
-			 custom_value_entered_cents, custom_value_entered_currency)
+			 custom_value_entered_cents, custom_value_entered_currency, match_provenance)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
 			        $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,
 			        $33,$34,$35,
 			        $36, CASE WHEN $36::bigint IS NULL THEN NULL ELSE now() END,
-			        $37, $38)
+			        $37, $38, $39)
 			RETURNING `+entryCols,
 			e.UserID, e.ProductID, e.ItemType, e.MediaType,
 			e.DisplayName, e.PlatformIGDBID, e.PlatformName, e.FirstReleaseDate, e.IGDBGameID,
@@ -289,7 +298,13 @@ func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			e.Source, e.ExternalRef, e.CoverURL,
 			e.LocalizedName, e.LocalizedNameTranslit, e.LocalizedCoverURL,
 			e.CustomValueCents,
-			e.CustomValueEnteredCents, e.CustomValueEnteredCurrency)
+			e.CustomValueEnteredCents, e.CustomValueEnteredCurrency,
+			// match_provenance is appended here rather than placed
+			// beside pricing_mode, where entryCols lists it: inserting
+			// it there would renumber all 38 placeholders already
+			// assigned above ($1-$38). The SELECT/RETURNING and INSERT
+			// column orders deliberately differ.
+			e.MatchProvenance)
 		created, err := scanEntry(row)
 		if err != nil {
 			return fmt.Errorf("store: create entry: %w", err)
@@ -387,6 +402,11 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			   ELSE now() END,
 			 custom_value_entered_cents = $28,
 			 custom_value_entered_currency = $29,
+			 match_provenance = $36,
+			 region_mismatch_ack_at = CASE
+			   WHEN $3::text IS DISTINCT FROM region
+			     OR $30::uuid IS DISTINCT FROM product_id THEN NULL
+			   ELSE region_mismatch_ack_at END,
 			 updated_at = now()
 			WHERE id = $1 AND user_id = $2
 			RETURNING `+entryCols,
@@ -401,7 +421,8 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			e.IGDBGameID, e.CustomValueCents,
 			e.CustomValueEnteredCents, e.CustomValueEnteredCurrency,
 			e.ProductID, e.CoverURL, e.PlatformIGDBID,
-			e.LocalizedName, e.LocalizedNameTranslit, e.LocalizedCoverURL)
+			e.LocalizedName, e.LocalizedNameTranslit, e.LocalizedCoverURL,
+			e.MatchProvenance)
 		updated, err := scanEntry(row)
 		if err != nil {
 			return fmt.Errorf("store: update entry: %w", err)
@@ -657,6 +678,97 @@ func (s *Store) SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d *tim
 		entryID, d, name, translit, cover)
 	if err != nil {
 		return fmt.Errorf("store: set snapshot fields: %w", err)
+	}
+	return nil
+}
+
+// RematchEntryRef is the entry rematch's row: an auto-priced
+// game-backed entry with the identity fields a region-aware re-resolve
+// needs, plus its current snapshot fields - returned for potential
+// diffing, though the handler today just overwrites them
+// unconditionally from the resolved payload rather than re-picking
+// from these.
+type RematchEntryRef struct {
+	EntryID          uuid.UUID
+	ProductID        uuid.UUID
+	IGDBGameID       int64
+	PlatformIGDBID   int64
+	Region           string
+	FirstReleaseDate *time.Time
+
+	LocalizedName         *string
+	LocalizedNameTranslit *string
+	LocalizedCoverURL     *string
+}
+
+// ListAutoGameRematchRefs lists every user's auto-priced game-backed
+// entries (platform id present - a resolve needs it) for the
+// entry rematch; deliberately unscoped like ListGameBackedRefs.
+// Ordered for deterministic output (tests, and a sane default for a
+// pagination-free full-table scan) - not because a caller depends on
+// the (game, platform, region) grouping this happens to produce; the
+// handler regroups via a map regardless of input order.
+func (s *Store) ListAutoGameRematchRefs(ctx context.Context) ([]RematchEntryRef, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, product_id, igdb_game_id, platform_igdb_id, region, first_release_date,
+			localized_name, localized_name_translit, localized_cover_url
+		FROM entries
+		WHERE product_id IS NOT NULL AND igdb_game_id IS NOT NULL
+			AND platform_igdb_id IS NOT NULL AND pricing_mode = 'auto'
+			AND match_provenance = 'auto'
+		ORDER BY igdb_game_id, platform_igdb_id, region, id`)
+	if err != nil {
+		return nil, fmt.Errorf("store: list rematch refs: %w", err)
+	}
+	defer rows.Close()
+	var out []RematchEntryRef
+	for rows.Next() {
+		var r RematchEntryRef
+		if err := rows.Scan(&r.EntryID, &r.ProductID, &r.IGDBGameID, &r.PlatformIGDBID, &r.Region,
+			&r.FirstReleaseDate, &r.LocalizedName, &r.LocalizedNameTranslit, &r.LocalizedCoverURL); err != nil {
+			return nil, fmt.Errorf("store: list rematch refs: %w", err)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: list rematch refs: %w", err)
+	}
+	return out, nil
+}
+
+// RepointEntry moves one entry to a sibling member and rewrites its
+// product-derived snapshot fields in the same statement (the
+// entry rematch's only write). Always a product change, so the
+// region-mismatch ack unconditionally clears - a fresh choice, not
+// yet reviewed.
+func (s *Store) RepointEntry(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE entries SET product_id = $2, first_release_date = $3, localized_name = $4,
+			localized_name_translit = $5, localized_cover_url = $6, updated_at = now(),
+			region_mismatch_ack_at = NULL
+		WHERE id = $1`,
+		entryID, productID, d, name, translit, cover)
+	if err != nil {
+		return fmt.Errorf("store: repoint entry: %w", err)
+	}
+	return nil
+}
+
+// AckRegionMismatch stamps the acknowledgement time for the owner's
+// entry, for its current (region, product_id) choice. The ownership
+// WHERE doubles as the existence check, same shape as DeleteEntry;
+// every call restamps now() (no already-acked guard - the exact
+// moment carries no meaning beyond non-null, unlike a submission
+// verdict's acknowledgement).
+func (s *Store) AckRegionMismatch(ctx context.Context, userID, entryID uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE entries SET region_mismatch_ack_at = now(), updated_at = now()
+		WHERE id = $1 AND user_id = $2`, entryID, userID)
+	if err != nil {
+		return fmt.Errorf("store: ack region mismatch: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
 	}
 	return nil
 }
@@ -1838,6 +1950,9 @@ func (s *Store) ApproveSubmission(ctx context.Context, id uuid.UUID, snap Catalo
 		if err != nil {
 			return fmt.Errorf("store: approve submission: %w", err)
 		}
+		// Always a product change (the adopted catalog product replaces
+		// whatever the entry pointed at before), so the region-mismatch
+		// ack unconditionally clears too - same rule as RepointEntry.
 		if _, err := tx.Exec(ctx, `
 			UPDATE entries
 			SET product_id = $2, item_type = $3, display_name = $4,
@@ -1845,6 +1960,7 @@ func (s *Store) ApproveSubmission(ctx context.Context, id uuid.UUID, snap Catalo
 			    first_release_date = $7, igdb_game_id = $8, cover_url = $9,
 			    localized_name = $10, localized_name_translit = $11,
 			    localized_cover_url = $12,
+			    region_mismatch_ack_at = NULL,
 			    updated_at = now()
 			WHERE id = $1`,
 			sub.EntryID, snap.ProductID, snap.ItemType, snap.DisplayName,

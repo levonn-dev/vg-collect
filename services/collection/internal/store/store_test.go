@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -35,9 +36,13 @@ var sharedPG struct {
 	err  error
 }
 
-// newTestStore duplicates the fixture in migrations/migrations_test.go
-// (Go test packages can't share helpers across packages).
-func newTestStore(t *testing.T) *store.Store {
+// newTestPool duplicates the fixture in migrations/migrations_test.go
+// (Go test packages can't share helpers across packages): a fresh,
+// fully migrated database and its own pool. newTestStore wraps it for
+// the common case; the rare test needing SQL the Store's own methods
+// cannot express (a bare INSERT omitting a DEFAULTed column) takes
+// the pool directly.
+func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("requires docker")
@@ -83,24 +88,30 @@ func newTestStore(t *testing.T) *store.Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	return store.New(pool)
+	return pool
+}
+
+func newTestStore(t *testing.T) *store.Store {
+	t.Helper()
+	return store.New(newTestPool(t))
 }
 
 // baseEntry is a minimal valid game entry for userID; tests override
 // the fields under test.
 func baseEntry(userID uuid.UUID) store.Entry {
 	return store.Entry{
-		UserID:      userID,
-		ProductID:   new(uuid.New()),
-		ItemType:    "game",
-		MediaType:   "physical",
-		DisplayName: "Chrono Trigger",
-		Region:      "ntsc_u",
-		Packaging:   "cib",
-		Currency:    "USD",
-		PricingMode: "auto",
-		Status:      "backlog",
-		Source:      "manual",
+		UserID:          userID,
+		ProductID:       new(uuid.New()),
+		ItemType:        "game",
+		MediaType:       "physical",
+		DisplayName:     "Chrono Trigger",
+		Region:          "ntsc_u",
+		Packaging:       "cib",
+		Currency:        "USD",
+		PricingMode:     "auto",
+		MatchProvenance: "auto",
+		Status:          "backlog",
+		Source:          "manual",
 	}
 }
 
@@ -590,6 +601,318 @@ func TestSetSnapshotFields(t *testing.T) {
 	if cleared.FirstReleaseDate != nil || cleared.LocalizedName != nil ||
 		cleared.LocalizedNameTranslit != nil || cleared.LocalizedCoverURL != nil {
 		t.Fatalf("all four columns must clear to NULL, got %+v", cleared)
+	}
+}
+
+// TestListAutoGameRematchRefs covers the entry rematch's row source:
+// only auto-priced, game-backed entries that also carry a platform id
+// are listed (a resolve needs game+platform+region), ordered so the
+// rematch's (game, platform, region) grouping is contiguous.
+func TestListAutoGameRematchRefs(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	user := uuid.New()
+
+	// (a) auto game-backed, platform id present -> listed.
+	a := baseEntry(user)
+	a.IGDBGameID = new(int64(1000))
+	a.PlatformIGDBID = new(int64(6))
+	a.PlatformName = new("SNES")
+	dateA := time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC)
+	a.FirstReleaseDate = &dateA
+	a.LocalizedName = new("クロノ・トリガー")
+	a.LocalizedNameTranslit = new("Kurono Torigaa")
+	a.LocalizedCoverURL = new("https://x/ja-cover.jpg")
+	entryA := mustCreate(t, s, a, nil)
+
+	// (b) pricing_mode proxy, otherwise the same shape as (a) -> excluded
+	// by the auto-only filter even though igdb_game_id/platform_igdb_id
+	// are both present.
+	b := baseEntry(user)
+	b.IGDBGameID = new(int64(2000))
+	b.PlatformIGDBID = new(int64(7))
+	b.PlatformName = new("Genesis")
+	b.PricingMode = "proxy"
+	b.PricingProductID = new(uuid.New())
+	mustCreate(t, s, b, nil)
+
+	// (c) custom entry (nil product_id) -> excluded.
+	mustCreate(t, s, customEntry(user), nil)
+
+	// (d) auto game-backed, same game+platform as (a) but a second
+	// region -> listed, and gives the ORDER BY's region component (not
+	// just igdb_game_id/platform_igdb_id, which a and d share) something
+	// to actually sort.
+	d := baseEntry(user)
+	d.IGDBGameID = new(int64(1000))
+	d.PlatformIGDBID = new(int64(6))
+	d.PlatformName = new("SNES")
+	d.Region = "pal"
+	dateD := time.Date(1996, time.January, 1, 0, 0, 0, 0, time.UTC)
+	d.FirstReleaseDate = &dateD
+	entryD := mustCreate(t, s, d, nil)
+
+	// (e) same shape as (a) - auto game-backed, platform id present -
+	// but a user-picked match: excluded even though nothing else about
+	// the row would fail the other predicates.
+	e := baseEntry(user)
+	e.IGDBGameID = new(int64(1000))
+	e.PlatformIGDBID = new(int64(6))
+	e.PlatformName = new("SNES")
+	e.MatchProvenance = "user"
+	mustCreate(t, s, e, nil)
+
+	refs, err := s.ListAutoGameRematchRefs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("expected exactly a and d (proxy, custom, and user-picked excluded), got %d: %+v", len(refs), refs)
+	}
+
+	// ntsc_u sorts before pal, so a's row must precede d's: the ordering
+	// actually keys off region, not just igdb_game_id/platform_igdb_id
+	// (both rows share those).
+	if refs[0].EntryID != entryA.ID || refs[1].EntryID != entryD.ID {
+		t.Fatalf("must be ordered (igdb_game_id, platform_igdb_id, region, id): %+v", refs)
+	}
+
+	got := refs[0]
+	if got.ProductID != *entryA.ProductID || got.IGDBGameID != 1000 || got.PlatformIGDBID != 6 || got.Region != "ntsc_u" {
+		t.Fatalf("a's identity fields: %+v", got)
+	}
+	if got.FirstReleaseDate == nil || !got.FirstReleaseDate.Equal(dateA) {
+		t.Fatalf("a's first_release_date: %v", got.FirstReleaseDate)
+	}
+	if got.LocalizedName == nil || *got.LocalizedName != *a.LocalizedName ||
+		got.LocalizedNameTranslit == nil || *got.LocalizedNameTranslit != *a.LocalizedNameTranslit ||
+		got.LocalizedCoverURL == nil || *got.LocalizedCoverURL != *a.LocalizedCoverURL {
+		t.Fatalf("a's stored snapshot trio: %+v", got)
+	}
+
+	got = refs[1]
+	if got.ProductID != *entryD.ProductID || got.IGDBGameID != 1000 || got.PlatformIGDBID != 6 || got.Region != "pal" {
+		t.Fatalf("d's identity fields: %+v", got)
+	}
+	if got.FirstReleaseDate == nil || !got.FirstReleaseDate.Equal(dateD) {
+		t.Fatalf("d's first_release_date: %v", got.FirstReleaseDate)
+	}
+	if got.LocalizedName != nil || got.LocalizedNameTranslit != nil || got.LocalizedCoverURL != nil {
+		t.Fatalf("d seeded no localized trio, must read back nil: %+v", got)
+	}
+}
+
+// TestEntryMatchProvenanceRoundTrip pins match_provenance through the
+// INSERT and through GetEntry - the current-entry read the update
+// handler uses - in both directions: an explicit "user" pick, and the
+// unset-by-the-test case (baseEntry's own "auto"). The store threads
+// whatever it is given; it does not default an empty string itself
+// (the handler maps that, before the store ever sees it).
+func TestEntryMatchProvenanceRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	user := uuid.New()
+
+	picked := baseEntry(user)
+	picked.MatchProvenance = "user"
+	created := mustCreate(t, s, picked, nil)
+	got, err := s.GetEntry(ctx, user, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MatchProvenance != "user" {
+		t.Fatalf("match_provenance: got %q, want user", got.MatchProvenance)
+	}
+
+	auto := mustCreate(t, s, baseEntry(user), nil)
+	got2, err := s.GetEntry(ctx, user, auto.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2.MatchProvenance != "auto" {
+		t.Fatalf("match_provenance: got %q, want auto", got2.MatchProvenance)
+	}
+}
+
+// TestEntryMatchProvenanceColumnDefault pins the migration's own
+// DEFAULT 'auto' clause directly: CreateEntry always lists
+// match_provenance (TestEntryMatchProvenanceRoundTrip), so only a
+// bare SQL INSERT that omits the column exercises the column default
+// itself. Minimal required columns only - everything else here is
+// either DEFAULTed or nullable, except product_id and a non-backlog
+// status, both needed to clear the entries table's own CHECK
+// constraints without naming match_provenance.
+func TestEntryMatchProvenanceColumnDefault(t *testing.T) {
+	pool := newTestPool(t)
+	ctx := context.Background()
+	userID, productID := uuid.New(), uuid.New()
+
+	var id uuid.UUID
+	err := pool.QueryRow(ctx, `
+		INSERT INTO entries (user_id, item_type, display_name, region, packaging, product_id, status)
+		VALUES ($1, 'game', 'Chrono Trigger', 'ntsc_u', 'cib', $2, 'shelved')
+		RETURNING id`, userID, productID).Scan(&id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got string
+	if err := pool.QueryRow(ctx, `SELECT match_provenance FROM entries WHERE id = $1`, id).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != "auto" {
+		t.Fatalf("match_provenance default: got %q, want auto", got)
+	}
+}
+
+// TestRepointEntry covers the entry rematch's only write: moving one
+// entry to a sibling member and rewriting its product-derived snapshot
+// fields in the same statement.
+func TestRepointEntry(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	user := uuid.New()
+	e := baseEntry(user)
+	e.IGDBGameID = new(int64(1000))
+	e.PlatformIGDBID = new(int64(6))
+	e.PlatformName = new("SNES")
+	created := mustCreate(t, s, e, nil)
+
+	newProduct := uuid.New()
+	newDate := time.Date(1996, time.March, 6, 0, 0, 0, 0, time.UTC)
+	name, translit, cover := new("聖剣伝説3"), new("Seiken Densetsu 3"), new("https://x/jp-cover.jpg")
+	if err := s.RepointEntry(ctx, created.ID, newProduct, &newDate, name, translit, cover); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetEntry(ctx, user, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ProductID == nil || *got.ProductID != newProduct {
+		t.Fatalf("product_id: got %v, want %v", got.ProductID, newProduct)
+	}
+	if got.FirstReleaseDate == nil || !got.FirstReleaseDate.Equal(newDate) {
+		t.Fatalf("first_release_date: got %v, want %v", got.FirstReleaseDate, newDate)
+	}
+	if got.LocalizedName == nil || *got.LocalizedName != *name {
+		t.Fatalf("localized_name: got %v, want %v", got.LocalizedName, *name)
+	}
+	if got.LocalizedNameTranslit == nil || *got.LocalizedNameTranslit != *translit {
+		t.Fatalf("localized_name_translit: got %v, want %v", got.LocalizedNameTranslit, *translit)
+	}
+	if got.LocalizedCoverURL == nil || *got.LocalizedCoverURL != *cover {
+		t.Fatalf("localized_cover_url: got %v, want %v", got.LocalizedCoverURL, *cover)
+	}
+	if !got.UpdatedAt.After(created.UpdatedAt) {
+		t.Fatalf("updated_at must move: %v -> %v", created.UpdatedAt, got.UpdatedAt)
+	}
+}
+
+// TestAckRegionMismatch_Stamps covers the ack's own write: it stamps
+// now() on the owner's entry and the stamp reads back; a foreign
+// caller's ack is a no-op ErrNotFound (the same ownership-WHERE shape
+// as DeleteEntry).
+func TestAckRegionMismatch_Stamps(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	userID := uuid.New()
+	created := mustCreate(t, s, baseEntry(userID), nil)
+	if created.RegionMismatchAckAt != nil {
+		t.Fatal("a fresh entry must be unacked")
+	}
+
+	if err := s.AckRegionMismatch(ctx, userID, created.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetEntry(ctx, userID, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RegionMismatchAckAt == nil {
+		t.Fatal("ack did not stamp region_mismatch_ack_at")
+	}
+
+	if err := s.AckRegionMismatch(ctx, uuid.New(), created.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("a foreign ack must be ErrNotFound, got %v", err)
+	}
+}
+
+// TestRegionMismatchAck_ClearsOnChoiceChange exercises the once-per-
+// choice reset rule through the real store: a plain edit (notes/
+// status only) carries the stamp forward, while a region change, a
+// product change riding UpdateEntry (the narrow re-match arm and the
+// region-arm repoint both ride this exact statement - the store
+// cannot tell them apart, and does not need to), and RepointEntry
+// (the entry rematch's own write) each clear it back to nil.
+func TestRegionMismatchAck_ClearsOnChoiceChange(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	userID := uuid.New()
+	created := mustCreate(t, s, baseEntry(userID), nil)
+
+	ack := func(t *testing.T) store.Entry {
+		t.Helper()
+		if err := s.AckRegionMismatch(ctx, userID, created.ID); err != nil {
+			t.Fatal(err)
+		}
+		got, err := s.GetEntry(ctx, userID, created.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.RegionMismatchAckAt == nil {
+			t.Fatal("ack did not stamp")
+		}
+		return got
+	}
+
+	// Plain edit: the stamp carries forward.
+	acked := ack(t)
+	acked.Notes = new("great condition")
+	acked.Status = "playing"
+	plain, err := s.UpdateEntry(ctx, acked, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.RegionMismatchAckAt == nil || !plain.RegionMismatchAckAt.Equal(*acked.RegionMismatchAckAt) {
+		t.Fatalf("a plain edit must carry the stamp forward: got %v, want %v", plain.RegionMismatchAckAt, acked.RegionMismatchAckAt)
+	}
+
+	// Region change alone clears it.
+	acked = ack(t)
+	acked.Region = "pal"
+	regionChanged, err := s.UpdateEntry(ctx, acked, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if regionChanged.RegionMismatchAckAt != nil {
+		t.Fatal("a region change must clear the stamp")
+	}
+
+	// Product change via UpdateEntry (the narrow re-match arm and the
+	// region-arm repoint both land here) clears it.
+	acked = ack(t)
+	newProduct := uuid.New()
+	acked.ProductID = &newProduct
+	productChanged, err := s.UpdateEntry(ctx, acked, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if productChanged.RegionMismatchAckAt != nil {
+		t.Fatal("a product change via UpdateEntry must clear the stamp")
+	}
+
+	// RepointEntry (the entry rematch's own write) clears it too.
+	acked = ack(t)
+	if err := s.RepointEntry(ctx, created.ID, uuid.New(), nil, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	repointed, err := s.GetEntry(ctx, userID, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repointed.RegionMismatchAckAt != nil {
+		t.Fatal("RepointEntry must clear the stamp")
 	}
 }
 
@@ -2131,7 +2454,10 @@ func TestCountAllPendingSubmissions(t *testing.T) {
 // the adoption UPDATE onto a column it must leave alone. The fixture sets
 // one value per category (acquisition, condition, pricing, rank) BEFORE
 // approval; every one of them must read back unchanged afterward, even
-// though the catalog fields did change.
+// though the catalog fields did change. It also pins the opposite rule for
+// region_mismatch_ack_at: adoption changes product_id like any other
+// re-match, so the ack must clear, not survive alongside the other
+// user-owned fields.
 func TestApproveSubmission_PreservesUserOwnedFields(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -2157,6 +2483,10 @@ func TestApproveSubmission_PreservesUserOwnedFields(t *testing.T) {
 	e.CustomValueEnteredCurrency = new("EUR")
 	created := mustCreate(t, s, e, nil)
 	origRank := rankOf(t, created) // Rank.
+
+	if err := s.AckRegionMismatch(ctx, userID, created.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	sub, err := s.CreateSubmission(ctx, userID, created.ID)
 	if err != nil {
@@ -2192,6 +2522,9 @@ func TestApproveSubmission_PreservesUserOwnedFields(t *testing.T) {
 		adopted.LocalizedNameTranslit == nil || *adopted.LocalizedNameTranslit != "Seiken Densetsu 3" ||
 		adopted.LocalizedCoverURL == nil || *adopted.LocalizedCoverURL != "https://images.igdb.example/jp.jpg" {
 		t.Fatalf("adoption must write the catalog snapshot: %+v", adopted)
+	}
+	if adopted.RegionMismatchAckAt != nil {
+		t.Fatal("adoption changes product_id, so it must clear region_mismatch_ack_at like any other product change")
 	}
 
 	// Acquisition.
