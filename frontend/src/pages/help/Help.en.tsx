@@ -68,6 +68,21 @@ export default function HelpEn() {
             for the shared catalog.
           </p>
         </section>
+        <section aria-labelledby="native-titles">
+          <h3 id="native-titles" className="mb-1 font-semibold text-gray-900">
+            Hardware under its native title
+          </h3>
+          <p>
+            Hardware search only knows the price catalog's romanized names: "super famicom"
+            finds the console, スーパーファミコン finds nothing. To shelve a device under its
+            native title anyway, add it as a custom item: from Add, press "Can not find it?
+            Add it as a custom item." and enter the native title as the name. Then open the
+            new entry and set its pricing to "proxy (another listing prices this copy)"; in
+            "Choose a price source", search for the device's listing in romaji (for example
+            "super famicom console") and pick it. The entry keeps the native title and tracks
+            that listing's market value.
+          </p>
+        </section>
         <section aria-labelledby="prices">
           <h3 id="prices" className="mb-1 font-semibold text-gray-900">
             Where market prices come from

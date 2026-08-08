@@ -482,7 +482,7 @@ groups:
         labels:
           severity: warn
       - uid: vg-enrichment-refresh-stalled
-        title: Enrichment nightly price walk has not completed in 26h
+        title: Enrichment nightly catalog refresh has not completed in 26h
         condition: C
         data:
           - refId: A
@@ -491,7 +491,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: sum(increase(vg_enrichment_refresh_walk_duration_seconds_count{step="prices"}[26h]))
+              expr: sum(increase(vg_enrichment_refresh_step_duration_seconds_count{step="prices"}[26h]))
           - refId: C
             relativeTimeRange: { from: 0, to: 0 }
             datasourceUid: __expr__
@@ -505,8 +505,8 @@ groups:
         execErrState: Error
         for: 1h
         annotations:
-          summary: "enrichment has not finished a price walk in more than 26 hours; catalog prices are going stale"
-          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/enrichment.md#4-nightly-walk-missing
+          summary: "enrichment has not finished a price refresh in more than 26 hours; catalog prices are going stale"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/enrichment.md#4-catalog-refresh-missing
         labels:
           severity: warn
       - uid: vg-enrichment-search-degraded

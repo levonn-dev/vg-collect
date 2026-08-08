@@ -18,9 +18,14 @@ Features as an operator sees them:
   local Mongo name match, flagged `degraded: true` and never cached.
 - Product resolve (`POST /products/resolve`): find-or-create keyed by
   provider identity. No-pick game resolves run the auto-matcher
-  against PriceCharting listings; nothing at or above score 0.75
-  (`match.Threshold`) means the product lands unmatched rather than
-  guessed.
+  against PriceCharting listings, taking the entry region as a
+  matching input: the console gate admits only the base, "pal
+  "-prefixed, or JP-named console axis for the region class, and an
+  ntsc_j resolve queries by the ja-JP transliteration when the catalog
+  carries one, with one fallback search by the alternate (canonical
+  name) form when the gate admits nothing from it. Nothing at or above
+  score 0.75 (`match.Threshold`) means the product lands unmatched
+  rather than guessed.
 - Product reads (`GET /products/{productId}`), Valkey-cached 5m, with
   inline best-effort refetch of IGDB projections older than
   `IGDB_REFRESH_AFTER` (720h default).
@@ -32,12 +37,13 @@ Features as an operator sees them:
   2500 entries, candidate budget 200.
 - FX rates (`GET /fx/latest`) and the platform catalog
   (`GET /platforms`).
-- The nightly walk (`POST /internal/refresh`, CronJob at 06:00): price
-  refresh + snapshot for every mapped product, re-match of up to 50
-  unmatched games, projection rebuild for every IGDB-bearing product
+- The catalog refresh (`POST /internal/refresh`, CronJob at 06:00,
+  guarded by a service token minted from auth's
+  `/internal/service-token`): price refresh + snapshot for every
+  mapped product, projection rebuild for every IGDB-bearing product
   (refetching only raws behind the current `fields_version`), and the
-  promote-candidate sweep over community products. 30 minute
-  budget, one walk at a time (a concurrent trigger answers 409).
+  promote-candidate sweep over community products. 30 minute budget,
+  one refresh at a time (a concurrent trigger answers 409).
 - Admin moderation (JWT role `admin`): mapping fix, community product
   mint / promote / delete, unmatched and community worklists,
   promote-candidate review and dismiss, immediate refresh trigger.
@@ -56,7 +62,8 @@ graph LR
     end
     bff -- "JWT (user + admin routes)" --> svc
     coll -- "JWT (prices, resolve)" --> svc
-    cron -- "X-Internal-Token" --> svc
+    cron -.->|"exchange for a service token"| auth
+    cron -- "JWT (service token)" --> svc
     svc -- "TLS + SCRAM" --> mongo[("enrichment-mongo :27017")]
     svc -- "TLS, fail-open cache" --> valkey[("enrichment-valkey :6379")]
     svc -- "JWKS fetch" --> auth["auth :8080"]
@@ -74,18 +81,24 @@ gateway (8090) publishes only the bff and never routes here. The
 datastore policies admit only the enrichment pod plus the vg-platform
 Prometheus (exporter sidecars on 9216 mongo, 9121 valkey).
 
-The nightly walk is the one flow where the HTTP answer and the work
-are decoupled, which trips people up during triage:
+The catalog refresh is the one flow where the HTTP answer and the work
+are decoupled, which trips people up during triage. The CronJob is an
+exchange-then-trigger: it authenticates once with auth's static
+internal secret, then presents the minted service token to enrichment
+like any other Bearer caller:
 
 ```mermaid
 sequenceDiagram
     participant J as refresh Job (curl)
+    participant A as auth
     participant E as enrichment
     participant P as PriceCharting
     participant M as enrichment-mongo
     participant V as enrichment-valkey
-    J->>E: POST /internal/refresh (X-Internal-Token)
-    E-->>J: 202 started (walk detaches, 30m budget)
+    J->>A: POST /internal/service-token (X-Internal-Token)
+    A-->>J: 200 service JWT (900s, token_use=service)
+    J->>E: POST /internal/refresh (Bearer service JWT)
+    E-->>J: 202 started (refresh detaches, 30m budget)
     Note over J: Job success means "trigger accepted", nothing more
     E->>M: ListPriced
     loop every mapped product
@@ -93,8 +106,8 @@ sequenceDiagram
         E->>M: update current + append snapshot
         E->>V: invalidate product key
     end
-    Note over E: then re-match (max 50), reprojection, candidate sweep
-    E->>E: log "refresh walk finished" walked/updated/failures
+    Note over E: then reprojection, candidate sweep
+    E->>E: log "price refresh finished" processed/updated/failures
 ```
 
 ## Running it
@@ -128,9 +141,13 @@ Health endpoints, outside JWT auth:
   hard dependency; Valkey is deliberately absent because every cache
   call fails open. A Mongo outage therefore takes the pod out of
   Service endpoints after the probe's failure threshold.
-- `POST /internal/refresh` is JWT-exempt but not unauthenticated: it
-  checks `X-Internal-Token` against `INTERNAL_REFRESH_SECRETS` in
-  constant time, with the NetworkPolicy as the outer layer.
+
+`POST /internal/refresh` sits behind the same blanket JWT middleware
+as every other route (no more standing shared secret at this service):
+its own `requireService` check then requires the claim
+`token_use=service`, so a plain user's own access token is forbidden
+and only a service token minted by auth's `/internal/service-token`
+passes. The NetworkPolicy stays the outer layer.
 
 Migrate mode: `enrichment migrate` loads the full config, runs the
 embedded migrations (golang-migrate, mongodb driver, JSON arrays of
@@ -161,7 +178,6 @@ ExternalSecret `enrichment-secrets` (refreshInterval 1m) -> pod env.
 | `VALKEY_CA_FILE`              | `/etc/vg/valkey-ca/ca.crt` when `valkey.enabled`; config refuses a `rediss://` URL without it                                                                                   |
 | `JWKS_URL`                    | `http://auth:8080/.well-known/jwks.json`                                                                                                                                        |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | `vgkeep-auth` / `vgkeep`                                                                                                                                                        |
-| `INTERNAL_REFRESH_SECRETS`    | CSV composed from secret keys `enrichment/internal-refresh-token` (+ `-previous` when `refresh.previousTokenEnabled`); .env `ENRICHMENT_INTERNAL_REFRESH_TOKEN` (+ `_PREVIOUS`) |
 | `IGDB_MODE`                   | `stub` (default) or `real`; real requires `IGDB_CLIENT_ID` + `IGDB_CLIENT_SECRET` from secret keys                                                                              |
 | `PRICECHARTING_MODE`          | `stub` or `real`; real requires `PRICECHARTING_API_KEY`                                                                                                                         |
 | `FX_MODE`                     | chart default `real` (frankfurter.dev is credential-less); code default `stub`                                                                                                  |
@@ -176,10 +192,12 @@ credential-less checkout runs the whole feature set deterministically.
 Tilt flips `igdb.mode` / `pricecharting.mode` to real only when the
 full credential set is present in .env; flipping by hand on a partial
 set points the ExternalSecret at store keys that were never published
-and wedges the secret sync. Config validation also refuses: one of
-`MONGO_USERNAME`/`MONGO_PASSWORD` without the other, real modes
-without their credentials, and empty entries in
-`INTERNAL_REFRESH_SECRETS`.
+and wedges the secret sync. Config validation also refuses one of
+`MONGO_USERNAME`/`MONGO_PASSWORD` without the other, and real modes
+without their credentials. This service holds no shared secret of its
+own anymore: every caller, human or machine, authenticates with a JWT
+(see auth.md for `INTERNAL_SERVICE_SECRETS`, the CronJob-facing
+secret's new home).
 
 ## Datastores
 
@@ -193,8 +211,8 @@ region, edition, variant), plus a plain `products_name` index for the
 degraded local search. Community products (`origin: "community"`) sit
 outside both identity indexes on purpose: their identity is the
 curated name, and the promote flow re-enters them through the index.
-`igdb_raw` is the shared raw-payload cache (recommendations and the
-reprojection walk read it; every provider fetch populates it
+`igdb_raw` is the shared raw-payload cache (recommendations and
+reprojection read it; every provider fetch populates it
 backwards). `platforms` caches the IGDB platform catalog wholesale.
 `price_snapshots` is append-only, keyed (product_id, captured_at);
 snapshots survive product mapping changes by design. Five migrations
@@ -258,14 +276,14 @@ Domain instruments, meter
 `Handlers` fields with best-effort registration (the bff
 `vg.bff.cache.fail_open` pattern):
 
-| Metric                                  | Instrument       | Unit        | Labels (bounded)                                                                                                                                                                                                                                  | Prometheus name                                                  | Question it answers                                                                                                                                                            |
-| --------------------------------------- | ---------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `vg.enrichment.cache.fail_open`         | Int64Counter     | `{event}`   | `op`: search_get, search_decode, search_put, product_get, product_put, platforms_get, platforms_put, community_search, refresh_invalidate, rematch_invalidate, reprojection_invalidate, mapping_invalidate, promote_invalidate, delete_invalidate | `vg_enrichment_cache_fail_open_total`                            | is Valkey failing and which operation absorbs it                                                                                                                               |
-| `vg.enrichment.search.requests`         | Int64Counter     | `{request}` | `kind`: game, hardware, pc_listing; `source`: cache, provider, degraded                                                                                                                                                                           | `vg_enrichment_search_requests_total`                            | search cache effectiveness per kind, and the user-visible degraded share (provider outage)                                                                                     |
-| `vg.enrichment.search.localization_leg` | Int64Counter     | `{leg}`     | `outcome`: merged, empty, error                                                                                                                                                                                                                   | `vg_enrichment_search_localization_leg_total`                    | is the non-Latin supplementary search leg running, and how often it merges extra results, finds nothing extra, or fails (error still serves primary results - never an outage) |
-| `vg.enrichment.match.outcomes`          | Int64Counter     | `{attempt}` | `source`: resolve, rematch; `outcome`: matched, below_threshold, provider_down                                                                                                                                                                    | `vg_enrichment_match_outcomes_total`                             | is the auto-matcher landing matches at its usual rate, or regressing into unmatched members                                                                                    |
-| `vg.enrichment.refresh.items`           | Int64Counter     | `{item}`    | `step`: prices, rematch, reprojection, sweep; `outcome`: ok, failed, skipped, flagged                                                                                                                                                             | `vg_enrichment_refresh_items_total`                              | how much of the catalog the nightly walk processed and what share failed                                                                                                       |
-| `vg.enrichment.refresh.walk.duration`   | Float64Histogram | `s`         | `step`: prices, rematch, reprojection, sweep                                                                                                                                                                                                      | `vg_enrichment_refresh_walk_duration_seconds_{count,sum,bucket}` | did each walk step run today, and how close the walk is to its 30m budget                                                                                                      |
+| Metric                                  | Instrument       | Unit        | Labels (bounded)                                                                                                                                                                                                              | Prometheus name                                                  | Question it answers                                                                                                                                                            |
+| --------------------------------------- | ---------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `vg.enrichment.cache.fail_open`         | Int64Counter     | `{event}`   | `op`: search_get, search_decode, search_put, product_get, product_put, platforms_get, platforms_put, community_search, refresh_invalidate, reprojection_invalidate, mapping_invalidate, promote_invalidate, delete_invalidate | `vg_enrichment_cache_fail_open_total`                            | is Valkey failing and which operation absorbs it                                                                                                                               |
+| `vg.enrichment.search.requests`         | Int64Counter     | `{request}` | `kind`: game, hardware, pc_listing; `source`: cache, provider, degraded                                                                                                                                                       | `vg_enrichment_search_requests_total`                            | search cache effectiveness per kind, and the user-visible degraded share (provider outage)                                                                                     |
+| `vg.enrichment.search.localization_leg` | Int64Counter     | `{leg}`     | `outcome`: merged, empty, error                                                                                                                                                                                               | `vg_enrichment_search_localization_leg_total`                    | is the non-Latin supplementary search leg running, and how often it merges extra results, finds nothing extra, or fails (error still serves primary results - never an outage) |
+| `vg.enrichment.match.outcomes`          | Int64Counter     | `{attempt}` | `source`: resolve; `outcome`: matched, below_threshold, provider_down; `region`: ntsc_u, ntsc_j, pal, region_free, none                                                                                                       | `vg_enrichment_match_outcomes_total`                             | is the auto-matcher landing matches at its usual rate, or regressing into unmatched members, broken out by region                                                              |
+| `vg.enrichment.refresh.items`           | Int64Counter     | `{item}`    | `step`: prices, reprojection, sweep; `outcome`: ok, failed, skipped, flagged                                                                                                                                                  | `vg_enrichment_refresh_items_total`                              | how much of the catalog the catalog refresh processed and what share failed                                                                                                    |
+| `vg.enrichment.refresh.step_duration`   | Float64Histogram | `s`         | `step`: prices, reprojection, sweep                                                                                                                                                                                           | `vg_enrichment_refresh_step_duration_seconds_{count,sum,bucket}` | did each catalog refresh step run today, and how close the refresh is to its 30m budget                                                                                        |
 
 Emission sites, all in `internal/server/handlers.go`:
 
@@ -289,34 +307,33 @@ Emission sites, all in `internal/server/handlers.go`:
   never a hard dependency, so this counter is a feature-health
   signal, not an availability one.
 - `match.outcomes`: in `autoMatchGame`, with the caller passing the
-  source (`resolveGame` no-pick path = resolve, `runRematch` =
-  rematch). provider_down maps to the existing "auto-match skipped"
-  warn, below_threshold to the existing info line.
+  source (`resolveGame` no-pick path = resolve - the only calling flow
+  today) and the clamped entry region as the `region` label. provider_down
+  maps to the existing "auto-match skipped" warn, below_threshold to
+  the existing info line.
 - `refresh.items`: incremented alongside the per-item tallies each
-  walk loop already keeps. Per step, `outcome` means: prices ok =
+  step's loop already keeps. Per step, `outcome` means: prices ok =
   price written and snapshot appended, failed = fetch/write/snapshot
-  failure; rematch ok = mapping landed, skipped = platform-less, no
-  auto-match (below threshold or provider down), identity taken or
-  raced (held products never enter the walk; the store filters them
-  out of the worklist); reprojection ok = projection rewritten,
-  skipped = diff-gate unchanged or unusable raw; sweep ok = swept
-  clean, flagged = candidates stashed, failed = provider or store
-  failure.
-- `refresh.walk.duration`: recorded once per step next to its "walk
-  finished" summary log (and on early abort, so a stopped walk still
+  failure; reprojection ok = projection rewritten, skipped = diff-gate
+  unchanged or unusable raw; sweep ok = swept clean, flagged =
+  candidates stashed, failed = provider or store failure.
+- `refresh.step_duration`: recorded once per step next to that step's
+  own completion log line ("price refresh finished" for prices,
+  "reprojection finished" for reprojection, "candidate sweep
+  complete" for sweep - and on early abort, so a stopped step still
   reports its elapsed time). Explicit bucket boundaries 1, 5, 15, 60,
   300, 900, 1800 seconds; the defaults top out at 10s and would flatten
-  every walk into one bucket.
+  every step into one bucket.
 
 Log additions (slog, JSON, trace ids attached): one new line.
 
-| Event                  | Level | Fields                        | Emission site                                                 |
-| ---------------------- | ----- | ----------------------------- | ------------------------------------------------------------- |
-| `refresh walk started` | INFO  | `trigger` = admin or internal | `startRefresh`, immediately after winning the in-flight guard |
+| Event                     | Level | Fields                        | Emission site                                                 |
+| ------------------------- | ----- | ----------------------------- | ------------------------------------------------------------- |
+| `catalog refresh started` | INFO  | `trigger` = admin or internal | `startRefresh`, immediately after winning the in-flight guard |
 
 It pairs with the existing per-step "finished" summaries: a started
 line without finished lines inside the 30m budget is the signature of
-a hung walk. Everything else the walk needs is already logged
+a hung refresh. Everything else the refresh needs is already logged
 (finished summaries with counts, stopped-early warns, per-product
 failure warns, panic containment).
 
@@ -334,6 +351,16 @@ containing "translat" so an English retranslation cannot steal the
 native-name slot). A region whose native title only shows up in
 `alternative_names` - not in `game_localizations` - needs a row in
 this table; that is the extension point for the next region.
+
+The pricing half now consumes these same bundles for a different
+purpose: `matchNamesFor` reads the `ja-JP` chain's transliteration as
+an ntsc_j resolve's primary PriceCharting query form (PriceCharting
+files JP listings in romaji), falling back to the canonical name when
+the region carries no bundle. Entries matched before this landed still
+point at their old, region-incompatible member; collection's entry
+rematch (`POST /internal/rematch-entries`, see
+[collection.md](collection.md)) is the entry-side sweep that repoints
+them.
 
 Search-result platform refs carry a separate signal, `release_regions`
 (`platformReleaseRegions`, `internal/server/handlers.go`): per-platform
@@ -389,84 +416,88 @@ Feature health:
         sum by (kind, source) (increase(vg_enrichment_search_requests_total[5m]))
 
 8. "Auto-match outcomes" - timeseries, short, legend
-   `{{source}} {{outcome}}` (rematch lands as a nightly spike; the 1h
-   window keeps it visible at day scale)
+   `{{source}}/{{outcome}}/{{region}}`
 
-        sum by (source, outcome) (increase(vg_enrichment_match_outcomes_total[1h]))
+        sum by (source, outcome, region) (increase(vg_enrichment_match_outcomes_total[1h]))
 
-9. "Localization search legs" - timeseries, short, legend
+9. "Match fallback searches" - timeseries, short, legend `{{outcome}}`
+   (only fired fallback legs count; most resolves never trip it)
+
+        sum by (outcome) (increase(vg_enrichment_match_fallback_search_total[1h]))
+
+10. "Localization search legs" - timeseries, short, legend
    `{{outcome}}` (only non-Latin queries reach this leg; `error`
    still serves primary results, so this panel is a feature-health
    signal, not an availability one)
 
         sum by (outcome) (rate(vg_enrichment_search_localization_leg_total[5m]))
 
-10. "Refresh walk items by step and outcome" - timeseries, short,
+11. "Catalog refresh items by step and outcome" - timeseries, short,
    legend `{{step}} {{outcome}}`
 
         sum by (step, outcome) (increase(vg_enrichment_refresh_items_total[1h]))
 
-11. "Refresh walk duration by step" - timeseries, s, legend `{{step}}`
-   (one walk per day: the 1h increase of the sum is the last walk's
-   elapsed seconds at the walk hour, zero elsewhere)
+12. "Catalog refresh duration by step" - timeseries, s, legend `{{step}}`
+   (one refresh per day: the 1h increase of the sum is the last refresh's
+   elapsed seconds at the refresh hour, zero elsewhere)
 
-        sum by (step) (increase(vg_enrichment_refresh_walk_duration_seconds_sum[1h]))
+        sum by (step) (increase(vg_enrichment_refresh_step_duration_seconds_sum[1h]))
 
-12. "Valkey fail-open events" - timeseries, short, legend `{{op}}`
+13. "Valkey fail-open events" - timeseries, short, legend `{{op}}`
 
         sum by (op) (increase(vg_enrichment_cache_fail_open_total[5m]))
 
 Datastores and pools:
 
-13. "Valkey client pool connections" - timeseries, short, legends
+14. "Valkey client pool connections" - timeseries, short, legends
     `open` / `idle`
 
         vg_valkeykit_pool_connections{service_name="enrichment"}
         vg_valkeykit_pool_connections_idle{service_name="enrichment"}
 
-14. "Valkey pool reuse ratio" - timeseries, percentunit
+15. "Valkey pool reuse ratio" - timeseries, percentunit
 
         rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) / (rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) + rate(vg_valkeykit_pool_misses_total{service_name="enrichment"}[5m]))
 
-15. "Valkey pool timeouts" - timeseries, short (flat zero is the only
+16. "Valkey pool timeouts" - timeseries, short (flat zero is the only
     healthy shape)
 
         increase(vg_valkeykit_pool_timeouts_total{service_name="enrichment"}[5m])
 
-16. "Mongo up" - stat, short; state thresholds: red below 1, green at
+17. "Mongo up" - stat, short; state thresholds: red below 1, green at
     1 and above
 
         mongodb_up{service="enrichment-mongo"}
 
-17. "Mongo operations" - timeseries, ops, legend `{{legacy_op_type}}`
+18. "Mongo operations" - timeseries, ops, legend `{{legacy_op_type}}`
 
         sum by (legacy_op_type) (rate(mongodb_ss_opcounters{service="enrichment-mongo"}[$__rate_interval]))
 
-18. "Valkey server memory" - timeseries, bytes
+19. "Valkey server memory" - timeseries, bytes
 
         redis_memory_used_bytes{service="enrichment-valkey"}
 
-19. "Valkey keyspace hit ratio" - timeseries, percentunit
+20. "Valkey keyspace hit ratio" - timeseries, percentunit
 
         rate(redis_keyspace_hits_total{service="enrichment-valkey"}[5m]) / (rate(redis_keyspace_hits_total{service="enrichment-valkey"}[5m]) + rate(redis_keyspace_misses_total{service="enrichment-valkey"}[5m]))
 
 Pods and logs:
 
-20. "CPU by pod" - timeseries, short, legend `{{pod}}` (covers the
+21. "CPU by pod" - timeseries, short, legend `{{pod}}` (covers the
     app, mongo, valkey and refresh job pods)
 
         sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"enrichment.*", container!=""}[$__rate_interval]))
 
-21. "Working-set memory by pod" - timeseries, bytes, legend `{{pod}}`
+22. "Working-set memory by pod" - timeseries, bytes, legend `{{pod}}`
 
         sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"enrichment.*", container!=""})
 
-22. "Restarts (15m windows) by pod" - timeseries, short, legend
+23. "Restarts (15m windows) by pod" - timeseries, short, legend
     `{{pod}}`
 
         sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"enrichment.*"}[15m]))
 
-23. "Recent error logs" - logs panel, Loki datasource
+24. "Recent error logs" - logs panel, Loki datasource
 
         {service_name="enrichment"} | severity_text="ERROR"
 
@@ -534,34 +565,48 @@ not happen at runtime (stubs are loaded at startup).
 Knock-on effects while a provider is down: resolves that need it
 answer 502 `upstream_unavailable`, no-pick game resolves land
 unmatched (outcome `provider_down` climbing on "Auto-match
-outcomes"), and the nightly walk logs per-product fetch failures. All
-of it self-heals: the re-match walk upgrades unmatched members on
-later nights.
+outcomes"), and the catalog refresh logs per-product fetch failures. There
+is no automated re-match sweep behind it: an unmatched member heals on
+the next resolve for its (game, platform, region) triple, or via
+collection's entry rematch for entries already pointing at it (see
+[collection.md](collection.md)).
 
-### 4. Nightly walk missing
+### 4. Catalog refresh missing
 
-The walk is silent-failure-prone: the CronJob can fail without anyone
-noticing, and prices just quietly age (visible to users as stale
-`pricecharting.as_of` stamps). Confirm: "Refresh walk items by step
-and outcome" and "Refresh walk duration by step" flat for more than
-24h, or
+The catalog refresh is silent-failure-prone: the CronJob can fail
+without anyone noticing, and prices just quietly age (visible to users
+as stale `pricecharting.as_of` stamps). Confirm: "Catalog refresh
+items by step and outcome" and "Catalog refresh duration by step" flat
+for more than 24h, or
 
-    sum(increase(vg_enrichment_refresh_walk_duration_seconds_count{step="prices"}[26h]))
+    sum(increase(vg_enrichment_refresh_step_duration_seconds_count{step="prices"}[26h]))
 
 reads 0. The vg-enrichment-refresh-stalled rule fires on the same
-expression, and treats an absent series as firing too (a walk that
+expression, and treats an absent series as firing too (a refresh that
 never ran is the failure case), so a brand-new stack alerts until its
-first walk completes at 06:00 or by manual trigger. Then:
+first refresh completes at 06:00 or by manual trigger. Then:
 
 1. `kubectl -n vgkeep get jobs -l app.kubernetes.io/name=enrichment-refresh`
    and `kubectl -n vgkeep logs job/<latest>` for the curl output.
-2. curl exit 22 reporting error 401: token drift between the CronJob
-   secret and `INTERNAL_REFRESH_SECRETS` - mid-rotation state left
-   half-finished. Re-check the rotation steps under Admin levers.
-3. 409 `refresh_in_progress`: the in-process guard believes a walk is
-   running. Walks check their context between products and the budget
-   cancels it at 30m, so a 409 persisting well past 30m means the walk
-   goroutine is stuck in a call that ignores its context;
+2. curl exit 22 on the FIRST hop (auth): the CronJob's internal secret
+   was rejected by `POST /internal/service-token` (401
+   `invalid_internal_token`) - token drift against
+   `INTERNAL_SERVICE_SECRETS`, mid-rotation state left half-finished.
+   Re-check the rotation steps under auth.md's Admin levers. curl exit
+   22 on the SECOND hop (enrichment) with a 403 would mean the minted
+   token itself is wrong-shaped (unexpected - the exchange endpoint
+   always mints token_use=service); a 401 there means the hop DID run
+   but with a missing or garbled bearer - the sed extraction drifting
+   against the auth response shape, or the short-lived token expiring
+   between the mint and this call. No output from the second hop at
+   all means it never ran: `-f` makes the first curl exit nonzero on
+   its own failure without printing a body, and `&&` short-circuits
+   the rest of the line before the second curl fires - check exit
+   codes per hop in the job log.
+3. 409 `refresh_in_progress`: the in-process guard believes a refresh
+   is running. The refresh checks its context between products and the
+   budget cancels it at 30m, so a 409 persisting well past 30m means
+   the refresh goroutine is stuck in a call that ignores its context;
    `kubectl -n vgkeep rollout restart deployment/enrichment`
    clears it (the guard dies with the process).
 4. No job at all: CronJob suspended or schedule drift;
@@ -570,22 +615,22 @@ first walk completes at 06:00 or by manual trigger. Then:
 Once fixed, trigger immediately rather than waiting for 06:00 (see
 Admin levers).
 
-### 5. Walk failing or stopping early
+### 5. Catalog refresh failing or stopping early
 
-"Refresh walk items by step and outcome" shows a `failed` share, or
+"Catalog refresh items by step and outcome" shows a `failed` share, or
 the stopped-early warn appears:
 
-    {service_name="enrichment"} |= "refresh walk stopped early: context done"
+    {service_name="enrichment"} |= "price refresh stopped early: context done"
 
-A failed share tracks provider or Mongo trouble mid-walk; individual
-products are skipped, the walk finishes what it can, and the next
+A failed share tracks provider or Mongo trouble mid-refresh; individual
+products are skipped, the refresh finishes what it can, and the next
 night retries, so occasional failures are self-healing noise. A
 stopped-early warn means the 30m budget expired: PriceCharting's 1
-req/s ceiling caps a full price walk at roughly 1800 mapped products
+req/s ceiling caps a full price refresh at roughly 1800 mapped products
 per run, so a catalog past that size stops early every night and
-starves the later steps (re-match, reprojection, sweep run on what
-remains). That is a capacity signal, not an incident: raise the walk
-budget or split the schedule in the service code.
+starves the later steps (reprojection, sweep run on what remains).
+That is a capacity signal, not an incident: raise the refresh budget or
+split the schedule in the service code.
 
 ### 6. Valkey failing open
 
@@ -610,9 +655,12 @@ keys rotated unexpectedly). "Errors by route and status" shows 401
 across routes simultaneously, which distinguishes this from a single
 misbehaving caller. Check the auth pod, then
 `curl -s http://localhost:8082/.well-known/jwks.json` via the auth
-port-forward. `/internal/refresh` is
-unaffected (token auth), so the nightly walk keeps running through an
-auth outage.
+port-forward. Unlike before the service-token migration,
+`/internal/refresh` is NOT immune to an auth outage anymore: the
+CronJob's first hop mints its service token from auth, so a down auth
+service stalls the catalog refresh too (curl fails at the exchange
+step, never reaching enrichment) - one more reason failure mode 4's
+"no job at all" / curl-exit-22 triage starts here.
 
 ### 8. identity_taken on admin writes
 
@@ -626,32 +674,33 @@ action.
 
 ## Admin levers
 
-All idempotent and safe to re-run; the walk triggers answer 409 while
-one runs. Admin JWT: log in as an admin user via the SPA, or in dev
+All idempotent and safe to re-run; the refresh triggers answer 409
+while one runs. Admin JWT: log in as an admin user via the SPA, or in dev
 `task grant-fixture-admin` grants the dev fixture the role, and the
 Bruno flows (`bruno/enrichment/admin-refresh.bru`, `admin-remap.bru`)
 script the calls.
 
-Run the nightly walk now, CronJob path (no JWT, in-cluster):
+Run the catalog refresh now, CronJob path (exchanges its own service
+token, in-cluster):
 
     kubectl -n vgkeep create job --from=cronjob/enrichment-refresh refresh-now
 
-Same walk via the admin API (port-forward 8084):
+Same refresh via the admin API (port-forward 8084):
 
     curl -X POST -H "Authorization: Bearer $ADMIN_JWT" http://localhost:8084/admin/refresh
 
-Both run all four steps: prices, re-match, reprojection, candidate
-sweep. The reprojection step is the catalog's self-healing backfill:
+Both run all three steps: prices, reprojection, candidate sweep. The
+reprojection step is the catalog's self-healing backfill:
 any projection-logic change redeploys through it with zero provider
-calls in steady state, so "re-run the walk" is the answer to most
+calls in steady state, so "re-run the refresh" is the answer to most
 catalog-shape drift. A raw whose `fields_version` trails the running
 build, or that predates the field entirely, is refetched once as
 part of the same sweep - a set that drains to zero as the catalog
-heals, so shipping a new IGDB field costs one walk's worth of
+heals, so shipping a new IGDB field costs one refresh's worth of
 provider calls and nothing after. `gamePayloadFor` runs the same
 check on resolve and promote (the paths that build a fresh IGDB
 projection), so a single product can heal ahead of its next nightly
-walk too; the plain `GET /products/{id}` staleness refetch is a
+refresh too; the plain `GET /products/{id}` staleness refetch is a
 separate, age-only mechanism (`IGDB_REFRESH_AFTER`) that does not
 look at `fields_version`.
 
@@ -677,14 +726,10 @@ Worklists and community moderation, same auth:
 - `DELETE /admin/products/{id}` - remove unmatched residue; matched
   products refuse with 409 until cleared.
 
-Internal token rotation, zero downtime: publish the new value under
-secret key `enrichment/internal-refresh-token` and the old one under
-`enrichment/internal-refresh-token-previous` (dev:
-`ENRICHMENT_INTERNAL_REFRESH_TOKEN` / `..._PREVIOUS` in .env), set
-`refresh.previousTokenEnabled=true` (Tilt flips it automatically when
-the `_PREVIOUS` var is present); the service then accepts both while
-the CronJob already presents the new one. After the next green run,
-drop the previous key and flip the flag back off.
+Internal token rotation no longer happens here: the CronJob's shared
+secret lives entirely at auth's `/internal/service-token` now (see
+[auth.md](auth.md)'s Admin levers for the A/B rotation procedure).
+This service holds no internal secret of its own to rotate.
 
 ## Capacity and rollout
 
@@ -709,16 +754,16 @@ maxUnavailable 0 at one replica, so the new pod starts, runs the
 migrate init container, and must pass readyz (Mongo ping) before the
 old pod terminates. Traffic never drops as long as the new pod goes
 ready. Two things do not survive the swap: the Valkey-independent
-in-process refresh guard, and any detached walk mid-flight - the walk
-dies unlogged with the old process, so re-trigger the walk after
-rolling during one (nothing corrupts; the walk is per-product
+in-process refresh guard, and any detached refresh mid-flight - the
+refresh dies unlogged with the old process, so re-trigger the refresh
+after rolling during one (nothing corrupts; the refresh is per-product
 idempotent and snapshots are append-only, at worst a same-day
 duplicate snapshot per product).
 
 CronJob shape: schedule `0 6 * * *`, concurrencyPolicy Forbid (the
 service's 409 guard is the inner layer), startingDeadlineSeconds 3600,
 backoffLimit 2, activeDeadlineSeconds 900 for the curl pod itself
-(`--max-time 60`; the walk it triggers is detached and budgeted at
+(`--max-time 60`; the refresh it triggers is detached and budgeted at
 30m inside the service).
 
 Datastore restarts: Mongo restarting takes enrichment unready until

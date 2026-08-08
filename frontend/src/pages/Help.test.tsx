@@ -34,6 +34,7 @@ it('renders the page title and all anchored topics', () => {
     ['Who can see your shelves', 'visibility'],
     ['Currency display', 'currencies'],
     ['Adding games and hardware', 'adding'],
+    ['Hardware under its native title', 'native-titles'],
     ['Where market prices come from', 'prices'],
   ]
   for (const [name, id] of topics) {

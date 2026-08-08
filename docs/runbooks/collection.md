@@ -51,18 +51,23 @@ graph LR
     collection -->|"TLS verify-full :5432"| pg[(collection-pg)]
     collection -->|"rediss :6379"| valkey[(collection-valkey)]
     social[social] -->|"bearer: shelf + owner resolves"| collection
+    cron["collection-rematch CronJob 07:00"] -.->|"exchange for a service token"| auth
+    cron -- "JWT (service token)" --> collection
     eso[ExternalSecret via ClusterSecretStore vg-fake] -->|"collection/pg-password"| collection
     cm[cert-manager] -->|"collection-pg-tls, collection-valkey-tls"| pg
     cm --> valkey
 ```
 
-The bff and social are the only callers; NetworkPolicy
-`collection-from-callers-only` admits port 8080 ingress from bff and
-social pods only, and the datastore policies admit only collection pods plus the
-Prometheus exporter ports (9187, 9121) from vg-platform. There are no
-cron workloads: everything the service does is request-driven.
-Enrichment hops always relay the calling user's own bearer; there is
-no service credential.
+The bff, social, and the rematch CronJob are the callers; NetworkPolicy
+`collection-from-callers-only` admits port 8080 ingress from bff,
+social, and collection-rematch pods, and the datastore policies admit
+only collection pods plus the Prometheus exporter ports (9187, 9121)
+from vg-platform. The one cron workload, collection-rematch
+(`0 7 * * *`, an hour after enrichment's catalog refresh), exchanges
+the shared internal secret for a service JWT at auth and presents a
+normal bearer to `/internal/rematch-entries`; every other endpoint is
+request-driven. Enrichment hops always relay the calling user's own
+bearer; there is no service credential.
 
 The dashboard read is the hot path with the most moving parts:
 
@@ -231,6 +236,9 @@ stops the service):
 | vg.collection.cache.fail_open     | Int64Counter         | {event}      | op = dashboard_get, dashboard_put, dashboard_invalidate, value_history_get, value_history_put | vg_collection_cache_fail_open_total    | Is Valkey failing from this service's seat? (mirror of the bff's fail-open counter)                                                                                                                                                                   |
 | vg.collection.submissions.events  | Int64Counter         | {event}      | event = created, cancelled, approved, rejected                                                | vg_collection_submissions_events_total | Is the community catalog lane alive: are submissions arriving, and how do verdicts split?                                                                                                                                                             |
 | vg.collection.submissions.pending | Int64ObservableGauge | {submission} | none                                                                                          | vg_collection_submissions_pending      | Is the admin review queue draining or backing up?                                                                                                                                                                                                     |
+| vg.collection.rematch.duration    | Float64Histogram     | s            | none                                                                                           | vg_collection_rematch_duration_seconds_{count,sum,bucket} | How long one entry-rematch run takes; a 409-refused overlap never records                                                                                                                                                                             |
+| vg.collection.rematch.triples     | Int64Counter         | {triple}     | outcome = ok, failed                                                                           | vg_collection_rematch_triples_total    | Is the entry rematch's per-triple resolve succeeding: ok covers nothing-pending or a successful resolve (a per-entry repoint failure logs and continues rather than counting here - see the audit log), failed covers a member-fetch or resolve error |
+| vg.collection.rematch.repoints    | Int64Counter         | {entry}      | none                                                                                           | vg_collection_rematch_repoints_total   | How many entries the entry rematch actually moved onto a region-correct sibling this run                                                                                                                                                              |
 
 Emission sites:
 
@@ -253,6 +261,15 @@ Emission sites:
   callback counts pending rows across all users via the store's
   CountAllPendingSubmissions (the `(status, created_at)` index makes
   it an index scan).
+- rematch.duration: recorded once per CAS-won InternalRematchEntries
+  run (deferred, so it fires however the run ends); a 409-refused
+  concurrent trigger never reaches the CAS win and so never records.
+- rematch.triples: once per (game, platform, region) triple - ok when
+  nothing was pending or the triple's resolve succeeded (a per-entry
+  repoint failure logs and continues rather than flipping this to
+  failed - the audit log is the honest signal for a partial repoint),
+  failed on a member-fetch or resolve error.
+- rematch.repoints: once per entry RepointEntry actually persists.
 
 ### Logs
 
@@ -281,6 +298,13 @@ Domain lifecycle and outcome events (same pipeline and labels):
 | submission verdict           | INFO  | submission_id, entry_id, action, product_id (when resolved) | SubmitVerdict reject arm and adoptAndApprove; the admin audit trail                                                                                                                                                                                            |
 | resnapshot complete          | INFO  | products_seen, products_failed, entries_updated             | InternalResnapshot, before writing the response; makes the lever's outcome durable in Loki                                                                                                                                                                     |
 | normalize-platforms complete | INFO  | scanned, normalized, skipped                                | InternalNormalizePlatforms, same reason                                                                                                                                                                                                                        |
+| entry rematch started        | INFO  | none                                                         | InternalRematchEntries, immediately after winning the in-flight guard, before detaching (mirrors the catalog refresh's started line, enrichment.md)                                                                                                            |
+| rematch-entries complete     | INFO  | triples_seen, triples_failed, entries_repointed              | runRematch, at the end of the detached sweep - no longer "before the response": the trigger already answered 202 by the time this fires                                                                                                                       |
+
+"entry rematch started" pairs with "rematch-entries complete": a
+started line with no completion inside the run's budget is the
+signature of a hung sweep, the same read as the catalog refresh's own
+started/finished pair.
 
 ## Dashboard: vg-collection
 
@@ -406,6 +430,14 @@ those statefulset pods are part of this service's blast radius):
 
         {service_name="collection"} | severity_text=~"ERROR|WARN"
 
+Row 5 - the entry rematch:
+
+22. "Entry rematch" - timeseries, short, legends `triples/{{outcome}}`
+    and `repoints`
+
+        sum by (outcome) (increase(vg_collection_rematch_triples_total[1h]))
+        increase(vg_collection_rematch_repoints_total[1h])
+
 ## Failure modes and triage
 
 ### 1. Enrichment unreachable
@@ -527,12 +559,13 @@ before blaming the limit.
 
 ## Admin levers
 
-Both levers are guarded re-runnable endpoints, hand-routed outside the
-OpenAPI contract and not relayed by the bff or gateway: call the
-service directly (dev: the Tilt port-forward on 8085). Both are
-idempotent; re-running after a partial failure is the designed retry.
+All three levers below are contract-described but not relayed by the
+bff or gateway: call the service directly (dev: the Tilt port-forward
+on 8085). All are idempotent; re-running after a partial failure is
+the designed retry.
 
-Resnapshot (JWT required, any user): recomputes every game-backed
+Resnapshot (admin role or a service token; tightened from any valid
+JWT): recomputes every game-backed
 entry's snapshotted fields from its product's current data - the
 release date (region-chained per `regionChains`: ntsc_u prefers
 north_america, ntsc_j prefers japan, pal prefers europe, each falling
@@ -541,12 +574,13 @@ presentation trio `localized_name` / `localized_name_translit` /
 `localized_cover_url` (region-chained per `localizationChains`: ntsc_j
 reads the ja-JP bundle, pal reads EU; ntsc_u and region_free chain to
 nothing, since the canonical snapshot already is their presentation).
-Re-run it after enrichment's catalog has actually healed - a nightly
-walk, or an immediate `/admin/refresh` trigger there - so the rollout
-order for a catalog-shape change is deploy, then enrichment's walk (or
-admin refresh), then this lever; that sequence is exactly what lights
-up pre-existing ntsc_j entries with their localized trio once their
-product carries it. Bruno: `bruno/collection/resnapshot.bru`, or:
+Re-run it after enrichment's catalog has actually healed - the nightly
+catalog refresh, or an immediate `/admin/refresh` trigger there - so
+the rollout order for a catalog-shape change is deploy, then the
+catalog refresh (nightly or admin-triggered), then this lever; that
+sequence is exactly what lights up pre-existing ntsc_j entries with
+their localized trio once their product carries it. Bruno:
+`bruno/collection/resnapshot.bru`, or:
 
     TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
       -H 'Content-Type: application/json' -d '{"user":"admin"}' \
@@ -556,6 +590,52 @@ product carries it. Bruno: `bruno/collection/resnapshot.bru`, or:
 
 Answers `{"products_seen":N,"products_failed":N,"entries_updated":N}`;
 a second run reports entries_updated 0.
+
+Entry rematch (`POST /internal/rematch-entries`; the gateway never
+routes it): sweeps auto-priced, game-backed entries and repoints each
+one still sitting on a region-incompatible member onto its
+region-correct sibling. Entries group by (game, platform, region) -
+one enrichment resolve per triple, not per entry - and a per-entry
+console-class guard (the same check the region-edit repoint uses)
+skips anything already on a matching console axis, so a manual
+in-region pick survives a run untouched. A provenance fence backs that
+guard: an entry whose match the user set by hand is never swept,
+regardless of region. Same admin-or-service guard as resnapshot (a plain user's bearer
+answers 403), and single-flight like the catalog refresh: a second
+concurrent trigger answers 409 `rematch_in_progress` rather than
+racing the run in flight; answers 202 and detaches the sweep,
+mirroring the catalog refresh - a day-one backfill resolves at the
+provider's polite request rate, which would otherwise outlive the
+write timeout on exactly the runs that matter. Each successful
+repoint logs `entry`, `from`, `to`, `region` (`rematch-entries:
+repointed`) - the audit trail for reviewing or hand-reversing a run -
+and the run's own completion logs `rematch-entries complete` with the
+three counts - the trigger's own response now answers only
+`{"status":"started"}`, so the completion log and the metrics below
+are where the counts land. The same three counts also flow into
+`vg.collection.rematch.duration` (seconds per run), `.triples`
+(`outcome` ok|failed), and `.repoints` - the "Entry rematch" dashboard
+panel. Idempotent: a second run repoints 0 once nothing is left to
+repoint. Bruno: `bruno/collection/rematch-entries.bru` (grant the
+fixture admin first, `task grant-fixture-admin`), or:
+
+    TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
+      -H 'Content-Type: application/json' -d '{"user":"admin"}' \
+      | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+    curl -s -X POST http://localhost:8085/internal/rematch-entries \
+      -H "Authorization: Bearer $TOKEN"
+
+Scheduled nightly at 07:00, an hour after enrichment's 06:00 catalog
+refresh (CronJob, chart-configurable), and operator-runnable at any
+other time with an admin bearer; an overlapping trigger answers 409
+instead of racing a run already in flight. The two jobs are disjoint
+by construction: the catalog refresh maintains member data (prices,
+projections, candidates) and never matches, while the entry rematch
+maintains entry pointers and never prices - which is also why it runs
+second. A region-correct member the rematch has to mint (a JP or PAL
+sibling that did not exist yet) starts from a day-zero snapshot taken
+at resolve time, under PriceCharting's request-rate limit; the catalog
+refresh prices it onward from its next run.
 
 Normalize platforms (role admin): canonicalizes free-text custom-entry
 platforms against the enrichment platform catalog (exact-or-alias
