@@ -125,6 +125,7 @@ type CollectionAPI interface {
 	AckSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
 	ListSubmissions(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error)
 	SubmitVerdict(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
+	TriggerRematch(ctx context.Context, bearer string) (collectionclient.Result, error)
 	SharedShelf(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error)
 	SharedShelfBySlug(ctx context.Context, bearer string, ownerID uuid.UUID, slug string) (collectionapi.SharedShelf, error)
 	SharedShelfEntries(ctx context.Context, bearer string, id uuid.UUID, limit, offset *int) (collectionclient.Result, error)

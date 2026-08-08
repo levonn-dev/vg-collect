@@ -143,6 +143,10 @@ msgstr "プロバイダー商品がすでにその識別情報を持っている
 msgid "A refresh is already running."
 msgstr "更新はすでに実行中です。"
 
+#: src/components/admin/RematchTrigger.tsx
+msgid "A rematch is already running."
+msgstr "再照合はすでに実行中です。"
+
 #: src/components/Footer.tsx
 msgid "About"
 msgstr "このサイトについて"
@@ -760,6 +764,10 @@ msgstr "アイテムの詳細"
 #: src/components/entry/EntryForm.tsx
 msgid "Entry editor"
 msgstr "アイテムの編集"
+
+#: src/components/admin/RematchTrigger.tsx
+msgid "Entry rematch"
+msgstr "エントリー再照合"
 
 #: src/components/admin/ReviewPanel.tsx
 msgid "exact match"
@@ -1659,6 +1667,10 @@ msgstr "発売日"
 msgid "Released on {groupPlatformName}"
 msgstr "{groupPlatformName}で発売"
 
+#: src/components/admin/RematchTrigger.tsx
+msgid "Rematch started."
+msgstr "再照合を開始しました。"
+
 #: src/components/social/CommentList.tsx
 msgid "Remove"
 msgstr "削除"
@@ -2076,6 +2088,10 @@ msgstr "プロバイダーが現在利用できません。もう一度お試し
 msgid "The queue could not be loaded."
 msgstr "キューを読み込めませんでした。"
 
+#: src/components/admin/RematchTrigger.tsx
+msgid "The rematch trigger failed - try again."
+msgstr "再照合を開始できませんでした。もう一度お試しください。"
+
 #: src/components/collection/ViewPicker.tsx
 msgid "The shelf operation failed."
 msgstr "棚の操作を完了できませんでした。"
@@ -2159,6 +2175,10 @@ msgstr "ゲームコレクションを記録・管理。"
 #: src/components/admin/RefreshTrigger.tsx
 msgid "Trigger catalog refresh"
 msgstr "カタログ更新を開始"
+
+#: src/components/admin/RematchTrigger.tsx
+msgid "Trigger entry rematch"
+msgstr "エントリー再照合を開始"
 
 #: src/components/admin/PromoteCandidates.tsx
 #: src/components/admin/ReviewPanel.tsx

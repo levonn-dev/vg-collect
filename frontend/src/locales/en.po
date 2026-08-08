@@ -143,6 +143,10 @@ msgstr "A provider product already holds that identity - nothing changed."
 msgid "A refresh is already running."
 msgstr "A refresh is already running."
 
+#: src/components/admin/RematchTrigger.tsx
+msgid "A rematch is already running."
+msgstr "A rematch is already running."
+
 #: src/components/Footer.tsx
 msgid "About"
 msgstr "About"
@@ -760,6 +764,10 @@ msgstr "Entry detail"
 #: src/components/entry/EntryForm.tsx
 msgid "Entry editor"
 msgstr "Entry editor"
+
+#: src/components/admin/RematchTrigger.tsx
+msgid "Entry rematch"
+msgstr "Entry rematch"
 
 #: src/components/admin/ReviewPanel.tsx
 msgid "exact match"
@@ -1659,6 +1667,10 @@ msgstr "Release date"
 msgid "Released on {groupPlatformName}"
 msgstr "Released on {groupPlatformName}"
 
+#: src/components/admin/RematchTrigger.tsx
+msgid "Rematch started."
+msgstr "Rematch started."
+
 #: src/components/social/CommentList.tsx
 msgid "Remove"
 msgstr "Remove"
@@ -2076,6 +2088,10 @@ msgstr "The provider is unavailable - try again."
 msgid "The queue could not be loaded."
 msgstr "The queue could not be loaded."
 
+#: src/components/admin/RematchTrigger.tsx
+msgid "The rematch trigger failed - try again."
+msgstr "The rematch trigger failed - try again."
+
 #: src/components/collection/ViewPicker.tsx
 msgid "The shelf operation failed."
 msgstr "The shelf operation failed."
@@ -2159,6 +2175,10 @@ msgstr "Track your game collection."
 #: src/components/admin/RefreshTrigger.tsx
 msgid "Trigger catalog refresh"
 msgstr "Trigger catalog refresh"
+
+#: src/components/admin/RematchTrigger.tsx
+msgid "Trigger entry rematch"
+msgstr "Trigger entry rematch"
 
 #: src/components/admin/PromoteCandidates.tsx
 #: src/components/admin/ReviewPanel.tsx

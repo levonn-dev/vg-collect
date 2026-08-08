@@ -123,6 +123,9 @@ func TestRelayMethods_RouteBearerStatusAndBody(t *testing.T) {
 		{"SubmitVerdict", func() (Result, error) {
 			return c.SubmitVerdict(context.Background(), "tok", id, []byte(`{}`))
 		}, "POST", "/admin/submissions/" + id.String() + "/verdict", http.StatusOK},
+		{"TriggerRematch", func() (Result, error) {
+			return c.TriggerRematch(context.Background(), "tok")
+		}, "POST", "/internal/rematch-entries", http.StatusAccepted},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -156,6 +159,43 @@ func TestRelay_UndeclaredStatusIsErrUpstream(t *testing.T) {
 	})
 	if _, err := c.GetEntry(context.Background(), "tok", uuid.New()); !errors.Is(err, ErrUpstream) {
 		t.Fatalf("undeclared status must be ErrUpstream, got %v", err)
+	}
+}
+
+// TestTriggerRematch_ForbiddenIsRelayed proves the admin nuance for the
+// one collection route the bff itself does not role-gate: collection
+// enforces the admin-or-service guard, so its 403 is a relayable user
+// answer, not an infrastructure fault (mirrors enrichmentclient's
+// TestAdminRelays_ForbiddenIsRelayed for TriggerRefresh).
+func TestTriggerRematch_ForbiddenIsRelayed(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"status":403,"code":"forbidden"}`))
+	})
+	res, err := c.TriggerRematch(context.Background(), "tok")
+	if err != nil || res.Status != http.StatusForbidden {
+		t.Fatalf("admin 403 must relay: %+v, %v", res, err)
+	}
+}
+
+// TestTriggerRematch_ConflictIsRelayed proves the single-flight 409:
+// collection's rematch_in_progress problem is a relayable user answer,
+// not an infrastructure fault. The dev stack cannot exercise this
+// path live (its rematch dataset resolves in single-digit
+// milliseconds, faster than two sequential HTTP calls can race it),
+// so this unit test - paired with collection's own
+// TestInternalRematchEntries_ConcurrentTriggerIs409 - is the checked-in
+// proof of the path.
+func TestTriggerRematch_ConflictIsRelayed(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"status":409,"code":"rematch_in_progress"}`))
+	})
+	res, err := c.TriggerRematch(context.Background(), "tok")
+	if err != nil || res.Status != http.StatusConflict {
+		t.Fatalf("admin 409 must relay: %+v, %v", res, err)
 	}
 }
 
@@ -491,7 +531,11 @@ func TestTransportErrorSurfaces(t *testing.T) {
 			return err
 		},
 		"SubmitVerdict": func() error { _, err := c.SubmitVerdict(context.Background(), "tok", id, nil); return err },
-		"SharedShelf":   func() error { _, err := c.SharedShelf(context.Background(), "tok", id); return err },
+		"TriggerRematch": func() error {
+			_, err := c.TriggerRematch(context.Background(), "tok")
+			return err
+		},
+		"SharedShelf": func() error { _, err := c.SharedShelf(context.Background(), "tok", id); return err },
 		"SharedShelfBySlug": func() error {
 			_, err := c.SharedShelfBySlug(context.Background(), "tok", id, "slug")
 			return err

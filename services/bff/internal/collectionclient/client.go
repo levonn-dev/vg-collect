@@ -132,6 +132,17 @@ func (c *Client) SubmitVerdict(ctx context.Context, bearer string, id uuid.UUID,
 		http.StatusConflict, http.StatusBadGateway)
 }
 
+// TriggerRematch relays POST /internal/rematch-entries (202 started,
+// 403, 409 rematch_in_progress).
+func (c *Client) TriggerRematch(ctx context.Context, bearer string) (Result, error) {
+	resp, err := c.api.InternalRematchEntriesWithResponse(ctx, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: trigger rematch: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body,
+		http.StatusAccepted, http.StatusForbidden, http.StatusConflict)
+}
+
 func bearerEditor(bearer string) collectionapi.RequestEditorFn {
 	return func(_ context.Context, req *http.Request) error {
 		req.Header.Set("Authorization", "Bearer "+bearer)

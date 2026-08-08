@@ -438,6 +438,13 @@ Row 5 - the entry rematch:
         sum by (outcome) (increase(vg_collection_rematch_triples_total[1h]))
         increase(vg_collection_rematch_repoints_total[1h])
 
+23. "Entry rematch duration" - timeseries, s, legend `duration` (the
+    rematch runs once nightly: the 1h increase of the sum is the last
+    run's elapsed seconds at the rematch hour, zero elsewhere - same
+    reading as the catalog refresh's own duration panel, enrichment.md)
+
+        sum(increase(vg_collection_rematch_duration_seconds_sum[1h]))
+
 ## Failure modes and triage
 
 ### 1. Enrichment unreachable
@@ -614,9 +621,10 @@ three counts - the trigger's own response now answers only
 `{"status":"started"}`, so the completion log and the metrics below
 are where the counts land. The same three counts also flow into
 `vg.collection.rematch.duration` (seconds per run), `.triples`
-(`outcome` ok|failed), and `.repoints` - the "Entry rematch" dashboard
-panel. Idempotent: a second run repoints 0 once nothing is left to
-repoint. Bruno: `bruno/collection/rematch-entries.bru` (grant the
+(`outcome` ok|failed), and `.repoints` - the "Entry rematch" and
+"Entry rematch duration" dashboard panels. Idempotent: a second run
+repoints 0 once nothing is left to repoint. Bruno:
+`bruno/collection/rematch-entries.bru` (grant the
 fixture admin first, `task grant-fixture-admin`), or:
 
     TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
@@ -627,8 +635,10 @@ fixture admin first, `task grant-fixture-admin`), or:
 
 Scheduled nightly at 07:00, an hour after enrichment's 06:00 catalog
 refresh (CronJob, chart-configurable), and operator-runnable at any
-other time with an admin bearer; an overlapping trigger answers 409
-instead of racing a run already in flight. The two jobs are disjoint
+other time with an admin bearer or the bff Admin page's "Trigger
+entry rematch" button (`POST /api/admin/rematch`, relayed to this
+same endpoint); an overlapping trigger answers 409 instead of racing
+a run already in flight. The two jobs are disjoint
 by construction: the catalog refresh maintains member data (prices,
 projections, candidates) and never matches, while the entry rematch
 maintains entry pointers and never prices - which is also why it runs

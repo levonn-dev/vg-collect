@@ -1725,6 +1725,7 @@ type stubCollection struct {
 	ackSubmission    func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
 	listSubmissions  func(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error)
 	submitVerdict    func(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
+	triggerRematch   func(ctx context.Context, bearer string) (collectionclient.Result, error)
 
 	sharedShelf        func(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error)
 	sharedShelfBySlug  func(ctx context.Context, bearer string, ownerID uuid.UUID, slug string) (collectionapi.SharedShelf, error)
@@ -1856,6 +1857,13 @@ func (s *stubCollection) SubmitVerdict(ctx context.Context, bearer string, id uu
 		panic("unexpected SubmitVerdict")
 	}
 	return s.submitVerdict(ctx, bearer, id, body)
+}
+
+func (s *stubCollection) TriggerRematch(ctx context.Context, bearer string) (collectionclient.Result, error) {
+	if s.triggerRematch == nil {
+		panic("unexpected TriggerRematch")
+	}
+	return s.triggerRematch(ctx, bearer)
 }
 
 func (s *stubCollection) SharedShelf(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error) {
@@ -2666,6 +2674,40 @@ func TestUnitAdminRefresh_Relays202(t *testing.T) {
 	}
 }
 
+// TestUnitAdminRematch_Relays202 mirrors TestUnitAdminRefresh_Relays202
+// for the entry-rematch trigger: collection's 202 relays verbatim.
+func TestUnitAdminRematch_Relays202(t *testing.T) {
+	const accepted = `{"status":"started"}`
+	col := &stubCollection{triggerRematch: func(_ context.Context, bearer string) (collectionclient.Result, error) {
+		return collectionclient.Result{Status: 202, ContentType: "application/json", Body: []byte(accepted)}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+	rec := doAuthed(t, h, env, http.MethodPost, "/api/admin/rematch")
+	if rec.Code != 202 || rec.Body.String() != accepted {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestUnitAdminRematch_ConflictRelaysVerbatim mirrors
+// TestUnitAdminMapping_RelaysBodyAndConflict's 409-relays-verbatim
+// shape for the rematch route: the live stack cannot exercise this
+// path reliably (the dev rematch dataset resolves faster than two
+// sequential HTTP calls, so a live double-trigger observes 202 twice,
+// never 202-then-409 - see bruno/bff/admin/rematch.bru), so this is
+// the checked-in proof that collection's rematch_in_progress problem
+// reaches the browser unmodified.
+func TestUnitAdminRematch_ConflictRelaysVerbatim(t *testing.T) {
+	const problem = `{"type":"about:blank","title":"Conflict","status":409,"code":"rematch_in_progress","detail":"an entry rematch is already running"}`
+	col := &stubCollection{triggerRematch: func(_ context.Context, bearer string) (collectionclient.Result, error) {
+		return collectionclient.Result{Status: 409, ContentType: "application/problem+json", Body: []byte(problem)}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+	rec := doAuthed(t, h, env, http.MethodPost, "/api/admin/rematch")
+	if rec.Code != 409 || rec.Body.String() != problem {
+		t.Fatalf("409 must relay verbatim: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestUnitAdminRoutes_NoSession401(t *testing.T) {
 	h, env := newTestHandlersWithEnrichment(t, &stubEnrichment{})
 	for _, tc := range []struct{ method, path string }{
@@ -2673,6 +2715,7 @@ func TestUnitAdminRoutes_NoSession401(t *testing.T) {
 		{http.MethodGet, "/api/admin/products/community"},
 		{http.MethodPut, "/api/admin/products/" + uuid.NewString() + "/pricecharting"},
 		{http.MethodPost, "/api/admin/refresh"},
+		{http.MethodPost, "/api/admin/rematch"},
 	} {
 		rec := doUnauthed(t, h, env, tc.method, tc.path)
 		if rec.Code != http.StatusUnauthorized {
@@ -3083,6 +3126,7 @@ func TestUnitHandlers_OwnSessionGuards(t *testing.T) {
 		"list_platforms":      func(w http.ResponseWriter, r *http.Request) { h.ListPlatforms(w, r) },
 		"get_product":         func(w http.ResponseWriter, r *http.Request) { h.GetProduct(w, r, id) },
 		"trigger_refresh":     func(w http.ResponseWriter, r *http.Request) { h.TriggerRefresh(w, r) },
+		"trigger_rematch":     func(w http.ResponseWriter, r *http.Request) { h.TriggerRematch(w, r) },
 		"create_submission":   func(w http.ResponseWriter, r *http.Request) { h.CreateSubmission(w, r, id) },
 		"get_submission":      func(w http.ResponseWriter, r *http.Request) { h.GetSubmission(w, r, id) },
 		"ack_submission":      func(w http.ResponseWriter, r *http.Request) { h.AckSubmissionResolution(w, r, id) },

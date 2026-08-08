@@ -597,6 +597,21 @@ func (h *Handlers) TriggerRefresh(w http.ResponseWriter, r *http.Request) {
 	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
 
+// TriggerRematch relays the admin's immediate entry-rematch trigger.
+func (h *Handlers) TriggerRematch(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.TriggerRematch(r.Context(), sess.AccessToken)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
 // CreateSubmission relays a catalog-candidate filing.
 func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
 	sess, _, ok := session.FromContext(r.Context())

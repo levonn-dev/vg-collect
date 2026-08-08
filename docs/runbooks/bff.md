@@ -24,8 +24,8 @@ What it does, as an operator sees it:
 - Admin relays: unmatched and community product worklists, mapping corrections,
   guarded product delete (reference check against collection before the
   enrichment delete), community mint, promote flows, submissions queue and
-  verdicts, catalog refresh trigger. Role enforcement lives downstream; the bff
-  holds no role logic.
+  verdicts, catalog refresh trigger, entry rematch trigger. Role enforcement
+  lives downstream; the bff holds no role logic.
 - Browser telemetry relay: `POST /api/otlp/v1/traces`, session-gated, capped at
   1 MiB, forwarded to the otel-agent so one trace stitches browser to backend.
 - SPA serving: embedded Vite bundle; content-hashed assets are immutable,
@@ -429,9 +429,10 @@ panel, or:
 
 Route-to-dependency map: `/api/auth/*` and `/api/me/identities*` > auth;
 `/api/me` > user; `/api/entries*`, `/api/tags*`, `/api/views*`,
-`/api/dashboard*`, `/api/admin/submissions*` > collection; `/api/search`,
-`/api/products*`, `/api/fx`, `/api/platforms`, `/api/admin/products*`,
-`/api/admin/refresh` > enrichment; `/api/otlp/v1/traces` > otel-agent.
+`/api/dashboard*`, `/api/admin/submissions*`, `/api/admin/rematch` >
+collection; `/api/search`, `/api/products*`, `/api/fx`, `/api/platforms`,
+`/api/admin/products*`, `/api/admin/refresh` > enrichment;
+`/api/otlp/v1/traces` > otel-agent.
 `/api/recommendations` and `DELETE /api/me` touch several services; read the
 problem detail or the trace. Then triage the named service, not the bff
 ([stack.md](stack.md#1-service-5xx-ratio-above-5-percent) says the same
@@ -542,6 +543,15 @@ relays and key material.
   The same journey exists as a Bruno flow under `bruno/bff/admin/`. All other
   `/api/admin/*` endpoints (worklists, verdicts, promotes, mapping
   corrections) work the same way: session cookie plus downstream role check.
+
+- Entry rematch trigger (relayed to collection, which enforces admin-or-service).
+  Same shape as the catalog refresh trigger above, one route later:
+
+      curl -sc /tmp/vg-admin.jar -o /dev/null "http://localhost:8090/api/auth/login?provider=dev&user=admin"
+      curl -sb /tmp/vg-admin.jar -X POST "http://localhost:8090/api/admin/rematch"
+
+  Also a Bruno flow under `bruno/bff/admin/`, and the Admin page's own
+  "Trigger entry rematch" button.
 
 - Admin role grant (dev fixture only): `task grant-fixture-admin`. Logs the
   `admin` dev fixture in (upserting its user row), then inserts the role in

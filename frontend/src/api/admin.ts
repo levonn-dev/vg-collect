@@ -9,6 +9,8 @@ export type CommunityProductsPage =
   paths['/api/admin/products/community']['get']['responses']['200']['content']['application/json']
 export type RefreshAccepted =
   paths['/api/admin/refresh']['post']['responses']['202']['content']['application/json']
+export type RematchAccepted =
+  paths['/api/admin/rematch']['post']['responses']['202']['content']['application/json']
 
 export function fetchUnmatchedProducts(offset = 0): Promise<UnmatchedProductsPage> {
   const params = new URLSearchParams({ offset: String(offset) })
@@ -30,6 +32,10 @@ export function setProductMapping(productId: string, pcProductId: number | null)
 
 export function triggerRefresh(): Promise<RefreshAccepted> {
   return sendJSON<RefreshAccepted>('POST', '/api/admin/refresh')
+}
+
+export function triggerRematch(): Promise<RematchAccepted> {
+  return sendJSON<RematchAccepted>('POST', '/api/admin/rematch')
 }
 
 // Only unmatched products with no entry references delete; the bff

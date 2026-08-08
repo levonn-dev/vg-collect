@@ -1,0 +1,34 @@
+meta {
+  name: admin - trigger entry rematch
+  type: http
+  seq: 64
+}
+
+post {
+  url: {{bff_url}}/api/admin/rematch
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 202
+  res.body.status: eq started
+}
+
+docs {
+  Relays to collection's POST /internal/rematch-entries (admin-or-service
+  guarded); collection answers 202 and detaches. The three counts - triples
+  seen, triples failed, entries repointed - do not ride this response; they
+  land in collection's "rematch-entries complete" log line and the
+  vg.collection.rematch.* metrics instead. Runs last in this folder, so it
+  rides the admin cookie left behind by ack-cleanup-login-admin.bru.
+
+  No conflict sibling (unlike refresh-conflict.bru): the dev rematch
+  dataset resolves in single-digit milliseconds, faster than two
+  sequential HTTP calls can race it, so a second trigger here would
+  flake between 202 and 409 rather than reliably proving the lock. The
+  single-flight 409 is pinned instead by collection's own
+  TestInternalRematchEntries_ConcurrentTriggerIs409 and the bff
+  relay's TestUnitAdminRematch_ConflictRelaysVerbatim /
+  TestTriggerRematch_ConflictIsRelayed unit tests.
+}

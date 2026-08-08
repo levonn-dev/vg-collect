@@ -174,6 +174,17 @@ approves-new with a cover, alice reads the approved submission,
 acknowledges it (idempotent 204 on repeat), and re-reads it stamped.
 A clean run deletes everything it created.
 
+The folder ends (seq 64) with the entry-rematch trigger, riding the
+admin cookie the ack round trip leaves behind: `admin - trigger entry
+rematch` asserts the 202 the bff relays from collection's
+`/internal/rematch-entries`. Unlike the refresh pair near the top, it
+has no live conflict sibling: the dev rematch dataset resolves in
+single-digit milliseconds, well under two sequential HTTP round
+trips, so a second call here would flake between 202 and 409 instead
+of reliably reproducing the lock. The single-flight 409 is pinned by
+collection's own concurrent-trigger unit test and the bff relay's own
+conflict-relay unit tests instead.
+
 ## BFF social flows
 
 The `bff/social/` folder exercises the social extension end to end

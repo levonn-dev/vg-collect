@@ -8,6 +8,7 @@ import {
   setProductMapping,
   submitVerdict,
   triggerRefresh,
+  triggerRematch,
 } from './admin'
 
 const jsonResponse = (status: number, body: unknown) =>
@@ -49,6 +50,14 @@ it('triggerRefresh posts the refresh trigger', async () => {
   vi.stubGlobal('fetch', fetchMock)
   const r = await triggerRefresh()
   expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/refresh')
+  expect(r.status).toBe('started')
+})
+
+it('triggerRematch posts the rematch trigger', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse(202, { status: 'started' }))
+  vi.stubGlobal('fetch', fetchMock)
+  const r = await triggerRematch()
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/rematch')
   expect(r.status).toBe('started')
 })
 
