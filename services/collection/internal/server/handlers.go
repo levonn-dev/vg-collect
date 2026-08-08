@@ -40,15 +40,16 @@ const (
 var (
 	currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
 
-	regionVals    = map[string]bool{"ntsc_u": true, "ntsc_j": true, "pal": true, "region_free": true}
-	packagingVals = map[string]bool{"sealed": true, "cib": true, "loose": true}
-	conditionVals = map[string]bool{"mint": true, "near_mint": true, "very_good": true, "good": true, "acceptable": true, "poor": true}
-	statusVals    = map[string]bool{"backlog": true, "playing": true, "beaten": true, "completed": true, "dropped": true, "shelved": true}
-	pricingVals   = map[string]bool{"auto": true, "proxy": true, "custom": true, "disabled": true}
-	itemTypeVals  = map[string]bool{"game": true, "console": true, "accessory": true}
-	sortVals      = map[string]bool{"name": true, "release_date": true, "purchased_at": true, "created_at": true, "value": true, "paid": true, "rating": true, "backlog_rank": true}
-	orderVals     = map[string]bool{"asc": true, "desc": true}
-	groupVals     = map[string]bool{"platform": true, "status": true, "item_type": true, "location": true, "tag": true}
+	regionVals          = map[string]bool{"ntsc_u": true, "ntsc_j": true, "pal": true, "region_free": true}
+	packagingVals       = map[string]bool{"sealed": true, "cib": true, "loose": true}
+	conditionVals       = map[string]bool{"mint": true, "near_mint": true, "very_good": true, "good": true, "acceptable": true, "poor": true}
+	statusVals          = map[string]bool{"backlog": true, "playing": true, "beaten": true, "completed": true, "dropped": true, "shelved": true}
+	pricingVals         = map[string]bool{"auto": true, "proxy": true, "custom": true, "disabled": true}
+	matchProvenanceVals = map[string]bool{"auto": true, "user": true}
+	itemTypeVals        = map[string]bool{"game": true, "console": true, "accessory": true}
+	sortVals            = map[string]bool{"name": true, "release_date": true, "purchased_at": true, "created_at": true, "value": true, "paid": true, "rating": true, "backlog_rank": true}
+	orderVals           = map[string]bool{"asc": true, "desc": true}
+	groupVals           = map[string]bool{"platform": true, "status": true, "item_type": true, "location": true, "tag": true}
 )
 
 // entryInput is the shared mutable field set of the create and update
@@ -68,6 +69,7 @@ type entryInput struct {
 	PurchasedAt                *time.Time
 	PurchasedFrom              *string
 	PricingMode                string
+	MatchProvenance            string
 	PricingProductID           *uuid.UUID
 	CustomValueCents           *int64
 	CustomValueEnteredCents    *int64
@@ -171,6 +173,56 @@ func pickLocalization(meta *enrichapi.IgdbMeta, region string) (name, translit, 
 		return nonEmpty(l.Name), nonEmpty(l.Translit), nonEmpty(l.CoverUrl)
 	}
 	return nil, nil, nil
+}
+
+// jpConsoleNames are PriceCharting's distinct-name JP market consoles
+// (the ones filed without a "jp " prefix). Sibling of enrichment's
+// jpConsoleAliases values and the frontend's JP_CONSOLE_NAMES; a
+// stale row here costs one no-op re-resolve, never a wrong repoint -
+// the enrichment gate is authoritative.
+var jpConsoleNames = map[string]bool{
+	"famicom":             true,
+	"super famicom":       true,
+	"famicom disk system": true,
+}
+
+// consoleRegion classifies a PriceCharting console-name into the
+// region class its listings price: "pal " prefix, "jp " prefix or a
+// distinct JP market name, else base (the NA catalog and anything
+// unknown).
+func consoleRegion(consoleName string) string {
+	c := strings.ToLower(strings.TrimSpace(consoleName))
+	switch {
+	case strings.HasPrefix(c, "pal "):
+		return "pal"
+	case strings.HasPrefix(c, "jp "), jpConsoleNames[c]:
+		return "jp"
+	default:
+		return "base"
+	}
+}
+
+// regionClass maps an entry region onto the console class that prices
+// it; ntsc_u and region_free copies price from base listings.
+func regionClass(region string) string {
+	switch region {
+	case "ntsc_j":
+		return "jp"
+	case "pal":
+		return "pal"
+	default:
+		return "base"
+	}
+}
+
+// regionCorrectMember reports whether an entry region needs no
+// re-resolve against its product's current mapping: unmatched members
+// always re-resolve; matched ones only when the listing's console
+// class disagrees with the entry region's class. The class guard is
+// what protects a deliberate in-region manual pick (a hand-chosen JP
+// variant listing on an ntsc_j entry) from being swept away.
+func regionCorrectMember(prod *enrichapi.Product, region string) bool {
+	return prod.Pricecharting != nil && consoleRegion(prod.Pricecharting.ConsoleName) == regionClass(region)
 }
 
 // catalogSnapshot derives the entry snapshot from a product. The
@@ -472,6 +524,7 @@ func toAPIEntry(e store.Entry, valueCents *int64) api.Entry {
 		CustomValueSetAt:           e.CustomValueSetAt,
 		CustomValueEnteredCents:    e.CustomValueEnteredCents,
 		CustomValueEnteredCurrency: e.CustomValueEnteredCurrency,
+		RegionMismatchAckAt:        e.RegionMismatchAckAt,
 		Status:                     api.EntryStatus(e.Status),
 		Rating:                     e.Rating,
 		Notes:                      e.Notes,
@@ -585,6 +638,11 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 	}
 	custom := body.ProductId == nil
 	in := createInput(body)
+	in.MatchProvenance = strDeref((*string)(body.MatchProvenance), "auto")
+	if !matchProvenanceVals[in.MatchProvenance] {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "match_provenance must be one of auto, user")
+		return
+	}
 	if custom {
 		if body.PricingMode == nil {
 			in.PricingMode = "disabled" // no own product to price against
@@ -610,6 +668,7 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		e.FirstReleaseDate = dateToTime(body.FirstReleaseDate)
 		e.PlatformIGDBID = body.PlatformIgdbId
 		e.CoverURL = body.CoverUrl
+		e.MatchProvenance = in.MatchProvenance
 	} else {
 		product, err := h.enrichment.GetProduct(r.Context(), bearer, *body.ProductId)
 		if errors.Is(err, enrichmentclient.ErrUnknownProduct) {
@@ -632,6 +691,7 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		e.LocalizedName = snap.LocalizedName
 		e.LocalizedNameTranslit = snap.LocalizedNameTranslit
 		e.LocalizedCoverURL = snap.LocalizedCoverURL
+		e.MatchProvenance = in.MatchProvenance
 	}
 	// A NEW proxy reference must exist in the catalog (the entry's own
 	// product was just fetched, so proxying to itself needs no check).
@@ -810,10 +870,19 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		pickProd = &newProd
 	}
 
-	// A region-only change (no repoint) still needs a fresh date pick:
-	// the same product's dates are keyed by region. Game-backed only -
-	// current.IGDBGameID is nil for hardware and for any product-backed
-	// entry with no igdb block.
+	// A region-only change (no explicit repoint) still needs a fresh
+	// pick: the same product's dates and localized presentation are
+	// keyed by region. Game-backed only - current.IGDBGameID is nil for
+	// hardware and for any product-backed entry with no igdb block.
+	// Auto-priced entries additionally follow their region to the
+	// region-correct sibling member (the listing is game identity, so a
+	// JP copy's price is a different member): guarded by the console
+	// class so a deliberate in-region manual pick is never re-resolved
+	// away, class-compatible members skip the resolve hop, and
+	// current.MatchProvenance == "auto" below additionally fences off a
+	// cross-class pick the user made by hand (the class guard alone
+	// would not stop that case).
+	var regionRepoint *uuid.UUID
 	if pickProd == nil && current.ProductID != nil && current.IGDBGameID != nil && in.Region != current.Region {
 		prod, err := h.enrichment.GetProduct(r.Context(), bearer, *current.ProductID)
 		if err != nil {
@@ -823,6 +892,21 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 			return
 		}
 		pickProd = &prod
+		if in.PricingMode == "auto" && current.MatchProvenance == "auto" && current.PlatformIGDBID != nil && !regionCorrectMember(&prod, in.Region) {
+			resolved, err := h.enrichment.Resolve(r.Context(), bearer, enrichapi.ResolveRequest{
+				Type: "game", IgdbGameId: current.IGDBGameID,
+				PlatformIgdbId: current.PlatformIGDBID, Region: &in.Region,
+			})
+			if err != nil {
+				problem(w, r, http.StatusBadGateway, "enrichment_unavailable", "the catalog cannot be reached")
+				return
+			}
+			if resolved.Id != *current.ProductID {
+				id := resolved.Id
+				regionRepoint = &id
+				pickProd = &resolved
+			}
+		}
 	}
 
 	// A NEW proxy reference must exist in the catalog; proxying to the
@@ -849,9 +933,18 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 	}
 
 	e := current
+	// MatchProvenance survives via this struct copy: applyInput and
+	// every arm below leave it alone except the narrow re-match, which
+	// stamps "user" explicitly. TestUpdateEntry_PlainEditPreservesProvenance
+	// pins a plain edit, a display re-pick, and an automated region
+	// repoint all leaving it untouched.
 	applyInput(&e, in)
 	if repoint {
 		e.ProductID = body.ProductId
+		e.MatchProvenance = "user"
+	}
+	if regionRepoint != nil {
+		e.ProductID = regionRepoint
 	}
 	if pickProd != nil {
 		e.FirstReleaseDate = pickReleaseDate(pickProd.Igdb, e.Region)
@@ -911,6 +1004,28 @@ func (h *Handlers) DeleteEntry(w http.ResponseWriter, r *http.Request, entryId o
 		return
 	}
 	h.invalidateDashboard(r.Context(), userID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// AckEntryRegionMismatch dismisses the region-mismatch banner for the
+// entry's current (region, product_id) choice. Same ownership shape
+// as DeleteEntry: the store's WHERE scopes to the caller, so a
+// foreign or missing entry both surface as 404. Never touches the
+// dashboard cache - the ack changes no aggregated field.
+func (h *Handlers) AckEntryRegionMismatch(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
+	userID, _, ok := h.caller(w, r)
+	if !ok {
+		return
+	}
+	err := h.store.AckRegionMismatch(r.Context(), userID, entryId)
+	if errors.Is(err, store.ErrNotFound) {
+		problem(w, r, http.StatusNotFound, "entry_not_found", "no such entry")
+		return
+	}
+	if err != nil {
+		h.internalError(w, r, "ack failed", err)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2283,15 +2398,17 @@ func (h *Handlers) GetLibrarySummary(w http.ResponseWriter, r *http.Request) {
 // InternalResnapshot recomputes every game-backed entry's
 // product-derived snapshot fields: the region-picked release date and
 // the localized presentation trio (name, transliteration, cover url).
-// Hand-routed outside the contract but behind the normal JWT guard;
-// the caller's bearer rides the enrichment hops. Idempotent and
-// re-runnable - rows are written only when the recomputed date or
-// trio differs from what is stored.
+// Contract-described and served by the generated mux behind the
+// blanket JWT middleware, admin-or-service-gated in the handler
+// (tightened from any valid JWT - a decision record, same guard as
+// the entry rematch); the caller's bearer rides the enrichment hops.
+// Idempotent and re-runnable - rows are written only when the
+// recomputed date or trio differs from what is stored.
 func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
-	_, bearer, ok := h.caller(w, r)
-	if !ok {
+	if !h.requireAdminOrService(w, r) {
 		return
 	}
+	bearer := bearerToken(r)
 	refs, err := h.store.ListGameBackedRefs(r.Context())
 	if err != nil {
 		h.internalError(w, r, "list failed", err)
@@ -2333,20 +2450,173 @@ func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// rematchBudget bounds a detached entry rematch (well beyond a full
+// day-one backfill at the provider's polite request rate).
+const rematchBudget = 30 * time.Minute
+
+// InternalRematchEntries is the entry rematch: it re-resolves
+// auto-priced game-backed entries with their region so each points
+// at its region-correct sibling member (a JP copy's price is a
+// different listing). Grouped by (game, platform, region) - one
+// resolve per triple - with the console-class guard applied per
+// entry, so class-compatible members skip, and user-picked matches
+// (match_provenance) are never swept at all. Idempotent and
+// re-runnable; this rematch is the backfill for entries that predate
+// region-aware matching. Contract-described and served by the
+// generated mux behind the blanket JWT middleware, admin-or-service-
+// gated in the handler; the caller's bearer rides the enrichment
+// hops, captured before the run detaches. One run at a time (mirrors
+// the catalog refresh's guard): a concurrent trigger answers 409
+// rematch_in_progress rather than racing the run in flight. Answers
+// 202 and detaches the sweep - mirrors the catalog refresh, for the
+// same reason: a day-one backfill resolves at the provider's polite
+// rate (1 req/s), which outlives httpkit's 30s write timeout on
+// exactly the runs that matter. Each successful repoint logs entry
+// and old->new product ids - the audit trail that keeps a run
+// reviewable and hand-reversible - and the run's own completion log
+// plus the rematch.* metrics now carry the three counts the
+// synchronous response used to answer with directly.
+func (h *Handlers) InternalRematchEntries(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdminOrService(w, r) {
+		return
+	}
+	if !h.rematching.CompareAndSwap(false, true) {
+		problem(w, r, http.StatusConflict, "rematch_in_progress", "an entry rematch is already running")
+		return
+	}
+	// Captured here, before detaching: the goroutine reuses it for the
+	// enrichment hops, and the request itself is not safe to read from
+	// once this handler has returned.
+	bearer := bearerToken(r)
+	// The started line pairs with "rematch-entries complete": a start
+	// with no completion inside the budget marks a hung run.
+	h.logger.InfoContext(r.Context(), "entry rematch started")
+	go func() { //nolint:gosec // G118: the rematch run deliberately outlives the trigger request (202 + detach)
+		defer h.rematching.Store(false)
+		// Detached from the request context: the trigger returns at 202.
+		ctx, cancel := context.WithTimeout(context.Background(), rematchBudget)
+		defer cancel()
+		// Registered last so it unwinds first: a panic mid-sweep (a
+		// malformed payload, a nil field breaking an assumed contract)
+		// is contained here instead of killing the process. The guard
+		// reset and context cancel above still run afterward as usual.
+		defer func() {
+			if v := recover(); v != nil {
+				h.logger.ErrorContext(ctx, "entry rematch panicked", "panic", v)
+			}
+		}()
+		h.runRematch(ctx, bearer)
+	}()
+	writeJSON(w, http.StatusAccepted, api.RematchAccepted{Status: "started"})
+}
+
+// runRematch is the entry rematch's sweep body, detached from its
+// trigger request by InternalRematchEntries: ctx is the detached,
+// budget-bound context and bearer was captured from the trigger
+// request before the goroutine started.
+func (h *Handlers) runRematch(ctx context.Context, bearer string) {
+	start := time.Now()
+	defer func() { h.recordRematchDuration(ctx, time.Since(start).Seconds()) }()
+
+	refs, err := h.store.ListAutoGameRematchRefs(ctx)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "rematch-entries: list failed", "err", err)
+		return
+	}
+	type triple struct {
+		game, platform int64
+		region         string
+	}
+	byTriple := make(map[triple][]store.RematchEntryRef)
+	for _, ref := range refs {
+		k := triple{ref.IGDBGameID, ref.PlatformIGDBID, ref.Region}
+		byTriple[k] = append(byTriple[k], ref)
+	}
+	// One member fetch per distinct product across the whole run;
+	// members repeat heavily across triples of the same family.
+	products := make(map[uuid.UUID]enrichapi.Product)
+	member := func(id uuid.UUID) (enrichapi.Product, error) {
+		if p, ok := products[id]; ok {
+			return p, nil
+		}
+		p, err := h.enrichment.GetProduct(ctx, bearer, id)
+		if err != nil {
+			return enrichapi.Product{}, err
+		}
+		products[id] = p
+		return p, nil
+	}
+	var seen, failed, repointed int
+	for k, group := range byTriple {
+		seen++
+		var pending []store.RematchEntryRef
+		fetchFailed := false
+		for _, ref := range group {
+			prod, err := member(ref.ProductID)
+			if err != nil {
+				h.logger.WarnContext(ctx, "rematch-entries: member fetch failed", "product", ref.ProductID, "err", err)
+				fetchFailed = true
+				break
+			}
+			if !regionCorrectMember(&prod, ref.Region) {
+				pending = append(pending, ref)
+			}
+		}
+		if fetchFailed {
+			failed++
+			h.countRematchTriple(ctx, "failed")
+			continue
+		}
+		if len(pending) == 0 {
+			h.countRematchTriple(ctx, "ok")
+			continue
+		}
+		resolved, err := h.enrichment.Resolve(ctx, bearer, enrichapi.ResolveRequest{
+			Type: "game", IgdbGameId: &k.game, PlatformIgdbId: &k.platform, Region: &k.region,
+		})
+		if err != nil {
+			failed++
+			h.countRematchTriple(ctx, "failed")
+			h.logger.WarnContext(ctx, "rematch-entries: resolve failed",
+				"game", k.game, "platform", k.platform, "region", k.region, "err", err)
+			continue
+		}
+		for _, ref := range pending {
+			if resolved.Id == ref.ProductID {
+				continue
+			}
+			d := pickReleaseDate(resolved.Igdb, ref.Region)
+			name, translit, cover := pickLocalization(resolved.Igdb, ref.Region)
+			if err := h.store.RepointEntry(ctx, ref.EntryID, resolved.Id, d, name, translit, cover); err != nil {
+				h.logger.WarnContext(ctx, "rematch-entries: repoint failed", "entry", ref.EntryID, "err", err)
+				continue
+			}
+			h.logger.InfoContext(ctx, "rematch-entries: repointed",
+				"entry", ref.EntryID, "from", ref.ProductID, "to", resolved.Id, "region", k.region)
+			repointed++
+			h.countRematchRepoint(ctx)
+		}
+		h.countRematchTriple(ctx, "ok")
+	}
+	h.logger.InfoContext(ctx, "rematch-entries complete",
+		"triples_seen", seen, "triples_failed", failed, "entries_repointed", repointed)
+}
+
 // InternalNormalizePlatforms canonicalizes free-text custom-entry
 // platforms: every entry with a platform_name but no platform_igdb_id
 // is matched (case-insensitive, trimmed, exact-or-alias - never fuzzy,
 // so nothing is silently misfiled) against the enrichment platform
 // catalog and stamped with the canonical igdb id + name. Re-runnable:
-// stamped rows leave the selection set. Admin-gated - stricter than
-// the resnapshot lever's JWT-only guard, since a mass cross-user write
-// earns the role check (resnapshot is deliberately left as-is). The
-// caller's bearer rides the enrichment hop.
+// stamped rows leave the selection set. Admin-only - stricter than
+// resnapshot and the entry rematch's admin-or-service guard, since a
+// mass cross-user write earns the narrower human-operator-only check;
+// no CronJob drives this lever. The caller's bearer rides the
+// enrichment hop.
 //
-// Not in the contract and not relayed by the bff, so bruno and the
-// gateway never reach it - run it by hand against the collection
-// service. With the dev stack up and the admin fixture role already
-// granted (task grant-fixture-admin):
+// Contract-described like the other internal levers but not relayed
+// by the bff, so the gateway never reaches it - run it by hand
+// against the collection service. With the dev stack up and the admin
+// fixture role already granted (task grant-fixture-admin):
 //
 //	kubectl -n vgkeep port-forward svc/collection 8085:8080 &
 //	TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
@@ -2357,13 +2627,17 @@ func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 //
 // Answers {"scanned":N,"normalized":N,"skipped":N}.
 func (h *Handlers) InternalNormalizePlatforms(w http.ResponseWriter, r *http.Request) {
-	_, bearer, ok := h.caller(w, r)
-	if !ok {
-		return
-	}
+	// The role check runs BEFORE caller on purpose: a service token
+	// never carries "admin", so this order turns it away with a clean
+	// 403 here rather than reaching caller's uuid.Parse (which would
+	// 500 on a svc:<name> subject). See caller's doc comment.
 	claims, _ := jwtauth.FromContext(r.Context())
 	if !claims.HasRole("admin") {
 		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+		return
+	}
+	_, bearer, ok := h.caller(w, r)
+	if !ok {
 		return
 	}
 	platforms, err := h.enrichment.ListPlatforms(r.Context(), bearer)

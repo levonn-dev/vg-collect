@@ -42,6 +42,7 @@ type stubStore struct {
 	getEntry          func(ctx context.Context, userID, id uuid.UUID) (store.Entry, error)
 	updateEntry       func(ctx context.Context, e store.Entry, tagIDs []uuid.UUID) (store.Entry, error)
 	deleteEntry       func(ctx context.Context, userID, id uuid.UUID) error
+	ackRegionMismatch func(ctx context.Context, userID, entryID uuid.UUID) error
 	bulkUpdateEntries func(ctx context.Context, userID uuid.UUID, entryIDs []uuid.UUID, actions store.BulkActions) (int, error)
 	reorder           func(ctx context.Context, userID, entryID uuid.UUID, afterID, beforeID *uuid.UUID) (store.Entry, error)
 	listEntries       func(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.Entry, error)
@@ -69,6 +70,9 @@ type stubStore struct {
 	listGameBackedRefs    func(ctx context.Context) ([]store.GameEntryRef, error)
 	setSnapshotFields     func(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string) error
 	countEntriesByProduct func(ctx context.Context, productID uuid.UUID) (int64, error)
+
+	listAutoGameRematchRefs func(ctx context.Context) ([]store.RematchEntryRef, error)
+	repointEntry            func(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string) error
 
 	listNameOnlyPlatformEntries func(ctx context.Context) ([]store.PlatformEntryRef, error)
 	setEntryPlatformIdentity    func(ctx context.Context, entryID uuid.UUID, igdbID int64, name string) error
@@ -113,6 +117,12 @@ func (s *stubStore) DeleteEntry(ctx context.Context, userID, id uuid.UUID) error
 		panic("unexpected DeleteEntry")
 	}
 	return s.deleteEntry(ctx, userID, id)
+}
+func (s *stubStore) AckRegionMismatch(ctx context.Context, userID, entryID uuid.UUID) error {
+	if s.ackRegionMismatch == nil {
+		panic("unexpected AckRegionMismatch")
+	}
+	return s.ackRegionMismatch(ctx, userID, entryID)
 }
 func (s *stubStore) BulkUpdateEntries(ctx context.Context, userID uuid.UUID, entryIDs []uuid.UUID, actions store.BulkActions) (int, error) {
 	if s.bulkUpdateEntries == nil {
@@ -264,6 +274,18 @@ func (s *stubStore) SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d 
 	}
 	return s.setSnapshotFields(ctx, entryID, d, name, translit, cover)
 }
+func (s *stubStore) ListAutoGameRematchRefs(ctx context.Context) ([]store.RematchEntryRef, error) {
+	if s.listAutoGameRematchRefs == nil {
+		panic("unexpected ListAutoGameRematchRefs")
+	}
+	return s.listAutoGameRematchRefs(ctx)
+}
+func (s *stubStore) RepointEntry(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string) error {
+	if s.repointEntry == nil {
+		panic("unexpected RepointEntry")
+	}
+	return s.repointEntry(ctx, entryID, productID, d, name, translit, cover)
+}
 func (s *stubStore) ListNameOnlyPlatformEntries(ctx context.Context) ([]store.PlatformEntryRef, error) {
 	if s.listNameOnlyPlatformEntries == nil {
 		panic("unexpected ListNameOnlyPlatformEntries")
@@ -358,6 +380,7 @@ func (s *stubStore) ApproveSubmission(ctx context.Context, id uuid.UUID, snap st
 // stubEnrichment implements server.Enrichment via function fields.
 type stubEnrichment struct {
 	getProduct             func(ctx context.Context, bearer string, id uuid.UUID) (enrichapi.Product, error)
+	resolve                func(ctx context.Context, bearer string, req enrichapi.ResolveRequest) (enrichapi.Product, error)
 	batchPrices            func(ctx context.Context, bearer string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error)
 	priceHistory           func(ctx context.Context, bearer string, ids []uuid.UUID, days int) (map[string][]enrichapi.PricePoint, error)
 	createCommunityProduct func(ctx context.Context, bearer string, req enrichapi.CreateCommunityProductJSONRequestBody) (enrichapi.Product, error)
@@ -371,6 +394,12 @@ func (s *stubEnrichment) GetProduct(ctx context.Context, bearer string, id uuid.
 		panic("unexpected GetProduct")
 	}
 	return s.getProduct(ctx, bearer, id)
+}
+func (s *stubEnrichment) Resolve(ctx context.Context, bearer string, req enrichapi.ResolveRequest) (enrichapi.Product, error) {
+	if s.resolve == nil {
+		panic("unexpected Resolve")
+	}
+	return s.resolve(ctx, bearer, req)
 }
 func (s *stubEnrichment) BatchPrices(ctx context.Context, bearer string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error) {
 	if s.batchPrices == nil {
@@ -481,6 +510,14 @@ func gameProduct(id uuid.UUID) enrichapi.Product {
 			Companies: []enrichapi.CompanyCredit{}, FirstReleaseDate: &released,
 		},
 	}
+}
+
+// pricedGameProduct is gameProduct plus a PriceCharting mapping under
+// consoleName, for the region-repoint arm's console-class guard.
+func pricedGameProduct(id uuid.UUID, consoleName string) enrichapi.Product {
+	p := gameProduct(id)
+	p.Pricecharting = &enrichapi.PricechartingMeta{ConsoleName: consoleName, PcProductId: 5000}
+	return p
 }
 
 // localizedGameProduct is gameProduct plus per-region presentation
@@ -697,6 +734,64 @@ func TestUnitCreateEntry_CoverFallsBackToPlatformLogo(t *testing.T) {
 	if stored.CoverURL == nil || *stored.CoverURL != cover {
 		t.Fatalf("cover art must win over the platform logo: %v", stored.CoverURL)
 	}
+}
+
+// Create maps the body field: absent -> auto; user -> user; an
+// unknown value answers 400 like pricing_mode does.
+func TestCreateEntry_StampsMatchProvenance(t *testing.T) {
+	productID := uuid.New()
+	newStore := func(stored *store.Entry) *stubStore {
+		return &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			*stored = e
+			e.ID = uuid.New()
+			r := "n"
+			e.BacklogRank = &r
+			e.Tags = []store.TagRef{}
+			return e, nil
+		}}
+	}
+	newEnrich := func() *stubEnrichment {
+		return &stubEnrichment{
+			getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+				return gameProduct(id), nil
+			},
+			batchPrices: pricedAs(1500, 4200, 9900),
+		}
+	}
+
+	t.Run("absent defaults to auto", func(t *testing.T) {
+		var stored store.Entry
+		srv, a := newUnitServer(t, newStore(&stored), newEnrich(), newStubCache())
+		resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()), createBody(productID, nil))
+		if resp.StatusCode != http.StatusCreated {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status %d: %s", resp.StatusCode, body)
+		}
+		if stored.MatchProvenance != "auto" {
+			t.Fatalf("match_provenance: got %q, want auto", stored.MatchProvenance)
+		}
+	})
+
+	t.Run("user is stamped as sent", func(t *testing.T) {
+		var stored store.Entry
+		srv, a := newUnitServer(t, newStore(&stored), newEnrich(), newStubCache())
+		resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()),
+			createBody(productID, func(m map[string]any) { m["match_provenance"] = "user" }))
+		if resp.StatusCode != http.StatusCreated {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status %d: %s", resp.StatusCode, body)
+		}
+		if stored.MatchProvenance != "user" {
+			t.Fatalf("match_provenance: got %q, want user", stored.MatchProvenance)
+		}
+	})
+
+	t.Run("unknown value is invalid_body", func(t *testing.T) {
+		srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
+		resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()),
+			createBody(productID, func(m map[string]any) { m["match_provenance"] = "auto_ish" }))
+		wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
+	})
 }
 
 func TestUnitCreateEntry_ValidationMatrix(t *testing.T) {
@@ -1408,7 +1503,7 @@ func storedGameEntry(userID uuid.UUID) store.Entry {
 		ID: uuid.New(), UserID: userID, ProductID: new(uuid.New()),
 		ItemType: "game", MediaType: "physical", DisplayName: "Chrono Trigger",
 		Region: "ntsc_u", Packaging: "cib", Currency: "USD",
-		PricingMode: "auto", Status: "backlog", BacklogRank: &rank,
+		PricingMode: "auto", MatchProvenance: "auto", Status: "backlog", BacklogRank: &rank,
 		Source: "manual", Tags: []store.TagRef{},
 	}
 }
@@ -2078,6 +2173,85 @@ func TestUnitUpdateEntry(t *testing.T) {
 	})
 }
 
+// The narrow product_id re-match arm stamps user server-side.
+func TestUpdateEntry_NarrowRematchStampsUser(t *testing.T) {
+	user := uuid.New()
+	e := storedGameEntry(user)
+	target := uuid.New()
+	curProd := enrichapi.Product{Id: *e.ProductID, Type: "game",
+		Igdb:     &enrichapi.IgdbMeta{GameId: 1011},
+		Platform: &enrichapi.PlatformRef{IgdbPlatformId: 19, Name: "SNES"}} // unmatched: required for re-match eligibility
+	newProd := enrichapi.Product{Id: target, Type: "game",
+		Igdb:          &enrichapi.IgdbMeta{GameId: 1011},
+		Platform:      &enrichapi.PlatformRef{IgdbPlatformId: 19, Name: "SNES"},
+		Pricecharting: &enrichapi.PricechartingMeta{PcProductId: 5011}}
+	var updated store.Entry
+	st := &stubStore{
+		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return e, nil },
+		updateEntry: func(_ context.Context, in store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			updated = in
+			in.Tags = []store.TagRef{}
+			return in, nil
+		},
+	}
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			if id == *e.ProductID {
+				return curProd, nil
+			}
+			if id == target {
+				return newProd, nil
+			}
+			return enrichapi.Product{}, enrichmentclient.ErrUnknownProduct
+		},
+		batchPrices: pricedAs(1500, 4200, 9900),
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+		updateBody(func(m map[string]any) { m["product_id"] = target.String() }))
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	if updated.ProductID == nil || *updated.ProductID != target {
+		t.Fatalf("must repoint: %v", updated.ProductID)
+	}
+	if updated.MatchProvenance != "user" {
+		t.Fatalf("the narrow re-match must stamp match_provenance user, got %q", updated.MatchProvenance)
+	}
+}
+
+// A plain edit (notes/tags/status) on a user-provenance entry leaves
+// the column user.
+func TestUpdateEntry_PlainEditPreservesProvenance(t *testing.T) {
+	user := uuid.New()
+	e := storedGameEntry(user)
+	e.MatchProvenance = "user"
+	var updated store.Entry
+	st := &stubStore{
+		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return e, nil },
+		updateEntry: func(_ context.Context, in store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			updated = in
+			in.Tags = []store.TagRef{}
+			return in, nil
+		},
+	}
+	enrich := &stubEnrichment{batchPrices: pricedAs(1500, 4200, 9900)}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	resp := do(t, http.MethodPut, srv.URL+"/entries/"+e.ID.String(), a.token(t, user.String()),
+		updateBody(func(m map[string]any) {
+			m["notes"] = "great cart"
+			m["status"] = "playing"
+		}))
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	if updated.MatchProvenance != "user" {
+		t.Fatalf("a plain edit must preserve match_provenance: got %q", updated.MatchProvenance)
+	}
+}
+
 // TestUnitUpdateEntry_RegionScopedReleaseDate covers the snapshot
 // re-pick triggers introduced for region-scoped dates: a region edit
 // on a game-backed entry re-fetches its product and re-picks, an
@@ -2346,6 +2520,32 @@ func TestUnitDeleteEntry(t *testing.T) {
 		t.Fatalf("invalidations: %v", c.invalidated)
 	}
 	resp = do(t, http.MethodDelete, srv.URL+"/entries/"+uuid.NewString(), a.token(t, user.String()), nil)
+	wantProblem(t, resp, http.StatusNotFound, "entry_not_found")
+}
+
+// TestAckEntryRegionMismatch pins the handler's ownership idiom: 204
+// and a stamp call for the owner, 404 entry_not_found for someone
+// else's entry (the store's ownership WHERE reports ErrNotFound
+// identically for foreign and missing rows, same as DeleteEntry).
+func TestAckEntryRegionMismatch(t *testing.T) {
+	user := uuid.New()
+	id := uuid.New()
+	stamped := 0
+	st := &stubStore{ackRegionMismatch: func(_ context.Context, gotUser, gotID uuid.UUID) error {
+		if gotUser != user || gotID != id {
+			return store.ErrNotFound
+		}
+		stamped++
+		return nil
+	}}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+
+	resp := do(t, http.MethodPost, srv.URL+"/entries/"+id.String()+"/region-mismatch-ack", a.token(t, user.String()), nil)
+	if resp.StatusCode != http.StatusNoContent || stamped != 1 {
+		t.Fatalf("ack: %d, stamp calls %d", resp.StatusCode, stamped)
+	}
+
+	resp = do(t, http.MethodPost, srv.URL+"/entries/"+id.String()+"/region-mismatch-ack", a.token(t, uuid.NewString()), nil)
 	wantProblem(t, resp, http.StatusNotFound, "entry_not_found")
 }
 
@@ -4714,7 +4914,7 @@ func TestUnitInternalResnapshot_HappyPath(t *testing.T) {
 	}
 	srv, a := newUnitServer(t, st, enrich, newStubCache())
 
-	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", a.token(t, uuid.NewString()), nil)
+	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", a.token(t, uuid.NewString(), "admin"), nil)
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status %d: %s", resp.StatusCode, body)
@@ -4781,7 +4981,7 @@ func TestUnitInternalResnapshot_FailedProductIsPartialProgress(t *testing.T) {
 		},
 	}
 	srv, a := newUnitServer(t, st, enrich, newStubCache())
-	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", a.token(t, uuid.NewString()), nil)
+	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", a.token(t, uuid.NewString(), "admin"), nil)
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status %d: %s", resp.StatusCode, body)
@@ -4837,7 +5037,7 @@ func TestUnitInternalResnapshot_Idempotent(t *testing.T) {
 		},
 	}
 	srv, a := newUnitServer(t, st, enrich, newStubCache())
-	tok := a.token(t, uuid.NewString())
+	tok := a.token(t, uuid.NewString(), "admin")
 
 	first := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", tok, nil)
 	var got1 struct {
@@ -4915,7 +5115,7 @@ func TestUnitInternalResnapshot_LocalizedTrio(t *testing.T) {
 		},
 	}
 	srv, a := newUnitServer(t, st, enrich, newStubCache())
-	tok := a.token(t, uuid.NewString())
+	tok := a.token(t, uuid.NewString(), "admin")
 
 	first := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", tok, nil)
 	var got1 struct {
@@ -4956,6 +5156,507 @@ func TestUnitInternalResnapshot_LocalizedTrio(t *testing.T) {
 	if got2.EntriesUpdated != 0 {
 		t.Fatalf("second run must be a no-op once the trio is backfilled: %+v", got2)
 	}
+}
+
+// A plain user bearer is refused on resnapshot now (tightened from
+// any valid JWT): an all-nil stub store/enrichment panics if the
+// handler ever reaches past the guard, so a silent bypass fails
+// loudly rather than passing.
+func TestUnitInternalResnapshot_NonAdminOrServiceIsForbidden(t *testing.T) {
+	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", a.token(t, uuid.NewString()), nil)
+	wantProblem(t, resp, http.StatusForbidden, "forbidden")
+}
+
+// A service token passes the admin-or-service guard exactly like an
+// admin bearer does.
+func TestUnitInternalResnapshot_ServiceTokenIsAccepted(t *testing.T) {
+	st := &stubStore{listGameBackedRefs: func(context.Context) ([]store.GameEntryRef, error) { return nil, nil }}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", a.serviceToken(t, "svc:entry-rematch"), nil)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+}
+
+// ---- InternalRematchEntries ----
+
+// triggerRematch fires the entry rematch trigger and asserts the 202
+// the detached run answers with; the counts trio that used to ride
+// this response now lands in the completion log and the rematch.*
+// metrics instead (TestUnitRematchMetrics in telemetry_test.go pins
+// those).
+func triggerRematch(t *testing.T, srv *httptest.Server, bearer string) {
+	t.Helper()
+	resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", bearer, nil)
+	if resp.StatusCode != http.StatusAccepted {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+}
+
+// waitFor polls until check passes (the entry rematch detaches, same
+// as the catalog refresh it mirrors).
+func waitFor(t *testing.T, timeout time.Duration, check func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if check() {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatal("condition not reached in time")
+}
+
+// The rematch groups entries into (game, platform, region) triples,
+// resolves once per triple that has a non-compatible entry, repoints
+// only those entries, and detaches (202): the count trio that used to
+// ride the response now lands in the completion log and the
+// rematch.* metrics instead (TestUnitRematchMetrics). Second run is a
+// no-op (idempotence).
+func TestInternalRematchEntries_RepointsAndIsIdempotent(t *testing.T) {
+	productBase := uuid.New()
+	productJP := uuid.New()
+	entry1, entry2 := uuid.New(), uuid.New()
+
+	baseMember := pricedGameProduct(productBase, "Super Nintendo") // base class
+	jpDate := openapi_types.Date{Time: time.Date(1996, time.March, 6, 0, 0, 0, 0, time.UTC)}
+	jpMember := pricedGameProduct(productJP, "Super Famicom") // jp class: the region-correct sibling
+	jpMember.Igdb.FirstReleaseDate = &jpDate
+
+	var mu sync.Mutex
+	// Both entries share one (game, platform, region) triple and start
+	// on the base-class member; RepointEntry mutates this slice in
+	// place so a second run sees the post-repoint state, exactly like
+	// the store's real UPDATE would.
+	refs := []store.RematchEntryRef{
+		{EntryID: entry1, ProductID: productBase, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
+		{EntryID: entry2, ProductID: productBase, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
+	}
+	var resolveCalls []enrichapi.ResolveRequest
+	var getProductCalls int
+	st := &stubStore{
+		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			out := make([]store.RematchEntryRef, len(refs))
+			copy(out, refs)
+			return out, nil
+		},
+		repointEntry: func(_ context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			for i := range refs {
+				if refs[i].EntryID == entryID {
+					refs[i].ProductID = productID
+					refs[i].FirstReleaseDate = d
+					refs[i].LocalizedName, refs[i].LocalizedNameTranslit, refs[i].LocalizedCoverURL = name, translit, cover
+				}
+			}
+			return nil
+		},
+	}
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			mu.Lock()
+			getProductCalls++
+			mu.Unlock()
+			switch id {
+			case productBase:
+				return baseMember, nil
+			case productJP:
+				return jpMember, nil
+			default:
+				t.Fatalf("unexpected product id %s", id)
+				return enrichapi.Product{}, nil
+			}
+		},
+		resolve: func(_ context.Context, _ string, req enrichapi.ResolveRequest) (enrichapi.Product, error) {
+			mu.Lock()
+			resolveCalls = append(resolveCalls, req)
+			mu.Unlock()
+			return jpMember, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	tok := a.token(t, uuid.NewString(), "admin")
+
+	triggerRematch(t, srv, tok)
+	waitFor(t, 5*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return refs[0].ProductID == productJP && refs[1].ProductID == productJP
+	})
+
+	mu.Lock()
+	if len(resolveCalls) != 1 {
+		mu.Unlock()
+		t.Fatalf("resolve must be called exactly once per triple, not per entry: %d calls", len(resolveCalls))
+	}
+	gotReq := resolveCalls[0]
+	r1, r2 := refs[0], refs[1]
+	mu.Unlock()
+	if gotReq.Type != "game" || gotReq.IgdbGameId == nil || *gotReq.IgdbGameId != 1000 ||
+		gotReq.PlatformIgdbId == nil || *gotReq.PlatformIgdbId != 6 ||
+		gotReq.Region == nil || *gotReq.Region != "ntsc_j" {
+		t.Fatalf("resolve request: %+v", gotReq)
+	}
+	if r1.ProductID != productJP || r2.ProductID != productJP {
+		t.Fatalf("both entries must repoint to the resolved sibling: %+v / %+v", r1, r2)
+	}
+	if r1.FirstReleaseDate == nil || !r1.FirstReleaseDate.Equal(jpDate.Time) {
+		t.Fatalf("snapshot must re-pick from the resolved payload: %v", r1.FirstReleaseDate)
+	}
+
+	// Second run: both entries now sit on the class-compatible jp
+	// member, so neither is pending - no resolve, no repoint. The
+	// member fetch is this run's only remaining call before that
+	// decision, so its second cumulative firing proves the run reached
+	// (and, since nothing async follows within the triple, finished)
+	// the no-op path.
+	triggerRematch(t, srv, tok)
+	waitFor(t, 5*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return getProductCalls == 2
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	if len(resolveCalls) != 1 {
+		t.Fatalf("second run must be a no-op once every entry sits on a class-compatible member: %d resolve calls, want still 1", len(resolveCalls))
+	}
+}
+
+// Per-entry guard inside a shared triple: an entry on a
+// class-compatible manual member survives while its neighbor on the
+// unmatched member repoints; non-auto entries are never listed.
+func TestInternalRematchEntries_ClassGuardIsPerEntry(t *testing.T) {
+	productManualJP := uuid.New() // entry1's hand-picked, already region-correct member
+	productUnmatched := uuid.New()
+	entry1, entry2 := uuid.New(), uuid.New()
+
+	manualJP := pricedGameProduct(productManualJP, "Super Famicom") // jp class: already correct for ntsc_j
+	unmatched := gameProduct(productUnmatched)                      // no pricecharting -> never region-correct
+
+	// Both entries share one (game, platform, region) triple. A third,
+	// non-auto entry on the very same triple is deliberately absent
+	// from this list: ListAutoGameRematchRefs' pricing_mode = 'auto'
+	// filter (TestListAutoGameRematchRefs) keeps it out before the
+	// handler ever sees it.
+	refs := []store.RematchEntryRef{
+		{EntryID: entry1, ProductID: productManualJP, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
+		{EntryID: entry2, ProductID: productUnmatched, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
+	}
+	var mu sync.Mutex
+	var repointed []uuid.UUID
+	var resolveCalls int
+	getProductCalls := map[uuid.UUID]int{}
+	st := &stubStore{
+		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
+		repointEntry: func(_ context.Context, entryID, productID uuid.UUID, _ *time.Time, _, _, _ *string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			if productID != productManualJP {
+				t.Fatalf("must repoint onto the resolved (already region-correct) sibling: %s", productID)
+			}
+			repointed = append(repointed, entryID)
+			return nil
+		},
+	}
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			mu.Lock()
+			getProductCalls[id]++
+			mu.Unlock()
+			switch id {
+			case productManualJP:
+				return manualJP, nil
+			case productUnmatched:
+				return unmatched, nil
+			default:
+				t.Fatalf("unexpected product id %s", id)
+				return enrichapi.Product{}, nil
+			}
+		},
+		resolve: func(_ context.Context, _ string, req enrichapi.ResolveRequest) (enrichapi.Product, error) {
+			mu.Lock()
+			resolveCalls++
+			mu.Unlock()
+			return manualJP, nil // the region-correct sibling entry1 already sits on
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	triggerRematch(t, srv, a.token(t, uuid.NewString(), "admin"))
+
+	waitFor(t, 5*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(repointed) == 1
+	})
+
+	mu.Lock()
+	defer mu.Unlock()
+	if resolveCalls != 1 {
+		t.Fatalf("resolve must be called once for the whole triple, not per entry: %d", resolveCalls)
+	}
+	if len(repointed) != 1 || repointed[0] != entry2 {
+		t.Fatalf("only the unmatched neighbor may repoint; the class-compatible entry must survive untouched: %v", repointed)
+	}
+	if getProductCalls[productManualJP] == 0 || getProductCalls[productUnmatched] == 0 {
+		t.Fatalf("the per-entry guard needs both members fetched: %v", getProductCalls)
+	}
+}
+
+// Cross-triple memoization: two entries seeded on the SAME member but
+// grouped into different (game, platform, region) triples (two
+// regions here) still trigger only one member fetch for that product
+// across the whole run - the resnapshot lever pins its own dedup the
+// same way (TestUnitInternalResnapshot_HappyPath's productCalls check).
+func TestInternalRematchEntries_MemberFetchMemoizedAcrossTriples(t *testing.T) {
+	productShared := uuid.New() // both triples start here: base class, region-correct for neither
+	productJP, productPAL := uuid.New(), uuid.New()
+	entryJP, entryPAL := uuid.New(), uuid.New()
+
+	sharedMember := pricedGameProduct(productShared, "Super Nintendo") // base class
+	jpMember := pricedGameProduct(productJP, "Super Famicom")
+	palMember := pricedGameProduct(productPAL, "PAL Super Nintendo")
+
+	refs := []store.RematchEntryRef{
+		{EntryID: entryJP, ProductID: productShared, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
+		{EntryID: entryPAL, ProductID: productShared, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "pal"},
+	}
+	var mu sync.Mutex
+	var repointed []uuid.UUID
+	getProductCalls := map[uuid.UUID]int{}
+	st := &stubStore{
+		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
+		repointEntry: func(_ context.Context, entryID, _ uuid.UUID, _ *time.Time, _, _, _ *string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			repointed = append(repointed, entryID)
+			return nil
+		},
+	}
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			mu.Lock()
+			getProductCalls[id]++
+			mu.Unlock()
+			if id != productShared {
+				t.Fatalf("unexpected product id %s", id)
+			}
+			return sharedMember, nil
+		},
+		resolve: func(_ context.Context, _ string, req enrichapi.ResolveRequest) (enrichapi.Product, error) {
+			if req.Region != nil && *req.Region == "pal" {
+				return palMember, nil
+			}
+			return jpMember, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	triggerRematch(t, srv, a.token(t, uuid.NewString(), "admin"))
+
+	waitFor(t, 5*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(repointed) == 2
+	})
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(getProductCalls) != 1 || getProductCalls[productShared] != 1 {
+		t.Fatalf("GetProduct must be called exactly once for the shared member across both triples: %v", getProductCalls)
+	}
+}
+
+// A failed member fetch or resolve counts the triple failed and the
+// run continues to the next triple; the audit trail is the repoint
+// log below (TestUnitRematchMetrics separately pins the triples.ok /
+// triples.failed counters this scenario would also feed).
+func TestInternalRematchEntries_CountsFailuresAndContinues(t *testing.T) {
+	entryA, entryB, entryC := uuid.New(), uuid.New(), uuid.New()
+	productA := uuid.New()                             // triple A: member fetch fails
+	productB := uuid.New()                             // triple B: member fetch ok, resolve fails
+	productCFrom, productCTo := uuid.New(), uuid.New() // triple C: healthy path
+
+	refs := []store.RematchEntryRef{
+		{EntryID: entryA, ProductID: productA, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
+		{EntryID: entryB, ProductID: productB, IGDBGameID: 2000, PlatformIGDBID: 7, Region: "pal"},
+		{EntryID: entryC, ProductID: productCFrom, IGDBGameID: 3000, PlatformIGDBID: 8, Region: "ntsc_j"},
+	}
+	var mu sync.Mutex
+	var repointed []uuid.UUID
+	st := &stubStore{
+		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
+		repointEntry: func(_ context.Context, entryID, _ uuid.UUID, _ *time.Time, _, _, _ *string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			repointed = append(repointed, entryID)
+			return nil
+		},
+	}
+	unmatchedB := gameProduct(productB)         // no pricecharting -> pending
+	unmatchedCFrom := gameProduct(productCFrom) // no pricecharting -> pending
+	resolvedCTo := pricedGameProduct(productCTo, "Super Famicom")
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			switch id {
+			case productA:
+				return enrichapi.Product{}, enrichmentclient.ErrUnavailable
+			case productB:
+				return unmatchedB, nil
+			case productCFrom:
+				return unmatchedCFrom, nil
+			default:
+				t.Fatalf("unexpected product id %s", id)
+				return enrichapi.Product{}, nil
+			}
+		},
+		resolve: func(_ context.Context, _ string, req enrichapi.ResolveRequest) (enrichapi.Product, error) {
+			if req.Region != nil && *req.Region == "pal" {
+				return enrichapi.Product{}, enrichmentclient.ErrUnavailable
+			}
+			return resolvedCTo, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	triggerRematch(t, srv, a.token(t, uuid.NewString(), "admin"))
+
+	waitFor(t, 5*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(repointed) == 1
+	})
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(repointed) != 1 || repointed[0] != entryC {
+		t.Fatalf("only triple C's entry may repoint; the two failed triples must leave their entries untouched: %v", repointed)
+	}
+}
+
+// The rematch never lists user rows: a cross-class user entry in a
+// swept triple is neither resolved nor repointed. ListAutoGameRematchRefs'
+// match_provenance = 'auto' filter (TestListAutoGameRematchRefs) keeps
+// it out before the handler ever sees it - the stub below models
+// exactly that pre-filtered list, with only the auto entry present.
+func TestInternalRematchEntries_SkipsUserPicks(t *testing.T) {
+	productAuto := uuid.New() // entryAuto's member: unmatched -> needs repoint
+	entryAuto := uuid.New()
+
+	unmatchedAuto := gameProduct(productAuto) // no pricecharting -> never region-correct
+	resolvedTo := pricedGameProduct(uuid.New(), "Super Famicom")
+
+	refs := []store.RematchEntryRef{
+		{EntryID: entryAuto, ProductID: productAuto, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
+	}
+	var mu sync.Mutex
+	var repointed []uuid.UUID
+	var resolveCalls int
+	st := &stubStore{
+		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
+		repointEntry: func(_ context.Context, entryID, _ uuid.UUID, _ *time.Time, _, _, _ *string) error {
+			if entryID != entryAuto {
+				t.Fatalf("only the listed auto entry may repoint, got %s", entryID)
+			}
+			mu.Lock()
+			repointed = append(repointed, entryID)
+			mu.Unlock()
+			return nil
+		},
+	}
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			if id != productAuto {
+				t.Fatalf("unexpected product id %s", id)
+			}
+			return unmatchedAuto, nil
+		},
+		resolve: func(_ context.Context, _ string, req enrichapi.ResolveRequest) (enrichapi.Product, error) {
+			mu.Lock()
+			resolveCalls++
+			mu.Unlock()
+			return resolvedTo, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	triggerRematch(t, srv, a.token(t, uuid.NewString(), "admin"))
+
+	waitFor(t, 5*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(repointed) == 1
+	})
+
+	mu.Lock()
+	defer mu.Unlock()
+	if resolveCalls != 1 {
+		t.Fatalf("resolve calls: %d, want 1", resolveCalls)
+	}
+	if len(repointed) != 1 || repointed[0] != entryAuto {
+		t.Fatalf("only the auto entry may repoint: %v", repointed)
+	}
+}
+
+// A non-admin bearer on the entry rematch is forbidden; an all-nil
+// stub store/enrichment panics if the handler ever reaches past the
+// role check, so a silent bypass fails loudly rather than passing.
+func TestInternalRematchEntries_NonAdminIsForbidden(t *testing.T) {
+	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", a.token(t, uuid.NewString()), nil)
+	wantProblem(t, resp, http.StatusForbidden, "forbidden")
+}
+
+// A service token passes the admin-or-service guard exactly like an
+// admin bearer does - the CronJob's own credential.
+func TestInternalRematchEntries_ServiceTokenIsAccepted(t *testing.T) {
+	st := &stubStore{listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return nil, nil }}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	triggerRematch(t, srv, a.serviceToken(t, "svc:entry-rematch"))
+}
+
+// A concurrent trigger while a run is in flight answers 409
+// rematch_in_progress instead of racing it (mirrors the catalog
+// refresh's single-flight guard): the CAS happens synchronously at
+// the trigger itself, so the first request answers 202 immediately
+// and the second is refused while the detached sweep is still inside
+// listAutoGameRematchRefs.
+func TestInternalRematchEntries_ConcurrentTriggerIs409(t *testing.T) {
+	release := make(chan struct{})
+	started := make(chan struct{})
+	st := &stubStore{
+		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) {
+			close(started)
+			<-release
+			return nil, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	tok := a.token(t, uuid.NewString(), "admin")
+
+	triggerRematch(t, srv, tok)
+	<-started
+
+	resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", tok, nil)
+	wantProblem(t, resp, http.StatusConflict, "rematch_in_progress")
+	close(release)
+
+	// The first run's goroutine is unblocked now, but a black-box test
+	// has no direct read on the in-process guard (the catalog
+	// refresh's own detached tests poll one, unexported and
+	// same-package there); retriggering until one is accepted again is
+	// the external equivalent - each 409 in between means the first
+	// run has not reset the guard yet. Swap the stub first: the first
+	// run already consumed its one call to the blocking closure, and a
+	// second call to it would close(started) again and panic.
+	st.listAutoGameRematchRefs = func(context.Context) ([]store.RematchEntryRef, error) { return nil, nil }
+	waitFor(t, 5*time.Second, func() bool {
+		resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", tok, nil)
+		return resp.StatusCode == http.StatusAccepted
+	})
 }
 
 func TestCountProductReferences_AdminGateAndCount(t *testing.T) {
@@ -5605,6 +6306,20 @@ func TestNormalizePlatforms_MatchesAliasesSkipsUnknownAdminOnly(t *testing.T) {
 	}
 }
 
+// TestNormalizePlatforms_ServiceTokenIsForbidden pins the admin-only
+// guard's missing cell: normalize-platforms never admits a service
+// token (unlike resnapshot and the entry rematch, which do). A
+// service token's subject (svc:<name>) is not a uuid, so this also
+// guards a regression where the role check moved back after caller -
+// that ordering bug answers 500 internal (and logs an ERROR line)
+// instead of a clean 403, which would otherwise slip through unnoticed
+// since the *store* stays nil-stub-panics-on-touch either way.
+func TestNormalizePlatforms_ServiceTokenIsForbidden(t *testing.T) {
+	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-platforms", a.serviceToken(t, "svc:entry-rematch"), nil)
+	wantProblem(t, resp, http.StatusForbidden, "forbidden")
+}
+
 // TestNormalizePlatforms_UpstreamFailures pins that an unreachable
 // enrichment or a failed store list surfaces as a problem+json error,
 // rather than silently reporting 0 matches: an admin trusting the
@@ -5639,4 +6354,483 @@ func TestNormalizePlatforms_UpstreamFailures(t *testing.T) {
 		resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-platforms", a.token(t, adminID.String(), "admin"), nil)
 		wantProblem(t, resp, http.StatusInternalServerError, "internal")
 	})
+}
+
+// Region edit on an auto-priced game entry whose member is cross-class
+// re-resolves with the new region and repoints to the returned member;
+// snapshot fields re-pick from the resolved payload.
+func TestUpdateEntry_RegionChangeRepointsCrossClassAutoEntry(t *testing.T) {
+	user := uuid.New()
+	productID := uuid.New()
+	siblingID := uuid.New()
+	baseMember := pricedGameProduct(productID, "Super Nintendo") // base class
+	jpDate := openapi_types.Date{Time: time.Date(1996, time.March, 6, 0, 0, 0, 0, time.UTC)}
+	jpMember := pricedGameProduct(siblingID, "Super Famicom") // jp class: the region-correct sibling
+	jpMember.Igdb.FirstReleaseDate = &jpDate
+
+	var created store.Entry
+	st := &stubStore{
+		createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			e.ID = uuid.New()
+			r := "n"
+			e.BacklogRank = &r
+			e.Tags = []store.TagRef{}
+			created = e
+			return e, nil
+		},
+		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return created, nil },
+		updateEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			created = e
+			e.Tags = []store.TagRef{}
+			return e, nil
+		},
+	}
+	var getProductCalls int
+	var resolveCalls []enrichapi.ResolveRequest
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			getProductCalls++
+			if id != productID {
+				t.Fatalf("GetProduct called with unexpected id %s", id)
+			}
+			return baseMember, nil
+		},
+		resolve: func(_ context.Context, _ string, req enrichapi.ResolveRequest) (enrichapi.Product, error) {
+			resolveCalls = append(resolveCalls, req)
+			return jpMember, nil
+		},
+		batchPrices: pricedAs(1500, 4200, 9900),
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	tok := a.token(t, user.String())
+
+	resp := do(t, http.MethodPost, srv.URL+"/entries", tok, createBody(productID, nil)) // region ntsc_u
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("create status %d: %s", resp.StatusCode, body)
+	}
+
+	resp = do(t, http.MethodPut, srv.URL+"/entries/"+created.ID.String(), tok,
+		updateBody(func(m map[string]any) { m["region"] = "ntsc_j" }))
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("update status %d: %s", resp.StatusCode, body)
+	}
+	if getProductCalls != 2 {
+		t.Fatalf("GetProduct calls: %d, want 2 (creation snapshot + the region arm's current-member fetch)", getProductCalls)
+	}
+	if len(resolveCalls) != 1 {
+		t.Fatalf("resolve calls: %d, want 1", len(resolveCalls))
+	}
+	got := resolveCalls[0]
+	if got.Type != "game" || got.IgdbGameId == nil || *got.IgdbGameId != 1000 ||
+		got.PlatformIgdbId == nil || *got.PlatformIgdbId != 6 ||
+		got.Region == nil || *got.Region != "ntsc_j" {
+		t.Fatalf("resolve request: %+v", got)
+	}
+	if created.ProductID == nil || *created.ProductID != siblingID {
+		t.Fatalf("must repoint to the resolved sibling: %v", created.ProductID)
+	}
+	want := time.Date(1996, time.March, 6, 0, 0, 0, 0, time.UTC)
+	if created.FirstReleaseDate == nil || !created.FirstReleaseDate.Equal(want) {
+		t.Fatalf("snapshot must re-pick from the resolved payload: %v", created.FirstReleaseDate)
+	}
+}
+
+// Class-compatible members skip the resolve hop entirely (the stub
+// asserts resolve was never called): an in-region manual variant pick
+// survives a same-class region edit, and a ntsc_u -> region_free flip
+// stays on the base member.
+func TestUpdateEntry_RegionChangeSkipsClassCompatibleMember(t *testing.T) {
+	user := uuid.New()
+
+	t.Run("hand-chosen JP variant listing stays once the region edit lands in its class", func(t *testing.T) {
+		productID := uuid.New()
+		// A manual pick made while the entry still carried region
+		// ntsc_u: the picker path ignores the passed region, so a JP
+		// listing can already sit on a ntsc_u entry. The class guard -
+		// not the region value at create time - decides whether a later
+		// region edit re-resolves.
+		jpVariant := pricedGameProduct(productID, "Super Famicom")
+		var created store.Entry
+		st := &stubStore{
+			createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+				e.ID = uuid.New()
+				r := "n"
+				e.BacklogRank = &r
+				e.Tags = []store.TagRef{}
+				created = e
+				return e, nil
+			},
+			getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return created, nil },
+			updateEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+				created = e
+				e.Tags = []store.TagRef{}
+				return e, nil
+			},
+		}
+		var getProductCalls, resolveCalls int
+		enrich := &stubEnrichment{
+			getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+				getProductCalls++
+				return jpVariant, nil
+			},
+			resolve: func(context.Context, string, enrichapi.ResolveRequest) (enrichapi.Product, error) {
+				resolveCalls++
+				return enrichapi.Product{}, nil
+			},
+			batchPrices: pricedAs(1500, 4200, 9900),
+		}
+		srv, a := newUnitServer(t, st, enrich, newStubCache())
+		tok := a.token(t, user.String())
+
+		resp := do(t, http.MethodPost, srv.URL+"/entries", tok, createBody(productID, nil))
+		if resp.StatusCode != http.StatusCreated {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("create status %d: %s", resp.StatusCode, body)
+		}
+
+		resp = do(t, http.MethodPut, srv.URL+"/entries/"+created.ID.String(), tok,
+			updateBody(func(m map[string]any) { m["region"] = "ntsc_j" }))
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("update status %d: %s", resp.StatusCode, body)
+		}
+		if resolveCalls != 0 {
+			t.Fatalf("class-compatible member must skip the resolve hop: %d calls", resolveCalls)
+		}
+		if getProductCalls != 2 {
+			t.Fatalf("GetProduct calls: %d, want 2 (creation snapshot + the region arm's display re-pick)", getProductCalls)
+		}
+		if created.ProductID == nil || *created.ProductID != productID {
+			t.Fatalf("must stay on the manually picked member: %v", created.ProductID)
+		}
+	})
+
+	t.Run("ntsc_u to region_free flip stays on the base member", func(t *testing.T) {
+		productID := uuid.New()
+		baseMember := pricedGameProduct(productID, "Super Nintendo")
+		var created store.Entry
+		st := &stubStore{
+			createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+				e.ID = uuid.New()
+				r := "n"
+				e.BacklogRank = &r
+				e.Tags = []store.TagRef{}
+				created = e
+				return e, nil
+			},
+			getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return created, nil },
+			updateEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+				created = e
+				e.Tags = []store.TagRef{}
+				return e, nil
+			},
+		}
+		var resolveCalls int
+		enrich := &stubEnrichment{
+			getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) { return baseMember, nil },
+			resolve: func(context.Context, string, enrichapi.ResolveRequest) (enrichapi.Product, error) {
+				resolveCalls++
+				return enrichapi.Product{}, nil
+			},
+			batchPrices: pricedAs(1500, 4200, 9900),
+		}
+		srv, a := newUnitServer(t, st, enrich, newStubCache())
+		tok := a.token(t, user.String())
+
+		resp := do(t, http.MethodPost, srv.URL+"/entries", tok, createBody(productID, nil))
+		if resp.StatusCode != http.StatusCreated {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("create status %d: %s", resp.StatusCode, body)
+		}
+
+		resp = do(t, http.MethodPut, srv.URL+"/entries/"+created.ID.String(), tok,
+			updateBody(func(m map[string]any) { m["region"] = "region_free" }))
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("update status %d: %s", resp.StatusCode, body)
+		}
+		if resolveCalls != 0 {
+			t.Fatalf("base member must skip the resolve hop on a region_free flip: %d calls", resolveCalls)
+		}
+		if created.ProductID == nil || *created.ProductID != productID {
+			t.Fatalf("must stay on the base member: %v", created.ProductID)
+		}
+	})
+}
+
+// A cross-class region change on a user-provenance entry re-picks
+// display fields only: product_id unchanged, no Resolve call
+// recorded on the stub.
+func TestUpdateEntry_RegionChangeSkipsUserPick(t *testing.T) {
+	user := uuid.New()
+	productID := uuid.New()
+	baseMember := pricedGameProduct(productID, "Super Nintendo") // base class: cross-class vs the ntsc_j target
+
+	var created store.Entry
+	st := &stubStore{
+		createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			e.ID = uuid.New()
+			r := "n"
+			e.BacklogRank = &r
+			e.Tags = []store.TagRef{}
+			created = e
+			return e, nil
+		},
+		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return created, nil },
+		updateEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			created = e
+			e.Tags = []store.TagRef{}
+			return e, nil
+		},
+	}
+	var getProductCalls, resolveCalls int
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			getProductCalls++
+			return baseMember, nil
+		},
+		resolve: func(context.Context, string, enrichapi.ResolveRequest) (enrichapi.Product, error) {
+			resolveCalls++
+			return enrichapi.Product{}, nil
+		},
+		batchPrices: pricedAs(1500, 4200, 9900),
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	tok := a.token(t, user.String())
+
+	resp := do(t, http.MethodPost, srv.URL+"/entries", tok,
+		createBody(productID, func(m map[string]any) { m["match_provenance"] = "user" })) // region ntsc_u
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("create status %d: %s", resp.StatusCode, body)
+	}
+	if created.MatchProvenance != "user" {
+		t.Fatalf("precondition: created entry must carry match_provenance user, got %q", created.MatchProvenance)
+	}
+
+	resp = do(t, http.MethodPut, srv.URL+"/entries/"+created.ID.String(), tok,
+		updateBody(func(m map[string]any) { m["region"] = "ntsc_j" }))
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("update status %d: %s", resp.StatusCode, body)
+	}
+	if resolveCalls != 0 {
+		t.Fatalf("a user-provenance entry must never resolve on a region edit: %d calls", resolveCalls)
+	}
+	if getProductCalls != 2 {
+		t.Fatalf("GetProduct calls: %d, want 2 (creation snapshot + the region arm's display re-pick)", getProductCalls)
+	}
+	if created.ProductID == nil || *created.ProductID != productID {
+		t.Fatalf("must stay on the user-picked product: %v", created.ProductID)
+	}
+}
+
+// Non-auto entries never repoint on a region edit (display re-pick
+// only), and the explicit product_id repoint arm outranks the region
+// arm when both fire in one request.
+func TestUpdateEntry_RegionChangeNonAutoAndExplicitRepointPrecedence(t *testing.T) {
+	user := uuid.New()
+
+	t.Run("non-auto entry re-picks display fields but never repoints", func(t *testing.T) {
+		productID := uuid.New()
+		// Deliberately cross-class (base vs jp): if pricing_mode gated
+		// nothing, this shape would repoint. It must not, because
+		// pricing_mode is disabled.
+		baseMember := pricedGameProduct(productID, "Super Nintendo")
+		// Two chain-eligible regions on the one product: the ntsc_u
+		// creation snapshot and the ntsc_j region-arm re-pick below must
+		// land different field values, proving the re-pick used the NEW
+		// region rather than just replaying the creation-time snapshot.
+		baseMember.Igdb.ReleaseDates = &[]enrichapi.ReleaseDate{
+			{Region: "north_america", Date: openapi_types.Date{Time: time.Date(1991, time.August, 23, 0, 0, 0, 0, time.UTC)}},
+			{Region: "japan", Date: openapi_types.Date{Time: time.Date(1990, time.January, 11, 0, 0, 0, 0, time.UTC)}},
+		}
+		baseMember.Igdb.Localizations = &[]enrichapi.Localization{
+			{Region: "ja-JP", Name: new("聖剣伝説3"), Translit: new("Seiken Densetsu 3"), CoverUrl: new("https://images.igdb.example/jp.jpg")},
+		}
+		var created store.Entry
+		st := &stubStore{
+			createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+				e.ID = uuid.New()
+				r := "n"
+				e.BacklogRank = &r
+				e.Tags = []store.TagRef{}
+				created = e
+				return e, nil
+			},
+			getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return created, nil },
+			updateEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+				created = e
+				e.Tags = []store.TagRef{}
+				return e, nil
+			},
+		}
+		var getProductCalls, resolveCalls int
+		enrich := &stubEnrichment{
+			getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+				getProductCalls++
+				return baseMember, nil
+			},
+			resolve: func(context.Context, string, enrichapi.ResolveRequest) (enrichapi.Product, error) {
+				resolveCalls++
+				return enrichapi.Product{}, nil
+			},
+		}
+		srv, a := newUnitServer(t, st, enrich, newStubCache())
+		tok := a.token(t, user.String())
+
+		resp := do(t, http.MethodPost, srv.URL+"/entries", tok,
+			createBody(productID, func(m map[string]any) { m["pricing_mode"] = "disabled" }))
+		if resp.StatusCode != http.StatusCreated {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("create status %d: %s", resp.StatusCode, body)
+		}
+
+		resp = do(t, http.MethodPut, srv.URL+"/entries/"+created.ID.String(), tok,
+			updateBody(func(m map[string]any) {
+				m["region"] = "ntsc_j"
+				m["pricing_mode"] = "disabled"
+			}))
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("update status %d: %s", resp.StatusCode, body)
+		}
+		if resolveCalls != 0 {
+			t.Fatalf("non-auto entries must never resolve: %d calls", resolveCalls)
+		}
+		if getProductCalls != 2 {
+			t.Fatalf("GetProduct calls: %d, want 2 (creation snapshot + the region arm's display re-pick)", getProductCalls)
+		}
+		if created.ProductID == nil || *created.ProductID != productID {
+			t.Fatalf("non-auto entries must never repoint: %v", created.ProductID)
+		}
+		jpDate := time.Date(1990, time.January, 11, 0, 0, 0, 0, time.UTC)
+		if created.FirstReleaseDate == nil || !created.FirstReleaseDate.Equal(jpDate) {
+			t.Fatalf("display re-pick must use the new region's release date: %v", created.FirstReleaseDate)
+		}
+		if created.LocalizedName == nil || *created.LocalizedName != "聖剣伝説3" ||
+			created.LocalizedNameTranslit == nil || *created.LocalizedNameTranslit != "Seiken Densetsu 3" ||
+			created.LocalizedCoverURL == nil || *created.LocalizedCoverURL != "https://images.igdb.example/jp.jpg" {
+			t.Fatalf("display re-pick must use the new region's localized bundle: %v %v %v",
+				created.LocalizedName, created.LocalizedNameTranslit, created.LocalizedCoverURL)
+		}
+	})
+
+	t.Run("explicit product_id repoint outranks the region arm", func(t *testing.T) {
+		productID := uuid.New()
+		target := uuid.New()
+		curProd := gameProduct(productID) // unmatched: required for narrow re-match eligibility
+		newProd := gameProduct(target)    // same family (game 1000, platform 6)
+		var created store.Entry
+		st := &stubStore{
+			createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+				e.ID = uuid.New()
+				r := "n"
+				e.BacklogRank = &r
+				e.Tags = []store.TagRef{}
+				created = e
+				return e, nil
+			},
+			getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return created, nil },
+			updateEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+				created = e
+				e.Tags = []store.TagRef{}
+				return e, nil
+			},
+		}
+		var getProductCalls, resolveCalls int
+		enrich := &stubEnrichment{
+			getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+				getProductCalls++
+				if id == productID {
+					return curProd, nil
+				}
+				if id == target {
+					return newProd, nil
+				}
+				return enrichapi.Product{}, enrichmentclient.ErrUnknownProduct
+			},
+			resolve: func(context.Context, string, enrichapi.ResolveRequest) (enrichapi.Product, error) {
+				resolveCalls++
+				return enrichapi.Product{}, nil
+			},
+			batchPrices: pricedAs(1500, 4200, 9900),
+		}
+		srv, a := newUnitServer(t, st, enrich, newStubCache())
+		tok := a.token(t, user.String())
+
+		resp := do(t, http.MethodPost, srv.URL+"/entries", tok, createBody(productID, nil)) // region ntsc_u
+		if resp.StatusCode != http.StatusCreated {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("create status %d: %s", resp.StatusCode, body)
+		}
+
+		resp = do(t, http.MethodPut, srv.URL+"/entries/"+created.ID.String(), tok,
+			updateBody(func(m map[string]any) {
+				m["product_id"] = target.String()
+				m["region"] = "ntsc_j" // would itself be cross-class-eligible if reached
+			}))
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("update status %d: %s", resp.StatusCode, body)
+		}
+		if resolveCalls != 0 {
+			t.Fatalf("the explicit repoint must outrank the region arm: %d resolve calls", resolveCalls)
+		}
+		if getProductCalls != 3 {
+			t.Fatalf("GetProduct calls: %d, want 3 (creation snapshot + repoint's current + repoint's new, no separate region-arm fetch)", getProductCalls)
+		}
+		if created.ProductID == nil || *created.ProductID != target {
+			t.Fatalf("must land on the explicitly requested product: %v", created.ProductID)
+		}
+	})
+}
+
+// Enrichment down during the region-arm resolve answers 502
+// enrichment_unavailable and leaves the entry unchanged.
+func TestUpdateEntry_RegionChangeResolveOutageKeeps502Posture(t *testing.T) {
+	user := uuid.New()
+	productID := uuid.New()
+	baseMember := pricedGameProduct(productID, "Super Nintendo") // base vs the ntsc_j target: cross-class
+
+	var created store.Entry
+	st := &stubStore{
+		createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+			e.ID = uuid.New()
+			r := "n"
+			e.BacklogRank = &r
+			e.Tags = []store.TagRef{}
+			created = e
+			return e, nil
+		},
+		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return created, nil },
+		// updateEntry deliberately nil: a resolve failure on the
+		// region arm must return before any store write.
+	}
+	var resolveCalls int
+	enrich := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) { return baseMember, nil },
+		resolve: func(context.Context, string, enrichapi.ResolveRequest) (enrichapi.Product, error) {
+			resolveCalls++
+			return enrichapi.Product{}, enrichmentclient.ErrUnavailable
+		},
+		batchPrices: pricedAs(1500, 4200, 9900),
+	}
+	srv, a := newUnitServer(t, st, enrich, newStubCache())
+	tok := a.token(t, user.String())
+
+	resp := do(t, http.MethodPost, srv.URL+"/entries", tok, createBody(productID, nil)) // region ntsc_u
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("create status %d: %s", resp.StatusCode, body)
+	}
+
+	resp = do(t, http.MethodPut, srv.URL+"/entries/"+created.ID.String(), tok,
+		updateBody(func(m map[string]any) { m["region"] = "ntsc_j" }))
+	wantProblem(t, resp, http.StatusBadGateway, "enrichment_unavailable")
+	if resolveCalls != 1 {
+		t.Fatalf("resolve calls: %d, want 1", resolveCalls)
+	}
 }

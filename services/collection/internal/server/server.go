@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,6 +36,7 @@ type Store interface {
 	GetEntry(ctx context.Context, userID, id uuid.UUID) (store.Entry, error)
 	UpdateEntry(ctx context.Context, e store.Entry, tagIDs []uuid.UUID) (store.Entry, error)
 	DeleteEntry(ctx context.Context, userID, id uuid.UUID) error
+	AckRegionMismatch(ctx context.Context, userID, entryID uuid.UUID) error
 	BulkUpdateEntries(ctx context.Context, userID uuid.UUID, entryIDs []uuid.UUID, actions store.BulkActions) (int, error)
 	Reorder(ctx context.Context, userID, entryID uuid.UUID, afterID, beforeID *uuid.UUID) (store.Entry, error)
 	ListEntries(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.Entry, error)
@@ -59,6 +61,8 @@ type Store interface {
 	PurgeUserData(ctx context.Context, userID uuid.UUID) error
 	ListGameBackedRefs(ctx context.Context) ([]store.GameEntryRef, error)
 	SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string) error
+	ListAutoGameRematchRefs(ctx context.Context) ([]store.RematchEntryRef, error)
+	RepointEntry(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string) error
 	ListNameOnlyPlatformEntries(ctx context.Context) ([]store.PlatformEntryRef, error)
 	SetEntryPlatformIdentity(ctx context.Context, entryID uuid.UUID, igdbID int64, name string) error
 	CountEntriesByProduct(ctx context.Context, productID uuid.UUID) (int64, error)
@@ -81,6 +85,7 @@ type Store interface {
 // own bearer relayed on every hop).
 type Enrichment interface {
 	GetProduct(ctx context.Context, bearer string, id uuid.UUID) (enrichapi.Product, error)
+	Resolve(ctx context.Context, bearer string, req enrichapi.ResolveRequest) (enrichapi.Product, error)
 	BatchPrices(ctx context.Context, bearer string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error)
 	PriceHistory(ctx context.Context, bearer string, ids []uuid.UUID, days int) (map[string][]enrichapi.PricePoint, error)
 	CreateCommunityProduct(ctx context.Context, bearer string, req enrichapi.CreateCommunityProductJSONRequestBody) (enrichapi.Product, error)
@@ -126,6 +131,13 @@ type Handlers struct {
 	cacheLookups     metric.Int64Counter
 	cacheFailOpen    metric.Int64Counter
 	submissionEvents metric.Int64Counter
+	rematchDuration  metric.Float64Histogram
+	rematchTriples   metric.Int64Counter
+	rematchRepoints  metric.Int64Counter
+
+	// rematching guards the entry rematch: one at a time, concurrent
+	// triggers answer 409 (mirrors enrichment's catalog-refresh guard).
+	rematching atomic.Bool
 }
 
 // New builds a Handlers wired to the given collaborators. The OTel
@@ -142,6 +154,13 @@ func New(st Store, enrich Enrichment, c Cache, opts Options) *Handlers {
 			opts.Logger.Error("counter unavailable", "name", name, "err", err)
 		}
 		return ctr
+	}
+	histogram := func(name, desc, unit string) metric.Float64Histogram {
+		hg, err := m.Float64Histogram(name, metric.WithDescription(desc), metric.WithUnit(unit))
+		if err != nil {
+			opts.Logger.Error("histogram unavailable", "name", name, "err", err)
+		}
+		return hg
 	}
 	h := &Handlers{
 		store:        st,
@@ -161,6 +180,15 @@ func New(st Store, enrich Enrichment, c Cache, opts Options) *Handlers {
 		submissionEvents: counter("vg.collection.submissions.events",
 			"Catalog submission lifecycle transitions",
 			"{event}"),
+		rematchDuration: histogram("vg.collection.rematch.duration",
+			"Elapsed seconds per entry-rematch run",
+			"s"),
+		rematchTriples: counter("vg.collection.rematch.triples",
+			"Entry-rematch (game, platform, region) triples by outcome",
+			"{triple}"),
+		rematchRepoints: counter("vg.collection.rematch.repoints",
+			"Entries repointed onto a region-correct sibling by the entry rematch",
+			"{entry}"),
 	}
 	registerPendingGauge(m, st, opts.Logger)
 	return h
@@ -261,6 +289,38 @@ func (h *Handlers) submissionEvent(ctx context.Context, event string) {
 	h.submissionEvents.Add(ctx, 1, metric.WithAttributes(attribute.String("event", event)))
 }
 
+// countRematchTriple records one entry-rematch (game, platform,
+// region) triple's outcome: ok when nothing was pending or the
+// triple's resolve succeeded - a per-entry RepointEntry failure logs
+// and continues rather than flipping this to failed, so the audit log
+// (not this counter) is the honest signal for a partial repoint;
+// failed when the member fetch or the resolve call itself errored.
+func (h *Handlers) countRematchTriple(ctx context.Context, outcome string) {
+	if h.rematchTriples == nil {
+		return
+	}
+	h.rematchTriples.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+}
+
+// countRematchRepoint records one entry the entry rematch actually
+// repointed onto a region-correct sibling member.
+func (h *Handlers) countRematchRepoint(ctx context.Context) {
+	if h.rematchRepoints == nil {
+		return
+	}
+	h.rematchRepoints.Add(ctx, 1)
+}
+
+// recordRematchDuration records one entry-rematch run's elapsed
+// seconds (the CAS-gated run only; a 409-refused overlap never runs
+// and so never records).
+func (h *Handlers) recordRematchDuration(ctx context.Context, seconds float64) {
+	if h.rematchDuration == nil {
+		return
+	}
+	h.rematchDuration.Record(ctx, seconds)
+}
+
 // internalError answers a 500 and logs its cause, which the problem
 // body deliberately does not carry; without this line the reason for
 // a 500 exists nowhere.
@@ -269,10 +329,27 @@ func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, detail 
 	problem(w, r, http.StatusInternalServerError, "internal", detail)
 }
 
+// bearerToken extracts the raw Authorization bearer, unparsed. caller
+// uses it for its own return value; the internal levers use it
+// directly, since their caller may be a service token whose subject
+// is not a user id (see caller's doc comment).
+func bearerToken(r *http.Request) string {
+	return strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+}
+
 // caller resolves the authenticated caller: the JWT subject as the
 // owning user id, plus the raw bearer for enrichment hops. jwtauth has
 // already validated the token, so a non-uuid subject is a minting bug
 // on our side, answered as an internal error (false = answered).
+// Never call this before the caller is known to be a real user: a
+// service token's subject (svc:<name>) is not a uuid and would trip
+// the internalError branch (a 500, not a clean 403). Every ordinary
+// route is user-scoped already. Of the internal levers: resnapshot
+// and the entry rematch admit a service token, so they read
+// bearerToken directly instead and never call this at all;
+// normalize-platforms (admin-only, never callable by a service token)
+// checks its admin-role gate BEFORE calling this, not after - that
+// ordering is load-bearing, not incidental.
 func (h *Handlers) caller(w http.ResponseWriter, r *http.Request) (uuid.UUID, string, bool) {
 	claims, ok := jwtauth.FromContext(r.Context())
 	if !ok {
@@ -284,5 +361,19 @@ func (h *Handlers) caller(w http.ResponseWriter, r *http.Request) (uuid.UUID, st
 		h.internalError(w, r, "token subject is not a user id", err)
 		return uuid.Nil, "", false
 	}
-	return id, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), true
+	return id, bearerToken(r), true
+}
+
+// requireAdminOrService admits an admin user or a service token - the
+// guard on operator levers a CronJob also drives (resnapshot, the
+// entry rematch). Same claims-access path and 403 problem shape as
+// the admin-only gates elsewhere in this file (normalize-platforms
+// keeps that narrower gate, unchanged).
+func (h *Handlers) requireAdminOrService(w http.ResponseWriter, r *http.Request) bool {
+	claims, _ := jwtauth.FromContext(r.Context())
+	if claims.HasRole("admin") || claims.IsService() {
+		return true
+	}
+	problem(w, r, http.StatusForbidden, "forbidden", "role admin or a service token is required")
+	return false
 }

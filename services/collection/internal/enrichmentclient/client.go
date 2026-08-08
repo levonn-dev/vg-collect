@@ -74,6 +74,20 @@ func (c *Client) GetProduct(ctx context.Context, bearer string, id uuid.UUID) (e
 	}
 }
 
+// Resolve finds-or-creates the canonical product for an identity. The
+// region-aware repoint paths use it to land an entry's region-correct
+// sibling member; the caller's own bearer rides the hop.
+func (c *Client) Resolve(ctx context.Context, bearer string, req enrichapi.ResolveRequest) (enrichapi.Product, error) {
+	resp, err := c.api.ResolveProductWithResponse(ctx, req, bearerEditor(bearer))
+	if err != nil {
+		return enrichapi.Product{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
+	}
+	if resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
+		return enrichapi.Product{}, fmt.Errorf("%w: status %d", ErrUnavailable, resp.StatusCode())
+	}
+	return *resp.JSON200, nil
+}
+
 // Platform is one catalog platform with its alias knowledge, for the
 // normalize-platforms lever.
 type Platform struct {

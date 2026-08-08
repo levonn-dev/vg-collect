@@ -498,6 +498,24 @@ func (e EntryCreateManualCondition) Valid() bool {
 	}
 }
 
+// Defines values for EntryCreateMatchProvenance.
+const (
+	EntryCreateMatchProvenanceAuto EntryCreateMatchProvenance = "auto"
+	EntryCreateMatchProvenanceUser EntryCreateMatchProvenance = "user"
+)
+
+// Valid indicates whether the value is a known member of the EntryCreateMatchProvenance enum.
+func (e EntryCreateMatchProvenance) Valid() bool {
+	switch e {
+	case EntryCreateMatchProvenanceAuto:
+		return true
+	case EntryCreateMatchProvenanceUser:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EntryCreateMediaType.
 const (
 	EntryCreateMediaTypePhysical EntryCreateMediaType = "physical"
@@ -795,6 +813,21 @@ func (e EntryUpdateStatus) Valid() bool {
 	case EntryUpdateStatusPlaying:
 		return true
 	case EntryUpdateStatusShelved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RematchAcceptedStatus.
+const (
+	Started RematchAcceptedStatus = "started"
+)
+
+// Valid indicates whether the value is a known member of the RematchAcceptedStatus enum.
+func (e RematchAcceptedStatus) Valid() bool {
+	switch e {
+	case Started:
 		return true
 	default:
 		return false
@@ -1591,17 +1624,20 @@ type Entry struct {
 	PricingProductId *openapi_types.UUID `json:"pricing_product_id,omitempty"`
 
 	// ProductId Absent on custom entries.
-	ProductId       *openapi_types.UUID `json:"product_id,omitempty"`
-	PurchasedAt     *openapi_types.Date `json:"purchased_at,omitempty"`
-	PurchasedFrom   *string             `json:"purchased_from,omitempty"`
-	Rating          *int                `json:"rating,omitempty"`
-	Region          EntryRegion         `json:"region"`
-	Source          EntrySource         `json:"source"`
-	Status          EntryStatus         `json:"status"`
-	StorageLocation *string             `json:"storage_location,omitempty"`
-	Tags            []TagRef            `json:"tags"`
-	UpdatedAt       time.Time           `json:"updated_at"`
-	ValueCents      *int64              `json:"value_cents,omitempty"`
+	ProductId     *openapi_types.UUID `json:"product_id,omitempty"`
+	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
+	PurchasedFrom *string             `json:"purchased_from,omitempty"`
+	Rating        *int                `json:"rating,omitempty"`
+	Region        EntryRegion         `json:"region"`
+
+	// RegionMismatchAckAt Null until the owner dismisses the region-mismatch banner; cleared whenever region or product changes.
+	RegionMismatchAckAt *time.Time  `json:"region_mismatch_ack_at,omitempty"`
+	Source              EntrySource `json:"source"`
+	Status              EntryStatus `json:"status"`
+	StorageLocation     *string     `json:"storage_location,omitempty"`
+	Tags                []TagRef    `json:"tags"`
+	UpdatedAt           time.Time   `json:"updated_at"`
+	ValueCents          *int64      `json:"value_cents,omitempty"`
 }
 
 // EntryBoxCondition defines model for Entry.BoxCondition.
@@ -1660,6 +1696,9 @@ type EntryCreate struct {
 	// ItemType Custom entries only (required there).
 	ItemType        *EntryCreateItemType        `json:"item_type,omitempty"`
 	ManualCondition *EntryCreateManualCondition `json:"manual_condition,omitempty"`
+
+	// MatchProvenance Whose choice the matched product is. Send user only when the add flow's manual match picked the price listing; automated repoints (region edits, the entry rematch) never touch user rows. Not accepted on update - the server stamps user when the narrow product_id re-match arm fires.
+	MatchProvenance *EntryCreateMatchProvenance `json:"match_provenance,omitempty"`
 	MediaType       *EntryCreateMediaType       `json:"media_type,omitempty"`
 	Notes           *string                     `json:"notes,omitempty"`
 	Packaging       EntryCreatePackaging        `json:"packaging"`
@@ -1696,6 +1735,9 @@ type EntryCreateItemType string
 
 // EntryCreateManualCondition defines model for EntryCreate.ManualCondition.
 type EntryCreateManualCondition string
+
+// EntryCreateMatchProvenance Whose choice the matched product is. Send user only when the add flow's manual match picked the price listing; automated repoints (region edits, the entry rematch) never touch user rows. Not accepted on update - the server stamps user when the narrow product_id re-match arm fires.
+type EntryCreateMatchProvenance string
 
 // EntryCreateMediaType defines model for EntryCreate.MediaType.
 type EntryCreateMediaType string
@@ -1738,7 +1780,7 @@ type EntryPlatform struct {
 	Name           string `json:"name"`
 }
 
-// EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
+// EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. That re-match stamps match_provenance=user; automated region repoints only ever run on match_provenance=auto entries. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
 type EntryUpdate struct {
 	BoxCondition *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
 
@@ -1775,10 +1817,12 @@ type EntryUpdate struct {
 	PricingProductId *openapi_types.UUID    `json:"pricing_product_id,omitempty"`
 
 	// ProductId Narrow re-match. Accepted only when the entry is product-backed with pricing_mode auto, its current product is a game with no price mapping, and the new product is a game of the same family (same igdb game and platform); the same id as the entry already has is a no-op. Anything else answers 400 code invalid_product_change; enrichment unreachable answers 502 code enrichment_unavailable and leaves the entry unchanged. Snapshotted display fields stay as they are.
-	ProductId       *openapi_types.UUID   `json:"product_id,omitempty"`
-	PurchasedAt     *openapi_types.Date   `json:"purchased_at,omitempty"`
-	PurchasedFrom   *string               `json:"purchased_from,omitempty"`
-	Rating          *int                  `json:"rating,omitempty"`
+	ProductId     *openapi_types.UUID `json:"product_id,omitempty"`
+	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
+	PurchasedFrom *string             `json:"purchased_from,omitempty"`
+	Rating        *int                `json:"rating,omitempty"`
+
+	// Region A region change on an auto-priced game-backed entry may repoint the entry to the sibling catalog product whose listing prices that region; snapshotted fields re-derive from it.
 	Region          EntryUpdateRegion     `json:"region"`
 	Status          EntryUpdateStatus     `json:"status"`
 	StorageLocation *string               `json:"storage_location,omitempty"`
@@ -1800,7 +1844,7 @@ type EntryUpdatePackaging string
 // EntryUpdatePricingMode defines model for EntryUpdate.PricingMode.
 type EntryUpdatePricingMode string
 
-// EntryUpdateRegion defines model for EntryUpdate.Region.
+// EntryUpdateRegion A region change on an auto-priced game-backed entry may repoint the entry to the sibling catalog product whose listing prices that region; snapshotted fields re-derive from it.
 type EntryUpdateRegion string
 
 // EntryUpdateStatus defines model for EntryUpdate.Status.
@@ -1820,6 +1864,13 @@ type LibrarySummary struct {
 	Library []LibraryGame `json:"library"`
 }
 
+// NormalizePlatformsResult defines model for NormalizePlatformsResult.
+type NormalizePlatformsResult struct {
+	Normalized int `json:"normalized"`
+	Scanned    int `json:"scanned"`
+	Skipped    int `json:"skipped"`
+}
+
 // PlatformCount defines model for PlatformCount.
 type PlatformCount struct {
 	Count int    `json:"count"`
@@ -1836,10 +1887,25 @@ type Problem struct {
 	Type     string  `json:"type"`
 }
 
+// RematchAccepted defines model for RematchAccepted.
+type RematchAccepted struct {
+	Status RematchAcceptedStatus `json:"status"`
+}
+
+// RematchAcceptedStatus defines model for RematchAccepted.Status.
+type RematchAcceptedStatus string
+
 // ReorderRequest Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid.
 type ReorderRequest struct {
 	AfterId  *openapi_types.UUID `json:"after_id,omitempty"`
 	BeforeId *openapi_types.UUID `json:"before_id,omitempty"`
+}
+
+// ResnapshotResult defines model for ResnapshotResult.
+type ResnapshotResult struct {
+	EntriesUpdated int `json:"entries_updated"`
+	ProductsFailed int `json:"products_failed"`
+	ProductsSeen   int `json:"products_seen"`
 }
 
 // SavedView defines model for SavedView.
@@ -2215,6 +2281,9 @@ type ServerInterface interface {
 	// UpdateEntry Replace an entry's mutable state (the edit form submits everything)
 	// (PUT /entries/{entryId})
 	UpdateEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
+	// AckEntryRegionMismatch Dismiss the region-mismatch banner for the entry's current choice
+	// (POST /entries/{entryId}/region-mismatch-ack)
+	AckEntryRegionMismatch(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
 	// ReorderEntry Move a backlog entry between two neighbors (single-row fractional-index write)
 	// (POST /entries/{entryId}/reorder)
 	ReorderEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
@@ -2230,6 +2299,15 @@ type ServerInterface interface {
 	// AckSubmissionResolution Acknowledge an approved submission (dismiss the banner)
 	// (POST /entries/{entryId}/submission/ack)
 	AckSubmissionResolution(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID)
+	// InternalNormalizePlatforms Canonicalize free-text custom-entry platforms
+	// (POST /internal/normalize-platforms)
+	InternalNormalizePlatforms(w http.ResponseWriter, r *http.Request)
+	// InternalRematchEntries Entry rematch - repoint auto entries onto region-correct listings
+	// (POST /internal/rematch-entries)
+	InternalRematchEntries(w http.ResponseWriter, r *http.Request)
+	// InternalResnapshot Resnapshot - recompute every game-backed entry's product-derived snapshot fields
+	// (POST /internal/resnapshot)
+	InternalResnapshot(w http.ResponseWriter, r *http.Request)
 	// GetLibrarySummary Deduplicated game-library summary (recommendation scoring input)
 	// (GET /library/summary)
 	GetLibrarySummary(w http.ResponseWriter, r *http.Request)
@@ -2791,6 +2869,32 @@ func (siw *ServerInterfaceWrapper) UpdateEntry(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// AckEntryRegionMismatch operation middleware
+func (siw *ServerInterfaceWrapper) AckEntryRegionMismatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AckEntryRegionMismatch(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ReorderEntry operation middleware
 func (siw *ServerInterfaceWrapper) ReorderEntry(w http.ResponseWriter, r *http.Request) {
 
@@ -2912,6 +3016,48 @@ func (siw *ServerInterfaceWrapper) AckSubmissionResolution(w http.ResponseWriter
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AckSubmissionResolution(w, r, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// InternalNormalizePlatforms operation middleware
+func (siw *ServerInterfaceWrapper) InternalNormalizePlatforms(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InternalNormalizePlatforms(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// InternalRematchEntries operation middleware
+func (siw *ServerInterfaceWrapper) InternalRematchEntries(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InternalRematchEntries(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// InternalResnapshot operation middleware
+func (siw *ServerInterfaceWrapper) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InternalResnapshot(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3455,6 +3601,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/entries/{entryId}", wrapper.GetEntry)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/entries/{entryId}", wrapper.UpdateEntry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/entries/{entryId}/reorder", wrapper.ReorderEntry)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/entries/{entryId}/region-mismatch-ack", wrapper.AckEntryRegionMismatch)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/entries/{entryId}/submission", wrapper.CancelSubmission)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/entries/{entryId}/submission", wrapper.GetSubmission)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/entries/{entryId}/submission", wrapper.CreateSubmission)
@@ -3479,6 +3626,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/products/{productId}/references", wrapper.CountProductReferences)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/submissions", wrapper.ListSubmissions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/submissions/{submissionId}/verdict", wrapper.SubmitVerdict)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/internal/resnapshot", wrapper.InternalResnapshot)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/internal/normalize-platforms", wrapper.InternalNormalizePlatforms)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/internal/rematch-entries", wrapper.InternalRematchEntries)
 
 	return m
 }

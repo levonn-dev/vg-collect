@@ -315,6 +315,29 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /entries/{entryId}/region-mismatch-ack:
+    post:
+      operationId: ackEntryRegionMismatch
+      summary: Dismiss the region-mismatch banner for the entry's current choice
+      description: >
+        Stamps region_mismatch_ack_at on the caller's entry for its
+        current (region, product) choice, so the banner does not
+        reappear until either changes (both clear the stamp).
+        Idempotent: 204 on every call while the choice stands.
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Acknowledged
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Not found (code entry_not_found; foreign entries answer identically)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /entries/{entryId}/submission:
     post:
       operationId: createSubmission
@@ -983,6 +1006,79 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /internal/resnapshot:
+    post:
+      operationId: internalResnapshot
+      tags: [internal]
+      summary: Resnapshot - recompute every game-backed entry's product-derived snapshot fields
+      description: >
+        Maintenance operation; the gateway never routes it. Recomputes
+        the region-picked release date and the localized presentation
+        trio (name, transliteration, cover url) for every game-backed
+        entry from its product's current data. Guard: admin user or
+        service token (tightened from any valid JWT). Idempotent and
+        re-runnable; a row is written only when the recomputed date or
+        trio differs from what is stored.
+      responses:
+        "200":
+          description: Sweep summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResnapshotResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /internal/normalize-platforms:
+    post:
+      operationId: internalNormalizePlatforms
+      tags: [internal]
+      summary: Canonicalize free-text custom-entry platforms
+      description: >
+        Maintenance operation; the gateway never routes it. Matches
+        every entry carrying a platform_name but no platform_igdb_id
+        (case-insensitive, trimmed, exact-or-alias - never fuzzy)
+        against the enrichment platform catalog and stamps the
+        canonical igdb id and name. Guard: admin role (unchanged;
+        stricter than the other two internal levers since it is a
+        mass cross-user write with no CronJob driving it). Idempotent
+        and re-runnable; stamped rows leave the selection set.
+      responses:
+        "200":
+          description: Sweep summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NormalizePlatformsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /internal/rematch-entries:
+    post:
+      operationId: internalRematchEntries
+      tags: [internal]
+      summary: Entry rematch - repoint auto entries onto region-correct listings
+      description: >
+        Maintenance operation; the gateway never routes it. Re-resolves
+        auto-priced, auto-provenance game-backed entries grouped by
+        (game, platform, region): unmatched or region-incompatible
+        members are re-resolved with the entry region and the entries
+        repointed to the returned member, snapshot fields re-derived.
+        Guard: admin user or service token. Answers 202 and detaches
+        (a day-one backfill outlives the HTTP write timeout at the
+        provider's polite request rate); the counts land in the
+        completion log and the rematch.* metrics, not the response.
+        Idempotent and re-runnable; each repoint is logged (entry,
+        from, to, region).
+      responses:
+        "202":
+          description: Rematch started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RematchAccepted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: An entry rematch is already running (code rematch_in_progress)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -1142,6 +1238,12 @@ components:
         value_cents: { type: integer, format: int64 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        region_mismatch_ack_at:
+          type: string
+          format: date-time
+          description: >
+            Null until the owner dismisses the region-mismatch banner;
+            cleared whenever region or product changes.
     Submission:
       description: >
         One catalog-submission lifecycle row for an entry. Rows
@@ -1297,6 +1399,17 @@ components:
         custom_value_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
         custom_value_entered_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
         custom_value_entered_currency: { type: string, pattern: "^[A-Z]{3}$" }
+        match_provenance:
+          type: string
+          enum: [auto, user]
+          default: auto
+          description: >-
+            Whose choice the matched product is. Send user only when
+            the add flow's manual match picked the price listing;
+            automated repoints (region edits, the entry rematch)
+            never touch user rows. Not accepted on update - the
+            server stamps user when the narrow product_id re-match
+            arm fires.
         status:
           type: string
           enum: [backlog, playing, beaten, completed, dropped, shelved]
@@ -1317,7 +1430,9 @@ components:
         change - re-matching an auto-priced entry off an unmatched
         game product onto a product of the same game and platform
         (see the field description); anything else answers 400 code
-        invalid_product_change. On custom entries
+        invalid_product_change. That re-match stamps
+        match_provenance=user; automated region repoints only ever run
+        on match_provenance=auto entries. On custom entries
         display_name is required and platform_name/first_release_date
         replace like any optional field; on product-backed entries all
         three are rejected. tag_ids replaces the tag set; absent means
@@ -1359,7 +1474,14 @@ components:
             unreachable answers 502 code enrichment_unavailable and
             leaves the entry unchanged. Snapshotted display fields
             stay as they are.
-        region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        region:
+          type: string
+          enum: [ntsc_u, ntsc_j, pal, region_free]
+          description: >
+            A region change on an auto-priced game-backed entry may
+            repoint the entry to the sibling catalog product whose
+            listing prices that region; snapshotted fields re-derive
+            from it.
         edition:
           type: string
           maxLength: 200
@@ -1698,3 +1820,22 @@ components:
         detail: { type: string }
         instance: { type: string }
         code: { type: string }
+    RematchAccepted:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [started] }
+    ResnapshotResult:
+      type: object
+      required: [products_seen, products_failed, entries_updated]
+      properties:
+        products_seen: { type: integer }
+        products_failed: { type: integer }
+        entries_updated: { type: integer }
+    NormalizePlatformsResult:
+      type: object
+      required: [scanned, normalized, skipped]
+      properties:
+        scanned: { type: integer }
+        normalized: { type: integer }
+        skipped: { type: integer }

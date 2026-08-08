@@ -501,6 +501,24 @@ func (e EntryCreateManualCondition) Valid() bool {
 	}
 }
 
+// Defines values for EntryCreateMatchProvenance.
+const (
+	EntryCreateMatchProvenanceAuto EntryCreateMatchProvenance = "auto"
+	EntryCreateMatchProvenanceUser EntryCreateMatchProvenance = "user"
+)
+
+// Valid indicates whether the value is a known member of the EntryCreateMatchProvenance enum.
+func (e EntryCreateMatchProvenance) Valid() bool {
+	switch e {
+	case EntryCreateMatchProvenanceAuto:
+		return true
+	case EntryCreateMatchProvenanceUser:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EntryCreateMediaType.
 const (
 	EntryCreateMediaTypePhysical EntryCreateMediaType = "physical"
@@ -798,6 +816,21 @@ func (e EntryUpdateStatus) Valid() bool {
 	case EntryUpdateStatusPlaying:
 		return true
 	case EntryUpdateStatusShelved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RematchAcceptedStatus.
+const (
+	Started RematchAcceptedStatus = "started"
+)
+
+// Valid indicates whether the value is a known member of the RematchAcceptedStatus enum.
+func (e RematchAcceptedStatus) Valid() bool {
+	switch e {
+	case Started:
 		return true
 	default:
 		return false
@@ -1594,17 +1627,20 @@ type Entry struct {
 	PricingProductId *openapi_types.UUID `json:"pricing_product_id,omitempty"`
 
 	// ProductId Absent on custom entries.
-	ProductId       *openapi_types.UUID `json:"product_id,omitempty"`
-	PurchasedAt     *openapi_types.Date `json:"purchased_at,omitempty"`
-	PurchasedFrom   *string             `json:"purchased_from,omitempty"`
-	Rating          *int                `json:"rating,omitempty"`
-	Region          EntryRegion         `json:"region"`
-	Source          EntrySource         `json:"source"`
-	Status          EntryStatus         `json:"status"`
-	StorageLocation *string             `json:"storage_location,omitempty"`
-	Tags            []TagRef            `json:"tags"`
-	UpdatedAt       time.Time           `json:"updated_at"`
-	ValueCents      *int64              `json:"value_cents,omitempty"`
+	ProductId     *openapi_types.UUID `json:"product_id,omitempty"`
+	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
+	PurchasedFrom *string             `json:"purchased_from,omitempty"`
+	Rating        *int                `json:"rating,omitempty"`
+	Region        EntryRegion         `json:"region"`
+
+	// RegionMismatchAckAt Null until the owner dismisses the region-mismatch banner; cleared whenever region or product changes.
+	RegionMismatchAckAt *time.Time  `json:"region_mismatch_ack_at,omitempty"`
+	Source              EntrySource `json:"source"`
+	Status              EntryStatus `json:"status"`
+	StorageLocation     *string     `json:"storage_location,omitempty"`
+	Tags                []TagRef    `json:"tags"`
+	UpdatedAt           time.Time   `json:"updated_at"`
+	ValueCents          *int64      `json:"value_cents,omitempty"`
 }
 
 // EntryBoxCondition defines model for Entry.BoxCondition.
@@ -1663,6 +1699,9 @@ type EntryCreate struct {
 	// ItemType Custom entries only (required there).
 	ItemType        *EntryCreateItemType        `json:"item_type,omitempty"`
 	ManualCondition *EntryCreateManualCondition `json:"manual_condition,omitempty"`
+
+	// MatchProvenance Whose choice the matched product is. Send user only when the add flow's manual match picked the price listing; automated repoints (region edits, the entry rematch) never touch user rows. Not accepted on update - the server stamps user when the narrow product_id re-match arm fires.
+	MatchProvenance *EntryCreateMatchProvenance `json:"match_provenance,omitempty"`
 	MediaType       *EntryCreateMediaType       `json:"media_type,omitempty"`
 	Notes           *string                     `json:"notes,omitempty"`
 	Packaging       EntryCreatePackaging        `json:"packaging"`
@@ -1699,6 +1738,9 @@ type EntryCreateItemType string
 
 // EntryCreateManualCondition defines model for EntryCreate.ManualCondition.
 type EntryCreateManualCondition string
+
+// EntryCreateMatchProvenance Whose choice the matched product is. Send user only when the add flow's manual match picked the price listing; automated repoints (region edits, the entry rematch) never touch user rows. Not accepted on update - the server stamps user when the narrow product_id re-match arm fires.
+type EntryCreateMatchProvenance string
 
 // EntryCreateMediaType defines model for EntryCreate.MediaType.
 type EntryCreateMediaType string
@@ -1741,7 +1783,7 @@ type EntryPlatform struct {
 	Name           string `json:"name"`
 }
 
-// EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
+// EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. That re-match stamps match_provenance=user; automated region repoints only ever run on match_provenance=auto entries. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
 type EntryUpdate struct {
 	BoxCondition *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
 
@@ -1778,10 +1820,12 @@ type EntryUpdate struct {
 	PricingProductId *openapi_types.UUID    `json:"pricing_product_id,omitempty"`
 
 	// ProductId Narrow re-match. Accepted only when the entry is product-backed with pricing_mode auto, its current product is a game with no price mapping, and the new product is a game of the same family (same igdb game and platform); the same id as the entry already has is a no-op. Anything else answers 400 code invalid_product_change; enrichment unreachable answers 502 code enrichment_unavailable and leaves the entry unchanged. Snapshotted display fields stay as they are.
-	ProductId       *openapi_types.UUID   `json:"product_id,omitempty"`
-	PurchasedAt     *openapi_types.Date   `json:"purchased_at,omitempty"`
-	PurchasedFrom   *string               `json:"purchased_from,omitempty"`
-	Rating          *int                  `json:"rating,omitempty"`
+	ProductId     *openapi_types.UUID `json:"product_id,omitempty"`
+	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
+	PurchasedFrom *string             `json:"purchased_from,omitempty"`
+	Rating        *int                `json:"rating,omitempty"`
+
+	// Region A region change on an auto-priced game-backed entry may repoint the entry to the sibling catalog product whose listing prices that region; snapshotted fields re-derive from it.
 	Region          EntryUpdateRegion     `json:"region"`
 	Status          EntryUpdateStatus     `json:"status"`
 	StorageLocation *string               `json:"storage_location,omitempty"`
@@ -1803,7 +1847,7 @@ type EntryUpdatePackaging string
 // EntryUpdatePricingMode defines model for EntryUpdate.PricingMode.
 type EntryUpdatePricingMode string
 
-// EntryUpdateRegion defines model for EntryUpdate.Region.
+// EntryUpdateRegion A region change on an auto-priced game-backed entry may repoint the entry to the sibling catalog product whose listing prices that region; snapshotted fields re-derive from it.
 type EntryUpdateRegion string
 
 // EntryUpdateStatus defines model for EntryUpdate.Status.
@@ -1823,6 +1867,13 @@ type LibrarySummary struct {
 	Library []LibraryGame `json:"library"`
 }
 
+// NormalizePlatformsResult defines model for NormalizePlatformsResult.
+type NormalizePlatformsResult struct {
+	Normalized int `json:"normalized"`
+	Scanned    int `json:"scanned"`
+	Skipped    int `json:"skipped"`
+}
+
 // PlatformCount defines model for PlatformCount.
 type PlatformCount struct {
 	Count int    `json:"count"`
@@ -1839,10 +1890,25 @@ type Problem struct {
 	Type     string  `json:"type"`
 }
 
+// RematchAccepted defines model for RematchAccepted.
+type RematchAccepted struct {
+	Status RematchAcceptedStatus `json:"status"`
+}
+
+// RematchAcceptedStatus defines model for RematchAccepted.Status.
+type RematchAcceptedStatus string
+
 // ReorderRequest Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid.
 type ReorderRequest struct {
 	AfterId  *openapi_types.UUID `json:"after_id,omitempty"`
 	BeforeId *openapi_types.UUID `json:"before_id,omitempty"`
+}
+
+// ResnapshotResult defines model for ResnapshotResult.
+type ResnapshotResult struct {
+	EntriesUpdated int `json:"entries_updated"`
+	ProductsFailed int `json:"products_failed"`
+	ProductsSeen   int `json:"products_seen"`
 }
 
 // SavedView defines model for SavedView.
@@ -2374,6 +2440,13 @@ type ClientInterface interface {
 	// Corresponds with PUT /entries/{entryId} (the `UpdateEntry` operationId).
 	UpdateEntry(ctx context.Context, entryId openapi_types.UUID, body UpdateEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// AckEntryRegionMismatch Dismiss the region-mismatch banner for the entry's current choice
+	//
+	// Stamps region_mismatch_ack_at on the caller's entry for its current (region, product) choice, so the banner does not reappear until either changes (both clear the stamp). Idempotent: 204 on every call while the choice stands.
+	//
+	// Corresponds with POST /entries/{entryId}/region-mismatch-ack (the `AckEntryRegionMismatch` operationId).
+	AckEntryRegionMismatch(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ReorderEntryWithBody Move a backlog entry between two neighbors (single-row fractional-index write)
 	//
 	// after_id is the entry that precedes the drop slot, before_id the one that follows; null marks a list edge (both null is invalid). The neighbors' ranks must straddle or the reorder answers 409 code conflicting_order (a stale drag against a list that moved); the entry and both neighbors must be the caller's backlog entries or it answers 409 code not_in_backlog. Ranks are server-generated; clients never send one.
@@ -2419,6 +2492,27 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /entries/{entryId}/submission/ack (the `AckSubmissionResolution` operationId).
 	AckSubmissionResolution(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// InternalNormalizePlatforms Canonicalize free-text custom-entry platforms
+	//
+	// Maintenance operation; the gateway never routes it. Matches every entry carrying a platform_name but no platform_igdb_id (case-insensitive, trimmed, exact-or-alias - never fuzzy) against the enrichment platform catalog and stamps the canonical igdb id and name. Guard: admin role (unchanged; stricter than the other two internal levers since it is a mass cross-user write with no CronJob driving it). Idempotent and re-runnable; stamped rows leave the selection set.
+	//
+	// Corresponds with POST /internal/normalize-platforms (the `InternalNormalizePlatforms` operationId).
+	InternalNormalizePlatforms(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// InternalRematchEntries Entry rematch - repoint auto entries onto region-correct listings
+	//
+	// Maintenance operation; the gateway never routes it. Re-resolves auto-priced, auto-provenance game-backed entries grouped by (game, platform, region): unmatched or region-incompatible members are re-resolved with the entry region and the entries repointed to the returned member, snapshot fields re-derived. Guard: admin user or service token. Answers 202 and detaches (a day-one backfill outlives the HTTP write timeout at the provider's polite request rate); the counts land in the completion log and the rematch.* metrics, not the response. Idempotent and re-runnable; each repoint is logged (entry, from, to, region).
+	//
+	// Corresponds with POST /internal/rematch-entries (the `InternalRematchEntries` operationId).
+	InternalRematchEntries(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// InternalResnapshot Resnapshot - recompute every game-backed entry's product-derived snapshot fields
+	//
+	// Maintenance operation; the gateway never routes it. Recomputes the region-picked release date and the localized presentation trio (name, transliteration, cover url) for every game-backed entry from its product's current data. Guard: admin user or service token (tightened from any valid JWT). Idempotent and re-runnable; a row is written only when the recomputed date or trio differs from what is stored.
+	//
+	// Corresponds with POST /internal/resnapshot (the `InternalResnapshot` operationId).
+	InternalResnapshot(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetLibrarySummary Deduplicated game-library summary (recommendation scoring input)
 	//
@@ -2809,6 +2903,23 @@ func (c *Client) UpdateEntry(ctx context.Context, entryId openapi_types.UUID, bo
 	return c.Client.Do(req)
 }
 
+// AckEntryRegionMismatch Dismiss the region-mismatch banner for the entry's current choice
+//
+// Stamps region_mismatch_ack_at on the caller's entry for its current (region, product) choice, so the banner does not reappear until either changes (both clear the stamp). Idempotent: 204 on every call while the choice stands.
+//
+// Corresponds with POST /entries/{entryId}/region-mismatch-ack (the `AckEntryRegionMismatch` operationId).
+func (c *Client) AckEntryRegionMismatch(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAckEntryRegionMismatchRequest(c.Server, entryId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ReorderEntryWithBody Move a backlog entry between two neighbors (single-row fractional-index write)
 //
 // after_id is the entry that precedes the drop slot, before_id the one that follows; null marks a list edge (both null is invalid). The neighbors' ranks must straddle or the reorder answers 409 code conflicting_order (a stale drag against a list that moved); the entry and both neighbors must be the caller's backlog entries or it answers 409 code not_in_backlog. Ranks are server-generated; clients never send one.
@@ -2905,6 +3016,57 @@ func (c *Client) CreateSubmission(ctx context.Context, entryId openapi_types.UUI
 // Corresponds with POST /entries/{entryId}/submission/ack (the `AckSubmissionResolution` operationId).
 func (c *Client) AckSubmissionResolution(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAckSubmissionResolutionRequest(c.Server, entryId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// InternalNormalizePlatforms Canonicalize free-text custom-entry platforms
+//
+// Maintenance operation; the gateway never routes it. Matches every entry carrying a platform_name but no platform_igdb_id (case-insensitive, trimmed, exact-or-alias - never fuzzy) against the enrichment platform catalog and stamps the canonical igdb id and name. Guard: admin role (unchanged; stricter than the other two internal levers since it is a mass cross-user write with no CronJob driving it). Idempotent and re-runnable; stamped rows leave the selection set.
+//
+// Corresponds with POST /internal/normalize-platforms (the `InternalNormalizePlatforms` operationId).
+func (c *Client) InternalNormalizePlatforms(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInternalNormalizePlatformsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// InternalRematchEntries Entry rematch - repoint auto entries onto region-correct listings
+//
+// Maintenance operation; the gateway never routes it. Re-resolves auto-priced, auto-provenance game-backed entries grouped by (game, platform, region): unmatched or region-incompatible members are re-resolved with the entry region and the entries repointed to the returned member, snapshot fields re-derived. Guard: admin user or service token. Answers 202 and detaches (a day-one backfill outlives the HTTP write timeout at the provider's polite request rate); the counts land in the completion log and the rematch.* metrics, not the response. Idempotent and re-runnable; each repoint is logged (entry, from, to, region).
+//
+// Corresponds with POST /internal/rematch-entries (the `InternalRematchEntries` operationId).
+func (c *Client) InternalRematchEntries(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInternalRematchEntriesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// InternalResnapshot Resnapshot - recompute every game-backed entry's product-derived snapshot fields
+//
+// Maintenance operation; the gateway never routes it. Recomputes the region-picked release date and the localized presentation trio (name, transliteration, cover url) for every game-backed entry from its product's current data. Guard: admin user or service token (tightened from any valid JWT). Idempotent and re-runnable; a row is written only when the recomputed date or trio differs from what is stored.
+//
+// Corresponds with POST /internal/resnapshot (the `InternalResnapshot` operationId).
+func (c *Client) InternalResnapshot(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInternalResnapshotRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -3907,6 +4069,40 @@ func NewUpdateEntryRequestWithBody(server string, entryId openapi_types.UUID, co
 	return req, nil
 }
 
+// NewAckEntryRegionMismatchRequest constructs an http.Request for the AckEntryRegionMismatch method
+func NewAckEntryRegionMismatchRequest(server string, entryId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "entryId", entryId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/entries/%s/region-mismatch-ack", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewReorderEntryRequest calls the generic ReorderEntry builder with application/json body
 func NewReorderEntryRequest(server string, entryId openapi_types.UUID, body ReorderEntryJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -4073,6 +4269,87 @@ func NewAckSubmissionResolutionRequest(server string, entryId openapi_types.UUID
 	}
 
 	operationPath := fmt.Sprintf("/entries/%s/submission/ack", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewInternalNormalizePlatformsRequest constructs an http.Request for the InternalNormalizePlatforms method
+func NewInternalNormalizePlatformsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/internal/normalize-platforms")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewInternalRematchEntriesRequest constructs an http.Request for the InternalRematchEntries method
+func NewInternalRematchEntriesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/internal/rematch-entries")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewInternalResnapshotRequest constructs an http.Request for the InternalResnapshot method
+func NewInternalResnapshotRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/internal/resnapshot")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -4912,6 +5189,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /entries/{entryId} (the `UpdateEntry` operationId).
 	UpdateEntryWithResponse(ctx context.Context, entryId openapi_types.UUID, body UpdateEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateEntryResponse, error)
 
+	// AckEntryRegionMismatchWithResponse Dismiss the region-mismatch banner for the entry's current choice
+	//
+	// Stamps region_mismatch_ack_at on the caller's entry for its current (region, product) choice, so the banner does not reappear until either changes (both clear the stamp). Idempotent: 204 on every call while the choice stands.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /entries/{entryId}/region-mismatch-ack (the `AckEntryRegionMismatch` operationId).
+	AckEntryRegionMismatchWithResponse(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AckEntryRegionMismatchResponse, error)
+
 	// ReorderEntryWithBodyWithResponse Move a backlog entry between two neighbors (single-row fractional-index write)
 	//
 	// after_id is the entry that precedes the drop slot, before_id the one that follows; null marks a list edge (both null is invalid). The neighbors' ranks must straddle or the reorder answers 409 code conflicting_order (a stale drag against a list that moved); the entry and both neighbors must be the caller's backlog entries or it answers 409 code not_in_backlog. Ranks are server-generated; clients never send one.
@@ -4965,6 +5251,33 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /entries/{entryId}/submission/ack (the `AckSubmissionResolution` operationId).
 	AckSubmissionResolutionWithResponse(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AckSubmissionResolutionResponse, error)
+
+	// InternalNormalizePlatformsWithResponse Canonicalize free-text custom-entry platforms
+	//
+	// Maintenance operation; the gateway never routes it. Matches every entry carrying a platform_name but no platform_igdb_id (case-insensitive, trimmed, exact-or-alias - never fuzzy) against the enrichment platform catalog and stamps the canonical igdb id and name. Guard: admin role (unchanged; stricter than the other two internal levers since it is a mass cross-user write with no CronJob driving it). Idempotent and re-runnable; stamped rows leave the selection set.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /internal/normalize-platforms (the `InternalNormalizePlatforms` operationId).
+	InternalNormalizePlatformsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InternalNormalizePlatformsResponse, error)
+
+	// InternalRematchEntriesWithResponse Entry rematch - repoint auto entries onto region-correct listings
+	//
+	// Maintenance operation; the gateway never routes it. Re-resolves auto-priced, auto-provenance game-backed entries grouped by (game, platform, region): unmatched or region-incompatible members are re-resolved with the entry region and the entries repointed to the returned member, snapshot fields re-derived. Guard: admin user or service token. Answers 202 and detaches (a day-one backfill outlives the HTTP write timeout at the provider's polite request rate); the counts land in the completion log and the rematch.* metrics, not the response. Idempotent and re-runnable; each repoint is logged (entry, from, to, region).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /internal/rematch-entries (the `InternalRematchEntries` operationId).
+	InternalRematchEntriesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InternalRematchEntriesResponse, error)
+
+	// InternalResnapshotWithResponse Resnapshot - recompute every game-backed entry's product-derived snapshot fields
+	//
+	// Maintenance operation; the gateway never routes it. Recomputes the region-picked release date and the localized presentation trio (name, transliteration, cover url) for every game-backed entry from its product's current data. Guard: admin user or service token (tightened from any valid JWT). Idempotent and re-runnable; a row is written only when the recomputed date or trio differs from what is stored.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /internal/resnapshot (the `InternalResnapshot` operationId).
+	InternalResnapshotWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InternalResnapshotResponse, error)
 
 	// GetLibrarySummaryWithResponse Deduplicated game-library summary (recommendation scoring input)
 	//
@@ -5761,6 +6074,54 @@ func (r UpdateEntryResponse) ContentType() string {
 	return ""
 }
 
+type AckEntryRegionMismatchResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r AckEntryRegionMismatchResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r AckEntryRegionMismatchResponse) GetApplicationproblemJSON404() *Problem {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r AckEntryRegionMismatchResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AckEntryRegionMismatchResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AckEntryRegionMismatchResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AckEntryRegionMismatchResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ReorderEntryResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6051,6 +6412,178 @@ func (r AckSubmissionResolutionResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r AckSubmissionResolutionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type InternalNormalizePlatformsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NormalizePlatformsResult
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r InternalNormalizePlatformsResponse) GetJSON200() *NormalizePlatformsResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r InternalNormalizePlatformsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r InternalNormalizePlatformsResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r InternalNormalizePlatformsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r InternalNormalizePlatformsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r InternalNormalizePlatformsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r InternalNormalizePlatformsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type InternalRematchEntriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *RematchAccepted
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Problem
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r InternalRematchEntriesResponse) GetJSON202() *RematchAccepted {
+	return r.JSON202
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r InternalRematchEntriesResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r InternalRematchEntriesResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r InternalRematchEntriesResponse) GetApplicationproblemJSON409() *Problem {
+	return r.ApplicationproblemJSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r InternalRematchEntriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r InternalRematchEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r InternalRematchEntriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r InternalRematchEntriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type InternalResnapshotResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ResnapshotResult
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r InternalResnapshotResponse) GetJSON200() *ResnapshotResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r InternalResnapshotResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r InternalResnapshotResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r InternalResnapshotResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r InternalResnapshotResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r InternalResnapshotResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r InternalResnapshotResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -7107,6 +7640,21 @@ func (c *ClientWithResponses) UpdateEntryWithResponse(ctx context.Context, entry
 	return ParseUpdateEntryResponse(rsp)
 }
 
+// AckEntryRegionMismatchWithResponse Dismiss the region-mismatch banner for the entry's current choice
+//
+// Stamps region_mismatch_ack_at on the caller's entry for its current (region, product) choice, so the banner does not reappear until either changes (both clear the stamp). Idempotent: 204 on every call while the choice stands.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /entries/{entryId}/region-mismatch-ack (the `AckEntryRegionMismatch` operationId).
+func (c *ClientWithResponses) AckEntryRegionMismatchWithResponse(ctx context.Context, entryId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AckEntryRegionMismatchResponse, error) {
+	rsp, err := c.AckEntryRegionMismatch(ctx, entryId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAckEntryRegionMismatchResponse(rsp)
+}
+
 // ReorderEntryWithBodyWithResponse Move a backlog entry between two neighbors (single-row fractional-index write)
 //
 // after_id is the entry that precedes the drop slot, before_id the one that follows; null marks a list edge (both null is invalid). The neighbors' ranks must straddle or the reorder answers 409 code conflicting_order (a stale drag against a list that moved); the entry and both neighbors must be the caller's backlog entries or it answers 409 code not_in_backlog. Ranks are server-generated; clients never send one.
@@ -7195,6 +7743,51 @@ func (c *ClientWithResponses) AckSubmissionResolutionWithResponse(ctx context.Co
 		return nil, err
 	}
 	return ParseAckSubmissionResolutionResponse(rsp)
+}
+
+// InternalNormalizePlatformsWithResponse Canonicalize free-text custom-entry platforms
+//
+// Maintenance operation; the gateway never routes it. Matches every entry carrying a platform_name but no platform_igdb_id (case-insensitive, trimmed, exact-or-alias - never fuzzy) against the enrichment platform catalog and stamps the canonical igdb id and name. Guard: admin role (unchanged; stricter than the other two internal levers since it is a mass cross-user write with no CronJob driving it). Idempotent and re-runnable; stamped rows leave the selection set.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /internal/normalize-platforms (the `InternalNormalizePlatforms` operationId).
+func (c *ClientWithResponses) InternalNormalizePlatformsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InternalNormalizePlatformsResponse, error) {
+	rsp, err := c.InternalNormalizePlatforms(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseInternalNormalizePlatformsResponse(rsp)
+}
+
+// InternalRematchEntriesWithResponse Entry rematch - repoint auto entries onto region-correct listings
+//
+// Maintenance operation; the gateway never routes it. Re-resolves auto-priced, auto-provenance game-backed entries grouped by (game, platform, region): unmatched or region-incompatible members are re-resolved with the entry region and the entries repointed to the returned member, snapshot fields re-derived. Guard: admin user or service token. Answers 202 and detaches (a day-one backfill outlives the HTTP write timeout at the provider's polite request rate); the counts land in the completion log and the rematch.* metrics, not the response. Idempotent and re-runnable; each repoint is logged (entry, from, to, region).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /internal/rematch-entries (the `InternalRematchEntries` operationId).
+func (c *ClientWithResponses) InternalRematchEntriesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InternalRematchEntriesResponse, error) {
+	rsp, err := c.InternalRematchEntries(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseInternalRematchEntriesResponse(rsp)
+}
+
+// InternalResnapshotWithResponse Resnapshot - recompute every game-backed entry's product-derived snapshot fields
+//
+// Maintenance operation; the gateway never routes it. Recomputes the region-picked release date and the localized presentation trio (name, transliteration, cover url) for every game-backed entry from its product's current data. Guard: admin user or service token (tightened from any valid JWT). Idempotent and re-runnable; a row is written only when the recomputed date or trio differs from what is stored.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /internal/resnapshot (the `InternalResnapshot` operationId).
+func (c *ClientWithResponses) InternalResnapshotWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InternalResnapshotResponse, error) {
+	rsp, err := c.InternalResnapshot(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseInternalResnapshotResponse(rsp)
 }
 
 // GetLibrarySummaryWithResponse Deduplicated game-library summary (recommendation scoring input)
@@ -7941,6 +8534,42 @@ func ParseUpdateEntryResponse(rsp *http.Response) (*UpdateEntryResponse, error) 
 	return response, nil
 }
 
+// ParseAckEntryRegionMismatchResponse parses an HTTP response from a AckEntryRegionMismatchWithResponse call
+func ParseAckEntryRegionMismatchResponse(rsp *http.Response) (*AckEntryRegionMismatchResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AckEntryRegionMismatchResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseReorderEntryResponse parses an HTTP response from a ReorderEntryWithResponse call
 func ParseReorderEntryResponse(rsp *http.Response) (*ReorderEntryResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -8162,6 +8791,133 @@ func ParseAckSubmissionResolutionResponse(rsp *http.Response) (*AckSubmissionRes
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseInternalNormalizePlatformsResponse parses an HTTP response from a InternalNormalizePlatformsWithResponse call
+func ParseInternalNormalizePlatformsResponse(rsp *http.Response) (*InternalNormalizePlatformsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &InternalNormalizePlatformsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NormalizePlatformsResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseInternalRematchEntriesResponse parses an HTTP response from a InternalRematchEntriesWithResponse call
+func ParseInternalRematchEntriesResponse(rsp *http.Response) (*InternalRematchEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &InternalRematchEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest RematchAccepted
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseInternalResnapshotResponse parses an HTTP response from a InternalResnapshotWithResponse call
+func ParseInternalResnapshotResponse(rsp *http.Response) (*InternalResnapshotResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &InternalResnapshotResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ResnapshotResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
 
 	}
 

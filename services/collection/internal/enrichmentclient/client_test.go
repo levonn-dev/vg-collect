@@ -34,6 +34,11 @@ type stubEnrichment struct {
 	// captured once at mux.HandleFunc time) so a test's reassignment
 	// takes effect on the next request.
 	createCommunityProduct func(w http.ResponseWriter, r *http.Request)
+
+	// resolve answers POST /products/resolve; a test sets it before
+	// exercising Resolve. Same reassignable-closure dispatch as
+	// createCommunityProduct.
+	resolve func(w http.ResponseWriter, r *http.Request)
 }
 
 func newStubEnrichment(t *testing.T) *stubEnrichment {
@@ -42,12 +47,16 @@ func newStubEnrichment(t *testing.T) *stubEnrichment {
 	f.createCommunityProduct = func(http.ResponseWriter, *http.Request) {
 		panic("unexpected POST /admin/products")
 	}
+	f.resolve = func(http.ResponseWriter, *http.Request) {
+		panic("unexpected POST /products/resolve")
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /products/{id}", f.product)
 	mux.HandleFunc("POST /products/prices:batch", f.batch)
 	mux.HandleFunc("POST /products/price-history:batch", f.history)
 	mux.HandleFunc("GET /platforms", f.platforms)
 	mux.HandleFunc("POST /admin/products", func(w http.ResponseWriter, r *http.Request) { f.createCommunityProduct(w, r) })
+	mux.HandleFunc("POST /products/resolve", func(w http.ResponseWriter, r *http.Request) { f.resolve(w, r) })
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
 	return f
@@ -341,6 +350,44 @@ func TestCreateCommunityProduct(t *testing.T) {
 	f.createCommunityProduct = func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) }
 	if _, err := c.CreateCommunityProduct(context.Background(), "tok", enrichapi.CreateCommunityProductJSONRequestBody{Type: "game", Name: "X"}); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("403 = %v, want ErrUnavailable", err)
+	}
+}
+
+func TestResolve(t *testing.T) {
+	f := newStubEnrichment(t)
+	var gotAuth string
+	var gotBody []byte
+	f.resolve = func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"6a5f6c68-0000-4000-8000-000000000002","type":"game","name":"Seiken Densetsu 3","created_at":"2026-07-17T00:00:00Z","updated_at":"2026-07-17T00:00:00Z"}`))
+	}
+	c := newClient(t, f)
+
+	gameID := int64(1000)
+	platformID := int64(6)
+	region := "ntsc_j"
+	p, err := c.Resolve(context.Background(), "tok", enrichapi.ResolveRequest{
+		Type: "game", IgdbGameId: &gameID, PlatformIgdbId: &platformID, Region: &region,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Name != "Seiken Densetsu 3" {
+		t.Fatalf("product: %+v", p)
+	}
+	if gotAuth != "Bearer tok" {
+		t.Fatalf("bearer not relayed: %q", gotAuth)
+	}
+	if !strings.Contains(string(gotBody), `"region":"ntsc_j"`) {
+		t.Fatalf("body must carry the matching-input region: %s", gotBody)
+	}
+
+	// Any non-200 answer is unavailability to the region-repoint caller.
+	f.resolve = func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadGateway) }
+	if _, err := c.Resolve(context.Background(), "tok", enrichapi.ResolveRequest{Type: "game", IgdbGameId: &gameID, PlatformIgdbId: &platformID}); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("502 = %v, want ErrUnavailable", err)
 	}
 }
 

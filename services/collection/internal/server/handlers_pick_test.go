@@ -186,3 +186,34 @@ func TestUnitCatalogSnapshot_CoverPrecedence(t *testing.T) {
 		})
 	}
 }
+
+// TestConsoleRegionClassification pins the console-class guard direct
+// unit test (this file's package server, same rationale as the other
+// direct-call tests above): the region correctness check that decides
+// whether a region edit needs to hop to enrichment's resolve at all.
+func TestConsoleRegionClassification(t *testing.T) {
+	cases := []struct {
+		console, region string
+		correct         bool
+	}{
+		{"Super Nintendo", "ntsc_u", true},
+		{"Super Nintendo", "region_free", true},
+		{"Super Nintendo", "ntsc_j", false},
+		{"Super Famicom", "ntsc_j", true},
+		{"Super Famicom", "ntsc_u", false},
+		{"Famicom Disk System", "ntsc_j", true},
+		{"JP Sega Saturn", "ntsc_j", true},
+		{"PAL Playstation 4", "pal", true},
+		{"PAL Playstation 4", "ntsc_u", false},
+		{"Someday Console", "ntsc_j", false}, // unknown JP name classifies base: stale-safe, triggers a no-op re-resolve
+	}
+	for _, tc := range cases {
+		prod := &enrichapi.Product{Pricecharting: &enrichapi.PricechartingMeta{ConsoleName: tc.console}}
+		if got := regionCorrectMember(prod, tc.region); got != tc.correct {
+			t.Errorf("regionCorrectMember(%q, %q) = %v, want %v", tc.console, tc.region, got, tc.correct)
+		}
+	}
+	if regionCorrectMember(&enrichapi.Product{}, "ntsc_u") {
+		t.Error("an unmatched member is never region-correct: it must stay re-resolve eligible")
+	}
+}
