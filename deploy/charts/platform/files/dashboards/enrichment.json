@@ -448,6 +448,23 @@
           "expr": "{service_name=\"enrichment\"} | severity_text=\"ERROR\""
         }
       ]
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "Normalize sweeps (rows/night by outcome)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 120 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (outcome) (increase(vg_enrichment_normalize_regions_total[24h]))",
+          "legendFormat": "regions/{{outcome}}",
+          "exemplar": false
+        }
+      ]
     }
   ]
 }

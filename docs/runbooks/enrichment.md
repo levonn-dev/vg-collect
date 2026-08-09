@@ -44,6 +44,11 @@ Features as an operator sees them:
   (refetching only raws behind the current `fields_version`), and the
   promote-candidate sweep over community products. 30 minute budget,
   one refresh at a time (a concurrent trigger answers 409).
+- Normalize community regions (`POST
+  /internal/normalize-community-regions`, admin role or a service
+  token; the enrichment-refresh CronJob runs it right after the
+  refresh trigger): promotes free-text community-product regions into
+  the known set, exact-or-synonym folding only, never fuzzy.
 - Admin moderation (JWT role `admin`): mapping fix, community product
   mint / promote / delete, unmatched and community worklists,
   promote-candidate review and dismiss, immediate refresh trigger.
@@ -124,7 +129,7 @@ on `secret-store`, `enrichment-mongo`, `enrichment-valkey` and `auth`;
 | Mongo       | localhost:27018 -> 27017                                                                            |
 | Valkey      | no port-forward (TLS-only, in-cluster callers)                                                      |
 | Gateway     | not published; call 8084 directly with a JWT                                                        |
-| Bruno flows | `bruno/enrichment/` (search, resolve, prices, history, recommendations, admin refresh, admin remap) |
+| Bruno flows | `bruno/enrichment/` (search, resolve, prices, history, recommendations, admin refresh, admin remap, normalize community regions) |
 
 Task targets: root `task lint`, `task build`, `task test:short`,
 `task test:cover` (80 percent per-module gate via
@@ -215,7 +220,7 @@ curated name, and the promote flow re-enters them through the index.
 reprojection read it; every provider fetch populates it
 backwards). `platforms` caches the IGDB platform catalog wholesale.
 `price_snapshots` is append-only, keyed (product_id, captured_at);
-snapshots survive product mapping changes by design. Five migrations
+snapshots survive product mapping changes by design. Six migrations
 to date; the down files exist and are exercised by the migrate
 tooling, not by hand.
 
@@ -276,15 +281,16 @@ Domain instruments, meter
 `Handlers` fields with best-effort registration (the bff
 `vg.bff.cache.fail_open` pattern):
 
-| Metric                                  | Instrument       | Unit        | Labels (bounded)                                                                                                                                                                                                              | Prometheus name                                                  | Question it answers                                                                                                                                                                      |
-| --------------------------------------- | ---------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vg.enrichment.cache.fail_open`         | Int64Counter     | `{event}`   | `op`: search_get, search_decode, search_put, product_get, product_put, platforms_get, platforms_put, community_search, refresh_invalidate, reprojection_invalidate, mapping_invalidate, promote_invalidate, delete_invalidate | `vg_enrichment_cache_fail_open_total`                            | is Valkey failing and which operation absorbs it                                                                                                                                         |
-| `vg.enrichment.search.requests`         | Int64Counter     | `{request}` | `kind`: game, hardware, pc_listing; `source`: cache, provider, degraded                                                                                                                                                       | `vg_enrichment_search_requests_total`                            | search cache effectiveness per kind, and the user-visible degraded share (provider outage)                                                                                               |
-| `vg.enrichment.search.localization_leg` | Int64Counter     | `{leg}`     | `outcome`: merged, empty, error                                                                                                                                                                                               | `vg_enrichment_search_localization_leg_total`                    | is the non-Latin supplementary search leg running, and how often it merges extra results, finds nothing extra, or fails (error still serves primary results - never an outage)           |
-| `vg.enrichment.match.outcomes`          | Int64Counter     | `{attempt}` | `source`: resolve; `outcome`: matched, below_threshold, provider_down; `region`: ntsc_u, ntsc_j, pal, region_free, none                                                                                                       | `vg_enrichment_match_outcomes_total`                             | is the auto-matcher landing matches at its usual rate, or regressing into unmatched members, broken out by region                                                                        |
-| `vg.enrichment.match.fallback_search`   | Int64Counter     | `{search}`  | `outcome`: matched, still_empty, error                                                                                                                                                                                        | `vg_enrichment_match_fallback_search_total`                      | is the fallback name-form search (fired only when the primary query's results miss the platform/region gate and a second name form exists) finding a match, coming up empty, or erroring |
-| `vg.enrichment.refresh.items`           | Int64Counter     | `{item}`    | `step`: prices, reprojection, sweep; `outcome`: ok, failed, skipped, flagged                                                                                                                                                  | `vg_enrichment_refresh_items_total`                              | how much of the catalog the catalog refresh processed and what share failed                                                                                                              |
-| `vg.enrichment.refresh.step_duration`   | Float64Histogram | `s`         | `step`: prices, reprojection, sweep                                                                                                                                                                                           | `vg_enrichment_refresh_step_duration_seconds_{count,sum,bucket}` | did each catalog refresh step run today, and how close the refresh is to its 30m budget                                                                                                  |
+| Metric                                  | Instrument       | Unit        | Labels (bounded)                                                                                                                                                                                                              | Prometheus name                                                  | Question it answers                                                                                                                                                                                            |
+| --------------------------------------- | ---------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vg.enrichment.cache.fail_open`         | Int64Counter     | `{event}`   | `op`: search_get, search_decode, search_put, product_get, product_put, platforms_get, platforms_put, community_search, refresh_invalidate, reprojection_invalidate, mapping_invalidate, promote_invalidate, delete_invalidate | `vg_enrichment_cache_fail_open_total`                            | is Valkey failing and which operation absorbs it                                                                                                                                                               |
+| `vg.enrichment.search.requests`         | Int64Counter     | `{request}` | `kind`: game, hardware, pc_listing; `source`: cache, provider, degraded                                                                                                                                                       | `vg_enrichment_search_requests_total`                            | search cache effectiveness per kind, and the user-visible degraded share (provider outage)                                                                                                                     |
+| `vg.enrichment.search.localization_leg` | Int64Counter     | `{leg}`     | `outcome`: merged, empty, error                                                                                                                                                                                               | `vg_enrichment_search_localization_leg_total`                    | is the non-Latin supplementary search leg running, and how often it merges extra results, finds nothing extra, or fails (error still serves primary results - never an outage)                                 |
+| `vg.enrichment.match.outcomes`          | Int64Counter     | `{attempt}` | `source`: resolve; `outcome`: matched, below_threshold, provider_down; `region`: ntsc_u, ntsc_j, pal, region_free, none                                                                                                       | `vg_enrichment_match_outcomes_total`                             | is the auto-matcher landing matches at its usual rate, or regressing into unmatched members, broken out by region                                                                                              |
+| `vg.enrichment.match.fallback_search`   | Int64Counter     | `{search}`  | `outcome`: matched, still_empty, error                                                                                                                                                                                        | `vg_enrichment_match_fallback_search_total`                      | is the fallback name-form search (fired only when the primary query's results miss the platform/region gate and a second name form exists) finding a match, coming up empty, or erroring                       |
+| `vg.enrichment.refresh.items`           | Int64Counter     | `{item}`    | `step`: prices, reprojection, sweep; `outcome`: ok, failed, skipped, flagged                                                                                                                                                  | `vg_enrichment_refresh_items_total`                              | how much of the catalog the catalog refresh processed and what share failed                                                                                                                                    |
+| `vg.enrichment.refresh.step_duration`   | Float64Histogram | `s`         | `step`: prices, reprojection, sweep                                                                                                                                                                                           | `vg_enrichment_refresh_step_duration_seconds_{count,sum,bucket}` | did each catalog refresh step run today, and how close the refresh is to its 30m budget                                                                                                                        |
+| `vg.enrichment.normalize.regions`       | Int64Counter     | `{row}`     | `outcome`: normalized, skipped, failed                                                                                                                                                                                        | `vg_enrichment_normalize_regions_total`                          | is the nightly community-region promotion sweep landing: how many free-text community-product region rows get promoted vs left as typed (no known value or synonym match) vs fail on the store write, each run |
 
 Emission sites, all in `internal/server/handlers.go`:
 
@@ -335,9 +341,10 @@ Emission sites, all in `internal/server/handlers.go`:
 
 Log additions (slog, JSON, trace ids attached): one new line.
 
-| Event                     | Level | Fields                        | Emission site                                                 |
-| ------------------------- | ----- | ----------------------------- | ------------------------------------------------------------- |
-| `catalog refresh started` | INFO  | `trigger` = admin or internal | `startRefresh`, immediately after winning the in-flight guard |
+| Event                                  | Level | Fields                             | Emission site                                                    |
+| -------------------------------------- | ----- | ---------------------------------- | ---------------------------------------------------------------- |
+| `catalog refresh started`              | INFO  | `trigger` = admin or internal      | `startRefresh`, immediately after winning the in-flight guard    |
+| `normalize-community-regions complete` | INFO  | `scanned`, `normalized`, `skipped` | `InternalNormalizeCommunityRegions`, before writing the response |
 
 It pairs with the existing per-step "finished" summaries: a started
 line without finished lines inside the 30m budget is the signature of
@@ -610,7 +617,13 @@ first refresh completes at 06:00 or by manual trigger. Then:
    all means it never ran: `-f` makes the first curl exit nonzero on
    its own failure without printing a body, and `&&` short-circuits
    the rest of the line before the second curl fires - check exit
-   codes per hop in the job log.
+   codes per hop in the job log. A third hop now follows the refresh
+   trigger (`/internal/normalize-community-regions`); its own `-f`
+   failure fails the job (and counts against backoffLimit) even when
+   the refresh step above completed cleanly, so a failed job next to a
+   healthy "Catalog refresh items by step and outcome" panel points at
+   this third hop, not the refresh - the job log's last curl line
+   shows which one actually failed.
 3. 409 `refresh_in_progress`: the in-process guard believes a refresh
    is running. The refresh checks its context between products and the
    budget cancels it at 30m, so a 409 persisting well past 30m means
@@ -685,8 +698,11 @@ action.
 All idempotent and safe to re-run; the refresh triggers answer 409
 while one runs. Admin JWT: log in as an admin user via the SPA, or in dev
 `task grant-fixture-admin` grants the dev fixture the role, and the
-Bruno flows (`bruno/enrichment/admin-refresh.bru`, `admin-remap.bru`)
-script the calls.
+Bruno flows (`bruno/enrichment/admin-refresh.bru`, `admin-remap.bru`,
+`normalize-community-regions.bru`) script the calls. Normalize
+community regions alone also accepts a service token in place of the
+admin JWT - the nightly CronJob runs it that way, right after the
+refresh trigger.
 
 Run the catalog refresh now, CronJob path (exchanges its own service
 token, in-cluster):
@@ -711,6 +727,28 @@ projection), so a single product can heal ahead of its next nightly
 refresh too; the plain `GET /products/{id}` staleness refetch is a
 separate, age-only mechanism (`IGDB_REFRESH_AFTER`) that does not
 look at `fields_version`.
+
+Normalize community regions (admin role or a service token): promotes
+free-text community-product regions into the known set
+(exact-or-synonym folding against `knownRegions`/`regionSynonyms`,
+never fuzzy - an unreviewed string is left as typed). This service's
+twin of collection's normalize-regions lever, scoped to the community
+products enrichment owns; no fetch arm, since a community product
+carries no provider identity to re-fetch, so promotion is a plain
+region field rewrite. Scheduled nightly in the enrichment-refresh
+CronJob's chain, right after the catalog refresh trigger, and
+operator-runnable at any other time with an admin bearer or the bff
+Admin page's "Run community region normalization" button (`POST
+/api/admin/normalize-community-regions`, relayed to this same
+endpoint). Bruno: `bruno/enrichment/normalize-community-regions.bru`,
+or:
+
+    curl -X POST -H "Authorization: Bearer $ADMIN_JWT" \
+      http://localhost:8084/internal/normalize-community-regions
+
+Answers `{"scanned":N,"normalized":N,"skipped":N}`. Idempotent: a
+promoted row leaves the selection set, so a second run normalizes 0
+once nothing unreviewed remains.
 
 Moderated mapping fix (validates against the provider, snapshots,
 marks verified; `{}` clears the mapping):
@@ -770,9 +808,11 @@ duplicate snapshot per product).
 
 CronJob shape: schedule `0 6 * * *`, concurrencyPolicy Forbid (the
 service's 409 guard is the inner layer), startingDeadlineSeconds 3600,
-backoffLimit 2, activeDeadlineSeconds 900 for the curl pod itself
-(`--max-time 60`; the refresh it triggers is detached and budgeted at
-30m inside the service).
+backoffLimit 2, activeDeadlineSeconds 900 for the curl pod itself,
+which now runs two `&&`-joined hops after the token exchange
+(`--max-time 60` each): the refresh trigger - detached and budgeted at
+30m inside the service - then normalize-community-regions, which runs
+to completion synchronously before the pod exits.
 
 Datastore restarts: Mongo restarting takes enrichment unready until
 the ping passes again (failure mode 2). Valkey restarting costs

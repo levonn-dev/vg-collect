@@ -65,9 +65,12 @@ only collection pods plus the Prometheus exporter ports (9187, 9121)
 from vg-platform. The one cron workload, collection-rematch
 (`0 7 * * *`, an hour after enrichment's catalog refresh), exchanges
 the shared internal secret for a service JWT at auth and presents a
-normal bearer to `/internal/rematch-entries`; every other endpoint is
-request-driven. Enrichment hops always relay the calling user's own
-bearer; there is no service credential.
+normal bearer to a nightly chain in dependency order:
+`/internal/normalize-platforms`, then `/internal/normalize-regions`,
+then `/internal/rematch-entries` (`&&`-joined, so a failed step stops
+the chain); every other endpoint is request-driven. Enrichment hops
+always relay the calling user's own bearer; there is no service
+credential.
 
 The dashboard read is the hot path with the most moving parts:
 
@@ -229,16 +232,18 @@ Domain instruments (created in server.New, stored on the Handlers
 struct, logged and skipped on registration error so telemetry never
 stops the service):
 
-| Metric                            | Instrument           | Unit         | Labels (bounded values)                                                                       | Prometheus name                        | Question it answers                                                                                                                                                                                                                                   |
-| --------------------------------- | -------------------- | ------------ | --------------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| vg.collection.pricing.compose     | Int64Counter         | {request}    | op = entry, list, dashboard, value_history; outcome = ok, degraded                            | vg_collection_pricing_compose_total    | Is read-time value composition healthy? Enrichment being down never produces a 5xx on these paths (responses degrade to null values / available=false), so RED is blind to it; degraded/(ok+degraded) is the feature's failure rate, split by surface |
-| vg.collection.cache.lookups       | Int64Counter         | {lookup}     | cache = dashboard, value_history; outcome = hit, miss                                         | vg_collection_cache_lookups_total      | Is the cache saving recompute? A collapsed hit ratio explains a dashboard latency regression and extra enrichment load. The surface key is cache (matching the bff's lookups counter) so hit ratios group cross-service on one key                    |
-| vg.collection.cache.fail_open     | Int64Counter         | {event}      | op = dashboard_get, dashboard_put, dashboard_invalidate, value_history_get, value_history_put | vg_collection_cache_fail_open_total    | Is Valkey failing from this service's seat? (mirror of the bff's fail-open counter)                                                                                                                                                                   |
-| vg.collection.submissions.events  | Int64Counter         | {event}      | event = created, cancelled, approved, rejected                                                | vg_collection_submissions_events_total | Is the community catalog lane alive: are submissions arriving, and how do verdicts split?                                                                                                                                                             |
-| vg.collection.submissions.pending | Int64ObservableGauge | {submission} | none                                                                                          | vg_collection_submissions_pending      | Is the admin review queue draining or backing up?                                                                                                                                                                                                     |
-| vg.collection.rematch.duration    | Float64Histogram     | s            | none                                                                                           | vg_collection_rematch_duration_seconds_{count,sum,bucket} | How long one entry-rematch run takes; a 409-refused overlap never records                                                                                                                                                                             |
-| vg.collection.rematch.triples     | Int64Counter         | {triple}     | outcome = ok, failed                                                                           | vg_collection_rematch_triples_total    | Is the entry rematch's per-triple resolve succeeding: ok covers nothing-pending or a successful resolve (a per-entry repoint failure logs and continues rather than counting here - see the audit log), failed covers a member-fetch or resolve error |
-| vg.collection.rematch.repoints    | Int64Counter         | {entry}      | none                                                                                           | vg_collection_rematch_repoints_total   | How many entries the entry rematch actually moved onto a region-correct sibling this run                                                                                                                                                              |
+| Metric                            | Instrument           | Unit         | Labels (bounded values)                                                                       | Prometheus name                                           | Question it answers                                                                                                                                                                                                                                   |
+| --------------------------------- | -------------------- | ------------ | --------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| vg.collection.pricing.compose     | Int64Counter         | {request}    | op = entry, list, dashboard, value_history; outcome = ok, degraded                            | vg_collection_pricing_compose_total                       | Is read-time value composition healthy? Enrichment being down never produces a 5xx on these paths (responses degrade to null values / available=false), so RED is blind to it; degraded/(ok+degraded) is the feature's failure rate, split by surface |
+| vg.collection.cache.lookups       | Int64Counter         | {lookup}     | cache = dashboard, value_history; outcome = hit, miss                                         | vg_collection_cache_lookups_total                         | Is the cache saving recompute? A collapsed hit ratio explains a dashboard latency regression and extra enrichment load. The surface key is cache (matching the bff's lookups counter) so hit ratios group cross-service on one key                    |
+| vg.collection.cache.fail_open     | Int64Counter         | {event}      | op = dashboard_get, dashboard_put, dashboard_invalidate, value_history_get, value_history_put | vg_collection_cache_fail_open_total                       | Is Valkey failing from this service's seat? (mirror of the bff's fail-open counter)                                                                                                                                                                   |
+| vg.collection.submissions.events  | Int64Counter         | {event}      | event = created, cancelled, approved, rejected                                                | vg_collection_submissions_events_total                    | Is the community catalog lane alive: are submissions arriving, and how do verdicts split?                                                                                                                                                             |
+| vg.collection.submissions.pending | Int64ObservableGauge | {submission} | none                                                                                          | vg_collection_submissions_pending                         | Is the admin review queue draining or backing up?                                                                                                                                                                                                     |
+| vg.collection.rematch.duration    | Float64Histogram     | s            | none                                                                                          | vg_collection_rematch_duration_seconds_{count,sum,bucket} | How long one entry-rematch run takes; a 409-refused overlap never records                                                                                                                                                                             |
+| vg.collection.rematch.triples     | Int64Counter         | {triple}     | outcome = ok, failed                                                                          | vg_collection_rematch_triples_total                       | Is the entry rematch's per-triple resolve succeeding: ok covers nothing-pending or a successful resolve (a per-entry repoint failure logs and continues rather than counting here - see the audit log), failed covers a member-fetch or resolve error |
+| vg.collection.rematch.repoints    | Int64Counter         | {entry}      | none                                                                                          | vg_collection_rematch_repoints_total                      | How many entries the entry rematch actually moved onto a region-correct sibling this run                                                                                                                                                              |
+| vg.collection.normalize.platforms | Int64Counter         | {row}        | outcome = normalized, skipped, failed                                                         | vg_collection_normalize_platforms_total                   | Is the nightly platform-canonicalization sweep landing: how many free-text platform rows get stamped vs left alone (no catalog alias) vs fail on the store write, each run                                                                            |
+| vg.collection.normalize.regions   | Int64Counter         | {row}        | outcome = normalized, skipped, failed                                                         | vg_collection_normalize_regions_total                     | Is the nightly region-promotion sweep landing: how many free-text region rows get promoted vs left as typed (no known value or synonym match) vs fail (the enrichment product fetch or the store write), each run                                     |
 
 Emission sites:
 
@@ -270,6 +275,16 @@ Emission sites:
   failed - the audit log is the honest signal for a partial repoint),
   failed on a member-fetch or resolve error.
 - rematch.repoints: once per entry RepointEntry actually persists.
+- normalize.platforms: once per name-only-platform entry scanned -
+  skipped when the folded name matches no catalog name or alias,
+  failed when the store write (SetEntryPlatformIdentity) itself
+  errors, normalized on a successful stamp.
+- normalize.regions: once per open-region entry scanned - skipped
+  when the folded region matches neither a known value nor a listed
+  synonym, failed when the enrichment product fetch (game-backed rows
+  only) or the store write errors, normalized on a successful promote
+  (a plain region write for a custom entry, or a promote plus a
+  release-date/localization re-pick for a game-backed one).
 
 ### Logs
 
@@ -298,8 +313,9 @@ Domain lifecycle and outcome events (same pipeline and labels):
 | submission verdict           | INFO  | submission_id, entry_id, action, product_id (when resolved) | SubmitVerdict reject arm and adoptAndApprove; the admin audit trail                                                                                                                                                                                            |
 | resnapshot complete          | INFO  | products_seen, products_failed, entries_updated             | InternalResnapshot, before writing the response; makes the lever's outcome durable in Loki                                                                                                                                                                     |
 | normalize-platforms complete | INFO  | scanned, normalized, skipped                                | InternalNormalizePlatforms, same reason                                                                                                                                                                                                                        |
-| entry rematch started        | INFO  | none                                                         | InternalRematchEntries, immediately after winning the in-flight guard, before detaching (mirrors the catalog refresh's started line, enrichment.md)                                                                                                            |
-| rematch-entries complete     | INFO  | triples_seen, triples_failed, entries_repointed              | runRematch, at the end of the detached sweep - no longer "before the response": the trigger already answered 202 by the time this fires                                                                                                                       |
+| normalize-regions complete   | INFO  | scanned, normalized, skipped                                | InternalNormalizeRegions, same reason                                                                                                                                                                                                                          |
+| entry rematch started        | INFO  | none                                                        | InternalRematchEntries, immediately after winning the in-flight guard, before detaching (mirrors the catalog refresh's started line, enrichment.md)                                                                                                            |
+| rematch-entries complete     | INFO  | triples_seen, triples_failed, entries_repointed             | runRematch, at the end of the detached sweep - no longer "before the response": the trigger already answered 202 by the time this fires                                                                                                                        |
 
 "entry rematch started" pairs with "rematch-entries complete": a
 started line with no completion inside the run's budget is the
@@ -566,10 +582,13 @@ before blaming the limit.
 
 ## Admin levers
 
-All three levers below are contract-described but not relayed by the
+Four levers below, all guarded admin role or a service token, all
+idempotent (re-running after a partial failure is the designed
+retry). Resnapshot alone is contract-described but not relayed by the
 bff or gateway: call the service directly (dev: the Tilt port-forward
-on 8085). All are idempotent; re-running after a partial failure is
-the designed retry.
+on 8085). The other three - entry rematch, normalize platforms,
+normalize regions - are also reachable through the bff Admin page's
+buttons, on top of the direct route.
 
 Resnapshot (admin role or a service token; tightened from any valid
 JWT): recomputes every game-backed
@@ -633,31 +652,70 @@ fixture admin first, `task grant-fixture-admin`), or:
     curl -s -X POST http://localhost:8085/internal/rematch-entries \
       -H "Authorization: Bearer $TOKEN"
 
-Scheduled nightly at 07:00, an hour after enrichment's 06:00 catalog
-refresh (CronJob, chart-configurable), and operator-runnable at any
-other time with an admin bearer or the bff Admin page's "Trigger
-entry rematch" button (`POST /api/admin/rematch`, relayed to this
-same endpoint); an overlapping trigger answers 409 instead of racing
-a run already in flight. The two jobs are disjoint
+Scheduled nightly at 07:00 as the third and final step of the
+collection-rematch CronJob's chain - normalize-platforms, then
+normalize-regions, then this, so a region the second step just
+promoted corrects its pricing class in the same run - an hour after
+enrichment's 06:00 catalog refresh (CronJob, chart-configurable), and
+operator-runnable at any other time with an admin bearer or the bff
+Admin page's "Trigger entry rematch" button (`POST
+/api/admin/rematch`, relayed to this same endpoint); an overlapping
+trigger answers 409 instead of racing a run already in flight. The
+catalog refresh and the entry rematch stay disjoint
 by construction: the catalog refresh maintains member data (prices,
 projections, candidates) and never matches, while the entry rematch
-maintains entry pointers and never prices - which is also why it runs
-second. A region-correct member the rematch has to mint (a JP or PAL
+maintains entry pointers and never prices - which is also why it
+anchors the end of the chain, after the catalog has a full night's
+head start. A region-correct member the rematch has to mint (a JP or PAL
 sibling that did not exist yet) starts from a day-zero snapshot taken
 at resolve time, under PriceCharting's request-rate limit; the catalog
 refresh prices it onward from its next run.
 
-Normalize platforms (role admin): canonicalizes free-text custom-entry
-platforms against the enrichment platform catalog (exact-or-alias
-matching, never fuzzy). Grant the dev fixture first with
-`task grant-fixture-admin`, mint the token as above, then:
+Normalize platforms (admin role or a service token): canonicalizes
+free-text custom-entry platforms against the enrichment platform
+catalog (exact-or-alias matching, never fuzzy - an unrecognized name
+is left untouched rather than misfiled). Scheduled nightly at 07:00 as
+the first step of the collection-rematch CronJob's chain, ahead of
+normalize-regions and the entry rematch, and operator-runnable at any
+other time with an admin bearer or the bff Admin page's "Run platform
+normalization" button (`POST /api/admin/normalize-platforms`, relayed
+to this same endpoint). Bruno:
+`bruno/collection/normalize-platforms.bru`, or grant the dev fixture
+first with `task grant-fixture-admin`, mint the token as above, then:
 
     curl -s -X POST http://localhost:8085/internal/normalize-platforms \
       -H "Authorization: Bearer $TOKEN"
 
 Answers `{"scanned":N,"normalized":N,"skipped":N}`; skipped rows are
 names the catalog does not know, left untouched for a rerun after the
-catalog learns them.
+catalog learns them. Idempotent: a stamped entry leaves the selection
+set, so a second run normalizes 0 once the catalog covers everything
+in play.
+
+Normalize regions (admin role or a service token): promotes free-text
+entry regions into the known set (exact-or-synonym folding against
+`knownRegions`/`regionSynonyms`, never fuzzy - an unreviewed string is
+left as typed). A game-backed entry additionally re-picks its
+region-picked release date and localized snapshot from a fresh
+product fetch at promotion time - the same pick resnapshot performs -
+so a region newly added to the known set needs no follow-up
+resnapshot run for its entries' display fields; an enrichment outage
+skips that row for the next run rather than failing the whole sweep.
+Scheduled nightly at 07:00 as the second step of the
+collection-rematch CronJob's chain, after normalize-platforms and
+ahead of the entry rematch so a just-promoted region's pricing class
+corrects in the same run, and operator-runnable at any other time
+with an admin bearer or the bff Admin page's "Run region
+normalization" button (`POST /api/admin/normalize-regions`, relayed
+to this same endpoint). Bruno: `bruno/collection/normalize-regions.bru`,
+or:
+
+    curl -s -X POST http://localhost:8085/internal/normalize-regions \
+      -H "Authorization: Bearer $TOKEN"
+
+Answers `{"scanned":N,"normalized":N,"skipped":N}`. Idempotent: a
+promoted row leaves the selection set, so a second run normalizes 0
+once nothing unreviewed remains.
 
 Role grants themselves are the user service's lever
 (`task grant-fixture-admin` inserts into user_roles); collection only

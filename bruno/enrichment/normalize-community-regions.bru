@@ -1,0 +1,41 @@
+meta {
+  name: normalize community regions
+  type: http
+  seq: 15
+}
+
+post {
+  url: {{enrichment_url}}/internal/normalize-community-regions
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.scanned: isNumber
+  res.body.normalized: isNumber
+  res.body.skipped: isNumber
+}
+
+docs {
+  Nightly lever (the enrichment-refresh CronJob runs it right after
+  the catalog refresh trigger), operator-runnable any time: promotes
+  free-text community-product regions into the known set, this
+  service's twin of collection's normalize-regions, scoped to the
+  community products enrichment owns. Exact-or-synonym folding only -
+  never fuzzy, so an unreviewed string is left as typed. No fetch arm:
+  a community product carries no provider identity to re-fetch, so
+  promotion is a plain region field rewrite. Idempotent: a promoted
+  row leaves the selection set. Expect 200 with
+  scanned/normalized/skipped.
+
+  Guard: admin role or a service token. The bearer behind
+  {{access_token}} must be an admin - the folder's dev-token flow logs
+  in as alice by default, so run it with body {"user": "admin"} first,
+  or override --env-var access_token with a minted admin or service
+  token.
+}

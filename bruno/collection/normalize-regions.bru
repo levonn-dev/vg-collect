@@ -1,0 +1,43 @@
+meta {
+  name: normalize regions
+  type: http
+  seq: 22
+}
+
+post {
+  url: {{collection_url}}/internal/normalize-regions
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.scanned: isNumber
+  res.body.normalized: isNumber
+  res.body.skipped: isNumber
+}
+
+docs {
+  Nightly lever (second step of the collection-rematch CronJob's
+  chain, after normalize-platforms and ahead of the entry rematch so a
+  just-promoted region's pricing class corrects in the same run),
+  operator-runnable any time: promotes free-text entry regions into
+  the known set, exact-or-synonym folding only - never fuzzy, so an
+  unreviewed string is left as typed. A game-backed entry additionally
+  re-picks its release date and localized snapshot for the promoted
+  region from a fresh product fetch - the same pick resnapshot uses -
+  so no follow-up resnapshot run is needed for those display fields;
+  an enrichment outage skips that row for the next run rather than
+  failing the whole sweep. Idempotent: a promoted row leaves the
+  selection set. Expect 200 with scanned/normalized/skipped.
+
+  Guard: admin role or a service token. The bearer behind
+  {{access_token}} must be an admin - the folder's dev-token flow logs
+  in as alice by default, so run it with body {"user": "admin"} first,
+  or override --env-var access_token with a minted admin or service
+  token.
+}

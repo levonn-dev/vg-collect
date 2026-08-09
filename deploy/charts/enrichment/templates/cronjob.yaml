@@ -30,15 +30,12 @@ spec:
                   valueFrom:
                     secretKeyRef: { name: enrichment-secrets, key: internal-service-token }
               command: ["/bin/sh", "-c"]
-              # Exchange-then-trigger: mint a 15m service JWT from auth
-              # with the one internal secret, then call the trigger with
-              # a normal bearer - services validate JWTs only. sed
-              # extracts access_token from our own stable JSON shape.
-              # -f turns a 401/409 answer into a visible job failure
-              # instead of a silent skip (409 = a refresh already runs;
-              # Forbid already guards overlap). The refresh itself is
-              # detached: 202 arrives immediately and the summary lands
-              # in the service log.
+              # Exchange-then-trigger, then the nightly catalog refresh
+              # (detaches: 202, work continues after this job exits),
+              # with community-region promotion riding the same run so
+              # a just-promoted community region is visible on the next
+              # catalog read. && keeps failures visible; the normalize
+              # sweep answers a synchronous count.
               args:
                 - >-
                   TOKEN=$(curl -fsS -X POST --max-time 30
@@ -50,6 +47,9 @@ spec:
                   && curl -fsS -X POST --max-time 60
                   -H "Authorization: Bearer $TOKEN"
                   http://enrichment:8080/internal/refresh
+                  && curl -fsS -X POST --max-time 60
+                  -H "Authorization: Bearer $TOKEN"
+                  http://enrichment:8080/internal/normalize-community-regions
               resources:
                 requests: { cpu: 10m, memory: 16Mi }
                 limits: { memory: 32Mi }
