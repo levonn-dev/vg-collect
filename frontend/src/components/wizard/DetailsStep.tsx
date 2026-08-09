@@ -3,15 +3,16 @@ import { useState } from 'react'
 import type { EntryCreate } from '../../api/collection'
 import type { ManualMatch } from '../../lib/catalog'
 import { dollarsToCents } from '../../lib/format'
-import { CONDITIONS, PACKAGINGS, REGIONS, STATUSES } from '../../lib/listParams'
+import { CONDITIONS, PACKAGINGS, STATUSES } from '../../lib/listParams'
 import type { EntryRegion, LocalizationBundle } from '../../lib/productTitle'
 import { regionTitle, titleFormFor } from '../../lib/productTitle'
+import RegionPicker from '../catalog/RegionPicker'
 import ManualMatchPicker from './ManualMatchPicker'
 
 type Condition = NonNullable<EntryCreate['item_condition']>
 
 export interface DetailsValues {
-  region: EntryCreate['region']
+  region: string
   edition: string
   packaging: EntryCreate['packaging']
   hasBox: boolean
@@ -30,7 +31,7 @@ export interface DetailsValues {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- shared with ConfirmStep and the test, alongside this component.
-export function defaultDetails(region: DetailsValues['region'] = 'ntsc_u'): DetailsValues {
+export function defaultDetails(region: string = 'ntsc_u'): DetailsValues {
   return {
     region, edition: '', packaging: 'cib', hasBox: true, hasManual: true,
     boxCondition: '', manualCondition: '', itemCondition: '', pricePaid: '',
@@ -125,15 +126,6 @@ export default function DetailsStep({ product, regionGroup, currency, initialVal
   const inputClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
   const labelClass = 'flex flex-col gap-1 text-sm font-medium'
   const group = regionGroup && regionGroup.regions.length > 0 ? regionGroup : undefined
-  // Bare identifier for the Lingui macro: named placeholders need a
-  // plain variable, and the group-branch render below guarantees it.
-  const groupPlatformName = group?.platformName ?? ''
-  const otherRegions = group ? REGIONS.filter((r) => !group.regions.some((g) => g === r)) : REGIONS
-  const regionOption = (r: (typeof REGIONS)[number]) => (
-    <option key={r} value={r}>
-      {r.replace('_', '-').toUpperCase()}
-    </option>
-  )
   const conditionSelect = (label: string, key: 'boxCondition' | 'manualCondition' | 'itemCondition') => (
     <label className={labelClass}>
       {label}
@@ -162,19 +154,7 @@ export default function DetailsStep({ product, regionGroup, currency, initialVal
           <Trans>Your copy of <span lang={title.lang}>{titleText}</span></Trans>
         </h3>
         <div className="flex flex-wrap gap-3">
-          <label className={labelClass}>
-            <Trans>Region</Trans>
-            <select value={v.region} onChange={(e) => set('region', e.target.value as DetailsValues['region'])} className={inputClass}>
-              {group ? (
-                <>
-                  <optgroup label={t`Released on ${groupPlatformName}`}>{group.regions.map(regionOption)}</optgroup>
-                  <optgroup label={t`Other regions`}>{otherRegions.map(regionOption)}</optgroup>
-                </>
-              ) : (
-                REGIONS.map(regionOption)
-              )}
-            </select>
-          </label>
+          <RegionPicker value={v.region} onChange={(region) => set('region', region)} regionGroup={group} required />
           <label className={labelClass}>
             <Trans>Edition or variant</Trans>
             <input value={v.edition} onChange={(e) => set('edition', e.target.value)} placeholder={t`first print, players choice...`} className={inputClass} />

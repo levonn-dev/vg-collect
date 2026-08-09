@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
@@ -145,15 +145,40 @@ it('groups the region select by the platform set and defaults from initialValues
   expect(Array.from(groups[0].querySelectorAll('option')).map((o) => o.getAttribute('value')))
     .toEqual(['ntsc_u', 'pal'])
   expect(groups[1]).toHaveAttribute('label', 'Other regions')
+  // RegionPicker's escape-hatch placeholder lives in this optgroup only;
+  // the platform-set group above never carries it.
   expect(Array.from(groups[1].querySelectorAll('option')).map((o) => o.getAttribute('value')))
-    .toEqual(['ntsc_j', 'region_free'])
+    .toEqual(['', 'ntsc_j', 'region_free'])
+})
+
+it('marks the region control required (an entry cannot submit an empty region)', () => {
+  renderWithI18n(<DetailsStep product={{ name: 'Chrono Trigger' }} currency="USD" onBack={vi.fn()} onNext={vi.fn()} />)
+  expect(screen.getByLabelText('Region')).toBeRequired()
 })
 
 it('renders the flat ungrouped select without a regionGroup', () => {
   renderWithI18n(<DetailsStep product={{ name: 'Chrono Trigger' }} currency="USD" onBack={vi.fn()} onNext={vi.fn()} />)
   const select = screen.getByLabelText('Region')
   expect(select.querySelector('optgroup')).toBeNull()
-  expect(select.querySelectorAll('option')).toHaveLength(4)
+  // Behavioral, not a bare count: the placeholder plus exactly the four
+  // known regions.
+  expect(Array.from(select.querySelectorAll('option')).map((o) => o.getAttribute('value')))
+    .toEqual(['', 'ntsc_u', 'ntsc_j', 'pal', 'region_free'])
+})
+
+it('region free text rides into onNext', () => {
+  const onNext = vi.fn()
+  renderWithI18n(<DetailsStep product={{ name: 'PachiPals' }} currency="USD" onBack={() => {}} onNext={onNext} />)
+  fireEvent.click(screen.getByRole('button', { name: "My region isn't listed" }))
+  fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'Korea' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+  expect(onNext).toHaveBeenCalledWith(expect.objectContaining({ region: 'Korea' }))
+})
+
+it('known options render labels not wire values', () => {
+  renderWithI18n(<DetailsStep product={{ name: 'X' }} currency="USD" onBack={() => {}} onNext={() => {}} />)
+  expect(screen.getByRole('option', { name: 'Region free' })).toBeInTheDocument()
+  expect(screen.queryByRole('option', { name: 'REGION-FREE' })).not.toBeInTheDocument()
 })
 
 it('derives the heading from the selected region and follows a region change live', async () => {

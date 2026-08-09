@@ -68,7 +68,7 @@ export default function AddWizard() {
               : undefined
           }
           currency={money.profileCurrency}
-          initialValues={state.details ?? (state.pick.kind === 'game' || state.pick.kind === 'hardware' ? defaultDetails(state.pick.suggestedRegion) : undefined)}
+          initialValues={state.details ?? (state.pick.kind === 'game' || state.pick.kind === 'hardware' ? defaultDetails(state.pick.suggestedRegion) : state.pick.kind === 'community' && state.pick.region !== undefined ? defaultDetails(state.pick.region) : undefined)}
           manualMatch={state.pick.kind === 'game' ? state.manualMatch : undefined}
           onManualMatchChange={
             state.pick.kind === 'game' ? (m) => setState({ ...state, manualMatch: m ?? undefined }) : undefined
@@ -90,6 +90,10 @@ export default function AddWizard() {
       {state.step === 'custom' && (
         <CustomStep
           initialValues={state.custom}
+          seed={{
+            displayName: searchState?.text ?? searchParams.get('q') ?? '',
+            itemType: searchState?.kind === 'hardware' ? 'accessory' : 'game',
+          }}
           onBack={() => setState({ step: 'search' })}
           onNext={(custom) => setState({ step: 'custom-details', custom, details: state.details })}
         />
@@ -98,7 +102,7 @@ export default function AddWizard() {
         <DetailsStep
           product={{ name: state.custom.displayName }}
           currency={money.profileCurrency}
-          initialValues={state.details}
+          initialValues={state.details ?? (state.custom.region !== '' ? defaultDetails(state.custom.region) : undefined)}
           onBack={() => setState({ step: 'custom', custom: state.custom, details: state.details })}
           onNext={(details) => setState({ ...state, step: 'custom-confirm', details })}
         />

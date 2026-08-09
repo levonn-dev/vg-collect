@@ -5,10 +5,10 @@ import { useState } from 'react'
 import type { Entry, EntryUpdate } from '../../api/collection'
 import { centsToDollars, dollarsToCents, enteredCentsToUsdCents, usdCentsToMajor } from '../../lib/format'
 import { entryToUpdate } from '../../lib/entryUpdate'
-import { CONDITIONS, PACKAGINGS, REGIONS, STATUSES } from '../../lib/listParams'
-import { regionLabels } from '../../lib/regionLabels'
+import { CONDITIONS, PACKAGINGS, STATUSES } from '../../lib/listParams'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import PlatformPicker from '../catalog/PlatformPicker'
+import RegionPicker from '../catalog/RegionPicker'
 import type { PricingValue } from './PricingPanel'
 import PricingPanel from './PricingPanel'
 import TagPicker from './TagPicker'
@@ -289,16 +289,7 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
       )}
 
       <section aria-label={t`Physical details`} className="flex flex-wrap gap-3">
-        <label className={labelClass}>
-          <Trans>Region</Trans>
-          <select value={v.region} onChange={(e) => set('region', e.target.value as Entry['region'])} className={selectClass}>
-            {REGIONS.map((r) => (
-              <option key={r} value={r}>
-                {i18n._(regionLabels[r])}
-              </option>
-            ))}
-          </select>
-        </label>
+        <RegionPicker value={v.region} onChange={(region) => set('region', region)} required />
         <label className={labelClass}>
           <Trans>Edition</Trans>
           <input value={v.edition} onChange={(e) => set('edition', e.target.value)} placeholder={t`first print, black label...`} className={inputClass} />

@@ -9,7 +9,7 @@ import { searchCatalog } from '../../api/catalog'
 import { releaseYear } from '../../lib/format'
 import type { EntryRegion } from '../../lib/productTitle'
 import { bundleLang, consoleRegionFor, homeRegionFor, platformEntryRegions, REGION_FROM_MATCH, titleFormFor } from '../../lib/productTitle'
-import { regionLabels } from '../../lib/regionLabels'
+import { regionLabels, regionLabelText } from '../../lib/regionLabels'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import ItemTypeIcon from '../ItemTypeIcon'
 
@@ -31,6 +31,11 @@ export interface GamePick {
   // The result's localization bundles, verbatim: the details heading
   // derives the region-appropriate identity from them.
   localizations?: { region: string; name?: string; translit?: string; cover_url?: string }[]
+  // The chip's own artwork and release date, carried through so a
+  // based-add (CustomStep) can prefill the custom form's cover and
+  // release date fields without a second lookup.
+  coverUrl?: string
+  firstReleaseDate?: string
 }
 
 export interface HardwarePick {
@@ -56,6 +61,13 @@ export interface CommunityPick {
   name: string
   itemType: 'game' | 'console' | 'accessory'
   platformName?: string
+  // Same based-add prefill purpose as GamePick's fields above.
+  coverUrl?: string
+  firstReleaseDate?: string
+  // The community facts region, entry vocabulary (open-world; see
+  // regionLabelText) - seeds the wizard's region default the same way
+  // suggestedRegion does for game/hardware picks.
+  region?: string
 }
 
 export type CatalogPick = GamePick | HardwarePick | PCListingPick | CommunityPick
@@ -288,6 +300,9 @@ export default function SearchPicker({ initialQuery = '', initialState, onPick, 
                       <Trans>community</Trans>
                     </span>
                   )}
+                  {r.region !== undefined && (
+                    <span className="ml-2 text-xs text-gray-400">{regionLabelText(i18n, r.region)}</span>
+                  )}
                 </p>
                 {r.origin === 'community' ? (
                   r.platform_name ? (
@@ -304,6 +319,9 @@ export default function SearchPicker({ initialQuery = '', initialState, onPick, 
                             name: r.name,
                             itemType: r.item_type ?? 'game',
                             platformName: r.platform_name,
+                            coverUrl: r.cover_url,
+                            firstReleaseDate: r.first_release_date,
+                            region: r.region,
                           })
                         }
                         aria-label={t`${name} on ${platformName}`}
@@ -322,6 +340,9 @@ export default function SearchPicker({ initialQuery = '', initialState, onPick, 
                           name: r.name,
                           itemType: r.item_type ?? 'game',
                           platformName: r.platform_name,
+                          coverUrl: r.cover_url,
+                          firstReleaseDate: r.first_release_date,
+                          region: r.region,
                         })
                       }
                       className="mt-1 rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"
@@ -365,6 +386,8 @@ export default function SearchPicker({ initialQuery = '', initialState, onPick, 
                               suggestedRegion,
                               regions: regions.length > 0 ? regions : undefined,
                               localizations: r.localizations,
+                              coverUrl: r.cover_url,
+                              firstReleaseDate: r.first_release_date,
                             })
                           }
                           aria-label={

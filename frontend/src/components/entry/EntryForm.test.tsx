@@ -227,6 +227,20 @@ it('carries edits from every remaining field control into the payload', async ()
   expect(sent.tag_ids).toEqual(['t1'])
 })
 
+it('marks the region control required (an entry cannot submit an empty region)', () => {
+  renderForm()
+  expect(screen.getByLabelText('Region')).toBeRequired()
+})
+
+it('escape hatch free text rides into the save payload', async () => {
+  const { onSave } = renderForm()
+  await userEvent.click(screen.getByRole('button', { name: "My region isn't listed" }))
+  await userEvent.type(screen.getByLabelText('Region'), 'Korea')
+  await userEvent.click(screen.getByRole('button', { name: /save/i }))
+  const sent = onSave.mock.calls[0][0] as EntryUpdate
+  expect(sent.region).toBe('Korea')
+})
+
 it('omits cover_url from the payload when the cover input is left empty', async () => {
   const { onSave } = renderForm(entryFixture({ product_id: undefined, display_name: 'Repro Cart' }))
   await screen.findByLabelText(/cover image link/i)

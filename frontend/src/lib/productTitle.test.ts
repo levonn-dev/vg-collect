@@ -1,4 +1,4 @@
-import { bundleLang, consoleRegionFor, entryCover, entrySecondary, entryTitle, entryTitleLang, REGION_LANGS, titleFormFor, homeRegionFor, LOCALIZATION_CHAINS, platformEntryRegions, regionMismatch, regionTitle } from './productTitle'
+import { bundleLang, consoleRegionFor, entryCover, entrySecondary, entryTitle, entryTitleLang, REGION_LANGS, titleFormFor, homeRegionFor, LOCALIZATION_CHAINS, REGION_PLATFORMS, platformEntryRegions, regionMismatch, regionTitle } from './productTitle'
 
 const jp = {
   display_name: 'Trials of Mana',
@@ -111,6 +111,10 @@ it('platformEntryRegions: nothing mappable yields the empty set', () => {
 
 it('LOCALIZATION_CHAINS mirrors the collection service chains', () => {
   expect(LOCALIZATION_CHAINS).toEqual({ ntsc_j: ['ja-JP'], pal: ['EU'] })
+})
+
+it('REGION_PLATFORMS pins the verified JP-market platform ids', () => {
+  expect(REGION_PLATFORMS).toEqual({ 99: 'ntsc_j', 58: 'ntsc_j', 51: 'ntsc_j' })
 })
 
 // regionTitle picks the wizard-heading identity for a selected entry

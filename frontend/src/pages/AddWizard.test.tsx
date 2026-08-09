@@ -160,6 +160,31 @@ it('seeds the details region select from a hardware pick', async () => {
   expect(screen.getByLabelText('Region')).toHaveValue('ntsc_j')
 })
 
+it('seeds the details region select from a community pick with region', async () => {
+  const communityRegionSearchAnswer = {
+    degraded: false,
+    results: [{
+      type: 'game', name: 'Repro Alpha', origin: 'community',
+      product_id: 'c0ffee00-0000-4000-8000-000000000001', item_type: 'game',
+      platform_name: 'SNES', region: 'pal',
+    }],
+  }
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    const u = String(url)
+    if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, communityRegionSearchAnswer))
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWizard()
+
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'repro')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Repro Alpha on SNES' }))
+
+  expect(await screen.findByRole('heading', { name: /your copy of repro alpha/i })).toBeInTheDocument()
+  expect(screen.getByLabelText('Region')).toHaveValue('pal')
+})
+
 it('stamps the created entry with the profile currency', async () => {
   const created = entryFixture({ display_name: 'Chrono Trigger', currency: 'EUR' })
   const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
@@ -642,4 +667,35 @@ it('prefers the wizard snapshot over the q deep link on Back', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Back' }))
 
   expect(await screen.findByRole('searchbox', { name: /search/i })).toHaveValue('mario')
+})
+
+it('seeds the custom step with an accessory item type and the typed text from a hardware-tab search', async () => {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    const u = String(url)
+    if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWizard()
+
+  await userEvent.click(screen.getByRole('radio', { name: /hardware/i }))
+  await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'link cable')
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  expect(await screen.findByText(/no results/i)).toBeInTheDocument()
+
+  await userEvent.click(screen.getByRole('button', { name: /add it as a custom item/i }))
+  expect(screen.getByLabelText(/^name$/i)).toHaveValue('link cable')
+  expect(screen.getByLabelText(/item type/i)).toHaveValue('accessory')
+})
+
+it('carries the custom step region choice into the details step defaults', async () => {
+  vi.stubGlobal('fetch', vi.fn())
+  renderWizard()
+
+  await userEvent.click(screen.getByRole('button', { name: /add it as a custom item/i }))
+  await userEvent.type(screen.getByLabelText(/^name$/i), 'Homebrew Cart')
+  fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'pal' } })
+  await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+
+  expect(await screen.findByLabelText('Region')).toHaveValue('pal')
 })

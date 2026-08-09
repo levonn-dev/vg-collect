@@ -52,6 +52,7 @@ it('searches games and picks a platform', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Chrono Trigger on SNES' }))
   expect(onPick).toHaveBeenCalledWith({
     kind: 'game', igdbGameId: 1000, name: 'Chrono Trigger', platformId: 6, platformName: 'SNES',
+    coverUrl: gameResults.results[0].cover_url, firstReleaseDate: gameResults.results[0].first_release_date,
   })
 })
 
@@ -121,6 +122,7 @@ it('includes the matched region as a suggestion on a game platform pick', async 
     kind: 'game', igdbGameId: 2000, name: 'Trials of Mana', platformId: 6, platformName: 'SNES',
     suggestedRegion: 'ntsc_j',
     localizations: jpMatchedResult.localizations,
+    coverUrl: jpMatchedResult.cover_url,
   })
 })
 
@@ -147,6 +149,7 @@ it('swaps the title for an unmapped matched_region but suggests no region', asyn
   expect(onPick).toHaveBeenCalledWith({
     kind: 'game', igdbGameId: 2001, name: 'Trials of Mana', platformId: 6, platformName: 'SNES',
     localizations: koMatchedResult.localizations,
+    coverUrl: koMatchedResult.cover_url,
   })
 })
 
@@ -559,6 +562,7 @@ it('renders a community result matching the provider idiom (name, release, tag) 
   expect(onPick).toHaveBeenCalledWith({
     kind: 'community', productId: 'c0ffee00-0000-4000-8000-000000000001',
     name: 'Repro Alpha', itemType: 'game', platformName: 'SNES',
+    coverUrl: 'https://img.example/ra.jpg', firstReleaseDate: '1994-01-01',
   })
 })
 
@@ -581,6 +585,48 @@ it('falls back to a plain Add button for a community result with no platform_nam
     kind: 'community', productId: 'c0ffee00-0000-4000-8000-000000000002',
     name: 'Repro Beta', itemType: 'game', platformName: undefined,
   })
+})
+
+it('tags a community row with a known region and carries it on the pick', async () => {
+  const results = {
+    degraded: false,
+    results: [
+      {
+        type: 'game', name: 'Repro Gamma', origin: 'community',
+        product_id: 'c0ffee00-0000-4000-8000-000000000003', item_type: 'game',
+        platform_name: 'SNES', region: 'ntsc_j',
+      },
+    ],
+  }
+  const onPick = vi.fn()
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, results)))
+  renderPicker({ initialQuery: 'repro', onPick })
+  await userEvent.click(await screen.findByRole('button', { name: 'Search' }))
+  const infoLine = (await screen.findByText('Repro Gamma')).closest('p')!
+  expect(within(infoLine).getByText('NTSC-J')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Repro Gamma on SNES' }))
+  expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ region: 'ntsc_j' }))
+})
+
+// Community region is open-world (curated free text, not just the four
+// known values) - an unrecognized region rides the row verbatim rather
+// than disappearing or throwing, same as regionLabelText's contract.
+it('tags a community row with an open-world region verbatim', async () => {
+  const results = {
+    degraded: false,
+    results: [
+      {
+        type: 'game', name: 'Repro Delta', origin: 'community',
+        product_id: 'c0ffee00-0000-4000-8000-000000000004', item_type: 'game',
+        platform_name: 'SNES', region: 'Korea',
+      },
+    ],
+  }
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, results)))
+  renderPicker({ initialQuery: 'repro' })
+  await userEvent.click(await screen.findByRole('button', { name: 'Search' }))
+  const infoLine = (await screen.findByText('Repro Delta')).closest('p')!
+  expect(within(infoLine).getByText('Korea')).toBeInTheDocument()
 })
 
 it('hides community results when communityLane is hidden', async () => {

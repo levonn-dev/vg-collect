@@ -187,6 +187,17 @@ export const LOCALIZATION_CHAINS: Record<string, string[]> = {
   pal: ['EU'],
 }
 
+// REGION_PLATFORMS defaults a custom item's region from a
+// region-specific platform pick (IGDB platform id -> entry region).
+// Seeded with the JP-market trio; ids verified against the live
+// /api/platforms catalog. A missing row costs only a missing default.
+// Extension table: one row per region-locked platform.
+export const REGION_PLATFORMS: Record<number, EntryRegion> = {
+  99: 'ntsc_j', // Family Computer
+  58: 'ntsc_j', // Super Famicom
+  51: 'ntsc_j', // Famicom Disk System
+}
+
 // JP_CONSOLE_NAMES are PriceCharting's distinct-name JP market
 // consoles - the ones filed without a "JP " prefix. Sibling of the
 // server-side tables (the enrichment match gate, the collection class
