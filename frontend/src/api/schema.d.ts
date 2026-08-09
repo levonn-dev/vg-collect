@@ -658,6 +658,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/normalize-platforms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run the platform canonicalization sweep (relay; collection enforces admin or service) */
+        post: operations["normalizePlatforms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/normalize-regions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run the region normalization sweep (relay; collection enforces admin or service) */
+        post: operations["normalizeRegions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/normalize-community-regions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run the community-product region normalization sweep (relay; enrichment enforces admin or service) */
+        post: operations["normalizeCommunityRegions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/submissions": {
         parameters: {
             query?: never;
@@ -940,6 +991,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shared/profiles/by-ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Batch profile cards for hydration (relayed from the user service; visibility-independent - actions are signed)
+         * @description Mirrors the user service's batch resolve verbatim: cards come back for the ids that exist regardless of visibility (page access is gated separately, per page). Backs the admin submissions queue's submitter-handle hydration.
+         */
+        get: operations["getSharedProfilesByIds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/feed": {
         parameters: {
             query?: never;
@@ -1084,7 +1155,7 @@ export interface components {
             /** Format: int64 */
             new_cents?: number;
             /**
-             * @description Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick and community.cover_url as cover_url. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
+             * @description Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick, community.cover_url as cover_url, and community.region as region. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
              * @enum {string}
              */
             origin?: "community";
@@ -1093,6 +1164,8 @@ export interface components {
             /** @enum {string} */
             item_type?: "game" | "console" | "accessory";
             platform_name?: string;
+            /** @description Community rows only - the community facts region, entry vocabulary. */
+            region?: string;
         };
         SearchResults: {
             /** @description True when the provider was unreachable and the local catalog answered instead. */
@@ -1185,6 +1258,8 @@ export interface components {
         /** @description Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present). */
         CommunityMeta: {
             platform_name?: string;
+            /** @description Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free). */
+            region?: string;
             /** Format: date */
             first_release_date?: string;
             /** @description User-supplied cover image URL (https, never fetched server-side; the client renders it with a broken-image fallback). Served as the product cover when no provider cover is present; retained after promotion as gap-fill. */
@@ -1304,6 +1379,21 @@ export interface components {
             /** @enum {string} */
             status: "started";
         };
+        NormalizePlatformsResult: {
+            scanned: number;
+            normalized: number;
+            skipped: number;
+        };
+        NormalizeRegionsResult: {
+            scanned: number;
+            normalized: number;
+            skipped: number;
+        };
+        NormalizeCommunityRegionsResult: {
+            scanned: number;
+            normalized: number;
+            skipped: number;
+        };
         Problem: {
             type: string;
             title: string;
@@ -1351,8 +1441,7 @@ export interface components {
              * @description The recommendation identity: snapshotted from the entry's own product, or from the proxy target on custom game entries (owning a reproduction of X means playing X).
              */
             igdb_game_id?: number;
-            /** @enum {string} */
-            region: "ntsc_u" | "ntsc_j" | "pal" | "region_free";
+            region: string;
             /** @description Per-copy variant note ("first print (glitched rev)", "black edition"): the idiom for variants of cataloged items is an entry on the base product with the variant recorded here. */
             edition?: string;
             /** @enum {string} */
@@ -1453,8 +1542,7 @@ export interface components {
             /** @enum {string} */
             item_type: "game" | "console" | "accessory";
             platform_name?: string;
-            /** @enum {string} */
-            region: "ntsc_u" | "ntsc_j" | "pal" | "region_free";
+            region: string;
             edition?: string;
             /** Format: date */
             first_release_date?: string;
@@ -1528,8 +1616,8 @@ export interface components {
              * @enum {string}
              */
             media_type: "physical";
-            /** @enum {string} */
-            region: "ntsc_u" | "ntsc_j" | "pal" | "region_free";
+            /** @description Entry region. Known values ntsc_u, ntsc_j, pal and region_free carry region machinery (localized display snapshots, pricing class, availability grouping); any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set. */
+            region: string;
             /** @description Per-copy variant note; the idiom for variants of cataloged items. */
             edition?: string;
             /** @enum {string} */
@@ -1604,11 +1692,8 @@ export interface components {
              * @description Narrow re-match. Accepted only when the entry is product-backed with pricing_mode auto, its current product is a game with no price mapping, and the new product is a game of the same family (same igdb game and platform); the same id as the entry already has is a no-op. Anything else answers 400 code invalid_product_change; enrichment unreachable answers 502 code enrichment_unavailable and leaves the entry unchanged. Snapshotted display fields stay as they are.
              */
             product_id?: string;
-            /**
-             * @description A region change on an auto-priced game-backed entry may repoint the entry to the sibling catalog product whose listing prices that region; snapshotted fields re-derive from it.
-             * @enum {string}
-             */
-            region: "ntsc_u" | "ntsc_j" | "pal" | "region_free";
+            /** @description Entry region. Known values ntsc_u, ntsc_j, pal and region_free carry region machinery (localized display snapshots, pricing class, availability grouping); any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set. On an auto-provenance game entry, a region change repoints the entry to the sibling catalog product whose listing prices that region; snapshotted display fields re-derive from it. */
+            region: string;
             /** @description Per-copy variant note; the idiom for variants of cataloged items. */
             edition?: string;
             /** @enum {string} */
@@ -1906,8 +1991,7 @@ export interface components {
             localized_cover_url?: string;
             /** Format: int64 */
             igdb_game_id?: number;
-            /** @enum {string} */
-            region: "ntsc_u" | "ntsc_j" | "pal" | "region_free";
+            region: string;
             edition?: string;
             /** @enum {string} */
             packaging: "sealed" | "cib" | "loose";
@@ -2450,7 +2534,8 @@ export interface operations {
                 item_type?: ("game" | "console" | "accessory")[];
                 status?: ("backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved")[];
                 packaging?: ("sealed" | "cib" | "loose")[];
-                region?: ("ntsc_u" | "ntsc_j" | "pal" | "region_free")[];
+                /** @description Known-value buckets; other stored strings only surface unfiltered. */
+                region?: string[];
                 item_condition?: ("mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor")[];
                 /** @description IGDB platform ids (matches the creation-time snapshot). */
                 platform_id?: number[];
@@ -3243,7 +3328,8 @@ export interface operations {
                 item_type?: ("game" | "console" | "accessory")[];
                 status?: ("backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved")[];
                 packaging?: ("sealed" | "cib" | "loose")[];
-                region?: ("ntsc_u" | "ntsc_j" | "pal" | "region_free")[];
+                /** @description Known-value buckets; other stored strings only surface unfiltered. */
+                region?: string[];
                 item_condition?: ("mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor")[];
                 /** @description IGDB platform ids (matches the creation-time snapshot). */
                 platform_id?: number[];
@@ -3617,6 +3703,99 @@ export interface operations {
             };
             /** @description An entry rematch is already running (code rematch_in_progress) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    normalizePlatforms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sweep summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NormalizePlatformsResult"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    normalizeRegions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sweep summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NormalizeRegionsResult"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    normalizeCommunityRegions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sweep summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NormalizeCommunityRegionsResult"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4342,6 +4521,32 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Up to 20 listed matches */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        profiles: components["schemas"]["ProfileCard"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    getSharedProfilesByIds: {
+        parameters: {
+            query: {
+                ids: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cards for the ids that exist */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -597,6 +597,23 @@ func (h *Handlers) TriggerRefresh(w http.ResponseWriter, r *http.Request) {
 	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
 
+// NormalizeCommunityRegions relays the admin's community-product
+// region normalization sweep (mirrors TriggerRefresh's idiom: no
+// relayCollection-style helper exists for enrichment).
+func (h *Handlers) NormalizeCommunityRegions(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.enrichment.NormalizeCommunityRegions(r.Context(), sess.AccessToken)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
 // TriggerRematch relays the admin's immediate entry-rematch trigger.
 func (h *Handlers) TriggerRematch(w http.ResponseWriter, r *http.Request) {
 	sess, _, ok := session.FromContext(r.Context())
@@ -610,6 +627,28 @@ func (h *Handlers) TriggerRematch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+// NormalizePlatforms relays the admin's platform canonicalization sweep.
+func (h *Handlers) NormalizePlatforms(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.NormalizePlatforms(r.Context(), sess.AccessToken)
+	h.relayCollection(w, r, res, err)
+}
+
+// NormalizeRegions relays the admin's region normalization sweep.
+func (h *Handlers) NormalizeRegions(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.NormalizeRegions(r.Context(), sess.AccessToken)
+	h.relayCollection(w, r, res, err)
 }
 
 // CreateSubmission relays a catalog-candidate filing.
@@ -782,6 +821,25 @@ func (h *Handlers) DismissPromoteCandidate(w http.ResponseWriter, r *http.Reques
 	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
 
+// GetSharedProfilesByIds relays the batch profile-card hydration the
+// admin queue uses for submitter handles. Unlike the pass-through
+// admin relays above, the user service's answer is typed (not a raw
+// body relay), so it is re-marshaled into the envelope the frontend
+// expects rather than passed through verbatim.
+func (h *Handlers) GetSharedProfilesByIds(w http.ResponseWriter, r *http.Request, params api.GetSharedProfilesByIdsParams) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	cards, err := h.users.SharedCardsByIDs(r.Context(), sess.AccessToken, params.Ids)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "user service unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"profiles": cards})
+}
+
 // readCapped reads a pass-through body under the standard cap; a
 // false return means the 400 was already written.
 func readCapped(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
@@ -821,7 +879,7 @@ func collectionListParams(p api.ListEntriesParams) *collectionapi.ListEntriesPar
 		ItemType:      castSlice[api.ListEntriesParamsItemType, collectionapi.ListEntriesParamsItemType](p.ItemType),
 		Status:        castSlice[api.ListEntriesParamsStatus, collectionapi.ListEntriesParamsStatus](p.Status),
 		Packaging:     castSlice[api.ListEntriesParamsPackaging, collectionapi.ListEntriesParamsPackaging](p.Packaging),
-		Region:        castSlice[api.ListEntriesParamsRegion, collectionapi.ListEntriesParamsRegion](p.Region),
+		Region:        p.Region,
 		ItemCondition: castSlice[api.ListEntriesParamsItemCondition, collectionapi.ListEntriesParamsItemCondition](p.ItemCondition),
 		PlatformId:    p.PlatformId,
 		TagId:         p.TagId,
@@ -1146,7 +1204,7 @@ func collectionDashboardParams(p api.GetDashboardParams) *collectionapi.GetDashb
 		ItemType:      castSlice[api.GetDashboardParamsItemType, collectionapi.GetDashboardParamsItemType](p.ItemType),
 		Status:        castSlice[api.GetDashboardParamsStatus, collectionapi.GetDashboardParamsStatus](p.Status),
 		Packaging:     castSlice[api.GetDashboardParamsPackaging, collectionapi.GetDashboardParamsPackaging](p.Packaging),
-		Region:        castSlice[api.GetDashboardParamsRegion, collectionapi.GetDashboardParamsRegion](p.Region),
+		Region:        p.Region,
 		ItemCondition: castSlice[api.GetDashboardParamsItemCondition, collectionapi.GetDashboardParamsItemCondition](p.ItemCondition),
 		PlatformId:    p.PlatformId,
 		TagId:         p.TagId,

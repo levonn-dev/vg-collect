@@ -223,6 +223,19 @@ func (c *Client) TriggerRefresh(ctx context.Context, bearer string) (Result, err
 		http.StatusAccepted, http.StatusForbidden, http.StatusConflict)
 }
 
+// NormalizeCommunityRegions relays POST
+// /internal/normalize-community-regions (200 sweep summary, 403;
+// enrichment also accepts a service token, but the bff only ever
+// forwards the admin's own bearer).
+func (c *Client) NormalizeCommunityRegions(ctx context.Context, bearer string) (Result, error) {
+	resp, err := c.api.InternalNormalizeCommunityRegionsWithResponse(ctx, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("enrichmentclient: normalize community regions: %w", err)
+	}
+	return relay(resp.StatusCode(), resp.HTTPResponse.Header.Get("Content-Type"), resp.Body,
+		http.StatusOK, http.StatusForbidden)
+}
+
 // Score calls the recommendation scorer with the user's own token,
 // returning the raw 200 body plus its decoded degraded flag (the
 // caller caches only non-degraded results). Any other answer is an

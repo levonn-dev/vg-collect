@@ -374,9 +374,10 @@ paths:
         - name: region
           in: query
           required: false
+          description: Known-value buckets; other stored strings only surface unfiltered.
           schema:
             type: array
-            items: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+            items: { type: string }
         - name: item_condition
           in: query
           required: false
@@ -961,9 +962,10 @@ paths:
         - name: region
           in: query
           required: false
+          description: Known-value buckets; other stored strings only surface unfiltered.
           schema:
             type: array
-            items: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+            items: { type: string }
         - name: item_condition
           in: query
           required: false
@@ -1257,6 +1259,57 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "409":
           description: An entry rematch is already running (code rematch_in_progress)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/normalize-platforms:
+    post:
+      operationId: normalizePlatforms
+      summary: Run the platform canonicalization sweep (relay; collection enforces admin or service)
+      responses:
+        "200":
+          description: Sweep summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NormalizePlatformsResult" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/normalize-regions:
+    post:
+      operationId: normalizeRegions
+      summary: Run the region normalization sweep (relay; collection enforces admin or service)
+      responses:
+        "200":
+          description: Sweep summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NormalizeRegionsResult" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/normalize-community-regions:
+    post:
+      operationId: normalizeCommunityRegions
+      summary: Run the community-product region normalization sweep (relay; enrichment enforces admin or service)
+      responses:
+        "200":
+          description: Sweep summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NormalizeCommunityRegionsResult" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -1800,6 +1853,37 @@ paths:
                     items: { $ref: "#/components/schemas/ProfileCard" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/shared/profiles/by-ids:
+    get:
+      operationId: getSharedProfilesByIds
+      summary: Batch profile cards for hydration (relayed from the user service; visibility-independent - actions are signed)
+      description: >
+        Mirrors the user service's batch resolve verbatim: cards come
+        back for the ids that exist regardless of visibility (page
+        access is gated separately, per page). Backs the admin
+        submissions queue's submitter-handle hydration.
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: array
+            maxItems: 100
+            items: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Cards for the ids that exist
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profiles]
+                properties:
+                  profiles:
+                    type: array
+                    items: { $ref: "#/components/schemas/ProfileCard" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
   /api/feed:
     get:
       operationId: getFeed
@@ -2062,10 +2146,10 @@ components:
           description: >
             Marks an interleaved community result (admin-minted,
             anchor-less); absent on provider results. Community results
-            carry product_id + item_type + platform_name for the pick
-            and community.cover_url as cover_url. They are scored against
-            the query by name similarity and merged into results by
-            descending score (a provider result precedes a community
+            carry product_id + item_type + platform_name for the pick,
+            community.cover_url as cover_url, and community.region as region.
+            They are scored against the query by name similarity and merged into
+            results by descending score (a provider result precedes a community
             result of equal score), capped at 10, for game and hardware
             searches only (never pc_listing). The provider cache stores
             provider results only - community items attach fresh on every
@@ -2073,6 +2157,7 @@ components:
         product_id: { type: string, format: uuid }
         item_type: { type: string, enum: [game, console, accessory] }
         platform_name: { type: string }
+        region: { type: string, description: "Community rows only - the community facts region, entry vocabulary." }
     SearchResults:
       type: object
       required: [degraded, results]
@@ -2215,6 +2300,12 @@ components:
       type: object
       properties:
         platform_name: { type: string }
+        region:
+          type: string
+          maxLength: 32
+          description: >
+            Curated entry-vocabulary region fact (open-world; known
+            values ntsc_u, ntsc_j, pal, region_free).
         first_release_date: { type: string, format: date }
         cover_url:
           type: string
@@ -2403,6 +2494,27 @@ components:
       required: [status]
       properties:
         status: { type: string, enum: [started] }
+    NormalizePlatformsResult:
+      type: object
+      required: [scanned, normalized, skipped]
+      properties:
+        scanned: { type: integer }
+        normalized: { type: integer }
+        skipped: { type: integer }
+    NormalizeRegionsResult:
+      type: object
+      required: [scanned, normalized, skipped]
+      properties:
+        scanned: { type: integer }
+        normalized: { type: integer }
+        skipped: { type: integer }
+    NormalizeCommunityRegionsResult:
+      type: object
+      required: [scanned, normalized, skipped]
+      properties:
+        scanned: { type: integer }
+        normalized: { type: integer }
+        skipped: { type: integer }
     Problem:
       type: object
       required: [type, title, status]
@@ -2489,7 +2601,7 @@ components:
             The recommendation identity: snapshotted from the entry's
             own product, or from the proxy target on custom game
             entries (owning a reproduction of X means playing X).
-        region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        region: { type: string }
         edition:
           type: string
           description: >
@@ -2599,7 +2711,7 @@ components:
         display_name: { type: string }
         item_type: { type: string, enum: [game, console, accessory] }
         platform_name: { type: string }
-        region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        region: { type: string }
         edition: { type: string }
         first_release_date: { type: string, format: date }
         cover_url:
@@ -2692,7 +2804,16 @@ components:
           format: date
           description: Custom entries only.
         media_type: { type: string, enum: [physical], default: physical }
-        region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        region:
+          type: string
+          maxLength: 32
+          description: >-
+            Entry region. Known values ntsc_u, ntsc_j, pal and
+            region_free carry region machinery (localized display
+            snapshots, pricing class, availability grouping); any
+            other non-empty string is stored verbatim as a display
+            fact and prices like ntsc_u until the value graduates to
+            the known set.
         edition:
           type: string
           maxLength: 200
@@ -2789,12 +2910,17 @@ components:
             stay as they are.
         region:
           type: string
-          enum: [ntsc_u, ntsc_j, pal, region_free]
-          description: >
-            A region change on an auto-priced game-backed entry may
-            repoint the entry to the sibling catalog product whose
-            listing prices that region; snapshotted fields re-derive
-            from it.
+          maxLength: 32
+          description: >-
+            Entry region. Known values ntsc_u, ntsc_j, pal and
+            region_free carry region machinery (localized display
+            snapshots, pricing class, availability grouping); any
+            other non-empty string is stored verbatim as a display
+            fact and prices like ntsc_u until the value graduates to
+            the known set. On an auto-provenance game entry, a region
+            change repoints the entry to the sibling catalog product
+            whose listing prices that region; snapshotted display
+            fields re-derive from it.
         edition:
           type: string
           maxLength: 200
@@ -3228,7 +3354,7 @@ components:
           type: string
           description: Region-picked box art URL (server-derived).
         igdb_game_id: { type: integer, format: int64 }
-        region: { type: string, enum: [ntsc_u, ntsc_j, pal, region_free] }
+        region: { type: string }
         edition: { type: string }
         packaging: { type: string, enum: [sealed, cib, loose] }
         has_box: { type: boolean }

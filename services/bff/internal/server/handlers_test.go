@@ -189,6 +189,8 @@ type stubEnrichment struct {
 	promoteProduct          func(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error)
 	promoteCandidates       func(ctx context.Context, bearer string, params *enrichapi.ListPromoteCandidatesParams) (enrichmentclient.Result, error)
 	dismissPromoteCandidate func(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error)
+
+	normalizeCommunityRegions func(ctx context.Context, bearer string) (enrichmentclient.Result, error)
 }
 
 var _ EnrichmentAPI = (*stubEnrichment)(nil)
@@ -296,6 +298,13 @@ func (s *stubEnrichment) DismissPromoteCandidate(ctx context.Context, bearer str
 		panic("unexpected DismissPromoteCandidate")
 	}
 	return s.dismissPromoteCandidate(ctx, bearer, id, body)
+}
+
+func (s *stubEnrichment) NormalizeCommunityRegions(ctx context.Context, bearer string) (enrichmentclient.Result, error) {
+	if s.normalizeCommunityRegions == nil {
+		panic("unexpected NormalizeCommunityRegions")
+	}
+	return s.normalizeCommunityRegions(ctx, bearer)
 }
 
 func testLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
@@ -1719,13 +1728,15 @@ type stubCollection struct {
 	answer  func(op string) (collectionclient.Result, error)
 	library func(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error)
 
-	createSubmission func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
-	getSubmission    func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
-	cancelSubmission func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
-	ackSubmission    func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
-	listSubmissions  func(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error)
-	submitVerdict    func(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
-	triggerRematch   func(ctx context.Context, bearer string) (collectionclient.Result, error)
+	createSubmission   func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	getSubmission      func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	cancelSubmission   func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	ackSubmission      func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
+	listSubmissions    func(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error)
+	submitVerdict      func(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
+	triggerRematch     func(ctx context.Context, bearer string) (collectionclient.Result, error)
+	normalizePlatforms func(ctx context.Context, bearer string) (collectionclient.Result, error)
+	normalizeRegions   func(ctx context.Context, bearer string) (collectionclient.Result, error)
 
 	sharedShelf        func(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error)
 	sharedShelfBySlug  func(ctx context.Context, bearer string, ownerID uuid.UUID, slug string) (collectionapi.SharedShelf, error)
@@ -1864,6 +1875,20 @@ func (s *stubCollection) TriggerRematch(ctx context.Context, bearer string) (col
 		panic("unexpected TriggerRematch")
 	}
 	return s.triggerRematch(ctx, bearer)
+}
+
+func (s *stubCollection) NormalizePlatforms(ctx context.Context, bearer string) (collectionclient.Result, error) {
+	if s.normalizePlatforms == nil {
+		panic("unexpected NormalizePlatforms")
+	}
+	return s.normalizePlatforms(ctx, bearer)
+}
+
+func (s *stubCollection) NormalizeRegions(ctx context.Context, bearer string) (collectionclient.Result, error) {
+	if s.normalizeRegions == nil {
+		panic("unexpected NormalizeRegions")
+	}
+	return s.normalizeRegions(ctx, bearer)
 }
 
 func (s *stubCollection) SharedShelf(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error) {
@@ -2029,12 +2054,13 @@ func TestUnitValueHistoryPassThrough(t *testing.T) {
 }
 
 // captureCollection embeds the stub so every method forwards, while
-// ListEntries, GetDashboard, and UpdateEntry additionally expose their
-// converted params / raw body.
+// ListEntries, GetDashboard, CreateEntry, and UpdateEntry additionally
+// expose their converted params / raw body.
 type captureCollection struct {
 	*stubCollection
 	onList        func(*collectionapi.ListEntriesParams)
 	onDashboard   func(*collectionapi.GetDashboardParams)
+	onCreateEntry func(body []byte)
 	onUpdateEntry func(id uuid.UUID, body []byte)
 }
 
@@ -2046,6 +2072,11 @@ func (c *captureCollection) ListEntries(ctx context.Context, bearer string, p *c
 func (c *captureCollection) GetDashboard(ctx context.Context, bearer string, p *collectionapi.GetDashboardParams) (collectionclient.Result, error) {
 	c.onDashboard(p)
 	return c.stubCollection.GetDashboard(ctx, bearer, p)
+}
+
+func (c *captureCollection) CreateEntry(ctx context.Context, bearer string, body []byte) (collectionclient.Result, error) {
+	c.onCreateEntry(body)
+	return c.stubCollection.CreateEntry(ctx, bearer, body)
 }
 
 func (c *captureCollection) UpdateEntry(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error) {
@@ -2168,6 +2199,45 @@ func TestUnitUpdateEntryPassThrough_CustomPricingEnteredPairRoundTrips(t *testin
 	}
 	if rec.Code != 200 || rec.Body.String() != relayed {
 		t.Fatalf("relay: %d %s, want 200 %s", rec.Code, rec.Body.String(), relayed)
+	}
+}
+
+// TestUnitCreateEntryPassThrough_OpenWorldRegionRoundTrips pins that an
+// entry create body carrying a region outside the known
+// ntsc_u/ntsc_j/pal/region_free set reaches the collection stub
+// byte-identical, and the stub's answer relays back unmodified. The bff
+// contract widened region to an open string alongside the collection
+// service; the create path was already a pure byte relay with no
+// region-shaped validation of its own, so this pins the widened value
+// travels the same way every other entry field already does.
+func TestUnitCreateEntryPassThrough_OpenWorldRegionRoundTrips(t *testing.T) {
+	const sent = `{"item_type":"game","display_name":"Import Cart","packaging":"loose","region":"Korea"}`
+	const relayed = `{"id":"e1","region":"Korea"}`
+
+	col := &stubCollection{answer: func(op string) (collectionclient.Result, error) {
+		if op != "create_entry" {
+			t.Fatalf("routed to %q, want create_entry", op)
+		}
+		return collectionclient.Result{Status: 201, ContentType: "application/json", Body: []byte(relayed)}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+	var gotBody []byte
+	h.collection = &captureCollection{stubCollection: col, onCreateEntry: func(body []byte) {
+		gotBody = body
+	}}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/entries", strings.NewReader(sent))
+	req.AddCookie(env.cookie)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://localhost:8090")
+	rec := httptest.NewRecorder()
+	newRouterFor(t, h).ServeHTTP(rec, req)
+
+	if string(gotBody) != sent {
+		t.Fatalf("collection saw body=%s, want %s", gotBody, sent)
+	}
+	if rec.Code != 201 || rec.Body.String() != relayed {
+		t.Fatalf("relay: %d %s, want 201 %s", rec.Code, rec.Body.String(), relayed)
 	}
 }
 
@@ -2705,6 +2775,132 @@ func TestUnitAdminRematch_ConflictRelaysVerbatim(t *testing.T) {
 	rec := doAuthed(t, h, env, http.MethodPost, "/api/admin/rematch")
 	if rec.Code != 409 || rec.Body.String() != problem {
 		t.Fatalf("409 must relay verbatim: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestUnitAdminNormalizePlatforms_RelaysAndForwardsBearer mirrors
+// TestUnitAdminRematch_Relays202 for the platform-canonicalization
+// lever: collection's 200 sweep summary relays verbatim, the caller's
+// own bearer reaches collection, and no session is 401.
+func TestUnitAdminNormalizePlatforms_RelaysAndForwardsBearer(t *testing.T) {
+	const summary = `{"scanned":10,"normalized":3,"skipped":7}`
+	var gotBearer string
+	col := &stubCollection{normalizePlatforms: func(_ context.Context, bearer string) (collectionclient.Result, error) {
+		gotBearer = bearer
+		return collectionclient.Result{Status: 200, ContentType: "application/json", Body: []byte(summary)}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+
+	rec := doAuthed(t, h, env, http.MethodPost, "/api/admin/normalize-platforms")
+	if rec.Code != 200 || rec.Body.String() != summary {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer != env.sessionAccessToken {
+		t.Fatalf("bearer: %q", gotBearer)
+	}
+
+	rec = doUnauthed(t, h, env, http.MethodPost, "/api/admin/normalize-platforms")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", rec.Code)
+	}
+}
+
+// TestUnitAdminNormalizeRegions_RelaysAndForwardsBearer mirrors the
+// above for the entry-region normalization lever.
+func TestUnitAdminNormalizeRegions_RelaysAndForwardsBearer(t *testing.T) {
+	const summary = `{"scanned":5,"normalized":2,"skipped":3}`
+	var gotBearer string
+	col := &stubCollection{normalizeRegions: func(_ context.Context, bearer string) (collectionclient.Result, error) {
+		gotBearer = bearer
+		return collectionclient.Result{Status: 200, ContentType: "application/json", Body: []byte(summary)}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+
+	rec := doAuthed(t, h, env, http.MethodPost, "/api/admin/normalize-regions")
+	if rec.Code != 200 || rec.Body.String() != summary {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer != env.sessionAccessToken {
+		t.Fatalf("bearer: %q", gotBearer)
+	}
+
+	rec = doUnauthed(t, h, env, http.MethodPost, "/api/admin/normalize-regions")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", rec.Code)
+	}
+}
+
+// TestUnitAdminNormalizeCommunityRegions_RelaysAndForwardsBearer
+// mirrors the above for the community-product region normalization
+// lever, which relays through enrichment instead of collection.
+func TestUnitAdminNormalizeCommunityRegions_RelaysAndForwardsBearer(t *testing.T) {
+	const summary = `{"scanned":4,"normalized":1,"skipped":3}`
+	var gotBearer string
+	enrich := &stubEnrichment{normalizeCommunityRegions: func(_ context.Context, bearer string) (enrichmentclient.Result, error) {
+		gotBearer = bearer
+		return enrichmentclient.Result{Status: 200, ContentType: "application/json", Body: []byte(summary)}, nil
+	}}
+	h, env := newTestHandlersWithEnrichment(t, enrich)
+
+	rec := doAuthed(t, h, env, http.MethodPost, "/api/admin/normalize-community-regions")
+	if rec.Code != 200 || rec.Body.String() != summary {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer != env.sessionAccessToken {
+		t.Fatalf("bearer: %q", gotBearer)
+	}
+
+	rec = doUnauthed(t, h, env, http.MethodPost, "/api/admin/normalize-community-regions")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", rec.Code)
+	}
+}
+
+// TestUnitSharedProfilesByIds_RelaysEnvelopeAndForwardsIds proves the
+// batch profile-card hydration marshals the user service's typed
+// cards into the {profiles: [...]} envelope the frontend expects
+// (unlike the pass-through relays above, the upstream answer is typed,
+// not a raw body relay) and forwards the exact ids the browser asked
+// for; no session is 401.
+func TestUnitSharedProfilesByIds_RelaysEnvelopeAndForwardsIds(t *testing.T) {
+	id1, id2 := uuid.New(), uuid.New()
+	var gotIDs []uuid.UUID
+	users := &stubUsersFull{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
+		gotIDs = ids
+		return []userapi.ProfileCard{
+			{UserId: id1, Handle: "alice", ProfileVisibility: "listed"},
+			{UserId: id2, Handle: "bob", ProfileVisibility: "private"},
+		}, nil
+	}}
+	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h.users = users
+	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
+	env := &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
+
+	rec := doAuthed(t, h, env, http.MethodGet, "/api/shared/profiles/by-ids?ids="+id1.String()+"&ids="+id2.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: %d %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Profiles []struct {
+			UserID            string `json:"user_id"`
+			Handle            string `json:"handle"`
+			ProfileVisibility string `json:"profile_visibility"`
+		} `json:"profiles"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v (%s)", err, rec.Body.String())
+	}
+	if len(got.Profiles) != 2 || got.Profiles[0].Handle != "alice" || got.Profiles[1].Handle != "bob" {
+		t.Fatalf("profiles envelope: %+v", got.Profiles)
+	}
+	if len(gotIDs) != 2 || gotIDs[0] != id1 || gotIDs[1] != id2 {
+		t.Fatalf("ids passthrough: %v", gotIDs)
+	}
+
+	rec = doUnauthed(t, h, env, http.MethodGet, "/api/shared/profiles/by-ids?ids="+id1.String())
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", rec.Code)
 	}
 }
 

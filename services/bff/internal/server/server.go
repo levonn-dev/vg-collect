@@ -92,6 +92,7 @@ type EnrichmentAPI interface {
 	PromoteProduct(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error)
 	PromoteCandidates(ctx context.Context, bearer string, params *enrichapi.ListPromoteCandidatesParams) (enrichmentclient.Result, error)
 	DismissPromoteCandidate(ctx context.Context, bearer string, id uuid.UUID, body []byte) (enrichmentclient.Result, error)
+	NormalizeCommunityRegions(ctx context.Context, bearer string) (enrichmentclient.Result, error)
 }
 
 // CollectionAPI is the collection service surface (implemented by
@@ -126,6 +127,8 @@ type CollectionAPI interface {
 	ListSubmissions(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error)
 	SubmitVerdict(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
 	TriggerRematch(ctx context.Context, bearer string) (collectionclient.Result, error)
+	NormalizePlatforms(ctx context.Context, bearer string) (collectionclient.Result, error)
+	NormalizeRegions(ctx context.Context, bearer string) (collectionclient.Result, error)
 	SharedShelf(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error)
 	SharedShelfBySlug(ctx context.Context, bearer string, ownerID uuid.UUID, slug string) (collectionapi.SharedShelf, error)
 	SharedShelfEntries(ctx context.Context, bearer string, id uuid.UUID, limit, offset *int) (collectionclient.Result, error)

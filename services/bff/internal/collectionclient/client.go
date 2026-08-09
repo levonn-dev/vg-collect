@@ -143,6 +143,29 @@ func (c *Client) TriggerRematch(ctx context.Context, bearer string) (Result, err
 		http.StatusAccepted, http.StatusForbidden, http.StatusConflict)
 }
 
+// NormalizePlatforms relays POST /internal/normalize-platforms (200
+// sweep summary, 403; collection also accepts a service token, but
+// the bff only ever forwards the admin's own bearer).
+func (c *Client) NormalizePlatforms(ctx context.Context, bearer string) (Result, error) {
+	resp, err := c.api.InternalNormalizePlatformsWithResponse(ctx, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: normalize platforms: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body,
+		http.StatusOK, http.StatusForbidden)
+}
+
+// NormalizeRegions relays POST /internal/normalize-regions (200 sweep
+// summary, 403).
+func (c *Client) NormalizeRegions(ctx context.Context, bearer string) (Result, error) {
+	resp, err := c.api.InternalNormalizeRegionsWithResponse(ctx, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: normalize regions: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body,
+		http.StatusOK, http.StatusForbidden)
+}
+
 func bearerEditor(bearer string) collectionapi.RequestEditorFn {
 	return func(_ context.Context, req *http.Request) error {
 		req.Header.Set("Authorization", "Bearer "+bearer)
