@@ -308,6 +308,10 @@ msgstr "積みゲー"
 msgid "Backlog order"
 msgstr "積みゲー順"
 
+#: src/components/wizard/CustomStep.tsx
+msgid "Base on an existing item"
+msgstr "既存のアイテムをもとにする"
+
 #: src/components/entry/EntryForm.tsx
 #: src/components/insights/BreakdownCharts.tsx
 msgid "beaten"
@@ -345,6 +349,7 @@ msgid "Can not find it? Add it as a custom item."
 msgstr "見つかりませんか？カスタムアイテムとして追加できます。"
 
 #: src/components/collection/BulkEditBar.tsx
+#: src/components/wizard/CustomStep.tsx
 msgid "Cancel"
 msgstr "キャンセル"
 
@@ -400,6 +405,7 @@ msgstr "リスティングを選択"
 msgid "Choose price source"
 msgstr "価格ソースを選択"
 
+#: src/components/catalog/RegionPicker.tsx
 #: src/components/collection/ViewPicker.tsx
 msgid "Choose..."
 msgstr "選択..."
@@ -1206,6 +1212,10 @@ msgstr "{displayName}を上へ移動"
 msgid "My platform isn't listed"
 msgstr "プラットフォームが見つからない場合"
 
+#: src/components/catalog/RegionPicker.tsx
+msgid "My region isn't listed"
+msgstr "リージョンが見つからない場合"
+
 #: src/components/admin/CommunityProducts.tsx
 #: src/components/admin/PromoteCandidates.tsx
 #: src/components/admin/ReviewPanel.tsx
@@ -1298,6 +1308,18 @@ msgstr "タグはまだありません"
 msgid "None found."
 msgstr "該当はありません。"
 
+#: src/pages/Admin.tsx
+msgid "Normalize community regions"
+msgstr "コミュニティのリージョンを正規化"
+
+#: src/pages/Admin.tsx
+msgid "Normalize platforms"
+msgstr "プラットフォームを正規化"
+
+#: src/pages/Admin.tsx
+msgid "Normalize regions"
+msgstr "リージョンを正規化"
+
 #: src/components/social/NotFoundState.tsx
 msgid "Not found"
 msgstr "見つかりません"
@@ -1350,7 +1372,7 @@ msgstr "NTSC-U"
 msgid "Order: {direction}"
 msgstr "順序：{direction}"
 
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/catalog/RegionPicker.tsx
 msgid "Other regions"
 msgstr "その他のリージョン"
 
@@ -1389,6 +1411,10 @@ msgstr "パーソナル"
 #: src/components/entry/EntryForm.tsx
 msgid "Physical details"
 msgstr "現物の詳細"
+
+#: src/components/catalog/RegionPicker.tsx
+msgid "Pick a known region instead"
+msgstr "既知のリージョンから選び直す"
 
 #: src/components/catalog/PlatformPicker.tsx
 msgid "Pick from the catalog instead"
@@ -1625,10 +1651,9 @@ msgstr "次のおすすめ"
 msgid "Refresh started."
 msgstr "更新を開始しました。"
 
-#: src/components/admin/ReviewPanel.tsx
+#: src/components/admin/CommunityProducts.tsx
+#: src/components/catalog/RegionPicker.tsx
 #: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
 msgid "Region"
 msgstr "リージョン"
 
@@ -1644,6 +1669,10 @@ msgstr "リージョン / エディション / バリエーション"
 #: src/lib/regionLabels.ts
 msgid "Region free"
 msgstr "リージョンフリー"
+
+#: src/components/admin/ProductLookup.tsx
+msgid "Region: {regionLabel}"
+msgstr "リージョン：{regionLabel}"
 
 #: src/components/admin/ReviewPanel.tsx
 msgid "Reject"
@@ -1663,7 +1692,7 @@ msgstr "発売年"
 msgid "Release date"
 msgstr "発売日"
 
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/catalog/RegionPicker.tsx
 msgid "Released on {groupPlatformName}"
 msgstr "{groupPlatformName}で発売"
 
@@ -1708,6 +1737,18 @@ msgstr "{displayName}を審査"
 msgid "Review: {displayName}"
 msgstr "審査：{displayName}"
 
+#: src/pages/Admin.tsx
+msgid "Run community region normalization"
+msgstr "コミュニティリージョンの正規化を実行"
+
+#: src/pages/Admin.tsx
+msgid "Run platform normalization"
+msgstr "プラットフォームの正規化を実行"
+
+#: src/pages/Admin.tsx
+msgid "Run region normalization"
+msgstr "リージョンの正規化を実行"
+
 #: src/pages/Account.tsx
 msgid "Save"
 msgstr "保存"
@@ -1729,6 +1770,10 @@ msgstr "保存しました。"
 #: src/pages/Account.tsx
 msgid "Saving failed. Please try again."
 msgstr "保存できませんでした。もう一度お試しください。"
+
+#: src/components/admin/NormalizeTrigger.tsx
+msgid "Scanned {scanned}, promoted {normalized}, skipped {skipped}."
+msgstr "{scanned}件をスキャンし、{normalized}件を昇格、{skipped}件をスキップしました。"
 
 #: src/pages/Recommendations.tsx
 msgid "score {score}"
@@ -2099,6 +2144,10 @@ msgstr "棚の操作を完了できませんでした。"
 #: src/components/collection/ShelfManager.tsx
 msgid "The shelf visibility update failed."
 msgstr "棚の公開範囲を変更できませんでした。"
+
+#: src/components/admin/NormalizeTrigger.tsx
+msgid "The sweep failed - try again."
+msgstr "処理に失敗しました。もう一度お試しください。"
 
 #: src/components/entry/TagPicker.tsx
 msgid "The tag could not be created."

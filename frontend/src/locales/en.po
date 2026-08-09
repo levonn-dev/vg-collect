@@ -308,6 +308,10 @@ msgstr "Backlog"
 msgid "Backlog order"
 msgstr "Backlog order"
 
+#: src/components/wizard/CustomStep.tsx
+msgid "Base on an existing item"
+msgstr "Base on an existing item"
+
 #: src/components/entry/EntryForm.tsx
 #: src/components/insights/BreakdownCharts.tsx
 msgid "beaten"
@@ -345,6 +349,7 @@ msgid "Can not find it? Add it as a custom item."
 msgstr "Can not find it? Add it as a custom item."
 
 #: src/components/collection/BulkEditBar.tsx
+#: src/components/wizard/CustomStep.tsx
 msgid "Cancel"
 msgstr "Cancel"
 
@@ -400,6 +405,7 @@ msgstr "Choose listing"
 msgid "Choose price source"
 msgstr "Choose price source"
 
+#: src/components/catalog/RegionPicker.tsx
 #: src/components/collection/ViewPicker.tsx
 msgid "Choose..."
 msgstr "Choose..."
@@ -1206,6 +1212,10 @@ msgstr "Move {displayName} up"
 msgid "My platform isn't listed"
 msgstr "My platform isn't listed"
 
+#: src/components/catalog/RegionPicker.tsx
+msgid "My region isn't listed"
+msgstr "My region isn't listed"
+
 #: src/components/admin/CommunityProducts.tsx
 #: src/components/admin/PromoteCandidates.tsx
 #: src/components/admin/ReviewPanel.tsx
@@ -1298,6 +1308,18 @@ msgstr "No tags yet"
 msgid "None found."
 msgstr "None found."
 
+#: src/pages/Admin.tsx
+msgid "Normalize community regions"
+msgstr "Normalize community regions"
+
+#: src/pages/Admin.tsx
+msgid "Normalize platforms"
+msgstr "Normalize platforms"
+
+#: src/pages/Admin.tsx
+msgid "Normalize regions"
+msgstr "Normalize regions"
+
 #: src/components/social/NotFoundState.tsx
 msgid "Not found"
 msgstr "Not found"
@@ -1350,7 +1372,7 @@ msgstr "NTSC-U"
 msgid "Order: {direction}"
 msgstr "Order: {direction}"
 
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/catalog/RegionPicker.tsx
 msgid "Other regions"
 msgstr "Other regions"
 
@@ -1389,6 +1411,10 @@ msgstr "Personal"
 #: src/components/entry/EntryForm.tsx
 msgid "Physical details"
 msgstr "Physical details"
+
+#: src/components/catalog/RegionPicker.tsx
+msgid "Pick a known region instead"
+msgstr "Pick a known region instead"
 
 #: src/components/catalog/PlatformPicker.tsx
 msgid "Pick from the catalog instead"
@@ -1625,10 +1651,9 @@ msgstr "Recommended next"
 msgid "Refresh started."
 msgstr "Refresh started."
 
-#: src/components/admin/ReviewPanel.tsx
+#: src/components/admin/CommunityProducts.tsx
+#: src/components/catalog/RegionPicker.tsx
 #: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
 msgid "Region"
 msgstr "Region"
 
@@ -1644,6 +1669,10 @@ msgstr "Region / edition / variant"
 #: src/lib/regionLabels.ts
 msgid "Region free"
 msgstr "Region free"
+
+#: src/components/admin/ProductLookup.tsx
+msgid "Region: {regionLabel}"
+msgstr "Region: {regionLabel}"
 
 #: src/components/admin/ReviewPanel.tsx
 msgid "Reject"
@@ -1663,7 +1692,7 @@ msgstr "Release"
 msgid "Release date"
 msgstr "Release date"
 
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/catalog/RegionPicker.tsx
 msgid "Released on {groupPlatformName}"
 msgstr "Released on {groupPlatformName}"
 
@@ -1708,6 +1737,18 @@ msgstr "Review {displayName}"
 msgid "Review: {displayName}"
 msgstr "Review: {displayName}"
 
+#: src/pages/Admin.tsx
+msgid "Run community region normalization"
+msgstr "Run community region normalization"
+
+#: src/pages/Admin.tsx
+msgid "Run platform normalization"
+msgstr "Run platform normalization"
+
+#: src/pages/Admin.tsx
+msgid "Run region normalization"
+msgstr "Run region normalization"
+
 #: src/pages/Account.tsx
 msgid "Save"
 msgstr "Save"
@@ -1729,6 +1770,10 @@ msgstr "Saved."
 #: src/pages/Account.tsx
 msgid "Saving failed. Please try again."
 msgstr "Saving failed. Please try again."
+
+#: src/components/admin/NormalizeTrigger.tsx
+msgid "Scanned {scanned}, promoted {normalized}, skipped {skipped}."
+msgstr "Scanned {scanned}, promoted {normalized}, skipped {skipped}."
 
 #: src/pages/Recommendations.tsx
 msgid "score {score}"
@@ -2099,6 +2144,10 @@ msgstr "The shelf operation failed."
 #: src/components/collection/ShelfManager.tsx
 msgid "The shelf visibility update failed."
 msgstr "The shelf visibility update failed."
+
+#: src/components/admin/NormalizeTrigger.tsx
+msgid "The sweep failed - try again."
+msgstr "The sweep failed - try again."
 
 #: src/components/entry/TagPicker.tsx
 msgid "The tag could not be created."

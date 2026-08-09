@@ -44,12 +44,16 @@ function acceptNext(page: Page) {
   page.once('dialog', (d) => void d.accept())
 }
 
-async function addCustom(page: Page, name: string, cover?: string) {
+// region is a trailing optional param (rather than folding into an
+// options object) so the two existing positional call sites below need
+// no changes; only the new region leg passes it.
+async function addCustom(page: Page, name: string, cover?: string, region?: string) {
   await page.getByRole('link', { name: 'Add', exact: true }).click()
   await page.getByRole('button', { name: /custom item/i }).click()
   await page.getByLabel('Name').fill(name)
   await page.getByLabel('Platform').fill('snes')
   await page.getByRole('button', { name: 'Super Nintendo Entertainment System' }).click()
+  if (region) await page.getByLabel('Region').selectOption(region)
   if (cover) await page.getByLabel(/cover image link/i).fill(cover)
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
@@ -112,6 +116,25 @@ async function deleteResidualProducts(ctx: APIRequestContext) {
   for (const [id, name] of ids) {
     const del = await ctx.delete(`/api/admin/products/${id}`)
     console.log(`teardown: product ${id} "${name}" -> ${del.status()}`)
+  }
+}
+
+// deleteCommunityProduct (admin session) removes a still-community
+// product by its exact name - the region leg's own mint, distinct from
+// the "Chrono Trigger" identity slot the other tests in this file
+// share, so it needs its own by-name lookup rather than
+// deleteResidualProducts' hardcoded name. Best-effort like the rest of
+// this file's cleanup: logged, not asserted, so a residual delete
+// failure never masks the journey itself.
+async function deleteCommunityProduct(ctx: APIRequestContext, name: string) {
+  const lane = await ctx.get(`/api/search?type=game&q=${encodeURIComponent(name)}`)
+  if (!lane.ok()) return
+  const body = (await lane.json()) as { results?: { product_id?: string; name: string; origin?: string }[] }
+  for (const p of body.results ?? []) {
+    if (p.origin === 'community' && p.name === name && p.product_id) {
+      const del = await ctx.delete(`/api/admin/products/${p.product_id}`)
+      console.log(`teardown: product ${p.product_id} "${name}" -> ${del.status()}`)
+    }
   }
 }
 
@@ -346,4 +369,70 @@ test('non-admin never sees the submissions surface', async ({ page }) => {
   // landing-page redirect to /feed.
   await page.goto('/admin')
   await expect(page).toHaveURL('/feed')
+})
+
+test('custom add region flows through the queue, review, approval, and the next add wizard', async ({ page }) => {
+  test.setTimeout(120_000)
+  const name = `Region Cart ${stamp}`
+
+  // --- alice submits a custom item with an explicit known region.
+  // Her profile must be non-private for the queue's submitter-handle
+  // link to render at all (SubmitterCell falls back to plain text for
+  // a private card, see below) - unlisted is enough (reachable by a
+  // direct link, not listed in search) and is restored at the end.
+  await login(page, 'alice')
+  await page.request.patch('/api/me', { data: { profile_visibility: 'unlisted' } })
+  const entryURL = await addCustom(page, name, undefined, 'ntsc_j')
+  await page.getByRole('button', { name: 'Submit to catalog' }).click()
+  await expect(page.getByText(/waiting for review/i)).toBeVisible()
+  await logout(page)
+
+  // --- admin: the queue row shows the labeled region and a live
+  // submitter handle link; the review panel keeps the region prefilled.
+  await login(page, 'admin')
+  await page.getByRole('link', { name: 'Admin', exact: true }).click()
+  await page.getByRole('tab', { name: 'Submissions' }).click()
+  // Scoped to the queue's own region for the same reason the approve
+  // test above does: once approved, this same-named product also
+  // renders in the community products cleanup list right below it.
+  const queue = page.getByRole('region', { name: 'Catalog submissions' })
+  const row = queue.locator('tbody tr').filter({ hasText: name })
+  await expect(row).toContainText('NTSC-J')
+  await expect(row.getByRole('link')).toHaveAttribute('href', /^\/u\//)
+  await row.getByRole('button', { name: 'Review' }).click()
+  const panel = page.locator(`[aria-label="Review ${name}"]`)
+  await expect(panel.getByLabel('Region')).toHaveValue('ntsc_j')
+  await panel.getByRole('button', { name: 'Approve as new product' }).click()
+  await expect(queue.locator('tbody tr').filter({ hasText: name })).toHaveCount(0)
+  await logout(page)
+
+  // --- bob (a different user) finds the new community product; its
+  // region tag reads back the approved value, and the wizard's own
+  // region default already carries it too - no submit needed to prove
+  // that (defaultDetails seeds it straight off the community pick, per
+  // AddWizard's community branch), so the journey stops here.
+  await login(page, 'bob')
+  await page.getByRole('link', { name: 'Add', exact: true }).click()
+  await page.getByRole('searchbox', { name: /search for games and hardware/i }).fill(name)
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
+  const communityResult = page.getByRole('region', { name: 'Search' }).locator('li').filter({ hasText: 'community' })
+  await expect(communityResult.getByText('NTSC-J')).toBeVisible()
+  await communityResult.getByRole('button', { name: `${name} on Super Nintendo Entertainment System` }).click()
+  await expect(page.getByLabel('Region')).toHaveValue('ntsc_j')
+  await logout(page)
+
+  // --- cleanup: alice's entry (the afterAll safety net above also
+  // catches it by the stamp in its name, had this failed first), her
+  // profile visibility, then the still-community product this leg
+  // minted (its own name, not the shared Chrono Trigger identity slot
+  // the other tests in this file use).
+  await login(page, 'alice')
+  await page.request.patch('/api/me', { data: { profile_visibility: 'private' } })
+  await page.goto(entryURL)
+  acceptNext(page)
+  await page.getByRole('button', { name: 'Delete entry' }).click()
+  await expect(page).toHaveURL(/\/collection$/)
+  await logout(page)
+  await login(page, 'admin')
+  await deleteCommunityProduct(page.request, name)
 })

@@ -206,7 +206,7 @@ test('region picker chips: canonical-name search lists Puyo Puyo SUN Sega Saturn
   // groups as [Released on Sega Saturn: NTSC-J][Other regions: rest].
   const saturnGroup = page.locator('optgroup[label="Released on Sega Saturn"]')
   await expect(saturnGroup.locator('option')).toHaveText(['NTSC-J'])
-  await expect(page.locator('optgroup[label="Other regions"] option')).toHaveText(['NTSC-U', 'PAL', 'REGION-FREE'])
+  await expect(page.locator('optgroup[label="Other regions"] option')).toHaveText(['Choose...', 'NTSC-U', 'PAL', 'Region free'])
 })
 
 test('hardware add defaults the region from the listing console axis', async ({ page }) => {

@@ -113,9 +113,12 @@ test('collection journey: add, edit, price, pin, reorder, shelves, insights, rec
   await matchDialog.getByRole('button', { name: 'Search', exact: true }).click()
   // Name-exact + console-scoped (never a regional "PAL Nintendo 64"
   // row): the bracketed variant is present in both provider modes.
+  // The console span nests its region tag ("Nintendo 64" + "NTSC-U"),
+  // so exact text cannot match it; the anchored prefix keeps the
+  // regional rows out and the exact button name disambiguates the rest.
   await matchDialog
     .locator('li')
-    .filter({ has: page.getByText('Nintendo 64', { exact: true }) })
+    .filter({ has: page.getByText(/^Nintendo 64/) })
     .getByRole('button', { name: "Use Super Mario 64 [Player's Choice]", exact: true })
     .first()
     .click()
@@ -387,4 +390,44 @@ test('collection journey: add, edit, price, pin, reorder, shelves, insights, rec
   const residue = await page.request.get('/api/entries?limit=500')
   expect(residue.ok()).toBeTruthy()
   expect(JSON.stringify(await residue.json())).not.toContain(stamp)
+})
+
+test('based-add: a custom item can start from an existing catalog pick, then be edited', async ({ page }) => {
+  test.setTimeout(60_000)
+  await login(page)
+
+  // --- Search the seeded catalog for a known title, then fall through
+  // to a custom item instead of picking a search result directly - the
+  // typed query rides along as the custom form's seed.
+  await page.getByRole('link', { name: 'Add', exact: true }).click()
+  await page.getByRole('searchbox', { name: /search for games and hardware/i }).fill('chrono trigger')
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
+  await page.getByRole('button', { name: /add it as a custom item/i }).click()
+
+  // --- Base the custom form on an existing item: the embedded picker
+  // reuses that same query (CustomStep seeds it from the search text)
+  // and auto-searches, so the pick below needs no second submit.
+  // Chrono Trigger on SNES auto-matches in both provider modes (see
+  // the journey above), so the pick is deterministic either way; .first()
+  // is defensive the same way the journey's own picks are.
+  await page.getByRole('button', { name: 'Base on an existing item' }).click()
+  const basePicker = page.getByRole('region', { name: 'Search' })
+  await basePicker.getByRole('button', { name: /Chrono Trigger on Super Nintendo Entertainment System/ }).first().click()
+
+  // --- The picked item's own facts replace the form wholesale, but
+  // the name stays user-editable: it fills in from the pick, then gets
+  // tweaked before creating.
+  await expect(page.getByLabel('Name')).toHaveValue('Chrono Trigger')
+  const basedName = `Based Add ${stamp}`
+  await page.getByLabel('Name').fill(basedName)
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Add to collection' }).click()
+  await expect(page).toHaveURL(/\/entries\//)
+  await expect(page.getByRole('heading', { name: basedName })).toBeVisible()
+
+  // --- Cleanup: delete the entry (the file's pattern).
+  acceptNext(page)
+  await page.getByRole('button', { name: 'Delete entry' }).click()
+  await expect(page).toHaveURL(/\/collection$/)
 })
