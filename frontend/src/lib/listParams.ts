@@ -5,7 +5,11 @@ type ListQuery = NonNullable<paths['/api/entries']['get']['parameters']['query']
 export type ItemType = NonNullable<ListQuery['item_type']>[number]
 export type Status = NonNullable<ListQuery['status']>[number]
 export type Packaging = NonNullable<ListQuery['packaging']>[number]
-export type Region = NonNullable<ListQuery['region']>[number]
+// The known entry regions - the machinery key set (labels, pricing
+// class, localization chains). region itself is open-world on the
+// wire; these four are what the UI offers first-class and what the
+// filter buckets cover.
+export type Region = 'ntsc_u' | 'ntsc_j' | 'pal' | 'region_free'
 export type Condition = NonNullable<ListQuery['item_condition']>[number]
 export type Sort = NonNullable<ListQuery['sort']>
 export type Order = NonNullable<ListQuery['order']>
