@@ -39,30 +39,6 @@ func (e AdminSubmissionItemType) Valid() bool {
 	}
 }
 
-// Defines values for AdminSubmissionRegion.
-const (
-	AdminSubmissionRegionNtscJ      AdminSubmissionRegion = "ntsc_j"
-	AdminSubmissionRegionNtscU      AdminSubmissionRegion = "ntsc_u"
-	AdminSubmissionRegionPal        AdminSubmissionRegion = "pal"
-	AdminSubmissionRegionRegionFree AdminSubmissionRegion = "region_free"
-)
-
-// Valid indicates whether the value is a known member of the AdminSubmissionRegion enum.
-func (e AdminSubmissionRegion) Valid() bool {
-	switch e {
-	case AdminSubmissionRegionNtscJ:
-		return true
-	case AdminSubmissionRegionNtscU:
-		return true
-	case AdminSubmissionRegionPal:
-		return true
-	case AdminSubmissionRegionRegionFree:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for AdminSubmissionStatus.
 const (
 	AdminSubmissionStatusApproved  AdminSubmissionStatus = "approved"
@@ -312,30 +288,6 @@ func (e EntryPricingMode) Valid() bool {
 	}
 }
 
-// Defines values for EntryRegion.
-const (
-	EntryRegionNtscJ      EntryRegion = "ntsc_j"
-	EntryRegionNtscU      EntryRegion = "ntsc_u"
-	EntryRegionPal        EntryRegion = "pal"
-	EntryRegionRegionFree EntryRegion = "region_free"
-)
-
-// Valid indicates whether the value is a known member of the EntryRegion enum.
-func (e EntryRegion) Valid() bool {
-	switch e {
-	case EntryRegionNtscJ:
-		return true
-	case EntryRegionNtscU:
-		return true
-	case EntryRegionPal:
-		return true
-	case EntryRegionRegionFree:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for EntrySource.
 const (
 	Epic   EntrySource = "epic"
@@ -579,30 +531,6 @@ func (e EntryCreatePricingMode) Valid() bool {
 	}
 }
 
-// Defines values for EntryCreateRegion.
-const (
-	EntryCreateRegionNtscJ      EntryCreateRegion = "ntsc_j"
-	EntryCreateRegionNtscU      EntryCreateRegion = "ntsc_u"
-	EntryCreateRegionPal        EntryCreateRegion = "pal"
-	EntryCreateRegionRegionFree EntryCreateRegion = "region_free"
-)
-
-// Valid indicates whether the value is a known member of the EntryCreateRegion enum.
-func (e EntryCreateRegion) Valid() bool {
-	switch e {
-	case EntryCreateRegionNtscJ:
-		return true
-	case EntryCreateRegionNtscU:
-		return true
-	case EntryCreateRegionPal:
-		return true
-	case EntryCreateRegionRegionFree:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for EntryCreateStatus.
 const (
 	EntryCreateStatusBacklog   EntryCreateStatus = "backlog"
@@ -762,30 +690,6 @@ func (e EntryUpdatePricingMode) Valid() bool {
 	case EntryUpdatePricingModeDisabled:
 		return true
 	case EntryUpdatePricingModeProxy:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryUpdateRegion.
-const (
-	EntryUpdateRegionNtscJ      EntryUpdateRegion = "ntsc_j"
-	EntryUpdateRegionNtscU      EntryUpdateRegion = "ntsc_u"
-	EntryUpdateRegionPal        EntryUpdateRegion = "pal"
-	EntryUpdateRegionRegionFree EntryUpdateRegion = "region_free"
-)
-
-// Valid indicates whether the value is a known member of the EntryUpdateRegion enum.
-func (e EntryUpdateRegion) Valid() bool {
-	switch e {
-	case EntryUpdateRegionNtscJ:
-		return true
-	case EntryUpdateRegionNtscU:
-		return true
-	case EntryUpdateRegionPal:
-		return true
-	case EntryUpdateRegionRegionFree:
 		return true
 	default:
 		return false
@@ -1008,30 +912,6 @@ func (e SharedEntryPackaging) Valid() bool {
 	}
 }
 
-// Defines values for SharedEntryRegion.
-const (
-	SharedEntryRegionNtscJ      SharedEntryRegion = "ntsc_j"
-	SharedEntryRegionNtscU      SharedEntryRegion = "ntsc_u"
-	SharedEntryRegionPal        SharedEntryRegion = "pal"
-	SharedEntryRegionRegionFree SharedEntryRegion = "region_free"
-)
-
-// Valid indicates whether the value is a known member of the SharedEntryRegion enum.
-func (e SharedEntryRegion) Valid() bool {
-	switch e {
-	case SharedEntryRegionNtscJ:
-		return true
-	case SharedEntryRegionNtscU:
-		return true
-	case SharedEntryRegionPal:
-		return true
-	case SharedEntryRegionRegionFree:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for SharedShelfVisibility.
 const (
 	SharedShelfVisibilityListed   SharedShelfVisibility = "listed"
@@ -1206,30 +1086,6 @@ func (e GetDashboardParamsPackaging) Valid() bool {
 	}
 }
 
-// Defines values for GetDashboardParamsRegion.
-const (
-	GetDashboardParamsRegionNtscJ      GetDashboardParamsRegion = "ntsc_j"
-	GetDashboardParamsRegionNtscU      GetDashboardParamsRegion = "ntsc_u"
-	GetDashboardParamsRegionPal        GetDashboardParamsRegion = "pal"
-	GetDashboardParamsRegionRegionFree GetDashboardParamsRegion = "region_free"
-)
-
-// Valid indicates whether the value is a known member of the GetDashboardParamsRegion enum.
-func (e GetDashboardParamsRegion) Valid() bool {
-	switch e {
-	case GetDashboardParamsRegionNtscJ:
-		return true
-	case GetDashboardParamsRegionNtscU:
-		return true
-	case GetDashboardParamsRegionPal:
-		return true
-	case GetDashboardParamsRegionRegionFree:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for GetDashboardParamsItemCondition.
 const (
 	GetDashboardParamsItemConditionAcceptable GetDashboardParamsItemCondition = "acceptable"
@@ -1326,30 +1182,6 @@ func (e ListEntriesParamsPackaging) Valid() bool {
 	case ListEntriesParamsPackagingLoose:
 		return true
 	case ListEntriesParamsPackagingSealed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ListEntriesParamsRegion.
-const (
-	ListEntriesParamsRegionNtscJ      ListEntriesParamsRegion = "ntsc_j"
-	ListEntriesParamsRegionNtscU      ListEntriesParamsRegion = "ntsc_u"
-	ListEntriesParamsRegionPal        ListEntriesParamsRegion = "pal"
-	ListEntriesParamsRegionRegionFree ListEntriesParamsRegion = "region_free"
-)
-
-// Valid indicates whether the value is a known member of the ListEntriesParamsRegion enum.
-func (e ListEntriesParamsRegion) Valid() bool {
-	switch e {
-	case ListEntriesParamsRegionNtscJ:
-		return true
-	case ListEntriesParamsRegionNtscU:
-		return true
-	case ListEntriesParamsRegionPal:
-		return true
-	case ListEntriesParamsRegionRegionFree:
 		return true
 	default:
 		return false
@@ -1479,7 +1311,7 @@ type AdminSubmission struct {
 	Id               openapi_types.UUID      `json:"id"`
 	ItemType         AdminSubmissionItemType `json:"item_type"`
 	PlatformName     *string                 `json:"platform_name,omitempty"`
-	Region           AdminSubmissionRegion   `json:"region"`
+	Region           string                  `json:"region"`
 	Status           AdminSubmissionStatus   `json:"status"`
 	UpdatedAt        time.Time               `json:"updated_at"`
 	UserId           openapi_types.UUID      `json:"user_id"`
@@ -1487,9 +1319,6 @@ type AdminSubmission struct {
 
 // AdminSubmissionItemType defines model for AdminSubmission.ItemType.
 type AdminSubmissionItemType string
-
-// AdminSubmissionRegion defines model for AdminSubmission.Region.
-type AdminSubmissionRegion string
 
 // AdminSubmissionStatus defines model for AdminSubmission.Status.
 type AdminSubmissionStatus string
@@ -1631,7 +1460,7 @@ type Entry struct {
 	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
 	PurchasedFrom *string             `json:"purchased_from,omitempty"`
 	Rating        *int                `json:"rating,omitempty"`
-	Region        EntryRegion         `json:"region"`
+	Region        string              `json:"region"`
 
 	// RegionMismatchAckAt Null until the owner dismisses the region-mismatch banner; cleared whenever region or product changes.
 	RegionMismatchAckAt *time.Time  `json:"region_mismatch_ack_at,omitempty"`
@@ -1663,9 +1492,6 @@ type EntryPackaging string
 
 // EntryPricingMode defines model for Entry.PricingMode.
 type EntryPricingMode string
-
-// EntryRegion defines model for Entry.Region.
-type EntryRegion string
 
 // EntrySource defines model for Entry.Source.
 type EntrySource string
@@ -1717,11 +1543,13 @@ type EntryCreate struct {
 	PricingProductId *openapi_types.UUID     `json:"pricing_product_id,omitempty"`
 
 	// ProductId Omit for a custom (off-catalog) entry.
-	ProductId       *openapi_types.UUID   `json:"product_id,omitempty"`
-	PurchasedAt     *openapi_types.Date   `json:"purchased_at,omitempty"`
-	PurchasedFrom   *string               `json:"purchased_from,omitempty"`
-	Rating          *int                  `json:"rating,omitempty"`
-	Region          EntryCreateRegion     `json:"region"`
+	ProductId     *openapi_types.UUID `json:"product_id,omitempty"`
+	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
+	PurchasedFrom *string             `json:"purchased_from,omitempty"`
+	Rating        *int                `json:"rating,omitempty"`
+
+	// Region Entry region. Known values ntsc_u, ntsc_j, pal and region_free carry region machinery (localized display snapshots, pricing class, availability grouping); any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set.
+	Region          string                `json:"region"`
 	Status          *EntryCreateStatus    `json:"status,omitempty"`
 	StorageLocation *string               `json:"storage_location,omitempty"`
 	TagIds          *[]openapi_types.UUID `json:"tag_ids,omitempty"`
@@ -1750,9 +1578,6 @@ type EntryCreatePackaging string
 
 // EntryCreatePricingMode defines model for EntryCreate.PricingMode.
 type EntryCreatePricingMode string
-
-// EntryCreateRegion defines model for EntryCreate.Region.
-type EntryCreateRegion string
 
 // EntryCreateStatus defines model for EntryCreate.Status.
 type EntryCreateStatus string
@@ -1825,8 +1650,8 @@ type EntryUpdate struct {
 	PurchasedFrom *string             `json:"purchased_from,omitempty"`
 	Rating        *int                `json:"rating,omitempty"`
 
-	// Region A region change on an auto-priced game-backed entry may repoint the entry to the sibling catalog product whose listing prices that region; snapshotted fields re-derive from it.
-	Region          EntryUpdateRegion     `json:"region"`
+	// Region Entry region. Known values ntsc_u, ntsc_j, pal and region_free carry region machinery (localized display snapshots, pricing class, availability grouping); any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set. On an auto-provenance game entry, a region change repoints the entry to the sibling catalog product whose listing prices that region; snapshotted display fields re-derive from it.
+	Region          string                `json:"region"`
 	Status          EntryUpdateStatus     `json:"status"`
 	StorageLocation *string               `json:"storage_location,omitempty"`
 	TagIds          *[]openapi_types.UUID `json:"tag_ids,omitempty"`
@@ -1847,9 +1672,6 @@ type EntryUpdatePackaging string
 // EntryUpdatePricingMode defines model for EntryUpdate.PricingMode.
 type EntryUpdatePricingMode string
 
-// EntryUpdateRegion A region change on an auto-priced game-backed entry may repoint the entry to the sibling catalog product whose listing prices that region; snapshotted fields re-derive from it.
-type EntryUpdateRegion string
-
 // EntryUpdateStatus defines model for EntryUpdate.Status.
 type EntryUpdateStatus string
 
@@ -1869,6 +1691,13 @@ type LibrarySummary struct {
 
 // NormalizePlatformsResult defines model for NormalizePlatformsResult.
 type NormalizePlatformsResult struct {
+	Normalized int `json:"normalized"`
+	Scanned    int `json:"scanned"`
+	Skipped    int `json:"skipped"`
+}
+
+// NormalizeRegionsResult defines model for NormalizeRegionsResult.
+type NormalizeRegionsResult struct {
 	Normalized int `json:"normalized"`
 	Scanned    int `json:"scanned"`
 	Skipped    int `json:"skipped"`
@@ -1961,7 +1790,7 @@ type SharedEntry struct {
 	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
 	Platform  *EntryPlatform      `json:"platform,omitempty"`
 	ProductId *openapi_types.UUID `json:"product_id,omitempty"`
-	Region    SharedEntryRegion   `json:"region"`
+	Region    string              `json:"region"`
 	Tags      []TagRef            `json:"tags"`
 }
 
@@ -1982,9 +1811,6 @@ type SharedEntryMediaType string
 
 // SharedEntryPackaging defines model for SharedEntry.Packaging.
 type SharedEntryPackaging string
-
-// SharedEntryRegion defines model for SharedEntry.Region.
-type SharedEntryRegion string
 
 // SharedEntryGroup defines model for SharedEntryGroup.
 type SharedEntryGroup struct {
@@ -2125,10 +1951,12 @@ type ListSubmissionsParams struct {
 
 // GetDashboardParams defines parameters for GetDashboard.
 type GetDashboardParams struct {
-	ItemType      *[]GetDashboardParamsItemType      `form:"item_type,omitempty" json:"item_type,omitempty"`
-	Status        *[]GetDashboardParamsStatus        `form:"status,omitempty" json:"status,omitempty"`
-	Packaging     *[]GetDashboardParamsPackaging     `form:"packaging,omitempty" json:"packaging,omitempty"`
-	Region        *[]GetDashboardParamsRegion        `form:"region,omitempty" json:"region,omitempty"`
+	ItemType  *[]GetDashboardParamsItemType  `form:"item_type,omitempty" json:"item_type,omitempty"`
+	Status    *[]GetDashboardParamsStatus    `form:"status,omitempty" json:"status,omitempty"`
+	Packaging *[]GetDashboardParamsPackaging `form:"packaging,omitempty" json:"packaging,omitempty"`
+
+	// Region Known-value buckets; other stored strings only surface unfiltered.
+	Region        *[]string                          `form:"region,omitempty" json:"region,omitempty"`
 	ItemCondition *[]GetDashboardParamsItemCondition `form:"item_condition,omitempty" json:"item_condition,omitempty"`
 
 	// PlatformId IGDB platform ids (matches the creation-time snapshot).
@@ -2147,18 +1975,17 @@ type GetDashboardParamsStatus string
 // GetDashboardParamsPackaging defines parameters for GetDashboard.
 type GetDashboardParamsPackaging string
 
-// GetDashboardParamsRegion defines parameters for GetDashboard.
-type GetDashboardParamsRegion string
-
 // GetDashboardParamsItemCondition defines parameters for GetDashboard.
 type GetDashboardParamsItemCondition string
 
 // ListEntriesParams defines parameters for ListEntries.
 type ListEntriesParams struct {
-	ItemType      *[]ListEntriesParamsItemType      `form:"item_type,omitempty" json:"item_type,omitempty"`
-	Status        *[]ListEntriesParamsStatus        `form:"status,omitempty" json:"status,omitempty"`
-	Packaging     *[]ListEntriesParamsPackaging     `form:"packaging,omitempty" json:"packaging,omitempty"`
-	Region        *[]ListEntriesParamsRegion        `form:"region,omitempty" json:"region,omitempty"`
+	ItemType  *[]ListEntriesParamsItemType  `form:"item_type,omitempty" json:"item_type,omitempty"`
+	Status    *[]ListEntriesParamsStatus    `form:"status,omitempty" json:"status,omitempty"`
+	Packaging *[]ListEntriesParamsPackaging `form:"packaging,omitempty" json:"packaging,omitempty"`
+
+	// Region Known-value buckets; other stored strings only surface unfiltered.
+	Region        *[]string                         `form:"region,omitempty" json:"region,omitempty"`
 	ItemCondition *[]ListEntriesParamsItemCondition `form:"item_condition,omitempty" json:"item_condition,omitempty"`
 
 	// PlatformId IGDB platform ids (matches the creation-time snapshot).
@@ -2181,9 +2008,6 @@ type ListEntriesParamsStatus string
 
 // ListEntriesParamsPackaging defines parameters for ListEntries.
 type ListEntriesParamsPackaging string
-
-// ListEntriesParamsRegion defines parameters for ListEntries.
-type ListEntriesParamsRegion string
 
 // ListEntriesParamsItemCondition defines parameters for ListEntries.
 type ListEntriesParamsItemCondition string
@@ -2495,10 +2319,17 @@ type ClientInterface interface {
 
 	// InternalNormalizePlatforms Canonicalize free-text custom-entry platforms
 	//
-	// Maintenance operation; the gateway never routes it. Matches every entry carrying a platform_name but no platform_igdb_id (case-insensitive, trimmed, exact-or-alias - never fuzzy) against the enrichment platform catalog and stamps the canonical igdb id and name. Guard: admin role (unchanged; stricter than the other two internal levers since it is a mass cross-user write with no CronJob driving it). Idempotent and re-runnable; stamped rows leave the selection set.
+	// Maintenance operation; the gateway never routes it. Matches every entry carrying a platform_name but no platform_igdb_id (case-insensitive, trimmed, exact-or-alias - never fuzzy) against the enrichment platform catalog and stamps the canonical igdb id and name. Guard: admin role or service token (the nightly job runs it; the mass write stays reviewable through its counts and logs). Idempotent and re-runnable; stamped rows leave the selection set.
 	//
 	// Corresponds with POST /internal/normalize-platforms (the `InternalNormalizePlatforms` operationId).
 	InternalNormalizePlatforms(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// InternalNormalizeRegions Promote free-text entry regions into the known set
+	//
+	// Maintenance operation; the gateway never routes it. Folds every entry region outside the known set (lowercase, trim) against the known values and the reviewed synonyms table - exact or synonym, never fuzzy. Promoted igdb-backed entries re-pick their release-date and localized display snapshots for the promoted region in the same write; enrichment outage skips the row for the next run. Guard: admin role or service token (the nightly job runs it ahead of the entry rematch, so a promoted region's pricing class corrects the same night). Idempotent and re-runnable; promoted rows leave the selection set.
+	//
+	// Corresponds with POST /internal/normalize-regions (the `InternalNormalizeRegions` operationId).
+	InternalNormalizeRegions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// InternalRematchEntries Entry rematch - repoint auto entries onto region-correct listings
 	//
@@ -3028,11 +2859,28 @@ func (c *Client) AckSubmissionResolution(ctx context.Context, entryId openapi_ty
 
 // InternalNormalizePlatforms Canonicalize free-text custom-entry platforms
 //
-// Maintenance operation; the gateway never routes it. Matches every entry carrying a platform_name but no platform_igdb_id (case-insensitive, trimmed, exact-or-alias - never fuzzy) against the enrichment platform catalog and stamps the canonical igdb id and name. Guard: admin role (unchanged; stricter than the other two internal levers since it is a mass cross-user write with no CronJob driving it). Idempotent and re-runnable; stamped rows leave the selection set.
+// Maintenance operation; the gateway never routes it. Matches every entry carrying a platform_name but no platform_igdb_id (case-insensitive, trimmed, exact-or-alias - never fuzzy) against the enrichment platform catalog and stamps the canonical igdb id and name. Guard: admin role or service token (the nightly job runs it; the mass write stays reviewable through its counts and logs). Idempotent and re-runnable; stamped rows leave the selection set.
 //
 // Corresponds with POST /internal/normalize-platforms (the `InternalNormalizePlatforms` operationId).
 func (c *Client) InternalNormalizePlatforms(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewInternalNormalizePlatformsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// InternalNormalizeRegions Promote free-text entry regions into the known set
+//
+// Maintenance operation; the gateway never routes it. Folds every entry region outside the known set (lowercase, trim) against the known values and the reviewed synonyms table - exact or synonym, never fuzzy. Promoted igdb-backed entries re-pick their release-date and localized display snapshots for the promoted region in the same write; enrichment outage skips the row for the next run. Guard: admin role or service token (the nightly job runs it ahead of the entry rematch, so a promoted region's pricing class corrects the same night). Idempotent and re-runnable; promoted rows leave the selection set.
+//
+// Corresponds with POST /internal/normalize-regions (the `InternalNormalizeRegions` operationId).
+func (c *Client) InternalNormalizeRegions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInternalNormalizeRegionsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -4313,6 +4161,33 @@ func NewInternalNormalizePlatformsRequest(server string) (*http.Request, error) 
 	return req, nil
 }
 
+// NewInternalNormalizeRegionsRequest constructs an http.Request for the InternalNormalizeRegions method
+func NewInternalNormalizeRegionsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/internal/normalize-regions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewInternalRematchEntriesRequest constructs an http.Request for the InternalRematchEntries method
 func NewInternalRematchEntriesRequest(server string) (*http.Request, error) {
 	var err error
@@ -5254,12 +5129,21 @@ type ClientWithResponsesInterface interface {
 
 	// InternalNormalizePlatformsWithResponse Canonicalize free-text custom-entry platforms
 	//
-	// Maintenance operation; the gateway never routes it. Matches every entry carrying a platform_name but no platform_igdb_id (case-insensitive, trimmed, exact-or-alias - never fuzzy) against the enrichment platform catalog and stamps the canonical igdb id and name. Guard: admin role (unchanged; stricter than the other two internal levers since it is a mass cross-user write with no CronJob driving it). Idempotent and re-runnable; stamped rows leave the selection set.
+	// Maintenance operation; the gateway never routes it. Matches every entry carrying a platform_name but no platform_igdb_id (case-insensitive, trimmed, exact-or-alias - never fuzzy) against the enrichment platform catalog and stamps the canonical igdb id and name. Guard: admin role or service token (the nightly job runs it; the mass write stays reviewable through its counts and logs). Idempotent and re-runnable; stamped rows leave the selection set.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /internal/normalize-platforms (the `InternalNormalizePlatforms` operationId).
 	InternalNormalizePlatformsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InternalNormalizePlatformsResponse, error)
+
+	// InternalNormalizeRegionsWithResponse Promote free-text entry regions into the known set
+	//
+	// Maintenance operation; the gateway never routes it. Folds every entry region outside the known set (lowercase, trim) against the known values and the reviewed synonyms table - exact or synonym, never fuzzy. Promoted igdb-backed entries re-pick their release-date and localized display snapshots for the promoted region in the same write; enrichment outage skips the row for the next run. Guard: admin role or service token (the nightly job runs it ahead of the entry rematch, so a promoted region's pricing class corrects the same night). Idempotent and re-runnable; promoted rows leave the selection set.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /internal/normalize-regions (the `InternalNormalizeRegions` operationId).
+	InternalNormalizeRegionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InternalNormalizeRegionsResponse, error)
 
 	// InternalRematchEntriesWithResponse Entry rematch - repoint auto entries onto region-correct listings
 	//
@@ -6467,6 +6351,61 @@ func (r InternalNormalizePlatformsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r InternalNormalizePlatformsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type InternalNormalizeRegionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NormalizeRegionsResult
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r InternalNormalizeRegionsResponse) GetJSON200() *NormalizeRegionsResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r InternalNormalizeRegionsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r InternalNormalizeRegionsResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r InternalNormalizeRegionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r InternalNormalizeRegionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r InternalNormalizeRegionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r InternalNormalizeRegionsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -7747,7 +7686,7 @@ func (c *ClientWithResponses) AckSubmissionResolutionWithResponse(ctx context.Co
 
 // InternalNormalizePlatformsWithResponse Canonicalize free-text custom-entry platforms
 //
-// Maintenance operation; the gateway never routes it. Matches every entry carrying a platform_name but no platform_igdb_id (case-insensitive, trimmed, exact-or-alias - never fuzzy) against the enrichment platform catalog and stamps the canonical igdb id and name. Guard: admin role (unchanged; stricter than the other two internal levers since it is a mass cross-user write with no CronJob driving it). Idempotent and re-runnable; stamped rows leave the selection set.
+// Maintenance operation; the gateway never routes it. Matches every entry carrying a platform_name but no platform_igdb_id (case-insensitive, trimmed, exact-or-alias - never fuzzy) against the enrichment platform catalog and stamps the canonical igdb id and name. Guard: admin role or service token (the nightly job runs it; the mass write stays reviewable through its counts and logs). Idempotent and re-runnable; stamped rows leave the selection set.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -7758,6 +7697,21 @@ func (c *ClientWithResponses) InternalNormalizePlatformsWithResponse(ctx context
 		return nil, err
 	}
 	return ParseInternalNormalizePlatformsResponse(rsp)
+}
+
+// InternalNormalizeRegionsWithResponse Promote free-text entry regions into the known set
+//
+// Maintenance operation; the gateway never routes it. Folds every entry region outside the known set (lowercase, trim) against the known values and the reviewed synonyms table - exact or synonym, never fuzzy. Promoted igdb-backed entries re-pick their release-date and localized display snapshots for the promoted region in the same write; enrichment outage skips the row for the next run. Guard: admin role or service token (the nightly job runs it ahead of the entry rematch, so a promoted region's pricing class corrects the same night). Idempotent and re-runnable; promoted rows leave the selection set.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /internal/normalize-regions (the `InternalNormalizeRegions` operationId).
+func (c *ClientWithResponses) InternalNormalizeRegionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InternalNormalizeRegionsResponse, error) {
+	rsp, err := c.InternalNormalizeRegions(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseInternalNormalizeRegionsResponse(rsp)
 }
 
 // InternalRematchEntriesWithResponse Entry rematch - repoint auto entries onto region-correct listings
@@ -8813,6 +8767,46 @@ func ParseInternalNormalizePlatformsResponse(rsp *http.Response) (*InternalNorma
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest NormalizePlatformsResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseInternalNormalizeRegionsResponse parses an HTTP response from a InternalNormalizeRegionsWithResponse call
+func ParseInternalNormalizeRegionsResponse(rsp *http.Response) (*InternalNormalizeRegionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &InternalNormalizeRegionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NormalizeRegionsResult
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

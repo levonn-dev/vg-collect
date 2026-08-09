@@ -725,6 +725,117 @@ func TestUnitRematchMetrics_ResolvedSameIdSkipsRepoint(t *testing.T) {
 	}
 }
 
+// ---- normalize levers ----
+
+// TestUnitNormalizePlatformsCounter pins the normalize-platforms
+// sweep's outcome counter: a matched free-text platform is normalized,
+// an unmatched one is skipped.
+func TestUnitNormalizePlatformsCounter(t *testing.T) {
+	reader := installTestMeter(t)
+	matched, unmatched := uuid.New(), uuid.New()
+	st := withPendingCount(&stubStore{
+		listNameOnlyPlatformEntries: func(context.Context) ([]store.PlatformEntryRef, error) {
+			return []store.PlatformEntryRef{
+				{EntryID: matched, PlatformName: "snes"},
+				{EntryID: unmatched, PlatformName: "my homebrew rig"},
+			}, nil
+		},
+		setEntryPlatformIdentity: func(context.Context, uuid.UUID, int64, string) error { return nil },
+	}, 0)
+	enr := &stubEnrichment{
+		listPlatforms: func(context.Context, string) ([]enrichmentclient.Platform, error) {
+			return []enrichmentclient.Platform{{IGDBID: 19, Name: "Super Nintendo Entertainment System", Aliases: []string{"snes"}}}, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enr, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-platforms", a.token(t, uuid.NewString(), "admin"), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("normalize: %d", resp.StatusCode)
+	}
+
+	metrics := collectDomainMetrics(t, reader)
+	if v := counterValue(t, metrics, "vg.collection.normalize.platforms", attribute.String("outcome", "normalized")); v != 1 {
+		t.Fatalf("platforms{outcome=normalized} = %d, want 1", v)
+	}
+	if v := counterValue(t, metrics, "vg.collection.normalize.platforms", attribute.String("outcome", "skipped")); v != 1 {
+		t.Fatalf("platforms{outcome=skipped} = %d, want 1", v)
+	}
+}
+
+// TestUnitNormalizeRegionsCounter pins the normalize-regions sweep's
+// outcome counter: a matched free-text region is normalized, one with
+// no reviewed synonym is skipped.
+func TestUnitNormalizeRegionsCounter(t *testing.T) {
+	reader := installTestMeter(t)
+	matched, unmatched := uuid.New(), uuid.New()
+	st := withPendingCount(&stubStore{
+		listOpenRegionEntries: func(context.Context, []string) ([]store.OpenRegionEntryRef, error) {
+			return []store.OpenRegionEntryRef{
+				{EntryID: matched, Region: "Japan"},
+				{EntryID: unmatched, Region: "atlantis"},
+			}, nil
+		},
+		promoteEntryRegion: func(context.Context, uuid.UUID, string) error { return nil },
+	}, 0)
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-regions", a.token(t, uuid.NewString(), "admin"), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("normalize: %d", resp.StatusCode)
+	}
+
+	metrics := collectDomainMetrics(t, reader)
+	if v := counterValue(t, metrics, "vg.collection.normalize.regions", attribute.String("outcome", "normalized")); v != 1 {
+		t.Fatalf("regions{outcome=normalized} = %d, want 1", v)
+	}
+	if v := counterValue(t, metrics, "vg.collection.normalize.regions", attribute.String("outcome", "skipped")); v != 1 {
+		t.Fatalf("regions{outcome=skipped} = %d, want 1", v)
+	}
+}
+
+// TestUnitNormalizeRegionsCounter_WriteFailure mirrors enrichment's
+// TestUnitTelemetry_NormalizeCommunityRegions write-failure case: a
+// promotable non-igdb region whose store write errors counts only in
+// the failed metric outcome - PromoteEntryRegion's error path never
+// increments the response's own normalized or skipped counters (see
+// InternalNormalizeRegions), so a write failure is the one way scanned
+// can outrun their sum.
+func TestUnitNormalizeRegionsCounter_WriteFailure(t *testing.T) {
+	reader := installTestMeter(t)
+	failing := uuid.New()
+	st := withPendingCount(&stubStore{
+		listOpenRegionEntries: func(context.Context, []string) ([]store.OpenRegionEntryRef, error) {
+			return []store.OpenRegionEntryRef{{EntryID: failing, Region: "japan"}}, nil
+		},
+		promoteEntryRegion: func(context.Context, uuid.UUID, string) error {
+			return errors.New("db down")
+		},
+	}, 0)
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-regions", a.token(t, uuid.NewString(), "admin"), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("normalize: %d", resp.StatusCode)
+	}
+
+	var counts map[string]int
+	if err := json.NewDecoder(resp.Body).Decode(&counts); err != nil {
+		t.Fatal(err)
+	}
+	if counts["scanned"] != 1 || counts["normalized"] != 0 || counts["skipped"] != 0 {
+		t.Fatalf("counts = %+v, want scanned 1 normalized 0 skipped 0", counts)
+	}
+	// The write failure lands in neither counter, so scanned outruns
+	// their sum - a caller must not read {normalized+skipped==scanned}
+	// as proof every scanned row was fully accounted for.
+	if counts["scanned"] <= counts["normalized"]+counts["skipped"] {
+		t.Fatalf("scanned (%d) must exceed normalized+skipped (%d) when a write fails", counts["scanned"], counts["normalized"]+counts["skipped"])
+	}
+
+	metrics := collectDomainMetrics(t, reader)
+	if v := counterValue(t, metrics, "vg.collection.normalize.regions", attribute.String("outcome", "failed")); v != 1 {
+		t.Fatalf("regions{outcome=failed} = %d, want 1", v)
+	}
+}
+
 // stubErrMeterProvider hands out a meter that refuses every counter
 // registration this service performs; the noop embeds satisfy the
 // rest of the interfaces.

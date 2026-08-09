@@ -36,8 +36,9 @@ const (
 // filtersFromViewParams tolerantly parses the frontend's stored view
 // vocabulary ({v:1, item_type, status, packaging, region,
 // item_condition, platform_id, tag_id, sort, order, group_by, mode})
-// into Filters + groupBy. Unknown keys and invalid values are
-// dropped, matching the SPA's own tolerant parse; mode is
+// into Filters + groupBy. Unknown keys and invalid enum values are
+// dropped, matching the SPA's own tolerant parse; region has no enum
+// to drop against (open-world) and rides through verbatim. mode is
 // frontend-only. A stored sort the list machinery cannot serve
 // cheaply ("value") passes through to orderClause's stable default.
 func filtersFromViewParams(params []byte) (store.Filters, string) {
@@ -69,7 +70,10 @@ func filtersFromViewParams(params []byte) (store.Filters, string) {
 	f.ItemTypes = keep(doc.ItemType, itemTypeVals)
 	f.Statuses = keep(doc.Status, statusVals)
 	f.Packagings = keep(doc.Packaging, packagingVals)
-	f.Regions = keep(doc.Region, regionVals)
+	// region has no allowed set to gate against (open-world); a
+	// stored free-text value passes through exactly like the live
+	// list endpoint's own filter param.
+	f.Regions = doc.Region
 	f.ItemConditions = keep(doc.ItemCondition, conditionVals)
 	f.PlatformIDs = doc.PlatformID
 	for _, raw := range doc.TagID {
@@ -120,7 +124,7 @@ func toSharedEntry(e store.Entry) api.SharedEntry {
 		LocalizedNameTranslit: e.LocalizedNameTranslit,
 		LocalizedCoverUrl:     e.LocalizedCoverURL,
 		IgdbGameId:            e.IGDBGameID,
-		Region:                api.SharedEntryRegion(e.Region),
+		Region:                e.Region,
 		Edition:               e.Edition,
 		Packaging:             api.SharedEntryPackaging(e.Packaging),
 		HasBox:                e.HasBox,

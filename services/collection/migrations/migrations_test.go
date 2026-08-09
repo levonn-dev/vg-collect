@@ -439,3 +439,78 @@ func TestCustomPricingConstraints(t *testing.T) {
 	neg := int64(-1)
 	wantCheck(insert("custom", &neg, &now))
 }
+
+// TestEntryRegionOpenWorld pins 000013: the region CHECK retires, so
+// a free-text value that is not one of the four known regions persists
+// exactly like a known one instead of tripping a 23514 violation.
+func TestEntryRegionOpenWorld(t *testing.T) {
+	url := newTestDB(t)
+	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+
+	_, err = conn.Exec(ctx, `
+		INSERT INTO entries (user_id, item_type, display_name, region, packaging,
+			pricing_mode, status, backlog_rank)
+		VALUES (gen_random_uuid(), 'game', 'x', 'Korea', 'loose', 'disabled', 'backlog', 'a')`)
+	if err != nil {
+		t.Fatalf("a free-text region must be accepted once the CHECK retires: %v", err)
+	}
+}
+
+// TestEntryRegionOpenWorldDownRejects pins 000013's down migration as
+// a real rollback, not a documentation-only stub: stepping back to 12
+// must restore entries_region_check so the same free-text value
+// TestEntryRegionOpenWorld accepts is once again rejected, and
+// stepping back up to 13 must accept it again - proving the round
+// trip is clean rather than leaving some other guard silently doing
+// the down migration's job.
+func TestEntryRegionOpenWorldDownRejects(t *testing.T) {
+	url := newTestDB(t)
+	src, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pgxURL := strings.Replace(url, "postgres://", "pgx5://", 1)
+	m, err := migrate.NewWithSourceInstance("iofs", src, pgxURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = m.Close() }()
+	if err := m.Migrate(13); err != nil {
+		t.Fatalf("migrate to 13: %v", err)
+	}
+
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+
+	const insert = `INSERT INTO entries (user_id, item_type, display_name, region, packaging,
+		pricing_mode, status, backlog_rank)
+		VALUES (gen_random_uuid(), 'game', 'x', 'Korea', 'loose', 'disabled', 'backlog', 'a')`
+
+	if err := m.Migrate(12); err != nil {
+		t.Fatalf("down to 12: %v", err)
+	}
+	_, err = conn.Exec(ctx, insert)
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23514" || !strings.Contains(pgErr.ConstraintName, "entries_region_check") {
+		t.Fatalf("down migration must restore entries_region_check, got %v", err)
+	}
+
+	if err := m.Migrate(13); err != nil {
+		t.Fatalf("back up to 13: %v", err)
+	}
+	if _, err := conn.Exec(ctx, insert); err != nil {
+		t.Fatalf("re-up must accept the free-text region again: %v", err)
+	}
+}

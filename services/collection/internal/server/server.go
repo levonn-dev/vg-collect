@@ -65,6 +65,9 @@ type Store interface {
 	RepointEntry(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string) error
 	ListNameOnlyPlatformEntries(ctx context.Context) ([]store.PlatformEntryRef, error)
 	SetEntryPlatformIdentity(ctx context.Context, entryID uuid.UUID, igdbID int64, name string) error
+	ListOpenRegionEntries(ctx context.Context, known []string) ([]store.OpenRegionEntryRef, error)
+	PromoteEntryRegion(ctx context.Context, entryID uuid.UUID, region string) error
+	PromoteEntryRegionSnapshot(ctx context.Context, entryID uuid.UUID, region string, d *time.Time, name, translit, cover *string) error
 	CountEntriesByProduct(ctx context.Context, productID uuid.UUID) (int64, error)
 	CreateSubmission(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error)
 	LatestSubmissionForEntry(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error)
@@ -135,6 +138,9 @@ type Handlers struct {
 	rematchTriples   metric.Int64Counter
 	rematchRepoints  metric.Int64Counter
 
+	normalizePlatformsRuns metric.Int64Counter
+	normalizeRegionsRuns   metric.Int64Counter
+
 	// rematching guards the entry rematch: one at a time, concurrent
 	// triggers answer 409 (mirrors enrichment's catalog-refresh guard).
 	rematching atomic.Bool
@@ -196,6 +202,12 @@ func New(st Store, enrich Enrichment, c Cache, opts Options) *Handlers {
 		rematchRepoints: counter("vg.collection.rematch.repoints",
 			"Entries repointed onto a region-correct sibling by the entry rematch",
 			"{entry}"),
+		normalizePlatformsRuns: counter("vg.collection.normalize.platforms",
+			"Normalize-platforms sweep rows by outcome",
+			"{row}"),
+		normalizeRegionsRuns: counter("vg.collection.normalize.regions",
+			"Normalize-regions sweep rows by outcome",
+			"{row}"),
 	}
 	registerPendingGauge(m, st, opts.Logger)
 	return h
@@ -328,6 +340,32 @@ func (h *Handlers) recordRematchDuration(ctx context.Context, seconds float64) {
 	h.rematchDuration.Record(ctx, seconds)
 }
 
+// countNormalizePlatformsRow records one normalize-platforms sweep
+// row's outcome: normalized (stamped), skipped (no alias match), or
+// failed (the store write itself errored) - the same three-way split
+// countNormalizeRegionsRow uses for its sibling lever.
+func (h *Handlers) countNormalizePlatformsRow(ctx context.Context, outcome string) {
+	if h.normalizePlatformsRuns == nil {
+		return
+	}
+	h.normalizePlatformsRuns.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+}
+
+// countNormalizeRegionsRow records one normalize-regions sweep row's
+// outcome: normalized (promoted), skipped (no fold/synonym match), or
+// failed (the product fetch or the store write errored). Only the
+// fetch-failure branch also folds into the response body's skipped
+// count; a store-write failure increments neither normalized nor
+// skipped there (so scanned can exceed their sum) and surfaces only
+// through the warning log line and this failed outcome - matching the
+// platforms lever's response posture.
+func (h *Handlers) countNormalizeRegionsRow(ctx context.Context, outcome string) {
+	if h.normalizeRegionsRuns == nil {
+		return
+	}
+	h.normalizeRegionsRuns.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+}
+
 // internalError answers a 500 and logs its cause, which the problem
 // body deliberately does not carry; without this line the reason for
 // a 500 exists nowhere.
@@ -351,12 +389,10 @@ func bearerToken(r *http.Request) string {
 // Never call this before the caller is known to be a real user: a
 // service token's subject (svc:<name>) is not a uuid and would trip
 // the internalError branch (a 500, not a clean 403). Every ordinary
-// route is user-scoped already. Of the internal levers: resnapshot
-// and the entry rematch admit a service token, so they read
-// bearerToken directly instead and never call this at all;
-// normalize-platforms (admin-only, never callable by a service token)
-// checks its admin-role gate BEFORE calling this, not after - that
-// ordering is load-bearing, not incidental.
+// route is user-scoped already. Of the internal levers: resnapshot,
+// the entry rematch, normalize-platforms, and normalize-regions all
+// admit a service token, so they read bearerToken directly instead
+// and never call this at all.
 func (h *Handlers) caller(w http.ResponseWriter, r *http.Request) (uuid.UUID, string, bool) {
 	claims, ok := jwtauth.FromContext(r.Context())
 	if !ok {
@@ -372,10 +408,10 @@ func (h *Handlers) caller(w http.ResponseWriter, r *http.Request) (uuid.UUID, st
 }
 
 // requireAdminOrService admits an admin user or a service token - the
-// guard on operator levers a CronJob also drives (resnapshot, the
-// entry rematch). Same claims-access path and 403 problem shape as
-// the admin-only gates elsewhere in this file (normalize-platforms
-// keeps that narrower gate, unchanged).
+// guard on every operator lever a CronJob drives: resnapshot, the
+// entry rematch, normalize-platforms, and normalize-regions. Same
+// claims-access path and 403 problem shape as the admin-only gates
+// elsewhere in this file.
 func (h *Handlers) requireAdminOrService(w http.ResponseWriter, r *http.Request) bool {
 	claims, _ := jwtauth.FromContext(r.Context())
 	if claims.HasRole("admin") || claims.IsService() {

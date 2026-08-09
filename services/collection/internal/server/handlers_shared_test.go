@@ -169,6 +169,36 @@ func TestUnitSharedShelfEntries_ExecutesStoredParams(t *testing.T) {
 	}
 }
 
+// TestUnitSharedShelfEntries_StoredRegionFilterIsOpenWorld guards
+// filtersFromViewParams' region dimension against regressing to a
+// keep()-style allowlist gate like status/packaging/item_type use.
+// region has no known-value set to gate against (open-world on the
+// live list endpoint too), so a stored free-text value - one that was
+// never a known region - must replay intact instead of silently
+// vanishing. Sibling to TestUnitSharedShelfEntries_ExecutesStoredParams,
+// isolating just this dimension.
+func TestUnitSharedShelfEntries_StoredRegionFilterIsOpenWorld(t *testing.T) {
+	owner := uuid.New()
+	shelf := store.View{ID: uuid.New(), UserID: owner, Name: "Imports", Slug: "Imports",
+		Visibility: "listed", Params: []byte(`{"v":1,"region":["Korea"]}`)}
+	var gotFilters store.Filters
+	st := &stubStore{
+		getSharedShelf: func(context.Context, uuid.UUID) (store.View, error) { return shelf, nil },
+		listEntries: func(_ context.Context, _ uuid.UUID, f store.Filters) ([]store.Entry, error) {
+			gotFilters = f
+			return []store.Entry{}, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+	resp := do(t, http.MethodGet, srv.URL+"/shared/shelves/"+shelf.ID.String()+"/entries", a.token(t, "viewer"), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if len(gotFilters.Regions) != 1 || gotFilters.Regions[0] != "Korea" {
+		t.Fatalf("Regions = %v, want [Korea] - an open-world region filter must survive the stored-params replay", gotFilters.Regions)
+	}
+}
+
 // TestUnitSharedShelfEntries_PaginationValidation pins that offset/limit
 // are validated against api/collection.yaml's bounds (limit 1-200,
 // offset >= 0) before any store call, including the shelf lookup - the

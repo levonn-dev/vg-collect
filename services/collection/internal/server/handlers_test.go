@@ -77,6 +77,10 @@ type stubStore struct {
 	listNameOnlyPlatformEntries func(ctx context.Context) ([]store.PlatformEntryRef, error)
 	setEntryPlatformIdentity    func(ctx context.Context, entryID uuid.UUID, igdbID int64, name string) error
 
+	listOpenRegionEntries      func(ctx context.Context, known []string) ([]store.OpenRegionEntryRef, error)
+	promoteEntryRegion         func(ctx context.Context, entryID uuid.UUID, region string) error
+	promoteEntryRegionSnapshot func(ctx context.Context, entryID uuid.UUID, region string, d *time.Time, name, translit, cover *string) error
+
 	createSubmission                 func(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error)
 	latestSubmissionForEntry         func(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error)
 	latestApprovedSubmissionForEntry func(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error)
@@ -297,6 +301,24 @@ func (s *stubStore) SetEntryPlatformIdentity(ctx context.Context, entryID uuid.U
 		panic("unexpected SetEntryPlatformIdentity")
 	}
 	return s.setEntryPlatformIdentity(ctx, entryID, igdbID, name)
+}
+func (s *stubStore) ListOpenRegionEntries(ctx context.Context, known []string) ([]store.OpenRegionEntryRef, error) {
+	if s.listOpenRegionEntries == nil {
+		panic("unexpected ListOpenRegionEntries")
+	}
+	return s.listOpenRegionEntries(ctx, known)
+}
+func (s *stubStore) PromoteEntryRegion(ctx context.Context, entryID uuid.UUID, region string) error {
+	if s.promoteEntryRegion == nil {
+		panic("unexpected PromoteEntryRegion")
+	}
+	return s.promoteEntryRegion(ctx, entryID, region)
+}
+func (s *stubStore) PromoteEntryRegionSnapshot(ctx context.Context, entryID uuid.UUID, region string, d *time.Time, name, translit, cover *string) error {
+	if s.promoteEntryRegionSnapshot == nil {
+		panic("unexpected PromoteEntryRegionSnapshot")
+	}
+	return s.promoteEntryRegionSnapshot(ctx, entryID, region, d, name, translit, cover)
 }
 func (s *stubStore) CreateSubmission(ctx context.Context, userID, entryID uuid.UUID) (store.Submission, error) {
 	if s.createSubmission == nil {
@@ -801,7 +823,11 @@ func TestUnitCreateEntry_ValidationMatrix(t *testing.T) {
 		mutate func(map[string]any)
 		code   string
 	}{
-		{"bad region", func(m map[string]any) { m["region"] = "ntsc" }, "invalid_body"},
+		{"empty region", func(m map[string]any) { m["region"] = "   " }, "invalid_body"},
+		// 33 multi-byte runes (99 bytes): the cap counts code points,
+		// not bytes - see TestCreateEntry_RegionLengthIsRuneCounted for
+		// the accept-side 32-rune boundary this pairs with.
+		{"region too long", func(m map[string]any) { m["region"] = strings.Repeat("あ", 33) }, "invalid_body"},
 		{"bad packaging", func(m map[string]any) { m["packaging"] = "boxed" }, "invalid_body"},
 		{"bad status", func(m map[string]any) { m["status"] = "queued" }, "invalid_body"},
 		{"digital media", func(m map[string]any) { m["media_type"] = "digital" }, "invalid_body"},
@@ -841,6 +867,78 @@ func TestUnitCreateEntry_ValidationMatrix(t *testing.T) {
 	resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()),
 		bytes.NewReader([]byte("{")))
 	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
+}
+
+// TestCreateEntry_OpenWorldRegion pins the open-world contract: a
+// region outside the four known values is not a validation error - it
+// is trimmed and stored/returned as an honest display fact.
+func TestCreateEntry_OpenWorldRegion(t *testing.T) {
+	var stored store.Entry
+	st := &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+		stored = e
+		e.ID = uuid.New()
+		r := "n"
+		e.BacklogRank = &r
+		e.Tags = []store.TagRef{}
+		return e, nil
+	}}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+
+	body := jsonBody(map[string]any{
+		"display_name": "Import Cart", "item_type": "game",
+		"packaging": "loose", "region": "  Korea  ",
+	})
+	resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()), body)
+	if resp.StatusCode != http.StatusCreated {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, b)
+	}
+	if stored.Region != "Korea" {
+		t.Fatalf("stored region = %q, want trimmed %q", stored.Region, "Korea")
+	}
+	var got struct {
+		Region string `json:"region"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Region != "Korea" {
+		t.Fatalf("response region = %q, want trimmed %q", got.Region, "Korea")
+	}
+}
+
+// TestCreateEntry_RegionLengthIsRuneCounted pins the 32-char cap as
+// code points, matching every other length cap in this file
+// (display_name, platform_name, storage_location all use
+// utf8.RuneCountInString, never len()). 32 multi-byte runes is 96
+// bytes - over 32 by byte count - and must still be accepted; the
+// ValidationMatrix's "region too long" row pins the reject side of
+// this same boundary at 33 runes.
+func TestCreateEntry_RegionLengthIsRuneCounted(t *testing.T) {
+	region32 := strings.Repeat("あ", 32)
+	var stored store.Entry
+	st := &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+		stored = e
+		e.ID = uuid.New()
+		r := "n"
+		e.BacklogRank = &r
+		e.Tags = []store.TagRef{}
+		return e, nil
+	}}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+
+	body := jsonBody(map[string]any{
+		"display_name": "Import Cart", "item_type": "game",
+		"packaging": "loose", "region": region32,
+	})
+	resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()), body)
+	if resp.StatusCode != http.StatusCreated {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s (32 runes = %d bytes, must be accepted)", resp.StatusCode, b, len(region32))
+	}
+	if stored.Region != region32 {
+		t.Fatalf("stored region = %q, want %q", stored.Region, region32)
+	}
 }
 
 func TestUnitCreateEntry_ReferenceErrors(t *testing.T) {
@@ -3165,9 +3263,11 @@ func TestUnitListEntries_DefaultSortAndOrder(t *testing.T) {
 	}
 }
 
+// region is deliberately absent from this list: it is open-world on
+// this param now, so no string value is a bad enum for it.
 func TestUnitListEntries_BadEnumParam(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
-	for _, q := range []string{"status=queued", "sort=alphabetical", "group_by=color", "order=up", "region=jp"} {
+	for _, q := range []string{"status=queued", "sort=alphabetical", "group_by=color", "order=up"} {
 		resp := do(t, http.MethodGet, srv.URL+"/entries?"+q, a.token(t, uuid.NewString()), nil)
 		wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 	}
@@ -3925,11 +4025,13 @@ func TestUnitDashboard_FilteredComputesLiveAndSkipsCache(t *testing.T) {
 	}
 }
 
+// region is deliberately absent from this list: it is open-world on
+// this param now, so no string value is a bad enum for it.
 func TestUnitDashboard_BadFilterRejected(t *testing.T) {
 	// Zero-field stubs prove the 400 answers before any store, cache,
 	// or enrichment work.
 	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, &stubCache{})
-	for _, q := range []string{"status=queued", "item_type=chair", "region=jp"} {
+	for _, q := range []string{"status=queued", "item_type=chair"} {
 		resp := do(t, http.MethodGet, srv.URL+"/dashboard?"+q, a.token(t, uuid.NewString()), nil)
 		wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 	}
@@ -6306,18 +6408,23 @@ func TestNormalizePlatforms_MatchesAliasesSkipsUnknownAdminOnly(t *testing.T) {
 	}
 }
 
-// TestNormalizePlatforms_ServiceTokenIsForbidden pins the admin-only
-// guard's missing cell: normalize-platforms never admits a service
-// token (unlike resnapshot and the entry rematch, which do). A
-// service token's subject (svc:<name>) is not a uuid, so this also
-// guards a regression where the role check moved back after caller -
-// that ordering bug answers 500 internal (and logs an ERROR line)
-// instead of a clean 403, which would otherwise slip through unnoticed
-// since the *store* stays nil-stub-panics-on-touch either way.
-func TestNormalizePlatforms_ServiceTokenIsForbidden(t *testing.T) {
-	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
+// TestNormalizePlatforms_ServiceToken pins the relaxed guard: a
+// service token (the nightly job's own credential, same as
+// normalize-regions and the entry rematch) now passes normalize-
+// platforms end to end rather than being turned away. Both
+// collaborators are wired with real (non-nil, no-op) stubs rather than
+// left nil, since a service token reaching a nil stub would panic
+// before this test could tell "reached the handler" apart from
+// "the guard let it through and it actually ran".
+func TestNormalizePlatforms_ServiceToken(t *testing.T) {
+	st := &stubStore{listNameOnlyPlatformEntries: func(context.Context) ([]store.PlatformEntryRef, error) { return nil, nil }}
+	enr := &stubEnrichment{listPlatforms: func(context.Context, string) ([]enrichmentclient.Platform, error) { return nil, nil }}
+	srv, a := newUnitServer(t, st, enr, newStubCache())
 	resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-platforms", a.serviceToken(t, "svc:entry-rematch"), nil)
-	wantProblem(t, resp, http.StatusForbidden, "forbidden")
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("service token: status %d, want 200: %s", resp.StatusCode, body)
+	}
 }
 
 // TestNormalizePlatforms_UpstreamFailures pins that an unreachable
@@ -6354,6 +6461,169 @@ func TestNormalizePlatforms_UpstreamFailures(t *testing.T) {
 		resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-platforms", a.token(t, adminID.String(), "admin"), nil)
 		wantProblem(t, resp, http.StatusInternalServerError, "internal")
 	})
+}
+
+// ---- InternalNormalizeRegions ----
+
+// TestNormalizeRegions_PromotesAndRepicks pins the fold+synonym
+// promotion's two write arms: a custom entry (no product) gets a
+// plain region write, a free-text region with no reviewed synonym is
+// left untouched, and an igdb-backed entry additionally re-picks its
+// localized snapshot for the promoted region from a freshly fetched
+// product - the same GetProduct hop the region-edit arm of UpdateEntry
+// uses.
+func TestNormalizeRegions_PromotesAndRepicks(t *testing.T) {
+	adminID := uuid.New()
+	custom := uuid.New()     // region "Japan", no product -> plain write
+	noSynonym := uuid.New()  // region " KOREA ", igdb-backed -> no fold match, stays
+	igdbBacked := uuid.New() // region "japan", igdb-backed -> fetch + snapshot re-pick
+
+	fetchedProduct := uuid.New() // the only product a matched row may fetch
+	neverFetched := uuid.New()   // the no-synonym row's product; fetching it is a bug
+	gameID := int64(1000)
+	product := localizedGameProduct(fetchedProduct)
+
+	refs := []store.OpenRegionEntryRef{
+		{EntryID: custom, Region: "Japan"},
+		{EntryID: noSynonym, ProductID: &neverFetched, IGDBGameID: &gameID, Region: " KOREA "},
+		{EntryID: igdbBacked, ProductID: &fetchedProduct, IGDBGameID: &gameID, Region: "japan"},
+	}
+
+	var mu sync.Mutex
+	plainWrites := map[uuid.UUID]string{}
+	type snapshotWrite struct {
+		region                string
+		name, translit, cover *string
+	}
+	snapshotWrites := map[uuid.UUID]snapshotWrite{}
+
+	st := &stubStore{
+		listOpenRegionEntries: func(context.Context, []string) ([]store.OpenRegionEntryRef, error) {
+			return refs, nil
+		},
+		promoteEntryRegion: func(_ context.Context, entryID uuid.UUID, region string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			plainWrites[entryID] = region
+			return nil
+		},
+		promoteEntryRegionSnapshot: func(_ context.Context, entryID uuid.UUID, region string, _ *time.Time, name, translit, cover *string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			snapshotWrites[entryID] = snapshotWrite{region, name, translit, cover}
+			return nil
+		},
+	}
+	enr := &stubEnrichment{
+		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
+			if id != fetchedProduct {
+				t.Fatalf("unexpected product fetch for %s (an unmatched row must never fetch)", id)
+			}
+			return product, nil
+		},
+	}
+	srv, a := newUnitServer(t, st, enr, newStubCache())
+	admin := a.token(t, adminID.String(), "admin")
+
+	resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-regions", admin, nil)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	var counts map[string]int
+	if err := json.NewDecoder(resp.Body).Decode(&counts); err != nil {
+		t.Fatal(err)
+	}
+	if counts["scanned"] != 3 || counts["normalized"] != 2 || counts["skipped"] != 1 {
+		t.Fatalf("counts = %+v, want scanned 3 normalized 2 skipped 1", counts)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if got := plainWrites[custom]; got != "ntsc_j" {
+		t.Fatalf("custom entry region = %q, want ntsc_j (plain write, no localized fields)", got)
+	}
+	if _, wrote := plainWrites[noSynonym]; wrote {
+		t.Fatalf("no-synonym region must not be promoted")
+	}
+	if _, wrote := snapshotWrites[noSynonym]; wrote {
+		t.Fatalf("no-synonym region must not be promoted")
+	}
+	got, ok := snapshotWrites[igdbBacked]
+	if !ok {
+		t.Fatalf("igdb-backed entry must re-pick its snapshot, not take the plain-write arm")
+	}
+	if got.region != "ntsc_j" {
+		t.Fatalf("igdb-backed region = %q, want ntsc_j", got.region)
+	}
+	// wantJP is localizedGameProduct's ja-JP bundle (index 0); comparing
+	// against it directly, rather than a copied literal, keeps this
+	// assertion honest if that fixture ever changes.
+	wantJP := (*product.Igdb.Localizations)[0]
+	if got.name == nil || wantJP.Name == nil || *got.name != *wantJP.Name {
+		t.Fatalf("localized_name must come from the fetched product's ja-JP bundle: got %v", got.name)
+	}
+}
+
+// TestNormalizeRegions_FetchFailureSkips pins the per-row skip: an
+// enrichment outage on one igdb-backed row's product fetch counts
+// against skipped and leaves the row untouched rather than failing the
+// whole sweep - this lever has no whole-run 502 (it has no platform-
+// catalog dependency the way normalize-platforms does).
+func TestNormalizeRegions_FetchFailureSkips(t *testing.T) {
+	adminID := uuid.New()
+	entry := uuid.New()
+	productID := uuid.New()
+	gameID := int64(2000)
+
+	refs := []store.OpenRegionEntryRef{
+		{EntryID: entry, ProductID: &productID, IGDBGameID: &gameID, Region: "japan"},
+	}
+	st := &stubStore{
+		listOpenRegionEntries: func(context.Context, []string) ([]store.OpenRegionEntryRef, error) {
+			return refs, nil
+		},
+		// promoteEntryRegion and promoteEntryRegionSnapshot are
+		// deliberately left nil: either being called after a fetch
+		// failure is a bug, and the stub's nil panic catches it loudly.
+	}
+	enr := &stubEnrichment{
+		getProduct: func(context.Context, string, uuid.UUID) (enrichapi.Product, error) {
+			return enrichapi.Product{}, enrichmentclient.ErrUnavailable
+		},
+	}
+	srv, a := newUnitServer(t, st, enr, newStubCache())
+	admin := a.token(t, adminID.String(), "admin")
+
+	resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-regions", admin, nil)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	var counts map[string]int
+	if err := json.NewDecoder(resp.Body).Decode(&counts); err != nil {
+		t.Fatal(err)
+	}
+	if counts["scanned"] != 1 || counts["normalized"] != 0 || counts["skipped"] != 1 {
+		t.Fatalf("counts = %+v, want scanned 1 normalized 0 skipped 1", counts)
+	}
+}
+
+// TestNormalizeRegions_Guards mirrors the entry rematch's admin-or-
+// service guard tests: a service token (the nightly job's own
+// credential) passes, a plain user token is forbidden.
+func TestNormalizeRegions_Guards(t *testing.T) {
+	st := &stubStore{listOpenRegionEntries: func(context.Context, []string) ([]store.OpenRegionEntryRef, error) { return nil, nil }}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+
+	resp := do(t, http.MethodPost, srv.URL+"/internal/normalize-regions", a.serviceToken(t, "svc:normalize-regions"), nil)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("service token: status %d, want 200: %s", resp.StatusCode, body)
+	}
+
+	resp = do(t, http.MethodPost, srv.URL+"/internal/normalize-regions", a.token(t, uuid.NewString()), nil)
+	wantProblem(t, resp, http.StatusForbidden, "forbidden")
 }
 
 // Region edit on an auto-priced game entry whose member is cross-class

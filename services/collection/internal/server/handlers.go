@@ -40,7 +40,11 @@ const (
 var (
 	currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
 
-	regionVals          = map[string]bool{"ntsc_u": true, "ntsc_j": true, "pal": true, "region_free": true}
+	// knownRegions is no longer a validation gate (region is
+	// open-world); it keys the machinery tables and the normalize
+	// lever's promotion target set.
+	knownRegions = map[string]bool{"ntsc_u": true, "ntsc_j": true, "pal": true, "region_free": true}
+
 	packagingVals       = map[string]bool{"sealed": true, "cib": true, "loose": true}
 	conditionVals       = map[string]bool{"mint": true, "near_mint": true, "very_good": true, "good": true, "acceptable": true, "poor": true}
 	statusVals          = map[string]bool{"backlog": true, "playing": true, "beaten": true, "completed": true, "dropped": true, "shelved": true}
@@ -51,6 +55,34 @@ var (
 	orderVals           = map[string]bool{"asc": true, "desc": true}
 	groupVals           = map[string]bool{"platform": true, "status": true, "item_type": true, "location": true, "tag": true}
 )
+
+// regionSynonyms maps each known region to the reviewed free-text
+// forms the normalize lever promotes. Fold-matched (lowercase, trim),
+// exact-or-synonym, never fuzzy: a string not listed here stays as
+// typed. Graduating a region to knownRegions adds its row here (and
+// in the enrichment twin - a stale twin costs an unpromoted string,
+// never a wrong write).
+var regionSynonyms = map[string][]string{
+	"ntsc_u":      {"usa", "us", "ntsc", "ntsc-u", "north america"},
+	"ntsc_j":      {"japan", "jp", "ntsc-j"},
+	"pal":         {"europe", "eu"},
+	"region_free": {"world", "worldwide", "region free"},
+}
+
+// regionFoldMap builds fold -> canonical from the known values'
+// identity folds plus the synonyms rows.
+func regionFoldMap() map[string]string {
+	m := make(map[string]string, len(knownRegions)+8)
+	for k := range knownRegions {
+		m[k] = k
+	}
+	for canon, syns := range regionSynonyms {
+		for _, s := range syns {
+			m[s] = canon
+		}
+	}
+	return m
+}
 
 // entryInput is the shared mutable field set of the create and update
 // bodies, unwrapped to plain values (defaults applied) so one
@@ -289,7 +321,7 @@ func uuidsFrom(ids *[]openapi_types.UUID) []uuid.UUID {
 // createInput unwraps an EntryCreate, applying the contract defaults.
 func createInput(b api.EntryCreate) entryInput {
 	return entryInput{
-		Region:                     string(b.Region),
+		Region:                     strings.TrimSpace(b.Region),
 		Edition:                    b.Edition,
 		Packaging:                  string(b.Packaging),
 		HasBox:                     b.HasBox != nil && *b.HasBox,
@@ -319,7 +351,7 @@ func createInput(b api.EntryCreate) entryInput {
 // optional fields clear).
 func updateInput(b api.EntryUpdate) entryInput {
 	return entryInput{
-		Region:                     string(b.Region),
+		Region:                     strings.TrimSpace(b.Region),
 		Edition:                    b.Edition,
 		Packaging:                  string(b.Packaging),
 		HasBox:                     b.HasBox != nil && *b.HasBox,
@@ -355,8 +387,11 @@ func validCoverURL(s string) bool {
 // validateEntryInput enforces the body rules the generated layer does
 // not; a non-empty return is the 400 detail.
 func validateEntryInput(in entryInput) string {
-	if !regionVals[in.Region] {
-		return "region must be one of ntsc_u, ntsc_j, pal, region_free"
+	if strings.TrimSpace(in.Region) == "" {
+		return "region must not be empty"
+	}
+	if utf8.RuneCountInString(in.Region) > 32 {
+		return "region must be at most 32 characters"
 	}
 	if !packagingVals[in.Packaging] {
 		return "packaging must be one of sealed, cib, loose"
@@ -507,7 +542,7 @@ func toAPIEntry(e store.Entry, valueCents *int64) api.Entry {
 		LocalizedNameTranslit:      e.LocalizedNameTranslit,
 		LocalizedCoverUrl:          e.LocalizedCoverURL,
 		IgdbGameId:                 e.IGDBGameID,
-		Region:                     api.EntryRegion(e.Region),
+		Region:                     e.Region,
 		Edition:                    e.Edition,
 		Packaging:                  api.EntryPackaging(e.Packaging),
 		HasBox:                     e.HasBox,
@@ -1327,9 +1362,6 @@ func listParams(params api.ListEntriesParams) (store.Filters, string, int, int, 
 	}
 	if params.Region != nil {
 		for _, v := range *params.Region {
-			if !regionVals[string(v)] {
-				return f, "", 0, 0, "region contains an unknown value"
-			}
 			f.Regions = append(f.Regions, string(v))
 		}
 	}
@@ -1405,7 +1437,7 @@ func dashboardFilters(p api.GetDashboardParams) (store.Filters, string) {
 		ItemType:      castSlice[api.ListEntriesParamsItemType](p.ItemType),
 		Status:        castSlice[api.ListEntriesParamsStatus](p.Status),
 		Packaging:     castSlice[api.ListEntriesParamsPackaging](p.Packaging),
-		Region:        castSlice[api.ListEntriesParamsRegion](p.Region),
+		Region:        p.Region,
 		ItemCondition: castSlice[api.ListEntriesParamsItemCondition](p.ItemCondition),
 		PlatformId:    p.PlatformId,
 		TagId:         p.TagId,
@@ -2197,7 +2229,7 @@ func (h *Handlers) ListSubmissions(w http.ResponseWriter, r *http.Request, param
 			Id: row.ID, EntryId: row.EntryID, UserId: row.UserID,
 			Status:      api.AdminSubmissionStatus(row.Status),
 			DisplayName: row.DisplayName, ItemType: api.AdminSubmissionItemType(row.ItemType),
-			Region:    api.AdminSubmissionRegion(row.Region),
+			Region:    row.Region,
 			CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		}
 		as.PlatformName = row.PlatformName
@@ -2607,16 +2639,17 @@ func (h *Handlers) runRematch(ctx context.Context, bearer string) {
 // is matched (case-insensitive, trimmed, exact-or-alias - never fuzzy,
 // so nothing is silently misfiled) against the enrichment platform
 // catalog and stamped with the canonical igdb id + name. Re-runnable:
-// stamped rows leave the selection set. Admin-only - stricter than
-// resnapshot and the entry rematch's admin-or-service guard, since a
-// mass cross-user write earns the narrower human-operator-only check;
-// no CronJob drives this lever. The caller's bearer rides the
-// enrichment hop.
+// stamped rows leave the selection set. Guard: admin role or service
+// token - relaxed from the earlier admin-only gate now that the
+// nightly job runs this alongside normalize-regions and the entry
+// rematch; the mass write stays reviewable through its counts and
+// logs. The caller's bearer rides the enrichment hop.
 //
-// Contract-described like the other internal levers but not relayed
-// by the bff, so the gateway never reaches it - run it by hand
-// against the collection service. With the dev stack up and the admin
-// fixture role already granted (task grant-fixture-admin):
+// Contract-described like the other internal levers; the bff relays
+// POST /api/admin/normalize-platforms to this endpoint via the Admin page
+// button, and the gateway publishes the relay path. For offline testing
+// against the collection service directly, with the dev stack up and the
+// admin fixture role already granted (task grant-fixture-admin):
 //
 //	kubectl -n vgkeep port-forward svc/collection 8085:8080 &
 //	TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
@@ -2627,19 +2660,14 @@ func (h *Handlers) runRematch(ctx context.Context, bearer string) {
 //
 // Answers {"scanned":N,"normalized":N,"skipped":N}.
 func (h *Handlers) InternalNormalizePlatforms(w http.ResponseWriter, r *http.Request) {
-	// The role check runs BEFORE caller on purpose: a service token
-	// never carries "admin", so this order turns it away with a clean
-	// 403 here rather than reaching caller's uuid.Parse (which would
-	// 500 on a svc:<name> subject). See caller's doc comment.
-	claims, _ := jwtauth.FromContext(r.Context())
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	if !h.requireAdminOrService(w, r) {
 		return
 	}
-	_, bearer, ok := h.caller(w, r)
-	if !ok {
-		return
-	}
+	// Reads bearerToken directly rather than calling caller(), same as
+	// resnapshot and the entry rematch: a service token's subject
+	// (svc:<name>) is not a uuid and would trip caller's internalError
+	// branch. See caller's doc comment.
+	bearer := bearerToken(r)
 	platforms, err := h.enrichment.ListPlatforms(r.Context(), bearer)
 	if err != nil {
 		problem(w, r, http.StatusBadGateway, "enrichment_unavailable", "the platform catalog cannot be reached")
@@ -2669,15 +2697,111 @@ func (h *Handlers) InternalNormalizePlatforms(w http.ResponseWriter, r *http.Req
 		c, matched := byKey[norm(ref.PlatformName)]
 		if !matched {
 			skipped++
+			h.countNormalizePlatformsRow(r.Context(), "skipped")
 			continue
 		}
 		if err := h.store.SetEntryPlatformIdentity(r.Context(), ref.EntryID, c.igdbID, c.name); err != nil {
 			h.logger.WarnContext(r.Context(), "normalize: entry update failed", "entry", ref.EntryID, "err", err)
+			h.countNormalizePlatformsRow(r.Context(), "failed")
 			continue
 		}
 		normalized++
+		h.countNormalizePlatformsRow(r.Context(), "normalized")
 	}
 	h.logger.InfoContext(r.Context(), "normalize-platforms complete",
+		"scanned", len(refs), "normalized", normalized, "skipped", skipped)
+	writeJSON(w, http.StatusOK, map[string]int{
+		"scanned": len(refs), "normalized": normalized, "skipped": skipped,
+	})
+}
+
+// InternalNormalizeRegions promotes free-text entry regions into the
+// known set: every entry whose region sits outside knownRegions is
+// folded (lowercase, trimmed) against the known values and
+// regionSynonyms - exact-or-synonym, never fuzzy, so an unreviewed
+// string is left as typed rather than misfiled. A custom entry (no
+// product) gets a plain region write; a game-backed entry additionally
+// re-picks its release-date and localized snapshot for the promoted
+// region from a fresh product fetch, the same GetProduct hop the
+// region-edit arm of UpdateEntry uses - an enrichment outage skips
+// that row for the next run rather than failing the whole sweep (this
+// lever has no platform-catalog dependency, so no whole-run 502).
+// Re-runnable: promoted rows leave the selection set - though
+// "normalized" here counts an error-free write, not a confirmed row
+// change: PromoteEntryRegion/PromoteEntryRegionSnapshot skip the
+// RowsAffected check (store-tier convention, same as RepointEntry),
+// so a row that vanished mid-sweep still increments it. Guard: admin
+// role or service token (the nightly job runs this ahead of the entry
+// rematch, so a promoted region's pricing class corrects the same
+// night); the caller's bearer rides the one enrichment hop.
+//
+// Contract-described like the other internal levers; the bff relays
+// POST /api/admin/normalize-regions to this endpoint via the Admin page
+// button, and the gateway publishes the relay path. For offline testing
+// against the collection service directly, with the dev stack up and the
+// admin fixture role already granted (task grant-fixture-admin):
+//
+//	kubectl -n vgkeep port-forward svc/collection 8085:8080 &
+//	TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
+//	  -H 'Content-Type: application/json' -d '{"user":"admin"}' \
+//	  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+//	curl -s -X POST http://localhost:8085/internal/normalize-regions \
+//	  -H "Authorization: Bearer $TOKEN"
+//
+// Answers {"scanned":N,"normalized":N,"skipped":N}.
+func (h *Handlers) InternalNormalizeRegions(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdminOrService(w, r) {
+		return
+	}
+	// Reads bearerToken directly rather than calling caller(): see the
+	// same note on InternalNormalizePlatforms above.
+	bearer := bearerToken(r)
+	known := make([]string, 0, len(knownRegions))
+	for k := range knownRegions {
+		known = append(known, k)
+	}
+	folds := regionFoldMap()
+	refs, err := h.store.ListOpenRegionEntries(r.Context(), known)
+	if err != nil {
+		h.internalError(w, r, "list failed", err)
+		return
+	}
+	norm := func(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+	var normalized, skipped int
+	for _, ref := range refs {
+		canon, matched := folds[norm(ref.Region)]
+		if !matched {
+			skipped++
+			h.countNormalizeRegionsRow(r.Context(), "skipped")
+			continue
+		}
+		if ref.ProductID != nil && ref.IGDBGameID != nil {
+			product, err := h.enrichment.GetProduct(r.Context(), bearer, *ref.ProductID)
+			if err != nil {
+				h.logger.WarnContext(r.Context(), "normalize regions: product fetch failed",
+					"entry", ref.EntryID, "err", err)
+				skipped++
+				h.countNormalizeRegionsRow(r.Context(), "failed")
+				continue
+			}
+			d := pickReleaseDate(product.Igdb, canon)
+			name, translit, cover := pickLocalization(product.Igdb, canon)
+			if err := h.store.PromoteEntryRegionSnapshot(r.Context(), ref.EntryID, canon, d, name, translit, cover); err != nil {
+				h.logger.WarnContext(r.Context(), "normalize regions: entry update failed", "entry", ref.EntryID, "err", err)
+				h.countNormalizeRegionsRow(r.Context(), "failed")
+				continue
+			}
+		} else if err := h.store.PromoteEntryRegion(r.Context(), ref.EntryID, canon); err != nil {
+			h.logger.WarnContext(r.Context(), "normalize regions: entry update failed", "entry", ref.EntryID, "err", err)
+			h.countNormalizeRegionsRow(r.Context(), "failed")
+			continue
+		}
+		h.logger.InfoContext(r.Context(), "normalize regions: promoted",
+			"entry", ref.EntryID, "from", ref.Region, "to", canon)
+		normalized++
+		h.countNormalizeRegionsRow(r.Context(), "normalized")
+	}
+	h.logger.InfoContext(r.Context(), "normalize-regions complete",
 		"scanned", len(refs), "normalized", normalized, "skipped", skipped)
 	writeJSON(w, http.StatusOK, map[string]int{
 		"scanned": len(refs), "normalized": normalized, "skipped": skipped,
