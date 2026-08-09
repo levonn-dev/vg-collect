@@ -47,6 +47,44 @@ var regionQueryChains = map[string][]string{
 	"ntsc_j": {"ja-JP"},
 }
 
+// knownRegions is enrichment's twin of collection's knownRegions
+// (services/collection/internal/server/handlers.go): it keys the
+// normalize-community-regions promotion target set. Not a validation
+// gate here either - community.region stays open-world, same as
+// collection's entry region.
+var knownRegions = map[string]bool{"ntsc_u": true, "ntsc_j": true, "pal": true, "region_free": true}
+
+// regionSynonyms is enrichment's twin of collection's regionSynonyms,
+// row-identical by construction: the same localization-chains twin
+// posture regionQueryChains documents above - a stale twin costs an
+// unpromoted community.region string, never a wrong write, so this
+// table is reviewed alongside its sibling rather than derived from
+// it. Fold-matched (lowercase, trim), exact-or-synonym, never fuzzy:
+// a string not listed here stays as typed. Graduating a region to
+// knownRegions adds its row here AND in the collection sibling.
+var regionSynonyms = map[string][]string{
+	"ntsc_u":      {"usa", "us", "ntsc", "ntsc-u", "north america"},
+	"ntsc_j":      {"japan", "jp", "ntsc-j"},
+	"pal":         {"europe", "eu"},
+	"region_free": {"world", "worldwide", "region free"},
+}
+
+// regionFoldMap builds fold -> canonical from the known values'
+// identity folds plus the synonyms rows (enrichment's twin of
+// collection's regionFoldMap).
+func regionFoldMap() map[string]string {
+	m := make(map[string]string, len(knownRegions)+8)
+	for k := range knownRegions {
+		m[k] = k
+	}
+	for canon, syns := range regionSynonyms {
+		for _, s := range syns {
+			m[s] = canon
+		}
+	}
+	return m
+}
+
 // matchNamesFor returns the auto-match target forms for a game in an
 // entry region: the region's chained transliteration first when a
 // bundle carries one (it becomes the primary provider query), then
@@ -179,6 +217,10 @@ func communityResult(p store.Product) api.SearchResult {
 		if p.Community.CoverURL != "" {
 			cu := p.Community.CoverURL
 			res.CoverUrl = &cu
+		}
+		if p.Community.Region != "" {
+			rg := p.Community.Region
+			res.Region = &rg
 		}
 		if !p.Community.FirstReleaseDate.IsZero() {
 			fd := openapi_types.Date{Time: p.Community.FirstReleaseDate}
@@ -786,6 +828,10 @@ func toAPIProduct(p store.Product) api.Product {
 		if p.Community.PlatformName != "" {
 			pn := p.Community.PlatformName
 			cm.PlatformName = &pn
+		}
+		if p.Community.Region != "" {
+			rg := p.Community.Region
+			cm.Region = &rg
 		}
 		if !p.Community.FirstReleaseDate.IsZero() {
 			fd := openapi_types.Date{Time: p.Community.FirstReleaseDate}
@@ -1682,17 +1728,27 @@ func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request
 		return
 	}
 	p := store.Product{Type: string(req.Type), Name: name, Origin: "community"}
-	if req.Region != nil {
-		p.Region = *req.Region
-	}
 	if req.Edition != nil {
 		p.Edition = *req.Edition
 	}
 	hasCover := req.CoverUrl != nil && *req.CoverUrl != ""
-	if req.PlatformName != nil || req.FirstReleaseDate != nil || hasCover {
+	// Trimmed, not the raw value: a whitespace-only region must not by
+	// itself earn an otherwise-empty community block (cm.Region below
+	// trims too, so an untrimmed check here would mint a block whose
+	// only field renders as empty anyway).
+	hasRegion := req.Region != nil && strings.TrimSpace(*req.Region) != ""
+	// Trimmed, not the raw value: a whitespace-only platform_name must not
+	// by itself earn an otherwise-empty community block (cm.PlatformName
+	// below trims too, so an untrimmed check here would mint a block whose
+	// only field renders as empty anyway).
+	hasPlatformName := req.PlatformName != nil && strings.TrimSpace(*req.PlatformName) != ""
+	if hasPlatformName || req.FirstReleaseDate != nil || hasCover || hasRegion {
 		cm := &store.CommunityMeta{}
-		if req.PlatformName != nil {
-			cm.PlatformName = *req.PlatformName
+		if hasPlatformName {
+			cm.PlatformName = strings.TrimSpace(*req.PlatformName)
+		}
+		if hasRegion {
+			cm.Region = strings.TrimSpace(*req.Region)
 		}
 		if req.FirstReleaseDate != nil {
 			cm.FirstReleaseDate = req.FirstReleaseDate.Time
@@ -2186,6 +2242,77 @@ func (h *Handlers) runCandidateSweep(ctx context.Context) {
 		}
 	}
 	h.logger.InfoContext(ctx, "candidate sweep complete", "swept", swept, "flagged", flagged, "failed", failed)
+}
+
+// InternalNormalizeCommunityRegions promotes free-text community
+// product regions into the known set: every community product whose
+// curated community.region sits outside knownRegions is folded
+// (lowercase, trimmed) against the known values and regionSynonyms -
+// exact-or-synonym, never fuzzy, so an unreviewed string is left as
+// typed rather than misfiled. This is enrichment's twin of
+// collection's normalize-regions lever, scoped to the community
+// products this service owns, but with no fetch arm: a community
+// product carries no provider identity to re-fetch and no release-
+// date/localization snapshot to re-pick, so promotion is a plain
+// community.region field rewrite (no 502 - nothing here calls out to
+// another service). Re-runnable: promoted rows leave the selection
+// set - though "normalized" here counts an error-free write, not a
+// confirmed row change (SetCommunityRegion skips the matched-count
+// check, the same store-tier convention as collection's
+// PromoteEntryRegion); a write failure logs and counts only in the
+// failed metric outcome, so scanned can exceed normalized+skipped.
+// Guard: admin role or service token (the nightly job runs this
+// alongside collection's platform/region levers).
+//
+// Contract-described; the bff relays POST /api/admin/normalize-community-regions
+// to this endpoint via the Admin page button, and the gateway publishes the relay
+// path. For offline testing against the enrichment service directly, with
+// the dev stack up and the admin fixture role already granted (task
+// grant-fixture-admin):
+//
+//	kubectl -n vgkeep port-forward svc/enrichment 8086:8080 &
+//	TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
+//	  -H 'Content-Type: application/json' -d '{"user":"admin"}' \
+//	  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+//	curl -s -X POST http://localhost:8086/internal/normalize-community-regions \
+//	  -H "Authorization: Bearer $TOKEN"
+//
+// Answers {"scanned":N,"normalized":N,"skipped":N}.
+func (h *Handlers) InternalNormalizeCommunityRegions(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdminOrService(w, r) {
+		return
+	}
+	ctx := r.Context()
+	refs, err := h.store.ListCommunityRegionDocs(ctx)
+	if err != nil {
+		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		return
+	}
+	folds := regionFoldMap()
+	norm := func(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+	var normalized, skipped int
+	for _, ref := range refs {
+		canon, matched := folds[norm(ref.Region)]
+		if !matched {
+			skipped++
+			h.countNormalizeCommunityRegions(ctx, "skipped")
+			continue
+		}
+		if err := h.store.SetCommunityRegion(ctx, ref.ID, canon); err != nil {
+			h.logger.WarnContext(ctx, "normalize community regions: write failed", "product", ref.ID, "err", err)
+			h.countNormalizeCommunityRegions(ctx, "failed")
+			continue
+		}
+		h.logger.InfoContext(ctx, "normalize community regions: promoted",
+			"product", ref.ID, "from", ref.Region, "to", canon)
+		normalized++
+		h.countNormalizeCommunityRegions(ctx, "normalized")
+	}
+	h.logger.InfoContext(ctx, "normalize-community-regions complete",
+		"scanned", len(refs), "normalized", normalized, "skipped", skipped)
+	writeJSON(w, http.StatusOK, map[string]int{
+		"scanned": len(refs), "normalized": normalized, "skipped": skipped,
+	})
 }
 
 // DeleteProduct is the residue mop: it permanently removes an

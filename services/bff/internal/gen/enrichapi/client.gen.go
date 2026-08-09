@@ -245,6 +245,9 @@ type CommunityMeta struct {
 	CoverUrl         *string             `json:"cover_url,omitempty"`
 	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
 	PlatformName     *string             `json:"platform_name,omitempty"`
+
+	// Region Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free).
+	Region *string `json:"region,omitempty"`
 }
 
 // CommunityProductCreate defines model for CommunityProductCreate.
@@ -253,12 +256,14 @@ type CommunityProductCreate struct {
 	CoverUrl *string `json:"cover_url,omitempty"`
 
 	// Edition The entry idiom's single "Edition or variant" note.
-	Edition          *string                    `json:"edition,omitempty"`
-	FirstReleaseDate *openapi_types.Date        `json:"first_release_date,omitempty"`
-	Name             string                     `json:"name"`
-	PlatformName     *string                    `json:"platform_name,omitempty"`
-	Region           *string                    `json:"region,omitempty"`
-	Type             CommunityProductCreateType `json:"type"`
+	Edition          *string             `json:"edition,omitempty"`
+	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
+	Name             string              `json:"name"`
+	PlatformName     *string             `json:"platform_name,omitempty"`
+
+	// Region Curated entry-vocabulary region fact; stored under the community facts block (community.region), not the product's top-level region field.
+	Region *string                    `json:"region,omitempty"`
+	Type   CommunityProductCreateType `json:"type"`
 }
 
 // CommunityProductCreateType defines model for CommunityProductCreate.Type.
@@ -343,6 +348,13 @@ type Localization struct {
 type MappingRequest struct {
 	// PcProductId Null clears the mapping (the product becomes unmatched and held).
 	PcProductId *int64 `json:"pc_product_id"`
+}
+
+// NormalizeCommunityRegionsResult defines model for NormalizeCommunityRegionsResult.
+type NormalizeCommunityRegionsResult struct {
+	Normalized int `json:"normalized"`
+	Scanned    int `json:"scanned"`
+	Skipped    int `json:"skipped"`
 }
 
 // PlatformCatalog defines model for PlatformCatalog.
@@ -436,10 +448,12 @@ type Product struct {
 
 	// Pricecharting The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
 	Pricecharting *PricechartingMeta `json:"pricecharting,omitempty"`
-	Region        *string            `json:"region,omitempty"`
-	Type          ProductType        `json:"type"`
-	UpdatedAt     time.Time          `json:"updated_at"`
-	Variant       *string            `json:"variant,omitempty"`
+
+	// Region Provider hardware identity fact; community products carry their region under community.region instead.
+	Region    *string     `json:"region,omitempty"`
+	Type      ProductType `json:"type"`
+	UpdatedAt time.Time   `json:"updated_at"`
+	Variant   *string     `json:"variant,omitempty"`
 }
 
 // ProductOrigin Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity.
@@ -563,19 +577,22 @@ type SearchResult struct {
 	Name          string  `json:"name"`
 	NewCents      *int64  `json:"new_cents,omitempty"`
 
-	// Origin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick and community.cover_url as cover_url. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
+	// Origin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick, community.cover_url as cover_url, and community.region as region. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
 	Origin       *SearchResultOrigin `json:"origin,omitempty"`
 	PcProductId  *int64              `json:"pc_product_id,omitempty"`
 	PlatformName *string             `json:"platform_name,omitempty"`
 	Platforms    *[]PlatformRef      `json:"platforms,omitempty"`
 	ProductId    *openapi_types.UUID `json:"product_id,omitempty"`
-	Type         SearchResultType    `json:"type"`
+
+	// Region Community rows only - the community facts region, entry vocabulary.
+	Region *string          `json:"region,omitempty"`
+	Type   SearchResultType `json:"type"`
 }
 
 // SearchResultItemType defines model for SearchResult.ItemType.
 type SearchResultItemType string
 
-// SearchResultOrigin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick and community.cover_url as cover_url. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
+// SearchResultOrigin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick, community.cover_url as cover_url, and community.region as region. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
 type SearchResultOrigin string
 
 // SearchResultType defines model for SearchResult.Type.
@@ -847,6 +864,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /fx/latest (the `GetFxLatest` operationId).
 	GetFxLatest(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// InternalNormalizeCommunityRegions Promote free-text community product regions into the known set
+	//
+	// Maintenance operation; the gateway never routes it. Folds every community product's curated region outside the known set (lowercase, trim) against the known values and the reviewed synonyms table - exact or synonym, never fuzzy. A community product carries no provider identity, so promotion is a plain field rewrite with no fetch arm. Guard: admin role or service token (the nightly job runs it alongside collection's platform/region levers). Idempotent and re-runnable; promoted rows leave the selection set.
+	//
+	// Corresponds with POST /internal/normalize-community-regions (the `InternalNormalizeCommunityRegions` operationId).
+	InternalNormalizeCommunityRegions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// InternalRefresh Catalog refresh trigger (CronJob)
 	//
@@ -1193,6 +1217,23 @@ func (c *Client) TriggerRefresh(ctx context.Context, reqEditors ...RequestEditor
 // Corresponds with GET /fx/latest (the `GetFxLatest` operationId).
 func (c *Client) GetFxLatest(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetFxLatestRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// InternalNormalizeCommunityRegions Promote free-text community product regions into the known set
+//
+// Maintenance operation; the gateway never routes it. Folds every community product's curated region outside the known set (lowercase, trim) against the known values and the reviewed synonyms table - exact or synonym, never fuzzy. A community product carries no provider identity, so promotion is a plain field rewrite with no fetch arm. Guard: admin role or service token (the nightly job runs it alongside collection's platform/region levers). Idempotent and re-runnable; promoted rows leave the selection set.
+//
+// Corresponds with POST /internal/normalize-community-regions (the `InternalNormalizeCommunityRegions` operationId).
+func (c *Client) InternalNormalizeCommunityRegions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInternalNormalizeCommunityRegionsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -1902,6 +1943,33 @@ func NewGetFxLatestRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewInternalNormalizeCommunityRegionsRequest constructs an http.Request for the InternalNormalizeCommunityRegions method
+func NewInternalNormalizeCommunityRegionsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/internal/normalize-community-regions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewInternalRefreshRequest constructs an http.Request for the InternalRefresh method
 func NewInternalRefreshRequest(server string) (*http.Request, error) {
 	var err error
@@ -2377,6 +2445,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /fx/latest (the `GetFxLatest` operationId).
 	GetFxLatestWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetFxLatestResponse, error)
+
+	// InternalNormalizeCommunityRegionsWithResponse Promote free-text community product regions into the known set
+	//
+	// Maintenance operation; the gateway never routes it. Folds every community product's curated region outside the known set (lowercase, trim) against the known values and the reviewed synonyms table - exact or synonym, never fuzzy. A community product carries no provider identity, so promotion is a plain field rewrite with no fetch arm. Guard: admin role or service token (the nightly job runs it alongside collection's platform/region levers). Idempotent and re-runnable; promoted rows leave the selection set.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /internal/normalize-community-regions (the `InternalNormalizeCommunityRegions` operationId).
+	InternalNormalizeCommunityRegionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InternalNormalizeCommunityRegionsResponse, error)
 
 	// InternalRefreshWithResponse Catalog refresh trigger (CronJob)
 	//
@@ -3121,6 +3198,61 @@ func (r GetFxLatestResponse) ContentType() string {
 	return ""
 }
 
+type InternalNormalizeCommunityRegionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NormalizeCommunityRegionsResult
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r InternalNormalizeCommunityRegionsResponse) GetJSON200() *NormalizeCommunityRegionsResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r InternalNormalizeCommunityRegionsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r InternalNormalizeCommunityRegionsResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r InternalNormalizeCommunityRegionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r InternalNormalizeCommunityRegionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r InternalNormalizeCommunityRegionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r InternalNormalizeCommunityRegionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type InternalRefreshResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3792,6 +3924,21 @@ func (c *ClientWithResponses) GetFxLatestWithResponse(ctx context.Context, reqEd
 	return ParseGetFxLatestResponse(rsp)
 }
 
+// InternalNormalizeCommunityRegionsWithResponse Promote free-text community product regions into the known set
+//
+// Maintenance operation; the gateway never routes it. Folds every community product's curated region outside the known set (lowercase, trim) against the known values and the reviewed synonyms table - exact or synonym, never fuzzy. A community product carries no provider identity, so promotion is a plain field rewrite with no fetch arm. Guard: admin role or service token (the nightly job runs it alongside collection's platform/region levers). Idempotent and re-runnable; promoted rows leave the selection set.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /internal/normalize-community-regions (the `InternalNormalizeCommunityRegions` operationId).
+func (c *ClientWithResponses) InternalNormalizeCommunityRegionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InternalNormalizeCommunityRegionsResponse, error) {
+	rsp, err := c.InternalNormalizeCommunityRegions(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseInternalNormalizeCommunityRegionsResponse(rsp)
+}
+
 // InternalRefreshWithResponse Catalog refresh trigger (CronJob)
 //
 // Machine trigger for the nightly catalog refresh; the gateway never routes it. Guard: a service token (token_use=service) - operators use /admin/refresh. Answers 202 and detaches; one run at a time (409 refresh_in_progress).
@@ -4456,6 +4603,46 @@ func ParseGetFxLatestResponse(rsp *http.Response) (*GetFxLatestResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseInternalNormalizeCommunityRegionsResponse parses an HTTP response from a InternalNormalizeCommunityRegionsWithResponse call
+func ParseInternalNormalizeCommunityRegionsResponse(rsp *http.Response) (*InternalNormalizeCommunityRegionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &InternalNormalizeCommunityRegionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NormalizeCommunityRegionsResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
 
 	}
 

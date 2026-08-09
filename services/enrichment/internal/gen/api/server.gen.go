@@ -242,6 +242,9 @@ type CommunityMeta struct {
 	CoverUrl         *string             `json:"cover_url,omitempty"`
 	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
 	PlatformName     *string             `json:"platform_name,omitempty"`
+
+	// Region Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free).
+	Region *string `json:"region,omitempty"`
 }
 
 // CommunityProductCreate defines model for CommunityProductCreate.
@@ -250,12 +253,14 @@ type CommunityProductCreate struct {
 	CoverUrl *string `json:"cover_url,omitempty"`
 
 	// Edition The entry idiom's single "Edition or variant" note.
-	Edition          *string                    `json:"edition,omitempty"`
-	FirstReleaseDate *openapi_types.Date        `json:"first_release_date,omitempty"`
-	Name             string                     `json:"name"`
-	PlatformName     *string                    `json:"platform_name,omitempty"`
-	Region           *string                    `json:"region,omitempty"`
-	Type             CommunityProductCreateType `json:"type"`
+	Edition          *string             `json:"edition,omitempty"`
+	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
+	Name             string              `json:"name"`
+	PlatformName     *string             `json:"platform_name,omitempty"`
+
+	// Region Curated entry-vocabulary region fact; stored under the community facts block (community.region), not the product's top-level region field.
+	Region *string                    `json:"region,omitempty"`
+	Type   CommunityProductCreateType `json:"type"`
 }
 
 // CommunityProductCreateType defines model for CommunityProductCreate.Type.
@@ -340,6 +345,13 @@ type Localization struct {
 type MappingRequest struct {
 	// PcProductId Null clears the mapping (the product becomes unmatched and held).
 	PcProductId *int64 `json:"pc_product_id"`
+}
+
+// NormalizeCommunityRegionsResult defines model for NormalizeCommunityRegionsResult.
+type NormalizeCommunityRegionsResult struct {
+	Normalized int `json:"normalized"`
+	Scanned    int `json:"scanned"`
+	Skipped    int `json:"skipped"`
 }
 
 // PlatformCatalog defines model for PlatformCatalog.
@@ -433,10 +445,12 @@ type Product struct {
 
 	// Pricecharting The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
 	Pricecharting *PricechartingMeta `json:"pricecharting,omitempty"`
-	Region        *string            `json:"region,omitempty"`
-	Type          ProductType        `json:"type"`
-	UpdatedAt     time.Time          `json:"updated_at"`
-	Variant       *string            `json:"variant,omitempty"`
+
+	// Region Provider hardware identity fact; community products carry their region under community.region instead.
+	Region    *string     `json:"region,omitempty"`
+	Type      ProductType `json:"type"`
+	UpdatedAt time.Time   `json:"updated_at"`
+	Variant   *string     `json:"variant,omitempty"`
 }
 
 // ProductOrigin Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity.
@@ -560,19 +574,22 @@ type SearchResult struct {
 	Name          string  `json:"name"`
 	NewCents      *int64  `json:"new_cents,omitempty"`
 
-	// Origin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick and community.cover_url as cover_url. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
+	// Origin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick, community.cover_url as cover_url, and community.region as region. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
 	Origin       *SearchResultOrigin `json:"origin,omitempty"`
 	PcProductId  *int64              `json:"pc_product_id,omitempty"`
 	PlatformName *string             `json:"platform_name,omitempty"`
 	Platforms    *[]PlatformRef      `json:"platforms,omitempty"`
 	ProductId    *openapi_types.UUID `json:"product_id,omitempty"`
-	Type         SearchResultType    `json:"type"`
+
+	// Region Community rows only - the community facts region, entry vocabulary.
+	Region *string          `json:"region,omitempty"`
+	Type   SearchResultType `json:"type"`
 }
 
 // SearchResultItemType defines model for SearchResult.ItemType.
 type SearchResultItemType string
 
-// SearchResultOrigin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick and community.cover_url as cover_url. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
+// SearchResultOrigin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick, community.cover_url as cover_url, and community.region as region. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
 type SearchResultOrigin string
 
 // SearchResultType defines model for SearchResult.Type.
@@ -689,6 +706,9 @@ type ServerInterface interface {
 	// GetFxLatest Latest USD-based exchange rates (cached daily snapshot)
 	// (GET /fx/latest)
 	GetFxLatest(w http.ResponseWriter, r *http.Request)
+	// InternalNormalizeCommunityRegions Promote free-text community product regions into the known set
+	// (POST /internal/normalize-community-regions)
+	InternalNormalizeCommunityRegions(w http.ResponseWriter, r *http.Request)
 	// InternalRefresh Catalog refresh trigger (CronJob)
 	// (POST /internal/refresh)
 	InternalRefresh(w http.ResponseWriter, r *http.Request)
@@ -1021,6 +1041,20 @@ func (siw *ServerInterfaceWrapper) GetFxLatest(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// InternalNormalizeCommunityRegions operation middleware
+func (siw *ServerInterfaceWrapper) InternalNormalizeCommunityRegions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InternalNormalizeCommunityRegions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // InternalRefresh operation middleware
 func (siw *ServerInterfaceWrapper) InternalRefresh(w http.ResponseWriter, r *http.Request) {
 
@@ -1307,6 +1341,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/platforms", wrapper.ListPlatforms)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/refresh", wrapper.TriggerRefresh)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/internal/refresh", wrapper.InternalRefresh)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/internal/normalize-community-regions", wrapper.InternalNormalizeCommunityRegions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/products", wrapper.CreateCommunityProduct)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/admin/products/{productId}/pricecharting", wrapper.SetProductMapping)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/products/{productId}/promote", wrapper.PromoteProduct)

@@ -43,6 +43,8 @@ type Store interface {
 	ProductsByIDs(ctx context.Context, ids []string) ([]store.Product, error)
 	SearchByName(ctx context.Context, q string, limit int) ([]store.Product, error)
 	SearchCommunityProducts(ctx context.Context, types []string, q string, limit int) ([]store.Product, error)
+	ListCommunityRegionDocs(ctx context.Context) ([]store.CommunityRegionRef, error)
+	SetCommunityRegion(ctx context.Context, id, region string) error
 	ListCommunityProducts(ctx context.Context) ([]store.Product, error)
 	ListCommunityProductsPage(ctx context.Context, limit, offset int) ([]store.Product, int64, error)
 	ReplacePromoteCandidates(ctx context.Context, id string, cands []store.PromoteCandidate) error
@@ -134,13 +136,14 @@ type Handlers struct {
 	// Domain instruments, registered best-effort in New; the emission
 	// helpers below guard the nils, so a telemetry hiccup never blocks
 	// serving (the bff cache counter set the pattern).
-	cacheFailOpen       metric.Int64Counter
-	searchRequests      metric.Int64Counter
-	localizationLeg     metric.Int64Counter
-	matchOutcomes       metric.Int64Counter
-	fallbackSearch      metric.Int64Counter
-	refreshItems        metric.Int64Counter
-	refreshStepDuration metric.Float64Histogram
+	cacheFailOpen             metric.Int64Counter
+	searchRequests            metric.Int64Counter
+	localizationLeg           metric.Int64Counter
+	matchOutcomes             metric.Int64Counter
+	fallbackSearch            metric.Int64Counter
+	refreshItems              metric.Int64Counter
+	refreshStepDuration       metric.Float64Histogram
+	normalizeCommunityRegions metric.Int64Counter
 
 	// refreshing guards the catalog refresh: one at a time, concurrent
 	// triggers answer 409.
@@ -209,6 +212,11 @@ func New(st Store, games GameProvider, prices PriceProvider, fxRates FXProvider,
 		metric.WithExplicitBucketBoundaries(1, 5, 15, 60, 300, 900, 1800)); err != nil {
 		opts.Logger.Error("refresh step duration histogram unavailable", "err", err)
 	}
+	if h.normalizeCommunityRegions, err = meter.Int64Counter("vg.enrichment.normalize.regions",
+		metric.WithDescription("Normalize-community-regions sweep rows by outcome"),
+		metric.WithUnit("{row}")); err != nil {
+		opts.Logger.Error("normalize community regions counter unavailable", "err", err)
+	}
 	return h
 }
 
@@ -244,6 +252,22 @@ func (h *Handlers) requireService(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+// requireAdminOrService admits an admin user or a service token - the
+// guard on POST /internal/normalize-community-regions, this service's
+// twin of collection's admin-or-service levers (normalize-platforms,
+// normalize-regions): the nightly job runs it as a service token
+// alongside those, and an operator can also trigger it with the admin
+// role. Same claims-access path and 403 problem shape as
+// requireService above.
+func (h *Handlers) requireAdminOrService(w http.ResponseWriter, r *http.Request) bool {
+	claims, _ := jwtauth.FromContext(r.Context())
+	if claims.HasRole("admin") || claims.IsService() {
+		return true
+	}
+	problem(w, r, http.StatusForbidden, "forbidden", "role admin or a service token is required")
+	return false
 }
 
 // failOpen records a Valkey failure the caller is about to treat as a
@@ -319,5 +343,15 @@ func (h *Handlers) countRefreshItem(ctx context.Context, step, outcome string) {
 func (h *Handlers) recordRefreshStepDuration(ctx context.Context, step string, seconds float64) {
 	if h.refreshStepDuration != nil {
 		h.refreshStepDuration.Record(ctx, seconds, metric.WithAttributes(attribute.String("step", step)))
+	}
+}
+
+// countNormalizeCommunityRegions records one normalize-community-
+// regions sweep row's outcome: normalized (promoted), skipped (no
+// fold/synonym match), or failed (the store write errored) - the
+// same three-way split collection's normalize-regions counter uses.
+func (h *Handlers) countNormalizeCommunityRegions(ctx context.Context, outcome string) {
+	if h.normalizeCommunityRegions != nil {
+		h.normalizeCommunityRegions.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
 	}
 }

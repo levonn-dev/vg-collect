@@ -8,6 +8,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -569,6 +570,61 @@ func TestUnitTelemetry_RefreshItemsSweep(t *testing.T) {
 	}
 }
 
+// Normalize-community-regions rows: a reviewed synonym promotes, an
+// unreviewed string is skipped, and a store-write fault is failed -
+// counted separately from skipped so scanned can exceed their sum
+// (the posture collection's sibling counter documents).
+func TestUnitTelemetry_NormalizeCommunityRegions(t *testing.T) {
+	reader := newTestMeter(t)
+	st := &stubStore{
+		listCommunityRegionDocs: func(context.Context) ([]store.CommunityRegionRef, error) {
+			return []store.CommunityRegionRef{
+				{ID: "p-ok", Region: "Japan"},
+				{ID: "p-unknown", Region: "Atlantis"},
+				{ID: "p-write-fail", Region: "japan"},
+			}, nil
+		},
+		setCommunityRegion: func(_ context.Context, id, _ string) error {
+			if id == "p-write-fail" {
+				return errors.New("mongo down")
+			}
+			return nil
+		},
+	}
+	h := newUnitHandlers(st, nil, nil, newStubCache())
+	env := newAuthEnv(t)
+	admin := env.token(t, "admin1", []string{"admin"})
+
+	rec := serveUnit(t, h, env, http.MethodPost, "/internal/normalize-community-regions", admin, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var counts map[string]int
+	if err := json.NewDecoder(rec.Body).Decode(&counts); err != nil {
+		t.Fatal(err)
+	}
+	if counts["scanned"] != 3 || counts["normalized"] != 1 || counts["skipped"] != 1 {
+		t.Fatalf("counts = %+v, want scanned 3 normalized 1 skipped 1", counts)
+	}
+	// The write failure (p-write-fail) lands in neither counter, so
+	// scanned outruns their sum - the response-side proof of the same
+	// divergence the failed metric outcome below records.
+	if counts["scanned"] <= counts["normalized"]+counts["skipped"] {
+		t.Fatalf("scanned (%d) must exceed normalized+skipped (%d) when a write fails", counts["scanned"], counts["normalized"]+counts["skipped"])
+	}
+
+	const name = "vg.enrichment.normalize.regions"
+	for _, want := range []struct {
+		outcome string
+		n       int64
+	}{{"normalized", 1}, {"skipped", 1}, {"failed", 1}} {
+		got := counterSum(t, reader, name, attribute.String("outcome", want.outcome))
+		if got != want.n {
+			t.Fatalf("%s = %d, want %d", want.outcome, got, want.n)
+		}
+	}
+}
+
 // Each refresh step records its elapsed seconds exactly once per run,
 // into the explicit buckets (the SDK defaults top out at 10s).
 func TestUnitTelemetry_RefreshStepDurationPerStep(t *testing.T) {
@@ -710,6 +766,7 @@ func TestUnitTelemetry_RegistrationFailureIsBestEffort(t *testing.T) {
 	h.countFallbackSearch(ctx, "matched")
 	h.countRefreshItem(ctx, "prices", "ok")
 	h.recordRefreshStepDuration(ctx, "prices", 1.5)
+	h.countNormalizeCommunityRegions(ctx, "normalized")
 
 	logged := buf.String()
 	for _, want := range []string{
@@ -720,6 +777,7 @@ func TestUnitTelemetry_RegistrationFailureIsBestEffort(t *testing.T) {
 		"fallback search counter unavailable",
 		"refresh items counter unavailable",
 		"refresh step duration histogram unavailable",
+		"normalize community regions counter unavailable",
 	} {
 		if !strings.Contains(logged, want) {
 			t.Fatalf("missing registration-failure log %q in: %s", want, logged)

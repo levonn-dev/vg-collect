@@ -266,6 +266,29 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /internal/normalize-community-regions:
+    post:
+      operationId: internalNormalizeCommunityRegions
+      tags: [internal]
+      summary: Promote free-text community product regions into the known set
+      description: >
+        Maintenance operation; the gateway never routes it. Folds every
+        community product's curated region outside the known set
+        (lowercase, trim) against the known values and the reviewed
+        synonyms table - exact or synonym, never fuzzy. A community
+        product carries no provider identity, so promotion is a plain
+        field rewrite with no fetch arm. Guard: admin role or service
+        token (the nightly job runs it alongside collection's
+        platform/region levers). Idempotent and re-runnable; promoted
+        rows leave the selection set.
+      responses:
+        "200":
+          description: Sweep summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NormalizeCommunityRegionsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /admin/products:
     post:
       operationId: createCommunityProduct
@@ -668,10 +691,10 @@ components:
           description: >
             Marks an interleaved community result (admin-minted,
             anchor-less); absent on provider results. Community results
-            carry product_id + item_type + platform_name for the pick
-            and community.cover_url as cover_url. They are scored against
-            the query by name similarity and merged into results by
-            descending score (a provider result precedes a community
+            carry product_id + item_type + platform_name for the pick,
+            community.cover_url as cover_url, and community.region as region.
+            They are scored against the query by name similarity and merged into
+            results by descending score (a provider result precedes a community
             result of equal score), capped at 10, for game and hardware
             searches only (never pc_listing). The provider cache stores
             provider results only - community items attach fresh on every
@@ -679,6 +702,7 @@ components:
         product_id: { type: string, format: uuid }
         item_type: { type: string, enum: [game, console, accessory] }
         platform_name: { type: string }
+        region: { type: string, description: "Community rows only - the community facts region, entry vocabulary." }
     SearchResults:
       type: object
       required: [degraded, results]
@@ -808,7 +832,11 @@ components:
         type: { type: string, enum: [game, console, accessory, pc_listing] }
         name: { type: string }
         platform: { $ref: "#/components/schemas/PlatformRef" }
-        region: { type: string }
+        region:
+          type: string
+          description: >
+            Provider hardware identity fact; community products carry
+            their region under community.region instead.
         edition: { type: string }
         variant: { type: string }
         igdb: { $ref: "#/components/schemas/IgdbMeta" }
@@ -837,6 +865,12 @@ components:
       type: object
       properties:
         platform_name: { type: string }
+        region:
+          type: string
+          maxLength: 32
+          description: >
+            Curated entry-vocabulary region fact (open-world; known
+            values ntsc_u, ntsc_j, pal, region_free).
         first_release_date: { type: string, format: date }
         cover_url:
           type: string
@@ -852,7 +886,13 @@ components:
         type: { type: string, enum: [game, console, accessory] }
         name: { type: string, minLength: 1, maxLength: 200 }
         platform_name: { type: string, maxLength: 100 }
-        region: { type: string, maxLength: 32 }
+        region:
+          type: string
+          maxLength: 32
+          description: >
+            Curated entry-vocabulary region fact; stored under the
+            community facts block (community.region), not the
+            product's top-level region field.
         edition:
           type: string
           maxLength: 128
@@ -1062,6 +1102,13 @@ components:
       required: [status]
       properties:
         status: { type: string, enum: [started] }
+    NormalizeCommunityRegionsResult:
+      type: object
+      required: [scanned, normalized, skipped]
+      properties:
+        scanned: { type: integer }
+        normalized: { type: integer }
+        skipped: { type: integer }
     UnmatchedProductsPage:
       type: object
       required: [products, total_count]

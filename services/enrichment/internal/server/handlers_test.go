@@ -55,6 +55,8 @@ type stubStore struct {
 	productsByIDs                func(ctx context.Context, ids []string) ([]store.Product, error)
 	searchByName                 func(ctx context.Context, q string, limit int) ([]store.Product, error)
 	searchCommunityProducts      func(ctx context.Context, types []string, q string, limit int) ([]store.Product, error)
+	listCommunityRegionDocs      func(ctx context.Context) ([]store.CommunityRegionRef, error)
+	setCommunityRegion           func(ctx context.Context, id, region string) error
 	listCommunityProducts        func(ctx context.Context) ([]store.Product, error)
 	listCommunityProductsPage    func(ctx context.Context, limit, offset int) ([]store.Product, int64, error)
 	replacePromoteCandidates     func(ctx context.Context, id string, cands []store.PromoteCandidate) error
@@ -167,6 +169,20 @@ func (s *stubStore) SearchCommunityProducts(ctx context.Context, types []string,
 		panic("unexpected SearchCommunityProducts")
 	}
 	return s.searchCommunityProducts(ctx, types, q, limit)
+}
+
+func (s *stubStore) ListCommunityRegionDocs(ctx context.Context) ([]store.CommunityRegionRef, error) {
+	if s.listCommunityRegionDocs == nil {
+		panic("unexpected ListCommunityRegionDocs")
+	}
+	return s.listCommunityRegionDocs(ctx)
+}
+
+func (s *stubStore) SetCommunityRegion(ctx context.Context, id, region string) error {
+	if s.setCommunityRegion == nil {
+		panic("unexpected SetCommunityRegion")
+	}
+	return s.setCommunityRegion(ctx, id, region)
 }
 
 func (s *stubStore) ListCommunityProducts(ctx context.Context) ([]store.Product, error) {
@@ -4257,8 +4273,10 @@ func TestUnitCreateCommunityProduct(t *testing.T) {
 		got.Community.FirstReleaseDate.Format("2006-01-02") != "1995-10-09" {
 		t.Fatalf("community facts wrong: %+v", got.Community)
 	}
-	if got.Region != "pal" || got.Edition != "glow cart" {
-		t.Fatalf("region/edition wrong: %q %q", got.Region, got.Edition)
+	// Region lives in the community block, not the top-level field:
+	// the top-level field stays empty on community mints.
+	if got.Region != "" || got.Community.Region != "pal" || got.Edition != "glow cart" {
+		t.Fatalf("region/edition wrong: top=%q community=%q edition=%q", got.Region, got.Community.Region, got.Edition)
 	}
 	var out api.Product
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
@@ -4305,6 +4323,158 @@ func TestUnitCreateCommunityProduct_MinimalBodyOmitsCommunityBlock(t *testing.T)
 	}
 	if out.Community != nil {
 		t.Fatalf("response must omit the community block entirely, got %+v", out.Community)
+	}
+}
+
+// TestUnitCreateCommunityProduct_WhitespaceRegionOmitsCommunityBlock
+// pins the hasRegion gate against a whitespace-only region: the gate
+// must trim before checking, or " " (not equal to "") would slip
+// through and mint an otherwise-empty community block that exists for
+// no visible reason.
+func TestUnitCreateCommunityProduct_WhitespaceRegionOmitsCommunityBlock(t *testing.T) {
+	env := newAuthEnv(t)
+	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
+
+	var got store.Product
+	st := &stubStore{createProduct: func(_ context.Context, p store.Product) (store.Product, error) {
+		got = p
+		p.ID = uuid.NewString()
+		now := time.Now().UTC()
+		p.CreatedAt, p.UpdatedAt = now, now
+		return p, nil
+	}}
+	h := newUnitHandlers(st, &stubGames{}, &stubPrices{}, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodPost, "/admin/products", admin,
+		map[string]any{"type": "game", "name": "Blank Region", "region": "   "})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("mint: %d %s", rec.Code, rec.Body.String())
+	}
+	if got.Community != nil {
+		t.Fatalf("a whitespace-only region alone must leave Community nil, got %+v", got.Community)
+	}
+	var out api.Product
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Community != nil {
+		t.Fatalf("response must omit the community block entirely, got %+v", out.Community)
+	}
+}
+
+// TestUnitCreateCommunityProduct_WhitespaceRegionWithOtherFact pins
+// the other side of the same gate: a whitespace-only region alongside
+// a real community fact still builds the block (platform_name alone
+// earns it), but the region itself must land empty rather than
+// storing the untrimmed whitespace.
+func TestUnitCreateCommunityProduct_WhitespaceRegionWithOtherFact(t *testing.T) {
+	env := newAuthEnv(t)
+	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
+
+	var got store.Product
+	st := &stubStore{createProduct: func(_ context.Context, p store.Product) (store.Product, error) {
+		got = p
+		p.ID = uuid.NewString()
+		now := time.Now().UTC()
+		p.CreatedAt, p.UpdatedAt = now, now
+		return p, nil
+	}}
+	h := newUnitHandlers(st, &stubGames{}, &stubPrices{}, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodPost, "/admin/products", admin, map[string]any{
+		"type": "game", "name": "Blank Region With Platform", "platform_name": "SNES", "region": "   ",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("mint: %d %s", rec.Code, rec.Body.String())
+	}
+	if got.Community == nil || got.Community.PlatformName != "SNES" {
+		t.Fatalf("community facts wrong: %+v", got.Community)
+	}
+	if got.Community.Region != "" {
+		t.Fatalf("whitespace-only region must not persist, got %q", got.Community.Region)
+	}
+	var out api.Product
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Community == nil || out.Community.Region != nil {
+		t.Fatalf("response region must stay absent, got %+v", out.Community)
+	}
+}
+
+// TestUnitCreateCommunityProduct_WhitespacePlatformNameOmitsCommunityBlock
+// pins the hasPlatformName gate against a whitespace-only platform_name: the
+// gate must trim before checking, or "  " (not equal to "") would slip
+// through and mint an otherwise-empty community block that exists for
+// no visible reason.
+func TestUnitCreateCommunityProduct_WhitespacePlatformNameOmitsCommunityBlock(t *testing.T) {
+	env := newAuthEnv(t)
+	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
+
+	var got store.Product
+	st := &stubStore{createProduct: func(_ context.Context, p store.Product) (store.Product, error) {
+		got = p
+		p.ID = uuid.NewString()
+		now := time.Now().UTC()
+		p.CreatedAt, p.UpdatedAt = now, now
+		return p, nil
+	}}
+	h := newUnitHandlers(st, &stubGames{}, &stubPrices{}, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodPost, "/admin/products", admin,
+		map[string]any{"type": "game", "name": "Blank Platform", "platform_name": "   "})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("mint: %d %s", rec.Code, rec.Body.String())
+	}
+	if got.Community != nil {
+		t.Fatalf("a whitespace-only platform_name alone must leave Community nil, got %+v", got.Community)
+	}
+	var out api.Product
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Community != nil {
+		t.Fatalf("response must omit the community block entirely, got %+v", out.Community)
+	}
+}
+
+// TestUnitCreateCommunityProduct_WhitespacePlatformNameWithOtherFact pins
+// the other side of the same gate: a whitespace-only platform_name alongside
+// a real community fact still builds the block (region alone earns it), but
+// the platform_name itself must land empty rather than storing the untrimmed
+// whitespace.
+func TestUnitCreateCommunityProduct_WhitespacePlatformNameWithOtherFact(t *testing.T) {
+	env := newAuthEnv(t)
+	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
+
+	var got store.Product
+	st := &stubStore{createProduct: func(_ context.Context, p store.Product) (store.Product, error) {
+		got = p
+		p.ID = uuid.NewString()
+		now := time.Now().UTC()
+		p.CreatedAt, p.UpdatedAt = now, now
+		return p, nil
+	}}
+	h := newUnitHandlers(st, &stubGames{}, &stubPrices{}, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodPost, "/admin/products", admin, map[string]any{
+		"type": "game", "name": "Blank Platform With Region", "platform_name": "   ", "region": "NTSC-U",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("mint: %d %s", rec.Code, rec.Body.String())
+	}
+	if got.Community == nil || got.Community.Region != "NTSC-U" {
+		t.Fatalf("community facts wrong: %+v", got.Community)
+	}
+	if got.Community.PlatformName != "" {
+		t.Fatalf("whitespace-only platform_name must not persist, got %q", got.Community.PlatformName)
+	}
+	var out api.Product
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Community == nil || out.Community.PlatformName != nil {
+		t.Fatalf("response platform_name must stay absent, got %+v", out.Community)
 	}
 }
 
@@ -4452,7 +4622,7 @@ func TestUnitSearch_InterleavesCommunityAndKeepsCacheProviderOnly(t *testing.T) 
 	now := time.Now().UTC()
 	comm := store.Product{
 		ID: "c0ffee00-0000-4000-8000-000000000001", Type: "game", Name: "Chrono Trigger",
-		Origin: "community", Community: &store.CommunityMeta{PlatformName: "SNES", CoverURL: "https://img.example/ct.jpg"},
+		Origin: "community", Community: &store.CommunityMeta{PlatformName: "SNES", CoverURL: "https://img.example/ct.jpg", Region: "pal"},
 		CreatedAt: now, UpdatedAt: now,
 	}
 	st := &stubStore{searchCommunityProducts: func(_ context.Context, types []string, _ string, limit int) ([]store.Product, error) {
@@ -4490,8 +4660,20 @@ func TestUnitSearch_InterleavesCommunityAndKeepsCacheProviderOnly(t *testing.T) 
 		first.CoverUrl == nil || *first.CoverUrl != "https://img.example/ct.jpg" {
 		t.Fatalf("community pick fields missing: %+v", first)
 	}
+	// The community region is entry vocabulary meant to seed the
+	// wizard's region field straight from the search result, so a
+	// community hit must carry it as its own top-level fact.
+	if first.Region == nil || *first.Region != "pal" {
+		t.Fatalf("community row must carry region pal, got %+v", first.Region)
+	}
 	if out.Results[1].Origin != nil {
 		t.Fatalf("provider item must have no origin: %+v", out.Results[1])
+	}
+	// A provider game's region data lives in its localization bundles,
+	// not a single top-level field - carrying one here would claim a
+	// provider result has exactly one region when it may ship several.
+	if out.Results[1].Region != nil {
+		t.Fatalf("provider row must not carry region, got %+v", out.Results[1].Region)
 	}
 
 	// The cached body is provider-only: no community item leaked into cache.
@@ -4702,6 +4884,43 @@ func TestUnitAdminMapping_CommunityRefused(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "product_not_provider") {
 		t.Fatalf("code missing: %s", rec.Body.String())
+	}
+}
+
+// TestCreateCommunityProduct_RegionInBlock pins that a community
+// mint's region lands in the community facts block, not the
+// top-level region field: community products carry no provider
+// hardware identity, so region is a curated entry-vocabulary fact
+// that belongs alongside the other community facts, not the field
+// hardware identity uses (migration 000006 moved existing data to
+// match; TestMigration_CommunityRegionMovesIntoBlock in the store
+// package proves that rename against pre-migration documents).
+func TestCreateCommunityProduct_RegionInBlock(t *testing.T) {
+	s := newStack(t)
+
+	resp := s.do(http.MethodPost, "/admin/products", s.adminToken(), map[string]any{
+		"type": "game", "name": "PachiPals", "region": "ntsc_j",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("mint: %d", resp.StatusCode)
+	}
+	out := decodeBody[api.Product](t, resp)
+	if out.Region != nil {
+		t.Fatalf("top-level region must stay absent on community mints, got %q", *out.Region)
+	}
+	if out.Community == nil || out.Community.Region == nil || *out.Community.Region != "ntsc_j" {
+		t.Fatalf("response community.region wrong: %+v", out.Community)
+	}
+
+	got, err := s.store.GetProduct(context.Background(), out.Id.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Region != "" {
+		t.Fatalf("stored top-level region must stay empty, got %q", got.Region)
+	}
+	if got.Community == nil || got.Community.Region != "ntsc_j" {
+		t.Fatalf("stored community.region wrong: %+v", got.Community)
 	}
 }
 
@@ -5161,5 +5380,70 @@ func TestUnitListPlatforms_JoinsAliasesSortsAndCaches(t *testing.T) {
 	}
 	if storeCalls != before {
 		t.Fatalf("second call hit the store, want cache")
+	}
+}
+
+// ---- InternalNormalizeCommunityRegions ----
+
+// TestUnitInternalNormalizeCommunityRegions_PromotesFoldMatchSkipsUnknown
+// pins the fold+synonym promotion (enrichment's twin of collection's
+// normalize-regions lever, scoped to the community products this
+// service owns): a reviewed synonym promotes through the twin tables,
+// an unreviewed string is left untouched, and the response counts
+// both.
+func TestUnitInternalNormalizeCommunityRegions_PromotesFoldMatchSkipsUnknown(t *testing.T) {
+	env := newAuthEnv(t)
+	promoted := "p-japan"
+	untouched := "p-korea"
+	var wrote []struct{ id, region string }
+	st := &stubStore{
+		listCommunityRegionDocs: func(context.Context) ([]store.CommunityRegionRef, error) {
+			return []store.CommunityRegionRef{
+				{ID: promoted, Region: "Japan"},
+				{ID: untouched, Region: "Korea"},
+			}, nil
+		},
+		setCommunityRegion: func(_ context.Context, id, region string) error {
+			wrote = append(wrote, struct{ id, region string }{id, region})
+			return nil
+		},
+	}
+	h := newUnitHandlers(st, nil, nil, newStubCache())
+	admin := env.token(t, "admin1", []string{"admin"})
+
+	rec := serveUnit(t, h, env, http.MethodPost, "/internal/normalize-community-regions", admin, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var counts map[string]int
+	if err := json.Unmarshal(rec.Body.Bytes(), &counts); err != nil {
+		t.Fatal(err)
+	}
+	if counts["scanned"] != 2 || counts["normalized"] != 1 || counts["skipped"] != 1 {
+		t.Fatalf("counts = %+v, want scanned 2 normalized 1 skipped 1", counts)
+	}
+	if len(wrote) != 1 || wrote[0].id != promoted || wrote[0].region != "ntsc_j" {
+		t.Fatalf("wrote = %+v, want exactly one write promoting %q to ntsc_j", wrote, promoted)
+	}
+}
+
+// TestUnitInternalNormalizeCommunityRegions_Guards mirrors collection's
+// normalize-regions guard tests: a service token (the nightly job's
+// own credential) passes, a plain user token is forbidden.
+func TestUnitInternalNormalizeCommunityRegions_Guards(t *testing.T) {
+	env := newAuthEnv(t)
+	st := &stubStore{listCommunityRegionDocs: func(context.Context) ([]store.CommunityRegionRef, error) { return nil, nil }}
+	h := newUnitHandlers(st, nil, nil, newStubCache())
+
+	svc := env.serviceToken(t, "svc:normalize-community-regions")
+	rec := serveUnit(t, h, env, http.MethodPost, "/internal/normalize-community-regions", svc, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("service token: status %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+
+	user := env.token(t, "u1", []string{"user"})
+	rec = serveUnit(t, h, env, http.MethodPost, "/internal/normalize-community-regions", user, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("plain user: status %d, want 403: %s", rec.Code, rec.Body.String())
 	}
 }
