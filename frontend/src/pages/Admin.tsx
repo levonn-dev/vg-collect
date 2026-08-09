@@ -4,8 +4,10 @@ import type { MessageDescriptor } from '@lingui/core'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Navigate } from 'react-router'
+import { normalizeCommunityRegions, normalizeRegions, normalizePlatforms } from '../api/admin'
 import { fetchMe } from '../api/client'
 import CommunityProducts from '../components/admin/CommunityProducts'
+import NormalizeTrigger from '../components/admin/NormalizeTrigger'
 import ProductLookup from '../components/admin/ProductLookup'
 import PromoteCandidates from '../components/admin/PromoteCandidates'
 import RefreshTrigger from '../components/admin/RefreshTrigger'
@@ -57,6 +59,9 @@ export default function Admin() {
           <ProductLookup />
           <RefreshTrigger />
           <RematchTrigger />
+          <NormalizeTrigger title={t`Normalize platforms`} actionLabel={t`Run platform normalization`} mutationFn={normalizePlatforms} />
+          <NormalizeTrigger title={t`Normalize regions`} actionLabel={t`Run region normalization`} mutationFn={normalizeRegions} />
+          <NormalizeTrigger title={t`Normalize community regions`} actionLabel={t`Run community region normalization`} mutationFn={normalizeCommunityRegions} />
         </>
       ) : (
         <>

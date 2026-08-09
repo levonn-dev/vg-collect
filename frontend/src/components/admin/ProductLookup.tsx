@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { fetchPromoteCandidates } from '../../api/admin'
 import { fetchProduct } from '../../api/catalog'
 import { ApiError } from '../../api/client'
+import { regionLabelText } from '../../lib/regionLabels'
 import MappingFix from './MappingFix'
 import PromotePanel from './PromotePanel'
 
@@ -11,7 +12,7 @@ import PromotePanel from './PromotePanel'
 // looking at an entry, where the product id is at hand; pasting it
 // here brings up the product regardless of matching state.
 export default function ProductLookup() {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
   const [input, setInput] = useState('')
   const [id, setId] = useState('')
@@ -30,6 +31,12 @@ export default function ProductLookup() {
   const done = () => {
     void queryClient.invalidateQueries({ queryKey: ['admin'] })
   }
+
+  // Hoisted rather than called inline in the Trans below: lingui's
+  // message-expression lint wants a plain variable there, not a
+  // function call (see PromotePanel's listingName for the same idiom).
+  const communityRegion = product.isSuccess && product.data.origin === 'community' ? product.data.community?.region : undefined
+  const regionLabel = communityRegion ? regionLabelText(i18n, communityRegion) : undefined
 
   return (
     <section aria-label={t`Product lookup`} className="mt-6">
@@ -83,6 +90,11 @@ export default function ProductLookup() {
             <span className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-semibold text-indigo-800">
               <Trans>community</Trans>
             </span>
+          )}
+          {regionLabel && (
+            <p className="text-sm text-gray-500">
+              <Trans>Region: {regionLabel}</Trans>
+            </p>
           )}
           {product.data.origin === 'community' ? (
             // Key on the product id: switching to another (cached)

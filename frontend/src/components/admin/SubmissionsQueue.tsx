@@ -1,10 +1,24 @@
 import { Plural, Trans, useLingui } from '@lingui/react/macro'
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { fetchSubmissions } from '../../api/admin'
-import type { AdminSubmission } from '../../api/admin'
+import { Link } from 'react-router'
+import { fetchProfileCards, fetchSubmissions } from '../../api/admin'
+import type { AdminSubmission, ProfileCard } from '../../api/admin'
 import type { ApiError } from '../../api/client'
+import { regionLabelText } from '../../lib/regionLabels'
 import ReviewPanel, { verdictErrorMessage } from './ReviewPanel'
+
+// SubmitterCell resolves a row's user_id against the batched profile
+// cards: a listed or unlisted handle links to the public profile, a
+// private handle shows as plain text since there is no page to send an
+// admin to, and a missing card - the batch still loading, erroring, or
+// the id simply absent from the response - falls back to the short id
+// so the cell is never blank.
+function SubmitterCell({ card, userId }: { card?: ProfileCard; userId: string }) {
+  if (!card) return <span className="font-mono text-xs">{userId.slice(0, 8)}</span>
+  if (card.profile_visibility === 'private') return <span>{card.handle}</span>
+  return <Link to={`/u/${card.handle}`} className="underline hover:text-gray-600">{card.handle}</Link>
+}
 
 // SubmissionsQueue pages the pending catalog submissions oldest
 // first. Proposals are live (the row shows the entry's CURRENT
@@ -30,6 +44,20 @@ export default function SubmissionsQueue() {
     },
   })
 
+  // Hoisted above the isPending/isError returns below, alongside the
+  // profile-cards query: hooks must run unconditionally on every
+  // render, so nothing that calls useQuery/useState can sit after an
+  // early return.
+  const rows = list.data?.pages.flatMap((p) => p.submissions) ?? []
+  const ids = [...new Set(rows.map((s) => s.user_id))]
+  const profiles = useQuery({
+    queryKey: ['admin', 'profiles', ids],
+    queryFn: () => fetchProfileCards(ids),
+    enabled: ids.length > 0,
+    staleTime: 60_000,
+  })
+  const cardsById = new Map((profiles.data?.profiles ?? []).map((c) => [c.user_id, c]))
+
   const done = (error?: ApiError) => {
     setReviewing(null)
     setNotice(error ?? null)
@@ -44,7 +72,6 @@ export default function SubmissionsQueue() {
       </p>
     )
 
-  const rows = list.data.pages.flatMap((p) => p.submissions)
   const total = list.data.pages[0].total_count
 
   return (
@@ -75,8 +102,10 @@ export default function SubmissionsQueue() {
               <td className="py-1 pr-2">{s.display_name}</td>
               <td className="py-1 pr-2">{s.item_type}</td>
               <td className="py-1 pr-2">{s.platform_name ?? ''}</td>
-              <td className="py-1 pr-2">{[s.region, s.edition].filter(Boolean).join(' / ')}</td>
-              <td className="py-1 pr-2 font-mono text-xs">{s.user_id.slice(0, 8)}</td>
+              <td className="py-1 pr-2">{[regionLabelText(i18n, s.region), s.edition].filter(Boolean).join(' / ')}</td>
+              <td className="py-1 pr-2">
+                <SubmitterCell card={cardsById.get(s.user_id)} userId={s.user_id} />
+              </td>
               <td className="py-1 pr-2">{s.created_at.slice(0, 10)}</td>
               <td className="py-1">
                 <button
@@ -104,7 +133,11 @@ export default function SubmissionsQueue() {
           <Trans>Load more</Trans>
         </button>
       )}
-      {reviewing && <ReviewPanel submission={reviewing} onDone={done} />}
+      {/* key={reviewing.id}: without it, switching the reviewed row while
+          the panel is open reuses the same mounted instance, so its
+          prefilled fields and adopt view carry over from the old row
+          instead of resetting for the new one. */}
+      {reviewing && <ReviewPanel key={reviewing.id} submission={reviewing} onDone={done} />}
     </section>
   )
 }

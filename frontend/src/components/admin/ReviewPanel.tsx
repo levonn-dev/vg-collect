@@ -12,6 +12,7 @@ import { resolveRequestFor } from '../../lib/catalog'
 import { releaseYear } from '../../lib/format'
 import PlatformPicker from '../catalog/PlatformPicker'
 import type { PlatformValue } from '../catalog/PlatformPicker'
+import RegionPicker from '../catalog/RegionPicker'
 import SearchPicker from '../catalog/SearchPicker'
 import type { CatalogPick } from '../catalog/SearchPicker'
 
@@ -221,10 +222,7 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
           </select>
         </label>
         <PlatformPicker value={platform} onChange={setPlatform} />
-        <label>
-          <Trans>Region</Trans>
-          <input value={region} onChange={(e) => setRegion(e.target.value)} className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />
-        </label>
+        <RegionPicker value={region} onChange={setRegion} />
         <label>
           <Trans>Edition or variant</Trans>
           <input value={edition} onChange={(e) => setEdition(e.target.value)} maxLength={128} className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />

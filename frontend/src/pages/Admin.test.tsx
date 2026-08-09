@@ -54,9 +54,15 @@ it('renders the admin console for the admin role', async () => {
     '/api/me': adminMe,
     '/api/admin/products/unmatched': emptyProducts,
     '/api/admin/products/promote-candidates': emptyProducts,
+    '/api/admin/normalize-platforms': { scanned: 0, normalized: 0, skipped: 0 },
+    '/api/admin/normalize-regions': { scanned: 0, normalized: 0, skipped: 0 },
+    '/api/admin/normalize-community-regions': { scanned: 0, normalized: 0, skipped: 0 },
   })
   renderAdmin()
   expect(await screen.findByRole('heading', { name: 'Admin' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Run platform normalization' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Run region normalization' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Run community region normalization' })).toBeInTheDocument()
 })
 
 it('redirects non-admins home without fetching admin data', async () => {

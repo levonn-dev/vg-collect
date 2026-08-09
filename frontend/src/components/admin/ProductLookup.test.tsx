@@ -164,3 +164,31 @@ it('shows the community badge and the promote panel for a community product', as
   expect(screen.getByLabelText('Promote Repro Alpha')).toBeInTheDocument()
   expect(screen.queryByLabelText('Fix mapping for Repro Alpha')).not.toBeInTheDocument()
 })
+
+it('shows a region line for a community product carrying one', async () => {
+  const user = userEvent.setup()
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
+    id: 'p9', type: 'game', name: 'Repro Alpha', origin: 'community',
+    community: { platform_name: 'SNES', region: 'ntsc_j' },
+    created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+  })))
+  renderLookup()
+  await user.type(screen.getByRole('textbox', { name: 'Product id' }), 'p9')
+  await user.click(screen.getByRole('button', { name: 'Look up' }))
+  expect(await screen.findByText('Repro Alpha')).toBeInTheDocument()
+  expect(screen.getByText('Region: NTSC-J')).toBeInTheDocument()
+})
+
+it('shows no region line for a community product carrying none', async () => {
+  const user = userEvent.setup()
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
+    id: 'p9', type: 'game', name: 'Repro Alpha', origin: 'community',
+    community: { platform_name: 'SNES' },
+    created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+  })))
+  renderLookup()
+  await user.type(screen.getByRole('textbox', { name: 'Product id' }), 'p9')
+  await user.click(screen.getByRole('button', { name: 'Look up' }))
+  expect(await screen.findByText('Repro Alpha')).toBeInTheDocument()
+  expect(screen.queryByText(/^Region:/)).not.toBeInTheDocument()
+})

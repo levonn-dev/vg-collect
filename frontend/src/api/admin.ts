@@ -63,6 +63,19 @@ export function submitVerdict(submissionId: string, verdict: VerdictRequest): Pr
   return sendJSON<Submission>('POST', `/api/admin/submissions/${submissionId}/verdict`, verdict)
 }
 
+export type ProfileCardsResponse =
+  paths['/api/shared/profiles/by-ids']['get']['responses']['200']['content']['application/json']
+export type ProfileCard = ProfileCardsResponse['profiles'][number]
+
+// Batch-hydrates submitter handles for the submissions queue. Cards come
+// back visibility-independent (the queue itself gates what it shows per
+// card), so a submitter with no listed profile still resolves a handle.
+export function fetchProfileCards(ids: string[]): Promise<ProfileCardsResponse> {
+  const params = new URLSearchParams()
+  for (const id of ids) params.append('ids', id)
+  return getJSON<ProfileCardsResponse>(`/api/shared/profiles/by-ids?${params.toString()}`)
+}
+
 export function fetchPromoteCandidates(offset = 0, productId?: string): Promise<PromoteCandidatesPage> {
   const params = new URLSearchParams({ offset: String(offset) })
   if (productId) params.set('product_id', productId)
@@ -82,4 +95,18 @@ export function dismissPromoteCandidate(
     provider,
     provider_id: providerId,
   })
+}
+
+export type NormalizeResult = { scanned: number; normalized: number; skipped: number }
+
+export function normalizePlatforms(): Promise<NormalizeResult> {
+  return sendJSON<NormalizeResult>('POST', '/api/admin/normalize-platforms')
+}
+
+export function normalizeRegions(): Promise<NormalizeResult> {
+  return sendJSON<NormalizeResult>('POST', '/api/admin/normalize-regions')
+}
+
+export function normalizeCommunityRegions(): Promise<NormalizeResult> {
+  return sendJSON<NormalizeResult>('POST', '/api/admin/normalize-community-regions')
 }

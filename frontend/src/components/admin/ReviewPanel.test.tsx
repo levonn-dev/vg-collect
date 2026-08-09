@@ -98,6 +98,50 @@ it('a catalog platform pick shows the confirmed state (not a blank field) and mi
   expect(onDone).toHaveBeenCalled()
 })
 
+it('renders the region as a RegionPicker select prefilled with the submission region, and mints the edited region', async () => {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+    return Promise.resolve(jsonResponse(200, { ...row, status: 'approved' }))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const onDone = vi.fn()
+  renderPanel(row, onDone)
+  const regionField = screen.getByLabelText('Region')
+  expect(regionField).toHaveValue('pal')
+  // The known-value branch: a select, with the free-text escape hatch
+  // alongside it rather than the text-mode "pick a known region" link.
+  expect(screen.getByRole('button', { name: "My region isn't listed" })).toBeInTheDocument()
+  await userEvent.selectOptions(regionField, 'ntsc_u')
+  await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
+  const verdictCall = fetchMock.mock.calls.find(([u]) => u === '/api/admin/submissions/s1/verdict')
+  expect(putBody(verdictCall?.[1] as RequestInit)).toEqual({
+    action: 'approve_new',
+    product: { type: 'game', name: 'repro alpha', platform_name: 'snes', region: 'ntsc_u', edition: 'glow cart' },
+  })
+})
+
+it('opens region in free-text mode for a stored value outside the known set, and mints the edited free-text region', async () => {
+  const openWorldRow: AdminSubmission = { ...row, region: 'Korea' }
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+    return Promise.resolve(jsonResponse(200, { ...openWorldRow, status: 'approved' }))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const onDone = vi.fn()
+  renderPanel(openWorldRow, onDone)
+  const regionField = screen.getByLabelText('Region')
+  expect(regionField).toHaveValue('Korea')
+  expect(screen.getByRole('button', { name: 'Pick a known region instead' })).toBeInTheDocument()
+  await userEvent.clear(regionField)
+  await userEvent.type(regionField, 'South Korea')
+  await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
+  const verdictCall = fetchMock.mock.calls.find(([u]) => u === '/api/admin/submissions/s1/verdict')
+  expect(putBody(verdictCall?.[1] as RequestInit)).toEqual({
+    action: 'approve_new',
+    product: { type: 'game', name: 'repro alpha', platform_name: 'snes', region: 'South Korea', edition: 'glow cart' },
+  })
+})
+
 it('reject requires and sends the reason', async () => {
   const fetchMock = vi.fn().mockImplementation((url: string) => {
     if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))

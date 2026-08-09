@@ -2,6 +2,7 @@ import { i18n } from '@lingui/core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router'
 import { messages as jaMessages } from '../../locales/ja.po'
 import { jsonResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
@@ -11,15 +12,51 @@ function renderQueue() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } })
   // Reviewing a row mounts ReviewPanel, whose PlatformPicker fires a
   // ['platforms'] fetch on mount. Several tests below queue exact,
-  // order-sensitive fetch responses (mockResolvedValueOnce chains) for
-  // the submissions-list and verdict calls; seed platforms fresh+stale-
-  // proof so that extra fetch never consumes one of those queue slots.
+  // order-sensitive fetch responses (the submissions-list route below)
+  // for the submissions-list and verdict calls; seed platforms
+  // fresh+stale-proof so that extra fetch never consumes one of those
+  // routes' slots.
   qc.setQueryData(['platforms'], { platforms: [] })
+  // SubmitterCell links a listed card to /u/:handle via react-router's
+  // Link, which throws outside a Router - every render needs one, not
+  // just the tests that assert on a rendered link.
   renderWithI18n(
     <QueryClientProvider client={qc}>
-      <SubmissionsQueue />
+      <MemoryRouter>
+        <SubmissionsQueue />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+// Fetch is routed per endpoint (first matching prefix wins) so each test
+// declares exactly the calls it expects; a URL nothing stubbed is
+// recorded and fails the test in afterEach (Admin.test's idiom). A
+// route's value may be a plain body (always 200), a Response (explicit
+// status), or an array of either consumed in call order - the last
+// entry repeats once exhausted, which the multi-page verdict test below
+// needs. '/api/admin/submissions?' and '/api/admin/submissions/' are
+// deliberately distinct prefixes: the list call always carries a query
+// string (offset=...) and the verdict call is always a sub-path
+// (/{id}/verdict), so the two never collide regardless of key order.
+let unstubbed: string[] = []
+function stubFetch(routes: Record<string, unknown>) {
+  const counts: Record<string, number> = {}
+  const impl = vi.fn().mockImplementation((url: string) => {
+    const hit = Object.entries(routes).find(([prefix]) => String(url).startsWith(prefix))
+    if (!hit) {
+      unstubbed.push(String(url))
+      return Promise.reject(new Error(`unstubbed fetch: ${String(url)}`))
+    }
+    const [prefix, entry] = hit
+    const sequence = Array.isArray(entry) ? entry : [entry]
+    const n = counts[prefix] ?? 0
+    counts[prefix] = n + 1
+    const value: unknown = sequence[Math.min(n, sequence.length - 1)]
+    return Promise.resolve(value instanceof Response ? value : jsonResponse(200, value))
+  })
+  vi.stubGlobal('fetch', impl)
+  return impl
 }
 
 afterEach(() => {
@@ -30,6 +67,9 @@ afterEach(() => {
   // mounted tree is an I18nProvider update outside act.
   cleanup()
   i18n.activate('en')
+  const missed = unstubbed
+  unstubbed = []
+  expect(missed).toEqual([])
 })
 
 const row = (id: string, name: string) => ({
@@ -39,24 +79,9 @@ const row = (id: string, name: string) => ({
   created_at: '2026-07-17T00:00:00Z', updated_at: '2026-07-17T00:00:00Z',
 })
 
-// The raced-409 shape both notice tests below drive: the verdict POST
-// answers 409 submission_resolved, while the list and the panel's own
-// duplicates search answer normally. URL/method-aware, not an ordered
-// mockResolvedValueOnce chain: opening the review panel also fires that
-// duplicates search, so call order alone cannot pick out the POST.
-function stubRacedVerdictFetch() {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    const u = String(url)
-    if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
-    if (u.startsWith('/api/admin/submissions/') && init?.method === 'POST') {
-      return Promise.resolve(jsonResponse(409, {
-        type: 'about:blank', title: 'Conflict', status: 409,
-        code: 'submission_resolved', detail: 'already resolved',
-      }))
-    }
-    return Promise.resolve(jsonResponse(200, { submissions: [row('s1', 'Repro Alpha')], total_count: 1 }))
-  }))
-}
+// No cards resolved: every row in these tests falls back to its short
+// id, which is fine - none of them assert on the submitter cell.
+const noCards = { profiles: [] }
 
 // raceVerdict opens the row's panel and approves it into the 409.
 async function raceVerdict() {
@@ -66,40 +91,123 @@ async function raceVerdict() {
 }
 
 it("renders the total heading and a row's proposal fields", async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
-    submissions: [row('s1', 'Repro Alpha')],
-    total_count: 1,
-  })))
+  stubFetch({
+    '/api/admin/submissions?': { submissions: [row('s1', 'Repro Alpha')], total_count: 1 },
+    '/api/shared/profiles/by-ids': noCards,
+  })
   renderQueue()
   expect(await screen.findByText('1 pending submission')).toBeInTheDocument()
   expect(screen.getByText('Repro Alpha')).toBeInTheDocument()
   expect(screen.getByText('game')).toBeInTheDocument()
   expect(screen.getByText('snes')).toBeInTheDocument()
-  expect(screen.getByText('pal / glow cart')).toBeInTheDocument()
+  // 'PAL', not the raw stored 'pal' - regionLabelText's display label.
+  expect(screen.getByText('PAL / glow cart')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
 })
 
 it('pluralizes the count heading (singular at one, plural above)', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
-    submissions: [row('s1', 'Repro Alpha'), row('s2', 'Repro Beta')],
-    total_count: 2,
-  })))
+  stubFetch({
+    '/api/admin/submissions?': { submissions: [row('s1', 'Repro Alpha'), row('s2', 'Repro Beta')], total_count: 2 },
+    '/api/shared/profiles/by-ids': noCards,
+  })
   renderQueue()
   expect(await screen.findByText('2 pending submissions')).toBeInTheDocument()
 })
 
+it('shows a known region by its display label, not the raw stored code', async () => {
+  stubFetch({
+    '/api/admin/submissions?': { submissions: [{ ...row('s1', 'Repro Alpha'), region: 'ntsc_u' }], total_count: 1 },
+    '/api/shared/profiles/by-ids': noCards,
+  })
+  renderQueue()
+  expect(await screen.findByText('NTSC-U / glow cart')).toBeInTheDocument()
+})
+
+it("links a listed or unlisted submitter's handle to their profile and shows a private submitter's handle as plain text", async () => {
+  stubFetch({
+    '/api/admin/submissions?': {
+      submissions: [
+        { ...row('s1', 'Repro Alpha'), user_id: 'alice-id' },
+        { ...row('s2', 'Repro Beta'), user_id: 'bob-id' },
+        { ...row('s3', 'Repro Gamma'), user_id: 'carol-id' },
+      ],
+      total_count: 3,
+    },
+    '/api/shared/profiles/by-ids': {
+      profiles: [
+        { user_id: 'alice-id', handle: 'alice', profile_visibility: 'listed' },
+        { user_id: 'bob-id', handle: 'bob', profile_visibility: 'private' },
+        { user_id: 'carol-id', handle: 'carol', profile_visibility: 'unlisted' },
+      ],
+    },
+  })
+  renderQueue()
+  const aliceLink = await screen.findByRole('link', { name: 'alice' })
+  expect(aliceLink).toHaveAttribute('href', '/u/alice')
+  // unlisted is not private: it still links, same as listed.
+  const carolLink = await screen.findByRole('link', { name: 'carol' })
+  expect(carolLink).toHaveAttribute('href', '/u/carol')
+  expect(screen.getByText('bob')).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'bob' })).not.toBeInTheDocument()
+})
+
+it('falls back to the short user id when the profile cards query errors', async () => {
+  stubFetch({
+    '/api/admin/submissions?': { submissions: [{ ...row('s1', 'Repro Alpha'), user_id: 'abcdefgh-1234' }], total_count: 1 },
+    '/api/shared/profiles/by-ids': jsonResponse(502, { type: 'about:blank', title: 'Bad Gateway', status: 502 }),
+  })
+  renderQueue()
+  await screen.findByText('Repro Alpha')
+  expect(screen.getByText('abcdefgh')).toBeInTheDocument()
+})
+
 it('opens the review panel for a row', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
-    submissions: [row('s1', 'Repro Alpha')], total_count: 1,
-  })))
+  stubFetch({
+    '/api/admin/submissions?': { submissions: [row('s1', 'Repro Alpha')], total_count: 1 },
+    '/api/shared/profiles/by-ids': noCards,
+    '/api/search': { degraded: false, results: [] },
+  })
   renderQueue()
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: 'Review' }))
   expect(screen.getByLabelText('Review Repro Alpha')).toBeInTheDocument()
 })
 
+it('resets every prefilled field and the adopt view when the reviewed row changes (missing-key regression)', async () => {
+  stubFetch({
+    '/api/admin/submissions?': { submissions: [row('s1', 'Alpha One'), row('s2', 'Beta Two')], total_count: 2 },
+    '/api/shared/profiles/by-ids': noCards,
+    '/api/search': { degraded: false, results: [] },
+    // The adopt view's SearchPicker renders prices via useDisplayMoney,
+    // which unconditionally loads the viewer's currency + rates on mount.
+    '/api/me': {},
+    '/api/fx': {},
+  })
+  renderQueue()
+  const user = userEvent.setup()
+  const reviewButtons = await screen.findAllByRole('button', { name: 'Review' })
+  await user.click(reviewButtons[0])
+  await user.click(screen.getByRole('button', { name: 'Adopt existing product' }))
+  expect(screen.getByLabelText('Product id')).toBeInTheDocument()
+
+  // Reviewing a different row without closing the panel first used to
+  // carry over the first row's open adopt search and stale name field,
+  // since the panel mounted without a key.
+  await user.click(screen.getAllByRole('button', { name: 'Review' })[1])
+  expect(screen.queryByLabelText('Product id')).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Name')).toHaveValue('Beta Two')
+})
+
 it('carries the raced-verdict message to a queue notice after the panel closes', async () => {
-  stubRacedVerdictFetch()
+  stubFetch({
+    '/api/admin/submissions?': { submissions: [row('s1', 'Repro Alpha')], total_count: 1 },
+    '/api/admin/submissions/': jsonResponse(409, {
+      type: 'about:blank', title: 'Conflict', status: 409,
+      code: 'submission_resolved', detail: 'already resolved',
+    }),
+    '/api/search': { degraded: false, results: [] },
+    '/api/shared/profiles/by-ids': noCards,
+  })
   renderQueue()
   await raceVerdict()
   // The panel unmounts on the raced 409, so its own inline message never
@@ -111,7 +219,15 @@ it('carries the raced-verdict message to a queue notice after the panel closes',
 })
 
 it('rephrases a standing notice when the locale changes', async () => {
-  stubRacedVerdictFetch()
+  stubFetch({
+    '/api/admin/submissions?': { submissions: [row('s1', 'Repro Alpha')], total_count: 1 },
+    '/api/admin/submissions/': jsonResponse(409, {
+      type: 'about:blank', title: 'Conflict', status: 409,
+      code: 'submission_resolved', detail: 'already resolved',
+    }),
+    '/api/search': { degraded: false, results: [] },
+    '/api/shared/profiles/by-ids': noCards,
+  })
   renderQueue()
   await raceVerdict()
   await screen.findByText('Another admin already resolved this submission.')
@@ -129,26 +245,20 @@ it('rephrases a standing notice when the locale changes', async () => {
 it('resolves a verdict and the row leaves the list', async () => {
   // The submissions-list endpoint alone stays order-sensitive (row present,
   // then empty after the post-verdict invalidation refetch); the panel's own
-  // duplicates search and the verdict POST are matched by URL/method so
-  // they never consume one of the list's ordered slots.
-  let listCalls = 0
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    const u = String(url)
-    if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
-    if (u.startsWith('/api/admin/submissions/') && init?.method === 'POST') {
-      return Promise.resolve(jsonResponse(200, {
-        id: 's1', entry_id: 'e-s1', status: 'approved',
-        created_at: '2026-07-17T00:00:00Z', updated_at: '2026-07-17T00:00:00Z',
-      }))
-    }
-    listCalls++
-    return Promise.resolve(jsonResponse(200,
-      listCalls === 1
-        ? { submissions: [row('s1', 'Repro Alpha')], total_count: 1 }
-        : { submissions: [], total_count: 0 },
-    ))
+  // duplicates search, profile cards, and the verdict POST are matched by
+  // URL prefix so they never consume one of the list's ordered slots.
+  stubFetch({
+    '/api/admin/submissions?': [
+      { submissions: [row('s1', 'Repro Alpha')], total_count: 1 },
+      { submissions: [], total_count: 0 },
+    ],
+    '/api/admin/submissions/': {
+      id: 's1', entry_id: 'e-s1', status: 'approved',
+      created_at: '2026-07-17T00:00:00Z', updated_at: '2026-07-17T00:00:00Z',
+    },
+    '/api/search': { degraded: false, results: [] },
+    '/api/shared/profiles/by-ids': noCards,
   })
-  vi.stubGlobal('fetch', fetchMock)
   renderQueue()
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: 'Review' }))

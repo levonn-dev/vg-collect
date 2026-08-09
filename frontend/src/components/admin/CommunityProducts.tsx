@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { deleteProduct, fetchCommunityProducts } from '../../api/admin'
 import { ApiError } from '../../api/client'
 import { releaseYear } from '../../lib/format'
+import { regionLabelText } from '../../lib/regionLabels'
 import ItemTypeIcon from '../ItemTypeIcon'
 
 // t(i18n) throughout this file, component included: deleteErrorMessage
@@ -22,11 +23,11 @@ function deleteErrorMessage(e: unknown, i18n: I18n): string {
 
 // CommunityProducts lists every admin-minted, un-promoted community
 // product, for cleanup. Delete reuses the guarded admin delete
-// (deleteProduct, from the guarded-delete round): an unreferenced
-// product goes away immediately (the list invalidates and the row
-// disappears on refetch); one still referenced by entries answers 409
-// product_referenced, shown inline on that row only, so a single
-// blocked row never hides the rest of the list.
+// (deleteProduct): an unreferenced product goes away immediately (the
+// list invalidates and the row disappears on refetch); one still
+// referenced by entries answers 409 product_referenced, shown inline
+// on that row only, so a single blocked row never hides the rest of
+// the list.
 export default function CommunityProducts() {
   const { i18n } = useLingui()
   const queryClient = useQueryClient()
@@ -84,6 +85,7 @@ export default function CommunityProducts() {
           <tr className="border-b border-gray-200 text-gray-500">
             <th className="py-1 pr-2 font-normal"><Trans>Name</Trans></th>
             <th className="py-1 pr-2 font-normal"><Trans>Platform</Trans></th>
+            <th className="py-1 pr-2 font-normal"><Trans>Region</Trans></th>
             <th className="py-1 pr-2 font-normal"><Trans>Release</Trans></th>
             <th className="py-1 pr-2 font-normal"><Trans>Updated</Trans></th>
             <th className="py-1 font-normal"></th>
@@ -108,6 +110,7 @@ export default function CommunityProducts() {
                 </div>
               </td>
               <td className="py-1 pr-2">{p.community?.platform_name ?? ''}</td>
+              <td className="py-1 pr-2">{p.community?.region ? regionLabelText(i18n, p.community.region) : ''}</td>
               <td className="py-1 pr-2">{releaseYear(p.community?.first_release_date) ?? ''}</td>
               <td className="py-1 pr-2">{p.updated_at.slice(0, 10)}</td>
               <td className="py-1">

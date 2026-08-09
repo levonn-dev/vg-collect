@@ -19,7 +19,7 @@ afterEach(() => vi.unstubAllGlobals())
 function communityProduct(
   id: string,
   name: string,
-  community: { platform_name?: string; first_release_date?: string; cover_url?: string } = {},
+  community: { platform_name?: string; region?: string; first_release_date?: string; cover_url?: string } = {},
 ) {
   return {
     id, type: 'game', name, origin: 'community',
@@ -54,6 +54,20 @@ it('renders the section heading, explainer, and rows from a stubbed page', async
   expect(document.querySelector('svg[data-icon="game"]')).toBeInTheDocument()
 
   expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2)
+})
+
+it('shows a Region column, labeled for a known value and raw for an open-world one', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
+    products: [
+      communityProduct('c1', 'Repro Alpha', { platform_name: 'SNES', region: 'ntsc_j' }),
+      communityProduct('c2', 'Repro Beta', { platform_name: 'Genesis', region: 'Korea' }),
+    ],
+    total_count: 2,
+  })))
+  renderList()
+  expect(await screen.findByRole('columnheader', { name: 'Region' })).toBeInTheDocument()
+  expect(screen.getByText('NTSC-J')).toBeInTheDocument()
+  expect(screen.getByText('Korea')).toBeInTheDocument()
 })
 
 it('delete success removes the row via the DELETE call and list invalidation', async () => {
