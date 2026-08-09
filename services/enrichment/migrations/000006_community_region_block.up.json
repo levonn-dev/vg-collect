@@ -1,0 +1,17 @@
+[
+  {
+    "update": "products",
+    "updates": [
+      {
+        "q": { "origin": "community", "region": { "$nin": ["", null] } },
+        "u": { "$rename": { "region": "community.region" } },
+        "multi": true
+      },
+      {
+        "q": { "origin": "community", "region": { "$exists": false } },
+        "u": { "$set": { "region": "" } },
+        "multi": true
+      }
+    ]
+  }
+]

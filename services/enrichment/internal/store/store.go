@@ -135,9 +135,17 @@ type PCMeta struct {
 
 // CommunityMeta carries the facts curated at community mint time.
 // Retained after promotion as gap-fill: provider blocks win per-field
-// where present, these fill what providers do not supply.
+// where present, these fill what providers do not supply. Region
+// lives here rather than on Product: community products carry no
+// provider hardware identity, so their region is a curated
+// entry-vocabulary fact like platform name, not identity (migration
+// 000006 moved it out of the top-level field). Product.Region stays
+// "" on these docs - always-present, never absent - matching the
+// document-shape-stability rule Product's own doc comment states for
+// region/edition/variant.
 type CommunityMeta struct {
 	PlatformName     string    `bson:"platform_name,omitempty"`
+	Region           string    `bson:"region,omitempty"`
 	FirstReleaseDate time.Time `bson:"first_release_date,omitempty"`
 	CoverURL         string    `bson:"cover_url,omitempty"`
 }
@@ -696,6 +704,74 @@ func (s *Store) SearchCommunityProducts(ctx context.Context, types []string, q s
 		return nil, fmt.Errorf("store: search community: %w", err)
 	}
 	return out, nil
+}
+
+// CommunityRegionRef is one community product's curated region string
+// and id - the normalize-community-regions sweep's selection unit
+// (enrichment's twin of collection's OpenRegionEntryRef, scoped to
+// the community subset it owns).
+type CommunityRegionRef struct {
+	ID     string
+	Region string
+}
+
+// ListCommunityRegionDocs lists every community product carrying a
+// non-empty curated region - the normalize-community-regions sweep's
+// worklist. Selection against the known/synonym tables happens in the
+// handler (handlers.go's twin tables): the community population is
+// tiny by construction, so filtering the small result in Go costs
+// nothing and keeps those tables out of the store layer.
+func (s *Store) ListCommunityRegionDocs(ctx context.Context) ([]CommunityRegionRef, error) {
+	filter := bson.D{
+		{Key: "origin", Value: "community"},
+		{Key: "community.region", Value: bson.D{{Key: "$nin", Value: bson.A{"", nil}}}},
+	}
+	opts := options.Find().
+		SetProjection(bson.D{{Key: "community.region", Value: 1}}).
+		SetSort(bson.D{{Key: "_id", Value: 1}})
+	cur, err := s.db.Collection(colProducts).Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("store: list community region docs: %w", err)
+	}
+	var rows []struct {
+		ID        string        `bson:"_id"`
+		Community CommunityMeta `bson:"community"`
+	}
+	if err := cur.All(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("store: list community region docs: %w", err)
+	}
+	out := make([]CommunityRegionRef, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, CommunityRegionRef{ID: row.ID, Region: row.Community.Region})
+	}
+	return out, nil
+}
+
+// SetCommunityRegion rewrites one community product's curated region
+// to its normalized form. Matched-count unchecked, the same tier
+// ReplacePromoteCandidates above uses: a doc that left the community
+// origin or vanished between the sweep's list and this write is a
+// silent no-op, not an error - so the caller's "normalized" count
+// means an error-free write, not a confirmed row change.
+func (s *Store) SetCommunityRegion(ctx context.Context, id, region string) error {
+	// Scoped to origin community, the same guard ReplacePromoteCandidates
+	// uses above: a promote can flip this doc to provider between the
+	// sweep's list and this write, and an unscoped-by-origin write would
+	// still land, leaving a community.region field as invisible residue
+	// on a now-provider doc (nothing reads community.* off a provider
+	// doc, but nothing clears it either).
+	_, err := s.db.Collection(colProducts).UpdateOne(ctx,
+		bson.D{{Key: "_id", Value: id}, {Key: "origin", Value: "community"}},
+		bson.D{
+			{Key: "$set", Value: bson.D{
+				{Key: "community.region", Value: region},
+				{Key: "updated_at", Value: time.Now().UTC().Truncate(time.Millisecond)},
+			}},
+		})
+	if err != nil {
+		return fmt.Errorf("store: set community region: %w", err)
+	}
+	return nil
 }
 
 // ListCommunityProducts returns every community product (the sweep's

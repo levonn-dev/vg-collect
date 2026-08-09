@@ -851,6 +851,154 @@ func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
 	}
 }
 
+// TestMigration_CommunityRegionMovesIntoBlock pins migration 000006's
+// exact behavior against pre-migration documents: a community
+// product's top-level region (the old mint's shape) must land under
+// community.region, a sibling community fact already in the block
+// must survive untouched, and every path this migration does not
+// target - already-empty region, a doc with no region key at all, and
+// provider-origin docs - must come out matching what the "region is
+// always present" shape rule requires without gaining a community
+// block they never had.
+func TestMigration_CommunityRegionMovesIntoBlock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires docker")
+	}
+	ctx := context.Background()
+	mc, err := tcmongo.Run(ctx, "mongo:8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mc.Terminate(ctx) })
+	url, err := mc.ConnectionString(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := db.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
+
+	driver, err := mongodriver.WithInstance(client, &mongodriver.Config{
+		DatabaseName: "enrichment",
+		Locking:      mongodriver.Locking{Enabled: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := migrate.NewWithInstance("iofs", src, "enrichment", driver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Pinned to version 5, not Up(): this seeds the shape the old
+	// (pre-000006) community mint actually wrote, so migrating to 6
+	// below exercises the rename against real pre-migration documents
+	// rather than documents newer code already writes correctly.
+	if err := m.Migrate(5); err != nil {
+		t.Fatalf("migrate to pre-region-block state: %v", err)
+	}
+
+	col := client.Database("enrichment").Collection("products")
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	seed := func(doc bson.D) {
+		t.Helper()
+		base := bson.D{
+			{Key: "type", Value: "game"},
+			{Key: "created_at", Value: now}, {Key: "updated_at", Value: now},
+		}
+		if _, err := col.InsertOne(ctx, append(base, doc...)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed(bson.D{
+		{Key: "_id", Value: "with-region"}, {Key: "name", Value: "Seed With Region"},
+		{Key: "origin", Value: "community"}, {Key: "region", Value: "ntsc_j"},
+		{Key: "community", Value: bson.D{{Key: "platform_name", Value: "SNES"}}},
+	})
+	seed(bson.D{
+		{Key: "_id", Value: "empty-region"}, {Key: "name", Value: "Seed Empty Region"},
+		{Key: "origin", Value: "community"}, {Key: "region", Value: ""},
+	})
+	seed(bson.D{
+		{Key: "_id", Value: "missing-region"}, {Key: "name", Value: "Seed Missing Region"},
+		{Key: "origin", Value: "community"},
+	})
+	seed(bson.D{
+		{Key: "_id", Value: "provider-hardware"}, {Key: "name", Value: "Seed Provider"},
+		{Key: "origin", Value: "provider"}, {Key: "region", Value: "pal"},
+	})
+
+	if err := m.Migrate(6); err != nil {
+		t.Fatalf("migrate to region-block state: %v", err)
+	}
+
+	mustFind := func(id string) bson.M {
+		t.Helper()
+		var d bson.M
+		if err := col.FindOne(ctx, bson.D{{Key: "_id", Value: id}}).Decode(&d); err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		return d
+	}
+
+	withRegion := mustFind("with-region")
+	if withRegion["region"] != "" {
+		t.Fatalf("with-region: top-level region must be renamed away, got %+v", withRegion["region"])
+	}
+	comm, _ := withRegion["community"].(bson.M)
+	if comm == nil || comm["region"] != "ntsc_j" {
+		t.Fatalf("with-region: community.region wrong: %+v", withRegion["community"])
+	}
+	if comm["platform_name"] != "SNES" {
+		t.Fatalf("with-region: sibling community fact must survive untouched: %+v", comm)
+	}
+
+	emptyRegion := mustFind("empty-region")
+	if emptyRegion["region"] != "" {
+		t.Fatalf("empty-region: region must stay empty, got %+v", emptyRegion["region"])
+	}
+	if _, ok := emptyRegion["community"]; ok {
+		t.Fatalf("empty-region: must not fabricate a community block, got %+v", emptyRegion["community"])
+	}
+
+	missingRegion := mustFind("missing-region")
+	if missingRegion["region"] != "" {
+		t.Fatalf("missing-region: shape-stability step must set region to \"\", got %+v", missingRegion["region"])
+	}
+
+	providerHardware := mustFind("provider-hardware")
+	if providerHardware["region"] != "pal" {
+		t.Fatalf("provider-hardware: provider region must be untouched, got %+v", providerHardware["region"])
+	}
+	if _, ok := providerHardware["community"]; ok {
+		t.Fatalf("provider-hardware: must not gain a community block, got %+v", providerHardware["community"])
+	}
+
+	// down.json must undo the rename: 000006 is this service's first
+	// migration to move data into a nested path, worth confirming the
+	// reverse dotted-path rename restores the top-level field (rather
+	// than erroring, or leaving the value split across both places).
+	if err := m.Migrate(5); err != nil {
+		t.Fatalf("down to pre-region-block state: %v", err)
+	}
+	reverted := mustFind("with-region")
+	if reverted["region"] != "ntsc_j" {
+		t.Fatalf("down: top-level region must be restored, got %+v", reverted["region"])
+	}
+	revertedComm, _ := reverted["community"].(bson.M)
+	if revertedComm == nil || revertedComm["platform_name"] != "SNES" {
+		t.Fatalf("down: sibling community fact must survive, got %+v", reverted["community"])
+	}
+	if _, ok := revertedComm["region"]; ok {
+		t.Fatalf("down: community.region must be removed after rename-back, got %+v", revertedComm)
+	}
+}
+
 func TestListUnmatchedProducts(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
@@ -1289,5 +1437,121 @@ func TestCommunityCover_RoundTrips(t *testing.T) {
 	}
 	if got.Community == nil || got.Community.CoverURL != "https://img.example/rc.jpg" {
 		t.Fatalf("community cover did not round-trip: %+v", got.Community)
+	}
+}
+
+// TestStore_ListCommunityRegionDocs pins the normalize-community-
+// regions sweep's selection: community docs with a curated region,
+// and only those - a regionless community doc has nothing to fold
+// against, and a provider doc is out of scope regardless of shape.
+func TestStore_ListCommunityRegionDocs(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+
+	jp, err := s.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Community JP", Origin: "community",
+		Community: &store.CommunityMeta{Region: "Japan"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kr, err := s.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Community KR", Origin: "community",
+		Community: &store.CommunityMeta{Region: "Korea"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Community No Region", Origin: "community",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateProduct(ctx, gameProduct(9601, 19, "Provider Excluded", "SNES", "")); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.ListCommunityRegionDocs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := make(map[string]string, len(got))
+	for _, ref := range got {
+		byID[ref.ID] = ref.Region
+	}
+	if len(byID) != 2 || byID[jp.ID] != "Japan" || byID[kr.ID] != "Korea" {
+		t.Fatalf("got %+v, want exactly {%s: Japan, %s: Korea}", byID, jp.ID, kr.ID)
+	}
+}
+
+// TestStore_SetCommunityRegion pins the sweep's write: the curated
+// region rewrites to the canonical form and updated_at bumps, the
+// same shape SetIGDB and its siblings use.
+func TestStore_SetCommunityRegion(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+
+	created, err := s.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Community Region Rewrite", Origin: "community",
+		Community: &store.CommunityMeta{Region: "Japan"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond) // guards the updated_at bump against a same-millisecond tie
+
+	if err := s.SetCommunityRegion(ctx, created.ID, "ntsc_j"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetProduct(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Community == nil || got.Community.Region != "ntsc_j" {
+		t.Fatalf("region = %+v, want ntsc_j", got.Community)
+	}
+	if !got.UpdatedAt.After(created.UpdatedAt) {
+		t.Fatalf("updated_at did not bump: before=%v after=%v", created.UpdatedAt, got.UpdatedAt)
+	}
+}
+
+// TestStore_SetCommunityRegion_OriginLeftCommunityIsNoOp pins the race
+// the origin scope in the write's filter closes: a doc promoted to
+// provider between the sweep's list and this write must not have its
+// community.region rewritten - the promote path owns the doc now, and
+// nothing reads community.* off a provider doc, but a stray write
+// there would still be silent, permanent residue.
+func TestStore_SetCommunityRegion_OriginLeftCommunityIsNoOp(t *testing.T) {
+	s, mdb := newTestStore(t)
+	ctx := context.Background()
+
+	created, err := s.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Community Region Race", Origin: "community",
+		Community: &store.CommunityMeta{Region: "Japan"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Stand-in for a promote landing between the sweep's list and this
+	// write: flip origin directly rather than going through the real
+	// promote path, which is irrelevant to what SetCommunityRegion itself
+	// must guard against.
+	if _, err := mdb.Collection("products").UpdateByID(ctx, created.ID,
+		bson.D{{Key: "$set", Value: bson.D{{Key: "origin", Value: "provider"}}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SetCommunityRegion(ctx, created.ID, "ntsc_j"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetProduct(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Community == nil || got.Community.Region != "Japan" {
+		t.Fatalf("region = %+v, want unchanged Japan (origin left community, write must no-op)", got.Community)
 	}
 }
