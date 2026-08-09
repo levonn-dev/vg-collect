@@ -2859,3 +2859,143 @@ func TestNormalizePlatformStore_SelectAndStamp(t *testing.T) {
 		t.Fatalf("re-run still selects %d rows, want 0", len(refs2))
 	}
 }
+
+// insertEntryWithRegion creates a minimal product-backed entry with
+// region overridden - free text or a known value, per the caller. No
+// raw INSERT needed: the CHECK that used to forbid free text is gone
+// (migration 000013), so CreateEntry accepts it directly.
+func insertEntryWithRegion(t *testing.T, s *store.Store, region string) store.Entry {
+	t.Helper()
+	e := baseEntry(uuid.New())
+	e.Region = region
+	return mustCreate(t, s, e, nil)
+}
+
+// TestListOpenRegionEntries covers the normalize-regions lever's
+// selection: entries whose region sits outside the known set, sibling
+// to TestNormalizePlatformStore_SelectAndStamp's name-only platform
+// selection.
+func TestListOpenRegionEntries(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	known := []string{"ntsc_u", "ntsc_j", "pal", "region_free"}
+
+	open := insertEntryWithRegion(t, s, "Korea")
+	insertEntryWithRegion(t, s, "ntsc_j") // in the known set: not selected
+
+	refs, err := s.ListOpenRegionEntries(ctx, known)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 1 || refs[0].EntryID != open.ID || refs[0].Region != "Korea" {
+		t.Fatalf("refs = %+v, want the one Korea row (id %s)", refs, open.ID)
+	}
+	if refs[0].ProductID == nil || *refs[0].ProductID != *open.ProductID {
+		t.Fatalf("product_id not carried: %+v", refs[0])
+	}
+}
+
+// TestListOpenRegionEntries_EmptyKnownSelectsAll pins the degenerate
+// case behind the query's NOT (region = ANY($1)): an empty known slice
+// matches nothing under ANY, so NOT flips every row to selected - a
+// true select-all, not a select-none. The only real caller always
+// passes the compile-time four-key set, so this is the trap a future
+// caller passing a different (possibly empty) known set would
+// otherwise fall into unnoticed.
+func TestListOpenRegionEntries_EmptyKnownSelectsAll(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	known := insertEntryWithRegion(t, s, "ntsc_j")
+	free := insertEntryWithRegion(t, s, "Korea")
+
+	refs, err := s.ListOpenRegionEntries(ctx, []string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("refs = %+v, want both entries selected with an empty known set", refs)
+	}
+	got := map[uuid.UUID]bool{}
+	for _, r := range refs {
+		got[r.EntryID] = true
+	}
+	if !got[known.ID] || !got[free.ID] {
+		t.Fatalf("refs = %+v, want both the known-valued %s and the free-text %s", refs, known.ID, free.ID)
+	}
+}
+
+// TestPromoteEntryRegion_ClearsAck covers the normalize-regions
+// lever's plain write: canonicalizing the region string clears any
+// region-mismatch ack, the same fresh-choice rule RepointEntry and the
+// update arm's CASE apply.
+func TestPromoteEntryRegion_ClearsAck(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	userID := uuid.New()
+	e := baseEntry(userID)
+	e.Region = "Japan"
+	created := mustCreate(t, s, e, nil)
+	if err := s.AckRegionMismatch(ctx, userID, created.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.PromoteEntryRegion(ctx, created.ID, "ntsc_j"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetEntry(ctx, userID, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Region != "ntsc_j" {
+		t.Fatalf("region: got %q, want ntsc_j", got.Region)
+	}
+	if got.RegionMismatchAckAt != nil {
+		t.Fatal("promote must clear region_mismatch_ack_at")
+	}
+}
+
+// TestPromoteEntryRegionSnapshot covers the normalize-regions lever's
+// other write: the igdb-backed arm re-picks the product-derived
+// snapshot in the same statement as the region canonicalization, since
+// the newly promoted region may unlock a localization chain the
+// free-text value never had.
+func TestPromoteEntryRegionSnapshot(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	userID := uuid.New()
+	e := baseEntry(userID)
+	e.Region = "Japan"
+	e.IGDBGameID = new(int64(1000))
+	created := mustCreate(t, s, e, nil)
+	if created.LocalizedName != nil || created.LocalizedNameTranslit != nil || created.LocalizedCoverURL != nil {
+		t.Fatal("fixture must start with a null localized trio")
+	}
+
+	d := time.Date(1995, time.September, 30, 0, 0, 0, 0, time.UTC)
+	name, translit, cover := new("聖剣伝説3"), new("Seiken Densetsu 3"), new("https://x/jp-cover.jpg")
+	if err := s.PromoteEntryRegionSnapshot(ctx, created.ID, "ntsc_j", &d, name, translit, cover); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetEntry(ctx, userID, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Region != "ntsc_j" {
+		t.Fatalf("region: got %q, want ntsc_j", got.Region)
+	}
+	if got.FirstReleaseDate == nil || !got.FirstReleaseDate.Equal(d) {
+		t.Fatalf("first_release_date: got %v, want %v", got.FirstReleaseDate, d)
+	}
+	if got.LocalizedName == nil || *got.LocalizedName != *name {
+		t.Fatalf("localized_name: got %v, want %v", got.LocalizedName, *name)
+	}
+	if got.LocalizedNameTranslit == nil || *got.LocalizedNameTranslit != *translit {
+		t.Fatalf("localized_name_translit: got %v, want %v", got.LocalizedNameTranslit, *translit)
+	}
+	if got.LocalizedCoverURL == nil || *got.LocalizedCoverURL != *cover {
+		t.Fatalf("localized_cover_url: got %v, want %v", got.LocalizedCoverURL, *cover)
+	}
+}

@@ -817,6 +817,70 @@ func (s *Store) SetEntryPlatformIdentity(ctx context.Context, entryID uuid.UUID,
 	return nil
 }
 
+// OpenRegionEntryRef is one row of the normalize-regions selection:
+// entries whose region sits outside the known set, with just enough
+// identity to decide the plain-write vs snapshot-re-pick arm.
+type OpenRegionEntryRef struct {
+	EntryID    uuid.UUID
+	ProductID  *uuid.UUID
+	IGDBGameID *int64
+	Region     string
+}
+
+// ListOpenRegionEntries lists entries holding a region outside the
+// known set - the normalize lever's selection. Deliberately unscoped
+// across users like its platform sibling; ordered for determinism.
+func (s *Store) ListOpenRegionEntries(ctx context.Context, known []string) ([]OpenRegionEntryRef, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, product_id, igdb_game_id, region FROM entries
+		WHERE NOT (region = ANY($1))
+		ORDER BY id`, known)
+	if err != nil {
+		return nil, fmt.Errorf("store: list open region entries: %w", err)
+	}
+	defer rows.Close()
+	var out []OpenRegionEntryRef
+	for rows.Next() {
+		var ref OpenRegionEntryRef
+		if err := rows.Scan(&ref.EntryID, &ref.ProductID, &ref.IGDBGameID, &ref.Region); err != nil {
+			return nil, fmt.Errorf("store: scan open region ref: %w", err)
+		}
+		out = append(out, ref)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: list open region entries: %w", err)
+	}
+	return out, nil
+}
+
+// PromoteEntryRegion canonicalizes one entry's region string. A
+// region change is a fresh choice, so the mismatch ack clears - the
+// same rule the update arm's CASE applies.
+func (s *Store) PromoteEntryRegion(ctx context.Context, entryID uuid.UUID, region string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE entries SET region = $2, updated_at = now(), region_mismatch_ack_at = NULL
+		WHERE id = $1`, entryID, region)
+	if err != nil {
+		return fmt.Errorf("store: promote entry region: %w", err)
+	}
+	return nil
+}
+
+// PromoteEntryRegionSnapshot canonicalizes the region and re-picks
+// the product-derived snapshot in one statement (the igdb-backed arm:
+// the promoted region may now have localization chains).
+func (s *Store) PromoteEntryRegionSnapshot(ctx context.Context, entryID uuid.UUID, region string, d *time.Time, name, translit, cover *string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE entries SET region = $2, first_release_date = $3, localized_name = $4,
+			localized_name_translit = $5, localized_cover_url = $6,
+			updated_at = now(), region_mismatch_ack_at = NULL
+		WHERE id = $1`, entryID, region, d, name, translit, cover)
+	if err != nil {
+		return fmt.Errorf("store: promote entry region snapshot: %w", err)
+	}
+	return nil
+}
+
 // DeleteEntry removes one of the user's entries (tag links cascade).
 func (s *Store) DeleteEntry(ctx context.Context, userID, id uuid.UUID) error {
 	tag, err := s.pool.Exec(ctx,
