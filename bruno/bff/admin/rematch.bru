@@ -20,8 +20,9 @@ docs {
   guarded); collection answers 202 and detaches. The three counts - triples
   seen, triples failed, entries repointed - do not ride this response; they
   land in collection's "rematch-entries complete" log line and the
-  vg.collection.rematch.* metrics instead. Runs last in this folder, so it
-  rides the admin cookie left behind by ack-cleanup-login-admin.bru.
+  vg.collection.rematch.* metrics instead. Rides the admin cookie left
+  behind by ack-cleanup-login-admin.bru; the resnapshot relay (seq 65)
+  closes the folder on the same cookie.
 
   No conflict sibling (unlike refresh-conflict.bru): the dev rematch
   dataset resolves in single-digit milliseconds, faster than two

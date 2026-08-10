@@ -1,0 +1,28 @@
+meta {
+  name: admin - run entry resnapshot
+  type: http
+  seq: 65
+}
+
+post {
+  url: {{bff_url}}/api/admin/resnapshot
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.products_seen: isNumber
+  res.body.products_failed: isNumber
+  res.body.entries_updated: isNumber
+}
+
+docs {
+  Relays to collection's POST /internal/resnapshot (admin-or-service
+  guarded): recomputes every game-backed entry's snapshotted release
+  date, localized presentation trio, and credit arrays from its
+  product's current data. Synchronous and idempotent - the sweep
+  counts ride the 200, with entries_updated 0 once nothing has
+  changed - so this row closes the folder safely on every run,
+  riding the admin cookie the rematch trigger before it also used.
+}

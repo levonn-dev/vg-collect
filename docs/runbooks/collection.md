@@ -584,11 +584,9 @@ before blaming the limit.
 
 Four levers below, all guarded admin role or a service token, all
 idempotent (re-running after a partial failure is the designed
-retry). Resnapshot alone is contract-described but not relayed by the
-bff or gateway: call the service directly (dev: the Tilt port-forward
-on 8085). The other three - entry rematch, normalize platforms,
-normalize regions - are also reachable through the bff Admin page's
-buttons, on top of the direct route.
+retry). Every one is reachable two ways: a card on the bff Admin
+page's Maintenance grid, or the direct service route (dev: the Tilt
+port-forward on 8085).
 
 Resnapshot (admin role or a service token; tightened from any valid
 JWT): recomputes every game-backed
@@ -612,7 +610,9 @@ catalog refresh, or an immediate `/admin/refresh` trigger there - so
 the rollout order for a catalog-shape change is deploy, then the
 catalog refresh (nightly or admin-triggered), then this lever; that
 sequence is exactly what lights up pre-existing ntsc_j entries with
-their localized trio once their product carries it. Bruno:
+their localized trio once their product carries it. Admin page: the
+"Run entry resnapshot" card (the bff relays it as
+`POST /api/admin/resnapshot`). Bruno:
 `bruno/collection/resnapshot.bru`, or:
 
     TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \

@@ -139,9 +139,10 @@ localized snapshot inline, so promoted rows need no follow-up.
 Two cases want an extra lever run:
 
 - A new `altTagFamilies` row: trigger a catalog refresh (Admin page,
-  or wait for 06:00) so reprojection builds the new bundles, then
-  `POST /internal/resnapshot` on collection re-derives localized
-  fields for entries that already exist.
+  or wait for 06:00) so reprojection builds the new bundles, then the
+  entry resnapshot (Admin page card, or `POST /internal/resnapshot`
+  on collection) re-derives localized fields for entries that already
+  exist.
 - Entries that already carry the canonical code, created before the
   region's chains landed: resnapshot alone.
 
