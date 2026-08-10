@@ -601,7 +601,12 @@ presentation trio `localized_name` / `localized_name_translit` /
 `localized_cover_url` (region-chained per `localizationChains`: ntsc_j
 reads the ja-JP bundle, pal reads EU, korea reads ko-KR, china reads
 zh-CN then zh-TW, brazil reads pt-BR; ntsc_u and region_free chain to
-nothing, since the canonical snapshot already is their presentation).
+nothing, since the canonical snapshot already is their presentation)
+and the credit arrays `developers`/`publishers` (IGDB company credits
+split by role, the community block's curated lists as per-field
+gap-fill; not region-scoped, so one derive serves every entry of a
+product). Running it once after this feature deploys is the credits
+backfill for existing entries.
 Re-run it after enrichment's catalog has actually healed - the nightly
 catalog refresh, or an immediate `/admin/refresh` trigger there - so
 the rollout order for a catalog-shape change is deploy, then the
