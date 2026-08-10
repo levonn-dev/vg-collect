@@ -30,12 +30,27 @@ tests {
       expect(rd.date).to.match(/^\d{4}-\d{2}-\d{2}$/);
     });
   });
+
+  test("igdb.companies, when present, is name+role rows", function () {
+    const igdb = res.body && res.body.igdb;
+    if (!igdb || igdb.companies === undefined) {
+      return;
+    }
+    expect(igdb.companies).to.be.an("array");
+    igdb.companies.forEach(function (c) {
+      expect(c.name).to.be.a("string");
+      expect(c.developer).to.be.a("boolean");
+      expect(c.publisher).to.be.a("boolean");
+    });
+  });
 }
 
 docs {
   Expect 200 with the full product document for the id resolved earlier.
-  The tests block tolerantly checks the igdb release_dates projection:
-  when the product has an igdb block and carries release_dates, every row
-  is {region: string, date: YYYY-MM-DD}. Old cached bodies that predate
-  the feature omit the field and pass untouched.
+  The tests block tolerantly checks two igdb projections: when the
+  product has an igdb block and carries release_dates, every row is
+  {region: string, date: YYYY-MM-DD}; when it carries companies (the
+  entry detail page's developer/publisher credits), every row is
+  {name: string, developer: bool, publisher: bool}. Old cached bodies
+  that predate either field omit it and pass untouched.
 }

@@ -180,10 +180,24 @@ it('deletes after confirmation and navigates home', async () => {
 it('invalidates dashboard/recommendations and drops the entry cache on delete', async () => {
   const e = entryFixture()
   vi.spyOn(window, 'confirm').mockReturnValue(true)
+  // The mock 404s the entry once deleted, like the real server: the
+  // removeQueries call races the still-mounted observer's refetch, and
+  // a mock that kept serving the entry would let that refetch
+  // repopulate the cache and flake the drop assertion below.
+  let deleted = false
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
     if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
-    if (init?.method === 'DELETE') return Promise.resolve(new Response(null, { status: 204 }))
+    if (init?.method === 'DELETE') {
+      deleted = true
+      return Promise.resolve(new Response(null, { status: 204 }))
+    }
+    if (deleted && String(url) === `/api/entries/${e.id}`) {
+      return Promise.resolve(new Response(
+        JSON.stringify({ type: 'about:blank', title: 'x', status: 404, code: 'entry_not_found', detail: 'x' }),
+        { status: 404, headers: { 'Content-Type': 'application/problem+json' } },
+      ))
+    }
     return Promise.resolve(jsonResponse(200, e))
   }))
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -197,6 +211,85 @@ it('invalidates dashboard/recommendations and drops the entry cache on delete', 
   expect(qc.getQueryState(['recommendations'])?.isInvalidated).toBe(true)
   // The back button must not be able to render the deleted entry from cache.
   expect(qc.getQueryData(['entry', e.id])).toBeUndefined()
+})
+
+// Minimal product payload for the credits line; the igdb block carries
+// the two companies split across the developer/publisher flags.
+function productWithCompanies(productId: string | undefined, companies: { name: string; developer: boolean; publisher: boolean }[]) {
+  return {
+    id: productId,
+    type: 'game',
+    name: 'Metroid Prime',
+    igdb: {
+      game_id: 99, name: 'Metroid Prime', genres: [], themes: [], franchises: [],
+      similar_games: [], companies, fetched_at: '2026-07-01T00:00:00Z',
+    },
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-01T00:00:00Z',
+  }
+}
+
+it('renders developer and publisher credits from the product', async () => {
+  const e = entryFixture({ display_name: 'Metroid Prime' })
+  const product = productWithCompanies(e.product_id, [
+    { name: 'Retro Studios', developer: true, publisher: false },
+    { name: 'Nintendo', developer: false, publisher: true },
+  ])
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+    if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
+    if (String(url).startsWith('/api/products/')) return Promise.resolve(jsonResponse(200, product))
+    return Promise.resolve(jsonResponse(200, e))
+  }))
+  renderDetail(e.id)
+  expect(await screen.findByText('Developed by Retro Studios')).toBeInTheDocument()
+  expect(screen.getByText('Published by Nintendo')).toBeInTheDocument()
+})
+
+it('joins multiple credited companies into one line', async () => {
+  const e = entryFixture({ display_name: 'Metroid Prime' })
+  const product = productWithCompanies(e.product_id, [
+    { name: 'Retro Studios', developer: true, publisher: false },
+    { name: 'Nintendo', developer: true, publisher: true },
+  ])
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+    if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
+    if (String(url).startsWith('/api/products/')) return Promise.resolve(jsonResponse(200, product))
+    return Promise.resolve(jsonResponse(200, e))
+  }))
+  renderDetail(e.id)
+  expect(await screen.findByText('Developed by Retro Studios, Nintendo')).toBeInTheDocument()
+  expect(screen.getByText('Published by Nintendo')).toBeInTheDocument()
+})
+
+it('omits the credits line when the product carries no companies', async () => {
+  const e = entryFixture({ display_name: 'Metroid Prime' })
+  const product = productWithCompanies(e.product_id, [])
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+    if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
+    if (String(url).startsWith('/api/products/')) return Promise.resolve(jsonResponse(200, product))
+    return Promise.resolve(jsonResponse(200, e))
+  }))
+  renderDetail(e.id)
+  await screen.findByRole('heading', { name: 'Metroid Prime' })
+  expect(screen.queryByText(/Developed by/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/Published by/)).not.toBeInTheDocument()
+})
+
+it('never fetches a product for a custom entry', async () => {
+  const e = entryFixture({ display_name: 'Homebrew Cart', product_id: undefined })
+  const fetchMock = vi.fn().mockImplementation((url: string) =>
+    Promise.resolve(String(url).startsWith('/api/tags')
+      ? jsonResponse(200, { tags: [] })
+      : String(url).endsWith('/submission')
+        ? noSubmission()
+        : jsonResponse(200, e)))
+  vi.stubGlobal('fetch', fetchMock)
+  renderDetail(e.id)
+  await screen.findByRole('heading', { name: 'Homebrew Cart' })
+  expect(fetchMock.mock.calls.some((c) => String(c[0]).startsWith('/api/products/'))).toBe(false)
 })
 
 it('renders the romanized title, ja-Latn lang, the canonical secondary line, and the localized cover by default', async () => {
@@ -228,6 +321,43 @@ it('renders the native title and ja lang under the ja locale', async () => {
   renderDetail(e.id)
   expect(await screen.findByRole('heading', { name: '聖剣伝説 3' })).toBeInTheDocument()
   expect(screen.getByText('聖剣伝説 3')).toHaveAttribute('lang', 'ja')
+})
+
+// Name-only korea shape: the ko-KR bundle carries no transliteration,
+// so under the en locale the canonical title leads and the native
+// title moves to the secondary line with its own lang tag.
+const kr: Partial<Entry> = {
+  display_name: 'Trials of Mana',
+  localized_name: '성검전설 3',
+  region: 'korea',
+}
+
+it('renders the canonical title with the native secondary for a name-only korea entry', async () => {
+  const e = entryFixture(kr)
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
+    Promise.resolve(String(url).startsWith('/api/tags')
+      ? jsonResponse(200, { tags: [] })
+      : String(url).endsWith('/submission')
+        ? noSubmission()
+        : jsonResponse(200, e))))
+  renderDetail(e.id)
+  expect(await screen.findByRole('heading', { name: 'Trials of Mana' })).toBeInTheDocument()
+  expect(screen.getByText('Trials of Mana')).not.toHaveAttribute('lang')
+  expect(screen.getByText('성검전설 3')).toHaveAttribute('lang', 'ko')
+})
+
+it('renders the native korea title under the ja locale', async () => {
+  const e = entryFixture(kr)
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
+    Promise.resolve(String(url).startsWith('/api/tags')
+      ? jsonResponse(200, { tags: [] })
+      : String(url).endsWith('/submission')
+        ? noSubmission()
+        : jsonResponse(200, e))))
+  activateJa()
+  renderDetail(e.id)
+  expect(await screen.findByRole('heading', { name: '성검전설 3' })).toBeInTheDocument()
+  expect(screen.getByText('성검전설 3')).toHaveAttribute('lang', 'ko')
 })
 
 it('omits the secondary line and the lang attribute for a canonical-only entry', async () => {

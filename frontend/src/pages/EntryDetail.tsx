@@ -3,6 +3,7 @@ import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams } from 'react-router'
+import { fetchProduct } from '../api/catalog'
 import { ApiError } from '../api/client'
 import type { EntryUpdate } from '../api/collection'
 import { deleteEntry, fetchEntry, updateEntry } from '../api/collection'
@@ -12,7 +13,7 @@ import CatalogSubmission from '../components/entry/CatalogSubmission'
 import EntryForm from '../components/entry/EntryForm'
 import RegionMismatchBanner from '../components/entry/RegionMismatchBanner'
 import { releaseYear } from '../lib/format'
-import { entryCover, entrySecondary, entryTitle, entryTitleLang, titleFormFor } from '../lib/productTitle'
+import { entryCover, entrySecondary, entrySecondaryLang, entryTitle, entryTitleLang, titleFormFor } from '../lib/productTitle'
 
 // Identity-preserving: the byline has never been prettified, so the
 // item-type word stays the raw wire value. An unknown future wire
@@ -31,6 +32,15 @@ export default function EntryDetail() {
   const location = useLocation()
   const queryClient = useQueryClient()
   const entry = useQuery({ queryKey: ['entry', id], queryFn: () => fetchEntry(id) })
+  // Same ['product', id] cache entry as PricingPanel and
+  // RegionMismatchBanner, so the three mounted readers dedupe into one
+  // fetch; custom entries have no product and never fetch.
+  const productId = entry.data?.product_id ?? ''
+  const product = useQuery({
+    queryKey: ['product', productId],
+    queryFn: () => fetchProduct(productId),
+    enabled: productId !== '',
+  })
   // The wizard lands here with navigation state after a create; the
   // banner confirms the add without a layout jump elsewhere.
   const justAdded = Boolean((location.state as { justAdded?: boolean } | null)?.justAdded)
@@ -73,6 +83,10 @@ export default function EntryDetail() {
 
   const e = entry.data
   const cover = entryCover(e)
+  // IGDB credits a company per role; a company can hold both roles.
+  const companies = product.data?.igdb?.companies ?? []
+  const developerNames = companies.filter((c) => c.developer).map((c) => c.name).join(', ')
+  const publisherNames = companies.filter((c) => c.publisher).map((c) => c.name).join(', ')
   return (
     <main className="py-6" aria-label={t`Entry detail`}>
       {justAdded && (
@@ -98,7 +112,7 @@ export default function EntryDetail() {
             <span lang={entryTitleLang(e, form)}>{entryTitle(e, form)}</span>
           </h2>
           {entrySecondary(e, form) && (
-            <p className="text-sm text-gray-500">{entrySecondary(e, form)}</p>
+            <p className="text-sm text-gray-500" lang={entrySecondaryLang(e, form)}>{entrySecondary(e, form)}</p>
           )}
           <p className="text-sm text-gray-600">
             {[
@@ -108,6 +122,17 @@ export default function EntryDetail() {
             ].filter(Boolean).join(' - ')}
             {!e.product_id && <Trans> - custom item</Trans>}
           </p>
+          {(developerNames !== '' || publisherNames !== '') && (
+            <p className="text-sm text-gray-600">
+              {developerNames !== '' && (
+                <span><Trans>Developed by {developerNames}</Trans></span>
+              )}
+              {developerNames !== '' && publisherNames !== '' && ' - '}
+              {publisherNames !== '' && (
+                <span><Trans>Published by {publisherNames}</Trans></span>
+              )}
+            </p>
+          )}
         </div>
         <button
           onClick={() => {
