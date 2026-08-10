@@ -457,7 +457,7 @@ func TestUnitRematchMetrics(t *testing.T) {
 	}
 	st := withPendingCount(&stubStore{
 		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
-		repointEntry: func(context.Context, uuid.UUID, uuid.UUID, *time.Time, *string, *string, *string) error {
+		repointEntry: func(context.Context, uuid.UUID, uuid.UUID, *time.Time, *string, *string, *string, []string, []string) error {
 			return nil
 		},
 	}, 0)
@@ -537,7 +537,7 @@ func TestUnitRematchMetrics_MemberFetchFailureCountsFailedTriple(t *testing.T) {
 	}
 	st := withPendingCount(&stubStore{
 		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
-		repointEntry: func(context.Context, uuid.UUID, uuid.UUID, *time.Time, *string, *string, *string) error {
+		repointEntry: func(context.Context, uuid.UUID, uuid.UUID, *time.Time, *string, *string, *string, []string, []string) error {
 			return nil
 		},
 	}, 0)
@@ -664,7 +664,7 @@ func TestUnitRematchMetrics_ResolvedSameIdSkipsRepoint(t *testing.T) {
 	}
 	st := withPendingCount(&stubStore{
 		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
-		repointEntry: func(_ context.Context, _, productID uuid.UUID, _ *time.Time, _, _, _ *string) error {
+		repointEntry: func(_ context.Context, _, productID uuid.UUID, _ *time.Time, _, _, _ *string, _, _ []string) error {
 			mu.Lock()
 			defer mu.Unlock()
 			repointCalls++

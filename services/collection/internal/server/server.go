@@ -60,9 +60,9 @@ type Store interface {
 	PricingRows(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.PricingRow, error)
 	PurgeUserData(ctx context.Context, userID uuid.UUID) error
 	ListGameBackedRefs(ctx context.Context) ([]store.GameEntryRef, error)
-	SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string) error
+	SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string, developers, publishers []string) error
 	ListAutoGameRematchRefs(ctx context.Context) ([]store.RematchEntryRef, error)
-	RepointEntry(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string) error
+	RepointEntry(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string, developers, publishers []string) error
 	ListNameOnlyPlatformEntries(ctx context.Context) ([]store.PlatformEntryRef, error)
 	SetEntryPlatformIdentity(ctx context.Context, entryID uuid.UUID, igdbID int64, name string) error
 	ListOpenRegionEntries(ctx context.Context, known []string) ([]store.OpenRegionEntryRef, error)

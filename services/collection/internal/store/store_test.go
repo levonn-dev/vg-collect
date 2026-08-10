@@ -484,6 +484,8 @@ func TestListGameBackedRefs(t *testing.T) {
 	gameA2.Region = "pal"
 	gameA2.IGDBGameID = new(int64(1000))
 	gameA2.FirstReleaseDate = &dateA2
+	gameA2.Developers = []string{"Square"}
+	gameA2.Publishers = []string{"Square", "Nintendo"}
 	gameA2Entry := mustCreate(t, s, gameA2, nil)
 
 	refs, err := s.ListGameBackedRefs(ctx)
@@ -517,15 +519,27 @@ func TestListGameBackedRefs(t *testing.T) {
 		}
 		return *a == *b
 	}
+	strsEq := func(a, b []string) bool {
+		if len(a) != len(b) {
+			return false
+		}
+		for i := range a {
+			if a[i] != b[i] {
+				return false
+			}
+		}
+		return true
+	}
 	want := map[uuid.UUID]struct {
-		productID             uuid.UUID
-		region                string
-		release               time.Time
-		name, translit, cover *string
+		productID              uuid.UUID
+		region                 string
+		release                time.Time
+		name, translit, cover  *string
+		developers, publishers []string
 	}{
-		gameA.ID:       {*gameA.ProductID, "ntsc_u", dateA, jaName, jaTranslit, jaCover},
-		gameA2Entry.ID: {*gameA.ProductID, "pal", dateA2, nil, nil, nil},
-		gameB.ID:       {*gameB.ProductID, "ntsc_u", dateB, nil, nil, nil},
+		gameA.ID:       {*gameA.ProductID, "ntsc_u", dateA, jaName, jaTranslit, jaCover, nil, nil},
+		gameA2Entry.ID: {*gameA.ProductID, "pal", dateA2, nil, nil, nil, []string{"Square"}, []string{"Square", "Nintendo"}},
+		gameB.ID:       {*gameB.ProductID, "ntsc_u", dateB, nil, nil, nil, nil, nil},
 	}
 	for _, r := range refs {
 		w, ok := want[r.EntryID]
@@ -550,6 +564,10 @@ func TestListGameBackedRefs(t *testing.T) {
 		if !strEq(r.LocalizedCoverURL, w.cover) {
 			t.Fatalf("localized_cover_url for %s: got %v, want %v", r.EntryID, r.LocalizedCoverURL, w.cover)
 		}
+		if !strsEq(r.Developers, w.developers) || !strsEq(r.Publishers, w.publishers) {
+			t.Fatalf("credits for %s: got %v/%v, want %v/%v",
+				r.EntryID, r.Developers, r.Publishers, w.developers, w.publishers)
+		}
 	}
 }
 
@@ -568,7 +586,8 @@ func TestSetSnapshotFields(t *testing.T) {
 
 	newDate := time.Date(1995, time.August, 22, 0, 0, 0, 0, time.UTC)
 	name, translit, cover := new("クロノ・トリガー"), new("Kurono Torigaa"), new("https://x/ja-cover.jpg")
-	if err := s.SetSnapshotFields(ctx, created.ID, &newDate, name, translit, cover); err != nil {
+	devs, pubs := []string{"Square"}, []string{"Square", "Nintendo"}
+	if err := s.SetSnapshotFields(ctx, created.ID, &newDate, name, translit, cover, devs, pubs); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.GetEntry(ctx, user, created.ID)
@@ -587,11 +606,17 @@ func TestSetSnapshotFields(t *testing.T) {
 	if got.LocalizedCoverURL == nil || *got.LocalizedCoverURL != *cover {
 		t.Fatalf("localized_cover_url: got %v, want %v", got.LocalizedCoverURL, *cover)
 	}
+	if len(got.Developers) != 1 || got.Developers[0] != "Square" {
+		t.Fatalf("developers: got %v, want [Square]", got.Developers)
+	}
+	if len(got.Publishers) != 2 || got.Publishers[0] != "Square" || got.Publishers[1] != "Nintendo" {
+		t.Fatalf("publishers: got %v, want [Square Nintendo]", got.Publishers)
+	}
 	if !got.UpdatedAt.After(created.UpdatedAt) {
 		t.Fatalf("updated_at must move: %v -> %v", created.UpdatedAt, got.UpdatedAt)
 	}
 
-	if err := s.SetSnapshotFields(ctx, created.ID, nil, nil, nil, nil); err != nil {
+	if err := s.SetSnapshotFields(ctx, created.ID, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	cleared, err := s.GetEntry(ctx, user, created.ID)
@@ -599,8 +624,9 @@ func TestSetSnapshotFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cleared.FirstReleaseDate != nil || cleared.LocalizedName != nil ||
-		cleared.LocalizedNameTranslit != nil || cleared.LocalizedCoverURL != nil {
-		t.Fatalf("all four columns must clear to NULL, got %+v", cleared)
+		cleared.LocalizedNameTranslit != nil || cleared.LocalizedCoverURL != nil ||
+		cleared.Developers != nil || cleared.Publishers != nil {
+		t.Fatalf("all six columns must clear to NULL, got %+v", cleared)
 	}
 }
 
@@ -781,7 +807,8 @@ func TestRepointEntry(t *testing.T) {
 	newProduct := uuid.New()
 	newDate := time.Date(1996, time.March, 6, 0, 0, 0, 0, time.UTC)
 	name, translit, cover := new("聖剣伝説3"), new("Seiken Densetsu 3"), new("https://x/jp-cover.jpg")
-	if err := s.RepointEntry(ctx, created.ID, newProduct, &newDate, name, translit, cover); err != nil {
+	devs, pubs := []string{"Square"}, []string{"Square"}
+	if err := s.RepointEntry(ctx, created.ID, newProduct, &newDate, name, translit, cover, devs, pubs); err != nil {
 		t.Fatal(err)
 	}
 
@@ -803,6 +830,10 @@ func TestRepointEntry(t *testing.T) {
 	}
 	if got.LocalizedCoverURL == nil || *got.LocalizedCoverURL != *cover {
 		t.Fatalf("localized_cover_url: got %v, want %v", got.LocalizedCoverURL, *cover)
+	}
+	if len(got.Developers) != 1 || got.Developers[0] != "Square" ||
+		len(got.Publishers) != 1 || got.Publishers[0] != "Square" {
+		t.Fatalf("credits: got %v/%v, want [Square]/[Square]", got.Developers, got.Publishers)
 	}
 	if !got.UpdatedAt.After(created.UpdatedAt) {
 		t.Fatalf("updated_at must move: %v -> %v", created.UpdatedAt, got.UpdatedAt)
@@ -904,7 +935,7 @@ func TestRegionMismatchAck_ClearsOnChoiceChange(t *testing.T) {
 
 	// RepointEntry (the entry rematch's own write) clears it too.
 	acked = ack(t)
-	if err := s.RepointEntry(ctx, created.ID, uuid.New(), nil, nil, nil, nil); err != nil {
+	if err := s.RepointEntry(ctx, created.ID, uuid.New(), nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	repointed, err := s.GetEntry(ctx, userID, created.ID)
@@ -1154,6 +1185,62 @@ func TestListFilters(t *testing.T) {
 	f.Statuses = []string{"dropped"}
 	if got := list(f); len(got) != 0 {
 		t.Fatalf("expected empty, got %v", names(got))
+	}
+}
+
+// TestListFilters_CreditOverlap pins the credit dimensions: arrays
+// round-trip through create, a filter value matches any entry whose
+// array contains it (overlap, OR within the dimension), the two
+// dimensions AND across, and uncredited entries never match.
+func TestListFilters_CreditOverlap(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	user := uuid.New()
+	mk := func(name string, devs, pubs []string) store.Entry {
+		t.Helper()
+		e := baseEntry(user)
+		e.DisplayName = name
+		e.Developers = devs
+		e.Publishers = pubs
+		return mustCreate(t, s, e, nil)
+	}
+	prime := mk("Metroid Prime", []string{"Retro Studios", "Nintendo"}, []string{"Nintendo"})
+	mk("Chrono Trigger", []string{"Square"}, []string{"Square"})
+	uncredited := mk("Homebrew Cart", nil, nil)
+
+	if len(prime.Developers) != 2 || prime.Developers[0] != "Retro Studios" || prime.Developers[1] != "Nintendo" {
+		t.Fatalf("created entry developers = %v, want the two-studio array round-tripped", prime.Developers)
+	}
+	if uncredited.Developers != nil || uncredited.Publishers != nil {
+		t.Fatalf("uncredited entry must round-trip nil arrays, got %v/%v", uncredited.Developers, uncredited.Publishers)
+	}
+
+	list := func(f store.Filters) []store.Entry {
+		t.Helper()
+		got, err := s.ListEntries(ctx, user, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	base := store.Filters{Sort: "name", Order: "asc"}
+
+	f := base
+	f.Developers = []string{"Nintendo"}
+	wantNames(t, list(f), "Metroid Prime")
+
+	f = base
+	f.Developers = []string{"Square", "Retro Studios"} // OR within the dimension
+	wantNames(t, list(f), "Chrono Trigger", "Metroid Prime")
+
+	f = base
+	f.Publishers = []string{"Nintendo"}
+	wantNames(t, list(f), "Metroid Prime")
+
+	f = base
+	f.Developers, f.Publishers = []string{"Nintendo"}, []string{"Square"} // AND across
+	if got := list(f); len(got) != 0 {
+		t.Fatalf("expected empty (no entry is developed by Nintendo AND published by Square), got %v", names(got))
 	}
 }
 

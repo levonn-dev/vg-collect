@@ -392,6 +392,32 @@ func TestEntryLocalizedColumns(t *testing.T) {
 	}
 }
 
+func TestEntryCreditColumns(t *testing.T) {
+	url := newTestDB(t)
+	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+
+	for _, col := range []string{"developers", "publishers"} {
+		var dataType, udt, nullable string
+		err := conn.QueryRow(ctx, `
+			SELECT data_type, udt_name, is_nullable FROM information_schema.columns
+			WHERE table_name = 'entries' AND column_name = $1`, col).Scan(&dataType, &udt, &nullable)
+		if err != nil {
+			t.Fatalf("%s: %v", col, err)
+		}
+		if dataType != "ARRAY" || udt != "_text" || nullable != "YES" {
+			t.Fatalf("%s is %s/%s/%s, want ARRAY/_text/YES", col, dataType, udt, nullable)
+		}
+	}
+}
+
 func TestCustomPricingConstraints(t *testing.T) {
 	url := newTestDB(t)
 	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {

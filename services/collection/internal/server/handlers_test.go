@@ -68,11 +68,11 @@ type stubStore struct {
 	coverURLs            func(ctx context.Context, userID uuid.UUID, f store.Filters, limit int) ([]string, error)
 
 	listGameBackedRefs    func(ctx context.Context) ([]store.GameEntryRef, error)
-	setSnapshotFields     func(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string) error
+	setSnapshotFields     func(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string, developers, publishers []string) error
 	countEntriesByProduct func(ctx context.Context, productID uuid.UUID) (int64, error)
 
 	listAutoGameRematchRefs func(ctx context.Context) ([]store.RematchEntryRef, error)
-	repointEntry            func(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string) error
+	repointEntry            func(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string, developers, publishers []string) error
 
 	listNameOnlyPlatformEntries func(ctx context.Context) ([]store.PlatformEntryRef, error)
 	setEntryPlatformIdentity    func(ctx context.Context, entryID uuid.UUID, igdbID int64, name string) error
@@ -272,11 +272,11 @@ func (s *stubStore) CountEntriesByProduct(ctx context.Context, productID uuid.UU
 	}
 	return s.countEntriesByProduct(ctx, productID)
 }
-func (s *stubStore) SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string) error {
+func (s *stubStore) SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string, developers, publishers []string) error {
 	if s.setSnapshotFields == nil {
 		panic("unexpected SetSnapshotFields")
 	}
-	return s.setSnapshotFields(ctx, entryID, d, name, translit, cover)
+	return s.setSnapshotFields(ctx, entryID, d, name, translit, cover, developers, publishers)
 }
 func (s *stubStore) ListAutoGameRematchRefs(ctx context.Context) ([]store.RematchEntryRef, error) {
 	if s.listAutoGameRematchRefs == nil {
@@ -284,11 +284,11 @@ func (s *stubStore) ListAutoGameRematchRefs(ctx context.Context) ([]store.Rematc
 	}
 	return s.listAutoGameRematchRefs(ctx)
 }
-func (s *stubStore) RepointEntry(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string) error {
+func (s *stubStore) RepointEntry(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string, developers, publishers []string) error {
 	if s.repointEntry == nil {
 		panic("unexpected RepointEntry")
 	}
-	return s.repointEntry(ctx, entryID, productID, d, name, translit, cover)
+	return s.repointEntry(ctx, entryID, productID, d, name, translit, cover, developers, publishers)
 }
 func (s *stubStore) ListNameOnlyPlatformEntries(ctx context.Context) ([]store.PlatformEntryRef, error) {
 	if s.listNameOnlyPlatformEntries == nil {
@@ -906,6 +906,85 @@ func TestCreateEntry_OpenWorldRegion(t *testing.T) {
 	if got.Region != "Korea" {
 		t.Fatalf("response region = %q, want trimmed %q", got.Region, "Korea")
 	}
+}
+
+// TestCreateEntry_CustomCredits pins the custom-entry credit facts:
+// names are trimmed, empty elements drop, the arrays store and echo,
+// and an absent field stays nil.
+func TestCreateEntry_CustomCredits(t *testing.T) {
+	var stored store.Entry
+	st := &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
+		stored = e
+		e.ID = uuid.New()
+		e.Tags = []store.TagRef{}
+		return e, nil
+	}}
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+
+	body := jsonBody(map[string]any{
+		"display_name": "Repro Alpha", "item_type": "game",
+		"packaging": "loose", "region": "ntsc_u", "status": "shelved",
+		"developers": []string{"  Garage Team  ", "", "Second Studio"},
+		"publishers": []string{"Repro House"},
+	})
+	resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()), body)
+	if resp.StatusCode != http.StatusCreated {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, b)
+	}
+	if len(stored.Developers) != 2 || stored.Developers[0] != "Garage Team" || stored.Developers[1] != "Second Studio" {
+		t.Fatalf("stored developers = %v, want trimmed with the empty element dropped", stored.Developers)
+	}
+	if len(stored.Publishers) != 1 || stored.Publishers[0] != "Repro House" {
+		t.Fatalf("stored publishers = %v", stored.Publishers)
+	}
+	var got struct {
+		Developers []string `json:"developers"`
+		Publishers []string `json:"publishers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Developers) != 2 || got.Developers[0] != "Garage Team" {
+		t.Fatalf("response developers = %v", got.Developers)
+	}
+
+	// Absent fields stay nil (no phantom empty arrays).
+	resp = do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()), jsonBody(map[string]any{
+		"display_name": "Plain Cart", "item_type": "game",
+		"packaging": "loose", "region": "ntsc_u",
+	}))
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if stored.Developers != nil || stored.Publishers != nil {
+		t.Fatalf("absent credit fields must store nil, got %v/%v", stored.Developers, stored.Publishers)
+	}
+}
+
+// TestCreateEntry_CreditCaps pins the manual validation: more than 10
+// names or a name over 120 runes is a 400, matching the contract caps
+// the router does not enforce on its own.
+func TestCreateEntry_CreditCaps(t *testing.T) {
+	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
+	base := func(devs []string) io.Reader {
+		return jsonBody(map[string]any{
+			"display_name": "Repro Alpha", "item_type": "game",
+			"packaging": "loose", "region": "ntsc_u",
+			"developers": devs,
+		})
+	}
+
+	eleven := make([]string, 11)
+	for i := range eleven {
+		eleven[i] = fmt.Sprintf("Studio %d", i)
+	}
+	resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()), base(eleven))
+	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
+
+	long := strings.Repeat("x", 121)
+	resp = do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()), base([]string{long}))
+	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
 // TestCreateEntry_RegionLengthIsRuneCounted pins the 32-char cap as
@@ -4976,25 +5055,33 @@ func TestUnitInternalResnapshot_HappyPath(t *testing.T) {
 	euDate := time.Date(1998, time.December, 4, 0, 0, 0, 0, time.UTC)
 	scalarB := time.Date(2001, time.June, 15, 0, 0, 0, 0, time.UTC)
 
+	entry4 := uuid.New()
 	refs := []store.GameEntryRef{
 		// stale stored date -> the ntsc_u chain hit (north_america) differs, must update.
 		{EntryID: entry1, ProductID: productA, Region: "ntsc_u", FirstReleaseDate: new(time.Date(1990, time.January, 1, 0, 0, 0, 0, time.UTC))},
-		// stored date already matches the pal chain hit (europe) -> no write.
-		{EntryID: entry2, ProductID: productA, Region: "pal", FirstReleaseDate: new(euDate)},
+		// stored date AND stored credits already match -> no write.
+		{EntryID: entry2, ProductID: productA, Region: "pal", FirstReleaseDate: new(euDate),
+			Developers: []string{"Square"}, Publishers: []string{"Square"}},
 		// region_free has no chain, falls back to the scalar; unset -> must update.
 		{EntryID: entry3, ProductID: productB, Region: "region_free", FirstReleaseDate: nil},
+		// date matches but the stored credits are stale -> the credit
+		// half of the diff alone must force the write.
+		{EntryID: entry4, ProductID: productA, Region: "pal", FirstReleaseDate: new(euDate),
+			Developers: []string{"Stale Studio"}, Publishers: []string{"Square"}},
 	}
 
 	var mu sync.Mutex
 	productCalls := map[uuid.UUID]int{}
 	updated := map[uuid.UUID]*time.Time{}
+	updatedDevs := map[uuid.UUID][]string{}
 
 	st := &stubStore{
 		listGameBackedRefs: func(context.Context) ([]store.GameEntryRef, error) { return refs, nil },
-		setSnapshotFields: func(_ context.Context, entryID uuid.UUID, d *time.Time, _, _, _ *string) error {
+		setSnapshotFields: func(_ context.Context, entryID uuid.UUID, d *time.Time, _, _, _ *string, developers, _ []string) error {
 			mu.Lock()
 			defer mu.Unlock()
 			updated[entryID] = d
+			updatedDevs[entryID] = developers
 			return nil
 		},
 	}
@@ -5005,8 +5092,10 @@ func TestUnitInternalResnapshot_HappyPath(t *testing.T) {
 			mu.Unlock()
 			switch id {
 			case productA:
-				return gameProductWithDates(id, time.Date(1998, time.January, 1, 0, 0, 0, 0, time.UTC),
-					map[string]time.Time{"north_america": naDate, "europe": euDate}), nil
+				p := gameProductWithDates(id, time.Date(1998, time.January, 1, 0, 0, 0, 0, time.UTC),
+					map[string]time.Time{"north_america": naDate, "europe": euDate})
+				p.Igdb.Companies = []enrichapi.CompanyCredit{{Name: "Square", Developer: true, Publisher: true}}
+				return p, nil
 			case productB:
 				return gameProductWithDates(id, scalarB, nil), nil
 			default:
@@ -5030,23 +5119,26 @@ func TestUnitInternalResnapshot_HappyPath(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	if got.ProductsSeen != 2 || got.ProductsFailed != 0 || got.EntriesUpdated != 2 {
+	if got.ProductsSeen != 2 || got.ProductsFailed != 0 || got.EntriesUpdated != 3 {
 		t.Fatalf("counts: %+v", got)
 	}
 	if len(productCalls) != 2 || productCalls[productA] != 1 || productCalls[productB] != 1 {
 		t.Fatalf("GetProduct must be called exactly once per distinct product: %v", productCalls)
 	}
-	if len(updated) != 2 {
+	if len(updated) != 3 {
 		t.Fatalf("only changed rows must be written: %v", updated)
 	}
 	if d := updated[entry1]; d == nil || !d.Equal(naDate) {
 		t.Fatalf("entry1 pick: %v", d)
 	}
 	if _, ok := updated[entry2]; ok {
-		t.Fatal("entry2's pick is unchanged and must not be rewritten")
+		t.Fatal("entry2 matches on date and credits alike and must not be rewritten")
 	}
 	if d := updated[entry3]; d == nil || !d.Equal(scalarB) {
 		t.Fatalf("entry3 pick: %v", d)
+	}
+	if devs := updatedDevs[entry4]; len(devs) != 1 || devs[0] != "Square" {
+		t.Fatalf("entry4 must be rewritten for its stale credits alone, got developers %v", devs)
 	}
 }
 
@@ -5068,7 +5160,7 @@ func TestUnitInternalResnapshot_FailedProductIsPartialProgress(t *testing.T) {
 	updated := map[uuid.UUID]bool{}
 	st := &stubStore{
 		listGameBackedRefs: func(context.Context) ([]store.GameEntryRef, error) { return refs, nil },
-		setSnapshotFields: func(_ context.Context, entryID uuid.UUID, _ *time.Time, _, _, _ *string) error {
+		setSnapshotFields: func(_ context.Context, entryID uuid.UUID, _ *time.Time, _, _, _ *string, _, _ []string) error {
 			mu.Lock()
 			updated[entryID] = true
 			mu.Unlock()
@@ -5124,7 +5216,7 @@ func TestUnitInternalResnapshot_Idempotent(t *testing.T) {
 			defer mu.Unlock()
 			return []store.GameEntryRef{{EntryID: entry6, ProductID: productE, Region: "ntsc_u", FirstReleaseDate: stored}}, nil
 		},
-		setSnapshotFields: func(_ context.Context, entryID uuid.UUID, d *time.Time, _, _, _ *string) error {
+		setSnapshotFields: func(_ context.Context, entryID uuid.UUID, d *time.Time, _, _, _ *string, _, _ []string) error {
 			mu.Lock()
 			defer mu.Unlock()
 			if entryID != entry6 {
@@ -5193,7 +5285,7 @@ func TestUnitInternalResnapshot_LocalizedTrio(t *testing.T) {
 			defer mu.Unlock()
 			return []store.GameEntryRef{storedJ, storedU}, nil
 		},
-		setSnapshotFields: func(_ context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string) error {
+		setSnapshotFields: func(_ context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string, developers, publishers []string) error {
 			mu.Lock()
 			defer mu.Unlock()
 			switch entryID {
@@ -5348,7 +5440,7 @@ func TestInternalRematchEntries_RepointsAndIsIdempotent(t *testing.T) {
 			copy(out, refs)
 			return out, nil
 		},
-		repointEntry: func(_ context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string) error {
+		repointEntry: func(_ context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string, developers, publishers []string) error {
 			mu.Lock()
 			defer mu.Unlock()
 			for i := range refs {
@@ -5458,7 +5550,7 @@ func TestInternalRematchEntries_ClassGuardIsPerEntry(t *testing.T) {
 	getProductCalls := map[uuid.UUID]int{}
 	st := &stubStore{
 		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
-		repointEntry: func(_ context.Context, entryID, productID uuid.UUID, _ *time.Time, _, _, _ *string) error {
+		repointEntry: func(_ context.Context, entryID, productID uuid.UUID, _ *time.Time, _, _, _ *string, _, _ []string) error {
 			mu.Lock()
 			defer mu.Unlock()
 			if productID != productManualJP {
@@ -5535,7 +5627,7 @@ func TestInternalRematchEntries_MemberFetchMemoizedAcrossTriples(t *testing.T) {
 	getProductCalls := map[uuid.UUID]int{}
 	st := &stubStore{
 		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
-		repointEntry: func(_ context.Context, entryID, _ uuid.UUID, _ *time.Time, _, _, _ *string) error {
+		repointEntry: func(_ context.Context, entryID, _ uuid.UUID, _ *time.Time, _, _, _ *string, _, _ []string) error {
 			mu.Lock()
 			defer mu.Unlock()
 			repointed = append(repointed, entryID)
@@ -5594,7 +5686,7 @@ func TestInternalRematchEntries_CountsFailuresAndContinues(t *testing.T) {
 	var repointed []uuid.UUID
 	st := &stubStore{
 		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
-		repointEntry: func(_ context.Context, entryID, _ uuid.UUID, _ *time.Time, _, _, _ *string) error {
+		repointEntry: func(_ context.Context, entryID, _ uuid.UUID, _ *time.Time, _, _, _ *string, _, _ []string) error {
 			mu.Lock()
 			defer mu.Unlock()
 			repointed = append(repointed, entryID)
@@ -5661,7 +5753,7 @@ func TestInternalRematchEntries_SkipsUserPicks(t *testing.T) {
 	var resolveCalls int
 	st := &stubStore{
 		listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return refs, nil },
-		repointEntry: func(_ context.Context, entryID, _ uuid.UUID, _ *time.Time, _, _, _ *string) error {
+		repointEntry: func(_ context.Context, entryID, _ uuid.UUID, _ *time.Time, _, _, _ *string, _, _ []string) error {
 			if entryID != entryAuto {
 				t.Fatalf("only the listed auto entry may repoint, got %s", entryID)
 			}
@@ -6046,7 +6138,8 @@ func TestSubmitVerdict_ApproveNewMintRecordAdoptAndRetry(t *testing.T) {
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	platName := "SNES"
 	communityProduct := enrichapi.Product{Id: minted, Type: "game", Name: "Repro Alpha",
-		Community: &enrichapi.CommunityMeta{PlatformName: &platName}}
+		Community: &enrichapi.CommunityMeta{PlatformName: &platName,
+			Developers: &[]string{"Garage Team"}, Publishers: &[]string{"Repro House"}}}
 
 	var mintedReq *enrichapi.CreateCommunityProductJSONRequestBody
 	var recorded, adopted bool
@@ -6065,6 +6158,10 @@ func TestSubmitVerdict_ApproveNewMintRecordAdoptAndRetry(t *testing.T) {
 		approveSubmission: func(_ context.Context, _ uuid.UUID, snap store.CatalogSnapshot) (store.Submission, error) {
 			if snap.ProductID != minted || snap.PlatformName == nil || *snap.PlatformName != "SNES" {
 				t.Fatalf("adopt snapshot: %+v", snap)
+			}
+			if len(snap.Developers) != 1 || snap.Developers[0] != "Garage Team" ||
+				len(snap.Publishers) != 1 || snap.Publishers[0] != "Repro House" {
+				t.Fatalf("adopt snapshot must carry the community credits: %v/%v", snap.Developers, snap.Publishers)
 			}
 			adopted = true
 			out := pending
@@ -6087,6 +6184,7 @@ func TestSubmitVerdict_ApproveNewMintRecordAdoptAndRetry(t *testing.T) {
 
 	body := map[string]any{"action": "approve_new", "product": map[string]any{
 		"type": "game", "name": "Repro Alpha", "platform_name": "SNES", "edition": "glow cart",
+		"developers": []string{"Garage Team"}, "publishers": []string{"Repro House"},
 	}}
 	resp := do(t, http.MethodPost, srv.URL+"/admin/submissions/"+subID.String()+"/verdict", admin, jsonBody(body))
 	if resp.StatusCode != http.StatusOK {
@@ -6094,6 +6192,10 @@ func TestSubmitVerdict_ApproveNewMintRecordAdoptAndRetry(t *testing.T) {
 	}
 	if mintedReq == nil || mintedReq.Name != "Repro Alpha" || mintedReq.Edition == nil || *mintedReq.Edition != "glow cart" {
 		t.Fatalf("mint request: %+v", mintedReq)
+	}
+	if mintedReq.Developers == nil || len(*mintedReq.Developers) != 1 || (*mintedReq.Developers)[0] != "Garage Team" ||
+		mintedReq.Publishers == nil || len(*mintedReq.Publishers) != 1 || (*mintedReq.Publishers)[0] != "Repro House" {
+		t.Fatalf("mint request must carry the curated credits: %+v", mintedReq)
 	}
 	if !recorded || !adopted {
 		t.Fatalf("phases: recorded=%v adopted=%v", recorded, adopted)

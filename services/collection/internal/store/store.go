@@ -128,6 +128,13 @@ type Entry struct {
 	LocalizedNameTranslit *string
 	LocalizedCoverURL     *string
 
+	// The credit snapshot (developer and publisher company names):
+	// IGDB company credits where the product carries them, the
+	// community block's curated lists as gap-fill, or the user's own
+	// facts on a custom entry. nil = no credits known.
+	Developers []string
+	Publishers []string
+
 	// When the owner dismissed the region-mismatch banner for the
 	// entry's CURRENT (region, product_id) choice. UpdateEntry and
 	// RepointEntry clear it back to nil whenever either changes, so a
@@ -160,7 +167,8 @@ const entryCols = `id, user_id, product_id, item_type, media_type,
 	localized_name, localized_name_translit, localized_cover_url,
 	region_mismatch_ack_at,
 	custom_value_cents, custom_value_set_at,
-	custom_value_entered_cents, custom_value_entered_currency`
+	custom_value_entered_cents, custom_value_entered_currency,
+	developers, publishers`
 
 func scanEntry(row pgx.Row) (Entry, error) {
 	var e Entry
@@ -177,6 +185,7 @@ func scanEntry(row pgx.Row) (Entry, error) {
 		&e.RegionMismatchAckAt,
 		&e.CustomValueCents, &e.CustomValueSetAt,
 		&e.CustomValueEnteredCents, &e.CustomValueEnteredCurrency,
+		&e.Developers, &e.Publishers,
 	)
 	return e, err
 }
@@ -281,12 +290,13 @@ func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			 source, external_ref, cover_url,
 			 localized_name, localized_name_translit, localized_cover_url,
 			 custom_value_cents, custom_value_set_at,
-			 custom_value_entered_cents, custom_value_entered_currency, match_provenance)
+			 custom_value_entered_cents, custom_value_entered_currency, match_provenance,
+			 developers, publishers)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
 			        $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,
 			        $33,$34,$35,
 			        $36, CASE WHEN $36::bigint IS NULL THEN NULL ELSE now() END,
-			        $37, $38, $39)
+			        $37, $38, $39, $40, $41)
 			RETURNING `+entryCols,
 			e.UserID, e.ProductID, e.ItemType, e.MediaType,
 			e.DisplayName, e.PlatformIGDBID, e.PlatformName, e.FirstReleaseDate, e.IGDBGameID,
@@ -299,12 +309,13 @@ func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			e.LocalizedName, e.LocalizedNameTranslit, e.LocalizedCoverURL,
 			e.CustomValueCents,
 			e.CustomValueEnteredCents, e.CustomValueEnteredCurrency,
-			// match_provenance is appended here rather than placed
-			// beside pricing_mode, where entryCols lists it: inserting
-			// it there would renumber all 38 placeholders already
-			// assigned above ($1-$38). The SELECT/RETURNING and INSERT
-			// column orders deliberately differ.
-			e.MatchProvenance)
+			// match_provenance and the credit arrays are appended here
+			// rather than placed beside pricing_mode and the localized
+			// trio, where entryCols lists them: inserting them there
+			// would renumber the placeholders already assigned above.
+			// The SELECT/RETURNING and INSERT column orders
+			// deliberately differ.
+			e.MatchProvenance, e.Developers, e.Publishers)
 		created, err := scanEntry(row)
 		if err != nil {
 			return fmt.Errorf("store: create entry: %w", err)
@@ -403,6 +414,7 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			 custom_value_entered_cents = $28,
 			 custom_value_entered_currency = $29,
 			 match_provenance = $36,
+			 developers = $37, publishers = $38,
 			 region_mismatch_ack_at = CASE
 			   WHEN $3::text IS DISTINCT FROM region
 			     OR $30::uuid IS DISTINCT FROM product_id THEN NULL
@@ -422,7 +434,7 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			e.CustomValueEnteredCents, e.CustomValueEnteredCurrency,
 			e.ProductID, e.CoverURL, e.PlatformIGDBID,
 			e.LocalizedName, e.LocalizedNameTranslit, e.LocalizedCoverURL,
-			e.MatchProvenance)
+			e.MatchProvenance, e.Developers, e.Publishers)
 		updated, err := scanEntry(row)
 		if err != nil {
 			return fmt.Errorf("store: update entry: %w", err)
@@ -608,19 +620,22 @@ func (s *Store) BulkUpdateEntries(ctx context.Context, userID uuid.UUID, entryID
 }
 
 // GameEntryRef is the resnapshot walk's row: just enough to recompute
-// one game-backed entry's date pick and localized presentation trio.
+// one game-backed entry's date pick, localized presentation trio, and
+// credit arrays.
 type GameEntryRef struct {
 	EntryID          uuid.UUID
 	ProductID        uuid.UUID
 	Region           string
 	FirstReleaseDate *time.Time
 
-	// The entry's currently stored snapshot trio, read back so the walk
-	// can diff a freshly recomputed pick against it and skip an
+	// The entry's currently stored snapshot fields, read back so the
+	// walk can diff a freshly recomputed pick against them and skip an
 	// unchanged row.
 	LocalizedName         *string
 	LocalizedNameTranslit *string
 	LocalizedCoverURL     *string
+	Developers            []string
+	Publishers            []string
 }
 
 // CountEntriesByProduct counts entries referencing the product across
@@ -644,7 +659,8 @@ func (s *Store) CountEntriesByProduct(ctx context.Context, productID uuid.UUID) 
 func (s *Store) ListGameBackedRefs(ctx context.Context) ([]GameEntryRef, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, product_id, region, first_release_date,
-			localized_name, localized_name_translit, localized_cover_url
+			localized_name, localized_name_translit, localized_cover_url,
+			developers, publishers
 		FROM entries
 		WHERE product_id IS NOT NULL AND igdb_game_id IS NOT NULL
 		ORDER BY product_id, id`)
@@ -656,7 +672,8 @@ func (s *Store) ListGameBackedRefs(ctx context.Context) ([]GameEntryRef, error) 
 	for rows.Next() {
 		var r GameEntryRef
 		if err := rows.Scan(&r.EntryID, &r.ProductID, &r.Region, &r.FirstReleaseDate,
-			&r.LocalizedName, &r.LocalizedNameTranslit, &r.LocalizedCoverURL); err != nil {
+			&r.LocalizedName, &r.LocalizedNameTranslit, &r.LocalizedCoverURL,
+			&r.Developers, &r.Publishers); err != nil {
 			return nil, fmt.Errorf("store: list game-backed refs: %w", err)
 		}
 		out = append(out, r)
@@ -669,13 +686,14 @@ func (s *Store) ListGameBackedRefs(ctx context.Context) ([]GameEntryRef, error) 
 
 // SetSnapshotFields narrowly rewrites one entry's product-derived
 // snapshot fields (the resnapshot walk's only write): the region-picked
-// date and localized presentation trio.
-func (s *Store) SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string) error {
+// date, the localized presentation trio, and the credit arrays.
+func (s *Store) SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string, developers, publishers []string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE entries SET first_release_date = $2, localized_name = $3,
-			localized_name_translit = $4, localized_cover_url = $5, updated_at = now()
+			localized_name_translit = $4, localized_cover_url = $5,
+			developers = $6, publishers = $7, updated_at = now()
 		WHERE id = $1`,
-		entryID, d, name, translit, cover)
+		entryID, d, name, translit, cover, developers, publishers)
 	if err != nil {
 		return fmt.Errorf("store: set snapshot fields: %w", err)
 	}
@@ -741,13 +759,14 @@ func (s *Store) ListAutoGameRematchRefs(ctx context.Context) ([]RematchEntryRef,
 // entry rematch's only write). Always a product change, so the
 // region-mismatch ack unconditionally clears - a fresh choice, not
 // yet reviewed.
-func (s *Store) RepointEntry(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string) error {
+func (s *Store) RepointEntry(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string, developers, publishers []string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE entries SET product_id = $2, first_release_date = $3, localized_name = $4,
-			localized_name_translit = $5, localized_cover_url = $6, updated_at = now(),
+			localized_name_translit = $5, localized_cover_url = $6,
+			developers = $7, publishers = $8, updated_at = now(),
 			region_mismatch_ack_at = NULL
 		WHERE id = $1`,
-		entryID, productID, d, name, translit, cover)
+		entryID, productID, d, name, translit, cover, developers, publishers)
 	if err != nil {
 		return fmt.Errorf("store: repoint entry: %w", err)
 	}
@@ -1039,6 +1058,8 @@ type Filters struct {
 	ItemConditions []string
 	PlatformIDs    []int64
 	TagIDs         []uuid.UUID
+	Developers     []string
+	Publishers     []string
 	Sort           string
 	Order          string
 }
@@ -1046,7 +1067,8 @@ type Filters struct {
 // Filtered reports whether any dimension narrows the entry set.
 func (f Filters) Filtered() bool {
 	return len(f.ItemTypes)+len(f.Statuses)+len(f.Packagings)+len(f.Regions)+
-		len(f.ItemConditions)+len(f.PlatformIDs)+len(f.TagIDs) > 0
+		len(f.ItemConditions)+len(f.PlatformIDs)+len(f.TagIDs)+
+		len(f.Developers)+len(f.Publishers) > 0
 }
 
 // filterWhere builds the WHERE clauses and args every entries query
@@ -1076,6 +1098,15 @@ func filterWhere(userID uuid.UUID, f Filters) ([]string, []any) {
 	}
 	if len(f.PlatformIDs) > 0 {
 		add("platform_igdb_id = ANY($%d)", f.PlatformIDs)
+	}
+	// Overlap, not equality: a filter value matches any entry whose
+	// credit array contains it, so multi-company entries match each of
+	// their companies.
+	if len(f.Developers) > 0 {
+		add("developers && $%d", f.Developers)
+	}
+	if len(f.Publishers) > 0 {
+		add("publishers && $%d", f.Publishers)
 	}
 	if len(f.TagIDs) > 0 {
 		uniq := make([]uuid.UUID, 0, len(f.TagIDs))
@@ -1761,6 +1792,8 @@ type SubmissionProposal struct {
 	Edition          *string
 	FirstReleaseDate *time.Time
 	CoverURL         *string
+	Developers       []string
+	Publishers       []string
 }
 
 // CatalogSnapshot is the product-derived snapshot adoption writes -
@@ -1777,6 +1810,8 @@ type CatalogSnapshot struct {
 	LocalizedName         *string
 	LocalizedNameTranslit *string
 	LocalizedCoverURL     *string
+	Developers            []string
+	Publishers            []string
 }
 
 const submissionCols = `id, entry_id, user_id, status, reject_reason, product_id,
@@ -1935,7 +1970,8 @@ func (s *Store) ListPendingSubmissions(ctx context.Context, limit, offset int) (
 	rows, err := s.pool.Query(ctx, `
 		SELECT s.id, s.entry_id, s.user_id, s.status, s.reject_reason, s.product_id,
 		       s.created_at, s.updated_at, s.reviewed_at,
-		       e.display_name, e.item_type, e.platform_name, e.region, e.edition, e.first_release_date, e.cover_url
+		       e.display_name, e.item_type, e.platform_name, e.region, e.edition, e.first_release_date, e.cover_url,
+		       e.developers, e.publishers
 		FROM catalog_submissions s
 		JOIN entries e ON e.id = s.entry_id
 		WHERE s.status = 'pending'
@@ -1950,7 +1986,8 @@ func (s *Store) ListPendingSubmissions(ctx context.Context, limit, offset int) (
 		var p SubmissionProposal
 		if err := rows.Scan(&p.ID, &p.EntryID, &p.UserID, &p.Status, &p.RejectReason, &p.ProductID,
 			&p.CreatedAt, &p.UpdatedAt, &p.ReviewedAt,
-			&p.DisplayName, &p.ItemType, &p.PlatformName, &p.Region, &p.Edition, &p.FirstReleaseDate, &p.CoverURL); err != nil {
+			&p.DisplayName, &p.ItemType, &p.PlatformName, &p.Region, &p.Edition, &p.FirstReleaseDate, &p.CoverURL,
+			&p.Developers, &p.Publishers); err != nil {
 			return nil, 0, fmt.Errorf("store: scan queue row: %w", err)
 		}
 		out = append(out, p)

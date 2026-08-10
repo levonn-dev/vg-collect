@@ -148,6 +148,8 @@ type CommunityMeta struct {
 	Region           string    `bson:"region,omitempty"`
 	FirstReleaseDate time.Time `bson:"first_release_date,omitempty"`
 	CoverURL         string    `bson:"cover_url,omitempty"`
+	Developers       []string  `bson:"developers,omitempty"`
+	Publishers       []string  `bson:"publishers,omitempty"`
 }
 
 // PromoteCandidate is one sweep hit: a provider item whose name

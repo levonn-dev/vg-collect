@@ -232,6 +232,14 @@ func communityResult(p store.Product) api.SearchResult {
 			fd := openapi_types.Date{Time: p.Community.FirstReleaseDate}
 			res.FirstReleaseDate = &fd
 		}
+		if len(p.Community.Developers) > 0 {
+			devs := p.Community.Developers
+			res.Developers = &devs
+		}
+		if len(p.Community.Publishers) > 0 {
+			pubs := p.Community.Publishers
+			res.Publishers = &pubs
+		}
 	}
 	return res
 }
@@ -834,6 +842,14 @@ func toAPIProduct(p store.Product) api.Product {
 		if p.Community.PlatformName != "" {
 			pn := p.Community.PlatformName
 			cm.PlatformName = &pn
+		}
+		if len(p.Community.Developers) > 0 {
+			devs := p.Community.Developers
+			cm.Developers = &devs
+		}
+		if len(p.Community.Publishers) > 0 {
+			pubs := p.Community.Publishers
+			cm.Publishers = &pubs
 		}
 		if p.Community.Region != "" {
 			rg := p.Community.Region
@@ -1701,6 +1717,36 @@ func validCoverURL(s string) bool {
 	return len(s) <= 512 && strings.HasPrefix(s, "https://")
 }
 
+// normalizeCommunityCredits trims a curated credit list, drops empty
+// elements, and enforces the contract caps the generated router does
+// not check itself (maxItems 10, maxLength 120 per name). The
+// collection service applies the same rules to entry credit facts, so
+// a submission's arrays never fail here after passing there. nil in,
+// nil out; a non-empty detail is the 400 text.
+func normalizeCommunityCredits(field string, names *[]string) ([]string, string) {
+	if names == nil {
+		return nil, ""
+	}
+	out := make([]string, 0, len(*names))
+	for _, n := range *names {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			continue
+		}
+		if utf8.RuneCountInString(n) > 120 {
+			return nil, field + " names must be at most 120 characters"
+		}
+		out = append(out, n)
+	}
+	if len(out) > 10 {
+		return nil, field + " must list at most 10 names"
+	}
+	if len(out) == 0 {
+		return nil, ""
+	}
+	return out, ""
+}
+
 // CreateCommunityProduct mints an anchor-less product from an
 // approved catalog submission. Community identity is the curated
 // name: no identity-index membership, no uniqueness machinery - the
@@ -1733,6 +1779,16 @@ func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request
 		problem(w, r, http.StatusBadRequest, "invalid_body", "cover_url must be an https URL up to 512 chars")
 		return
 	}
+	devs, detail := normalizeCommunityCredits("developers", req.Developers)
+	if detail != "" {
+		problem(w, r, http.StatusBadRequest, "invalid_body", detail)
+		return
+	}
+	pubs, detail := normalizeCommunityCredits("publishers", req.Publishers)
+	if detail != "" {
+		problem(w, r, http.StatusBadRequest, "invalid_body", detail)
+		return
+	}
 	p := store.Product{Type: string(req.Type), Name: name, Origin: "community"}
 	if req.Edition != nil {
 		p.Edition = *req.Edition
@@ -1748,8 +1804,8 @@ func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request
 	// below trims too, so an untrimmed check here would mint a block whose
 	// only field renders as empty anyway).
 	hasPlatformName := req.PlatformName != nil && strings.TrimSpace(*req.PlatformName) != ""
-	if hasPlatformName || req.FirstReleaseDate != nil || hasCover || hasRegion {
-		cm := &store.CommunityMeta{}
+	if hasPlatformName || req.FirstReleaseDate != nil || hasCover || hasRegion || devs != nil || pubs != nil {
+		cm := &store.CommunityMeta{Developers: devs, Publishers: pubs}
 		if hasPlatformName {
 			cm.PlatformName = strings.TrimSpace(*req.PlatformName)
 		}

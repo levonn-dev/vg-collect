@@ -47,6 +47,8 @@ func filtersFromViewParams(params []byte) (store.Filters, string) {
 		Status        []string `json:"status"`
 		Packaging     []string `json:"packaging"`
 		Region        []string `json:"region"`
+		Developer     []string `json:"developer"`
+		Publisher     []string `json:"publisher"`
 		ItemCondition []string `json:"item_condition"`
 		PlatformID    []int64  `json:"platform_id"`
 		TagID         []string `json:"tag_id"`
@@ -72,8 +74,10 @@ func filtersFromViewParams(params []byte) (store.Filters, string) {
 	f.Packagings = keep(doc.Packaging, packagingVals)
 	// region has no allowed set to gate against (open-world); a
 	// stored free-text value passes through exactly like the live
-	// list endpoint's own filter param.
+	// list endpoint's own filter param. Credits share the posture.
 	f.Regions = doc.Region
+	f.Developers = doc.Developer
+	f.Publishers = doc.Publisher
 	f.ItemConditions = keep(doc.ItemCondition, conditionVals)
 	f.PlatformIDs = doc.PlatformID
 	for _, raw := range doc.TagID {
@@ -134,6 +138,12 @@ func toSharedEntry(e store.Entry) api.SharedEntry {
 		ItemCondition:         (*api.SharedEntryItemCondition)(e.ItemCondition),
 		Pinned:                e.Pinned,
 		CreatedAt:             e.CreatedAt,
+	}
+	if len(e.Developers) > 0 {
+		out.Developers = &e.Developers
+	}
+	if len(e.Publishers) > 0 {
+		out.Publishers = &e.Publishers
 	}
 	if e.PlatformName != nil {
 		out.Platform = &api.EntryPlatform{IgdbPlatformId: e.PlatformIGDBID, Name: *e.PlatformName}

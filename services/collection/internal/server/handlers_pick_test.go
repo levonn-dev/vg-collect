@@ -7,6 +7,7 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 )
 
@@ -204,6 +205,91 @@ func TestUnitCatalogSnapshot_CoverPrecedence(t *testing.T) {
 				t.Fatalf("cover = %v, want %v", snap.CoverURL, tc.want)
 			}
 		})
+	}
+}
+
+// TestUnitCatalogSnapshot_Credits pins the credit derive: IGDB
+// company credits split by role in wire order, community curated
+// lists as per-field gap-fill, and no credits anywhere staying nil.
+func TestUnitCatalogSnapshot_Credits(t *testing.T) {
+	igdbProduct := enrichapi.Product{
+		Type: "game", Name: "Metroid Prime",
+		Igdb: &enrichapi.IgdbMeta{GameId: 99, Companies: []enrichapi.CompanyCredit{
+			{Name: "Retro Studios", Developer: true},
+			{Name: "Nintendo", Developer: true, Publisher: true},
+		}},
+	}
+	snap := catalogSnapshot(igdbProduct, "ntsc_u")
+	if len(snap.Developers) != 2 || snap.Developers[0] != "Retro Studios" || snap.Developers[1] != "Nintendo" {
+		t.Fatalf("developers = %v, want the role-filtered wire order", snap.Developers)
+	}
+	if len(snap.Publishers) != 1 || snap.Publishers[0] != "Nintendo" {
+		t.Fatalf("publishers = %v, want [Nintendo]", snap.Publishers)
+	}
+
+	community := enrichapi.Product{
+		Type: "game", Name: "Repro Alpha",
+		Community: &enrichapi.CommunityMeta{
+			Developers: &[]string{"Garage Team"},
+			Publishers: &[]string{"Repro House"},
+		},
+	}
+	snap = catalogSnapshot(community, "ntsc_u")
+	if len(snap.Developers) != 1 || snap.Developers[0] != "Garage Team" ||
+		len(snap.Publishers) != 1 || snap.Publishers[0] != "Repro House" {
+		t.Fatalf("community credits must fill: %v/%v", snap.Developers, snap.Publishers)
+	}
+
+	// Per-field precedence: the provider's publisher credit wins while
+	// the community developers still fill the role the provider left
+	// empty (same rule as the cover chain).
+	mixed := enrichapi.Product{
+		Type: "game", Name: "Repro Beta",
+		Igdb:      &enrichapi.IgdbMeta{GameId: 99, Companies: []enrichapi.CompanyCredit{{Name: "Nintendo", Publisher: true}}},
+		Community: &enrichapi.CommunityMeta{Developers: &[]string{"Garage Team"}, Publishers: &[]string{"Repro House"}},
+	}
+	snap = catalogSnapshot(mixed, "ntsc_u")
+	if len(snap.Developers) != 1 || snap.Developers[0] != "Garage Team" {
+		t.Fatalf("developers = %v, want the community gap-fill", snap.Developers)
+	}
+	if len(snap.Publishers) != 1 || snap.Publishers[0] != "Nintendo" {
+		t.Fatalf("publishers = %v, want the provider credit winning", snap.Publishers)
+	}
+
+	uncredited := enrichapi.Product{Type: "console", Name: "Super NES Console"}
+	snap = catalogSnapshot(uncredited, "ntsc_u")
+	if snap.Developers != nil || snap.Publishers != nil {
+		t.Fatalf("no credits anywhere must stay nil, got %v/%v", snap.Developers, snap.Publishers)
+	}
+}
+
+// TestUnitListParams_CreditFilters pins the query-param mapping:
+// developer/publisher ride into the filter matrix verbatim, the same
+// open-world posture as region.
+func TestUnitListParams_CreditFilters(t *testing.T) {
+	dev := []string{"Nintendo", "Square"}
+	pub := []string{"Capcom"}
+	f, _, _, _, detail := listParams(api.ListEntriesParams{Developer: &dev, Publisher: &pub})
+	if detail != "" {
+		t.Fatalf("detail = %q, want none", detail)
+	}
+	if len(f.Developers) != 2 || f.Developers[0] != "Nintendo" || f.Developers[1] != "Square" {
+		t.Fatalf("developers filter = %v", f.Developers)
+	}
+	if len(f.Publishers) != 1 || f.Publishers[0] != "Capcom" {
+		t.Fatalf("publishers filter = %v", f.Publishers)
+	}
+}
+
+// TestUnitFiltersFromViewParams_Credits pins the stored-view replay:
+// credit filters survive the params JSON round trip verbatim.
+func TestUnitFiltersFromViewParams_Credits(t *testing.T) {
+	f, _ := filtersFromViewParams([]byte(`{"v":1,"developer":["Nintendo"],"publisher":["Capcom","Square"]}`))
+	if len(f.Developers) != 1 || f.Developers[0] != "Nintendo" {
+		t.Fatalf("developers = %v", f.Developers)
+	}
+	if len(f.Publishers) != 2 || f.Publishers[0] != "Capcom" || f.Publishers[1] != "Square" {
+		t.Fatalf("publishers = %v", f.Publishers)
 	}
 }
 

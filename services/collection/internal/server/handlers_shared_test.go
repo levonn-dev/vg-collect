@@ -27,6 +27,7 @@ func TestSharedEntryWhitelist(t *testing.T) {
 		"id", "product_id", "item_type", "media_type", "display_name",
 		"platform", "first_release_date", "cover_url", "igdb_game_id",
 		"localized_name", "localized_name_translit", "localized_cover_url",
+		"developers", "publishers",
 		"region", "edition", "packaging", "has_box", "has_manual",
 		"box_condition", "manual_condition", "item_condition",
 		"pinned", "tags", "created_at",

@@ -303,6 +303,7 @@ func catalogSnapshot(product enrichapi.Product, region string) store.CatalogSnap
 		d := product.Community.FirstReleaseDate.Time
 		snap.FirstReleaseDate = &d
 	}
+	snap.Developers, snap.Publishers = pickCredits(product)
 	// Hardware has no igdb block and some games ship no cover; the
 	// platform logo is the next-best entry image.
 	if (snap.CoverURL == nil || *snap.CoverURL == "") && product.Platform != nil {
@@ -315,6 +316,73 @@ func catalogSnapshot(product enrichapi.Product, region string) store.CatalogSnap
 		snap.CoverURL = product.Community.CoverUrl
 	}
 	return snap
+}
+
+// pickCredits derives the credit arrays: IGDB company credits split
+// by role in wire order where the product carries them, the community
+// block's curated lists filling per role where the provider left one
+// empty (the same per-field precedence as the cover chain above).
+// Credits are game identity, not region-scoped - no chain table.
+func pickCredits(product enrichapi.Product) (developers, publishers []string) {
+	if product.Igdb != nil {
+		for _, c := range product.Igdb.Companies {
+			if c.Developer {
+				developers = append(developers, c.Name)
+			}
+			if c.Publisher {
+				publishers = append(publishers, c.Name)
+			}
+		}
+	}
+	if product.Community != nil {
+		if developers == nil && product.Community.Developers != nil && len(*product.Community.Developers) > 0 {
+			developers = *product.Community.Developers
+		}
+		if publishers == nil && product.Community.Publishers != nil && len(*product.Community.Publishers) > 0 {
+			publishers = *product.Community.Publishers
+		}
+	}
+	return developers, publishers
+}
+
+// normalizeCredits trims a curated credit list, drops empty elements,
+// and enforces the contract caps the generated router does not check
+// itself (maxItems 10, maxLength 120 per name). nil in, nil out; a
+// non-empty detail is the 400 text.
+func normalizeCredits(field string, names *[]string) ([]string, string) {
+	if names == nil {
+		return nil, ""
+	}
+	out := make([]string, 0, len(*names))
+	for _, n := range *names {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			continue
+		}
+		if utf8.RuneCountInString(n) > 120 {
+			return nil, field + " names must be at most 120 characters"
+		}
+		out = append(out, n)
+	}
+	if len(out) > 10 {
+		return nil, field + " must list at most 10 names"
+	}
+	if len(out) == 0 {
+		return nil, ""
+	}
+	return out, ""
+}
+
+func strSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func datesEqual(a, b *time.Time) bool {
@@ -601,6 +669,12 @@ func toAPIEntry(e store.Entry, valueCents *int64) api.Entry {
 	if e.PurchasedAt != nil {
 		out.PurchasedAt = &openapi_types.Date{Time: *e.PurchasedAt}
 	}
+	if len(e.Developers) > 0 {
+		out.Developers = &e.Developers
+	}
+	if len(e.Publishers) > 0 {
+		out.Publishers = &e.Publishers
+	}
 	tags := make([]api.TagRef, len(e.Tags))
 	for i, t := range e.Tags {
 		tags[i] = api.TagRef{Id: t.ID, Name: t.Name}
@@ -724,6 +798,17 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		e.PlatformIGDBID = body.PlatformIgdbId
 		e.CoverURL = body.CoverUrl
 		e.MatchProvenance = in.MatchProvenance
+		devs, detail := normalizeCredits("developers", body.Developers)
+		if detail != "" {
+			problem(w, r, http.StatusBadRequest, "invalid_body", detail)
+			return
+		}
+		pubs, detail := normalizeCredits("publishers", body.Publishers)
+		if detail != "" {
+			problem(w, r, http.StatusBadRequest, "invalid_body", detail)
+			return
+		}
+		e.Developers, e.Publishers = devs, pubs
 	} else {
 		product, err := h.enrichment.GetProduct(r.Context(), bearer, *body.ProductId)
 		if errors.Is(err, enrichmentclient.ErrUnknownProduct) {
@@ -746,6 +831,8 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		e.LocalizedName = snap.LocalizedName
 		e.LocalizedNameTranslit = snap.LocalizedNameTranslit
 		e.LocalizedCoverURL = snap.LocalizedCoverURL
+		e.Developers = snap.Developers
+		e.Publishers = snap.Publishers
 		e.MatchProvenance = in.MatchProvenance
 	}
 	// A NEW proxy reference must exist in the catalog (the entry's own
@@ -835,7 +922,7 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 	// catalog snapshot.
 	custom := current.ProductID == nil
 	if !custom && (body.DisplayName != nil || body.PlatformName != nil || body.FirstReleaseDate != nil ||
-		body.CoverUrl != nil || body.PlatformIgdbId != nil) {
+		body.CoverUrl != nil || body.PlatformIgdbId != nil || body.Developers != nil || body.Publishers != nil) {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "catalog fields are immutable on product-backed entries")
 		return
 	}
@@ -1006,6 +1093,9 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		// A region with no localized form clears what the old one
 		// stored, rather than keeping a title the entry no longer has.
 		e.LocalizedName, e.LocalizedNameTranslit, e.LocalizedCoverURL = pickLocalization(pickProd.Igdb, e.Region)
+		// Credits are not region-scoped, but a repoint is a product
+		// change and the fresh fetch is in hand: rewrite them too.
+		e.Developers, e.Publishers = pickCredits(*pickProd)
 	}
 	if custom {
 		e.DisplayName = *body.DisplayName
@@ -1013,6 +1103,19 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		e.FirstReleaseDate = dateToTime(body.FirstReleaseDate)
 		e.PlatformIGDBID = body.PlatformIgdbId
 		e.CoverURL = body.CoverUrl
+		devs, detail := normalizeCredits("developers", body.Developers)
+		if detail != "" {
+			problem(w, r, http.StatusBadRequest, "invalid_body", detail)
+			return
+		}
+		pubs, detail := normalizeCredits("publishers", body.Publishers)
+		if detail != "" {
+			problem(w, r, http.StatusBadRequest, "invalid_body", detail)
+			return
+		}
+		// Full replacement, like every custom display fact: an absent
+		// field clears.
+		e.Developers, e.Publishers = devs, pubs
 		// The recommendation identity follows the pricing proxy:
 		// re-snapshot on a new target, keep it while the target is
 		// unchanged, clear it when the proxy is removed.
@@ -1384,6 +1487,14 @@ func listParams(params api.ListEntriesParams) (store.Filters, string, int, int, 
 		for _, v := range *params.Region {
 			f.Regions = append(f.Regions, string(v))
 		}
+	}
+	// Credits are open-world snapshot facts (IGDB and community names
+	// alike): no allowed set to gate against, same as region.
+	if params.Developer != nil {
+		f.Developers = *params.Developer
+	}
+	if params.Publisher != nil {
+		f.Publishers = *params.Publisher
 	}
 	if params.ItemCondition != nil {
 		for _, v := range *params.ItemCondition {
@@ -2259,6 +2370,14 @@ func (h *Handlers) ListSubmissions(w http.ResponseWriter, r *http.Request, param
 			d := openapi_types.Date{Time: *row.FirstReleaseDate}
 			as.FirstReleaseDate = &d
 		}
+		if len(row.Developers) > 0 {
+			devs := row.Developers
+			as.Developers = &devs
+		}
+		if len(row.Publishers) > 0 {
+			pubs := row.Publishers
+			as.Publishers = &pubs
+		}
 		page.Submissions = append(page.Submissions, as)
 	}
 	writeJSON(w, http.StatusOK, page)
@@ -2406,6 +2525,8 @@ func mintRequest(p api.CommunityProductSpec) enrichapi.CreateCommunityProductJSO
 	out.Region = p.Region
 	out.Edition = p.Edition
 	out.FirstReleaseDate = p.FirstReleaseDate
+	out.Developers = p.Developers
+	out.Publishers = p.Publishers
 	out.CoverUrl = p.CoverUrl
 	return out
 }
@@ -2479,16 +2600,21 @@ func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 			h.logger.WarnContext(r.Context(), "resnapshot: product fetch failed", "product", pid, "err", err)
 			continue
 		}
+		// Credits are game identity, not region-scoped: one derive
+		// serves every entry in the product's group.
+		devs, pubs := pickCredits(prod)
 		for _, ref := range group {
 			pick := pickReleaseDate(prod.Igdb, ref.Region)
 			name, translit, cover := pickLocalization(prod.Igdb, ref.Region)
 			if datesEqual(pick, ref.FirstReleaseDate) &&
 				strPtrEqual(name, ref.LocalizedName) &&
 				strPtrEqual(translit, ref.LocalizedNameTranslit) &&
-				strPtrEqual(cover, ref.LocalizedCoverURL) {
+				strPtrEqual(cover, ref.LocalizedCoverURL) &&
+				strSlicesEqual(devs, ref.Developers) &&
+				strSlicesEqual(pubs, ref.Publishers) {
 				continue
 			}
-			if err := h.store.SetSnapshotFields(r.Context(), ref.EntryID, pick, name, translit, cover); err != nil {
+			if err := h.store.SetSnapshotFields(r.Context(), ref.EntryID, pick, name, translit, cover, devs, pubs); err != nil {
 				h.logger.WarnContext(r.Context(), "resnapshot: entry update failed", "entry", ref.EntryID, "err", err)
 				continue
 			}
@@ -2639,7 +2765,8 @@ func (h *Handlers) runRematch(ctx context.Context, bearer string) {
 			}
 			d := pickReleaseDate(resolved.Igdb, ref.Region)
 			name, translit, cover := pickLocalization(resolved.Igdb, ref.Region)
-			if err := h.store.RepointEntry(ctx, ref.EntryID, resolved.Id, d, name, translit, cover); err != nil {
+			devs, pubs := pickCredits(resolved)
+			if err := h.store.RepointEntry(ctx, ref.EntryID, resolved.Id, d, name, translit, cover, devs, pubs); err != nil {
 				h.logger.WarnContext(ctx, "rematch-entries: repoint failed", "entry", ref.EntryID, "err", err)
 				continue
 			}

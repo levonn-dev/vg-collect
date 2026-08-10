@@ -4259,6 +4259,7 @@ func TestUnitCreateCommunityProduct(t *testing.T) {
 	rec = serveUnit(t, h, env, http.MethodPost, "/admin/products", admin, map[string]any{
 		"type": "game", "name": "Repro Alpha", "platform_name": "SNES",
 		"region": "pal", "edition": "glow cart", "first_release_date": "1995-10-09",
+		"developers": []string{"  Garage Team  ", ""}, "publishers": []string{"Repro House"},
 	})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("mint: %d %s", rec.Code, rec.Body.String())
@@ -4287,6 +4288,40 @@ func TestUnitCreateCommunityProduct(t *testing.T) {
 	}
 	if out.Community == nil || out.Community.PlatformName == nil || *out.Community.PlatformName != "SNES" {
 		t.Fatalf("response community block missing: %+v", out.Community)
+	}
+	if len(got.Community.Developers) != 1 || got.Community.Developers[0] != "Garage Team" {
+		t.Fatalf("stored developers = %v, want trimmed with the empty element dropped", got.Community.Developers)
+	}
+	if len(got.Community.Publishers) != 1 || got.Community.Publishers[0] != "Repro House" {
+		t.Fatalf("stored publishers = %v", got.Community.Publishers)
+	}
+	if out.Community.Developers == nil || len(*out.Community.Developers) != 1 || (*out.Community.Developers)[0] != "Garage Team" {
+		t.Fatalf("response developers = %v", out.Community.Developers)
+	}
+}
+
+// TestUnitCreateCommunityProduct_CreditCaps pins the manual caps the
+// router does not enforce: more than 10 names or a name over 120
+// runes is a 400.
+func TestUnitCreateCommunityProduct_CreditCaps(t *testing.T) {
+	env := newAuthEnv(t)
+	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
+	h := newUnitHandlers(&stubStore{}, &stubGames{}, &stubPrices{}, newStubCache())
+
+	eleven := make([]string, 11)
+	for i := range eleven {
+		eleven[i] = fmt.Sprintf("Studio %d", i)
+	}
+	rec := serveUnit(t, h, env, http.MethodPost, "/admin/products", admin,
+		map[string]any{"type": "game", "name": "Repro Alpha", "developers": eleven})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("eleven developers: %d, want 400", rec.Code)
+	}
+
+	rec = serveUnit(t, h, env, http.MethodPost, "/admin/products", admin,
+		map[string]any{"type": "game", "name": "Repro Alpha", "publishers": []string{strings.Repeat("x", 121)}})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("121-rune publisher: %d, want 400", rec.Code)
 	}
 }
 
