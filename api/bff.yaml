@@ -378,6 +378,20 @@ paths:
           schema:
             type: array
             items: { type: string }
+        - name: developer
+          in: query
+          required: false
+          description: Developer names; an entry matches when any of its snapshotted developers is listed.
+          schema:
+            type: array
+            items: { type: string }
+        - name: publisher
+          in: query
+          required: false
+          description: Publisher names; same overlap matching as developer.
+          schema:
+            type: array
+            items: { type: string }
         - name: item_condition
           in: query
           required: false
@@ -963,6 +977,20 @@ paths:
           in: query
           required: false
           description: Known-value buckets; other stored strings only surface unfiltered.
+          schema:
+            type: array
+            items: { type: string }
+        - name: developer
+          in: query
+          required: false
+          description: Developer names; an entry matches when any of its snapshotted developers is listed.
+          schema:
+            type: array
+            items: { type: string }
+        - name: publisher
+          in: query
+          required: false
+          description: Publisher names; same overlap matching as developer.
           schema:
             type: array
             items: { type: string }
@@ -2158,6 +2186,14 @@ components:
         item_type: { type: string, enum: [game, console, accessory] }
         platform_name: { type: string }
         region: { type: string, description: "Community rows only - the community facts region, entry vocabulary." }
+        developers:
+          type: array
+          items: { type: string }
+          description: Community rows only - the curated developer names, for based-add prefill.
+        publishers:
+          type: array
+          items: { type: string }
+          description: Community rows only - the curated publisher names, for based-add prefill.
     SearchResults:
       type: object
       required: [degraded, results]
@@ -2309,6 +2345,19 @@ components:
             values ntsc_u, ntsc_j, pal, region_free, korea, brazil,
             china).
         first_release_date: { type: string, format: date }
+        developers:
+          type: array
+          items: { type: string }
+          description: >
+            Curated developer company names, one per element; served
+            into entry credit snapshots when the provider block
+            carries no developer credits (per-field gap-fill).
+        publishers:
+          type: array
+          items: { type: string }
+          description: >
+            Curated publisher company names; same gap-fill posture as
+            developers.
         cover_url:
           type: string
           description: >
@@ -2329,6 +2378,16 @@ components:
           maxLength: 128
           description: The entry idiom's single "Edition or variant" note.
         first_release_date: { type: string, format: date }
+        developers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Curated developer company names, one per element.
+        publishers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Curated publisher company names, one per element.
         cover_url:
           type: string
           maxLength: 512
@@ -2598,6 +2657,18 @@ components:
         localized_cover_url:
           type: string
           description: Region-picked box art URL (server-derived).
+        developers:
+          type: array
+          items: { type: string }
+          description: >-
+            Developer company names snapshotted for the entry: IGDB
+            credits where the product carries them, community curated
+            lists as gap-fill, or the user's own facts on a custom
+            entry. Absent when no credits are known.
+        publishers:
+          type: array
+          items: { type: string }
+          description: Publisher company names; same sourcing as developers.
         igdb_game_id:
           type: integer
           format: int64
@@ -2718,6 +2789,14 @@ components:
         region: { type: string }
         edition: { type: string }
         first_release_date: { type: string, format: date }
+        developers:
+          type: array
+          items: { type: string }
+          description: The entry's developer credit facts, live from the proposal join; prefill the curation form.
+        publishers:
+          type: array
+          items: { type: string }
+          description: The entry's publisher credit facts, live from the proposal join; prefill the curation form.
         cover_url:
           type: string
           description: The entry's cover URL, live from the proposal join; prefills the curation cover field.
@@ -2747,6 +2826,16 @@ components:
         region: { type: string, maxLength: 32 }
         edition: { type: string, maxLength: 128 }
         first_release_date: { type: string, format: date }
+        developers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Curated developer company names, one per element.
+        publishers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Curated publisher company names, one per element.
         cover_url:
           type: string
           maxLength: 512
@@ -2807,6 +2896,19 @@ components:
           type: string
           format: date
           description: Custom entries only.
+        developers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: >-
+            Custom entries only: developer company names, one per
+            element. Ignored on product-backed creation, where the
+            snapshot derives credits from the product.
+        publishers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Custom entries only; publisher company names, one per element.
         media_type: { type: string, enum: [physical], default: physical }
         region:
           type: string
@@ -2904,6 +3006,16 @@ components:
           type: string
           format: date
           description: Custom entries only.
+        developers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Custom entries only; developer company names, one per element (full replacement).
+        publishers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Custom entries only; publisher company names, one per element (full replacement).
         product_id:
           type: string
           format: uuid
@@ -3367,6 +3479,12 @@ components:
         localized_cover_url:
           type: string
           description: Region-picked box art URL (server-derived).
+        developers:
+          type: array
+          items: { type: string }
+        publishers:
+          type: array
+          items: { type: string }
         igdb_game_id: { type: integer, format: int64 }
         region: { type: string }
         edition: { type: string }

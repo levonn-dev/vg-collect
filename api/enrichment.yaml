@@ -703,6 +703,14 @@ components:
         item_type: { type: string, enum: [game, console, accessory] }
         platform_name: { type: string }
         region: { type: string, description: "Community rows only - the community facts region, entry vocabulary." }
+        developers:
+          type: array
+          items: { type: string }
+          description: Community rows only - the curated developer names, for based-add prefill.
+        publishers:
+          type: array
+          items: { type: string }
+          description: Community rows only - the curated publisher names, for based-add prefill.
     SearchResults:
       type: object
       required: [degraded, results]
@@ -874,6 +882,19 @@ components:
             values ntsc_u, ntsc_j, pal, region_free, korea, brazil,
             china).
         first_release_date: { type: string, format: date }
+        developers:
+          type: array
+          items: { type: string }
+          description: >
+            Curated developer company names, one per element; served
+            into entry credit snapshots when the provider block
+            carries no developer credits (per-field gap-fill).
+        publishers:
+          type: array
+          items: { type: string }
+          description: >
+            Curated publisher company names; same gap-fill posture as
+            developers.
         cover_url:
           type: string
           description: >
@@ -900,6 +921,16 @@ components:
           maxLength: 128
           description: The entry idiom's single "Edition or variant" note.
         first_release_date: { type: string, format: date }
+        developers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Curated developer company names, one per element.
+        publishers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Curated publisher company names, one per element.
         cover_url:
           type: string
           maxLength: 512

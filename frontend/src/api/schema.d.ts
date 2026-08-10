@@ -1166,6 +1166,10 @@ export interface components {
             platform_name?: string;
             /** @description Community rows only - the community facts region, entry vocabulary. */
             region?: string;
+            /** @description Community rows only - the curated developer names, for based-add prefill. */
+            developers?: string[];
+            /** @description Community rows only - the curated publisher names, for based-add prefill. */
+            publishers?: string[];
         };
         SearchResults: {
             /** @description True when the provider was unreachable and the local catalog answered instead. */
@@ -1262,6 +1266,10 @@ export interface components {
             region?: string;
             /** Format: date */
             first_release_date?: string;
+            /** @description Curated developer company names, one per element; served into entry credit snapshots when the provider block carries no developer credits (per-field gap-fill). */
+            developers?: string[];
+            /** @description Curated publisher company names; same gap-fill posture as developers. */
+            publishers?: string[];
             /** @description User-supplied cover image URL (https, never fetched server-side; the client renders it with a broken-image fallback). Served as the product cover when no provider cover is present; retained after promotion as gap-fill. */
             cover_url?: string;
         };
@@ -1275,6 +1283,10 @@ export interface components {
             edition?: string;
             /** Format: date */
             first_release_date?: string;
+            /** @description Curated developer company names, one per element. */
+            developers?: string[];
+            /** @description Curated publisher company names, one per element. */
+            publishers?: string[];
             /** @description Optional https cover image URL (validated by shape only, never fetched). */
             cover_url?: string;
         };
@@ -1436,6 +1448,10 @@ export interface components {
             localized_name_translit?: string;
             /** @description Region-picked box art URL (server-derived). */
             localized_cover_url?: string;
+            /** @description Developer company names snapshotted for the entry: IGDB credits where the product carries them, community curated lists as gap-fill, or the user's own facts on a custom entry. Absent when no credits are known. */
+            developers?: string[];
+            /** @description Publisher company names; same sourcing as developers. */
+            publishers?: string[];
             /**
              * Format: int64
              * @description The recommendation identity: snapshotted from the entry's own product, or from the proxy target on custom game entries (owning a reproduction of X means playing X).
@@ -1546,6 +1562,10 @@ export interface components {
             edition?: string;
             /** Format: date */
             first_release_date?: string;
+            /** @description The entry's developer credit facts, live from the proposal join; prefill the curation form. */
+            developers?: string[];
+            /** @description The entry's publisher credit facts, live from the proposal join; prefill the curation form. */
+            publishers?: string[];
             /** @description The entry's cover URL, live from the proposal join; prefills the curation cover field. */
             cover_url?: string;
             /** Format: date-time */
@@ -1571,6 +1591,10 @@ export interface components {
             edition?: string;
             /** Format: date */
             first_release_date?: string;
+            /** @description Curated developer company names, one per element. */
+            developers?: string[];
+            /** @description Curated publisher company names, one per element. */
+            publishers?: string[];
             /** @description Optional https cover image URL for the minted community product. */
             cover_url?: string;
         };
@@ -1611,6 +1635,10 @@ export interface components {
              * @description Custom entries only.
              */
             first_release_date?: string;
+            /** @description Custom entries only: developer company names, one per element. Ignored on product-backed creation, where the snapshot derives credits from the product. */
+            developers?: string[];
+            /** @description Custom entries only; publisher company names, one per element. */
+            publishers?: string[];
             /**
              * @default physical
              * @enum {string}
@@ -1687,6 +1715,10 @@ export interface components {
              * @description Custom entries only.
              */
             first_release_date?: string;
+            /** @description Custom entries only; developer company names, one per element (full replacement). */
+            developers?: string[];
+            /** @description Custom entries only; publisher company names, one per element (full replacement). */
+            publishers?: string[];
             /**
              * Format: uuid
              * @description Narrow re-match. Accepted only when the entry is product-backed with pricing_mode auto, its current product is a game with no price mapping, and the new product is a game of the same family (same igdb game and platform); the same id as the entry already has is a no-op. Anything else answers 400 code invalid_product_change; enrichment unreachable answers 502 code enrichment_unavailable and leaves the entry unchanged. Snapshotted display fields stay as they are.
@@ -1989,6 +2021,8 @@ export interface components {
             localized_name_translit?: string;
             /** @description Region-picked box art URL (server-derived). */
             localized_cover_url?: string;
+            developers?: string[];
+            publishers?: string[];
             /** Format: int64 */
             igdb_game_id?: number;
             region: string;
@@ -2536,6 +2570,10 @@ export interface operations {
                 packaging?: ("sealed" | "cib" | "loose")[];
                 /** @description Known-value buckets; other stored strings only surface unfiltered. */
                 region?: string[];
+                /** @description Developer names; an entry matches when any of its snapshotted developers is listed. */
+                developer?: string[];
+                /** @description Publisher names; same overlap matching as developer. */
+                publisher?: string[];
                 item_condition?: ("mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor")[];
                 /** @description IGDB platform ids (matches the creation-time snapshot). */
                 platform_id?: number[];
@@ -3330,6 +3368,10 @@ export interface operations {
                 packaging?: ("sealed" | "cib" | "loose")[];
                 /** @description Known-value buckets; other stored strings only surface unfiltered. */
                 region?: string[];
+                /** @description Developer names; an entry matches when any of its snapshotted developers is listed. */
+                developer?: string[];
+                /** @description Publisher names; same overlap matching as developer. */
+                publisher?: string[];
                 item_condition?: ("mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor")[];
                 /** @description IGDB platform ids (matches the creation-time snapshot). */
                 platform_id?: number[];

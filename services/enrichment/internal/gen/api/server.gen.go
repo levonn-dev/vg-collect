@@ -239,9 +239,15 @@ type CatalogPlatform struct {
 // CommunityMeta Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present).
 type CommunityMeta struct {
 	// CoverUrl User-supplied cover image URL (https, never fetched server-side; the client renders it with a broken-image fallback). Served as the product cover when no provider cover is present; retained after promotion as gap-fill.
-	CoverUrl         *string             `json:"cover_url,omitempty"`
+	CoverUrl *string `json:"cover_url,omitempty"`
+
+	// Developers Curated developer company names, one per element; served into entry credit snapshots when the provider block carries no developer credits (per-field gap-fill).
+	Developers       *[]string           `json:"developers,omitempty"`
 	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
 	PlatformName     *string             `json:"platform_name,omitempty"`
+
+	// Publishers Curated publisher company names; same gap-fill posture as developers.
+	Publishers *[]string `json:"publishers,omitempty"`
 
 	// Region Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free, korea, brazil, china).
 	Region *string `json:"region,omitempty"`
@@ -252,11 +258,17 @@ type CommunityProductCreate struct {
 	// CoverUrl Optional https cover image URL (validated by shape only, never fetched).
 	CoverUrl *string `json:"cover_url,omitempty"`
 
+	// Developers Curated developer company names, one per element.
+	Developers *[]string `json:"developers,omitempty"`
+
 	// Edition The entry idiom's single "Edition or variant" note.
 	Edition          *string             `json:"edition,omitempty"`
 	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
 	Name             string              `json:"name"`
 	PlatformName     *string             `json:"platform_name,omitempty"`
+
+	// Publishers Curated publisher company names, one per element.
+	Publishers *[]string `json:"publishers,omitempty"`
 
 	// Region Curated entry-vocabulary region fact; stored under the community facts block (community.region), not the product's top-level region field.
 	Region *string                    `json:"region,omitempty"`
@@ -557,10 +569,13 @@ type ScoreResponse struct {
 
 // SearchResult Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). pc_listing results carry the pc_* fields, the PriceCharting category (empty when the provider lists none), and the standard per-listing loose/cib/new prices so variant prints are tellable apart.
 type SearchResult struct {
-	Category         *string               `json:"category,omitempty"`
-	CibCents         *int64                `json:"cib_cents,omitempty"`
-	ConsoleName      *string               `json:"console_name,omitempty"`
-	CoverUrl         *string               `json:"cover_url,omitempty"`
+	Category    *string `json:"category,omitempty"`
+	CibCents    *int64  `json:"cib_cents,omitempty"`
+	ConsoleName *string `json:"console_name,omitempty"`
+	CoverUrl    *string `json:"cover_url,omitempty"`
+
+	// Developers Community rows only - the curated developer names, for based-add prefill.
+	Developers       *[]string             `json:"developers,omitempty"`
 	FirstReleaseDate *openapi_types.Date   `json:"first_release_date,omitempty"`
 	IgdbGameId       *int64                `json:"igdb_game_id,omitempty"`
 	ItemType         *SearchResultItemType `json:"item_type,omitempty"`
@@ -580,6 +595,9 @@ type SearchResult struct {
 	PlatformName *string             `json:"platform_name,omitempty"`
 	Platforms    *[]PlatformRef      `json:"platforms,omitempty"`
 	ProductId    *openapi_types.UUID `json:"product_id,omitempty"`
+
+	// Publishers Community rows only - the curated publisher names, for based-add prefill.
+	Publishers *[]string `json:"publishers,omitempty"`
 
 	// Region Community rows only - the community facts region, entry vocabulary.
 	Region *string          `json:"region,omitempty"`

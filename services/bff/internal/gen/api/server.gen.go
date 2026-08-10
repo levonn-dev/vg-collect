@@ -1641,8 +1641,11 @@ func (e SearchCatalogParamsType) Valid() bool {
 // AdminSubmission One queue row: the submission plus the live proposal from the entry join (display_name, item_type, platform_name, region, edition, first_release_date pre-fill the curation form; entries carry no variant - the single edition field is the idiom).
 type AdminSubmission struct {
 	// CoverUrl The entry's cover URL, live from the proposal join; prefills the curation cover field.
-	CoverUrl         *string                 `json:"cover_url,omitempty"`
-	CreatedAt        time.Time               `json:"created_at"`
+	CoverUrl  *string   `json:"cover_url,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// Developers The entry's developer credit facts, live from the proposal join; prefill the curation form.
+	Developers       *[]string               `json:"developers,omitempty"`
 	DisplayName      string                  `json:"display_name"`
 	Edition          *string                 `json:"edition,omitempty"`
 	EntryId          openapi_types.UUID      `json:"entry_id"`
@@ -1650,10 +1653,13 @@ type AdminSubmission struct {
 	Id               openapi_types.UUID      `json:"id"`
 	ItemType         AdminSubmissionItemType `json:"item_type"`
 	PlatformName     *string                 `json:"platform_name,omitempty"`
-	Region           string                  `json:"region"`
-	Status           AdminSubmissionStatus   `json:"status"`
-	UpdatedAt        time.Time               `json:"updated_at"`
-	UserId           openapi_types.UUID      `json:"user_id"`
+
+	// Publishers The entry's publisher credit facts, live from the proposal join; prefill the curation form.
+	Publishers *[]string             `json:"publishers,omitempty"`
+	Region     string                `json:"region"`
+	Status     AdminSubmissionStatus `json:"status"`
+	UpdatedAt  time.Time             `json:"updated_at"`
+	UserId     openapi_types.UUID    `json:"user_id"`
 }
 
 // AdminSubmissionItemType defines model for AdminSubmission.ItemType.
@@ -1718,9 +1724,15 @@ type CommentList struct {
 // CommunityMeta Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present).
 type CommunityMeta struct {
 	// CoverUrl User-supplied cover image URL (https, never fetched server-side; the client renders it with a broken-image fallback). Served as the product cover when no provider cover is present; retained after promotion as gap-fill.
-	CoverUrl         *string             `json:"cover_url,omitempty"`
+	CoverUrl *string `json:"cover_url,omitempty"`
+
+	// Developers Curated developer company names, one per element; served into entry credit snapshots when the provider block carries no developer credits (per-field gap-fill).
+	Developers       *[]string           `json:"developers,omitempty"`
 	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
 	PlatformName     *string             `json:"platform_name,omitempty"`
+
+	// Publishers Curated publisher company names; same gap-fill posture as developers.
+	Publishers *[]string `json:"publishers,omitempty"`
 
 	// Region Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free, korea, brazil, china).
 	Region *string `json:"region,omitempty"`
@@ -1731,13 +1743,19 @@ type CommunityProductCreate struct {
 	// CoverUrl Optional https cover image URL (validated by shape only, never fetched).
 	CoverUrl *string `json:"cover_url,omitempty"`
 
+	// Developers Curated developer company names, one per element.
+	Developers *[]string `json:"developers,omitempty"`
+
 	// Edition The entry idiom's single "Edition or variant" note.
-	Edition          *string                    `json:"edition,omitempty"`
-	FirstReleaseDate *openapi_types.Date        `json:"first_release_date,omitempty"`
-	Name             string                     `json:"name"`
-	PlatformName     *string                    `json:"platform_name,omitempty"`
-	Region           *string                    `json:"region,omitempty"`
-	Type             CommunityProductCreateType `json:"type"`
+	Edition          *string             `json:"edition,omitempty"`
+	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
+	Name             string              `json:"name"`
+	PlatformName     *string             `json:"platform_name,omitempty"`
+
+	// Publishers Curated publisher company names, one per element.
+	Publishers *[]string                  `json:"publishers,omitempty"`
+	Region     *string                    `json:"region,omitempty"`
+	Type       CommunityProductCreateType `json:"type"`
 }
 
 // CommunityProductCreateType defines model for CommunityProductCreate.Type.
@@ -1746,13 +1764,19 @@ type CommunityProductCreateType string
 // CommunityProductSpec The curated fields for approve_new; mirrors the enrichment mint request (single edition field, no variant).
 type CommunityProductSpec struct {
 	// CoverUrl Optional https cover image URL for the minted community product.
-	CoverUrl         *string                  `json:"cover_url,omitempty"`
-	Edition          *string                  `json:"edition,omitempty"`
-	FirstReleaseDate *openapi_types.Date      `json:"first_release_date,omitempty"`
-	Name             string                   `json:"name"`
-	PlatformName     *string                  `json:"platform_name,omitempty"`
-	Region           *string                  `json:"region,omitempty"`
-	Type             CommunityProductSpecType `json:"type"`
+	CoverUrl *string `json:"cover_url,omitempty"`
+
+	// Developers Curated developer company names, one per element.
+	Developers       *[]string           `json:"developers,omitempty"`
+	Edition          *string             `json:"edition,omitempty"`
+	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
+	Name             string              `json:"name"`
+	PlatformName     *string             `json:"platform_name,omitempty"`
+
+	// Publishers Curated publisher company names, one per element.
+	Publishers *[]string                `json:"publishers,omitempty"`
+	Region     *string                  `json:"region,omitempty"`
+	Type       CommunityProductSpecType `json:"type"`
 }
 
 // CommunityProductSpecType defines model for CommunityProductSpec.Type.
@@ -1841,7 +1865,10 @@ type Entry struct {
 
 	// CustomValueSetAt Server-managed: stamped when custom_value_cents is first set or changes value, untouched otherwise. Read-only.
 	CustomValueSetAt *time.Time `json:"custom_value_set_at,omitempty"`
-	DisplayName      string     `json:"display_name"`
+
+	// Developers Developer company names snapshotted for the entry: IGDB credits where the product carries them, community curated lists as gap-fill, or the user's own facts on a custom entry. Absent when no credits are known.
+	Developers  *[]string `json:"developers,omitempty"`
+	DisplayName string    `json:"display_name"`
 
 	// Edition Per-copy variant note ("first print (glitched rev)", "black edition"): the idiom for variants of cataloged items is an entry on the base product with the variant recorded here.
 	Edition          *string             `json:"edition,omitempty"`
@@ -1877,7 +1904,10 @@ type Entry struct {
 	PricingProductId *openapi_types.UUID `json:"pricing_product_id,omitempty"`
 
 	// ProductId Absent on custom entries.
-	ProductId     *openapi_types.UUID `json:"product_id,omitempty"`
+	ProductId *openapi_types.UUID `json:"product_id,omitempty"`
+
+	// Publishers Publisher company names; same sourcing as developers.
+	Publishers    *[]string           `json:"publishers,omitempty"`
 	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
 	PurchasedFrom *string             `json:"purchased_from,omitempty"`
 	Rating        *int                `json:"rating,omitempty"`
@@ -1931,6 +1961,9 @@ type EntryCreate struct {
 	CustomValueEnteredCents    *int64  `json:"custom_value_entered_cents,omitempty"`
 	CustomValueEnteredCurrency *string `json:"custom_value_entered_currency,omitempty"`
 
+	// Developers Custom entries only: developer company names, one per element. Ignored on product-backed creation, where the snapshot derives credits from the product.
+	Developers *[]string `json:"developers,omitempty"`
+
 	// DisplayName Custom entries only (required there).
 	DisplayName *string `json:"display_name,omitempty"`
 
@@ -1964,7 +1997,10 @@ type EntryCreate struct {
 	PricingProductId *openapi_types.UUID     `json:"pricing_product_id,omitempty"`
 
 	// ProductId Omit for a custom (off-catalog) entry.
-	ProductId     *openapi_types.UUID `json:"product_id,omitempty"`
+	ProductId *openapi_types.UUID `json:"product_id,omitempty"`
+
+	// Publishers Custom entries only; publisher company names, one per element.
+	Publishers    *[]string           `json:"publishers,omitempty"`
 	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
 	PurchasedFrom *string             `json:"purchased_from,omitempty"`
 	Rating        *int                `json:"rating,omitempty"`
@@ -2040,6 +2076,9 @@ type EntryUpdate struct {
 	CustomValueEnteredCents    *int64  `json:"custom_value_entered_cents,omitempty"`
 	CustomValueEnteredCurrency *string `json:"custom_value_entered_currency,omitempty"`
 
+	// Developers Custom entries only; developer company names, one per element (full replacement).
+	Developers *[]string `json:"developers,omitempty"`
+
 	// DisplayName Custom entries only (required there).
 	DisplayName *string `json:"display_name,omitempty"`
 
@@ -2066,7 +2105,10 @@ type EntryUpdate struct {
 	PricingProductId *openapi_types.UUID    `json:"pricing_product_id,omitempty"`
 
 	// ProductId Narrow re-match. Accepted only when the entry is product-backed with pricing_mode auto, its current product is a game with no price mapping, and the new product is a game of the same family (same igdb game and platform); the same id as the entry already has is a no-op. Anything else answers 400 code invalid_product_change; enrichment unreachable answers 502 code enrichment_unavailable and leaves the entry unchanged. Snapshotted display fields stay as they are.
-	ProductId     *openapi_types.UUID `json:"product_id,omitempty"`
+	ProductId *openapi_types.UUID `json:"product_id,omitempty"`
+
+	// Publishers Custom entries only; publisher company names, one per element (full replacement).
+	Publishers    *[]string           `json:"publishers,omitempty"`
 	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
 	PurchasedFrom *string             `json:"purchased_from,omitempty"`
 	Rating        *int                `json:"rating,omitempty"`
@@ -2466,10 +2508,13 @@ type ScoreResponse struct {
 
 // SearchResult Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). pc_listing results carry the pc_* fields, the PriceCharting category (empty when the provider lists none), and the standard per-listing loose/cib/new prices so variant prints are tellable apart.
 type SearchResult struct {
-	Category         *string               `json:"category,omitempty"`
-	CibCents         *int64                `json:"cib_cents,omitempty"`
-	ConsoleName      *string               `json:"console_name,omitempty"`
-	CoverUrl         *string               `json:"cover_url,omitempty"`
+	Category    *string `json:"category,omitempty"`
+	CibCents    *int64  `json:"cib_cents,omitempty"`
+	ConsoleName *string `json:"console_name,omitempty"`
+	CoverUrl    *string `json:"cover_url,omitempty"`
+
+	// Developers Community rows only - the curated developer names, for based-add prefill.
+	Developers       *[]string             `json:"developers,omitempty"`
 	FirstReleaseDate *openapi_types.Date   `json:"first_release_date,omitempty"`
 	IgdbGameId       *int64                `json:"igdb_game_id,omitempty"`
 	ItemType         *SearchResultItemType `json:"item_type,omitempty"`
@@ -2489,6 +2534,9 @@ type SearchResult struct {
 	PlatformName *string             `json:"platform_name,omitempty"`
 	Platforms    *[]PlatformRef      `json:"platforms,omitempty"`
 	ProductId    *openapi_types.UUID `json:"product_id,omitempty"`
+
+	// Publishers Community rows only - the curated publisher names, for based-add prefill.
+	Publishers *[]string `json:"publishers,omitempty"`
 
 	// Region Community rows only - the community facts region, entry vocabulary.
 	Region *string          `json:"region,omitempty"`
@@ -2516,6 +2564,7 @@ type SharedEntry struct {
 	BoxCondition     *SharedEntryBoxCondition  `json:"box_condition,omitempty"`
 	CoverUrl         *string                   `json:"cover_url,omitempty"`
 	CreatedAt        time.Time                 `json:"created_at"`
+	Developers       *[]string                 `json:"developers,omitempty"`
 	DisplayName      string                    `json:"display_name"`
 	Edition          *string                   `json:"edition,omitempty"`
 	FirstReleaseDate *openapi_types.Date       `json:"first_release_date,omitempty"`
@@ -2540,10 +2589,11 @@ type SharedEntry struct {
 	Pinned                bool                        `json:"pinned"`
 
 	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
-	Platform  *EntryPlatform      `json:"platform,omitempty"`
-	ProductId *openapi_types.UUID `json:"product_id,omitempty"`
-	Region    string              `json:"region"`
-	Tags      []TagRef            `json:"tags"`
+	Platform   *EntryPlatform      `json:"platform,omitempty"`
+	ProductId  *openapi_types.UUID `json:"product_id,omitempty"`
+	Publishers *[]string           `json:"publishers,omitempty"`
+	Region     string              `json:"region"`
+	Tags       []TagRef            `json:"tags"`
 }
 
 // SharedEntryBoxCondition defines model for SharedEntry.BoxCondition.
@@ -2785,7 +2835,13 @@ type GetDashboardParams struct {
 	Packaging *[]GetDashboardParamsPackaging `form:"packaging,omitempty" json:"packaging,omitempty"`
 
 	// Region Known-value buckets; other stored strings only surface unfiltered.
-	Region        *[]string                          `form:"region,omitempty" json:"region,omitempty"`
+	Region *[]string `form:"region,omitempty" json:"region,omitempty"`
+
+	// Developer Developer names; an entry matches when any of its snapshotted developers is listed.
+	Developer *[]string `form:"developer,omitempty" json:"developer,omitempty"`
+
+	// Publisher Publisher names; same overlap matching as developer.
+	Publisher     *[]string                          `form:"publisher,omitempty" json:"publisher,omitempty"`
 	ItemCondition *[]GetDashboardParamsItemCondition `form:"item_condition,omitempty" json:"item_condition,omitempty"`
 
 	// PlatformId IGDB platform ids (matches the creation-time snapshot).
@@ -2814,7 +2870,13 @@ type ListEntriesParams struct {
 	Packaging *[]ListEntriesParamsPackaging `form:"packaging,omitempty" json:"packaging,omitempty"`
 
 	// Region Known-value buckets; other stored strings only surface unfiltered.
-	Region        *[]string                         `form:"region,omitempty" json:"region,omitempty"`
+	Region *[]string `form:"region,omitempty" json:"region,omitempty"`
+
+	// Developer Developer names; an entry matches when any of its snapshotted developers is listed.
+	Developer *[]string `form:"developer,omitempty" json:"developer,omitempty"`
+
+	// Publisher Publisher names; same overlap matching as developer.
+	Publisher     *[]string                         `form:"publisher,omitempty" json:"publisher,omitempty"`
 	ItemCondition *[]ListEntriesParamsItemCondition `form:"item_condition,omitempty" json:"item_condition,omitempty"`
 
 	// PlatformId IGDB platform ids (matches the creation-time snapshot).
@@ -3848,6 +3910,32 @@ func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// ------------- Optional query parameter "developer" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "developer", r.URL.Query(), &params.Developer, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "developer"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "developer", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "publisher" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "publisher", r.URL.Query(), &params.Publisher, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "publisher"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "publisher", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "item_condition" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "item_condition", r.URL.Query(), &params.ItemCondition, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
@@ -3969,6 +4057,32 @@ func (siw *ServerInterfaceWrapper) ListEntries(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "region"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "region", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "developer" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "developer", r.URL.Query(), &params.Developer, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "developer"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "developer", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "publisher" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "publisher", r.URL.Query(), &params.Publisher, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "publisher"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "publisher", Err: err})
 		}
 		return
 	}
