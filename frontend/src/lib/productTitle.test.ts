@@ -1,4 +1,4 @@
-import { bundleLang, consoleRegionFor, entryCover, entrySecondary, entryTitle, entryTitleLang, REGION_LANGS, titleFormFor, homeRegionFor, LOCALIZATION_CHAINS, REGION_PLATFORMS, platformEntryRegions, regionMismatch, regionTitle } from './productTitle'
+import { bundleLang, consoleRegionFor, entryCover, entrySecondary, entrySecondaryLang, entryTitle, entryTitleLang, REGION_LANGS, titleFormFor, homeRegionFor, LOCALIZATION_CHAINS, REGION_PLATFORMS, platformEntryRegions, regionMismatch, regionTitle } from './productTitle'
 
 const jp = {
   display_name: 'Trials of Mana',
@@ -17,14 +17,17 @@ it('native form prefers native script', () => {
   expect(entryTitle(jp, 'native')).toBe('聖剣伝説 3')
 })
 
-it('missing translit falls back to native then canonical', () => {
-  expect(entryTitle({ ...jp, localized_name_translit: undefined }, 'translit')).toBe('聖剣伝説 3')
+// The translit form never falls back to the native script: a Latin-
+// preferring locale gets the canonical name when no romanization
+// exists, and the native title moves to the secondary line instead.
+it('missing translit falls back to canonical, never native script', () => {
+  expect(entryTitle({ ...jp, localized_name_translit: undefined }, 'translit')).toBe('Trials of Mana')
   expect(entryTitle({ display_name: 'Trials of Mana' }, 'translit')).toBe('Trials of Mana')
 })
 
-// The native-form chain runs the same two fallbacks as translit's,
-// just starting from the other field: native missing steps down to
-// translit, both missing steps down to the canonical name.
+// The native-form chain keeps both fallbacks: a transliteration is
+// still the localized identity (and already Latin), so it beats the
+// canonical name when the native field is missing.
 it('missing native falls back to translit then canonical', () => {
   expect(entryTitle({ ...jp, localized_name: undefined }, 'native')).toBe('Seiken Densetsu 3')
   expect(entryTitle({ display_name: 'Trials of Mana' }, 'native')).toBe('Trials of Mana')
@@ -33,6 +36,15 @@ it('missing native falls back to translit then canonical', () => {
 it('secondary is canonical only when it differs', () => {
   expect(entrySecondary(jp, 'native')).toBe('Trials of Mana')
   expect(entrySecondary({ display_name: 'Trials of Mana' }, 'native')).toBeUndefined()
+})
+
+it('secondary surfaces the native title the translit form skipped', () => {
+  const kr = { display_name: 'Trials of Mana', localized_name: '성검전설 3', region: 'korea' }
+  expect(entryTitle(kr, 'translit')).toBe('Trials of Mana')
+  expect(entrySecondary(kr, 'translit')).toBe('성검전설 3')
+  expect(entrySecondaryLang(kr, 'translit')).toBe('ko')
+  // A canonical secondary carries no lang tag.
+  expect(entrySecondaryLang(jp, 'native')).toBeUndefined()
 })
 
 it('cover prefers the localized art', () => {
@@ -47,11 +59,11 @@ it('lang rides the chosen form', () => {
 })
 
 // entryTitleLang has to name the language of whatever text actually
-// renders, not the form that was requested: when translit is missing
-// and native fills in, the rendered text is native script, so the tag
-// drops '-Latn' - and the reverse when native is the one missing.
+// renders, not the form that was requested: a translit-form fallback
+// renders the canonical name (no tag), and a native-form fallback to
+// the transliteration renders Latin script, so it keeps '-Latn'.
 it('lang follows the field actually chosen, not the requested form', () => {
-  expect(entryTitleLang({ ...jp, localized_name_translit: undefined }, 'translit')).toBe('ja')
+  expect(entryTitleLang({ ...jp, localized_name_translit: undefined }, 'translit')).toBeUndefined()
   expect(entryTitleLang({ ...jp, localized_name: undefined }, 'native')).toBe('ja-Latn')
 })
 
@@ -81,13 +93,19 @@ it('bundleLang', () => {
 })
 
 it('REGION_LANGS maps each entry region to its BCP-47 language subtag', () => {
-  expect(REGION_LANGS).toEqual({ ntsc_j: 'ja' })
+  expect(REGION_LANGS).toEqual({ ntsc_j: 'ja', korea: 'ko', china: 'zh', brazil: 'pt' })
 })
 
 it('platformEntryRegions: maps wire order and dedupes like the badge era', () => {
   expect(platformEntryRegions(['japan', 'europe'])).toEqual(['ntsc_j', 'pal'])
   expect(platformEntryRegions(['europe', 'australia'])).toEqual(['pal'])
-  expect(platformEntryRegions(['korea', 'japan'])).toEqual(['ntsc_j'])
+  expect(platformEntryRegions(['korea', 'japan'])).toEqual(['korea', 'ntsc_j'])
+})
+
+it('platformEntryRegions: the graduated markets map to themselves', () => {
+  expect(platformEntryRegions(['korea'])).toEqual(['korea'])
+  expect(platformEntryRegions(['brazil', 'north_america'])).toEqual(['brazil', 'ntsc_u'])
+  expect(platformEntryRegions(['china'])).toEqual(['china'])
 })
 
 it('platformEntryRegions: keeps the full all-three set instead of suppressing', () => {
@@ -106,11 +124,17 @@ it('platformEntryRegions: concrete regions lead, worldwide fills the remainder',
 it('platformEntryRegions: nothing mappable yields the empty set', () => {
   expect(platformEntryRegions(undefined)).toEqual([])
   expect(platformEntryRegions([])).toEqual([])
-  expect(platformEntryRegions(['korea'])).toEqual([])
+  expect(platformEntryRegions(['moon_base_region'])).toEqual([])
 })
 
 it('LOCALIZATION_CHAINS mirrors the collection service chains', () => {
-  expect(LOCALIZATION_CHAINS).toEqual({ ntsc_j: ['ja-JP'], pal: ['EU'] })
+  expect(LOCALIZATION_CHAINS).toEqual({
+    ntsc_j: ['ja-JP'],
+    pal: ['EU'],
+    korea: ['ko-KR'],
+    china: ['zh-CN', 'zh-TW'],
+    brazil: ['pt-BR'],
+  })
 })
 
 it('REGION_PLATFORMS pins the verified JP-market platform ids', () => {
@@ -125,6 +149,14 @@ const bundles = [
   { region: 'EU' },
 ]
 
+it('regionTitle: a name-only korea bundle falls back to canonical under the translit form', () => {
+  const koBundles = [{ region: 'ko-KR', name: '성검전설 3' }]
+  expect(regionTitle('Trials of Mana', koBundles, 'korea', 'translit'))
+    .toEqual({ text: 'Trials of Mana' })
+  expect(regionTitle('Trials of Mana', koBundles, 'korea', 'native'))
+    .toEqual({ text: '성검전설 3', lang: 'ko' })
+})
+
 it('regionTitle: translit form picks the romanization with a -Latn tag', () => {
   expect(regionTitle('Secret of Mana', bundles, 'ntsc_j', 'translit'))
     .toEqual({ text: 'Seiken Densetsu 2', lang: 'ja-Latn' })
@@ -135,9 +167,13 @@ it('regionTitle: native form picks the native script with the bare tag', () => {
     .toEqual({ text: '聖剣伝説 2', lang: 'ja' })
 })
 
-it('regionTitle: falls back across forms before going canonical', () => {
+// The native form still falls across to the transliteration (Latin
+// script, but the localized identity); the translit form does NOT
+// fall to native script - it goes canonical instead, so a Latin-
+// preferring locale is never fronted by CJK.
+it('regionTitle: only the native form falls back across forms', () => {
   expect(regionTitle('X', [{ region: 'ja-JP', name: '聖剣伝説 2' }], 'ntsc_j', 'translit'))
-    .toEqual({ text: '聖剣伝説 2', lang: 'ja' })
+    .toEqual({ text: 'X' })
   expect(regionTitle('X', [{ region: 'ja-JP', translit: 'Seiken' }], 'ntsc_j', 'native'))
     .toEqual({ text: 'Seiken', lang: 'ja-Latn' })
 })
@@ -196,6 +232,10 @@ describe('regionMismatch', () => {
     ['Super Nintendo', 'region_free', false],
     ['PAL Super Nintendo', 'pal', false],
     ['PAL Super Nintendo', 'ntsc_u', true],
+    ['Super Nintendo', 'korea', false], // base is korea's pricing proxy (no PC axis)
+    ['Super Nintendo', 'china', false], // same proxy rule
+    ['Super Famicom', 'korea', true], // a JP listing still misprices a korea copy
+    ['PAL Super Nintendo', 'brazil', true],
     ['Super Nintendo', 'someday_region', false],
   ])('%s vs %s -> %s', (consoleName, region, want) => {
     expect(regionMismatch(consoleName, region)).toBe(want)

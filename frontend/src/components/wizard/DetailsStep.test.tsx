@@ -148,7 +148,7 @@ it('groups the region select by the platform set and defaults from initialValues
   // RegionPicker's escape-hatch placeholder lives in this optgroup only;
   // the platform-set group above never carries it.
   expect(Array.from(groups[1].querySelectorAll('option')).map((o) => o.getAttribute('value')))
-    .toEqual(['', 'ntsc_j', 'region_free'])
+    .toEqual(['', 'ntsc_j', 'korea', 'brazil', 'china', 'region_free'])
 })
 
 it('marks the region control required (an entry cannot submit an empty region)', () => {
@@ -160,10 +160,10 @@ it('renders the flat ungrouped select without a regionGroup', () => {
   renderWithI18n(<DetailsStep product={{ name: 'Chrono Trigger' }} currency="USD" onBack={vi.fn()} onNext={vi.fn()} />)
   const select = screen.getByLabelText('Region')
   expect(select.querySelector('optgroup')).toBeNull()
-  // Behavioral, not a bare count: the placeholder plus exactly the four
+  // Behavioral, not a bare count: the placeholder plus exactly the
   // known regions.
   expect(Array.from(select.querySelectorAll('option')).map((o) => o.getAttribute('value')))
-    .toEqual(['', 'ntsc_u', 'ntsc_j', 'pal', 'region_free'])
+    .toEqual(['', 'ntsc_u', 'ntsc_j', 'pal', 'korea', 'brazil', 'china', 'region_free'])
 })
 
 it('region free text rides into onNext', () => {

@@ -33,20 +33,35 @@ export interface LocalizedTitled {
 }
 
 // entryTitle picks the title text for the given form. translit
-// prefers the romanized name, native prefers the original-script
-// name; each falls back through the other localized field before the
-// canonical display_name, so a sparse region bundle never blanks the
-// title.
+// prefers the romanized name and otherwise falls straight to the
+// canonical display_name - never the native script, so a Latin-
+// preferring locale is never fronted by CJK (the skipped native name
+// surfaces on the secondary line instead). native prefers the
+// original-script name, falling back through the transliteration
+// (still the localized identity, and already Latin) before the
+// canonical name.
 export function entryTitle(e: LocalizedTitled, form: TitleForm): string {
-  if (form === 'translit') return e.localized_name_translit ?? e.localized_name ?? e.display_name
+  if (form === 'translit') return e.localized_name_translit ?? e.display_name
   return e.localized_name ?? e.localized_name_translit ?? e.display_name
 }
 
-// entrySecondary is the canonical display_name shown alongside a
-// localized title, omitted when it would just repeat entryTitle (a
-// region with no localized fields, for instance).
+// entrySecondary is the counterpart line under the title: the
+// canonical display_name when the title is localized, or the native-
+// script name the translit form skipped when the title fell back to
+// canonical; omitted when it would just repeat entryTitle.
 export function entrySecondary(e: LocalizedTitled, form: TitleForm): string | undefined {
-  return e.display_name === entryTitle(e, form) ? undefined : e.display_name
+  const title = entryTitle(e, form)
+  if (title !== e.display_name) return e.display_name
+  return e.localized_name !== undefined && e.localized_name !== title ? e.localized_name : undefined
+}
+
+// entrySecondaryLang tags the secondary line's language - set only
+// when that line carries the native-script name (the canonical name
+// needs no tag).
+export function entrySecondaryLang(e: LocalizedTitled, form: TitleForm): string | undefined {
+  const secondary = entrySecondary(e, form)
+  if (secondary === undefined || secondary === e.display_name) return undefined
+  return e.region ? REGION_LANGS[e.region] : undefined
 }
 
 // entryCover prefers the region-localized box art over the entry's
@@ -57,9 +72,15 @@ export function entryCover(e: LocalizedTitled): string | undefined {
 
 // REGION_LANGS maps an entry region to the BCP-47 language subtag of
 // its localized text. Extend this table when a new entry region gets
-// a localized bundle; ntsc_u, pal, and region_free carry none today.
+// a localized bundle; ntsc_u, pal, and region_free carry none today
+// (pal bundles are cover-only). china stays the bare zh subtag: its
+// chain can resolve either script, and the subtag names the language,
+// not the script variant.
 export const REGION_LANGS: Record<string, string> = {
   ntsc_j: 'ja',
+  korea: 'ko',
+  china: 'zh',
+  brazil: 'pt',
 }
 
 // Names which field actually supplied entryTitle's value, following
@@ -72,7 +93,6 @@ type TitleSource = 'native' | 'translit' | 'canonical'
 function titleSource(e: LocalizedTitled, form: TitleForm): TitleSource {
   if (form === 'translit') {
     if (e.localized_name_translit !== undefined) return 'translit'
-    if (e.localized_name !== undefined) return 'native'
     return 'canonical'
   }
   if (e.localized_name !== undefined) return 'native'
@@ -126,19 +146,23 @@ export const REGION_FROM_MATCH: Record<string, 'ntsc_u' | 'ntsc_j' | 'pal' | 're
 
 // AVAILABILITY_REGIONS maps canonical IGDB release regions onto entry
 // regions for platformEntryRegions below. worldwide is handled there
-// by expanding to the full entry-region set, rather than by a table
-// row. china/korea/brazil stay unmapped until their entry regions
-// exist. Extension table: one row per region.
-export const AVAILABILITY_REGIONS: Record<string, 'ntsc_u' | 'ntsc_j' | 'pal'> = {
+// by expanding to the TV-standard trio, rather than by a table row.
+// The language-market regions (korea, brazil, china) map to
+// themselves: a chip whose IGDB rows name those markets badges and
+// seeds them first-class. Extension table: one row per region.
+export const AVAILABILITY_REGIONS: Record<string, EntryRegion> = {
   japan: 'ntsc_j', asia: 'ntsc_j', north_america: 'ntsc_u',
   europe: 'pal', australia: 'pal', new_zealand: 'pal',
+  korea: 'korea', brazil: 'brazil', china: 'china',
 }
 
-export type EntryRegion = 'ntsc_u' | 'ntsc_j' | 'pal'
+export type EntryRegion = 'ntsc_u' | 'ntsc_j' | 'pal' | 'korea' | 'brazil' | 'china'
 
-// Mirrors REGIONS order (lib/listParams) minus region_free, which is
-// never a release region: the deterministic fill order when a
-// worldwide row expands below.
+// The TV-standard trio in REGIONS order (lib/listParams): the
+// deterministic fill order when a worldwide row expands below. A
+// worldwide release means the classic global markets - it never
+// implies a language-market (korea/brazil/china) release, so the
+// graduated three are deliberately not in this list.
 const ENTRY_REGION_ORDER: EntryRegion[] = ['ntsc_u', 'ntsc_j', 'pal']
 
 // platformEntryRegions turns a game platform's release_regions
@@ -146,7 +170,7 @@ const ENTRY_REGION_ORDER: EntryRegion[] = ['ntsc_u', 'ntsc_j', 'pal']
 // entry regions a copy on that platform can be - the chip's region
 // list and the wizard's platform-first choice set. Unlike the badge
 // era there is no suppression: a picker must show the full set, so a
-// worldwide row expands to every entry region (concrete rows keep
+// worldwide row expands to the TV-standard trio (concrete rows keep
 // wire order, the expansion fills the remainder in entry-enum order).
 export function platformEntryRegions(releaseRegions: string[] | undefined): EntryRegion[] {
   if (!releaseRegions) return []
@@ -181,10 +205,14 @@ export function homeRegionFor(locale: string): EntryRegion | undefined {
 // identifiers - the frontend twin of the collection service's
 // localizationChains, used to derive the wizard heading from the
 // selected region. Extension table: one row per entry region that has
-// localized bundles.
+// localized bundles. china prefers Simplified script and falls back
+// to Traditional when only a zh-TW bundle exists.
 export const LOCALIZATION_CHAINS: Record<string, string[]> = {
   ntsc_j: ['ja-JP'],
   pal: ['EU'],
+  korea: ['ko-KR'],
+  china: ['zh-CN', 'zh-TW'],
+  brazil: ['pt-BR'],
 }
 
 // REGION_PLATFORMS defaults a custom item's region from a
@@ -223,9 +251,16 @@ export function consoleRegionFor(consoleName: string): 'ntsc_u' | 'ntsc_j' | 'pa
 // can actually distinguish: region_free carries no console prefix of
 // its own, so it reads as the same class as ntsc_u (a listing prices
 // exactly one of the three consoleRegionFor classes - never "free").
+// korea, brazil and china also class base - PriceCharting has no axes
+// for those markets, so the base catalog is their deliberate pricing
+// proxy, and a JP or PAL listing on such an entry flags as a mismatch
+// (mirrors the collection service's regionClass).
 const REGION_CLASS: Record<string, 'base' | 'jp' | 'pal'> = {
   ntsc_u: 'base',
   region_free: 'base',
+  korea: 'base',
+  brazil: 'base',
+  china: 'base',
   ntsc_j: 'jp',
   pal: 'pal',
 }
@@ -260,10 +295,11 @@ function nonEmpty(s: string | undefined): string | undefined {
 
 // regionTitle resolves the product identity for a selected entry
 // region: the first chain identifier with a bundle supplies the name,
-// picked by the same form precedence entryTitle uses, with the same
-// lang rules as entryTitleLang (-Latn when the rendered text is the
-// transliteration). No usable bundle falls back to the canonical name
-// with no lang claim.
+// picked by the same form precedence entryTitle uses (the translit
+// form never renders native script - it falls to the canonical name),
+// with the same lang rules as entryTitleLang (-Latn when the rendered
+// text is the transliteration). No usable bundle falls back to the
+// canonical name with no lang claim.
 export function regionTitle(
   canonicalName: string,
   bundles: LocalizationBundle[] | undefined,
@@ -275,7 +311,7 @@ export function regionTitle(
     if (!bundle) continue
     const native = nonEmpty(bundle.name)
     const translit = nonEmpty(bundle.translit)
-    const text = form === 'translit' ? (translit ?? native) : (native ?? translit)
+    const text = form === 'translit' ? translit : (native ?? translit)
     if (text === undefined) continue
     const subtag = bundleLang(identifier)
     const lang = subtag === undefined ? undefined : text === translit && translit !== native ? `${subtag}-Latn` : subtag

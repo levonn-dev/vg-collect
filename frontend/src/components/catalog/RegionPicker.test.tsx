@@ -24,6 +24,14 @@ test('free-text value opens in text mode', () => {
   expect(screen.getByRole('button', { name: 'Pick a known region instead' })).toBeInTheDocument()
 })
 
+test('graduated regions are known select values with labels', () => {
+  renderWithI18n(<RegionPicker value="korea" onChange={() => {}} />)
+  expect(screen.getByLabelText('Region')).toHaveValue('korea')
+  expect(screen.getByRole('option', { name: 'Korea' })).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'Brazil' })).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'China' })).toBeInTheDocument()
+})
+
 test('regionGroup renders both optgroups', () => {
   renderWithI18n(
     <RegionPicker value="ntsc_j" onChange={() => {}} regionGroup={{ platformName: 'Super Famicom', regions: ['ntsc_j'] }} />,

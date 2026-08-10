@@ -327,6 +327,10 @@ msgstr "クリア済み"
 msgid "Box condition"
 msgstr "箱の状態"
 
+#: src/lib/regionLabels.ts
+msgid "Brazil"
+msgstr "ブラジル"
+
 #: src/components/collection/BulkEditBar.tsx
 #: src/components/collection/ListControls.tsx
 msgid "Bulk edit"
@@ -388,6 +392,10 @@ msgstr "価格ソースを変更"
 #: src/components/entry/PricingPanel.tsx
 msgid "Checking the price match..."
 msgstr "価格の照合状況を確認しています..."
+
+#: src/lib/regionLabels.ts
+msgid "China"
+msgstr "中国"
 
 #: src/components/entry/ProxyPicker.tsx
 msgid "Choose a price source"
@@ -693,6 +701,10 @@ msgstr "降順"
 msgid "Dev fixtures"
 msgstr "開発用フィクスチャ"
 
+#: src/pages/EntryDetail.tsx
+msgid "Developed by {developerNames}"
+msgstr "開発元: {developerNames}"
+
 #: src/components/entry/PricingPanel.tsx
 msgid "disabled (no market value)"
 msgstr "無効（相場なし）"
@@ -966,6 +978,10 @@ msgstr "アイテム"
 #: src/lib/relativeTime.ts
 msgid "just now"
 msgstr "たった今"
+
+#: src/lib/regionLabels.ts
+msgid "Korea"
+msgstr "韓国"
 
 #: src/components/LocaleSwitch.tsx
 msgid "Language"
@@ -1583,6 +1599,10 @@ msgstr "申請名"
 #: src/components/entry/PricingPanel.tsx
 msgid "proxy (another listing prices this copy)"
 msgstr "代用（別のリスティングの価格を使用）"
+
+#: src/pages/EntryDetail.tsx
+msgid "Published by {publisherNames}"
+msgstr "発売元: {publisherNames}"
 
 #: src/components/collection/ListControls.tsx
 msgid "Purchase date"

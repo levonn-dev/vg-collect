@@ -24,7 +24,7 @@ export interface GamePick {
   // home region when the set contains that, else the chip's earliest
   // release region, else the matched mapping alone (unmappable chip),
   // else nothing (the wizard defaults ntsc_u).
-  suggestedRegion?: 'ntsc_u' | 'ntsc_j' | 'pal' | 'region_free'
+  suggestedRegion?: EntryRegion | 'region_free'
   // The clicked chip's mapped region list (absent when it has none):
   // drives the details step's grouped Region select.
   regions?: EntryRegion[]

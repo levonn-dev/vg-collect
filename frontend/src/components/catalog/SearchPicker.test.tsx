@@ -294,11 +294,30 @@ it('pick seeds the ja home region for the same chip under the ja locale', async 
   expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ suggestedRegion: 'ntsc_j' }))
 })
 
-// A chip whose rows are all unmapped (korea today) stays bare and
-// carries no regions; the matched mapping still seeds the default.
-const unmappedOnlyResult = {
+// A korea-only chip is first-class: it badges Korea and its own region
+// outranks a matched region that is not in the chip's set.
+const koreaOnlyResult = {
   type: 'game', name: 'Trials of Mana', igdb_game_id: 4003,
   platforms: [{ igdb_platform_id: 6, name: 'SNES', release_regions: ['korea'] }],
+  matched_region: 'ja-JP',
+  localizations: [{ region: 'ja-JP', translit: 'Seiken Densetsu 3' }],
+}
+
+it('badges a korea-only chip and seeds korea over the out-of-set matched region', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { degraded: false, results: [koreaOnlyResult] })))
+  const onPick = renderPicker({ initialQuery: 'seiken' })
+  const chip = await screen.findByRole('button', { name: 'Trials of Mana on SNES (Korea)' })
+  expect(within(chip).getByText('Korea')).toBeInTheDocument()
+  await userEvent.click(chip)
+  expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ suggestedRegion: 'korea', regions: ['korea'] }))
+})
+
+// A chip whose rows are all unmapped (a future IGDB region this build
+// does not know) stays bare and carries no regions; the matched
+// mapping still seeds the default.
+const unmappedOnlyResult = {
+  type: 'game', name: 'Trials of Mana', igdb_game_id: 4005,
+  platforms: [{ igdb_platform_id: 6, name: 'SNES', release_regions: ['moon_base_region'] }],
   matched_region: 'ja-JP',
   localizations: [{ region: 'ja-JP', translit: 'Seiken Densetsu 3' }],
 }

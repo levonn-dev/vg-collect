@@ -5,7 +5,7 @@ import { REGIONS } from '../../lib/listParams'
 import { regionLabels } from '../../lib/regionLabels'
 
 // RegionPicker is PlatformPicker's sibling for the open-world region:
-// the four known values as a labeled select, free text behind an
+// the known values as a labeled select, free text behind an
 // explicit escape hatch. Mode derives from the value (a stored
 // free-text region opens in text mode), plus a local flag so an empty
 // free-text draft does not snap back to the select mid-typing.

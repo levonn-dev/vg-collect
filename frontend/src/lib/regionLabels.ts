@@ -11,11 +11,14 @@ export const regionLabels: Record<Region, MessageDescriptor> = {
   ntsc_u: msg`NTSC-U`,
   ntsc_j: msg`NTSC-J`,
   pal: msg`PAL`,
+  korea: msg`Korea`,
+  brazil: msg`Brazil`,
+  china: msg`China`,
   region_free: msg`Region free`,
 }
 
 // Open-world regions render verbatim so an unknown value stays visible
-// as the user wrote it; only the known four have display labels.
+// as the user wrote it; only the known regions have display labels.
 export function regionLabelText(i18n: I18n, region: string): string {
   const d = (regionLabels as Record<string, MessageDescriptor>)[region]
   return d ? i18n._(d) : region

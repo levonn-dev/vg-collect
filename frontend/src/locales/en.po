@@ -327,6 +327,10 @@ msgstr "Beaten"
 msgid "Box condition"
 msgstr "Box condition"
 
+#: src/lib/regionLabels.ts
+msgid "Brazil"
+msgstr "Brazil"
+
 #: src/components/collection/BulkEditBar.tsx
 #: src/components/collection/ListControls.tsx
 msgid "Bulk edit"
@@ -388,6 +392,10 @@ msgstr "Change price source"
 #: src/components/entry/PricingPanel.tsx
 msgid "Checking the price match..."
 msgstr "Checking the price match..."
+
+#: src/lib/regionLabels.ts
+msgid "China"
+msgstr "China"
 
 #: src/components/entry/ProxyPicker.tsx
 msgid "Choose a price source"
@@ -693,6 +701,10 @@ msgstr "descending"
 msgid "Dev fixtures"
 msgstr "Dev fixtures"
 
+#: src/pages/EntryDetail.tsx
+msgid "Developed by {developerNames}"
+msgstr "Developed by {developerNames}"
+
 #: src/components/entry/PricingPanel.tsx
 msgid "disabled (no market value)"
 msgstr "disabled (no market value)"
@@ -966,6 +978,10 @@ msgstr "Items"
 #: src/lib/relativeTime.ts
 msgid "just now"
 msgstr "just now"
+
+#: src/lib/regionLabels.ts
+msgid "Korea"
+msgstr "Korea"
 
 #: src/components/LocaleSwitch.tsx
 msgid "Language"
@@ -1583,6 +1599,10 @@ msgstr "Proposed name"
 #: src/components/entry/PricingPanel.tsx
 msgid "proxy (another listing prices this copy)"
 msgstr "proxy (another listing prices this copy)"
+
+#: src/pages/EntryDetail.tsx
+msgid "Published by {publisherNames}"
+msgstr "Published by {publisherNames}"
 
 #: src/components/collection/ListControls.tsx
 msgid "Purchase date"
