@@ -161,6 +161,8 @@ against AWS Secrets Manager in the documented production path.
 - `docs/` diagrams, runbooks, production paths, brand assets (`docs/brand/`).
 
 Translations: see `docs/translations.md` to contribute a language.
+Regions: `docs/adding-a-region.md` is the graduation checklist for a
+new entry region.
 
 ## Status
 

@@ -286,7 +286,7 @@ Domain instruments, meter
 | `vg.enrichment.cache.fail_open`         | Int64Counter     | `{event}`   | `op`: search_get, search_decode, search_put, product_get, product_put, platforms_get, platforms_put, community_search, refresh_invalidate, reprojection_invalidate, mapping_invalidate, promote_invalidate, delete_invalidate | `vg_enrichment_cache_fail_open_total`                            | is Valkey failing and which operation absorbs it                                                                                                                                                               |
 | `vg.enrichment.search.requests`         | Int64Counter     | `{request}` | `kind`: game, hardware, pc_listing; `source`: cache, provider, degraded                                                                                                                                                       | `vg_enrichment_search_requests_total`                            | search cache effectiveness per kind, and the user-visible degraded share (provider outage)                                                                                                                     |
 | `vg.enrichment.search.localization_leg` | Int64Counter     | `{leg}`     | `outcome`: merged, empty, error                                                                                                                                                                                               | `vg_enrichment_search_localization_leg_total`                    | is the non-Latin supplementary search leg running, and how often it merges extra results, finds nothing extra, or fails (error still serves primary results - never an outage)                                 |
-| `vg.enrichment.match.outcomes`          | Int64Counter     | `{attempt}` | `source`: resolve; `outcome`: matched, below_threshold, provider_down; `region`: ntsc_u, ntsc_j, pal, region_free, none                                                                                                       | `vg_enrichment_match_outcomes_total`                             | is the auto-matcher landing matches at its usual rate, or regressing into unmatched members, broken out by region                                                                                              |
+| `vg.enrichment.match.outcomes`          | Int64Counter     | `{attempt}` | `source`: resolve; `outcome`: matched, below_threshold, provider_down; `region`: ntsc_u, ntsc_j, pal, region_free, korea, brazil, china, none                                                                                                       | `vg_enrichment_match_outcomes_total`                             | is the auto-matcher landing matches at its usual rate, or regressing into unmatched members, broken out by region                                                                                              |
 | `vg.enrichment.match.fallback_search`   | Int64Counter     | `{search}`  | `outcome`: matched, still_empty, error                                                                                                                                                                                        | `vg_enrichment_match_fallback_search_total`                      | is the fallback name-form search (fired only when the primary query's results miss the platform/region gate and a second name form exists) finding a match, coming up empty, or erroring                       |
 | `vg.enrichment.refresh.items`           | Int64Counter     | `{item}`    | `step`: prices, reprojection, sweep; `outcome`: ok, failed, skipped, flagged                                                                                                                                                  | `vg_enrichment_refresh_items_total`                              | how much of the catalog the catalog refresh processed and what share failed                                                                                                                                    |
 | `vg.enrichment.refresh.step_duration`   | Float64Histogram | `s`         | `step`: prices, reprojection, sweep                                                                                                                                                                                           | `vg_enrichment_refresh_step_duration_seconds_{count,sum,bucket}` | did each catalog refresh step run today, and how close the refresh is to its 30m budget                                                                                                                        |
@@ -361,11 +361,17 @@ search result's `matched_region` read it - by merging a game's
 needed; every region IGDB returns is read) with alternative names
 mined from `alternative_names` via the `altTagFamilies` table: a
 per-region prefix/exclude rule (today `ja-JP` prefix "japanese
-title", `ko-KR` prefix "korean title", both excluding comments
-containing "translat" so an English retranslation cannot steal the
-native-name slot). A region whose native title only shows up in
+title", `ko-KR` prefix "korean title", `zh-CN` prefix "simplified
+chinese title", `zh-TW` prefix "traditional chinese title", `pt-BR`
+prefix "portuguese title", all excluding comments containing
+"translat" so an English retranslation cannot steal the native-name
+slot). A region whose native title only shows up in
 `alternative_names` - not in `game_localizations` - needs a row in
-this table; that is the extension point for the next region.
+this table; that is the extension point for the next region. New
+families take effect at the next reprojection (nightly refresh or
+POST /admin/refresh) - no raw refetch, alternative_names are already
+in every raw. The full region checklist, this table included, is
+docs/adding-a-region.md.
 
 The pricing half now consumes these same bundles for a different
 purpose: `matchNamesFor` reads the `ja-JP` chain's transliteration as
