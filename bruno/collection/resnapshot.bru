@@ -24,9 +24,10 @@ assert {
 docs {
   Operator backfill, re-runnable any time: recomputes every
   game-backed entry's snapshotted fields from its product's current
-  data - the region-picked release date and the localized presentation
-  trio (localized_name/localized_name_translit/localized_cover_url).
-  Idempotent; expect 200 with
+  data - the region-picked release date, the localized presentation
+  trio (localized_name/localized_name_translit/localized_cover_url),
+  and the credit arrays (developers/publishers). Idempotent; expect
+  200 with
   products_seen/products_failed/entries_updated (0 updated once
   nothing has changed). Run after enrichment's catalog has actually
   healed - the nightly catalog refresh, or an immediate admin refresh

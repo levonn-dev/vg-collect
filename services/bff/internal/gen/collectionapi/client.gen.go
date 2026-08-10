@@ -2384,7 +2384,7 @@ type ClientInterface interface {
 
 	// InternalResnapshot Resnapshot - recompute every game-backed entry's product-derived snapshot fields
 	//
-	// Maintenance operation; the gateway never routes it. Recomputes the region-picked release date and the localized presentation trio (name, transliteration, cover url) for every game-backed entry from its product's current data. Guard: admin user or service token (tightened from any valid JWT). Idempotent and re-runnable; a row is written only when the recomputed date or trio differs from what is stored.
+	// Maintenance operation; the gateway never routes it. Recomputes the region-picked release date, the localized presentation trio (name, transliteration, cover url), and the credit arrays (developers, publishers) for every game-backed entry from its product's current data. Guard: admin user or service token (tightened from any valid JWT). Idempotent and re-runnable; a row is written only when a recomputed field differs from what is stored.
 	//
 	// Corresponds with POST /internal/resnapshot (the `InternalResnapshot` operationId).
 	InternalResnapshot(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2954,7 +2954,7 @@ func (c *Client) InternalRematchEntries(ctx context.Context, reqEditors ...Reque
 
 // InternalResnapshot Resnapshot - recompute every game-backed entry's product-derived snapshot fields
 //
-// Maintenance operation; the gateway never routes it. Recomputes the region-picked release date and the localized presentation trio (name, transliteration, cover url) for every game-backed entry from its product's current data. Guard: admin user or service token (tightened from any valid JWT). Idempotent and re-runnable; a row is written only when the recomputed date or trio differs from what is stored.
+// Maintenance operation; the gateway never routes it. Recomputes the region-picked release date, the localized presentation trio (name, transliteration, cover url), and the credit arrays (developers, publishers) for every game-backed entry from its product's current data. Guard: admin user or service token (tightened from any valid JWT). Idempotent and re-runnable; a row is written only when a recomputed field differs from what is stored.
 //
 // Corresponds with POST /internal/resnapshot (the `InternalResnapshot` operationId).
 func (c *Client) InternalResnapshot(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5248,7 +5248,7 @@ type ClientWithResponsesInterface interface {
 
 	// InternalResnapshotWithResponse Resnapshot - recompute every game-backed entry's product-derived snapshot fields
 	//
-	// Maintenance operation; the gateway never routes it. Recomputes the region-picked release date and the localized presentation trio (name, transliteration, cover url) for every game-backed entry from its product's current data. Guard: admin user or service token (tightened from any valid JWT). Idempotent and re-runnable; a row is written only when the recomputed date or trio differs from what is stored.
+	// Maintenance operation; the gateway never routes it. Recomputes the region-picked release date, the localized presentation trio (name, transliteration, cover url), and the credit arrays (developers, publishers) for every game-backed entry from its product's current data. Guard: admin user or service token (tightened from any valid JWT). Idempotent and re-runnable; a row is written only when a recomputed field differs from what is stored.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -7823,7 +7823,7 @@ func (c *ClientWithResponses) InternalRematchEntriesWithResponse(ctx context.Con
 
 // InternalResnapshotWithResponse Resnapshot - recompute every game-backed entry's product-derived snapshot fields
 //
-// Maintenance operation; the gateway never routes it. Recomputes the region-picked release date and the localized presentation trio (name, transliteration, cover url) for every game-backed entry from its product's current data. Guard: admin user or service token (tightened from any valid JWT). Idempotent and re-runnable; a row is written only when the recomputed date or trio differs from what is stored.
+// Maintenance operation; the gateway never routes it. Recomputes the region-picked release date, the localized presentation trio (name, transliteration, cover url), and the credit arrays (developers, publishers) for every game-backed entry from its product's current data. Guard: admin user or service token (tightened from any valid JWT). Idempotent and re-runnable; a row is written only when a recomputed field differs from what is stored.
 //
 // Returns a wrapper object for the known response body format(s).
 //

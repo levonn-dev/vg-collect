@@ -2569,14 +2569,15 @@ func (h *Handlers) GetLibrarySummary(w http.ResponseWriter, r *http.Request) {
 }
 
 // InternalResnapshot recomputes every game-backed entry's
-// product-derived snapshot fields: the region-picked release date and
-// the localized presentation trio (name, transliteration, cover url).
+// product-derived snapshot fields: the region-picked release date,
+// the localized presentation trio (name, transliteration, cover
+// url), and the credit arrays (developers, publishers).
 // Contract-described and served by the generated mux behind the
 // blanket JWT middleware, admin-or-service-gated in the handler
 // (tightened from any valid JWT - a decision record, same guard as
 // the entry rematch); the caller's bearer rides the enrichment hops.
-// Idempotent and re-runnable - rows are written only when the
-// recomputed date or trio differs from what is stored.
+// Idempotent and re-runnable - rows are written only when a
+// recomputed field differs from what is stored.
 func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdminOrService(w, r) {
 		return
