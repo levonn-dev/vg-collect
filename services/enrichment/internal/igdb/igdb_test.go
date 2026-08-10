@@ -57,6 +57,15 @@ func TestBundleLocalizations(t *testing.T) {
 		{"korea row unchanged", Game{
 			GameLocalizations: []GameLocalization{{Name: "성검전설 3", Region: LocalizationRegion{Identifier: "ko-KR"}}}},
 			[]LocalizationBundle{{Region: "ko-KR", Name: "성검전설 3"}}},
+		{"simplified chinese alt mines zh-CN", Game{
+			AlternativeNames: []AlternativeName{{Name: "黑神话：悟空", Comment: "Simplified Chinese title"}}},
+			[]LocalizationBundle{{Region: "zh-CN", Name: "黑神话：悟空"}}},
+		{"traditional chinese alt mines zh-TW", Game{
+			AlternativeNames: []AlternativeName{{Name: "黑神話：悟空", Comment: "Traditional Chinese title"}}},
+			[]LocalizationBundle{{Region: "zh-TW", Name: "黑神話：悟空"}}},
+		{"portuguese alt mines pt-BR", Game{
+			AlternativeNames: []AlternativeName{{Name: "Mônica no Castelo do Dragão", Comment: "Portuguese title"}}},
+			[]LocalizationBundle{{Region: "pt-BR", Name: "Mônica no Castelo do Dragão"}}},
 		{"translated-only alt yields nothing", Game{
 			AlternativeNames: []AlternativeName{{Name: "The Legend of the Sacred Sword 3", Comment: "Japanese title - translated"}}},
 			nil},

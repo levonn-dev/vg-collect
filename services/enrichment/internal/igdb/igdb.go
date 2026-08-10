@@ -143,12 +143,17 @@ type altTagRule struct {
 	exclude string
 }
 
-// altTagFamilies is the per-region mining table. Korea is pre-filled
-// so its entry region later is a chain-table change only; regions
-// without a family (EU) mine nothing and use their row fields alone.
+// altTagFamilies is the per-region mining table; regions without a
+// family (EU) mine nothing and use their row fields alone. IGDB files
+// Chinese titles under script-explicit comments, so the two scripts
+// mine into separate identifiers and an entry region's chain decides
+// their precedence.
 var altTagFamilies = map[string]altTagRule{
 	"ja-JP": {prefix: "japanese title", exclude: "translat"},
 	"ko-KR": {prefix: "korean title", exclude: "translat"},
+	"zh-CN": {prefix: "simplified chinese title", exclude: "translat"},
+	"zh-TW": {prefix: "traditional chinese title", exclude: "translat"},
+	"pt-BR": {prefix: "portuguese title", exclude: "translat"},
 }
 
 // LocalizationBundle is one region's presentation of a game, merged

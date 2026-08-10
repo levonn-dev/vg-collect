@@ -356,6 +356,9 @@ func TestUnitTelemetry_MatchOutcomesCarriesRegionLabel(t *testing.T) {
 	if meta := h.autoMatchGame(ctx, "resolve", []string{"Regional Game"}, "", "Super Nintendo Entertainment System", "moon_base_region"); meta != nil {
 		t.Fatalf("want an auto-miss under an unrecognized region (treated as base for matching), got %+v", meta)
 	}
+	if meta := h.autoMatchGame(ctx, "resolve", []string{"Regional Game"}, "", "Super Nintendo Entertainment System", "korea"); meta != nil {
+		t.Fatalf("want an auto-miss under korea (base matching; the console is JP-only), got %+v", meta)
+	}
 
 	const name = "vg.enrichment.match.outcomes"
 	if got := counterSum(t, reader, name, attribute.String("outcome", "matched"), attribute.String("region", "ntsc_j")); got != 1 {
@@ -363,6 +366,9 @@ func TestUnitTelemetry_MatchOutcomesCarriesRegionLabel(t *testing.T) {
 	}
 	if got := counterSum(t, reader, name, attribute.String("outcome", "below_threshold"), attribute.String("region", "none")); got != 2 {
 		t.Fatalf("below_threshold{region=none} = %d, want 2 (empty region and an unrecognized one both clamp to none)", got)
+	}
+	if got := counterSum(t, reader, name, attribute.String("outcome", "below_threshold"), attribute.String("region", "korea")); got != 1 {
+		t.Fatalf("below_threshold{region=korea} = %d, want 1 (a graduated region is a known label, not clamped to none)", got)
 	}
 	if got := counterSum(t, reader, name, attribute.String("outcome", "below_threshold"), attribute.String("region", "moon_base_region")); got != 0 {
 		t.Fatalf("an unrecognized region must never mint its own label series, got %d", got)

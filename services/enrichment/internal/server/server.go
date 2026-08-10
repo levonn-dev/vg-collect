@@ -301,13 +301,13 @@ func (h *Handlers) countLocalizationLeg(ctx context.Context, outcome string) {
 // flows), region the clamped entry region that steered acceptance
 // ("none" when the resolve carried no region). The resolve request's
 // region is free text (maxLength 32, no enum), so anything outside
-// the four known regions clamps to "none" too - matching already
+// the known regions clamps to "none" too - matching already
 // treats an unrecognized region as base region (see match.go's
 // acceptedConsoles), so "none" stays honest, and an authenticated
 // user cannot mint an unbounded label series by varying the string.
 func (h *Handlers) countMatch(ctx context.Context, source, outcome, region string) {
 	switch region {
-	case "ntsc_u", "ntsc_j", "pal", "region_free":
+	case "ntsc_u", "ntsc_j", "pal", "region_free", "korea", "brazil", "china":
 		// known label values pass through unchanged
 	default:
 		region = "none"

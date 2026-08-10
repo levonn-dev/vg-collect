@@ -52,7 +52,10 @@ var regionQueryChains = map[string][]string{
 // normalize-community-regions promotion target set. Not a validation
 // gate here either - community.region stays open-world, same as
 // collection's entry region.
-var knownRegions = map[string]bool{"ntsc_u": true, "ntsc_j": true, "pal": true, "region_free": true}
+var knownRegions = map[string]bool{
+	"ntsc_u": true, "ntsc_j": true, "pal": true, "region_free": true,
+	"korea": true, "brazil": true, "china": true,
+}
 
 // regionSynonyms is enrichment's twin of collection's regionSynonyms,
 // row-identical by construction: the same localization-chains twin
@@ -67,6 +70,9 @@ var regionSynonyms = map[string][]string{
 	"ntsc_j":      {"japan", "jp", "ntsc-j"},
 	"pal":         {"europe", "eu"},
 	"region_free": {"world", "worldwide", "region free"},
+	"korea":       {"kr", "south korea"},
+	"brazil":      {"br", "brasil"},
+	"china":       {"cn"},
 }
 
 // regionFoldMap builds fold -> canonical from the known values'

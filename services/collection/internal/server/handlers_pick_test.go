@@ -38,7 +38,12 @@ func TestPickReleaseDate(t *testing.T) {
 		{"worldwide backs ntsc_u", meta(rd("japan", "1995-03-11"), rd("worldwide", "1995-06-01")), "ntsc_u", ptr(day("1995-06-01"))},
 		{"asia backs ntsc_j", meta(rd("asia", "1995-04-01"), rd("north_america", "1995-08-22")), "ntsc_j", ptr(day("1995-04-01"))},
 		{"australia backs pal", meta(rd("australia", "1995-09-01"), rd("japan", "1995-03-11")), "pal", ptr(day("1995-09-01"))},
-		{"korea never auto-picked", meta(rd("korea", "1996-01-01")), "ntsc_j", ptr(day("1995-03-11"))},
+		{"korea never backs ntsc_j", meta(rd("korea", "1996-01-01")), "ntsc_j", ptr(day("1995-03-11"))},
+		{"korea takes its own row", meta(rd("korea", "1996-01-01"), rd("japan", "1995-03-11")), "korea", ptr(day("1996-01-01"))},
+		{"asia backs korea", meta(rd("asia", "1995-04-01"), rd("japan", "1995-03-11")), "korea", ptr(day("1995-04-01"))},
+		{"china takes its own row", meta(rd("china", "2004-06-01"), rd("worldwide", "1995-06-01")), "china", ptr(day("2004-06-01"))},
+		{"brazil takes its own row", meta(rd("brazil", "1994-05-01"), rd("north_america", "1993-08-01")), "brazil", ptr(day("1994-05-01"))},
+		{"north_america never backs brazil", meta(rd("north_america", "1993-08-01")), "brazil", ptr(day("1995-03-11"))},
 		{"region_free takes scalar", meta(rd("north_america", "1995-08-22")), "region_free", ptr(day("1995-03-11"))},
 		{"no chain hit falls back to scalar", meta(rd("brazil", "1996-01-01")), "pal", ptr(day("1995-03-11"))},
 		{"unknown payload region ignored", meta(rd("moon", "1990-01-01"), rd("europe", "1995-12-01")), "pal", ptr(day("1995-12-01"))},
@@ -73,6 +78,17 @@ func TestPickLocalization(t *testing.T) {
 		{Region: "ja-JP", Name: new(""), Translit: new(""), CoverUrl: new("")},
 	}}
 
+	zhMeta := &enrichapi.IgdbMeta{Localizations: &[]enrichapi.Localization{
+		{Region: "zh-TW", Name: new("黑神話：悟空")},
+		{Region: "zh-CN", Name: new("黑神话：悟空")},
+	}}
+	zhTWOnly := &enrichapi.IgdbMeta{Localizations: &[]enrichapi.Localization{
+		{Region: "zh-TW", Name: new("黑神話：悟空")},
+	}}
+	ptMeta := &enrichapi.IgdbMeta{Localizations: &[]enrichapi.Localization{
+		{Region: "pt-BR", Name: new("Mônica no Castelo do Dragão")},
+	}}
+
 	cases := []struct {
 		name                      string
 		meta                      *enrichapi.IgdbMeta
@@ -83,6 +99,10 @@ func TestPickLocalization(t *testing.T) {
 		{"pal takes the EU bundle, sparse fields stay nil", meta, "pal", nil, nil, new("https://x/eu.jpg")},
 		{"ntsc_u has no chain", meta, "ntsc_u", nil, nil, nil},
 		{"region_free has no chain", meta, "region_free", nil, nil, nil},
+		{"korea takes the ko-KR bundle, sparse fields stay nil", meta, "korea", new("성검전설 3"), nil, nil},
+		{"china prefers zh-CN over zh-TW", zhMeta, "china", new("黑神话：悟空"), nil, nil},
+		{"china falls back to zh-TW", zhTWOnly, "china", new("黑神話：悟空"), nil, nil},
+		{"brazil takes the pt-BR bundle", ptMeta, "brazil", new("Mônica no Castelo do Dragão"), nil, nil},
 		{"ko-KR is in no chain", meta, "ko-KR", nil, nil, nil},
 		{"nil meta", nil, "ntsc_j", nil, nil, nil},
 		{"nil localizations", &enrichapi.IgdbMeta{}, "ntsc_j", nil, nil, nil},
@@ -198,6 +218,10 @@ func TestConsoleRegionClassification(t *testing.T) {
 	}{
 		{"Super Nintendo", "ntsc_u", true},
 		{"Super Nintendo", "region_free", true},
+		{"Super Nintendo", "korea", true}, // base is korea's pricing proxy (no PC axis)
+		{"Super Nintendo", "china", true}, // same proxy rule
+		{"Super Famicom", "korea", false}, // a JP listing still misprices a korea copy
+		{"PAL Playstation 4", "brazil", false},
 		{"Super Nintendo", "ntsc_j", false},
 		{"Super Famicom", "ntsc_j", true},
 		{"Super Famicom", "ntsc_u", false},

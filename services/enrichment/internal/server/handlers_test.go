@@ -5389,18 +5389,21 @@ func TestUnitListPlatforms_JoinsAliasesSortsAndCaches(t *testing.T) {
 // pins the fold+synonym promotion (enrichment's twin of collection's
 // normalize-regions lever, scoped to the community products this
 // service owns): a reviewed synonym promotes through the twin tables,
-// an unreviewed string is left untouched, and the response counts
-// both.
+// a graduated region promotes through its identity fold, an
+// unreviewed string is left untouched, and the response counts all
+// three.
 func TestUnitInternalNormalizeCommunityRegions_PromotesFoldMatchSkipsUnknown(t *testing.T) {
 	env := newAuthEnv(t)
 	promoted := "p-japan"
-	untouched := "p-korea"
+	promotedKR := "p-korea"
+	untouched := "p-taiwan"
 	var wrote []struct{ id, region string }
 	st := &stubStore{
 		listCommunityRegionDocs: func(context.Context) ([]store.CommunityRegionRef, error) {
 			return []store.CommunityRegionRef{
 				{ID: promoted, Region: "Japan"},
-				{ID: untouched, Region: "Korea"},
+				{ID: promotedKR, Region: "Korea"},
+				{ID: untouched, Region: "Taiwan"},
 			}, nil
 		},
 		setCommunityRegion: func(_ context.Context, id, region string) error {
@@ -5419,11 +5422,14 @@ func TestUnitInternalNormalizeCommunityRegions_PromotesFoldMatchSkipsUnknown(t *
 	if err := json.Unmarshal(rec.Body.Bytes(), &counts); err != nil {
 		t.Fatal(err)
 	}
-	if counts["scanned"] != 2 || counts["normalized"] != 1 || counts["skipped"] != 1 {
-		t.Fatalf("counts = %+v, want scanned 2 normalized 1 skipped 1", counts)
+	if counts["scanned"] != 3 || counts["normalized"] != 2 || counts["skipped"] != 1 {
+		t.Fatalf("counts = %+v, want scanned 3 normalized 2 skipped 1", counts)
 	}
-	if len(wrote) != 1 || wrote[0].id != promoted || wrote[0].region != "ntsc_j" {
-		t.Fatalf("wrote = %+v, want exactly one write promoting %q to ntsc_j", wrote, promoted)
+	if len(wrote) != 2 || wrote[0].id != promoted || wrote[0].region != "ntsc_j" {
+		t.Fatalf("wrote = %+v, want the first write promoting %q to ntsc_j", wrote, promoted)
+	}
+	if wrote[1].id != promotedKR || wrote[1].region != "korea" {
+		t.Fatalf("wrote = %+v, want the second write promoting %q to korea", wrote, promotedKR)
 	}
 }
 

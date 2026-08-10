@@ -43,7 +43,10 @@ var (
 	// knownRegions is no longer a validation gate (region is
 	// open-world); it keys the machinery tables and the normalize
 	// lever's promotion target set.
-	knownRegions = map[string]bool{"ntsc_u": true, "ntsc_j": true, "pal": true, "region_free": true}
+	knownRegions = map[string]bool{
+		"ntsc_u": true, "ntsc_j": true, "pal": true, "region_free": true,
+		"korea": true, "brazil": true, "china": true,
+	}
 
 	packagingVals       = map[string]bool{"sealed": true, "cib": true, "loose": true}
 	conditionVals       = map[string]bool{"mint": true, "near_mint": true, "very_good": true, "good": true, "acceptable": true, "poor": true}
@@ -67,6 +70,9 @@ var regionSynonyms = map[string][]string{
 	"ntsc_j":      {"japan", "jp", "ntsc-j"},
 	"pal":         {"europe", "eu"},
 	"region_free": {"world", "worldwide", "region free"},
+	"korea":       {"kr", "south korea"},
+	"brazil":      {"br", "brasil"},
+	"china":       {"cn"},
 }
 
 // regionFoldMap builds fold -> canonical from the known values'
@@ -129,14 +135,21 @@ func dateToTime(d *openapi_types.Date) *time.Time {
 	return &t
 }
 
-// regionChains orders IGDB regions per entry region: the TV-standard
-// territory first, its siblings, then worldwide. Language-market
-// regions (china, korea, brazil) are deliberately in no chain - their
-// dates reflect localization, not the territory standard.
+// regionChains orders IGDB regions per entry region: the region's own
+// territory first, its siblings, then worldwide. The language-market
+// regions (korea, brazil, china) chain from their own entries only -
+// their rows deliberately back no TV-standard region's chain, where
+// they would reflect a localization launch, not the territory
+// standard. korea and china share ntsc_j's asia sibling; brazil has
+// no sibling market, so past its own row it falls to the scalar like
+// any chain miss.
 var regionChains = map[string][]string{
 	"ntsc_u": {"north_america", "worldwide"},
 	"ntsc_j": {"japan", "asia", "worldwide"},
 	"pal":    {"europe", "australia", "new_zealand", "worldwide"},
+	"korea":  {"korea", "asia", "worldwide"},
+	"brazil": {"brazil", "worldwide"},
+	"china":  {"china", "asia", "worldwide"},
 }
 
 // pickReleaseDate resolves an entry's snapshotted date: the first
@@ -175,9 +188,14 @@ func pickReleaseDate(meta *enrichapi.IgdbMeta, region string) *time.Time {
 // two provider vocabularies answering different questions, which is
 // why this table stays separate from regionChains. ntsc_u and
 // region_free have no chain: the canonical presentation is theirs.
+// china prefers Simplified script and falls back to Traditional when
+// only a zh-TW bundle exists.
 var localizationChains = map[string][]string{
 	"ntsc_j": {"ja-JP"},
 	"pal":    {"EU"},
+	"korea":  {"ko-KR"},
+	"china":  {"zh-CN", "zh-TW"},
+	"brazil": {"pt-BR"},
 }
 
 // pickLocalization resolves an entry's region-picked presentation
@@ -235,7 +253,9 @@ func consoleRegion(consoleName string) string {
 }
 
 // regionClass maps an entry region onto the console class that prices
-// it; ntsc_u and region_free copies price from base listings.
+// it; ntsc_u and region_free copies price from base listings, and so
+// do korea, brazil and china - PriceCharting has no axes for those
+// markets, so the base catalog is their deliberate pricing proxy.
 func regionClass(region string) string {
 	switch region {
 	case "ntsc_j":

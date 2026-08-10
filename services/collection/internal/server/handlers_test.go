@@ -544,8 +544,8 @@ func pricedGameProduct(id uuid.UUID, consoleName string) enrichapi.Product {
 
 // localizedGameProduct is gameProduct plus per-region presentation
 // bundles: a full ja-JP one (native-script title, transliteration,
-// regional box art) and a cover-only EU one, the sparse shape the
-// provider actually serves.
+// regional box art), a cover-only EU one, and a name-only ko-KR one -
+// the sparse shapes the provider actually serves.
 func localizedGameProduct(id uuid.UUID) enrichapi.Product {
 	p := gameProduct(id)
 	p.Igdb.Localizations = &[]enrichapi.Localization{
@@ -556,6 +556,7 @@ func localizedGameProduct(id uuid.UUID) enrichapi.Product {
 			CoverUrl: new("https://images.igdb.example/jp.jpg"),
 		},
 		{Region: "EU", CoverUrl: new("https://images.igdb.example/eu.jpg")},
+		{Region: "ko-KR", Name: new("성검전설 3")},
 	}
 	return p
 }
@@ -6471,12 +6472,16 @@ func TestNormalizePlatforms_UpstreamFailures(t *testing.T) {
 // left untouched, and an igdb-backed entry additionally re-picks its
 // localized snapshot for the promoted region from a freshly fetched
 // product - the same GetProduct hop the region-edit arm of UpdateEntry
-// uses.
+// uses. A chainless region (korea: no localization or release-date
+// chain) promotes through the same snapshot arm with every localized
+// field empty - the region graduates, its localization does not.
 func TestNormalizeRegions_PromotesAndRepicks(t *testing.T) {
 	adminID := uuid.New()
-	custom := uuid.New()     // region "Japan", no product -> plain write
-	noSynonym := uuid.New()  // region " KOREA ", igdb-backed -> no fold match, stays
-	igdbBacked := uuid.New() // region "japan", igdb-backed -> fetch + snapshot re-pick
+	custom := uuid.New()       // region "Japan", no product -> plain write
+	brazilCustom := uuid.New() // region " BR ", no product -> synonym fold, plain write
+	noSynonym := uuid.New()    // region " TAIWAN ", igdb-backed -> no fold match, stays
+	igdbBacked := uuid.New()   // region "japan", igdb-backed -> fetch + snapshot re-pick
+	koreaBacked := uuid.New()  // region " KOREA ", igdb-backed -> identity fold, chainless re-pick
 
 	fetchedProduct := uuid.New() // the only product a matched row may fetch
 	neverFetched := uuid.New()   // the no-synonym row's product; fetching it is a bug
@@ -6485,8 +6490,10 @@ func TestNormalizeRegions_PromotesAndRepicks(t *testing.T) {
 
 	refs := []store.OpenRegionEntryRef{
 		{EntryID: custom, Region: "Japan"},
-		{EntryID: noSynonym, ProductID: &neverFetched, IGDBGameID: &gameID, Region: " KOREA "},
+		{EntryID: brazilCustom, Region: " BR "},
+		{EntryID: noSynonym, ProductID: &neverFetched, IGDBGameID: &gameID, Region: " TAIWAN "},
 		{EntryID: igdbBacked, ProductID: &fetchedProduct, IGDBGameID: &gameID, Region: "japan"},
+		{EntryID: koreaBacked, ProductID: &fetchedProduct, IGDBGameID: &gameID, Region: " KOREA "},
 	}
 
 	var mu sync.Mutex
@@ -6534,14 +6541,17 @@ func TestNormalizeRegions_PromotesAndRepicks(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&counts); err != nil {
 		t.Fatal(err)
 	}
-	if counts["scanned"] != 3 || counts["normalized"] != 2 || counts["skipped"] != 1 {
-		t.Fatalf("counts = %+v, want scanned 3 normalized 2 skipped 1", counts)
+	if counts["scanned"] != 5 || counts["normalized"] != 4 || counts["skipped"] != 1 {
+		t.Fatalf("counts = %+v, want scanned 5 normalized 4 skipped 1", counts)
 	}
 
 	mu.Lock()
 	defer mu.Unlock()
 	if got := plainWrites[custom]; got != "ntsc_j" {
 		t.Fatalf("custom entry region = %q, want ntsc_j (plain write, no localized fields)", got)
+	}
+	if got := plainWrites[brazilCustom]; got != "brazil" {
+		t.Fatalf("brazil-synonym entry region = %q, want brazil (the br row, trimmed and folded)", got)
 	}
 	if _, wrote := plainWrites[noSynonym]; wrote {
 		t.Fatalf("no-synonym region must not be promoted")
@@ -6562,6 +6572,23 @@ func TestNormalizeRegions_PromotesAndRepicks(t *testing.T) {
 	wantJP := (*product.Igdb.Localizations)[0]
 	if got.name == nil || wantJP.Name == nil || *got.name != *wantJP.Name {
 		t.Fatalf("localized_name must come from the fetched product's ja-JP bundle: got %v", got.name)
+	}
+
+	kr, ok := snapshotWrites[koreaBacked]
+	if !ok {
+		t.Fatalf("korea igdb-backed entry must promote through the snapshot arm")
+	}
+	if kr.region != "korea" {
+		t.Fatalf("korea-backed region = %q, want korea (identity fold)", kr.region)
+	}
+	// korea's chain reads the ko-KR bundle; the fixture row is
+	// name-only, so translit and cover stay empty on the re-pick.
+	wantKO := (*product.Igdb.Localizations)[2]
+	if kr.name == nil || wantKO.Name == nil || *kr.name != *wantKO.Name {
+		t.Fatalf("localized_name must come from the fetched product's ko-KR bundle: got %v", kr.name)
+	}
+	if kr.translit != nil || kr.cover != nil {
+		t.Fatalf("sparse ko-KR bundle must leave translit and cover empty, got %+v", kr)
 	}
 }
 
