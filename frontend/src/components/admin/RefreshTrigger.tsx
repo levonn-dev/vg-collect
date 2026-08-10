@@ -4,6 +4,7 @@ import type { I18n } from '@lingui/core'
 import { useMutation } from '@tanstack/react-query'
 import { triggerRefresh } from '../../api/admin'
 import { ApiError } from '../../api/client'
+import LeverCard from './LeverCard'
 
 // t(i18n) throughout this file, component included: refreshErrorMessage
 // is a plain function (cannot call useLingui() itself, same reasoning as
@@ -21,22 +22,13 @@ export default function RefreshTrigger() {
   const { i18n } = useLingui()
   const run = useMutation({ mutationFn: triggerRefresh })
   return (
-    <section aria-label={t(i18n)`Catalog refresh`} className="mt-6">
-      <h3 className="text-base font-semibold"><Trans>Catalog refresh</Trans></h3>
-      <button
-        type="button"
-        onClick={() => run.mutate()}
-        disabled={run.isPending}
-        className="mt-2 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
-      >
-        <Trans>Trigger catalog refresh</Trans>
-      </button>
-      {run.isSuccess && <p className="mt-2 text-sm text-gray-700"><Trans>Refresh started.</Trans></p>}
-      {run.isError && (
-        <p role="alert" className="mt-2 text-sm text-red-700">
-          {refreshErrorMessage(run.error, i18n)}
-        </p>
-      )}
-    </section>
+    <LeverCard
+      title={t(i18n)`Catalog refresh`}
+      actionLabel={t(i18n)`Trigger catalog refresh`}
+      onRun={() => run.mutate()}
+      pending={run.isPending}
+      success={run.isSuccess ? <Trans>Refresh started.</Trans> : undefined}
+      error={run.isError ? refreshErrorMessage(run.error, i18n) : undefined}
+    />
   )
 }

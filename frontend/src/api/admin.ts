@@ -97,6 +97,15 @@ export function dismissPromoteCandidate(
   })
 }
 
+export type ResnapshotResult =
+  paths['/api/admin/resnapshot']['post']['responses']['200']['content']['application/json']
+
+// Synchronous, unlike the refresh/rematch triggers: the sweep counts
+// ride the response.
+export function runResnapshot(): Promise<ResnapshotResult> {
+  return sendJSON<ResnapshotResult>('POST', '/api/admin/resnapshot')
+}
+
 export type NormalizeResult = { scanned: number; normalized: number; skipped: number }
 
 export function normalizePlatforms(): Promise<NormalizeResult> {

@@ -808,6 +808,10 @@ msgstr "Entry editor"
 msgid "Entry rematch"
 msgstr "Entry rematch"
 
+#: src/components/admin/ResnapshotTrigger.tsx
+msgid "Entry resnapshot"
+msgstr "Entry resnapshot"
+
 #: src/components/admin/ReviewPanel.tsx
 msgid "exact match"
 msgstr "exact match"
@@ -1186,6 +1190,10 @@ msgstr "Loose"
 #: src/components/entry/PricingPanel.tsx
 msgid "Loose {loose} / CIB {cib} / New {newPrice}"
 msgstr "Loose {loose} / CIB {cib} / New {newPrice}"
+
+#: src/pages/Admin.tsx
+msgid "Maintenance"
+msgstr "Maintenance"
 
 #: src/components/collection/ShelfManager.tsx
 msgid "Manage shelves"
@@ -1597,6 +1605,10 @@ msgstr "Product id (uuid)"
 msgid "Product lookup"
 msgstr "Product lookup"
 
+#: src/components/admin/ResnapshotTrigger.tsx
+msgid "Products seen {seen}, failed {failed}, entries updated {updated}."
+msgstr "Products seen {seen}, failed {failed}, entries updated {updated}."
+
 #: src/pages/Account.tsx
 #: src/pages/Profile.tsx
 msgid "Profile"
@@ -1804,6 +1816,10 @@ msgstr "Review: {displayName}"
 #: src/pages/Admin.tsx
 msgid "Run community region normalization"
 msgstr "Run community region normalization"
+
+#: src/components/admin/ResnapshotTrigger.tsx
+msgid "Run entry resnapshot"
+msgstr "Run entry resnapshot"
 
 #: src/pages/Admin.tsx
 msgid "Run platform normalization"
@@ -2210,6 +2226,7 @@ msgid "The shelf visibility update failed."
 msgstr "The shelf visibility update failed."
 
 #: src/components/admin/NormalizeTrigger.tsx
+#: src/components/admin/ResnapshotTrigger.tsx
 msgid "The sweep failed - try again."
 msgstr "The sweep failed - try again."
 

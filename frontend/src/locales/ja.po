@@ -808,6 +808,10 @@ msgstr "アイテムの編集"
 msgid "Entry rematch"
 msgstr "エントリー再照合"
 
+#: src/components/admin/ResnapshotTrigger.tsx
+msgid "Entry resnapshot"
+msgstr "エントリーのスナップショット再計算"
+
 #: src/components/admin/ReviewPanel.tsx
 msgid "exact match"
 msgstr "完全一致"
@@ -1186,6 +1190,10 @@ msgstr "箱説なし"
 #: src/components/entry/PricingPanel.tsx
 msgid "Loose {loose} / CIB {cib} / New {newPrice}"
 msgstr "箱説なし {loose} / 完品 {cib} / 新品 {newPrice}"
+
+#: src/pages/Admin.tsx
+msgid "Maintenance"
+msgstr "メンテナンス"
 
 #: src/components/collection/ShelfManager.tsx
 msgid "Manage shelves"
@@ -1597,6 +1605,10 @@ msgstr "商品ID（UUID）"
 msgid "Product lookup"
 msgstr "商品照会"
 
+#: src/components/admin/ResnapshotTrigger.tsx
+msgid "Products seen {seen}, failed {failed}, entries updated {updated}."
+msgstr "{seen}件の商品を確認、{failed}件が失敗、{updated}件のエントリーを更新しました。"
+
 #: src/pages/Account.tsx
 #: src/pages/Profile.tsx
 msgid "Profile"
@@ -1804,6 +1816,10 @@ msgstr "審査：{displayName}"
 #: src/pages/Admin.tsx
 msgid "Run community region normalization"
 msgstr "コミュニティリージョンの正規化を実行"
+
+#: src/components/admin/ResnapshotTrigger.tsx
+msgid "Run entry resnapshot"
+msgstr "エントリーのスナップショット再計算を実行"
 
 #: src/pages/Admin.tsx
 msgid "Run platform normalization"
@@ -2210,6 +2226,7 @@ msgid "The shelf visibility update failed."
 msgstr "棚の公開範囲を変更できませんでした。"
 
 #: src/components/admin/NormalizeTrigger.tsx
+#: src/components/admin/ResnapshotTrigger.tsx
 msgid "The sweep failed - try again."
 msgstr "処理に失敗しました。もう一度お試しください。"
 

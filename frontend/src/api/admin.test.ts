@@ -5,6 +5,7 @@ import {
   fetchSubmissions,
   fetchUnmatchedProducts,
   promoteProduct,
+  runResnapshot,
   setProductMapping,
   submitVerdict,
   triggerRefresh,
@@ -59,6 +60,14 @@ it('triggerRematch posts the rematch trigger', async () => {
   const r = await triggerRematch()
   expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/rematch')
   expect(r.status).toBe('started')
+})
+
+it('runResnapshot posts the resnapshot sweep', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { products_seen: 3, products_failed: 0, entries_updated: 2 }))
+  vi.stubGlobal('fetch', fetchMock)
+  const r = await runResnapshot()
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/resnapshot')
+  expect(r.entries_updated).toBe(2)
 })
 
 it('deleteProduct issues the DELETE and resolves on 204', async () => {

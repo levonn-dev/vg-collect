@@ -4,6 +4,7 @@ import type { I18n } from '@lingui/core'
 import { useMutation } from '@tanstack/react-query'
 import { triggerRematch } from '../../api/admin'
 import { ApiError } from '../../api/client'
+import LeverCard from './LeverCard'
 
 // t(i18n) throughout this file, component included: rematchErrorMessage
 // is a plain function (cannot call useLingui() itself, same reasoning as
@@ -21,22 +22,13 @@ export default function RematchTrigger() {
   const { i18n } = useLingui()
   const run = useMutation({ mutationFn: triggerRematch })
   return (
-    <section aria-label={t(i18n)`Entry rematch`} className="mt-6">
-      <h3 className="text-base font-semibold"><Trans>Entry rematch</Trans></h3>
-      <button
-        type="button"
-        onClick={() => run.mutate()}
-        disabled={run.isPending}
-        className="mt-2 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
-      >
-        <Trans>Trigger entry rematch</Trans>
-      </button>
-      {run.isSuccess && <p className="mt-2 text-sm text-gray-700"><Trans>Rematch started.</Trans></p>}
-      {run.isError && (
-        <p role="alert" className="mt-2 text-sm text-red-700">
-          {rematchErrorMessage(run.error, i18n)}
-        </p>
-      )}
-    </section>
+    <LeverCard
+      title={t(i18n)`Entry rematch`}
+      actionLabel={t(i18n)`Trigger entry rematch`}
+      onRun={() => run.mutate()}
+      pending={run.isPending}
+      success={run.isSuccess ? <Trans>Rematch started.</Trans> : undefined}
+      error={run.isError ? rematchErrorMessage(run.error, i18n) : undefined}
+    />
   )
 }

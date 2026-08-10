@@ -12,6 +12,7 @@ import ProductLookup from '../components/admin/ProductLookup'
 import PromoteCandidates from '../components/admin/PromoteCandidates'
 import RefreshTrigger from '../components/admin/RefreshTrigger'
 import RematchTrigger from '../components/admin/RematchTrigger'
+import ResnapshotTrigger from '../components/admin/ResnapshotTrigger'
 import SubmissionsQueue from '../components/admin/SubmissionsQueue'
 import UnmatchedWorklist from '../components/admin/UnmatchedWorklist'
 import Tabs, { type Tab } from '../components/Tabs'
@@ -29,12 +30,12 @@ const ADMIN_TABS: { key: AdminTab; label: MessageDescriptor }[] = [
 ]
 
 // Admin is the role-gated console, in two tabs: Mappings (unmatched
-// worklist, promote-candidates worklist, product lookup, refresh
-// trigger, entry rematch trigger) and Submissions (the catalog review
-// queue, then the community products cleanup list below it). Layout
-// already gates authentication; this page checks only the role, and
-// the server enforces it regardless, so a bypassed guard yields 403
-// problems, never data.
+// worklist, promote-candidates worklist, product lookup, then the
+// Maintenance grid of trigger cards) and Submissions (the catalog
+// review queue, then the community products cleanup list below it).
+// Layout already gates authentication; this page checks only the
+// role, and the server enforces it regardless, so a bypassed guard
+// yields 403 problems, never data.
 export default function Admin() {
   const { t, i18n } = useLingui()
   const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
@@ -57,11 +58,17 @@ export default function Admin() {
           <UnmatchedWorklist />
           <PromoteCandidates />
           <ProductLookup />
-          <RefreshTrigger />
-          <RematchTrigger />
-          <NormalizeTrigger title={t`Normalize platforms`} actionLabel={t`Run platform normalization`} mutationFn={normalizePlatforms} />
-          <NormalizeTrigger title={t`Normalize regions`} actionLabel={t`Run region normalization`} mutationFn={normalizeRegions} />
-          <NormalizeTrigger title={t`Normalize community regions`} actionLabel={t`Run community region normalization`} mutationFn={normalizeCommunityRegions} />
+          <section aria-label={t`Maintenance`} className="mt-8">
+            <h3 className="text-base font-semibold"><Trans>Maintenance</Trans></h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <RefreshTrigger />
+              <RematchTrigger />
+              <ResnapshotTrigger />
+              <NormalizeTrigger title={t`Normalize platforms`} actionLabel={t`Run platform normalization`} mutationFn={normalizePlatforms} />
+              <NormalizeTrigger title={t`Normalize regions`} actionLabel={t`Run region normalization`} mutationFn={normalizeRegions} />
+              <NormalizeTrigger title={t`Normalize community regions`} actionLabel={t`Run community region normalization`} mutationFn={normalizeCommunityRegions} />
+            </div>
+          </section>
         </>
       ) : (
         <>
