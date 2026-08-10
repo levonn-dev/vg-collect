@@ -1735,6 +1735,7 @@ type stubCollection struct {
 	listSubmissions    func(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error)
 	submitVerdict      func(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
 	triggerRematch     func(ctx context.Context, bearer string) (collectionclient.Result, error)
+	resnapshot         func(ctx context.Context, bearer string) (collectionclient.Result, error)
 	normalizePlatforms func(ctx context.Context, bearer string) (collectionclient.Result, error)
 	normalizeRegions   func(ctx context.Context, bearer string) (collectionclient.Result, error)
 
@@ -1875,6 +1876,13 @@ func (s *stubCollection) TriggerRematch(ctx context.Context, bearer string) (col
 		panic("unexpected TriggerRematch")
 	}
 	return s.triggerRematch(ctx, bearer)
+}
+
+func (s *stubCollection) Resnapshot(ctx context.Context, bearer string) (collectionclient.Result, error) {
+	if s.resnapshot == nil {
+		panic("unexpected Resnapshot")
+	}
+	return s.resnapshot(ctx, bearer)
 }
 
 func (s *stubCollection) NormalizePlatforms(ctx context.Context, bearer string) (collectionclient.Result, error) {
@@ -2830,6 +2838,31 @@ func TestUnitAdminNormalizeRegions_RelaysAndForwardsBearer(t *testing.T) {
 	}
 }
 
+// TestUnitAdminResnapshot_RelaysAndForwardsBearer mirrors the above
+// for the snapshot-field recompute lever.
+func TestUnitAdminResnapshot_RelaysAndForwardsBearer(t *testing.T) {
+	const summary = `{"products_seen":3,"products_failed":1,"entries_updated":2}`
+	var gotBearer string
+	col := &stubCollection{resnapshot: func(_ context.Context, bearer string) (collectionclient.Result, error) {
+		gotBearer = bearer
+		return collectionclient.Result{Status: 200, ContentType: "application/json", Body: []byte(summary)}, nil
+	}}
+	h, env := newTestHandlersWithCollection(t, col)
+
+	rec := doAuthed(t, h, env, http.MethodPost, "/api/admin/resnapshot")
+	if rec.Code != 200 || rec.Body.String() != summary {
+		t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotBearer != env.sessionAccessToken {
+		t.Fatalf("bearer: %q", gotBearer)
+	}
+
+	rec = doUnauthed(t, h, env, http.MethodPost, "/api/admin/resnapshot")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", rec.Code)
+	}
+}
+
 // TestUnitAdminNormalizeCommunityRegions_RelaysAndForwardsBearer
 // mirrors the above for the community-product region normalization
 // lever, which relays through enrichment instead of collection.
@@ -3323,6 +3356,7 @@ func TestUnitHandlers_OwnSessionGuards(t *testing.T) {
 		"get_product":         func(w http.ResponseWriter, r *http.Request) { h.GetProduct(w, r, id) },
 		"trigger_refresh":     func(w http.ResponseWriter, r *http.Request) { h.TriggerRefresh(w, r) },
 		"trigger_rematch":     func(w http.ResponseWriter, r *http.Request) { h.TriggerRematch(w, r) },
+		"resnapshot":          func(w http.ResponseWriter, r *http.Request) { h.Resnapshot(w, r) },
 		"create_submission":   func(w http.ResponseWriter, r *http.Request) { h.CreateSubmission(w, r, id) },
 		"get_submission":      func(w http.ResponseWriter, r *http.Request) { h.GetSubmission(w, r, id) },
 		"ack_submission":      func(w http.ResponseWriter, r *http.Request) { h.AckSubmissionResolution(w, r, id) },

@@ -629,6 +629,17 @@ func (h *Handlers) TriggerRematch(w http.ResponseWriter, r *http.Request) {
 	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
 
+// Resnapshot relays the admin's snapshot-field recompute sweep.
+func (h *Handlers) Resnapshot(w http.ResponseWriter, r *http.Request) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	res, err := h.collection.Resnapshot(r.Context(), sess.AccessToken)
+	h.relayCollection(w, r, res, err)
+}
+
 // NormalizePlatforms relays the admin's platform canonicalization sweep.
 func (h *Handlers) NormalizePlatforms(w http.ResponseWriter, r *http.Request) {
 	sess, _, ok := session.FromContext(r.Context())

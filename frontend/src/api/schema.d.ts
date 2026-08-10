@@ -658,6 +658,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/resnapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run the entry snapshot recompute sweep (relay; collection enforces admin or service) */
+        post: operations["resnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/normalize-platforms": {
         parameters: {
             query?: never;
@@ -1390,6 +1407,11 @@ export interface components {
         RematchAccepted: {
             /** @enum {string} */
             status: "started";
+        };
+        ResnapshotResult: {
+            products_seen: number;
+            products_failed: number;
+            entries_updated: number;
         };
         NormalizePlatformsResult: {
             scanned: number;
@@ -3745,6 +3767,37 @@ export interface operations {
             };
             /** @description An entry rematch is already running (code rematch_in_progress) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["UpstreamError"];
+        };
+    };
+    resnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sweep summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResnapshotResult"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description Caller lacks the admin role (code forbidden) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

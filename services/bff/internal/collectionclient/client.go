@@ -143,6 +143,18 @@ func (c *Client) TriggerRematch(ctx context.Context, bearer string) (Result, err
 		http.StatusAccepted, http.StatusForbidden, http.StatusConflict)
 }
 
+// Resnapshot relays POST /internal/resnapshot (200 sweep summary,
+// 403; collection also accepts a service token, but the bff only
+// ever forwards the admin's own bearer).
+func (c *Client) Resnapshot(ctx context.Context, bearer string) (Result, error) {
+	resp, err := c.api.InternalResnapshotWithResponse(ctx, bearerEditor(bearer))
+	if err != nil {
+		return Result{}, fmt.Errorf("collectionclient: resnapshot: %w", err)
+	}
+	return relay(resp.StatusCode(), ct(resp.HTTPResponse), resp.Body,
+		http.StatusOK, http.StatusForbidden)
+}
+
 // NormalizePlatforms relays POST /internal/normalize-platforms (200
 // sweep summary, 403; collection also accepts a service token, but
 // the bff only ever forwards the admin's own bearer).

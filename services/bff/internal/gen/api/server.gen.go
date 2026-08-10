@@ -2463,6 +2463,13 @@ type ReorderRequest struct {
 	BeforeId *openapi_types.UUID `json:"before_id,omitempty"`
 }
 
+// ResnapshotResult defines model for ResnapshotResult.
+type ResnapshotResult struct {
+	EntriesUpdated int `json:"entries_updated"`
+	ProductsFailed int `json:"products_failed"`
+	ProductsSeen   int `json:"products_seen"`
+}
+
 // ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so edition/variant on a game resolve are ignored (entry-level facts, like pc_listing); region is a matching input only (see the region property) and never joins identity. Without pc_product_id the resolve auto-matches by the game name (region-steered) through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
 type ResolveRequest struct {
 	Edition        *string `json:"edition,omitempty"`
@@ -3064,6 +3071,9 @@ type ServerInterface interface {
 	// TriggerRematch Trigger an immediate entry rematch (relay; collection enforces role admin)
 	// (POST /api/admin/rematch)
 	TriggerRematch(w http.ResponseWriter, r *http.Request)
+	// Resnapshot Run the entry snapshot recompute sweep (relay; collection enforces admin or service)
+	// (POST /api/admin/resnapshot)
+	Resnapshot(w http.ResponseWriter, r *http.Request)
 	// ListSubmissions Pending catalog submissions with live proposals (relay; collection enforces role admin)
 	// (GET /api/admin/submissions)
 	ListSubmissions(w http.ResponseWriter, r *http.Request, params ListSubmissionsParams)
@@ -3576,6 +3586,20 @@ func (siw *ServerInterfaceWrapper) TriggerRematch(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.TriggerRematch(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Resnapshot operation middleware
+func (siw *ServerInterfaceWrapper) Resnapshot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Resnapshot(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5539,6 +5563,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/admin/products/{productId}/pricecharting", wrapper.SetProductMapping)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/admin/refresh", wrapper.TriggerRefresh)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/admin/rematch", wrapper.TriggerRematch)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/admin/resnapshot", wrapper.Resnapshot)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/admin/normalize-platforms", wrapper.NormalizePlatforms)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/admin/normalize-regions", wrapper.NormalizeRegions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/admin/normalize-community-regions", wrapper.NormalizeCommunityRegions)

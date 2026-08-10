@@ -127,6 +127,7 @@ type CollectionAPI interface {
 	ListSubmissions(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error)
 	SubmitVerdict(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
 	TriggerRematch(ctx context.Context, bearer string) (collectionclient.Result, error)
+	Resnapshot(ctx context.Context, bearer string) (collectionclient.Result, error)
 	NormalizePlatforms(ctx context.Context, bearer string) (collectionclient.Result, error)
 	NormalizeRegions(ctx context.Context, bearer string) (collectionclient.Result, error)
 	SharedShelf(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error)

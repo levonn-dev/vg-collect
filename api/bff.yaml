@@ -1291,6 +1291,23 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+  /api/admin/resnapshot:
+    post:
+      operationId: resnapshot
+      summary: Run the entry snapshot recompute sweep (relay; collection enforces admin or service)
+      responses:
+        "200":
+          description: Sweep summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResnapshotResult" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Caller lacks the admin role (code forbidden)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
   /api/admin/normalize-platforms:
     post:
       operationId: normalizePlatforms
@@ -2557,6 +2574,13 @@ components:
       required: [status]
       properties:
         status: { type: string, enum: [started] }
+    ResnapshotResult:
+      type: object
+      required: [products_seen, products_failed, entries_updated]
+      properties:
+        products_seen: { type: integer }
+        products_failed: { type: integer }
+        entries_updated: { type: integer }
     NormalizePlatformsResult:
       type: object
       required: [scanned, normalized, skipped]
