@@ -47,13 +47,17 @@ function acceptNext(page: Page) {
 // region is a trailing optional param (rather than folding into an
 // options object) so the two existing positional call sites below need
 // no changes; only the new region leg passes it.
-async function addCustom(page: Page, name: string, cover?: string, region?: string) {
+async function addCustom(page: Page, name: string, cover?: string, region?: string, developer?: string) {
   await page.getByRole('link', { name: 'Add', exact: true }).click()
   await page.getByRole('button', { name: /custom item/i }).click()
   await page.getByLabel('Name').fill(name)
   await page.getByLabel('Platform').fill('snes')
   await page.getByRole('button', { name: 'Super Nintendo Entertainment System' }).click()
   if (region) await page.getByLabel('Region').selectOption(region)
+  if (developer) {
+    await page.getByRole('button', { name: 'Add developer' }).click()
+    await page.getByLabel('Developers 1', { exact: true }).fill(developer)
+  }
   if (cover) await page.getByLabel(/cover image link/i).fill(cover)
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
@@ -382,7 +386,9 @@ test('custom add region flows through the queue, review, approval, and the next 
   // direct link, not listed in search) and is restored at the end.
   await login(page, 'alice')
   await page.request.patch('/api/me', { data: { profile_visibility: 'unlisted' } })
-  const entryURL = await addCustom(page, name, undefined, 'ntsc_j')
+  const entryURL = await addCustom(page, name, undefined, 'ntsc_j', 'Garage Team')
+  // The custom credit fact renders on the entry itself right away.
+  await expect(page.getByText('Developed by Garage Team')).toBeVisible()
   await page.getByRole('button', { name: 'Submit to catalog' }).click()
   await expect(page.getByText(/waiting for review/i)).toBeVisible()
   await logout(page)
@@ -402,6 +408,7 @@ test('custom add region flows through the queue, review, approval, and the next 
   await row.getByRole('button', { name: 'Review' }).click()
   const panel = page.locator(`[aria-label="Review ${name}"]`)
   await expect(panel.getByLabel('Region')).toHaveValue('ntsc_j')
+  await expect(panel.getByLabel('Developers 1', { exact: true })).toHaveValue('Garage Team')
   await panel.getByRole('button', { name: 'Approve as new product' }).click()
   await expect(queue.locator('tbody tr').filter({ hasText: name })).toHaveCount(0)
   await logout(page)
