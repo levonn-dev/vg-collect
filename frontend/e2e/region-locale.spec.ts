@@ -81,19 +81,24 @@ test('region-localized add: matched_region search card, wizard region default, l
     await expect(snesRow.getByText('Trials of Mana', { exact: true })).toBeVisible()
     // The region signal lives on the platform chips now (the card
     // itself carries none): the Super Famicom chip lists its JP-only
-    // release, while the SNES chip anchoring this row is bare - its
-    // only IGDB release row is korea, which maps to no entry region
-    // yet.
+    // release, and the SNES chip anchoring this row badges Korea -
+    // its only IGDB release row is korea, a first-class entry region.
     await expect(snesRow.getByRole('button', { name: /on Super Famicom/ })).toHaveAccessibleName(/\(NTSC-J\)/)
+    await expect(snesRow.getByRole('button', { name: snesChipName })).toHaveAccessibleName(/\(Korea\)/)
     await snesRow.getByRole('button', { name: snesChipName }).click()
 
-    // --- Details: the SNES chip carries no mappable regions, so the
-    // platform-first default falls back to the matched-region mapping
-    // (ja-JP -> ntsc_j), and the heading follows the selected region:
-    // ntsc_j resolves the ja-JP bundle, rendered in romaji under the
-    // en locale.
+    // --- Details: the chip's own region set [korea] outranks the
+    // matched-region mapping (ja-JP -> ntsc_j is not in the set), so
+    // the wizard defaults korea. Its ko-KR bundle is name-only and
+    // the en locale's translit form never renders native script, so
+    // the heading stays canonical. Selecting NTSC-J from the
+    // other-regions group flips the heading to the ja-JP bundle,
+    // rendered in romaji under the en locale - this journey's actual
+    // subject.
+    await expect(page.getByLabel('Region')).toHaveValue('korea')
+    await expect(page.getByRole('heading', { name: 'Your copy of Trials of Mana' })).toBeVisible()
+    await page.getByLabel('Region').selectOption('ntsc_j')
     await expect(page.getByRole('heading', { name: 'Your copy of Seiken Densetsu 3' })).toBeVisible()
-    await expect(page.getByLabel('Region')).toHaveValue('ntsc_j')
     await page.getByLabel('Notes').fill(stamp)
     await page.getByRole('button', { name: 'Continue' }).click()
 
@@ -112,6 +117,11 @@ test('region-localized add: matched_region search card, wizard region default, l
     // resolves region ntsc_j to the product's ja-JP bundle at create time).
     await expect(page.getByRole('heading', { name: 'Seiken Densetsu 3' })).toBeVisible()
     await expect(page.getByText('Trials of Mana', { exact: true })).toBeVisible()
+
+    // --- Credits pass through from IGDB via the product payload the
+    // detail page already fetches: Square is the credited developer on
+    // the live catalog row (loose match tolerates added co-credits).
+    await expect(page.getByText(/Developed by .*Square/)).toBeVisible()
 
     // --- Switch to Japanese via the footer switcher: the same entry
     // renders its native-script title.
@@ -206,7 +216,7 @@ test('region picker chips: canonical-name search lists Puyo Puyo SUN Sega Saturn
   // groups as [Released on Sega Saturn: NTSC-J][Other regions: rest].
   const saturnGroup = page.locator('optgroup[label="Released on Sega Saturn"]')
   await expect(saturnGroup.locator('option')).toHaveText(['NTSC-J'])
-  await expect(page.locator('optgroup[label="Other regions"] option')).toHaveText(['Choose...', 'NTSC-U', 'PAL', 'Region free'])
+  await expect(page.locator('optgroup[label="Other regions"] option')).toHaveText(['Choose...', 'NTSC-U', 'PAL', 'Korea', 'Brazil', 'China', 'Region free'])
 })
 
 test('hardware add defaults the region from the listing console axis', async ({ page }) => {
