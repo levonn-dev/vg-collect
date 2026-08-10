@@ -23,12 +23,12 @@ const groupLabels: Record<GroupBy, MessageDescriptor> = {
   tag: msg`Tag`,
 }
 
-// The seven chip dimensions FilterBar renders behind the Filters
+// The nine chip dimensions FilterBar renders behind the Filters
 // disclosure. Sort/order/group/mode/page are list-shape controls, not
 // filters, so they never count toward the badge even though sort and
 // group also drive Clear filters' visibility below.
 const FILTER_DIMENSIONS = [
-  'status', 'itemType', 'packaging', 'region', 'itemCondition', 'platformId', 'tagId',
+  'status', 'itemType', 'packaging', 'region', 'developer', 'publisher', 'itemCondition', 'platformId', 'tagId',
 ] as const satisfies readonly (keyof ListState)[]
 
 function activeFilterCount(state: ListState): number {

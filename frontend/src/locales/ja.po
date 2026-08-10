@@ -202,9 +202,19 @@ msgstr "コメントを追加..."
 msgid "Add and rate a few games to get suggestions."
 msgstr "ゲームをいくつか追加して評価すると、おすすめが表示されます。"
 
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Add developer"
+msgstr "開発元を追加"
+
 #: src/components/catalog/SearchPicker.tsx
 msgid "Add on:"
 msgstr "追加先："
+
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Add publisher"
+msgstr "発売元を追加"
 
 #: src/components/entry/TagPicker.tsx
 msgid "Add tag"
@@ -327,6 +337,7 @@ msgstr "クリア済み"
 msgid "Box condition"
 msgstr "箱の状態"
 
+#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "Brazil"
 msgstr "ブラジル"
@@ -393,6 +404,7 @@ msgstr "価格ソースを変更"
 msgid "Checking the price match..."
 msgstr "価格の照合状況を確認しています..."
 
+#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "China"
 msgstr "中国"
@@ -705,6 +717,15 @@ msgstr "開発用フィクスチャ"
 msgid "Developed by {developerNames}"
 msgstr "開発元: {developerNames}"
 
+#: src/components/collection/FilterBar.tsx
+msgid "Developer"
+msgstr "開発元"
+
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Developers"
+msgstr "開発元"
+
 #: src/components/entry/PricingPanel.tsx
 msgid "disabled (no market value)"
 msgstr "無効（相場なし）"
@@ -979,6 +1000,7 @@ msgstr "アイテム"
 msgid "just now"
 msgstr "たった今"
 
+#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "Korea"
 msgstr "韓国"
@@ -1273,6 +1295,10 @@ msgstr "コメントはまだありません。"
 msgid "No confirmed price listing yet - market value stays empty until a match is made."
 msgstr "確定した価格リスティングはまだありません。照合が済むまで相場は空のままです。"
 
+#: src/components/collection/FilterBar.tsx
+msgid "No developers yet"
+msgstr "開発元はまだありません"
+
 #: src/pages/Account.tsx
 msgid "no email recorded"
 msgstr "メールアドレス未登録"
@@ -1297,6 +1323,10 @@ msgstr "価格ソースはまだ選択されていません。"
 #: src/components/admin/ReviewPanel.tsx
 msgid "No product with that id."
 msgstr "そのIDの商品はありません。"
+
+#: src/components/collection/FilterBar.tsx
+msgid "No publishers yet"
+msgstr "発売元はまだありません"
 
 #: src/components/insights/StatCards.tsx
 msgid "No purchase prices recorded."
@@ -1604,6 +1634,15 @@ msgstr "代用（別のリスティングの価格を使用）"
 msgid "Published by {publisherNames}"
 msgstr "発売元: {publisherNames}"
 
+#: src/components/collection/FilterBar.tsx
+msgid "Publisher"
+msgstr "発売元"
+
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Publishers"
+msgstr "発売元"
+
 #: src/components/collection/ListControls.tsx
 msgid "Purchase date"
 msgstr "購入日"
@@ -1721,8 +1760,13 @@ msgid "Rematch started."
 msgstr "再照合を開始しました。"
 
 #: src/components/social/CommentList.tsx
+#: src/components/StringListInput.tsx
 msgid "Remove"
 msgstr "削除"
+
+#: src/components/StringListInput.tsx
+msgid "Remove {label} {n}"
+msgstr "{label} {n} を削除"
 
 #: src/components/social/CommentList.tsx
 msgid "Remove comment: {bodyPreview}"

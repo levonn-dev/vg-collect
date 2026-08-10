@@ -59,7 +59,7 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
     },
     onSuccess: (entry) => {
       void queryClient.invalidateQueries({ queryKey: ['entries'] })
-      void queryClient.invalidateQueries({ queryKey: ['platform-facets'] })
+      void queryClient.invalidateQueries({ queryKey: ['entry-facets'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       void queryClient.invalidateQueries({ queryKey: ['recommendations'] })
       void navigate(`/entries/${entry.id}`, { state: { justAdded: true } })

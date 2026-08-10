@@ -6,12 +6,26 @@ import FilterBar from './FilterBar'
 
 const platforms = [{ id: 6, name: 'SNES' }, { id: 7, name: 'PlayStation' }]
 const tags = [{ id: 't1', name: 'rpg', entry_count: 2 }]
+const developers = ['Retro Studios', 'Square']
+const publishers = ['Nintendo']
 
 it('toggles a status filter through onChange', async () => {
   const onChange = vi.fn()
   renderWithI18n(<FilterBar state={defaultListState()} platforms={platforms} tags={tags} onChange={onChange} />)
   await userEvent.click(screen.getByRole('checkbox', { name: 'Backlog' }))
   expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ status: ['backlog'] }))
+})
+
+it('toggles developer and publisher filters through onChange', async () => {
+  const onChange = vi.fn()
+  renderWithI18n(
+    <FilterBar state={defaultListState()} platforms={platforms} tags={tags}
+      developers={developers} publishers={publishers} onChange={onChange} />,
+  )
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Retro Studios' }))
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ developer: ['Retro Studios'] }))
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Nintendo' }))
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ publisher: ['Nintendo'] }))
 })
 
 it('unchecks an active filter', async () => {

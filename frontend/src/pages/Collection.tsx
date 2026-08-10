@@ -3,7 +3,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import type { Entry } from '../api/collection'
-import { fetchEntries, fetchPlatformFacets, fetchTags } from '../api/collection'
+import { fetchEntries, fetchEntryFacets, fetchTags } from '../api/collection'
 import BacklogBoard from '../components/collection/BacklogBoard'
 import BulkEditBar from '../components/collection/BulkEditBar'
 import CompactList from '../components/collection/CompactList'
@@ -87,7 +87,7 @@ export default function Collection() {
     queryFn: () => fetchEntries(query),
     placeholderData: keepPreviousData,
   })
-  const platforms = useQuery({ queryKey: ['platform-facets'], queryFn: fetchPlatformFacets })
+  const facets = useQuery({ queryKey: ['entry-facets'], queryFn: fetchEntryFacets })
   const tags = useQuery({ queryKey: ['tags'], queryFn: fetchTags })
 
   if (list.isPending) return <main className="py-8"><Trans>Loading collection...</Trans></main>
@@ -149,8 +149,10 @@ export default function Collection() {
           {filtersOpen && (
             <FilterBar
               state={state}
-              platforms={platforms.data ?? []}
+              platforms={facets.data?.platforms ?? []}
               tags={tags.data ?? []}
+              developers={facets.data?.developers ?? []}
+              publishers={facets.data?.publishers ?? []}
               onChange={onFilterChange}
             />
           )}

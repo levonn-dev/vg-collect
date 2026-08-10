@@ -68,6 +68,9 @@ export interface CommunityPick {
   // regionLabelText) - seeds the wizard's region default the same way
   // suggestedRegion does for game/hardware picks.
   region?: string
+  // Curated credit lists, for based-add prefill.
+  developers?: string[]
+  publishers?: string[]
 }
 
 export type CatalogPick = GamePick | HardwarePick | PCListingPick | CommunityPick
@@ -322,6 +325,8 @@ export default function SearchPicker({ initialQuery = '', initialState, onPick, 
                             coverUrl: r.cover_url,
                             firstReleaseDate: r.first_release_date,
                             region: r.region,
+                            developers: r.developers,
+                            publishers: r.publishers,
                           })
                         }
                         aria-label={t`${name} on ${platformName}`}
@@ -343,6 +348,8 @@ export default function SearchPicker({ initialQuery = '', initialState, onPick, 
                           coverUrl: r.cover_url,
                           firstReleaseDate: r.first_release_date,
                           region: r.region,
+                          developers: r.developers,
+                          publishers: r.publishers,
                         })
                       }
                       className="mt-1 rounded border border-gray-300 px-2 py-0.5 text-xs hover:border-gray-400 hover:bg-gray-50"

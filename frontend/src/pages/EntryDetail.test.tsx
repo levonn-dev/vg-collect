@@ -213,65 +213,46 @@ it('invalidates dashboard/recommendations and drops the entry cache on delete', 
   expect(qc.getQueryData(['entry', e.id])).toBeUndefined()
 })
 
-// Minimal product payload for the credits line; the igdb block carries
-// the two companies split across the developer/publisher flags.
-function productWithCompanies(productId: string | undefined, companies: { name: string; developer: boolean; publisher: boolean }[]) {
-  return {
-    id: productId,
-    type: 'game',
-    name: 'Metroid Prime',
-    igdb: {
-      game_id: 99, name: 'Metroid Prime', genres: [], themes: [], franchises: [],
-      similar_games: [], companies, fetched_at: '2026-07-01T00:00:00Z',
-    },
-    created_at: '2026-07-01T00:00:00Z',
-    updated_at: '2026-07-01T00:00:00Z',
-  }
-}
-
-it('renders developer and publisher credits from the product', async () => {
-  const e = entryFixture({ display_name: 'Metroid Prime' })
-  const product = productWithCompanies(e.product_id, [
-    { name: 'Retro Studios', developer: true, publisher: false },
-    { name: 'Nintendo', developer: false, publisher: true },
-  ])
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
-    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
-    if (String(url).startsWith('/api/products/')) return Promise.resolve(jsonResponse(200, product))
-    return Promise.resolve(jsonResponse(200, e))
-  }))
+it('renders developer and publisher credits from the entry snapshot', async () => {
+  const e = entryFixture({
+    display_name: 'Metroid Prime',
+    developers: ['Retro Studios'], publishers: ['Nintendo'],
+  })
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
+    Promise.resolve(String(url).startsWith('/api/tags')
+      ? jsonResponse(200, { tags: [] })
+      : String(url).endsWith('/submission')
+        ? noSubmission()
+        : jsonResponse(200, e))))
   renderDetail(e.id)
   expect(await screen.findByText('Developed by Retro Studios')).toBeInTheDocument()
   expect(screen.getByText('Published by Nintendo')).toBeInTheDocument()
 })
 
 it('joins multiple credited companies into one line', async () => {
-  const e = entryFixture({ display_name: 'Metroid Prime' })
-  const product = productWithCompanies(e.product_id, [
-    { name: 'Retro Studios', developer: true, publisher: false },
-    { name: 'Nintendo', developer: true, publisher: true },
-  ])
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
-    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
-    if (String(url).startsWith('/api/products/')) return Promise.resolve(jsonResponse(200, product))
-    return Promise.resolve(jsonResponse(200, e))
-  }))
+  const e = entryFixture({
+    display_name: 'Metroid Prime',
+    developers: ['Retro Studios', 'Nintendo'], publishers: ['Nintendo'],
+  })
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
+    Promise.resolve(String(url).startsWith('/api/tags')
+      ? jsonResponse(200, { tags: [] })
+      : String(url).endsWith('/submission')
+        ? noSubmission()
+        : jsonResponse(200, e))))
   renderDetail(e.id)
   expect(await screen.findByText('Developed by Retro Studios, Nintendo')).toBeInTheDocument()
   expect(screen.getByText('Published by Nintendo')).toBeInTheDocument()
 })
 
-it('omits the credits line when the product carries no companies', async () => {
+it('omits the credits line when the entry carries no credits', async () => {
   const e = entryFixture({ display_name: 'Metroid Prime' })
-  const product = productWithCompanies(e.product_id, [])
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
-    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
-    if (String(url).startsWith('/api/products/')) return Promise.resolve(jsonResponse(200, product))
-    return Promise.resolve(jsonResponse(200, e))
-  }))
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
+    Promise.resolve(String(url).startsWith('/api/tags')
+      ? jsonResponse(200, { tags: [] })
+      : String(url).endsWith('/submission')
+        ? noSubmission()
+        : jsonResponse(200, e))))
   renderDetail(e.id)
   await screen.findByRole('heading', { name: 'Metroid Prime' })
   expect(screen.queryByText(/Developed by/)).not.toBeInTheDocument()

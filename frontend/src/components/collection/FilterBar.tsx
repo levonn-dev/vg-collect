@@ -10,7 +10,8 @@ const chipLabels: Record<string, MessageDescriptor> = {
   dropped: msg`Dropped`, shelved: msg`Shelved`,
   game: msg`Games`, console: msg`Consoles`, accessory: msg`Accessories`,
   sealed: msg`Sealed`, cib: msg`CIB`, loose: msg`Loose`,
-  ntsc_u: msg`NTSC-U`, ntsc_j: msg`NTSC-J`, pal: msg`PAL`, region_free: msg`Region free`,
+  ntsc_u: msg`NTSC-U`, ntsc_j: msg`NTSC-J`, pal: msg`PAL`, korea: msg`Korea`,
+  brazil: msg`Brazil`, china: msg`China`, region_free: msg`Region free`,
   mint: msg`Mint`, near_mint: msg`Near mint`, very_good: msg`Very good`, good: msg`Good`,
   acceptable: msg`Acceptable`, poor: msg`Poor`,
 }
@@ -19,6 +20,10 @@ interface FilterBarProps {
   state: ListState
   platforms: PlatformFacet[]
   tags: Tag[]
+  // Distinct credit names across the collection (fetchEntryFacets),
+  // same derivation as platforms.
+  developers?: string[]
+  publishers?: string[]
   onChange: (next: ListState) => void
 }
 
@@ -26,11 +31,33 @@ interface FilterBarProps {
 // group, and Clear filters moved to ListControls (the always-visible
 // controls row above this disclosure). Collection.tsx mounts this
 // component only while its Filters toggle is open.
-export default function FilterBar({ state, platforms, tags, onChange }: FilterBarProps) {
+export default function FilterBar({ state, platforms, tags, developers = [], publishers = [], onChange }: FilterBarProps) {
   const { t, i18n } = useLingui()
   function toggled<T>(list: T[], v: T): T[] {
     return list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
   }
+
+  // Credit fieldsets render facet names verbatim (open-world values,
+  // never translated), the platform fieldset's shape with a string
+  // dimension.
+  const nameGroup = (legend: string, all: string[], key: 'developer' | 'publisher', empty: string) => (
+    <fieldset className="flex flex-wrap items-center gap-2">
+      <legend className="float-left mr-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        {legend}
+      </legend>
+      {all.map((v) => (
+        <label key={v} className="flex items-center gap-1 text-sm">
+          <input
+            type="checkbox"
+            checked={state[key].includes(v)}
+            onChange={() => onChange({ ...state, [key]: toggled(state[key], v) })}
+          />
+          {v}
+        </label>
+      ))}
+      {all.length === 0 && <span className="text-xs text-gray-400">{empty}</span>}
+    </fieldset>
+  )
 
   const chipGroup = <T extends string>(legend: string, all: readonly T[], key: keyof ListState) => (
     <fieldset className="flex flex-wrap items-center gap-2">
@@ -73,6 +100,8 @@ export default function FilterBar({ state, platforms, tags, onChange }: FilterBa
         ))}
         {platforms.length === 0 && <span className="text-xs text-gray-400"><Trans>No platforms yet</Trans></span>}
       </fieldset>
+      {nameGroup(t`Developer`, developers, 'developer', t`No developers yet`)}
+      {nameGroup(t`Publisher`, publishers, 'publisher', t`No publishers yet`)}
       <fieldset className="flex flex-wrap items-center gap-2">
         <legend className="float-left mr-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
           <Trans>Tags (all of)</Trans>

@@ -2,6 +2,7 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { useState } from 'react'
 import type { EntryCreate } from '../../api/collection'
 import { REGION_PLATFORMS } from '../../lib/productTitle'
+import StringListInput from '../StringListInput'
 import PlatformPicker from '../catalog/PlatformPicker'
 import RegionPicker from '../catalog/RegionPicker'
 import type { CatalogPick } from '../catalog/SearchPicker'
@@ -15,6 +16,8 @@ export interface CustomValues {
   region: string
   firstReleaseDate: string
   coverUrl: string
+  developers: string[]
+  publishers: string[]
 }
 
 interface CustomStepProps {
@@ -38,6 +41,7 @@ export default function CustomStep({ initialValues, seed, onBack, onNext }: Cust
   const [v, setV] = useState<CustomValues>(() => initialValues ?? {
     displayName: seed?.displayName ?? '', itemType: seed?.itemType ?? 'game', platformName: '',
     platformIgdbId: undefined, region: '', firstReleaseDate: '', coverUrl: '',
+    developers: [], publishers: [],
   })
   // Pristine until the user picks a region themselves - only then does
   // a later platform pick's suggestion stop overwriting it. A Back
@@ -88,6 +92,7 @@ export default function CustomStep({ initialValues, seed, onBack, onNext }: Cust
         displayName: p.name, itemType: 'game', platformName: p.platformName,
         platformIgdbId: p.platformId, region: p.suggestedRegion ?? '',
         firstReleaseDate: p.firstReleaseDate ?? '', coverUrl: p.coverUrl ?? '',
+        developers: [], publishers: [],
       })
     } else if (p.kind === 'hardware') {
       // Systems = console, everything else accessory - resolveRequestFor's rule.
@@ -95,12 +100,14 @@ export default function CustomStep({ initialValues, seed, onBack, onNext }: Cust
         displayName: p.name, itemType: p.category === 'Systems' ? 'console' : 'accessory',
         platformName: '', platformIgdbId: undefined, region: p.suggestedRegion,
         firstReleaseDate: '', coverUrl: '',
+        developers: [], publishers: [],
       })
     } else {
       setV({
         displayName: p.name, itemType: p.itemType, platformName: p.platformName ?? '',
         platformIgdbId: undefined, region: p.region ?? '', firstReleaseDate: p.firstReleaseDate ?? '',
         coverUrl: p.coverUrl ?? '',
+        developers: p.developers ?? [], publishers: p.publishers ?? [],
       })
     }
   }
@@ -172,6 +179,10 @@ export default function CustomStep({ initialValues, seed, onBack, onNext }: Cust
           <Trans>Release date</Trans>
           <input type="date" value={v.firstReleaseDate} onChange={(e) => setV({ ...v, firstReleaseDate: e.target.value })} className={inputClass} />
         </label>
+        <StringListInput label={t`Developers`} addLabel={t`Add developer`}
+          values={v.developers} onChange={(developers) => setV({ ...v, developers })} />
+        <StringListInput label={t`Publishers`} addLabel={t`Add publisher`}
+          values={v.publishers} onChange={(publishers) => setV({ ...v, publishers })} />
         <label className={labelClass}>
           <Trans>Cover image link (optional)</Trans>
           <input

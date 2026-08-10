@@ -10,6 +10,8 @@ import { resolveProduct, searchCatalog } from '../../api/catalog'
 import { ApiError } from '../../api/client'
 import { resolveRequestFor } from '../../lib/catalog'
 import { releaseYear } from '../../lib/format'
+import { cleanNames } from '../../lib/credits'
+import StringListInput from '../StringListInput'
 import PlatformPicker from '../catalog/PlatformPicker'
 import type { PlatformValue } from '../catalog/PlatformPicker'
 import RegionPicker from '../catalog/RegionPicker'
@@ -159,6 +161,8 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
   const [edition, setEdition] = useState(submission.edition ?? '')
   const [releaseDate, setReleaseDate] = useState(submission.first_release_date ?? '')
   const [coverUrl, setCoverUrl] = useState(submission.cover_url ?? '')
+  const [developers, setDevelopers] = useState<string[]>(submission.developers ?? [])
+  const [publishers, setPublishers] = useState<string[]>(submission.publishers ?? [])
   const [reason, setReason] = useState('')
   const [adopting, setAdopting] = useState(false)
   const [adoptId, setAdoptId] = useState('')
@@ -187,6 +191,8 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
         ...(region !== '' && { region }),
         ...(edition.trim() !== '' && { edition: edition.trim() }),
         ...(releaseDate !== '' && { first_release_date: releaseDate }),
+        ...(cleanNames(developers) !== undefined && { developers: cleanNames(developers) }),
+        ...(cleanNames(publishers) !== undefined && { publishers: cleanNames(publishers) }),
         ...(coverUrl.trim() !== '' && { cover_url: coverUrl.trim() }),
       },
     })
@@ -231,6 +237,12 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
           <Trans>First release date</Trans>
           <input type="date" value={releaseDate} onChange={(e) => setReleaseDate(e.target.value)} className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />
         </label>
+        <div className="col-span-2 grid grid-cols-2 gap-2">
+          <StringListInput label={t(i18n)`Developers`} addLabel={t(i18n)`Add developer`}
+            values={developers} onChange={setDevelopers} />
+          <StringListInput label={t(i18n)`Publishers`} addLabel={t(i18n)`Add publisher`}
+            values={publishers} onChange={setPublishers} />
+        </div>
         <label>
           <Trans>Cover image link</Trans>
           <input value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} placeholder="https://..." className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />

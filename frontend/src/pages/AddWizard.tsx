@@ -7,6 +7,7 @@ import type { CatalogPick, SearchPickerState } from '../components/catalog/Searc
 import SearchPicker from '../components/catalog/SearchPicker'
 import ConfirmShell from '../components/wizard/ConfirmShell'
 import ConfirmStep from '../components/wizard/ConfirmStep'
+import { cleanNames } from '../lib/credits'
 import type { CustomValues } from '../components/wizard/CustomStep'
 import CustomStep from '../components/wizard/CustomStep'
 import type { DetailsValues } from '../components/wizard/DetailsStep'
@@ -141,11 +142,16 @@ function CustomConfirm({
         platform_igdb_id: custom.platformIgdbId,
         first_release_date: custom.firstReleaseDate === '' ? undefined : custom.firstReleaseDate,
         cover_url: custom.coverUrl.trim() === '' ? undefined : custom.coverUrl.trim(),
+        developers: cleanNames(custom.developers),
+        publishers: cleanNames(custom.publishers),
       }),
     onSuccess: (entry) => {
       void queryClient.invalidateQueries({ queryKey: ['entries'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       void queryClient.invalidateQueries({ queryKey: ['recommendations'] })
+      // A custom add can mint new facet values (its platform and its
+      // credit names) - same invalidation the product-add confirm does.
+      void queryClient.invalidateQueries({ queryKey: ['entry-facets'] })
       void navigate(`/entries/${entry.id}`, { state: { justAdded: true } })
     },
   })

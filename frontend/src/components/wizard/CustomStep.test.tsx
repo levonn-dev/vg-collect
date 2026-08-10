@@ -73,6 +73,7 @@ test('an initialValues region survives a Back remount platform pick', async () =
       initialValues={{
         displayName: 'Chrono Trigger Repro', itemType: 'game', platformName: '',
         platformIgdbId: undefined, region: 'pal', firstReleaseDate: '', coverUrl: '',
+        developers: [], publishers: [],
       }}
       onBack={() => {}}
       onNext={() => {}}
@@ -217,17 +218,25 @@ const reproDeltaAnswer = {
     type: 'game', name: 'Repro Delta', origin: 'community',
     product_id: 'c0ffee00-0000-4000-8000-0000000000aa', item_type: 'game',
     platform_name: 'Game Boy', region: 'pal',
+    developers: ['Garage Team'], publishers: ['Repro House'],
   }],
 }
 
-test('base on an existing item fills the region field from a community pick with a region', async () => {
+test('base on an existing item fills region and credits from a community pick that carries them', async () => {
+  const onNext = vi.fn()
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, reproDeltaAnswer)))
-  renderWithI18n(<CustomStep onBack={() => {}} onNext={() => {}} />)
+  renderWithI18n(<CustomStep onBack={() => {}} onNext={onNext} />)
   fireEvent.click(screen.getByRole('button', { name: 'Base on an existing item' }))
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'repro delta' } })
   fireEvent.click(screen.getByRole('button', { name: 'Search' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Repro Delta on Game Boy' }))
   expect(screen.getByLabelText('Region')).toHaveValue('pal')
+  expect(screen.getByLabelText('Developers 1')).toHaveValue('Garage Team')
+  expect(screen.getByLabelText('Publishers 1')).toHaveValue('Repro House')
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+  expect(onNext).toHaveBeenCalledWith(expect.objectContaining({
+    developers: ['Garage Team'], publishers: ['Repro House'],
+  }))
 })
 
 // Cancel must be a pure escape hatch, never a side door that clears

@@ -142,6 +142,28 @@ it('opens region in free-text mode for a stored value outside the known set, and
   })
 })
 
+it('prefills the submitter credits and mints the edited lists', async () => {
+  const credited: AdminSubmission = { ...row, developers: ['Garage Team'] }
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+    return Promise.resolve(jsonResponse(200, { ...credited, status: 'approved' }))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderPanel(credited, vi.fn())
+  expect(screen.getByLabelText('Developers 1')).toHaveValue('Garage Team')
+  await userEvent.click(screen.getByRole('button', { name: 'Add publisher' }))
+  await userEvent.type(screen.getByLabelText('Publishers 1'), '  Repro House  ')
+  await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
+  const verdictCall = fetchMock.mock.calls.find(([u]) => u === '/api/admin/submissions/s1/verdict')
+  expect(putBody(verdictCall?.[1] as RequestInit)).toEqual({
+    action: 'approve_new',
+    product: {
+      type: 'game', name: 'repro alpha', platform_name: 'snes', region: 'pal', edition: 'glow cart',
+      developers: ['Garage Team'], publishers: ['Repro House'],
+    },
+  })
+})
+
 it('reject requires and sends the reason', async () => {
   const fetchMock = vi.fn().mockImplementation((url: string) => {
     if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))

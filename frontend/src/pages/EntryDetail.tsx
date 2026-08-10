@@ -3,7 +3,6 @@ import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams } from 'react-router'
-import { fetchProduct } from '../api/catalog'
 import { ApiError } from '../api/client'
 import type { EntryUpdate } from '../api/collection'
 import { deleteEntry, fetchEntry, updateEntry } from '../api/collection'
@@ -32,15 +31,6 @@ export default function EntryDetail() {
   const location = useLocation()
   const queryClient = useQueryClient()
   const entry = useQuery({ queryKey: ['entry', id], queryFn: () => fetchEntry(id) })
-  // Same ['product', id] cache entry as PricingPanel and
-  // RegionMismatchBanner, so the three mounted readers dedupe into one
-  // fetch; custom entries have no product and never fetch.
-  const productId = entry.data?.product_id ?? ''
-  const product = useQuery({
-    queryKey: ['product', productId],
-    queryFn: () => fetchProduct(productId),
-    enabled: productId !== '',
-  })
   // The wizard lands here with navigation state after a create; the
   // banner confirms the add without a layout jump elsewhere.
   const justAdded = Boolean((location.state as { justAdded?: boolean } | null)?.justAdded)
@@ -83,10 +73,10 @@ export default function EntryDetail() {
 
   const e = entry.data
   const cover = entryCover(e)
-  // IGDB credits a company per role; a company can hold both roles.
-  const companies = product.data?.igdb?.companies ?? []
-  const developerNames = companies.filter((c) => c.developer).map((c) => c.name).join(', ')
-  const publisherNames = companies.filter((c) => c.publisher).map((c) => c.name).join(', ')
+  // The entry's own credit snapshot (IGDB role split, community
+  // gap-fill, or the user's custom facts - the server derives it).
+  const developerNames = (e.developers ?? []).join(', ')
+  const publisherNames = (e.publishers ?? []).join(', ')
   return (
     <main className="py-6" aria-label={t`Entry detail`}>
       {justAdded && (

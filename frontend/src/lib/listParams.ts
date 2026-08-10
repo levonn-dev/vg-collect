@@ -34,6 +34,10 @@ export interface ListState {
   status: Status[]
   packaging: Packaging[]
   region: Region[]
+  // Credit filters: open-world snapshot facts (IGDB and community
+  // names alike), matched by array overlap server-side.
+  developer: string[]
+  publisher: string[]
   itemCondition: Condition[]
   platformId: number[]
   tagId: string[]
@@ -47,7 +51,7 @@ export interface ListState {
 
 export function defaultListState(): ListState {
   return {
-    itemType: [], status: [], packaging: [], region: [], itemCondition: [],
+    itemType: [], status: [], packaging: [], region: [], developer: [], publisher: [], itemCondition: [],
     platformId: [], tagId: [], page: 0, mode: 'table',
   }
 }
@@ -63,6 +67,8 @@ function appendFilters(q: URLSearchParams, s: ListState): void {
   for (const v of s.status) q.append('status', v)
   for (const v of s.packaging) q.append('packaging', v)
   for (const v of s.region) q.append('region', v)
+  for (const v of s.developer) q.append('developer', v)
+  for (const v of s.publisher) q.append('publisher', v)
   for (const v of s.itemCondition) q.append('item_condition', v)
   for (const v of s.platformId) q.append('platform_id', String(v))
   for (const v of s.tagId) q.append('tag_id', v)
@@ -125,6 +131,9 @@ export function fromSearchParams(sp: URLSearchParams): ListState {
   s.status = pick(STATUSES, sp.getAll('status'))
   s.packaging = pick(PACKAGINGS, sp.getAll('packaging'))
   s.region = pick(REGIONS, sp.getAll('region'))
+  // Credits have no known set to pick against: verbatim pass-through.
+  s.developer = sp.getAll('developer')
+  s.publisher = sp.getAll('publisher')
   s.itemCondition = pick(CONDITIONS, sp.getAll('item_condition'))
   s.platformId = sp.getAll('platform_id').map(Number).filter((n) => Number.isInteger(n) && n > 0)
   s.tagId = sp.getAll('tag_id')
@@ -156,6 +165,8 @@ export function toViewParams(s: ListState): Record<string, unknown> {
     status: s.status,
     packaging: s.packaging,
     region: s.region,
+    developer: s.developer,
+    publisher: s.publisher,
     item_condition: s.itemCondition,
     platform_id: s.platformId,
     tag_id: s.tagId,
@@ -175,7 +186,7 @@ export function fromViewParams(p: Record<string, unknown>): ListState {
       if (typeof v === 'string' || typeof v === 'number') sp.append(key, String(v))
     }
   }
-  for (const key of ['item_type', 'status', 'packaging', 'region', 'item_condition', 'platform_id', 'tag_id']) {
+  for (const key of ['item_type', 'status', 'packaging', 'region', 'developer', 'publisher', 'item_condition', 'platform_id', 'tag_id']) {
     appendAll(key)
   }
   for (const key of ['sort', 'order', 'group_by', 'mode'] as const) {

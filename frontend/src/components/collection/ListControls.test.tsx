@@ -48,11 +48,15 @@ it('shows no count when no filter dimension is active', () => {
 })
 
 it('counts active filter dimensions, not selected values, on the Filters badge', () => {
-  // Two dimensions active (status, platformId) even though status alone
-  // carries two selected values - the badge counts dimensions.
-  const state = { ...defaultListState(), status: ['backlog' as const, 'playing' as const], platformId: [6] }
+  // Three dimensions active (status, platformId, developer) even though
+  // status alone carries two selected values - the badge counts
+  // dimensions, and the credit dimensions count like any other.
+  const state = {
+    ...defaultListState(),
+    status: ['backlog' as const, 'playing' as const], platformId: [6], developer: ['Square'],
+  }
   renderControls(state)
-  expect(screen.getByRole('button', { name: 'Filters (2)' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Filters (3)' })).toBeInTheDocument()
 })
 
 it('reflects the closed panel state via aria-expanded and calls back on click', async () => {

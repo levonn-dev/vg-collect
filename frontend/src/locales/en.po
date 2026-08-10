@@ -202,9 +202,19 @@ msgstr "Add a comment..."
 msgid "Add and rate a few games to get suggestions."
 msgstr "Add and rate a few games to get suggestions."
 
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Add developer"
+msgstr "Add developer"
+
 #: src/components/catalog/SearchPicker.tsx
 msgid "Add on:"
 msgstr "Add on:"
+
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Add publisher"
+msgstr "Add publisher"
 
 #: src/components/entry/TagPicker.tsx
 msgid "Add tag"
@@ -327,6 +337,7 @@ msgstr "Beaten"
 msgid "Box condition"
 msgstr "Box condition"
 
+#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "Brazil"
 msgstr "Brazil"
@@ -393,6 +404,7 @@ msgstr "Change price source"
 msgid "Checking the price match..."
 msgstr "Checking the price match..."
 
+#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "China"
 msgstr "China"
@@ -705,6 +717,15 @@ msgstr "Dev fixtures"
 msgid "Developed by {developerNames}"
 msgstr "Developed by {developerNames}"
 
+#: src/components/collection/FilterBar.tsx
+msgid "Developer"
+msgstr "Developer"
+
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Developers"
+msgstr "Developers"
+
 #: src/components/entry/PricingPanel.tsx
 msgid "disabled (no market value)"
 msgstr "disabled (no market value)"
@@ -979,6 +1000,7 @@ msgstr "Items"
 msgid "just now"
 msgstr "just now"
 
+#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "Korea"
 msgstr "Korea"
@@ -1273,6 +1295,10 @@ msgstr "No comments yet."
 msgid "No confirmed price listing yet - market value stays empty until a match is made."
 msgstr "No confirmed price listing yet - market value stays empty until a match is made."
 
+#: src/components/collection/FilterBar.tsx
+msgid "No developers yet"
+msgstr "No developers yet"
+
 #: src/pages/Account.tsx
 msgid "no email recorded"
 msgstr "no email recorded"
@@ -1297,6 +1323,10 @@ msgstr "No price source chosen yet."
 #: src/components/admin/ReviewPanel.tsx
 msgid "No product with that id."
 msgstr "No product with that id."
+
+#: src/components/collection/FilterBar.tsx
+msgid "No publishers yet"
+msgstr "No publishers yet"
 
 #: src/components/insights/StatCards.tsx
 msgid "No purchase prices recorded."
@@ -1604,6 +1634,15 @@ msgstr "proxy (another listing prices this copy)"
 msgid "Published by {publisherNames}"
 msgstr "Published by {publisherNames}"
 
+#: src/components/collection/FilterBar.tsx
+msgid "Publisher"
+msgstr "Publisher"
+
+#: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/CustomStep.tsx
+msgid "Publishers"
+msgstr "Publishers"
+
 #: src/components/collection/ListControls.tsx
 msgid "Purchase date"
 msgstr "Purchase date"
@@ -1721,8 +1760,13 @@ msgid "Rematch started."
 msgstr "Rematch started."
 
 #: src/components/social/CommentList.tsx
+#: src/components/StringListInput.tsx
 msgid "Remove"
 msgstr "Remove"
+
+#: src/components/StringListInput.tsx
+msgid "Remove {label} {n}"
+msgstr "Remove {label} {n}"
 
 #: src/components/social/CommentList.tsx
 msgid "Remove comment: {bodyPreview}"

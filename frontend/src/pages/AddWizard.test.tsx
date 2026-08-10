@@ -393,6 +393,10 @@ it('creates a custom entry with pricing disabled', async () => {
   await userEvent.selectOptions(screen.getByLabelText(/item type/i), 'game')
   await userEvent.type(screen.getByLabelText(/platform/i), 'snes')
   await userEvent.click(await screen.findByRole('button', { name: 'Super Nintendo Entertainment System' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Add developer' }))
+  await userEvent.type(screen.getByLabelText('Developers 1'), '  Garage Team  ')
+  await userEvent.click(screen.getByRole('button', { name: 'Add publisher' }))
+  await userEvent.type(screen.getByLabelText('Publishers 1'), 'Repro House')
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
   await userEvent.click(await screen.findByRole('button', { name: 'Continue' })) // details step, defaults
@@ -409,6 +413,9 @@ it('creates a custom entry with pricing disabled', async () => {
   expect(body.platform_name).toBe('Super Nintendo Entertainment System')
   expect(body.platform_igdb_id).toBe(19)
   expect(body.pricing_mode).toBe('disabled')
+  // Credits ride trimmed; the wire body carries clean names.
+  expect(body.developers).toEqual(['Garage Team'])
+  expect(body.publishers).toEqual(['Repro House'])
   // The cover input was left empty: the wire body must carry no
   // cover_url key at all, not just an empty-string value.
   expect(body).not.toHaveProperty('cover_url')
@@ -447,6 +454,9 @@ it('sends a cover url on a custom create when the wizard cover input is filled',
   const post = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')
   const body = putBody<Record<string, unknown>>(post?.[1] as RequestInit)
   expect(body.cover_url).toBe('https://img.example/c.jpg')
+  // Untouched credit lists send no keys at all.
+  expect(body).not.toHaveProperty('developers')
+  expect(body).not.toHaveProperty('publishers')
 })
 
 it('stamps a custom-created entry with the profile currency', async () => {
