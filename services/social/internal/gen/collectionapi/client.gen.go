@@ -1548,7 +1548,7 @@ type EntryCreate struct {
 	PurchasedFrom *string             `json:"purchased_from,omitempty"`
 	Rating        *int                `json:"rating,omitempty"`
 
-	// Region Entry region. Known values ntsc_u, ntsc_j, pal and region_free carry region machinery (localized display snapshots, pricing class, availability grouping); any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set.
+	// Region Entry region. Known values ntsc_u, ntsc_j, pal, region_free, korea, brazil and china are first-class: labeled in the UI, filterable, normalize-lever promotion targets, with release-date chains, availability rows, and localized display snapshots per region (ntsc_u and region_free render the canonical presentation by design). korea, brazil and china have no PriceCharting axis, so they price from base listings as their deliberate proxy. Any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set.
 	Region          string                `json:"region"`
 	Status          *EntryCreateStatus    `json:"status,omitempty"`
 	StorageLocation *string               `json:"storage_location,omitempty"`
@@ -1650,7 +1650,7 @@ type EntryUpdate struct {
 	PurchasedFrom *string             `json:"purchased_from,omitempty"`
 	Rating        *int                `json:"rating,omitempty"`
 
-	// Region Entry region. Known values ntsc_u, ntsc_j, pal and region_free carry region machinery (localized display snapshots, pricing class, availability grouping); any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set. On an auto-provenance game entry, a region change repoints the entry to the sibling catalog product whose listing prices that region; snapshotted display fields re-derive from it.
+	// Region Entry region. Known values ntsc_u, ntsc_j, pal, region_free, korea, brazil and china are first-class: labeled in the UI, filterable, normalize-lever promotion targets, with release-date chains, availability rows, and localized display snapshots per region (ntsc_u and region_free render the canonical presentation by design). korea, brazil and china have no PriceCharting axis, so they price from base listings as their deliberate proxy. Any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set. On an auto-provenance game entry, a region change repoints the entry to the sibling catalog product whose listing prices that region; snapshotted display fields re-derive from it.
 	Region          string                `json:"region"`
 	Status          EntryUpdateStatus     `json:"status"`
 	StorageLocation *string               `json:"storage_location,omitempty"`

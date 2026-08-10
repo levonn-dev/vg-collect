@@ -794,7 +794,8 @@ components:
       description: >
         One region's presentation of the game, merged from IGDB
         game_localizations and tagged alternative names. region is an
-        IGDB region identifier served verbatim (ja-JP, EU, ko-KR;
+        IGDB region identifier served verbatim (ja-JP, EU, ko-KR,
+        zh-CN, zh-TW, pt-BR;
         open-world - new identifiers pass through). name is the
         native-script title, translit its latin transliteration,
         cover_url the region's own box art; each is independently
@@ -870,7 +871,8 @@ components:
           maxLength: 32
           description: >
             Curated entry-vocabulary region fact (open-world; known
-            values ntsc_u, ntsc_j, pal, region_free).
+            values ntsc_u, ntsc_j, pal, region_free, korea, brazil,
+            china).
         first_release_date: { type: string, format: date }
         cover_url:
           type: string
@@ -994,9 +996,11 @@ components:
           description: >-
             For console/accessory: part of hardware identity, distinguishing
             physical variants. For game: a matching input only - the entry
-            region (ntsc_u, ntsc_j, pal, region_free) steers which
-            PriceCharting listing auto-match lands on (JP and PAL listings
-            live under region-prefixed or JP-named console axes) and is
+            region (ntsc_u, ntsc_j, pal, region_free, korea, brazil,
+            china) steers which PriceCharting listing auto-match lands
+            on (JP and PAL listings live under region-prefixed or
+            JP-named console axes; korea, brazil and china have no
+            provider axis and match like ntsc_u) and is
             never stored on the product; ignored when pc_product_id is
             present; unknown values behave like ntsc_u. Ignored for
             pc_listing.

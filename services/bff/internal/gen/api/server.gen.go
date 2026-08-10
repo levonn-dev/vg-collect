@@ -1722,7 +1722,7 @@ type CommunityMeta struct {
 	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
 	PlatformName     *string             `json:"platform_name,omitempty"`
 
-	// Region Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free).
+	// Region Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free, korea, brazil, china).
 	Region *string `json:"region,omitempty"`
 }
 
@@ -1969,7 +1969,7 @@ type EntryCreate struct {
 	PurchasedFrom *string             `json:"purchased_from,omitempty"`
 	Rating        *int                `json:"rating,omitempty"`
 
-	// Region Entry region. Known values ntsc_u, ntsc_j, pal and region_free carry region machinery (localized display snapshots, pricing class, availability grouping); any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set.
+	// Region Entry region. Known values ntsc_u, ntsc_j, pal, region_free, korea, brazil and china are first-class: labeled in the UI, filterable, normalize-lever promotion targets, with release-date chains, availability rows, and localized display snapshots per region (ntsc_u and region_free render the canonical presentation by design). korea, brazil and china have no PriceCharting axis, so they price from base listings as their deliberate proxy. Any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set.
 	Region          string                `json:"region"`
 	Status          *EntryCreateStatus    `json:"status,omitempty"`
 	StorageLocation *string               `json:"storage_location,omitempty"`
@@ -2071,7 +2071,7 @@ type EntryUpdate struct {
 	PurchasedFrom *string             `json:"purchased_from,omitempty"`
 	Rating        *int                `json:"rating,omitempty"`
 
-	// Region Entry region. Known values ntsc_u, ntsc_j, pal and region_free carry region machinery (localized display snapshots, pricing class, availability grouping); any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set. On an auto-provenance game entry, a region change repoints the entry to the sibling catalog product whose listing prices that region; snapshotted display fields re-derive from it.
+	// Region Entry region. Known values ntsc_u, ntsc_j, pal, region_free, korea, brazil and china are first-class: labeled in the UI, filterable, normalize-lever promotion targets, with release-date chains, availability rows, and localized display snapshots per region (ntsc_u and region_free render the canonical presentation by design). korea, brazil and china have no PriceCharting axis, so they price from base listings as their deliberate proxy. Any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set. On an auto-provenance game entry, a region change repoints the entry to the sibling catalog product whose listing prices that region; snapshotted display fields re-derive from it.
 	Region          string                `json:"region"`
 	Status          EntryUpdateStatus     `json:"status"`
 	StorageLocation *string               `json:"storage_location,omitempty"`
@@ -2178,7 +2178,7 @@ type IgdbMeta struct {
 	Themes       []string       `json:"themes"`
 }
 
-// Localization One region's presentation of the game, merged from IGDB game_localizations and tagged alternative names. region is an IGDB region identifier served verbatim (ja-JP, EU, ko-KR; open-world - new identifiers pass through). name is the native-script title, translit its latin transliteration, cover_url the region's own box art; each is independently optional (rows are sparse - readers fall back per field).
+// Localization One region's presentation of the game, merged from IGDB game_localizations and tagged alternative names. region is an IGDB region identifier served verbatim (ja-JP, EU, ko-KR, zh-CN, zh-TW, pt-BR; open-world - new identifiers pass through). name is the native-script title, translit its latin transliteration, cover_url the region's own box art; each is independently optional (rows are sparse - readers fall back per field).
 type Localization struct {
 	CoverUrl *string `json:"cover_url,omitempty"`
 	Name     *string `json:"name,omitempty"`
@@ -2429,7 +2429,7 @@ type ResolveRequest struct {
 	PcProductId    *int64  `json:"pc_product_id,omitempty"`
 	PlatformIgdbId *int64  `json:"platform_igdb_id,omitempty"`
 
-	// Region For console/accessory: part of hardware identity, distinguishing physical variants. For game: a matching input only - the entry region (ntsc_u, ntsc_j, pal, region_free) steers which PriceCharting listing auto-match lands on (JP and PAL listings live under region-prefixed or JP-named console axes) and is never stored on the product; ignored when pc_product_id is present; unknown values behave like ntsc_u. Ignored for pc_listing.
+	// Region For console/accessory: part of hardware identity, distinguishing physical variants. For game: a matching input only - the entry region (ntsc_u, ntsc_j, pal, region_free, korea, brazil, china) steers which PriceCharting listing auto-match lands on (JP and PAL listings live under region-prefixed or JP-named console axes; korea, brazil and china have no provider axis and match like ntsc_u) and is never stored on the product; ignored when pc_product_id is present; unknown values behave like ntsc_u. Ignored for pc_listing.
 	Region  *string            `json:"region,omitempty"`
 	Type    ResolveRequestType `json:"type"`
 	Variant *string            `json:"variant,omitempty"`

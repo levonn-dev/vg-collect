@@ -1205,7 +1205,7 @@ export interface components {
             /** Format: date */
             date: string;
         };
-        /** @description One region's presentation of the game, merged from IGDB game_localizations and tagged alternative names. region is an IGDB region identifier served verbatim (ja-JP, EU, ko-KR; open-world - new identifiers pass through). name is the native-script title, translit its latin transliteration, cover_url the region's own box art; each is independently optional (rows are sparse - readers fall back per field). */
+        /** @description One region's presentation of the game, merged from IGDB game_localizations and tagged alternative names. region is an IGDB region identifier served verbatim (ja-JP, EU, ko-KR, zh-CN, zh-TW, pt-BR; open-world - new identifiers pass through). name is the native-script title, translit its latin transliteration, cover_url the region's own box art; each is independently optional (rows are sparse - readers fall back per field). */
         Localization: {
             region: string;
             name?: string;
@@ -1258,7 +1258,7 @@ export interface components {
         /** @description Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present). */
         CommunityMeta: {
             platform_name?: string;
-            /** @description Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free). */
+            /** @description Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free, korea, brazil, china). */
             region?: string;
             /** Format: date */
             first_release_date?: string;
@@ -1327,7 +1327,7 @@ export interface components {
             /** Format: int64 */
             pc_product_id?: number;
             match_hint?: string;
-            /** @description For console/accessory: part of hardware identity, distinguishing physical variants. For game: a matching input only - the entry region (ntsc_u, ntsc_j, pal, region_free) steers which PriceCharting listing auto-match lands on (JP and PAL listings live under region-prefixed or JP-named console axes) and is never stored on the product; ignored when pc_product_id is present; unknown values behave like ntsc_u. Ignored for pc_listing. */
+            /** @description For console/accessory: part of hardware identity, distinguishing physical variants. For game: a matching input only - the entry region (ntsc_u, ntsc_j, pal, region_free, korea, brazil, china) steers which PriceCharting listing auto-match lands on (JP and PAL listings live under region-prefixed or JP-named console axes; korea, brazil and china have no provider axis and match like ntsc_u) and is never stored on the product; ignored when pc_product_id is present; unknown values behave like ntsc_u. Ignored for pc_listing. */
             region?: string;
             edition?: string;
             variant?: string;
@@ -1616,7 +1616,7 @@ export interface components {
              * @enum {string}
              */
             media_type: "physical";
-            /** @description Entry region. Known values ntsc_u, ntsc_j, pal and region_free carry region machinery (localized display snapshots, pricing class, availability grouping); any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set. */
+            /** @description Entry region. Known values ntsc_u, ntsc_j, pal, region_free, korea, brazil and china are first-class: labeled in the UI, filterable, normalize-lever promotion targets, with release-date chains, availability rows, and localized display snapshots per region (ntsc_u and region_free render the canonical presentation by design). korea, brazil and china have no PriceCharting axis, so they price from base listings as their deliberate proxy. Any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set. */
             region: string;
             /** @description Per-copy variant note; the idiom for variants of cataloged items. */
             edition?: string;
@@ -1692,7 +1692,7 @@ export interface components {
              * @description Narrow re-match. Accepted only when the entry is product-backed with pricing_mode auto, its current product is a game with no price mapping, and the new product is a game of the same family (same igdb game and platform); the same id as the entry already has is a no-op. Anything else answers 400 code invalid_product_change; enrichment unreachable answers 502 code enrichment_unavailable and leaves the entry unchanged. Snapshotted display fields stay as they are.
              */
             product_id?: string;
-            /** @description Entry region. Known values ntsc_u, ntsc_j, pal and region_free carry region machinery (localized display snapshots, pricing class, availability grouping); any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set. On an auto-provenance game entry, a region change repoints the entry to the sibling catalog product whose listing prices that region; snapshotted display fields re-derive from it. */
+            /** @description Entry region. Known values ntsc_u, ntsc_j, pal, region_free, korea, brazil and china are first-class: labeled in the UI, filterable, normalize-lever promotion targets, with release-date chains, availability rows, and localized display snapshots per region (ntsc_u and region_free render the canonical presentation by design). korea, brazil and china have no PriceCharting axis, so they price from base listings as their deliberate proxy. Any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set. On an auto-provenance game entry, a region change repoints the entry to the sibling catalog product whose listing prices that region; snapshotted display fields re-derive from it. */
             region: string;
             /** @description Per-copy variant note; the idiom for variants of cataloged items. */
             edition?: string;

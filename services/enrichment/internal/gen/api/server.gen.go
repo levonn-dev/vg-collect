@@ -243,7 +243,7 @@ type CommunityMeta struct {
 	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
 	PlatformName     *string             `json:"platform_name,omitempty"`
 
-	// Region Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free).
+	// Region Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free, korea, brazil, china).
 	Region *string `json:"region,omitempty"`
 }
 
@@ -333,7 +333,7 @@ type LibraryEntry struct {
 	Status *string `json:"status,omitempty"`
 }
 
-// Localization One region's presentation of the game, merged from IGDB game_localizations and tagged alternative names. region is an IGDB region identifier served verbatim (ja-JP, EU, ko-KR; open-world - new identifiers pass through). name is the native-script title, translit its latin transliteration, cover_url the region's own box art; each is independently optional (rows are sparse - readers fall back per field).
+// Localization One region's presentation of the game, merged from IGDB game_localizations and tagged alternative names. region is an IGDB region identifier served verbatim (ja-JP, EU, ko-KR, zh-CN, zh-TW, pt-BR; open-world - new identifiers pass through). name is the native-script title, translit its latin transliteration, cover_url the region's own box art; each is independently optional (rows are sparse - readers fall back per field).
 type Localization struct {
 	CoverUrl *string `json:"cover_url,omitempty"`
 	Name     *string `json:"name,omitempty"`
@@ -533,7 +533,7 @@ type ResolveRequest struct {
 	PcProductId    *int64  `json:"pc_product_id,omitempty"`
 	PlatformIgdbId *int64  `json:"platform_igdb_id,omitempty"`
 
-	// Region For console/accessory: part of hardware identity, distinguishing physical variants. For game: a matching input only - the entry region (ntsc_u, ntsc_j, pal, region_free) steers which PriceCharting listing auto-match lands on (JP and PAL listings live under region-prefixed or JP-named console axes) and is never stored on the product; ignored when pc_product_id is present; unknown values behave like ntsc_u. Ignored for pc_listing.
+	// Region For console/accessory: part of hardware identity, distinguishing physical variants. For game: a matching input only - the entry region (ntsc_u, ntsc_j, pal, region_free, korea, brazil, china) steers which PriceCharting listing auto-match lands on (JP and PAL listings live under region-prefixed or JP-named console axes; korea, brazil and china have no provider axis and match like ntsc_u) and is never stored on the product; ignored when pc_product_id is present; unknown values behave like ntsc_u. Ignored for pc_listing.
 	Region  *string            `json:"region,omitempty"`
 	Type    ResolveRequestType `json:"type"`
 	Variant *string            `json:"variant,omitempty"`
