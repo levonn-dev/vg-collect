@@ -1,0 +1,84 @@
+// Tests for the platform catalog.
+
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
+)
+
+func TestUnitListPlatforms_JoinsAliasesSortsAndCaches(t *testing.T) {
+	env := newAuthEnv(t)
+	user := env.token(t, uuid.NewString(), []string{"user"})
+	var storeCalls int
+	st := &stubStore{
+		// Fresh stamp keeps ensurePlatforms on the cached-catalog path
+		// (never touches the IGDB stub).
+		platformsFetchedAt: func(context.Context) (time.Time, error) { return time.Now().UTC(), nil },
+		listPlatforms: func(context.Context) ([]store.CatalogPlatform, error) {
+			storeCalls++
+			return []store.CatalogPlatform{
+				{ID: 19, Name: "Super Nintendo Entertainment System"},
+				{ID: 18, Name: "Nintendo Entertainment System"},
+				// An alias-less platform: PlatformAliases returns nil, which
+				// must still serialize as [] - the contract types aliases a
+				// required string[], and the picker filters over it with no
+				// null guard.
+				{ID: 23, Name: "Dreamcast"},
+			}, nil
+		},
+	}
+	c := newStubCache()
+	h := newUnitHandlers(st, &stubGames{}, &stubPrices{}, c)
+
+	rec := serveUnit(t, h, env, http.MethodGet, "/platforms", user, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("platforms: %d %s", rec.Code, rec.Body.String())
+	}
+	var out api.PlatformCatalog
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	// The alias-less row must serialize aliases as [], never null: the
+	// contract types it a required string[] and the picker filters over
+	// it with no null guard.
+	if body := rec.Body.String(); !strings.Contains(body, `"aliases":[]`) || strings.Contains(body, `"aliases":null`) {
+		t.Fatalf("alias-less platform must serialize aliases:[] not null: %s", body)
+	}
+	// Sorted by name: Dreamcast precedes the Nintendo rows.
+	if len(out.Platforms) != 3 || out.Platforms[0].Name != "Dreamcast" {
+		t.Fatalf("sort by name failed: %+v", out.Platforms)
+	}
+	var snes *api.CatalogPlatform
+	for i := range out.Platforms {
+		if out.Platforms[i].IgdbId == 19 {
+			snes = &out.Platforms[i]
+		}
+	}
+	if snes == nil {
+		t.Fatalf("snes row missing: %+v", out.Platforms)
+	}
+	if !slices.Contains(snes.Aliases, "snes") {
+		t.Fatalf("snes aliases missing 'snes': %v", snes.Aliases)
+	}
+
+	// The second call is served from Valkey: the store is not read again.
+	before := storeCalls
+	rec = serveUnit(t, h, env, http.MethodGet, "/platforms", user, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("cached platforms: %d", rec.Code)
+	}
+	if storeCalls != before {
+		t.Fatalf("second call hit the store, want cache")
+	}
+}

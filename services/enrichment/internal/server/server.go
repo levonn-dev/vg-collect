@@ -20,6 +20,7 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/cache"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/fx"
+	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/match"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
@@ -355,3 +356,5 @@ func (h *Handlers) countNormalizeCommunityRegions(ctx context.Context, outcome s
 		h.normalizeCommunityRegions.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
 	}
 }
+
+var _ api.ServerInterface = (*Handlers)(nil)
