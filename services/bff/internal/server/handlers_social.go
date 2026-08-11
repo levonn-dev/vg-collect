@@ -981,3 +981,22 @@ func (h *Handlers) exploreTop(w http.ResponseWriter, r *http.Request, bearer str
 	}
 	writeJSON(w, http.StatusOK, api.ExplorePage{Shelves: cards})
 }
+
+// GetSharedProfilesByIds relays the batch profile-card hydration the
+// admin queue uses for submitter handles. Unlike the pass-through
+// admin relays above, the user service's answer is typed (not a raw
+// body relay), so it is re-marshaled into the envelope the frontend
+// expects rather than passed through verbatim.
+func (h *Handlers) GetSharedProfilesByIds(w http.ResponseWriter, r *http.Request, params api.GetSharedProfilesByIdsParams) {
+	sess, _, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return
+	}
+	cards, err := h.users.SharedCardsByIDs(r.Context(), sess.AccessToken, params.Ids)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "user service unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"profiles": cards})
+}

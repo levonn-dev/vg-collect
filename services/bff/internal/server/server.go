@@ -5,6 +5,8 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -19,6 +21,7 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/enrichmentclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/authapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
@@ -324,3 +327,50 @@ func (h *Handlers) clearAndUnauthorized(w http.ResponseWriter, r *http.Request) 
 	http.SetCookie(w, h.codec.ClearCookie())
 	h.unauthorized(w, r)
 }
+
+// writeRelay serves an upstream answer verbatim (pass-throughs are
+// never cached at the bff: one staleness authority per data type).
+func writeRelay(w http.ResponseWriter, status int, contentType string, body []byte) {
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
+}
+
+// readCapped reads a pass-through body under the standard cap; a
+// false return means the 400 was already written.
+func readCapped(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadRequest, "invalid_body", "unreadable body")
+		return nil, false
+	}
+	return body, true
+}
+
+// relayCollection funnels every collection pass-through: session
+// check happened at the caller; any client error is an infrastructure
+// fault answered 502.
+func (h *Handlers) relayCollection(w http.ResponseWriter, r *http.Request, res collectionclient.Result, err error) {
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeRawJSON(w http.ResponseWriter, body []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(body)
+}
+
+var _ api.ServerInterface = (*Handlers)(nil)
