@@ -275,7 +275,7 @@ func TestSlugBackfillCollisionFree(t *testing.T) {
 // dedupe-suffix clamp at its exact boundary: a name whose derived
 // slug is exactly 30 characters with an underscore at position 29
 // clamps (for the length-1 suffix "2") right at that underscore.
-// services/collection/internal/store/store.go's CreateView/UpdateView
+// services/collection/internal/store/store_views.go's CreateView/UpdateView
 // slug dedupe always trims a trailing underscore a clamp exposes
 // before appending the suffix digit; the backfill must land on the
 // identical string ("...A2"), not the pre-fix "...A_2" - the fold is

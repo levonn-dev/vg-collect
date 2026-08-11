@@ -44,7 +44,7 @@ BEGIN
         LOOP
             fold := lower(replace(candidate, '_', ''));
             EXIT WHEN NOT (fold = ANY(claimed));
-            -- rtrim mirrors services/collection/internal/store/store.go's
+            -- rtrim mirrors services/collection/internal/store/store_views.go's
             -- CreateView/UpdateView slug dedupe exactly: a clamp that
             -- lands mid-underscore-run must drop the trailing underscore
             -- before the suffix digits land, or the backfill and the app

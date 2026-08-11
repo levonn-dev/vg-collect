@@ -292,52 +292,58 @@ Domain instruments, meter
 | `vg.enrichment.refresh.step_duration`   | Float64Histogram | `s`         | `step`: prices, reprojection, sweep                                                                                                                                                                                           | `vg_enrichment_refresh_step_duration_seconds_{count,sum,bucket}` | did each catalog refresh step run today, and how close the refresh is to its 30m budget                                                                                                                        |
 | `vg.enrichment.normalize.regions`       | Int64Counter     | `{row}`     | `outcome`: normalized, skipped, failed                                                                                                                                                                                        | `vg_enrichment_normalize_regions_total`                          | is the nightly community-region promotion sweep landing: how many free-text community-product region rows get promoted vs left as typed (no known value or synonym match) vs fail on the store write, each run |
 
-Emission sites, all in `internal/server/handlers.go`:
+Emission sites, split across `internal/server/`:
 
-- `cache.fail_open`: one increment inside `Handlers.failOpen`, which
-  every fail-open call site already routes through; `op` is the string
-  those call sites already pass.
+- `cache.fail_open`: one increment inside `Handlers.failOpen`
+  (`internal/server/server.go`), which every fail-open call site
+  already routes through; `op` is the string those call sites already
+  pass.
 - `search.requests`: one increment per answered `SearchCatalog`
-  request at the point the source is known (cache hit, provider
-  answer, or degraded local fallback). The resolve-side
-  `searchPCListingsCached` helper does not count; this metric means
-  "user-facing search answers".
+  request (`internal/server/handlers_search.go`) at the point the
+  source is known (cache hit, provider answer, or degraded local
+  fallback). The resolve-side `searchPCListingsCached` helper does not
+  count; this metric means "user-facing search answers".
 - `search.localization_leg`: one increment per `searchGames` call
-  whose query trips `hasNonLatinLetter`; a Latin query never reaches
-  this counter. `outcome` is `merged` when the `game_localizations`
-  where-filter leg (`SearchLocalizations`) answers and its ids are
-  folded into consideration (whether or not any were new), `empty`
-  when it answers with nothing, `error` when the leg call or its
-  follow-up `GamesByIDs` fetch for newly found ids fails. Only
-  `error` is worth a look, and even then the primary IGDB search
-  results already served as-is - the leg is a best-effort widening,
-  never a hard dependency, so this counter is a feature-health
-  signal, not an availability one.
-- `match.outcomes`: in `autoMatchGame`, with the caller passing the
-  source (`resolveGame` no-pick path = resolve - the only calling flow
-  today) and the clamped entry region as the `region` label. provider_down
-  maps to the existing "auto-match skipped" warn, below_threshold to
-  the existing info line.
-- `match.fallback_search`: also in `autoMatchGame`, fires only when
-  the primary query's platform/region-filtered results come up empty
-  and a second name form exists (nothing to fall back to never trips
-  it). `error` when the fallback search call itself fails; otherwise
-  the leg merges into the same match pass, and the outcome is
-  `matched` when that then clears the threshold, `still_empty` when
-  it still does not.
+  (`internal/server/handlers_search.go`) whose query trips
+  `hasNonLatinLetter`; a Latin query never reaches this counter.
+  `outcome` is `merged` when the `game_localizations` where-filter leg
+  (`SearchLocalizations`) answers and its ids are folded into
+  consideration (whether or not any were new), `empty` when it
+  answers with nothing, `error` when the leg call or its follow-up
+  `GamesByIDs` fetch for newly found ids fails. Only `error` is worth
+  a look, and even then the primary IGDB search results already
+  served as-is - the leg is a best-effort widening, never a hard
+  dependency, so this counter is a feature-health signal, not an
+  availability one.
+- `match.outcomes`: in `autoMatchGame`
+  (`internal/server/handlers_products.go`), with the caller passing
+  the source (`resolveGame` no-pick path = resolve - the only calling
+  flow today) and the clamped entry region as the `region` label.
+  provider_down maps to the existing "auto-match skipped" warn,
+  below_threshold to the existing info line.
+- `match.fallback_search`: also in `autoMatchGame`
+  (`internal/server/handlers_products.go`), fires only when the
+  primary query's platform/region-filtered results come up empty and
+  a second name form exists (nothing to fall back to never trips it).
+  `error` when the fallback search call itself fails; otherwise the
+  leg merges into the same match pass, and the outcome is `matched`
+  when that then clears the threshold, `still_empty` when it still
+  does not.
 - `refresh.items`: incremented alongside the per-item tallies each
-  step's loop already keeps. Per step, `outcome` means: prices ok =
-  price written and snapshot appended, failed = fetch/write/snapshot
-  failure; reprojection ok = projection rewritten, skipped = diff-gate
-  unchanged or unusable raw; sweep ok = swept clean, flagged =
-  candidates stashed, failed = provider or store failure.
-- `refresh.step_duration`: recorded once per step next to that step's
-  own completion log line ("price refresh finished" for prices,
+  step's loop already keeps (`internal/server/handlers_admin.go`). Per
+  step, `outcome` means: prices ok = price written and snapshot
+  appended, failed = fetch/write/snapshot failure; reprojection ok =
+  projection rewritten, skipped = diff-gate unchanged or unusable raw;
+  sweep ok = swept clean, flagged = candidates stashed, failed =
+  provider or store failure.
+- `refresh.step_duration`: recorded once per step
+  (`internal/server/handlers_admin.go`) next to that step's own
+  completion log line ("price refresh finished" for prices,
   "reprojection finished" for reprojection, "candidate sweep
   complete" for sweep - and on early abort, so a stopped step still
   reports its elapsed time). Explicit bucket boundaries 1, 5, 15, 60,
-  300, 900, 1800 seconds; the defaults top out at 10s and would flatten
-  every step into one bucket.
+  300, 900, 1800 seconds; the defaults top out at 10s and would
+  flatten every step into one bucket.
 
 Log additions (slog, JSON, trace ids attached): one new line.
 
@@ -384,7 +390,7 @@ rematch (`POST /internal/rematch-entries`, see
 them.
 
 Search-result platform refs carry a separate signal, `release_regions`
-(`platformReleaseRegions`, `internal/server/handlers.go`): per-platform
+(`platformReleaseRegions`, `internal/server/handlers_search.go`): per-platform
 canonical release-date regions, platform-exact and ordered
 earliest-first, independent of BundleLocalizations above - the field
 the frontend's availability badges key off.

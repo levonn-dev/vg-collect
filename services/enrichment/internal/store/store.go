@@ -720,7 +720,7 @@ type CommunityRegionRef struct {
 // ListCommunityRegionDocs lists every community product carrying a
 // non-empty curated region - the normalize-community-regions sweep's
 // worklist. Selection against the known/synonym tables happens in the
-// handler (handlers.go's twin tables): the community population is
+// handler (regions.go's twin tables): the community population is
 // tiny by construction, so filtering the small result in Go costs
 // nothing and keeps those tables out of the store layer.
 func (s *Store) ListCommunityRegionDocs(ctx context.Context) ([]CommunityRegionRef, error) {

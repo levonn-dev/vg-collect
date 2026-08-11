@@ -27,7 +27,7 @@ lowercase snake_case country or territory names.
 
 ## Collection tables
 
-All in `services/collection/internal/server/handlers.go`:
+All in `services/collection/internal/server/regions.go`:
 
 - `knownRegions`: the promotion target set and machinery key set.
 - `regionSynonyms`: the reviewed free-text forms the normalize lever
@@ -52,7 +52,7 @@ All in `services/collection/internal/server/handlers.go`:
 ## Enrichment tables
 
 - `knownRegions` and `regionSynonyms` twins in
-  `services/enrichment/internal/server/handlers.go`, row-identical to
+  `services/enrichment/internal/server/regions.go`, row-identical to
   collection's. They scope the community-product normalize lever; a
   stale twin costs an unpromoted string, never a wrong write.
 - The `countMatch` region label allowlist in
