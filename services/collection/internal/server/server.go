@@ -23,6 +23,7 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/cache"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
+	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
@@ -419,4 +420,17 @@ func (h *Handlers) requireAdminOrService(w http.ResponseWriter, r *http.Request)
 	}
 	problem(w, r, http.StatusForbidden, "forbidden", "role admin or a service token is required")
 	return false
+}
+
+var _ api.ServerInterface = (*Handlers)(nil)
+
+// maxBodyBytes caps request bodies; the largest legitimate body is an
+// entry update with long notes, far under this.
+const maxBodyBytes = 64 * 1024
+
+func datesEqual(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(*b)
 }
