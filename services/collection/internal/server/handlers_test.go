@@ -13,13 +13,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
-	"github.com/testcontainers/testcontainers-go"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
+	"github.com/levonn-dev/vgkeep/libs/go/valkeytest"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/cache"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
@@ -760,56 +758,24 @@ type stack struct {
 	enrich  *stubEnrichmentService
 }
 
-// One Postgres container and one Valkey container serve this whole
-// package. The per-test containers this replaces spent most of the
-// package's runtime on boots, and that churn was the bulk of the
-// Docker-daemon load behind the WSL2 connection-refused flakes. Each
-// test still gets exactly what the old fixture gave it - a freshly
-// migrated database and an empty cache - via the drop-schema +
-// re-migrate and FlushAll resets in newStack. No Terminate: the
-// testcontainers reaper collects the containers when the test process
-// exits.
-var sharedPG struct {
-	once sync.Once
-	url  string
-	err  error
-}
-
-var sharedVK struct {
-	once sync.Once
-	url  string
-	err  error
-}
-
+// newStack wires the full vertical: a Postgres container via pgtest
+// and a Valkey container via valkeytest. The per-test containers this
+// replaces spent most of the package's runtime on boots, and that
+// churn was the bulk of the Docker-daemon load behind the WSL2
+// connection-refused flakes. Each test still gets exactly what the old
+// fixture gave it - a freshly migrated database and an empty cache -
+// via the drop-schema + re-migrate and FlushAll resets below.
 func newStack(t *testing.T) *stack {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
 	ctx := context.Background()
 
-	sharedPG.once.Do(func() {
-		pg, err := tcpostgres.Run(ctx, "postgres:17-alpine",
-			tcpostgres.WithDatabase("collection"), tcpostgres.WithUsername("c"), tcpostgres.WithPassword("p"),
-			testcontainers.WithWaitStrategy(
-				wait.ForLog("database system is ready to accept connections").
-					WithOccurrence(2).WithStartupTimeout(60*time.Second),
-				wait.ForListeningPort("5432/tcp")))
-		if err != nil {
-			sharedPG.err = err
-			return
-		}
-		sharedPG.url, sharedPG.err = pg.ConnectionString(ctx, "sslmode=disable")
-	})
-	if sharedPG.err != nil {
-		t.Fatal(sharedPG.err)
-	}
+	url := pgtest.URL(t)
 	// Reset: drop everything the previous test left (schema_migrations
 	// included) and re-run the embedded migrations, so each test opens
 	// on a fresh, fully migrated database - migration-seeded rows and
 	// all. Two Execs because pgx's extended protocol takes one
 	// statement at a time.
-	conn, err := pgx.Connect(ctx, sharedPG.url)
+	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -820,27 +786,16 @@ func newStack(t *testing.T) *stack {
 		}
 	}
 	_ = conn.Close(ctx)
-	if err := pgkit.Migrate(sharedPG.url, migrations.FS, "."); err != nil {
+	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
 		t.Fatal(err)
 	}
-	pool, err := pgkit.Connect(ctx, sharedPG.url)
+	pool, err := pgkit.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
 
-	sharedVK.once.Do(func() {
-		vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine")
-		if err != nil {
-			sharedVK.err = err
-			return
-		}
-		sharedVK.url, sharedVK.err = vk.ConnectionString(ctx)
-	})
-	if sharedVK.err != nil {
-		t.Fatal(sharedVK.err)
-	}
-	rdb, err := valkeykit.Connect(ctx, sharedVK.url)
+	rdb, err := valkeykit.Connect(ctx, valkeytest.URL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -917,18 +872,4 @@ func dashboardStore(_ uuid.UUID, rows []store.PricingRow) *stubStore {
 		},
 		pricingRows: func(context.Context, uuid.UUID, store.Filters) ([]store.PricingRow, error) { return rows, nil },
 	}
-}
-
-// waitFor polls until check passes (the entry rematch detaches, same
-// as the catalog refresh it mirrors).
-func waitFor(t *testing.T, timeout time.Duration, check func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if check() {
-			return
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	t.Fatal("condition not reached in time")
 }

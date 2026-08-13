@@ -8,9 +8,15 @@ replace github.com/levonn-dev/vgkeep/libs/go/httpkit => ../../libs/go/httpkit
 
 replace github.com/levonn-dev/vgkeep/libs/go/jwtauth => ../../libs/go/jwtauth
 
+replace github.com/levonn-dev/vgkeep/libs/go/metrictest => ../../libs/go/metrictest
+
 replace github.com/levonn-dev/vgkeep/libs/go/otel => ../../libs/go/otel
 
 replace github.com/levonn-dev/vgkeep/libs/go/pgkit => ../../libs/go/pgkit
+
+replace github.com/levonn-dev/vgkeep/libs/go/pgtest => ../../libs/go/pgtest
+
+replace github.com/levonn-dev/vgkeep/libs/go/reqtest => ../../libs/go/reqtest
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -19,11 +25,12 @@ require (
 	github.com/levonn-dev/vgkeep/libs/go/config v0.0.0-00010101000000-000000000000
 	github.com/levonn-dev/vgkeep/libs/go/httpkit v0.0.0-00010101000000-000000000000
 	github.com/levonn-dev/vgkeep/libs/go/jwtauth v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/metrictest v0.0.0-00010101000000-000000000000
 	github.com/levonn-dev/vgkeep/libs/go/otel v0.0.0-00010101000000-000000000000
 	github.com/levonn-dev/vgkeep/libs/go/pgkit v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/pgtest v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/reqtest v0.0.0-00010101000000-000000000000
 	github.com/oapi-codegen/runtime v1.6.0
-	github.com/testcontainers/testcontainers-go v0.35.0
-	github.com/testcontainers/testcontainers-go/modules/postgres v0.35.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/metric v1.44.0
@@ -53,7 +60,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/getkin/kin-openapi v0.146.0 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
+	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.23.1 // indirect
@@ -93,6 +100,8 @@ require (
 	github.com/speakeasy-api/jsonpath v0.6.3 // indirect
 	github.com/speakeasy-api/openapi v1.24.0 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
+	github.com/testcontainers/testcontainers-go v0.35.0 // indirect
+	github.com/testcontainers/testcontainers-go/modules/postgres v0.35.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.14 // indirect
 	github.com/tklauser/numcpus v0.8.0 // indirect
 	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect

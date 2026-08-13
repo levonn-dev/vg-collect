@@ -5,64 +5,29 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/testcontainers/testcontainers-go"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/store"
 	"github.com/levonn-dev/vgkeep/services/auth/migrations"
 )
 
-// One Postgres container serves this whole package. The per-test
-// containers this replaces spent most of the package's runtime on
-// boots, and that churn was the bulk of the Docker-daemon load behind
-// the WSL2 connection-refused flakes. Each test still gets exactly
-// what the old fixture gave it - a freshly migrated database and its
-// own pool - via the drop-schema + re-migrate reset in newTestPool.
-// No Terminate: the testcontainers reaper collects the container when
-// the test process exits.
-var sharedPG struct {
-	once sync.Once
-	url  string
-	err  error
-}
-
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
 	ctx := context.Background()
-	sharedPG.once.Do(func() {
-		pg, err := tcpostgres.Run(ctx, "postgres:17-alpine",
-			tcpostgres.WithDatabase("auth"), tcpostgres.WithUsername("a"), tcpostgres.WithPassword("p"),
-			testcontainers.WithWaitStrategy(
-				wait.ForLog("database system is ready to accept connections").
-					WithOccurrence(2).WithStartupTimeout(60*time.Second),
-				wait.ForListeningPort("5432/tcp")))
-		if err != nil {
-			sharedPG.err = err
-			return
-		}
-		sharedPG.url, sharedPG.err = pg.ConnectionString(ctx, "sslmode=disable")
-	})
-	if sharedPG.err != nil {
-		t.Fatal(sharedPG.err)
-	}
+	url := pgtest.URL(t)
 	// Reset: drop everything the previous test left (schema_migrations
 	// included) and re-run the embedded migrations, so each test opens
 	// on a fresh, fully migrated database - migration-seeded rows and
 	// all. Two Execs because pgx's extended protocol takes one
 	// statement at a time.
-	conn, err := pgx.Connect(ctx, sharedPG.url)
+	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,10 +38,10 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 		}
 	}
 	_ = conn.Close(ctx)
-	if err := pgkit.Migrate(sharedPG.url, migrations.FS, "."); err != nil {
+	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	pool, err := pgkit.Connect(ctx, sharedPG.url)
+	pool, err := pgkit.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}

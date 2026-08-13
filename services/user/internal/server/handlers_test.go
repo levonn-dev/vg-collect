@@ -3,76 +3,40 @@ package server_test
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/testcontainers/testcontainers-go"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauthtest"
 	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/user/internal/server"
 	"github.com/levonn-dev/vgkeep/services/user/internal/store"
 	"github.com/levonn-dev/vgkeep/services/user/migrations"
 )
 
-// One Postgres container serves this whole package. The per-test
-// containers this replaces spent most of the package's runtime on
-// boots, and that churn was the bulk of the Docker-daemon load behind
-// the WSL2 connection-refused flakes. Each test still gets exactly
-// what the old fixture gave it - a freshly migrated database and its
-// own pool - via the drop-schema + re-migrate reset below.
-// No Terminate: the testcontainers reaper collects the container when
-// the test process exits.
-var sharedPG struct {
-	once sync.Once
-	url  string
-	err  error
-}
-
 // newTestStore duplicates the fixture in internal/store/store_test.go
 // (Go test packages can't share helpers across packages).
 func newTestStore(t *testing.T) *store.Store {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
 	ctx := context.Background()
-	sharedPG.once.Do(func() {
-		pg, err := tcpostgres.Run(ctx, "postgres:17-alpine",
-			tcpostgres.WithDatabase("user"), tcpostgres.WithUsername("u"), tcpostgres.WithPassword("p"),
-			testcontainers.WithWaitStrategy(
-				wait.ForLog("database system is ready to accept connections").
-					WithOccurrence(2).WithStartupTimeout(60*time.Second),
-				wait.ForListeningPort("5432/tcp")))
-		if err != nil {
-			sharedPG.err = err
-			return
-		}
-		sharedPG.url, sharedPG.err = pg.ConnectionString(ctx, "sslmode=disable")
-	})
-	if sharedPG.err != nil {
-		t.Fatal(sharedPG.err)
-	}
+	url := pgtest.URL(t)
 	// Reset: drop everything the previous test left (schema_migrations
 	// included) and re-run the embedded migrations, so each test opens
 	// on a fresh, fully migrated database - migration-seeded rows and
 	// all. Two Execs because pgx's extended protocol takes one
 	// statement at a time.
-	conn, err := pgx.Connect(ctx, sharedPG.url)
+	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,10 +47,10 @@ func newTestStore(t *testing.T) *store.Store {
 		}
 	}
 	_ = conn.Close(ctx)
-	if err := pgkit.Migrate(sharedPG.url, migrations.FS, "."); err != nil {
+	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	pool, err := pgkit.Connect(ctx, sharedPG.url)
+	pool, err := pgkit.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,37 +59,19 @@ func newTestStore(t *testing.T) *store.Store {
 }
 
 type authEnv struct {
-	priv ed25519.PrivateKey
-	v    *jwtauth.Validator
+	env *jwtauthtest.Env
+	v   *jwtauth.Validator
 }
 
 func newAuthEnv(t *testing.T) authEnv {
 	t.Helper()
-	pub, priv, err := ed25519.GenerateKey(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	jwks, _ := json.Marshal(map[string]any{"keys": []map[string]string{{
-		"kty": "OKP", "crv": "Ed25519", "kid": "t1",
-		"x": base64.RawURLEncoding.EncodeToString(pub),
-	}}})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(jwks) }))
-	t.Cleanup(srv.Close)
-	return authEnv{priv: priv, v: jwtauth.NewValidator(srv.URL, "vgkeep-auth", "vgkeep")}
+	env := jwtauthtest.NewEnv(t)
+	return authEnv{env: env, v: env.Validator}
 }
 
 func (a authEnv) token(t *testing.T, sub string, roles ...string) string {
 	t.Helper()
-	tok := jwt.NewWithClaims(jwt.SigningMethodEdDSA, jwt.MapClaims{
-		"sub": sub, "iss": "vgkeep-auth", "aud": "vgkeep",
-		"exp": time.Now().Add(5 * time.Minute).Unix(), "jti": "j", "roles": roles,
-	})
-	tok.Header["kid"] = "t1"
-	s, err := tok.SignedString(a.priv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return s
+	return a.env.Token(t, sub, roles...)
 }
 
 func newTestServer(t *testing.T) (*httptest.Server, authEnv) {
@@ -141,25 +87,7 @@ func newTestServer(t *testing.T) (*httptest.Server, authEnv) {
 
 func do(t *testing.T, method, url, token string, body any) *http.Response {
 	t.Helper()
-	var buf bytes.Buffer
-	switch v := body.(type) {
-	case nil:
-		// empty body
-	case string:
-		buf.WriteString(v) // raw body, for the malformed-JSON cases
-	default:
-		if err := json.NewEncoder(&buf).Encode(v); err != nil {
-			t.Fatal(err)
-		}
-	}
-	req, err := http.NewRequest(method, url, &buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	req.Header.Set("Content-Type", "application/json")
+	req := reqtest.NewJSONRequest(t, method, url, token, body)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -324,13 +252,13 @@ func TestUpdateUser_SelfOnlyAndValidation(t *testing.T) {
 	t.Run("other user's token forbidden", func(t *testing.T) {
 		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, "someone-else", "user"),
 			map[string]string{"handle": "Hacker"})
-		wantUnitProblem(t, resp, http.StatusForbidden, "forbidden")
+		reqtest.AssertProblem(t, resp, http.StatusForbidden, "forbidden")
 	})
 
 	t.Run("service token forbidden, self only", func(t *testing.T) {
 		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, "svc:auth", "service"),
 			map[string]string{"handle": "Hacker"})
-		wantUnitProblem(t, resp, http.StatusForbidden, "forbidden")
+		reqtest.AssertProblem(t, resp, http.StatusForbidden, "forbidden")
 	})
 
 	t.Run("empty handle invalid", func(t *testing.T) {
@@ -433,7 +361,7 @@ func TestUpdateUser_SelfOnlyAndValidation(t *testing.T) {
 		unknown := uuid.New().String()
 		resp := do(t, "PATCH", srv.URL+"/users/"+unknown, a.token(t, unknown, "user"),
 			map[string]string{"handle": "Ghost"})
-		wantUnitProblem(t, resp, http.StatusNotFound, "user_not_found")
+		reqtest.AssertProblem(t, resp, http.StatusNotFound, "user_not_found")
 	})
 }
 
@@ -560,47 +488,13 @@ func newUnitServer(t *testing.T, st server.Store) (*httptest.Server, authEnv) {
 	return srv, a
 }
 
-// problemResponse decodes a problem+json body and asserts content-type.
-type problemResponse struct {
-	Status int    `json:"status"`
-	Code   string `json:"code"`
-	Detail string `json:"detail"`
-}
-
-func wantUnitProblem(t *testing.T, resp *http.Response, wantStatus int, wantCode string) {
-	t.Helper()
-	if resp.StatusCode != wantStatus {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, wantStatus)
-	}
-	if ct := resp.Header.Get("Content-Type"); ct != "application/problem+json" {
-		t.Fatalf("content-type = %q, want application/problem+json", ct)
-	}
-	var p problemResponse
-	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
-		t.Fatalf("decode problem body: %v", err)
-	}
-	if p.Code != wantCode {
-		t.Fatalf("problem code = %q, want %q", p.Code, wantCode)
-	}
-}
-
-// wantUnitProblemDetail is wantUnitProblem plus a substring check on the
-// detail message, for validation branches where the field name matters.
+// wantUnitProblemDetail is reqtest.AssertProblem plus a substring check
+// on the detail message, for validation branches where the field name
+// matters - the one piece of this file's problem-assertion helpers
+// reqtest.AssertProblem's plain 3-part contract doesn't cover.
 func wantUnitProblemDetail(t *testing.T, resp *http.Response, wantStatus int, wantCode, detailSubstr string) {
 	t.Helper()
-	if resp.StatusCode != wantStatus {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, wantStatus)
-	}
-	if ct := resp.Header.Get("Content-Type"); ct != "application/problem+json" {
-		t.Fatalf("content-type = %q, want application/problem+json", ct)
-	}
-	var p problemResponse
-	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
-		t.Fatalf("decode problem body: %v", err)
-	}
-	if p.Code != wantCode {
-		t.Fatalf("problem code = %q, want %q", p.Code, wantCode)
-	}
+	p := reqtest.AssertProblem(t, resp, wantStatus, wantCode)
 	if !strings.Contains(p.Detail, detailSubstr) {
 		t.Fatalf("problem detail = %q, want substring %q", p.Detail, detailSubstr)
 	}
@@ -618,7 +512,7 @@ func TestUnitUpsert_MissingServiceRole_Forbidden(t *testing.T) {
 	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
 		a.token(t, "u1", "user"),
 		map[string]string{"email": "a@example.com", "display_name": "Alice"})
-	wantUnitProblem(t, resp, http.StatusForbidden, "forbidden")
+	reqtest.AssertProblem(t, resp, http.StatusForbidden, "forbidden")
 }
 
 func TestUnitUpsert_MalformedJSON_BadRequest(t *testing.T) {
@@ -626,7 +520,7 @@ func TestUnitUpsert_MalformedJSON_BadRequest(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{})
 	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
 		a.token(t, "svc", "service"), "{not json}")
-	wantUnitProblem(t, resp, http.StatusBadRequest, "invalid_body")
+	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
 func TestUnitUpsert_EmptyEmail_BadRequest(t *testing.T) {
@@ -635,7 +529,7 @@ func TestUnitUpsert_EmptyEmail_BadRequest(t *testing.T) {
 	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
 		a.token(t, "svc", "service"),
 		map[string]string{"email": "", "display_name": "Alice"})
-	wantUnitProblem(t, resp, http.StatusBadRequest, "invalid_body")
+	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
 func TestUnitUpsert_EmptyDisplayName_BadRequest(t *testing.T) {
@@ -644,7 +538,7 @@ func TestUnitUpsert_EmptyDisplayName_BadRequest(t *testing.T) {
 	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
 		a.token(t, "svc", "service"),
 		map[string]string{"email": "a@example.com", "display_name": ""})
-	wantUnitProblem(t, resp, http.StatusBadRequest, "invalid_body")
+	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
 func TestUnitUpsert_StoreError_InternalServerError(t *testing.T) {
@@ -658,7 +552,7 @@ func TestUnitUpsert_StoreError_InternalServerError(t *testing.T) {
 	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
 		a.token(t, "svc", "service"),
 		map[string]string{"email": "a@example.com", "display_name": "Alice"})
-	wantUnitProblem(t, resp, http.StatusInternalServerError, "internal")
+	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }
 
 func TestUnitUpsert_Success_ReturnsAPIUser(t *testing.T) {
@@ -742,7 +636,7 @@ func TestUnitGetUser_NotSubjectNotServiceNotAdmin_Forbidden(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{})
 	resp := do(t, "GET", srv.URL+"/users/"+targetID.String(),
 		a.token(t, "different-user-id", "user"), nil)
-	wantUnitProblem(t, resp, http.StatusForbidden, "forbidden")
+	reqtest.AssertProblem(t, resp, http.StatusForbidden, "forbidden")
 }
 
 func TestUnitGetUser_NotFound_404(t *testing.T) {
@@ -758,7 +652,7 @@ func TestUnitGetUser_NotFound_404(t *testing.T) {
 	// Service role bypasses the authz guard.
 	resp := do(t, "GET", srv.URL+"/users/"+targetID.String(),
 		a.token(t, "svc", "service"), nil)
-	wantUnitProblem(t, resp, http.StatusNotFound, "user_not_found")
+	reqtest.AssertProblem(t, resp, http.StatusNotFound, "user_not_found")
 }
 
 func TestUnitGetUser_StoreError_InternalServerError(t *testing.T) {
@@ -773,7 +667,7 @@ func TestUnitGetUser_StoreError_InternalServerError(t *testing.T) {
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "GET", srv.URL+"/users/"+targetID.String(),
 		a.token(t, "svc", "service"), nil)
-	wantUnitProblem(t, resp, http.StatusInternalServerError, "internal")
+	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }
 
 func TestUnitGetUser_SelfRead_OK(t *testing.T) {
@@ -858,7 +752,7 @@ func TestUnitUpdateUser_MalformedJSON_BadRequest(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{})
 	resp := do(t, "PATCH", srv.URL+"/users/"+userID.String(),
 		a.token(t, userID.String(), "user"), "{not json}")
-	wantUnitProblem(t, resp, http.StatusBadRequest, "invalid_body")
+	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
 func TestUnitUpdateUser_StoreError_InternalServerError(t *testing.T) {
@@ -872,7 +766,7 @@ func TestUnitUpdateUser_StoreError_InternalServerError(t *testing.T) {
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "PATCH", srv.URL+"/users/"+userID.String(),
 		a.token(t, userID.String(), "user"), map[string]string{"handle": "Neo"})
-	wantUnitProblem(t, resp, http.StatusInternalServerError, "internal")
+	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }
 
 func TestUnitUpdateUser_HandleTaken_Conflict(t *testing.T) {
@@ -886,7 +780,7 @@ func TestUnitUpdateUser_HandleTaken_Conflict(t *testing.T) {
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "PATCH", srv.URL+"/users/"+userID.String(),
 		a.token(t, userID.String(), "user"), map[string]string{"handle": "taken_handle"})
-	wantUnitProblem(t, resp, http.StatusConflict, "handle_taken")
+	reqtest.AssertProblem(t, resp, http.StatusConflict, "handle_taken")
 }
 
 func TestUnitUpdateUser_HandleCooldown_TooManyRequests(t *testing.T) {
@@ -900,7 +794,7 @@ func TestUnitUpdateUser_HandleCooldown_TooManyRequests(t *testing.T) {
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "PATCH", srv.URL+"/users/"+userID.String(),
 		a.token(t, userID.String(), "user"), map[string]string{"handle": "new_handle"})
-	wantUnitProblem(t, resp, http.StatusTooManyRequests, "handle_cooldown")
+	reqtest.AssertProblem(t, resp, http.StatusTooManyRequests, "handle_cooldown")
 }
 
 func TestUnitUpdateUser_PreferredCurrencyValidation(t *testing.T) {
@@ -908,7 +802,7 @@ func TestUnitUpdateUser_PreferredCurrencyValidation(t *testing.T) {
 	uid := uuid.NewString()
 	resp := do(t, "PATCH", srv.URL+"/users/"+uid, a.token(t, uid),
 		map[string]string{"preferred_currency": "eur"})
-	wantUnitProblem(t, resp, http.StatusBadRequest, "invalid_body")
+	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
 func TestUnitUpdateUser_InvalidProfileVisibility(t *testing.T) {
@@ -950,5 +844,5 @@ func TestUnitDeleteUser_StoreError_InternalServerError(t *testing.T) {
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "DELETE", srv.URL+"/users/"+userID.String(),
 		a.token(t, userID.String(), "user"), nil)
-	wantUnitProblem(t, resp, http.StatusInternalServerError, "internal")
+	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }

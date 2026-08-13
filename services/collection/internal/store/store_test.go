@@ -4,70 +4,33 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/testcontainers/testcontainers-go"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 	"github.com/levonn-dev/vgkeep/services/collection/migrations"
 )
 
-// One Postgres container serves this whole package. The per-test
-// containers this replaces spent most of the package's runtime on
-// boots, and that churn was the bulk of the Docker-daemon load behind
-// the WSL2 connection-refused flakes. Each test still gets exactly
-// what the old fixture gave it - a freshly migrated database and its
-// own pool - via the drop-schema + re-migrate reset in newTestStore.
-// No Terminate: the testcontainers reaper collects the container when
-// the test process exits.
-var sharedPG struct {
-	once sync.Once
-	url  string
-	err  error
-}
-
-// newTestPool duplicates the fixture in migrations/migrations_test.go
-// (Go test packages can't share helpers across packages): a fresh,
-// fully migrated database and its own pool. newTestStore wraps it for
-// the common case; the rare test needing SQL the Store's own methods
-// cannot express (a bare INSERT omitting a DEFAULTed column) takes
-// the pool directly.
+// newTestPool: a fresh, fully migrated database and its own pool.
+// newTestStore wraps it for the common case; the rare test needing SQL
+// the Store's own methods cannot express (a bare INSERT omitting a
+// DEFAULTed column) takes the pool directly.
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
 	ctx := context.Background()
-	sharedPG.once.Do(func() {
-		pg, err := tcpostgres.Run(ctx, "postgres:17-alpine",
-			tcpostgres.WithDatabase("collection"), tcpostgres.WithUsername("c"), tcpostgres.WithPassword("p"),
-			testcontainers.WithWaitStrategy(
-				wait.ForLog("database system is ready to accept connections").
-					WithOccurrence(2).WithStartupTimeout(60*time.Second),
-				wait.ForListeningPort("5432/tcp")))
-		if err != nil {
-			sharedPG.err = err
-			return
-		}
-		sharedPG.url, sharedPG.err = pg.ConnectionString(ctx, "sslmode=disable")
-	})
-	if sharedPG.err != nil {
-		t.Fatal(sharedPG.err)
-	}
+	url := pgtest.URL(t)
 	// Reset: drop everything the previous test left (schema_migrations
 	// included) and re-run the embedded migrations, so each test opens
 	// on a fresh, fully migrated database - migration-seeded rows and
 	// all. Two Execs because pgx's extended protocol takes one
 	// statement at a time.
-	conn, err := pgx.Connect(ctx, sharedPG.url)
+	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,10 +41,10 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 		}
 	}
 	_ = conn.Close(ctx)
-	if err := pgkit.Migrate(sharedPG.url, migrations.FS, "."); err != nil {
+	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	pool, err := pgkit.Connect(ctx, sharedPG.url)
+	pool, err := pgkit.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,12 +25,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/testcontainers/testcontainers-go"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/oidc"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/server"
@@ -42,48 +41,18 @@ import (
 
 var testSeed = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32))
 
-// One Postgres container serves this whole package. The per-test
-// containers this replaces spent most of the package's runtime on
-// boots, and that churn was the bulk of the Docker-daemon load behind
-// the WSL2 connection-refused flakes. Each test still gets exactly
-// what the old fixture gave it - a freshly migrated database and its
-// own pool - via the drop-schema + re-migrate reset in newTestPool.
-// No Terminate: the testcontainers reaper collects the container when
-// the test process exits.
-var sharedPG struct {
-	once sync.Once
-	url  string
-	err  error
-}
-
+// newTestPool duplicates the fixture in internal/store/store_test.go
+// (Go test packages can't share helpers across packages).
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
 	ctx := context.Background()
-	sharedPG.once.Do(func() {
-		pg, err := tcpostgres.Run(ctx, "postgres:17-alpine",
-			tcpostgres.WithDatabase("auth"), tcpostgres.WithUsername("a"), tcpostgres.WithPassword("p"),
-			testcontainers.WithWaitStrategy(
-				wait.ForLog("database system is ready to accept connections").
-					WithOccurrence(2).WithStartupTimeout(60*time.Second),
-				wait.ForListeningPort("5432/tcp")))
-		if err != nil {
-			sharedPG.err = err
-			return
-		}
-		sharedPG.url, sharedPG.err = pg.ConnectionString(ctx, "sslmode=disable")
-	})
-	if sharedPG.err != nil {
-		t.Fatal(sharedPG.err)
-	}
+	url := pgtest.URL(t)
 	// Reset: drop everything the previous test left (schema_migrations
 	// included) and re-run the embedded migrations, so each test opens
 	// on a fresh, fully migrated database - migration-seeded rows and
 	// all. Two Execs because pgx's extended protocol takes one
 	// statement at a time.
-	conn, err := pgx.Connect(ctx, sharedPG.url)
+	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,10 +63,10 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 		}
 	}
 	_ = conn.Close(ctx)
-	if err := pgkit.Migrate(sharedPG.url, migrations.FS, "."); err != nil {
+	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	pool, err := pgkit.Connect(ctx, sharedPG.url)
+	pool, err := pgkit.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,6 +261,10 @@ type stubIDP struct {
 	srv   *httptest.Server
 	key   *rsa.PrivateKey
 	codes map[string]jwt.MapClaims
+
+	// jwksStatus simulates the provider's key endpoint going down after
+	// a token was already issued (0 means the normal 200 response).
+	jwksStatus int
 }
 
 func newStubIDP(t *testing.T) *stubIDP {
@@ -311,6 +284,10 @@ func newStubIDP(t *testing.T) *stubIDP {
 		})
 	})
 	mux.HandleFunc("GET /jwks", func(w http.ResponseWriter, _ *http.Request) {
+		if f.jwksStatus != 0 {
+			w.WriteHeader(f.jwksStatus)
+			return
+		}
 		pub := &f.key.PublicKey
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
 			"kty": "RSA", "kid": "k1",
@@ -392,16 +369,7 @@ func newEnv(t *testing.T, devEnabled bool) *env {
 
 func post(t *testing.T, url string, body any) *http.Response {
 	t.Helper()
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(body); err != nil {
-		t.Fatal(err)
-	}
-	resp, err := http.Post(url, "application/json", &buf) //nolint:gosec // test helper; url is always from httptest.NewServer
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = resp.Body.Close() })
-	return resp
+	return send(t, reqtest.NewJSONRequest(t, http.MethodPost, url, "", body))
 }
 
 // postAuth posts body carrying an Authorization header (raw is the
@@ -409,24 +377,7 @@ func post(t *testing.T, url string, body any) *http.Response {
 // missing-Authorization cases).
 func postAuth(t *testing.T, url, raw string, body any) *http.Response {
 	t.Helper()
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(body); err != nil {
-		t.Fatal(err)
-	}
-	req, err := http.NewRequest(http.MethodPost, url, &buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if raw != "" {
-		req.Header.Set("Authorization", "Bearer "+raw)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = resp.Body.Close() })
-	return resp
+	return send(t, reqtest.NewJSONRequest(t, http.MethodPost, url, raw, body))
 }
 
 // authReq is postAuth for the body-less identity-management endpoints
@@ -434,13 +385,13 @@ func postAuth(t *testing.T, url, raw string, body any) *http.Response {
 // entirely, for the missing-Authorization cases.
 func authReq(t *testing.T, method, url, raw string) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(method, url, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if raw != "" {
-		req.Header.Set("Authorization", "Bearer "+raw)
-	}
+	return send(t, reqtest.NewJSONRequest(t, method, url, raw, nil))
+}
+
+// send issues req against a real listener (every caller here builds
+// an absolute httptest.NewServer URL) and closes the body on cleanup.
+func send(t *testing.T, req *http.Request) *http.Response {
+	t.Helper()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -451,11 +402,7 @@ func authReq(t *testing.T, method, url, raw string) *http.Response {
 
 func decode[T any](t *testing.T, resp *http.Response) T {
 	t.Helper()
-	var v T
-	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
-		t.Fatal(err)
-	}
-	return v
+	return reqtest.DecodeJSON[T](t, resp)
 }
 
 type tokenPair struct {
@@ -473,11 +420,10 @@ type linkedTokenPair struct {
 	LinkedProvider string `json:"linked_provider"`
 }
 
-type problemBody struct {
-	Status     int      `json:"status"`
-	Code       string   `json:"code"`
-	RevokeJTIs []string `json:"revoke_jtis"`
-}
+// problemBody is reqtest.ProblemBody under the name this file's ~80
+// call sites already use; RevokeJTIs is the field only this service's
+// problem responses (refresh reuse) ever populate.
+type problemBody = reqtest.ProblemBody
 
 // identityDTO decodes one entry of an Identities response.
 type identityDTO struct {
@@ -493,17 +439,7 @@ type identitiesDTO struct {
 
 func wantProblem(t *testing.T, resp *http.Response, status int, code string) problemBody {
 	t.Helper()
-	if resp.StatusCode != status {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, status)
-	}
-	if ct := resp.Header.Get("Content-Type"); ct != "application/problem+json" {
-		t.Fatalf("content-type = %q, want problem+json", ct)
-	}
-	p := decode[problemBody](t, resp)
-	if p.Code != code {
-		t.Fatalf("problem code = %q, want %q", p.Code, code)
-	}
-	return p
+	return reqtest.AssertProblem(t, resp, status, code)
 }
 
 // accessClaims parses an access token against the minter's own public
@@ -773,6 +709,36 @@ func TestOauthCallback_VerificationFailureIs400(t *testing.T) {
 	wantProblem(t, resp, 400, "invalid_callback")
 	if e.users.count() != 0 {
 		t.Fatal("failed verification must not reach the user service")
+	}
+}
+
+// A JWKS refetch failing during ID-token verification is an upstream
+// outage, not a bad login attempt: it must classify the same way as a
+// broken discovery or token endpoint (502 provider_error), the same
+// distinction TestOauthCallback_VerificationFailureIs400 draws for an
+// actually-bad token. The code is well-formed and correctly signed;
+// only the provider's key endpoint is unreachable at verify time, so a
+// misclassification here is purely a wrong-error-type bug, not a
+// reachability problem.
+func TestOauthCallback_JWKSFetchFailureIsProviderError(t *testing.T) {
+	e := newEnv(t, false)
+	resp := post(t, e.srv.URL+"/oauth/start", map[string]string{"provider": "google"})
+	start := decode[struct {
+		AuthorizeURL string `json:"authorize_url"`
+	}](t, resp)
+	u, _ := url.Parse(start.AuthorizeURL)
+	q := u.Query()
+	e.idp.registerCode("code-jwks-down", q.Get("nonce"), jwt.MapClaims{
+		"sub": "s-jwks", "email": "jwks@example.com", "email_verified": true,
+	})
+	// Nothing has been cached yet, so verifying this token's kid forces
+	// the RP's very first JWKS fetch -- and that fetch now fails.
+	e.idp.jwksStatus = http.StatusInternalServerError
+	resp = post(t, e.srv.URL+"/oauth/callback",
+		map[string]string{"code": "code-jwks-down", "state": q.Get("state")})
+	wantProblem(t, resp, 502, "provider_error")
+	if e.users.count() != 0 {
+		t.Fatal("a provider outage must not reach the user service")
 	}
 }
 
@@ -1607,34 +1573,14 @@ func (v *stubVerifier) Validate(ctx context.Context, raw string) (jwtauth.Claims
 // string when v is a string, for the malformed-body cases).
 func jsonReq(t *testing.T, method, target string, v any) *http.Request {
 	t.Helper()
-	if raw, ok := v.(string); ok {
-		return httptest.NewRequest(method, target, strings.NewReader(raw))
-	}
-	b, err := json.Marshal(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return httptest.NewRequest(method, target, bytes.NewReader(b))
+	return reqtest.NewJSONRequest(t, method, target, "", v)
 }
 
 // wantProblemRec is wantProblem for a recorder-driven handler call: it
 // asserts the status, the problem+json content type, and the machine code.
 func wantProblemRec(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) problemBody {
 	t.Helper()
-	if rec.Code != status {
-		t.Fatalf("status = %d, want %d (body %s)", rec.Code, status, rec.Body.String())
-	}
-	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
-		t.Fatalf("content-type = %q, want problem+json", ct)
-	}
-	var p problemBody
-	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
-		t.Fatalf("decode problem: %v (%s)", err, rec.Body.String())
-	}
-	if p.Code != code {
-		t.Fatalf("problem code = %q, want %q", p.Code, code)
-	}
-	return p
+	return reqtest.AssertProblemRec(t, rec, status, code)
 }
 
 // wantPairRec asserts a 200 carrying a well-formed TokenPair whose access
@@ -1758,6 +1704,67 @@ func TestUnitOauthStart_Success(t *testing.T) {
 	}
 	if savedState.Provider != "google" {
 		t.Fatalf("persisted provider = %q", savedState.Provider)
+	}
+}
+
+// --- OauthLinkStart ---
+//
+// startDance collapses OauthStart and OauthLinkStart onto shared code, so
+// these two mirror TestUnitOauthStart_CreateStateError and
+// TestUnitOauthStart_AuthorizeProviderError above, but assert
+// OauthLinkStart's own observable differences: it requires a caller
+// (requireUser), its persist-failure message says "link" not "login",
+// and the state it asks the store to save carries the caller's id in
+// LinkUserID.
+
+func TestUnitOauthLinkStart_CreateStateError(t *testing.T) {
+	callerID := uuid.New()
+	var savedState store.AuthState
+	st := &stubStore{createState: func(_ context.Context, s store.AuthState) error {
+		savedState = s
+		return errStub
+	}}
+	p := &stubProvider{name: "google"}
+	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), claimsVerifier(callerID.String(), "user"), false)
+	rec := httptest.NewRecorder()
+	h.OauthLinkStart(rec, reqtest.NewJSONRequest(t, http.MethodPost, "/oauth/link/start",
+		"unit-test-token", api.LinkStartRequest{Provider: "google"}))
+	body := wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
+	if body.Detail != "could not persist link state" {
+		t.Fatalf("detail = %q, want %q", body.Detail, "could not persist link state")
+	}
+	// The row the handler tried to persist still carried the caller's
+	// id, even though the write itself then failed.
+	if savedState.LinkUserID == nil || *savedState.LinkUserID != callerID {
+		t.Fatalf("LinkUserID = %v, want %s", savedState.LinkUserID, callerID)
+	}
+}
+
+func TestUnitOauthLinkStart_AuthorizeProviderError(t *testing.T) {
+	callerID := uuid.New()
+	var savedState store.AuthState
+	st := &stubStore{createState: func(_ context.Context, s store.AuthState) error {
+		savedState = s
+		return nil
+	}}
+	p := &stubProvider{
+		name: "google",
+		authorizeURL: func(context.Context, string, string, string) (string, error) {
+			return "", &oidc.ProviderError{Op: "discovery", Status: 503}
+		},
+	}
+	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), claimsVerifier(callerID.String(), "user"), false)
+	rec := httptest.NewRecorder()
+	h.OauthLinkStart(rec, reqtest.NewJSONRequest(t, http.MethodPost, "/oauth/link/start",
+		"unit-test-token", api.LinkStartRequest{Provider: "google"}))
+	// Same 502 provider_error wording OauthStart answers: startDance
+	// does not branch on login vs link for this failure.
+	body := wantProblemRec(t, rec, http.StatusBadGateway, "provider_error")
+	if body.Detail != "identity provider unavailable" {
+		t.Fatalf("detail = %q, want %q", body.Detail, "identity provider unavailable")
+	}
+	if savedState.LinkUserID == nil || *savedState.LinkUserID != callerID {
+		t.Fatalf("LinkUserID = %v, want %s", savedState.LinkUserID, callerID)
 	}
 }
 

@@ -12,34 +12,32 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/testcontainers/testcontainers-go"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
 	"github.com/levonn-dev/vgkeep/services/collection/migrations"
 )
 
+// newTestDB resets the shared pgtest container to an empty public
+// schema, so this package's from-scratch, partial-version, and
+// down/up-cycle migration steps always start on the same blank slate
+// the old per-test container gave them, whether or not another test in
+// this binary already ran.
 func newTestDB(t *testing.T) string {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
 	ctx := context.Background()
-	pg, err := tcpostgres.Run(ctx, "postgres:17-alpine",
-		tcpostgres.WithDatabase("collection"), tcpostgres.WithUsername("c"), tcpostgres.WithPassword("p"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(60*time.Second),
-			wait.ForListeningPort("5432/tcp")))
+	url := pgtest.URL(t)
+	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = pg.Terminate(ctx) })
-	url, err := pg.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatal(err)
+	for _, stmt := range []string{"DROP SCHEMA public CASCADE", "CREATE SCHEMA public"} {
+		if _, err := conn.Exec(ctx, stmt); err != nil {
+			_ = conn.Close(ctx)
+			t.Fatal(err)
+		}
 	}
+	_ = conn.Close(ctx)
 	return url
 }
 
