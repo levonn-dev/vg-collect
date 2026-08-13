@@ -26,6 +26,26 @@ type querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
+// scanAll drains rows into a slice, closing them once done. seed is
+// the starting value the caller appends onto - nil for rolesQ (a
+// role-less user reports nil, not []) versus []T{} for the two
+// batch-user readers below, so callers keep their own zero-row
+// contract instead of scanAll picking one for everybody; every site
+// in this package reports rows.Err() raw, so that part is not a
+// parameter. scan keeps its own error-wrap text.
+func scanAll[T any](rows pgx.Rows, seed []T, scan func(pgx.Rows) (T, error)) ([]T, error) {
+	defer rows.Close()
+	out := seed
+	for rows.Next() {
+		x, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}
+
 // rolesQ loads a user's roles; nil for a role-less user (handlers
 // normalize to [] at the JSON boundary).
 func rolesQ(ctx context.Context, q querier, id uuid.UUID) ([]string, error) {
@@ -34,16 +54,13 @@ func rolesQ(ctx context.Context, q querier, id uuid.UUID) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: roles: %w", err)
 	}
-	defer rows.Close()
-	var roles []string
-	for rows.Next() {
-		var r string
-		if err := rows.Scan(&r); err != nil {
-			return nil, fmt.Errorf("store: scan role: %w", err)
+	return scanAll(rows, nil, func(r pgx.Rows) (string, error) {
+		var role string
+		if err := r.Scan(&role); err != nil {
+			return "", fmt.Errorf("store: scan role: %w", err)
 		}
-		roles = append(roles, r)
-	}
-	return roles, rows.Err()
+		return role, nil
+	})
 }
 
 type User struct {
@@ -281,16 +298,13 @@ func (s *Store) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: get by ids: %w", err)
 	}
-	defer rows.Close()
-	out := []User{}
-	for rows.Next() {
-		u, err := scanUser(rows)
+	return scanAll(rows, []User{}, func(r pgx.Rows) (User, error) {
+		u, err := scanUser(r)
 		if err != nil {
-			return nil, fmt.Errorf("store: scan user: %w", err)
+			return User{}, fmt.Errorf("store: scan user: %w", err)
 		}
-		out = append(out, u)
-	}
-	return out, rows.Err()
+		return u, nil
+	})
 }
 
 // escapeLike escapes the LIKE metacharacters backslash and % in a raw
@@ -314,14 +328,11 @@ func (s *Store) SearchListed(ctx context.Context, foldedQuery string, limit int)
 	if err != nil {
 		return nil, fmt.Errorf("store: search listed: %w", err)
 	}
-	defer rows.Close()
-	out := []User{}
-	for rows.Next() {
-		u, err := scanUser(rows)
+	return scanAll(rows, []User{}, func(r pgx.Rows) (User, error) {
+		u, err := scanUser(r)
 		if err != nil {
-			return nil, fmt.Errorf("store: scan user: %w", err)
+			return User{}, fmt.Errorf("store: scan user: %w", err)
 		}
-		out = append(out, u)
-	}
-	return out, rows.Err()
+		return u, nil
+	})
 }

@@ -44,6 +44,44 @@ type Store struct{ db *mongo.Database }
 // New builds a Store over the migrated database handle.
 func New(db *mongo.Database) *Store { return &Store{db: db} }
 
+// findAll runs a Mongo find and drains it into a slice - the driver's
+// find-then-cur.All-then-wrap skeleton every unpaginated reader below
+// repeats. Every one of those readers wraps both the Find-issue error
+// and a cur.All decode error under the exact same op text, so findAll
+// bakes that one convention in rather than taking two op parameters.
+// A zero-match result is nil: var out []T left untouched by cur.All
+// when the cursor yields no documents, matching every reader's prior
+// hand-written form (none of them pre-allocated with make).
+func findAll[T any](ctx context.Context, col *mongo.Collection, filter bson.D, opts *options.FindOptions, op string) ([]T, error) {
+	cur, err := col.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("store: %s: %w", op, err)
+	}
+	var out []T
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, fmt.Errorf("store: %s: %w", op, err)
+	}
+	return out, nil
+}
+
+// findPage is findAll's counted, sorted/skipped/limited sibling - the
+// admin worklist pagination shape - reporting the total alongside the
+// page. countOp and findOp wrap separately: two of this package's
+// three paginated readers use different text for a CountDocuments
+// failure than for the find/decode failure, one uses the same text
+// for both; passing both lets each call site keep its own wording.
+func findPage[T any](ctx context.Context, col *mongo.Collection, filter bson.D, opts *options.FindOptions, countOp, findOp string) ([]T, int64, error) {
+	total, err := col.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: %s: %w", countOp, err)
+	}
+	out, err := findAll[T](ctx, col, filter, opts, findOp)
+	if err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
+}
+
 // Platform is the product's platform reference (a projection of the
 // IGDB platform, denormalized for display and identity).
 type Platform struct {
@@ -544,15 +582,8 @@ func (s *Store) SetCurrentPrices(ctx context.Context, id string, q PriceQuote, a
 // construction).
 func (s *Store) ListPriced(ctx context.Context) ([]Product, error) {
 	filter := bson.D{{Key: "pricecharting.pc_product_id", Value: bson.D{{Key: "$exists", Value: true}}}}
-	cur, err := s.db.Collection(colProducts).Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}))
-	if err != nil {
-		return nil, fmt.Errorf("store: list priced: %w", err)
-	}
-	var out []Product
-	if err := cur.All(ctx, &out); err != nil {
-		return nil, fmt.Errorf("store: list priced: %w", err)
-	}
-	return out, nil
+	return findAll[Product](ctx, s.db.Collection(colProducts), filter,
+		options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}), "list priced")
 }
 
 // DeleteUnmatchedProduct permanently removes a product and its price
@@ -592,23 +623,10 @@ func (s *Store) ListUnmatchedProducts(ctx context.Context, limit, offset int) ([
 		{Key: "origin", Value: "provider"},
 		{Key: "pricecharting", Value: nil},
 	}
-	col := s.db.Collection(colProducts)
-	total, err := col.CountDocuments(ctx, filter)
-	if err != nil {
-		return nil, 0, fmt.Errorf("store: list unmatched products: %w", err)
-	}
-	cur, err := col.Find(ctx, filter, options.Find().
+	return findPage[Product](ctx, s.db.Collection(colProducts), filter, options.Find().
 		SetSort(bson.D{{Key: "updated_at", Value: 1}, {Key: "_id", Value: 1}}).
 		SetSkip(int64(offset)).
-		SetLimit(int64(limit)))
-	if err != nil {
-		return nil, 0, fmt.Errorf("store: list unmatched products: %w", err)
-	}
-	var out []Product
-	if err := cur.All(ctx, &out); err != nil {
-		return nil, 0, fmt.Errorf("store: list unmatched products: %w", err)
-	}
-	return out, total, nil
+		SetLimit(int64(limit)), "list unmatched products", "list unmatched products")
 }
 
 // ListIGDBProducts returns every product carrying an IGDB projection,
@@ -624,31 +642,16 @@ func (s *Store) ListUnmatchedProducts(ctx context.Context, limit, offset int) ([
 // then self-deploys on the very next reprojection, instead of waiting for a
 // capped window to drain past them).
 func (s *Store) ListIGDBProducts(ctx context.Context) ([]Product, error) {
-	cur, err := s.db.Collection(colProducts).Find(ctx,
+	return findAll[Product](ctx, s.db.Collection(colProducts),
 		bson.D{{Key: "igdb", Value: bson.D{{Key: "$exists", Value: true}}}},
-		options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}))
-	if err != nil {
-		return nil, fmt.Errorf("store: list igdb products: %w", err)
-	}
-	var out []Product
-	if err := cur.All(ctx, &out); err != nil {
-		return nil, fmt.Errorf("store: list igdb products: %w", err)
-	}
-	return out, nil
+		options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}), "list igdb products")
 }
 
 // ProductsByIDs returns the products it finds; unknown ids are silently
 // absent (batch-prices semantics).
 func (s *Store) ProductsByIDs(ctx context.Context, ids []string) ([]Product, error) {
-	cur, err := s.db.Collection(colProducts).Find(ctx, bson.D{{Key: "_id", Value: bson.D{{Key: "$in", Value: ids}}}})
-	if err != nil {
-		return nil, fmt.Errorf("store: products by ids: %w", err)
-	}
-	var out []Product
-	if err := cur.All(ctx, &out); err != nil {
-		return nil, fmt.Errorf("store: products by ids: %w", err)
-	}
-	return out, nil
+	return findAll[Product](ctx, s.db.Collection(colProducts),
+		bson.D{{Key: "_id", Value: bson.D{{Key: "$in", Value: ids}}}}, nil, "products by ids")
 }
 
 // SearchByName is the degraded-mode fallback: a case-insensitive
@@ -670,16 +673,8 @@ func (s *Store) SearchByName(ctx context.Context, q string, limit int) ([]Produc
 			bson.D{{Key: "igdb.localizations.translit", Value: rx}},
 		}},
 	}
-	cur, err := s.db.Collection(colProducts).Find(ctx, filter,
-		options.Find().SetSort(bson.D{{Key: "name", Value: 1}}).SetLimit(int64(limit)))
-	if err != nil {
-		return nil, fmt.Errorf("store: search by name: %w", err)
-	}
-	var out []Product
-	if err := cur.All(ctx, &out); err != nil {
-		return nil, fmt.Errorf("store: search by name: %w", err)
-	}
-	return out, nil
+	return findAll[Product](ctx, s.db.Collection(colProducts), filter,
+		options.Find().SetSort(bson.D{{Key: "name", Value: 1}}).SetLimit(int64(limit)), "search by name")
 }
 
 // SearchCommunityProducts is the search community lane: a name match
@@ -696,16 +691,8 @@ func (s *Store) SearchCommunityProducts(ctx context.Context, types []string, q s
 			{Key: "$options", Value: "i"},
 		}},
 	}
-	cur, err := s.db.Collection(colProducts).Find(ctx, filter,
-		options.Find().SetSort(bson.D{{Key: "name", Value: 1}}).SetLimit(int64(limit)))
-	if err != nil {
-		return nil, fmt.Errorf("store: search community: %w", err)
-	}
-	var out []Product
-	if err := cur.All(ctx, &out); err != nil {
-		return nil, fmt.Errorf("store: search community: %w", err)
-	}
-	return out, nil
+	return findAll[Product](ctx, s.db.Collection(colProducts), filter,
+		options.Find().SetSort(bson.D{{Key: "name", Value: 1}}).SetLimit(int64(limit)), "search community")
 }
 
 // CommunityRegionRef is one community product's curated region string
@@ -720,7 +707,7 @@ type CommunityRegionRef struct {
 // ListCommunityRegionDocs lists every community product carrying a
 // non-empty curated region - the normalize-community-regions sweep's
 // worklist. Selection against the known/synonym tables happens in the
-// handler (regions.go's twin tables): the community population is
+// handler (regions.go, via regionkit): the community population is
 // tiny by construction, so filtering the small result in Go costs
 // nothing and keeps those tables out of the store layer.
 func (s *Store) ListCommunityRegionDocs(ctx context.Context) ([]CommunityRegionRef, error) {
@@ -731,16 +718,16 @@ func (s *Store) ListCommunityRegionDocs(ctx context.Context) ([]CommunityRegionR
 	opts := options.Find().
 		SetProjection(bson.D{{Key: "community.region", Value: 1}}).
 		SetSort(bson.D{{Key: "_id", Value: 1}})
-	cur, err := s.db.Collection(colProducts).Find(ctx, filter, opts)
-	if err != nil {
-		return nil, fmt.Errorf("store: list community region docs: %w", err)
-	}
-	var rows []struct {
+	// findAll's T is this projection's own shape, not CommunityRegionRef:
+	// the still-needed field remap (Community.Region -> Region) happens
+	// below, the one part of this method findAll cannot absorb.
+	type regionDoc struct {
 		ID        string        `bson:"_id"`
 		Community CommunityMeta `bson:"community"`
 	}
-	if err := cur.All(ctx, &rows); err != nil {
-		return nil, fmt.Errorf("store: list community region docs: %w", err)
+	rows, err := findAll[regionDoc](ctx, s.db.Collection(colProducts), filter, opts, "list community region docs")
+	if err != nil {
+		return nil, err
 	}
 	out := make([]CommunityRegionRef, 0, len(rows))
 	for _, row := range rows {
@@ -779,17 +766,9 @@ func (s *Store) SetCommunityRegion(ctx context.Context, id, region string) error
 // ListCommunityProducts returns every community product (the sweep's
 // worklist; tiny by construction - admin-moderated mints only).
 func (s *Store) ListCommunityProducts(ctx context.Context) ([]Product, error) {
-	cur, err := s.db.Collection(colProducts).Find(ctx,
+	return findAll[Product](ctx, s.db.Collection(colProducts),
 		bson.D{{Key: "origin", Value: "community"}},
-		options.Find().SetSort(bson.D{{Key: "updated_at", Value: 1}, {Key: "_id", Value: 1}}))
-	if err != nil {
-		return nil, fmt.Errorf("store: list community: %w", err)
-	}
-	var out []Product
-	if err := cur.All(ctx, &out); err != nil {
-		return nil, fmt.Errorf("store: list community: %w", err)
-	}
-	return out, nil
+		options.Find().SetSort(bson.D{{Key: "updated_at", Value: 1}, {Key: "_id", Value: 1}}), "list community")
 }
 
 // ListCommunityProductsPage returns one page of the admin community
@@ -800,23 +779,10 @@ func (s *Store) ListCommunityProducts(ctx context.Context) ([]Product, error) {
 // return is the full filtered count.
 func (s *Store) ListCommunityProductsPage(ctx context.Context, limit, offset int) ([]Product, int64, error) {
 	filter := bson.D{{Key: "origin", Value: "community"}}
-	col := s.db.Collection(colProducts)
-	total, err := col.CountDocuments(ctx, filter)
-	if err != nil {
-		return nil, 0, fmt.Errorf("store: list community products: %w", err)
-	}
-	cur, err := col.Find(ctx, filter, options.Find().
+	return findPage[Product](ctx, s.db.Collection(colProducts), filter, options.Find().
 		SetSort(bson.D{{Key: "updated_at", Value: 1}, {Key: "_id", Value: 1}}).
 		SetSkip(int64(offset)).
-		SetLimit(int64(limit)))
-	if err != nil {
-		return nil, 0, fmt.Errorf("store: list community products: %w", err)
-	}
-	var out []Product
-	if err := cur.All(ctx, &out); err != nil {
-		return nil, 0, fmt.Errorf("store: list community products: %w", err)
-	}
-	return out, total, nil
+		SetLimit(int64(limit)), "list community products", "list community products")
 }
 
 // ReplacePromoteCandidates swaps a product's candidate set (caller
@@ -852,22 +818,9 @@ func (s *Store) ListPromoteCandidateProducts(ctx context.Context, limit, offset 
 	if productID != "" {
 		filter = append(filter, bson.E{Key: "_id", Value: productID})
 	}
-	col := s.db.Collection(colProducts)
-	total, err := col.CountDocuments(ctx, filter)
-	if err != nil {
-		return nil, 0, fmt.Errorf("store: count candidates: %w", err)
-	}
-	cur, err := col.Find(ctx, filter, options.Find().
+	return findPage[Product](ctx, s.db.Collection(colProducts), filter, options.Find().
 		SetSort(bson.D{{Key: "promote_candidates.0.score", Value: -1}, {Key: "_id", Value: 1}}).
-		SetSkip(int64(offset)).SetLimit(int64(limit)))
-	if err != nil {
-		return nil, 0, fmt.Errorf("store: list candidates: %w", err)
-	}
-	var out []Product
-	if err := cur.All(ctx, &out); err != nil {
-		return nil, 0, fmt.Errorf("store: list candidates: %w", err)
-	}
-	return out, total, nil
+		SetSkip(int64(offset)).SetLimit(int64(limit)), "count candidates", "list candidates")
 }
 
 // DismissPromoteCandidate records the pair as dismissed and drops the

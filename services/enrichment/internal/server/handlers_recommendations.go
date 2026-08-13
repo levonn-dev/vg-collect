@@ -4,12 +4,12 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/recs"
@@ -33,19 +33,14 @@ const (
 func (h *Handlers) ScoreRecommendations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req api.ScoreRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 256*1024)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, 256*1024, &req) {
 		return
 	}
 	if len(req.Library) > maxLibraryEntries {
 		problem(w, r, http.StatusBadRequest, "library_too_large", fmt.Sprintf("library exceeds %d entries", maxLibraryEntries))
 		return
 	}
-	limit := recsDefaultLimit
-	if req.Limit != nil {
-		limit = min(max(*req.Limit, 1), recsMaxLimit)
-	}
+	limit := httpkit.ClampSilent(req.Limit, recsDefaultLimit, 1, recsMaxLimit)
 
 	lib := make([]recs.LibraryGame, 0, len(req.Library))
 	owned := make([]int64, 0, len(req.Library))
@@ -65,7 +60,7 @@ func (h *Handlers) ScoreRecommendations(w http.ResponseWriter, r *http.Request) 
 	// Metadata for the owned games (edges + genres).
 	raw, degraded, err := h.ensureRaw(ctx, owned)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "metadata lookup failed")
+		h.internalError(w, r, "recs_owned_metadata", "metadata lookup failed", err)
 		return
 	}
 	meta := make(map[int64]recs.Meta, len(raw))
@@ -77,7 +72,7 @@ func (h *Handlers) ScoreRecommendations(w http.ResponseWriter, r *http.Request) 
 	cands := recs.CandidateIDs(lib, meta, recsCandidateCap)
 	candRaw, candDegraded, err := h.ensureRaw(ctx, cands)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "metadata lookup failed")
+		h.internalError(w, r, "recs_candidate_metadata", "metadata lookup failed", err)
 		return
 	}
 	degraded = degraded || candDegraded

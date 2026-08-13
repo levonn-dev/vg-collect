@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -19,10 +20,12 @@ import (
 	"go.opentelemetry.io/otel/metric/embedded"
 
 	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/enrichmentclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
 // stubCounter records Add calls so tests can assert the exact bounded
@@ -142,6 +145,84 @@ func TestUnitLoginOutcomeMapping(t *testing.T) {
 		if got := linkErrorCode(tc.err); got != tc.code {
 			t.Errorf("linkErrorCode(%v) = %q, want %q", tc.err, got, tc.code)
 		}
+	}
+}
+
+// TestUnitRelayEnrichment_UpstreamErrorIs502 and
+// TestUnitRelayUser_UpstreamErrorIs502 pin relayEnrichment and
+// relayUser's error classification directly, the same way
+// TestUnitLoginOutcomeMapping pins loginOutcome above: a dead client
+// is an infrastructure fault, answered with the fixed upstream_error
+// problem, never the client's own error text. relayCollection and
+// relaySocial are the pattern (see server.go and handlers_social.go);
+// these two round the set out to all four backend services and are
+// exercised directly since a handler-level test would only prove one
+// caller's wiring, not the helper's own contract.
+func TestUnitRelayEnrichment_UpstreamErrorIs502(t *testing.T) {
+	h := &Handlers{}
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/x", nil)
+	h.relayEnrichment(rec, r, enrichmentclient.Result{}, enrichmentclient.ErrUpstream)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("code = %d, want 502", rec.Code)
+	}
+	var p struct {
+		Code   string `json:"code"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+		t.Fatalf("problem body: %v (%s)", err, rec.Body.String())
+	}
+	if p.Code != "upstream_error" || p.Detail != "enrichment service unavailable" {
+		t.Fatalf("problem = %+v", p)
+	}
+}
+
+// TestUnitRelayEnrichment_PassThroughRelaysVerbatim pins the happy
+// path: no client error relays the upstream status, content type, and
+// body exactly, untouched.
+func TestUnitRelayEnrichment_PassThroughRelaysVerbatim(t *testing.T) {
+	h := &Handlers{}
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/x", nil)
+	res := enrichmentclient.Result{Status: 201, ContentType: "application/json", Body: []byte(`{"ok":true}`)}
+	h.relayEnrichment(rec, r, res, nil)
+	if rec.Code != 201 || rec.Body.String() != `{"ok":true}` || rec.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("relay: %d %s %q", rec.Code, rec.Body.String(), rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestUnitRelayUser_UpstreamErrorIs502(t *testing.T) {
+	h := &Handlers{}
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/x", nil)
+	h.relayUser(rec, r, userclient.Result{}, userclient.ErrUpstream)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("code = %d, want 502", rec.Code)
+	}
+	var p struct {
+		Code   string `json:"code"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+		t.Fatalf("problem body: %v (%s)", err, rec.Body.String())
+	}
+	if p.Code != "upstream_error" || p.Detail != "user service unavailable" {
+		t.Fatalf("problem = %+v", p)
+	}
+}
+
+// TestUnitRelayUser_PassThroughRelaysVerbatim mirrors
+// TestUnitRelayEnrichment_PassThroughRelaysVerbatim for the user
+// service.
+func TestUnitRelayUser_PassThroughRelaysVerbatim(t *testing.T) {
+	h := &Handlers{}
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/x", nil)
+	res := userclient.Result{Status: 200, ContentType: "application/json", Body: []byte(`{"users":[]}`)}
+	h.relayUser(rec, r, res, nil)
+	if rec.Code != 200 || rec.Body.String() != `{"users":[]}` || rec.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("relay: %d %s %q", rec.Code, rec.Body.String(), rec.Header().Get("Content-Type"))
 	}
 }
 

@@ -9,11 +9,12 @@ package cache
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 )
 
 // Cache wraps the service's Valkey client.
@@ -32,43 +33,22 @@ func valueHistoryKey(sub string) string { return "dashboard:value_history:v1:" +
 
 // GetDashboard returns the cached dashboard body for sub, or nil.
 func (c *Cache) GetDashboard(ctx context.Context, sub string) ([]byte, error) {
-	v, err := c.rdb.Get(ctx, dashboardKey(sub)).Result()
-	if errors.Is(err, redis.Nil) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("cache: get dashboard: %w", err)
-	}
-	// Copied out of the client's reply string so callers own the bytes.
-	return []byte(v), nil
+	return valkeykit.GetBytes(ctx, c.rdb, dashboardKey(sub), "cache: get dashboard")
 }
 
 // PutDashboard caches a composed dashboard body.
 func (c *Cache) PutDashboard(ctx context.Context, sub string, body []byte, ttl time.Duration) error {
-	if err := c.rdb.Set(ctx, dashboardKey(sub), body, ttl).Err(); err != nil {
-		return fmt.Errorf("cache: put dashboard: %w", err)
-	}
-	return nil
+	return valkeykit.PutBytes(ctx, c.rdb, dashboardKey(sub), body, ttl, "cache: put dashboard")
 }
 
 // GetValueHistory returns the cached value-history body for sub, or nil.
 func (c *Cache) GetValueHistory(ctx context.Context, sub string) ([]byte, error) {
-	v, err := c.rdb.Get(ctx, valueHistoryKey(sub)).Result()
-	if errors.Is(err, redis.Nil) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("cache: get value history: %w", err)
-	}
-	return []byte(v), nil
+	return valkeykit.GetBytes(ctx, c.rdb, valueHistoryKey(sub), "cache: get value history")
 }
 
 // PutValueHistory caches a composed value-history body.
 func (c *Cache) PutValueHistory(ctx context.Context, sub string, body []byte, ttl time.Duration) error {
-	if err := c.rdb.Set(ctx, valueHistoryKey(sub), body, ttl).Err(); err != nil {
-		return fmt.Errorf("cache: put value history: %w", err)
-	}
-	return nil
+	return valkeykit.PutBytes(ctx, c.rdb, valueHistoryKey(sub), body, ttl, "cache: put value history")
 }
 
 // InvalidateDashboard drops the user's dashboard-derived entries (the

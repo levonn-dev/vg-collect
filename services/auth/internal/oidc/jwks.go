@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -71,23 +70,14 @@ func (c *rsaKeyCache) fetchLocked(ctx context.Context, jwksURL string) error {
 }
 
 func (c *rsaKeyCache) refreshLocked(ctx context.Context, jwksURL string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := c.hc.Do(req)
-	if err != nil {
-		return fmt.Errorf("oidc: fetch provider jwks: %w", err)
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("oidc: provider jwks status %d", resp.StatusCode)
-	}
+	// Same fetch-decode skeleton as fetchDiscovery/redeemCode, and the
+	// same *ProviderError classification: a JWKS refetch failing here
+	// happens mid token-verification, and OauthCallback's errors.As
+	// must see the same type it sees from those two or this outage
+	// gets misclassified as a rejected login instead of a 502.
 	var doc rsaJWKSDoc
-	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
-		return fmt.Errorf("oidc: decode provider jwks: %w", err)
+	if err := doJSON(ctx, c.hc, http.MethodGet, jwksURL, nil, nil, "jwks", &doc); err != nil {
+		return err
 	}
 	keys := map[string]*rsa.PublicKey{}
 	for _, k := range doc.Keys {

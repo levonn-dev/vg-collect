@@ -4,56 +4,18 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
-	"unicode/utf8"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/libs/go/catalogval"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
-
-// validCoverURL enforces the cover-link shape: https only, at most 512
-// chars. The image is never fetched server-side (SSRF surface); the
-// client renders it with a broken-image fallback.
-func validCoverURL(s string) bool {
-	return len(s) <= 512 && strings.HasPrefix(s, "https://")
-}
-
-// normalizeCommunityCredits trims a curated credit list, drops empty
-// elements, and enforces the contract caps the generated router does
-// not check itself (maxItems 10, maxLength 120 per name). The
-// collection service applies the same rules to entry credit facts, so
-// a submission's arrays never fail here after passing there. nil in,
-// nil out; a non-empty detail is the 400 text.
-func normalizeCommunityCredits(field string, names *[]string) ([]string, string) {
-	if names == nil {
-		return nil, ""
-	}
-	out := make([]string, 0, len(*names))
-	for _, n := range *names {
-		n = strings.TrimSpace(n)
-		if n == "" {
-			continue
-		}
-		if utf8.RuneCountInString(n) > 120 {
-			return nil, field + " names must be at most 120 characters"
-		}
-		out = append(out, n)
-	}
-	if len(out) > 10 {
-		return nil, field + " must list at most 10 names"
-	}
-	if len(out) == 0 {
-		return nil, ""
-	}
-	return out, ""
-}
 
 // CreateCommunityProduct mints an anchor-less product from an
 // approved catalog submission. Community identity is the curated
@@ -61,15 +23,11 @@ func normalizeCommunityCredits(field string, names *[]string) ([]string, string)
 // review panel's search is the dedup check. Variant stays empty (the
 // single edition field carries the entry idiom's note).
 func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request) {
-	claims, _ := jwtauth.FromContext(r.Context())
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	if !h.requireAdmin(w, r) {
 		return
 	}
 	var req api.CommunityProductCreate
-	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, 16*1024, &req) {
 		return
 	}
 	switch string(req.Type) {
@@ -83,16 +41,16 @@ func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request
 		problem(w, r, http.StatusBadRequest, "invalid_body", "name must not be empty")
 		return
 	}
-	if req.CoverUrl != nil && *req.CoverUrl != "" && !validCoverURL(*req.CoverUrl) {
+	if req.CoverUrl != nil && *req.CoverUrl != "" && !catalogval.ValidCoverURL(*req.CoverUrl) {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "cover_url must be an https URL up to 512 chars")
 		return
 	}
-	devs, detail := normalizeCommunityCredits("developers", req.Developers)
+	devs, detail := catalogval.NormalizeCredits("developers", req.Developers)
 	if detail != "" {
 		problem(w, r, http.StatusBadRequest, "invalid_body", detail)
 		return
 	}
-	pubs, detail := normalizeCommunityCredits("publishers", req.Publishers)
+	pubs, detail := catalogval.NormalizeCredits("publishers", req.Publishers)
 	if detail != "" {
 		problem(w, r, http.StatusBadRequest, "invalid_body", detail)
 		return
@@ -130,7 +88,7 @@ func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request
 	}
 	created, err := h.store.CreateProduct(r.Context(), p)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "create failed")
+		h.internalError(w, r, "community_product_create", "create failed", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toAPIProduct(created))
@@ -140,28 +98,14 @@ func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request
 // product regardless of type, including held ones - surfacing
 // deliberate clears is the point.
 func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request, params api.ListUnmatchedProductsParams) {
-	claims, _ := jwtauth.FromContext(r.Context())
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	if !h.requireAdmin(w, r) {
 		return
 	}
-	limit := 200
-	if params.Limit != nil {
-		limit = *params.Limit
-	}
-	if limit < 1 {
-		limit = 1
-	}
-	if limit > 500 {
-		limit = 500
-	}
-	offset := 0
-	if params.Offset != nil && *params.Offset > 0 {
-		offset = *params.Offset
-	}
+	limit := httpkit.ClampSilent(params.Limit, 200, 1, 500)
+	offset := httpkit.ClampSilent(params.Offset, 0, 0)
 	prods, total, err := h.store.ListUnmatchedProducts(r.Context(), limit, offset)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		h.internalError(w, r, "unmatched_products_list", "list failed", err)
 		return
 	}
 	page := api.UnmatchedProductsPage{Products: make([]api.Product, 0, len(prods)), TotalCount: total}
@@ -177,28 +121,14 @@ func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request,
 // origin community is the filter (not the absence of a mapping -
 // community products never carry one).
 func (h *Handlers) ListCommunityProducts(w http.ResponseWriter, r *http.Request, params api.ListCommunityProductsParams) {
-	claims, _ := jwtauth.FromContext(r.Context())
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	if !h.requireAdmin(w, r) {
 		return
 	}
-	limit := 200
-	if params.Limit != nil {
-		limit = *params.Limit
-	}
-	if limit < 1 {
-		limit = 1
-	}
-	if limit > 500 {
-		limit = 500
-	}
-	offset := 0
-	if params.Offset != nil && *params.Offset > 0 {
-		offset = *params.Offset
-	}
+	limit := httpkit.ClampSilent(params.Limit, 200, 1, 500)
+	offset := httpkit.ClampSilent(params.Offset, 0, 0)
 	prods, total, err := h.store.ListCommunityProductsPage(r.Context(), limit, offset)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		h.internalError(w, r, "community_products_list", "list failed", err)
 		return
 	}
 	page := api.CommunityProductsPage{Products: make([]api.Product, 0, len(prods)), TotalCount: total}
@@ -211,32 +141,18 @@ func (h *Handlers) ListCommunityProducts(w http.ResponseWriter, r *http.Request,
 // ListPromoteCandidates pages the sweep's flagged community products,
 // strongest candidate first.
 func (h *Handlers) ListPromoteCandidates(w http.ResponseWriter, r *http.Request, params api.ListPromoteCandidatesParams) {
-	claims, _ := jwtauth.FromContext(r.Context())
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	if !h.requireAdmin(w, r) {
 		return
 	}
-	limit := 200
-	if params.Limit != nil {
-		limit = *params.Limit
-	}
-	if limit < 1 {
-		limit = 1
-	}
-	if limit > 500 {
-		limit = 500
-	}
-	offset := 0
-	if params.Offset != nil && *params.Offset > 0 {
-		offset = *params.Offset
-	}
+	limit := httpkit.ClampSilent(params.Limit, 200, 1, 500)
+	offset := httpkit.ClampSilent(params.Offset, 0, 0)
 	productID := ""
 	if params.ProductId != nil {
 		productID = params.ProductId.String()
 	}
 	prods, total, err := h.store.ListPromoteCandidateProducts(r.Context(), limit, offset, productID)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		h.internalError(w, r, "promote_candidates_list", "list failed", err)
 		return
 	}
 	page := api.PromoteCandidatesPage{Products: make([]api.PromoteCandidateProduct, 0, len(prods)), TotalCount: total}
@@ -255,15 +171,11 @@ func (h *Handlers) ListPromoteCandidates(w http.ResponseWriter, r *http.Request,
 
 // DismissPromoteCandidate silences one candidate pair permanently.
 func (h *Handlers) DismissPromoteCandidate(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
-	claims, _ := jwtauth.FromContext(r.Context())
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	if !h.requireAdmin(w, r) {
 		return
 	}
 	var req api.DismissCandidateRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, 16*1024, &req) {
 		return
 	}
 	switch string(req.Provider) {
@@ -278,7 +190,7 @@ func (h *Handlers) DismissPromoteCandidate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "dismiss failed")
+		h.internalError(w, r, "promote_candidate_dismiss", "dismiss failed", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -291,15 +203,11 @@ func (h *Handlers) DismissPromoteCandidate(w http.ResponseWriter, r *http.Reques
 // changes (true merge is deliberately not automated).
 func (h *Handlers) PromoteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
 	ctx := r.Context()
-	claims, _ := jwtauth.FromContext(ctx)
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	if !h.requireAdmin(w, r) {
 		return
 	}
 	var req api.PromoteRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, 16*1024, &req) {
 		return
 	}
 	id := productId.String()
@@ -308,7 +216,7 @@ func (h *Handlers) PromoteProduct(w http.ResponseWriter, r *http.Request, produc
 		problem(w, r, http.StatusNotFound, "product_not_found", "no such product")
 		return
 	} else if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		h.internalError(w, r, "promote_product_get", "get failed", err)
 		return
 	}
 	if prod.Origin != "community" {
@@ -394,7 +302,7 @@ func (h *Handlers) PromoteProduct(w http.ResponseWriter, r *http.Request, produc
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "promote failed")
+		h.internalError(w, r, "promote_product_write", "promote failed", err)
 		return
 	}
 	if pcMeta != nil {
@@ -410,7 +318,7 @@ func (h *Handlers) PromoteProduct(w http.ResponseWriter, r *http.Request, produc
 	}
 	p, err := h.store.GetProduct(ctx, id)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "reload failed")
+		h.internalError(w, r, "promote_product_reload", "reload failed", err)
 		return
 	}
 	h.writeProduct(ctx, w, r, p)

@@ -51,7 +51,7 @@ func (h *Handlers) ListPlatforms(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(out.Platforms, func(i, j int) bool { return out.Platforms[i].Name < out.Platforms[j].Name })
 	body, err := json.Marshal(out)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "encoding failed")
+		h.internalError(w, r, "platforms_encode", "encoding failed", err)
 		return
 	}
 	if err := h.cache.PutPlatforms(ctx, body, h.searchTTL); err != nil {

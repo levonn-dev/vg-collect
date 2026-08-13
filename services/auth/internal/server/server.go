@@ -5,7 +5,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/oidc"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/store"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/token"
@@ -116,15 +116,13 @@ func New(st Store, m Minter, users UserService, providers map[string]oidc.Provid
 	}
 	meter := otel.Meter("github.com/levonn-dev/vgkeep/services/auth")
 	var err error
-	h.loginOutcomes, err = meter.Int64Counter("vg.auth.login.outcomes",
-		metric.WithDescription("Terminals of provider login and link dances"),
-		metric.WithUnit("{login}"))
+	h.loginOutcomes, err = vgotel.Counter(meter, "vg.auth.login.outcomes",
+		"Terminals of provider login and link dances", "{login}")
 	if err != nil {
 		slog.Error("login outcomes counter unavailable", "err", err)
 	}
-	h.tokenRefreshes, err = meter.Int64Counter("vg.auth.token.refreshes",
-		metric.WithDescription("Refresh token rotation terminals"),
-		metric.WithUnit("{refresh}"))
+	h.tokenRefreshes, err = vgotel.Counter(meter, "vg.auth.token.refreshes",
+		"Refresh token rotation terminals", "{refresh}")
 	if err != nil {
 		slog.Error("token refreshes counter unavailable", "err", err)
 	}
@@ -173,21 +171,15 @@ const (
 // recordLogin counts one terminal of a provider dance whose provider
 // is known.
 func (h *Handlers) recordLogin(ctx context.Context, provider, flow, outcome string) {
-	if h.loginOutcomes == nil {
-		return
-	}
-	h.loginOutcomes.Add(ctx, 1, metric.WithAttributes(
+	vgotel.Count(ctx, h.loginOutcomes,
 		attribute.String("provider", provider),
 		attribute.String("flow", flow),
-		attribute.String("outcome", outcome)))
+		attribute.String("outcome", outcome))
 }
 
 // recordRefresh counts one RefreshToken terminal.
 func (h *Handlers) recordRefresh(ctx context.Context, outcome string) {
-	if h.tokenRefreshes == nil {
-		return
-	}
-	h.tokenRefreshes.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+	vgotel.Count(ctx, h.tokenRefreshes, attribute.String("outcome", outcome))
 }
 
 // Problem responses never echo internal error details to callers, so
@@ -213,16 +205,9 @@ func logUserServiceError(ctx context.Context, op string, err error) {
 	slog.ErrorContext(ctx, "user service unavailable", "op", op, "err", err)
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
+func writeJSON(w http.ResponseWriter, status int, v any) { httpkit.WriteJSON(w, status, v) }
 func problem(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
-	httpkit.WriteProblem(w, r, httpkit.Problem{
-		Status: status, Title: http.StatusText(status), Code: code, Detail: detail,
-	})
+	httpkit.WriteProblemFields(w, r, status, code, detail)
 }
 
 // requireUserOrService authenticates a Bearer caller that may be

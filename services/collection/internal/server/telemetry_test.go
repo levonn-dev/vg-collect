@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -28,6 +29,8 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
+	"github.com/levonn-dev/vgkeep/libs/go/metrictest"
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/server"
@@ -36,38 +39,26 @@ import (
 
 const collectionMeter = "github.com/levonn-dev/vgkeep/services/collection"
 
-// installTestMeter points the global meter provider at a fresh SDK
-// draining into the returned reader. Instruments queued on the global
-// delegate by earlier constructions in this package would flush into
-// the first real provider installed, so they are absorbed by a
-// throwaway provider first; the reader then sees only instruments
-// created after this call. Cleanup installs a noop provider, keeping
-// later constructions inert.
-func installTestMeter(t *testing.T) *sdkmetric.ManualReader {
-	t.Helper()
+// TestMain pins the global meter provider to a real (readerless) SDK
+// provider before any test in this package runs. server.New registers
+// this package's pending-submissions Observable gauge on every build,
+// and nearly every test in this package - not just the telemetry ones
+// below - constructs a Handlers. Without this, the default delegating
+// provider would queue every one of those gauge callbacks (each
+// closing over its own test's now-gone stub) and replay all of them
+// into the first manual reader metrictest.Install installs here, so
+// that test's Collect would invoke every earlier test's stub too -
+// most of which never wired countAllPendingSubmissions and panic on
+// the call. Mirrors auth/server's TestMain, needed for the identical
+// reason (its own constructor-registered signing-keys gauge).
+func TestMain(m *testing.M) {
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider())
-	reader := sdkmetric.NewManualReader()
-	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
-	t.Cleanup(func() { otel.SetMeterProvider(noop.NewMeterProvider()) })
-	return reader
+	os.Exit(m.Run())
 }
 
 func collectDomainMetrics(t *testing.T, reader *sdkmetric.ManualReader) map[string]metricdata.Metrics {
 	t.Helper()
-	var rm metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &rm); err != nil {
-		t.Fatal(err)
-	}
-	out := map[string]metricdata.Metrics{}
-	for _, sm := range rm.ScopeMetrics {
-		if sm.Scope.Name != collectionMeter {
-			continue
-		}
-		for _, m := range sm.Metrics {
-			out[m.Name] = m
-		}
-	}
-	return out
+	return metrictest.ScopeMetrics(t, reader, collectionMeter)
 }
 
 // counterPoints returns the series of a monotonic Int64 counter.
@@ -145,7 +136,7 @@ func TestUnitPricingComposeCounter(t *testing.T) {
 	for _, sf := range surfaces {
 		for _, outcome := range []string{"ok", "degraded"} {
 			t.Run(sf.op+"_"+outcome, func(t *testing.T) {
-				reader := installTestMeter(t)
+				reader := metrictest.Install(t)
 				enrich := &stubEnrichment{
 					batchPrices: pricedAs(1500, 4200, 9900),
 					priceHistory: func(context.Context, string, []uuid.UUID, int) (map[string][]enrichapi.PricePoint, error) {
@@ -181,7 +172,7 @@ func TestUnitPricingComposeCounter(t *testing.T) {
 // TestUnitPricingComposeCounter_SkipsWhenNothingPriced pins the ratio
 // hygiene: a read that never calls enrichment must not increment.
 func TestUnitPricingComposeCounter_SkipsWhenNothingPriced(t *testing.T) {
-	reader := installTestMeter(t)
+	reader := metrictest.Install(t)
 	disabled := store.Entry{ID: uuid.New(), ItemType: "game", MediaType: "physical",
 		DisplayName: "Fan cart", Region: "pal", Packaging: "loose", Currency: "USD",
 		PricingMode: "disabled", Status: "backlog", Source: "manual"}
@@ -202,7 +193,7 @@ func TestUnitCacheLookupAndFailOpenCounters(t *testing.T) {
 	user := uuid.New()
 
 	t.Run("hits", func(t *testing.T) {
-		reader := installTestMeter(t)
+		reader := metrictest.Install(t)
 		c := newStubCache()
 		c.bodies[user.String()] = []byte(`{"total_entries":1}`)
 		c.vhBodies[user.String()] = []byte(`{"available":true,"points":[]}`)
@@ -227,7 +218,7 @@ func TestUnitCacheLookupAndFailOpenCounters(t *testing.T) {
 	})
 
 	t.Run("miss", func(t *testing.T) {
-		reader := installTestMeter(t)
+		reader := metrictest.Install(t)
 		srv, a := newUnitServer(t, withPendingCount(dashboardStore(user, nil), 0), &stubEnrichment{}, newStubCache())
 		if resp := do(t, http.MethodGet, srv.URL+"/dashboard", a.token(t, user.String()), nil); resp.StatusCode != http.StatusOK {
 			t.Fatalf("dashboard: %d", resp.StatusCode)
@@ -240,7 +231,7 @@ func TestUnitCacheLookupAndFailOpenCounters(t *testing.T) {
 	})
 
 	t.Run("valkey_error_is_miss_plus_fail_open", func(t *testing.T) {
-		reader := installTestMeter(t)
+		reader := metrictest.Install(t)
 		c := newStubCache()
 		c.err = errors.New("valkey is having a moment")
 		srv, a := newUnitServer(t, withPendingCount(dashboardStore(user, nil), 0), &stubEnrichment{}, c)
@@ -262,7 +253,7 @@ func TestUnitCacheLookupAndFailOpenCounters(t *testing.T) {
 	})
 
 	t.Run("value_history_error_ops", func(t *testing.T) {
-		reader := installTestMeter(t)
+		reader := metrictest.Install(t)
 		st := &stubStore{pricingRows: func(context.Context, uuid.UUID, store.Filters) ([]store.PricingRow, error) {
 			return nil, nil
 		}}
@@ -281,7 +272,7 @@ func TestUnitCacheLookupAndFailOpenCounters(t *testing.T) {
 	})
 
 	t.Run("invalidate_error_fails_open", func(t *testing.T) {
-		reader := installTestMeter(t)
+		reader := metrictest.Install(t)
 		st := &stubStore{deleteEntry: func(context.Context, uuid.UUID, uuid.UUID) error { return nil }}
 		c := newStubCache()
 		c.err = errors.New("valkey is having a moment")
@@ -318,7 +309,7 @@ func TestUnitSubmissionEventsCounter(t *testing.T) {
 	}
 
 	t.Run("created", func(t *testing.T) {
-		reader := installTestMeter(t)
+		reader := metrictest.Install(t)
 		st := withPendingCount(&stubStore{
 			getEntry:                func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return custom, nil },
 			countPendingSubmissions: func(context.Context, uuid.UUID) (int64, error) { return 0, nil },
@@ -335,7 +326,7 @@ func TestUnitSubmissionEventsCounter(t *testing.T) {
 	})
 
 	t.Run("cancelled", func(t *testing.T) {
-		reader := installTestMeter(t)
+		reader := metrictest.Install(t)
 		st := withPendingCount(&stubStore{
 			cancelSubmission: func(context.Context, uuid.UUID, uuid.UUID) error { return nil },
 		}, 0)
@@ -347,7 +338,7 @@ func TestUnitSubmissionEventsCounter(t *testing.T) {
 	})
 
 	t.Run("rejected", func(t *testing.T) {
-		reader := installTestMeter(t)
+		reader := metrictest.Install(t)
 		st := withPendingCount(&stubStore{
 			getSubmission: func(context.Context, uuid.UUID) (store.Submission, error) { return pending, nil },
 			rejectSubmission: func(_ context.Context, _ uuid.UUID, reason string) (store.Submission, error) {
@@ -367,7 +358,7 @@ func TestUnitSubmissionEventsCounter(t *testing.T) {
 	})
 
 	t.Run("approved", func(t *testing.T) {
-		reader := installTestMeter(t)
+		reader := metrictest.Install(t)
 		st := withPendingCount(&stubStore{
 			getSubmission: func(context.Context, uuid.UUID) (store.Submission, error) { return pending, nil },
 			getEntry:      func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return custom, nil },
@@ -393,7 +384,7 @@ func TestUnitSubmissionEventsCounter(t *testing.T) {
 
 func TestUnitPendingSubmissionsGauge(t *testing.T) {
 	t.Run("observes_all_users_count", func(t *testing.T) {
-		reader := installTestMeter(t)
+		reader := metrictest.Install(t)
 		st := &stubStore{countAllPendingSubmissions: func(context.Context) (int64, error) { return 7, nil }}
 		server.New(st, &stubEnrichment{}, newStubCache(), server.Options{
 			DashboardCacheTTL: time.Minute, Logger: testLogger(),
@@ -416,7 +407,7 @@ func TestUnitPendingSubmissionsGauge(t *testing.T) {
 	})
 
 	t.Run("count_error_skips_observation", func(t *testing.T) {
-		reader := installTestMeter(t)
+		reader := metrictest.Install(t)
 		st := &stubStore{countAllPendingSubmissions: func(context.Context) (int64, error) {
 			return 0, errors.New("pg down")
 		}}
@@ -440,7 +431,7 @@ func TestUnitPendingSubmissionsGauge(t *testing.T) {
 // external proof the run has fully finished; every other assertion
 // below only runs once that is true.
 func TestUnitRematchMetrics(t *testing.T) {
-	reader := installTestMeter(t)
+	reader := metrictest.Install(t)
 	productBase := uuid.New()
 	productJP := uuid.New()
 	entryOK, entryFail := uuid.New(), uuid.New()
@@ -478,7 +469,7 @@ func TestUnitRematchMetrics(t *testing.T) {
 		t.Fatalf("trigger: %d, want 202 (the sweep now detaches)", resp.StatusCode)
 	}
 
-	waitFor(t, 5*time.Second, func() bool {
+	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		m, ok := collectDomainMetrics(t, reader)["vg.collection.rematch.duration"]
 		if !ok {
 			return false
@@ -522,7 +513,7 @@ func TestUnitRematchMetrics(t *testing.T) {
 // against triples{outcome=failed}: two triples, one healthy and one
 // whose sole member fetch errors, land ok==1 and failed==1.
 func TestUnitRematchMetrics_MemberFetchFailureCountsFailedTriple(t *testing.T) {
-	reader := installTestMeter(t)
+	reader := metrictest.Install(t)
 	productOK := uuid.New()
 	productBad := uuid.New()
 	productJP := uuid.New()
@@ -558,7 +549,7 @@ func TestUnitRematchMetrics_MemberFetchFailureCountsFailedTriple(t *testing.T) {
 		t.Fatalf("trigger: %d, want 202 (the sweep now detaches)", resp.StatusCode)
 	}
 
-	waitFor(t, 5*time.Second, func() bool {
+	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		m, ok := collectDomainMetrics(t, reader)["vg.collection.rematch.duration"]
 		if !ok {
 			return false
@@ -585,7 +576,7 @@ func TestUnitRematchMetrics_MemberFetchFailureCountsFailedTriple(t *testing.T) {
 // the second (409-refused) trigger only needs to land while the
 // detached sweep is still inside listAutoGameRematchRefs.
 func TestUnitRematchMetrics_ConflictNeverRecordsDuration(t *testing.T) {
-	reader := installTestMeter(t)
+	reader := metrictest.Install(t)
 	release := make(chan struct{})
 	started := make(chan struct{})
 	st := withPendingCount(&stubStore{
@@ -611,7 +602,7 @@ func TestUnitRematchMetrics_ConflictNeverRecordsDuration(t *testing.T) {
 
 	// The duration histogram records last (deferred), so waiting for
 	// its one point proves the detached run has fully finished.
-	waitFor(t, 5*time.Second, func() bool {
+	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		m, ok := collectDomainMetrics(t, reader)["vg.collection.rematch.duration"]
 		if !ok {
 			return false
@@ -643,7 +634,7 @@ func TestUnitRematchMetrics_ConflictNeverRecordsDuration(t *testing.T) {
 // RepointEntry always clears - seeded so a wrongly fired repoint
 // would visibly change all three.
 func TestUnitRematchMetrics_ResolvedSameIdSkipsRepoint(t *testing.T) {
-	reader := installTestMeter(t)
+	reader := metrictest.Install(t)
 	productUnmatched := uuid.New()
 	entry := uuid.New()
 
@@ -692,7 +683,7 @@ func TestUnitRematchMetrics_ResolvedSameIdSkipsRepoint(t *testing.T) {
 		t.Fatalf("trigger: %d, want 202 (the sweep now detaches)", resp.StatusCode)
 	}
 
-	waitFor(t, 5*time.Second, func() bool {
+	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		m, ok := collectDomainMetrics(t, reader)["vg.collection.rematch.duration"]
 		if !ok {
 			return false
@@ -731,7 +722,7 @@ func TestUnitRematchMetrics_ResolvedSameIdSkipsRepoint(t *testing.T) {
 // sweep's outcome counter: a matched free-text platform is normalized,
 // an unmatched one is skipped.
 func TestUnitNormalizePlatformsCounter(t *testing.T) {
-	reader := installTestMeter(t)
+	reader := metrictest.Install(t)
 	matched, unmatched := uuid.New(), uuid.New()
 	st := withPendingCount(&stubStore{
 		listNameOnlyPlatformEntries: func(context.Context) ([]store.PlatformEntryRef, error) {
@@ -766,7 +757,7 @@ func TestUnitNormalizePlatformsCounter(t *testing.T) {
 // outcome counter: a matched free-text region is normalized, one with
 // no reviewed synonym is skipped.
 func TestUnitNormalizeRegionsCounter(t *testing.T) {
-	reader := installTestMeter(t)
+	reader := metrictest.Install(t)
 	matched, unmatched := uuid.New(), uuid.New()
 	st := withPendingCount(&stubStore{
 		listOpenRegionEntries: func(context.Context, []string) ([]store.OpenRegionEntryRef, error) {
@@ -800,7 +791,7 @@ func TestUnitNormalizeRegionsCounter(t *testing.T) {
 // InternalNormalizeRegions), so a write failure is the one way scanned
 // can outrun their sum.
 func TestUnitNormalizeRegionsCounter_WriteFailure(t *testing.T) {
-	reader := installTestMeter(t)
+	reader := metrictest.Install(t)
 	failing := uuid.New()
 	st := withPendingCount(&stubStore{
 		listOpenRegionEntries: func(context.Context, []string) ([]store.OpenRegionEntryRef, error) {
@@ -1093,7 +1084,7 @@ func TestUnitLeverCompletionLogs(t *testing.T) {
 	// resnapshot and normalize-platforms are still synchronous, so
 	// their lines are already in buf; the rematch's completion line
 	// lands only once its detached sweep finishes.
-	waitFor(t, 5*time.Second, func() bool {
+	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		return findLine(buf.lines(t), "rematch-entries complete") != nil
 	})
 

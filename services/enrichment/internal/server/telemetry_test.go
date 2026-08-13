@@ -20,114 +20,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
+	"github.com/levonn-dev/vgkeep/libs/go/metrictest"
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
 
-// enrichmentMeter is the meter instruments register under (the module
-// path, per convention).
-const enrichmentMeter = "github.com/levonn-dev/vgkeep/services/enrichment"
-
-// newTestMeter swaps the global meter provider for one draining into
-// a manual reader, restored on cleanup. Handlers built after this
-// call register real, readable instruments.
-func newTestMeter(t *testing.T) *sdkmetric.ManualReader {
-	t.Helper()
-	reader := sdkmetric.NewManualReader()
-	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	prev := otel.GetMeterProvider()
-	otel.SetMeterProvider(mp)
-	t.Cleanup(func() {
-		otel.SetMeterProvider(prev)
-		_ = mp.Shutdown(context.Background())
-	})
-	return reader
-}
-
-// metricByName collects and returns the named instrument's data from
-// the service meter scope (zero value when nothing was recorded).
-func metricByName(t *testing.T, reader *sdkmetric.ManualReader, name string) metricdata.Metrics {
-	t.Helper()
-	var rm metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &rm); err != nil {
-		t.Fatal(err)
-	}
-	for _, sm := range rm.ScopeMetrics {
-		if sm.Scope.Name != enrichmentMeter {
-			continue
-		}
-		for _, m := range sm.Metrics {
-			if m.Name == name {
-				return m
-			}
-		}
-	}
-	return metricdata.Metrics{}
-}
-
-func hasAttrs(set attribute.Set, want []attribute.KeyValue) bool {
-	for _, kv := range want {
-		v, ok := set.Value(kv.Key)
-		if !ok || v.String() != kv.Value.String() {
-			return false
-		}
-	}
-	return true
-}
-
-// counterSum sums the named counter's points carrying all of want
-// (every point when want is empty).
-func counterSum(t *testing.T, reader *sdkmetric.ManualReader, name string, want ...attribute.KeyValue) int64 {
-	t.Helper()
-	m := metricByName(t, reader, name)
-	if m.Data == nil {
-		return 0
-	}
-	sum, ok := m.Data.(metricdata.Sum[int64])
-	if !ok {
-		t.Fatalf("%s: not an int64 sum: %T", name, m.Data)
-	}
-	var total int64
-	for _, dp := range sum.DataPoints {
-		if hasAttrs(dp.Attributes, want) {
-			total += dp.Value
-		}
-	}
-	return total
-}
-
-// histogramPoint returns the named histogram's point carrying all of
-// want (zero value, count 0, when absent).
-func histogramPoint(t *testing.T, reader *sdkmetric.ManualReader, name string, want ...attribute.KeyValue) metricdata.HistogramDataPoint[float64] {
-	t.Helper()
-	m := metricByName(t, reader, name)
-	if m.Data == nil {
-		return metricdata.HistogramDataPoint[float64]{}
-	}
-	hist, ok := m.Data.(metricdata.Histogram[float64])
-	if !ok {
-		t.Fatalf("%s: not a float64 histogram: %T", name, m.Data)
-	}
-	for _, dp := range hist.DataPoints {
-		if hasAttrs(dp.Attributes, want) {
-			return dp
-		}
-	}
-	return metricdata.HistogramDataPoint[float64]{}
-}
-
 // Every fail-open routes through the one helper, which stamps the
 // call site's op on the counter next to the existing warn.
 func TestUnitTelemetry_CacheFailOpenCountsPerOp(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	env := newAuthEnv(t)
 	c := newStubCache()
 	c.err = errors.New("valkey down")
@@ -144,11 +53,11 @@ func TestUnitTelemetry_CacheFailOpenCountsPerOp(t *testing.T) {
 
 	const name = "vg.enrichment.cache.fail_open"
 	for _, op := range []string{"search_get", "search_put"} {
-		if got := counterSum(t, reader, name, attribute.String("op", op)); got != 1 {
+		if got := metrictest.Int64Sum(t, reader, name, attribute.String("op", op)); got != 1 {
 			t.Fatalf("cache.fail_open{op=%s} = %d, want 1", op, got)
 		}
 	}
-	if total := counterSum(t, reader, name); total != 2 {
+	if total := metrictest.Int64Sum(t, reader, name); total != 2 {
 		t.Fatalf("cache.fail_open total = %d, want 2", total)
 	}
 }
@@ -156,7 +65,7 @@ func TestUnitTelemetry_CacheFailOpenCountsPerOp(t *testing.T) {
 // One count per answered SearchCatalog request, labeled by kind and
 // by which source produced the answer.
 func TestUnitTelemetry_SearchAnswersByKindAndSource(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	env := newAuthEnv(t)
 	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
 		return []igdb.Game{{ID: 1011, Name: "Chrono Trigger"}}, nil
@@ -182,12 +91,12 @@ func TestUnitTelemetry_SearchAnswersByKindAndSource(t *testing.T) {
 
 	const name = "vg.enrichment.search.requests"
 	for _, source := range []string{"provider", "cache", "degraded"} {
-		got := counterSum(t, reader, name, attribute.String("kind", "game"), attribute.String("source", source))
+		got := metrictest.Int64Sum(t, reader, name, attribute.String("kind", "game"), attribute.String("source", source))
 		if got != 1 {
 			t.Fatalf("search.requests{kind=game,source=%s} = %d, want 1", source, got)
 		}
 	}
-	if total := counterSum(t, reader, name); total != 3 {
+	if total := metrictest.Int64Sum(t, reader, name); total != 3 {
 		t.Fatalf("one count per answer: total = %d, want 3", total)
 	}
 }
@@ -199,7 +108,7 @@ func TestUnitTelemetry_SearchAnswersByKindAndSource(t *testing.T) {
 // scenario uses a distinct query string so the search cache cannot
 // turn a later call into a no-op cache hit that skips the leg.
 func TestUnitTelemetry_LocalizationLegOutcomes(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	env := newAuthEnv(t)
 	st := &stubStore{searchCommunityProducts: func(context.Context, []string, string, int) ([]store.Product, error) { return nil, nil }}
 	games := &stubGames{
@@ -234,7 +143,7 @@ func TestUnitTelemetry_LocalizationLegOutcomes(t *testing.T) {
 
 	const name = "vg.enrichment.search.localization_leg"
 	for _, outcome := range []string{"merged", "empty", "error"} {
-		if got := counterSum(t, reader, name, attribute.String("outcome", outcome)); got != 1 {
+		if got := metrictest.Int64Sum(t, reader, name, attribute.String("outcome", outcome)); got != 1 {
 			t.Fatalf("localization_leg{outcome=%s} = %d, want 1", outcome, got)
 		}
 	}
@@ -246,7 +155,7 @@ func TestUnitTelemetry_LocalizationLegOutcomes(t *testing.T) {
 // the nil gamesByIDs field would panic if the code fetched anyway,
 // so this test cannot pass by accident.
 func TestUnitTelemetry_LocalizationLegMergedSkipsFetchWhenNothingMissing(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	env := newAuthEnv(t)
 	games := &stubGames{
 		searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
@@ -261,7 +170,7 @@ func TestUnitTelemetry_LocalizationLegMergedSkipsFetchWhenNothingMissing(t *test
 	if rec.Code != http.StatusOK {
 		t.Fatalf("search: %d %s", rec.Code, rec.Body.String())
 	}
-	if got := counterSum(t, reader, "vg.enrichment.search.localization_leg", attribute.String("outcome", "merged")); got != 1 {
+	if got := metrictest.Int64Sum(t, reader, "vg.enrichment.search.localization_leg", attribute.String("outcome", "merged")); got != 1 {
 		t.Fatalf("localization_leg{outcome=merged} = %d, want 1", got)
 	}
 }
@@ -269,7 +178,7 @@ func TestUnitTelemetry_LocalizationLegMergedSkipsFetchWhenNothingMissing(t *test
 // The resolve-side cached listing search feeds the auto-matcher, not
 // a user: it must never count as a search answer.
 func TestUnitTelemetry_ResolveSideListingSearchDoesNotCount(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	prices := &stubPrices{search: func(context.Context, string) ([]pricecharting.Product, error) {
 		return []pricecharting.Product{{ID: 5005, Name: "Super Mario 64", ConsoleName: "Nintendo 64"}}, nil
 	}}
@@ -279,7 +188,7 @@ func TestUnitTelemetry_ResolveSideListingSearchDoesNotCount(t *testing.T) {
 		t.Fatal("the auto-match must land, proving the listing search ran")
 	}
 
-	if got := counterSum(t, reader, "vg.enrichment.search.requests"); got != 0 {
+	if got := metrictest.Int64Sum(t, reader, "vg.enrichment.search.requests"); got != 0 {
 		t.Fatalf("resolve-side listing search counted %d search answers, want 0", got)
 	}
 }
@@ -287,7 +196,7 @@ func TestUnitTelemetry_ResolveSideListingSearchDoesNotCount(t *testing.T) {
 // autoMatchGame classifies every attempt exactly once - matched,
 // below_threshold or provider_down - with the caller's flow as source.
 func TestUnitTelemetry_MatchOutcomesBySourceAndOutcome(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	loose := int64(3500)
 	prices := &stubPrices{search: func(_ context.Context, q string) ([]pricecharting.Product, error) {
 		switch q {
@@ -318,13 +227,13 @@ func TestUnitTelemetry_MatchOutcomesBySourceAndOutcome(t *testing.T) {
 		{"rematch", "below_threshold"},
 		{"rematch", "provider_down"},
 	} {
-		got := counterSum(t, reader, name,
+		got := metrictest.Int64Sum(t, reader, name,
 			attribute.String("source", want.source), attribute.String("outcome", want.outcome))
 		if got != 1 {
 			t.Fatalf("match.outcomes{source=%s,outcome=%s} = %d, want 1", want.source, want.outcome, got)
 		}
 	}
-	if total := counterSum(t, reader, name); total != 3 {
+	if total := metrictest.Int64Sum(t, reader, name); total != 3 {
 		t.Fatalf("one outcome per attempt: total = %d, want 3", total)
 	}
 }
@@ -339,7 +248,7 @@ func TestUnitTelemetry_MatchOutcomesBySourceAndOutcome(t *testing.T) {
 // to "none" too rather than minting its own series, or an
 // authenticated user could mint unbounded label cardinality.
 func TestUnitTelemetry_MatchOutcomesCarriesRegionLabel(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	loose := int64(3500)
 	prices := &stubPrices{search: func(_ context.Context, _ string) ([]pricecharting.Product, error) {
 		return []pricecharting.Product{{ID: 9101, Name: "Regional Game", ConsoleName: "Super Famicom", LoosePriceCents: &loose}}, nil
@@ -361,16 +270,16 @@ func TestUnitTelemetry_MatchOutcomesCarriesRegionLabel(t *testing.T) {
 	}
 
 	const name = "vg.enrichment.match.outcomes"
-	if got := counterSum(t, reader, name, attribute.String("outcome", "matched"), attribute.String("region", "ntsc_j")); got != 1 {
+	if got := metrictest.Int64Sum(t, reader, name, attribute.String("outcome", "matched"), attribute.String("region", "ntsc_j")); got != 1 {
 		t.Fatalf("matched{region=ntsc_j} = %d, want 1", got)
 	}
-	if got := counterSum(t, reader, name, attribute.String("outcome", "below_threshold"), attribute.String("region", "none")); got != 2 {
+	if got := metrictest.Int64Sum(t, reader, name, attribute.String("outcome", "below_threshold"), attribute.String("region", "none")); got != 2 {
 		t.Fatalf("below_threshold{region=none} = %d, want 2 (empty region and an unrecognized one both clamp to none)", got)
 	}
-	if got := counterSum(t, reader, name, attribute.String("outcome", "below_threshold"), attribute.String("region", "korea")); got != 1 {
+	if got := metrictest.Int64Sum(t, reader, name, attribute.String("outcome", "below_threshold"), attribute.String("region", "korea")); got != 1 {
 		t.Fatalf("below_threshold{region=korea} = %d, want 1 (a graduated region is a known label, not clamped to none)", got)
 	}
-	if got := counterSum(t, reader, name, attribute.String("outcome", "below_threshold"), attribute.String("region", "moon_base_region")); got != 0 {
+	if got := metrictest.Int64Sum(t, reader, name, attribute.String("outcome", "below_threshold"), attribute.String("region", "moon_base_region")); got != 0 {
 		t.Fatalf("an unrecognized region must never mint its own label series, got %d", got)
 	}
 }
@@ -387,7 +296,7 @@ func TestUnitTelemetry_MatchOutcomesCarriesRegionLabel(t *testing.T) {
 // find, so the fallback must sit out entirely and the counter's
 // total must stay exactly 3 - not gain a fourth still_empty.
 func TestUnitTelemetry_FallbackSearchOutcomes(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	loose := int64(3500)
 	const platform = "Nintendo Entertainment System"
 	prices := &stubPrices{search: func(_ context.Context, q string) ([]pricecharting.Product, error) {
@@ -420,12 +329,12 @@ func TestUnitTelemetry_FallbackSearchOutcomes(t *testing.T) {
 
 	const name = "vg.enrichment.match.fallback_search"
 	for _, want := range []struct{ outcome string }{{"matched"}, {"still_empty"}, {"error"}} {
-		got := counterSum(t, reader, name, attribute.String("outcome", want.outcome))
+		got := metrictest.Int64Sum(t, reader, name, attribute.String("outcome", want.outcome))
 		if got != 1 {
 			t.Fatalf("fallback_search{outcome=%s} = %d, want 1", want.outcome, got)
 		}
 	}
-	if total := counterSum(t, reader, name); total != 3 {
+	if total := metrictest.Int64Sum(t, reader, name); total != 3 {
 		t.Fatalf("identical name forms must never fire the fallback: fallback_search total = %d, want 3 (unchanged)", total)
 	}
 }
@@ -434,7 +343,7 @@ func TestUnitTelemetry_FallbackSearchOutcomes(t *testing.T) {
 // fetch, write or snapshot failure counts failed - exactly one
 // outcome per processed product.
 func TestUnitTelemetry_RefreshItemsPrices(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	prods := []store.Product{
 		{ID: "p-ok", PriceCharting: &store.PCMeta{PCProductID: 1}},
 		{ID: "p-fetch-fail", PriceCharting: &store.PCMeta{PCProductID: 2}},
@@ -467,10 +376,10 @@ func TestUnitTelemetry_RefreshItemsPrices(t *testing.T) {
 	h.runRefresh(context.Background())
 
 	const name = "vg.enrichment.refresh.items"
-	if got := counterSum(t, reader, name, attribute.String("step", "prices"), attribute.String("outcome", "ok")); got != 1 {
+	if got := metrictest.Int64Sum(t, reader, name, attribute.String("step", "prices"), attribute.String("outcome", "ok")); got != 1 {
 		t.Fatalf("prices ok = %d, want 1", got)
 	}
-	if got := counterSum(t, reader, name, attribute.String("step", "prices"), attribute.String("outcome", "failed")); got != 3 {
+	if got := metrictest.Int64Sum(t, reader, name, attribute.String("step", "prices"), attribute.String("outcome", "failed")); got != 3 {
 		t.Fatalf("prices failed = %d, want 3", got)
 	}
 }
@@ -478,7 +387,7 @@ func TestUnitTelemetry_RefreshItemsPrices(t *testing.T) {
 // Reprojection items: a rebuilt projection is ok, the diff gate and
 // an unusable raw are skipped, a write fault is failed.
 func TestUnitTelemetry_RefreshItemsReprojection(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	fetchedAt := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	gameOne := igdb.Game{ID: 1, Name: "Game One", ReleaseDates: []igdb.ReleaseDate{}}
 	gameTwo := igdb.Game{ID: 2, Name: "Game Two", ReleaseDates: []igdb.ReleaseDate{}}
@@ -520,7 +429,7 @@ func TestUnitTelemetry_RefreshItemsReprojection(t *testing.T) {
 		outcome string
 		n       int64
 	}{{"ok", 1}, {"failed", 1}, {"skipped", 3}} {
-		got := counterSum(t, reader, name, attribute.String("step", "reprojection"), attribute.String("outcome", want.outcome))
+		got := metrictest.Int64Sum(t, reader, name, attribute.String("step", "reprojection"), attribute.String("outcome", want.outcome))
 		if got != want.n {
 			t.Fatalf("reprojection %s = %d, want %d", want.outcome, got, want.n)
 		}
@@ -530,7 +439,7 @@ func TestUnitTelemetry_RefreshItemsReprojection(t *testing.T) {
 // Sweep items: candidates stashed is flagged, swept clean is ok, and
 // a provider fault (either provider) or a store fault is failed.
 func TestUnitTelemetry_RefreshItemsSweep(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	comm := []store.Product{
 		{ID: "c-flagged", Type: "game", Name: "Chrono Trigger", Origin: "community"},
 		{ID: "c-clean", Type: "game", Name: "Totally Unknown Homebrew", Origin: "community"},
@@ -569,7 +478,7 @@ func TestUnitTelemetry_RefreshItemsSweep(t *testing.T) {
 		outcome string
 		n       int64
 	}{{"flagged", 1}, {"ok", 1}, {"failed", 3}} {
-		got := counterSum(t, reader, name, attribute.String("step", "sweep"), attribute.String("outcome", want.outcome))
+		got := metrictest.Int64Sum(t, reader, name, attribute.String("step", "sweep"), attribute.String("outcome", want.outcome))
 		if got != want.n {
 			t.Fatalf("sweep %s = %d, want %d", want.outcome, got, want.n)
 		}
@@ -581,7 +490,7 @@ func TestUnitTelemetry_RefreshItemsSweep(t *testing.T) {
 // counted separately from skipped so scanned can exceed their sum
 // (the posture collection's sibling counter documents).
 func TestUnitTelemetry_NormalizeCommunityRegions(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	st := &stubStore{
 		listCommunityRegionDocs: func(context.Context) ([]store.CommunityRegionRef, error) {
 			return []store.CommunityRegionRef{
@@ -624,7 +533,7 @@ func TestUnitTelemetry_NormalizeCommunityRegions(t *testing.T) {
 		outcome string
 		n       int64
 	}{{"normalized", 1}, {"skipped", 1}, {"failed", 1}} {
-		got := counterSum(t, reader, name, attribute.String("outcome", want.outcome))
+		got := metrictest.Int64Sum(t, reader, name, attribute.String("outcome", want.outcome))
 		if got != want.n {
 			t.Fatalf("%s = %d, want %d", want.outcome, got, want.n)
 		}
@@ -634,7 +543,7 @@ func TestUnitTelemetry_NormalizeCommunityRegions(t *testing.T) {
 // Each refresh step records its elapsed seconds exactly once per run,
 // into the explicit buckets (the SDK defaults top out at 10s).
 func TestUnitTelemetry_RefreshStepDurationPerStep(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	st := &stubStore{
 		listPriced:            func(context.Context) ([]store.Product, error) { return nil, nil },
 		listIGDBProducts:      func(context.Context) ([]store.Product, error) { return nil, nil },
@@ -650,7 +559,7 @@ func TestUnitTelemetry_RefreshStepDurationPerStep(t *testing.T) {
 	const name = "vg.enrichment.refresh.step_duration"
 	wantBounds := []float64{1, 5, 15, 60, 300, 900, 1800}
 	for _, step := range []string{"prices", "reprojection", "sweep"} {
-		dp := histogramPoint(t, reader, name, attribute.String("step", step))
+		dp := metrictest.Float64HistogramPoint(t, reader, name, attribute.String("step", step))
 		if dp.Count != 1 {
 			t.Fatalf("step_duration{step=%s} count = %d, want 1", step, dp.Count)
 		}
@@ -664,13 +573,13 @@ func TestUnitTelemetry_RefreshStepDurationPerStep(t *testing.T) {
 // is the refresh-happened signal for the stalled-refresh alert, so an
 // abort must not go silent.
 func TestUnitTelemetry_RefreshStepDurationRecordedOnAbort(t *testing.T) {
-	reader := newTestMeter(t)
+	reader := metrictest.Install(t)
 	st := &stubStore{listPriced: func(context.Context) ([]store.Product, error) { return nil, errors.New("mongo down") }}
 	h := newUnitHandlers(st, nil, nil, newStubCache())
 
 	h.runRefresh(context.Background())
 
-	dp := histogramPoint(t, reader, "vg.enrichment.refresh.step_duration", attribute.String("step", "prices"))
+	dp := metrictest.Float64HistogramPoint(t, reader, "vg.enrichment.refresh.step_duration", attribute.String("step", "prices"))
 	if dp.Count != 1 {
 		t.Fatalf("aborted step must still record its duration: count = %d, want 1", dp.Count)
 	}
@@ -717,7 +626,7 @@ func TestUnitTelemetry_CatalogRefreshStartedLogsTrigger(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("internal trigger: %d", rec.Code)
 	}
-	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
+	reqtest.WaitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 	logged := buf.String()
 	if !strings.Contains(logged, `"msg":"catalog refresh started"`) || !strings.Contains(logged, `"trigger":"internal"`) {
 		t.Fatalf("internal started line missing: %s", logged)
@@ -727,9 +636,81 @@ func TestUnitTelemetry_CatalogRefreshStartedLogsTrigger(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("admin trigger: %d", rec.Code)
 	}
-	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
+	reqtest.WaitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 	if !strings.Contains(buf.String(), `"trigger":"admin"`) {
 		t.Fatalf("admin started line missing: %s", buf.String())
+	}
+}
+
+// TestUnitInternalErrorLogCarriesCause pins the shared 500 helper: the
+// problem body stays the same generic detail text a caller already
+// saw pre-refactor, while the log line now carries the op and cause
+// that text never could. Before this helper, none of enrichment's 29
+// collapsed 500 sites logged anything - the cause existed nowhere
+// (see docs/runbooks/enrichment.md's 5xx triage, updated alongside
+// this). Mirrors collection's TestUnitInternalErrorLogCarriesCause.
+func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
+	env := newAuthEnv(t)
+	boom := errors.New("mongo exploded")
+	st := &stubStore{productsByIDs: func(context.Context, []string) ([]store.Product, error) {
+		return nil, boom
+	}}
+	buf := &lockedBuffer{}
+	h := New(st, nil, nil, &stubFX{}, newStubCache(), Options{
+		SearchCacheTTL: time.Hour, ProductCacheTTL: time.Minute, IGDBRefreshAfter: 720 * time.Hour,
+		Logger: slog.New(slog.NewJSONHandler(buf, nil)),
+	})
+
+	rec := serveUnit(t, h, env, http.MethodPost, "/products/prices:batch",
+		env.token(t, "u1", []string{"user"}), map[string]any{"product_ids": []string{uuid.NewString()}})
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	var p struct {
+		Code   string `json:"code"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Code != "internal" || p.Detail != "price lookup failed" {
+		t.Fatalf("problem = %+v, want code internal, detail %q", p, "price lookup failed")
+	}
+
+	logged := buf.String()
+	if !strings.Contains(logged, `"msg":"store error"`) || !strings.Contains(logged, `"level":"ERROR"`) ||
+		!strings.Contains(logged, `"op":"batch_prices"`) || !strings.Contains(logged, "mongo exploded") {
+		t.Fatalf("store error log line missing or wrong shape: %s", logged)
+	}
+}
+
+// TestUnitRequireAdmin_Guards names requireAdmin itself as the
+// mechanism, the way TestUnitInternalNormalizeCommunityRegions_Guards
+// already does for requireAdminOrService: a plain user is forbidden,
+// an admin passes. CreateCommunityProduct (POST /admin/products) is
+// the representative site; every one of the nine callers already had
+// its own per-handler RBAC test before this extraction (e.g.
+// TestUnitCreateCommunityProduct, TestRefresh_AdminRBACAndConflict),
+// so this test's job is pinning the shared gate by name, not
+// reproving RBAC per site.
+func TestUnitRequireAdmin_Guards(t *testing.T) {
+	env := newAuthEnv(t)
+	h := newUnitHandlers(&stubStore{createProduct: func(_ context.Context, p store.Product) (store.Product, error) {
+		p.ID = uuid.NewString()
+		return p, nil
+	}}, &stubGames{}, &stubPrices{}, newStubCache())
+	body := map[string]any{"type": "game", "name": "Chrono Trigger"}
+
+	user := env.token(t, "u1", []string{"user"})
+	rec := serveUnit(t, h, env, http.MethodPost, "/admin/products", user, body)
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "forbidden") {
+		t.Fatalf("non-admin: %d %s", rec.Code, rec.Body.String())
+	}
+
+	admin := env.token(t, "a1", []string{"admin"})
+	rec = serveUnit(t, h, env, http.MethodPost, "/admin/products", admin, body)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("admin: %d %s", rec.Code, rec.Body.String())
 	}
 }
 

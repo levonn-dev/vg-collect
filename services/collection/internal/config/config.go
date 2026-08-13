@@ -3,8 +3,6 @@
 package config
 
 import (
-	"errors"
-	"strings"
 	"time"
 
 	libconfig "github.com/levonn-dev/vgkeep/libs/go/config"
@@ -43,8 +41,8 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	if strings.HasPrefix(cfg.ValkeyURL, "rediss://") && cfg.ValkeyCAFile == "" {
-		return Config{}, errors.New("config: VALKEY_CA_FILE is required for a rediss:// VALKEY_URL")
+	if err := libconfig.RequireCAForRediss(cfg.ValkeyURL, cfg.ValkeyCAFile); err != nil {
+		return Config{}, err
 	}
 	return cfg, nil
 }

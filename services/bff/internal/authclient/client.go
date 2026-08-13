@@ -8,11 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/authapi"
 )
 
@@ -71,11 +70,7 @@ type Client struct {
 // New builds a Client against baseURL using an otelhttp transport and a
 // 10-second timeout.
 func New(baseURL string) (*Client, error) {
-	hc := &http.Client{
-		Timeout:   10 * time.Second,
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-	}
-	api, err := authapi.NewClientWithResponses(baseURL, authapi.WithHTTPClient(hc))
+	api, err := authapi.NewClientWithResponses(baseURL, authapi.WithHTTPClient(httpkit.NewHTTPClient()))
 	if err != nil {
 		return nil, fmt.Errorf("authclient: %w", err)
 	}
@@ -213,21 +208,11 @@ func toPair(p authapi.TokenPair) TokenPair {
 	}
 }
 
-// bearerEditor attaches the session's own access token to a self-service
-// call (link, identity, and account-deletion endpoints all act on "my
-// account" and require it).
-func bearerEditor(bearer string) authapi.RequestEditorFn {
-	return func(_ context.Context, req *http.Request) error {
-		req.Header.Set("Authorization", "Bearer "+bearer)
-		return nil
-	}
-}
-
 // LinkStart begins linking a real provider to the session's account.
 func (c *Client) LinkStart(ctx context.Context, provider, bearer string) (string, error) {
 	resp, err := c.api.OauthLinkStartWithResponse(ctx, authapi.LinkStartRequest{
 		Provider: authapi.LinkStartRequestProvider(provider),
-	}, bearerEditor(bearer))
+	}, httpkit.BearerEditor(bearer))
 	if err != nil {
 		return "", fmt.Errorf("authclient: link start: %w", err)
 	}
@@ -240,7 +225,7 @@ func (c *Client) LinkStart(ctx context.Context, provider, bearer string) (string
 // DevLink links a dev fixture identity to the session's account in one
 // hop (no external IdP round trip).
 func (c *Client) DevLink(ctx context.Context, user, bearer string) (TokenPair, error) {
-	resp, err := c.api.DevLinkWithResponse(ctx, authapi.DevLinkRequest{User: user}, bearerEditor(bearer))
+	resp, err := c.api.DevLinkWithResponse(ctx, authapi.DevLinkRequest{User: user}, httpkit.BearerEditor(bearer))
 	if err != nil {
 		return TokenPair{}, fmt.Errorf("authclient: dev link: %w", err)
 	}
@@ -263,11 +248,11 @@ func (c *Client) DevLink(ctx context.Context, user, bearer string) (TokenPair, e
 
 // ListIdentities fetches the linked logins for the account page.
 func (c *Client) ListIdentities(ctx context.Context, userID, bearer string) ([]authapi.Identity, error) {
-	uid, err := uuid.Parse(userID)
+	uid, err := parseUserID(userID)
 	if err != nil {
-		return nil, fmt.Errorf("authclient: bad user id: %w", err)
+		return nil, err
 	}
-	resp, err := c.api.ListIdentitiesWithResponse(ctx, uid, bearerEditor(bearer))
+	resp, err := c.api.ListIdentitiesWithResponse(ctx, uid, httpkit.BearerEditor(bearer))
 	if err != nil {
 		return nil, fmt.Errorf("authclient: list identities: %w", err)
 	}
@@ -280,7 +265,7 @@ func (c *Client) ListIdentities(ctx context.Context, userID, bearer string) ([]a
 // DeleteIdentity unlinks a login; sentinel errors carry the two
 // user-meaningful refusals (not found, or the account's last login).
 func (c *Client) DeleteIdentity(ctx context.Context, identityID uuid.UUID, bearer string) error {
-	resp, err := c.api.DeleteIdentityWithResponse(ctx, identityID, bearerEditor(bearer))
+	resp, err := c.api.DeleteIdentityWithResponse(ctx, identityID, httpkit.BearerEditor(bearer))
 	if err != nil {
 		return fmt.Errorf("authclient: delete identity: %w", err)
 	}
@@ -299,11 +284,11 @@ func (c *Client) DeleteIdentity(ctx context.Context, identityID uuid.UUID, beare
 // DeleteUserAuth erases the account's identities and refresh families
 // (one leg of account deletion).
 func (c *Client) DeleteUserAuth(ctx context.Context, userID, bearer string) error {
-	uid, err := uuid.Parse(userID)
+	uid, err := parseUserID(userID)
 	if err != nil {
-		return fmt.Errorf("authclient: bad user id: %w", err)
+		return err
 	}
-	resp, err := c.api.DeleteUserAuthWithResponse(ctx, uid, bearerEditor(bearer))
+	resp, err := c.api.DeleteUserAuthWithResponse(ctx, uid, httpkit.BearerEditor(bearer))
 	if err != nil {
 		return fmt.Errorf("authclient: delete user auth: %w", err)
 	}
@@ -311,4 +296,19 @@ func (c *Client) DeleteUserAuth(ctx context.Context, userID, bearer string) erro
 		return fmt.Errorf("authclient: delete user auth: status %d", resp.StatusCode())
 	}
 	return nil
+}
+
+// parseUserID converts a path-supplied user id into a uuid, wrapping a
+// parse failure into the taxonomy this package's callers already
+// expect. Duplicated in bff/internal/userclient rather than shared:
+// the two packages are the only callers, each wraps with its own
+// package prefix, and Go has no way to share an unexported helper
+// across package boundaries without a new importable package - not
+// worth it for three lines used five times total.
+func parseUserID(id string) (uuid.UUID, error) {
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return uuid.UUID{}, fmt.Errorf("authclient: bad user id: %w", err)
+	}
+	return uid, nil
 }

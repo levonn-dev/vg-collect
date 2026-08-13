@@ -4,10 +4,9 @@
 package server
 
 import (
-	"strings"
 	"time"
-	"unicode/utf8"
 
+	"github.com/levonn-dev/vgkeep/libs/go/regionkit"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
@@ -29,8 +28,8 @@ func pickReleaseDate(meta *enrichapi.IgdbMeta, region string) *time.Time {
 			// today (platformReleaseDates dedupes), but nothing here
 			// enforces that contract against a future producer emitting
 			// duplicate region rows.
-			if cur, ok := byRegion[rd.Region]; !ok || rd.Date.Before(cur) {
-				byRegion[rd.Region] = rd.Date.Time
+			if cur, ok := byRegion[string(rd.Region)]; !ok || rd.Date.Before(cur) {
+				byRegion[string(rd.Region)] = rd.Date.Time
 			}
 		}
 		for _, want := range regionChains[region] {
@@ -53,7 +52,7 @@ func pickLocalization(meta *enrichapi.IgdbMeta, region string) (name, translit, 
 	for _, l := range *meta.Localizations {
 		byRegion[l.Region] = l
 	}
-	for _, want := range localizationChains[region] {
+	for _, want := range regionkit.LocalizationChains[region] {
 		l, ok := byRegion[want]
 		if !ok {
 			continue
@@ -76,7 +75,7 @@ func pickLocalization(meta *enrichapi.IgdbMeta, region string) (name, translit, 
 // what protects a deliberate in-region manual pick (a hand-chosen JP
 // variant listing on an ntsc_j entry) from being swept away.
 func regionCorrectMember(prod *enrichapi.Product, region string) bool {
-	return prod.Pricecharting != nil && consoleRegion(prod.Pricecharting.ConsoleName) == regionClass(region)
+	return prod.Pricecharting != nil && regionkit.ConsoleRegion(prod.Pricecharting.ConsoleName) == regionkit.RegionClass(region)
 }
 
 // catalogSnapshot derives the entry snapshot from a product. The
@@ -145,32 +144,4 @@ func pickCredits(product enrichapi.Product) (developers, publishers []string) {
 		}
 	}
 	return developers, publishers
-}
-
-// normalizeCredits trims a curated credit list, drops empty elements,
-// and enforces the contract caps the generated router does not check
-// itself (maxItems 10, maxLength 120 per name). nil in, nil out; a
-// non-empty detail is the 400 text.
-func normalizeCredits(field string, names *[]string) ([]string, string) {
-	if names == nil {
-		return nil, ""
-	}
-	out := make([]string, 0, len(*names))
-	for _, n := range *names {
-		n = strings.TrimSpace(n)
-		if n == "" {
-			continue
-		}
-		if utf8.RuneCountInString(n) > 120 {
-			return nil, field + " names must be at most 120 characters"
-		}
-		out = append(out, n)
-	}
-	if len(out) > 10 {
-		return nil, field + " must list at most 10 names"
-	}
-	if len(out) == 0 {
-		return nil, ""
-	}
-	return out, ""
 }

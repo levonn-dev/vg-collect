@@ -160,9 +160,8 @@ func (h *Handlers) ListProviders(w http.ResponseWriter, r *http.Request) {
 // LinkLogin starts linking another provider as a navigation. Outcomes
 // travel as /account query params: navigations cannot render JSON.
 func (h *Handlers) LinkLogin(w http.ResponseWriter, r *http.Request, params api.LinkLoginParams) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	if params.Provider == "dev" {

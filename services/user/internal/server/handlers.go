@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 	"github.com/levonn-dev/vgkeep/services/user/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/user/internal/store"
@@ -31,9 +31,7 @@ func (h *Handlers) UpsertUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req api.UpsertUserRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // internal endpoint; cap a buggy caller
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, 64*1024, &req) { // internal endpoint; cap a buggy caller
 		return
 	}
 	if req.Email == "" || req.DisplayName == "" {
@@ -47,8 +45,7 @@ func (h *Handlers) UpsertUser(w http.ResponseWriter, r *http.Request) {
 	currency, currencySource := currencyForLocale(hint)
 	u, created, err := h.store.Upsert(r.Context(), req.Email, req.DisplayName, req.AvatarUrl, currency)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "store error", "op", "upsert", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "upsert failed")
+		h.internalError(w, r, "upsert", "upsert failed", err)
 		return
 	}
 	outcome := "existing"
@@ -80,8 +77,7 @@ func (h *Handlers) GetUser(w http.ResponseWriter, r *http.Request, userId openap
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "store error", "op", "get", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		h.internalError(w, r, "get", "get failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toAPI(u))
@@ -94,9 +90,7 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request, userId ope
 		return
 	}
 	var req api.UpdateUserRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, 64*1024, &req) {
 		return
 	}
 	if req.Handle != nil {
@@ -112,37 +106,23 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request, userId ope
 		}
 		req.Handle = &trimmed
 	}
-	var visibility *string
-	if req.ProfileVisibility != nil {
-		// The generated enum type is a plain string underneath (no
-		// UnmarshalJSON validation), and this body is hand-decoded
-		// rather than routed through the generated param binder, so an
-		// invalid value must be rejected here -- otherwise it reaches
-		// the store and only the DB CHECK constraint catches it,
-		// surfacing as a 500 instead of a 400.
-		switch *req.ProfileVisibility {
-		case api.UpdateUserRequestProfileVisibilityPrivate, api.UpdateUserRequestProfileVisibilityUnlisted, api.UpdateUserRequestProfileVisibilityListed:
-			v := string(*req.ProfileVisibility)
-			visibility = &v
-		default:
-			problem(w, r, http.StatusBadRequest, "invalid_body", "profile_visibility must be one of private, unlisted, listed")
-			return
-		}
+	visibility, ok := validEnum(w, r, req.ProfileVisibility,
+		[]api.UpdateUserRequestProfileVisibility{
+			api.UpdateUserRequestProfileVisibilityPrivate,
+			api.UpdateUserRequestProfileVisibilityUnlisted,
+			api.UpdateUserRequestProfileVisibilityListed,
+		}, "profile_visibility", "private, unlisted, listed")
+	if !ok {
+		return
 	}
-	var landingPage *string
-	if req.LandingPage != nil {
-		// Same reasoning as profile_visibility above: this body is
-		// hand-decoded, so an out-of-enum value must be rejected here
-		// or it reaches the store and only the DB CHECK catches it,
-		// surfacing as a 500 instead of a 400.
-		switch *req.LandingPage {
-		case api.UpdateUserRequestLandingPageCollection, api.UpdateUserRequestLandingPageFeed, api.UpdateUserRequestLandingPageExplore:
-			v := string(*req.LandingPage)
-			landingPage = &v
-		default:
-			problem(w, r, http.StatusBadRequest, "invalid_body", "landing_page must be one of collection, feed, explore")
-			return
-		}
+	landingPage, ok := validEnum(w, r, req.LandingPage,
+		[]api.UpdateUserRequestLandingPage{
+			api.UpdateUserRequestLandingPageCollection,
+			api.UpdateUserRequestLandingPageFeed,
+			api.UpdateUserRequestLandingPageExplore,
+		}, "landing_page", "collection, feed, explore")
+	if !ok {
+		return
 	}
 	if req.AvatarUrl != nil && *req.AvatarUrl != "" {
 		if len(*req.AvatarUrl) > maxAvatarURL {
@@ -173,8 +153,7 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request, userId ope
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "store error", "op", "update", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "update failed")
+		h.internalError(w, r, "update", "update failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toAPI(u))
@@ -191,8 +170,7 @@ func (h *Handlers) DeleteUser(w http.ResponseWriter, r *http.Request, userId ope
 	}
 	deleted, err := h.store.Delete(r.Context(), userId)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "store error", "op", "delete", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "delete failed")
+		h.internalError(w, r, "delete", "delete failed", err)
 		return
 	}
 	// noop means a retry converged on an already-deleted row.

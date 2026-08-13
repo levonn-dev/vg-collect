@@ -14,63 +14,48 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+
+	"github.com/levonn-dev/vgkeep/libs/go/metrictest"
 )
 
-// installMeterReader routes instruments created during this test into a
-// manual reader (the RP creates its histogram at construction, so the
-// reader must be installed before newRP); cleanup swaps in a fresh
-// readerless provider so tests stay isolated.
-func installMeterReader(t *testing.T) *sdkmetric.ManualReader {
-	t.Helper()
-	reader := sdkmetric.NewManualReader()
-	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
-	t.Cleanup(func() { otel.SetMeterProvider(sdkmetric.NewMeterProvider()) })
-	return reader
-}
-
 // histCounts collects the histogram and flattens its data points into
-// "provider op outcome" -> count.
+// "provider op outcome" -> count. Stays local rather than folding into
+// metrictest: no other adopter needs a fixed-attribute-triple flatten
+// into a composite string key, so generalizing it would just be
+// speculative surface on the shared package.
 func histCounts(t *testing.T, reader *sdkmetric.ManualReader) map[string]uint64 {
 	t.Helper()
-	var rm metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &rm); err != nil {
-		t.Fatalf("collect: %v", err)
-	}
 	out := map[string]uint64{}
-	for _, sm := range rm.ScopeMetrics {
-		for _, m := range sm.Metrics {
-			if m.Name != "vg.auth.provider.request.duration" {
-				continue
-			}
-			if m.Unit != "s" {
-				t.Fatalf("unit = %q, want s", m.Unit)
-			}
-			h, ok := m.Data.(metricdata.Histogram[float64])
+	m, ok := metrictest.ByName(metrictest.Collect(t, reader), "vg.auth.provider.request.duration")
+	if !ok {
+		return out
+	}
+	if m.Unit != "s" {
+		t.Fatalf("unit = %q, want s", m.Unit)
+	}
+	h, ok := m.Data.(metricdata.Histogram[float64])
+	if !ok {
+		t.Fatalf("data = %T, want Histogram[float64]", m.Data)
+	}
+	for _, dp := range h.DataPoints {
+		var parts [3]string
+		for i, key := range []attribute.Key{"provider", "op", "outcome"} {
+			v, ok := dp.Attributes.Value(key)
 			if !ok {
-				t.Fatalf("data = %T, want Histogram[float64]", m.Data)
+				t.Fatalf("data point missing %s: %v", key, dp.Attributes.Encoded(attribute.DefaultEncoder()))
 			}
-			for _, dp := range h.DataPoints {
-				var parts [3]string
-				for i, key := range []attribute.Key{"provider", "op", "outcome"} {
-					v, ok := dp.Attributes.Value(key)
-					if !ok {
-						t.Fatalf("data point missing %s: %v", key, dp.Attributes.Encoded(attribute.DefaultEncoder()))
-					}
-					parts[i] = v.AsString()
-				}
-				out[fmt.Sprintf("%s %s %s", parts[0], parts[1], parts[2])] += dp.Count
-			}
+			parts[i] = v.AsString()
 		}
+		out[fmt.Sprintf("%s %s %s", parts[0], parts[1], parts[2])] += dp.Count
 	}
 	return out
 }
 
 func TestProviderRequestHistogram_RecordsEveryHop(t *testing.T) {
-	reader := installMeterReader(t)
+	reader := metrictest.Install(t)
 	f := newFakeIDP(t)
 	p := newRP(t, f, nil)
 	f.registerCode("c1", "client-1", "n", jwt.MapClaims{"sub": "s"})
@@ -100,7 +85,7 @@ func TestProviderRequestHistogram_RecordsEveryHop(t *testing.T) {
 }
 
 func TestProviderRequestHistogram_DiscoveryError(t *testing.T) {
-	reader := installMeterReader(t)
+	reader := metrictest.Install(t)
 	f := newFakeIDP(t)
 	f.discoveryStatus = http.StatusInternalServerError
 	p := newRP(t, f, nil)
@@ -115,7 +100,7 @@ func TestProviderRequestHistogram_DiscoveryError(t *testing.T) {
 }
 
 func TestProviderRequestHistogram_TokenEndpointError(t *testing.T) {
-	reader := installMeterReader(t)
+	reader := metrictest.Install(t)
 	f := newFakeIDP(t)
 	f.tokenStatus = http.StatusTooManyRequests
 	p := newRP(t, f, nil)
@@ -133,7 +118,7 @@ func TestProviderRequestHistogram_TokenEndpointError(t *testing.T) {
 }
 
 func TestProviderRequestHistogram_JWKSError(t *testing.T) {
-	reader := installMeterReader(t)
+	reader := metrictest.Install(t)
 	f := newFakeIDP(t)
 	p := newRPRefetch(t, f, 0) // throttle disabled so the refetch runs
 	f.registerCode("c1", "client-1", "n", jwt.MapClaims{"sub": "s"})

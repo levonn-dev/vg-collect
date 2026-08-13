@@ -54,6 +54,48 @@ func (e DismissCandidateRequestProvider) Valid() bool {
 	}
 }
 
+// Defines values for PlatformRefReleaseRegions.
+const (
+	PlatformRefReleaseRegionsAsia         PlatformRefReleaseRegions = "asia"
+	PlatformRefReleaseRegionsAustralia    PlatformRefReleaseRegions = "australia"
+	PlatformRefReleaseRegionsBrazil       PlatformRefReleaseRegions = "brazil"
+	PlatformRefReleaseRegionsChina        PlatformRefReleaseRegions = "china"
+	PlatformRefReleaseRegionsEurope       PlatformRefReleaseRegions = "europe"
+	PlatformRefReleaseRegionsJapan        PlatformRefReleaseRegions = "japan"
+	PlatformRefReleaseRegionsKorea        PlatformRefReleaseRegions = "korea"
+	PlatformRefReleaseRegionsNewZealand   PlatformRefReleaseRegions = "new_zealand"
+	PlatformRefReleaseRegionsNorthAmerica PlatformRefReleaseRegions = "north_america"
+	PlatformRefReleaseRegionsWorldwide    PlatformRefReleaseRegions = "worldwide"
+)
+
+// Valid indicates whether the value is a known member of the PlatformRefReleaseRegions enum.
+func (e PlatformRefReleaseRegions) Valid() bool {
+	switch e {
+	case PlatformRefReleaseRegionsAsia:
+		return true
+	case PlatformRefReleaseRegionsAustralia:
+		return true
+	case PlatformRefReleaseRegionsBrazil:
+		return true
+	case PlatformRefReleaseRegionsChina:
+		return true
+	case PlatformRefReleaseRegionsEurope:
+		return true
+	case PlatformRefReleaseRegionsJapan:
+		return true
+	case PlatformRefReleaseRegionsKorea:
+		return true
+	case PlatformRefReleaseRegionsNewZealand:
+		return true
+	case PlatformRefReleaseRegionsNorthAmerica:
+		return true
+	case PlatformRefReleaseRegionsWorldwide:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProductOrigin.
 const (
 	ProductOriginCommunity ProductOrigin = "community"
@@ -120,6 +162,48 @@ const (
 func (e RefreshAcceptedStatus) Valid() bool {
 	switch e {
 	case Started:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReleaseDateRegion.
+const (
+	ReleaseDateRegionAsia         ReleaseDateRegion = "asia"
+	ReleaseDateRegionAustralia    ReleaseDateRegion = "australia"
+	ReleaseDateRegionBrazil       ReleaseDateRegion = "brazil"
+	ReleaseDateRegionChina        ReleaseDateRegion = "china"
+	ReleaseDateRegionEurope       ReleaseDateRegion = "europe"
+	ReleaseDateRegionJapan        ReleaseDateRegion = "japan"
+	ReleaseDateRegionKorea        ReleaseDateRegion = "korea"
+	ReleaseDateRegionNewZealand   ReleaseDateRegion = "new_zealand"
+	ReleaseDateRegionNorthAmerica ReleaseDateRegion = "north_america"
+	ReleaseDateRegionWorldwide    ReleaseDateRegion = "worldwide"
+)
+
+// Valid indicates whether the value is a known member of the ReleaseDateRegion enum.
+func (e ReleaseDateRegion) Valid() bool {
+	switch e {
+	case ReleaseDateRegionAsia:
+		return true
+	case ReleaseDateRegionAustralia:
+		return true
+	case ReleaseDateRegionBrazil:
+		return true
+	case ReleaseDateRegionChina:
+		return true
+	case ReleaseDateRegionEurope:
+		return true
+	case ReleaseDateRegionJapan:
+		return true
+	case ReleaseDateRegionKorea:
+		return true
+	case ReleaseDateRegionNewZealand:
+		return true
+	case ReleaseDateRegionNorthAmerica:
+		return true
+	case ReleaseDateRegionWorldwide:
 		return true
 	default:
 		return false
@@ -380,8 +464,11 @@ type PlatformRef struct {
 	Name    string  `json:"name"`
 
 	// ReleaseRegions Distinct canonical IGDB release regions for this game on this platform (japan, north_america, europe, ...), ordered by that region's earliest release date on the platform (dateless rows last, then alphabetical). Platform-exact: JP twin platforms are NOT folded here (a Famicom row stays on Famicom), unlike the product projection's date fold - the physical release is platform-specific. Populated on game search results only; absent on product payloads and hardware results.
-	ReleaseRegions *[]string `json:"release_regions,omitempty"`
+	ReleaseRegions *[]PlatformRefReleaseRegions `json:"release_regions,omitempty"`
 }
+
+// PlatformRefReleaseRegions defines model for PlatformRef.ReleaseRegions.
+type PlatformRefReleaseRegions string
 
 // PriceHistoryRequest defines model for PriceHistoryRequest.
 type PriceHistoryRequest struct {
@@ -534,8 +621,11 @@ type RefreshAcceptedStatus string
 // ReleaseDate defines model for ReleaseDate.
 type ReleaseDate struct {
 	Date   openapi_types.Date `json:"date"`
-	Region string             `json:"region"`
+	Region ReleaseDateRegion  `json:"region"`
 }
+
+// ReleaseDateRegion defines model for ReleaseDate.Region.
+type ReleaseDateRegion string
 
 // ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so edition/variant on a game resolve are ignored (entry-level facts, like pc_listing); region is a matching input only (see the region property) and never joins identity. Without pc_product_id the resolve auto-matches by the game name (region-steered) through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
 type ResolveRequest struct {

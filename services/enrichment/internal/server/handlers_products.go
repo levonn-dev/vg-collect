@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/match"
@@ -43,7 +43,7 @@ func (h *Handlers) GetProduct(w http.ResponseWriter, r *http.Request, productId 
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		h.internalError(w, r, "product_lookup", "get failed", err)
 		return
 	}
 	p = h.refreshIGDBIfStale(ctx, p)
@@ -83,7 +83,7 @@ func (h *Handlers) refreshIGDBIfStale(ctx context.Context, p store.Product) stor
 func (h *Handlers) writeProduct(ctx context.Context, w http.ResponseWriter, r *http.Request, p store.Product) {
 	body, err := json.Marshal(toAPIProduct(p))
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "encoding failed")
+		h.internalError(w, r, "product_encode", "encoding failed", err)
 		return
 	}
 	if err := h.cache.PutProduct(ctx, p.ID, body, h.productTTL); err != nil {
@@ -179,7 +179,7 @@ func toAPIProduct(p store.Product) api.Product {
 		if len(p.IGDB.ReleaseDates) > 0 {
 			rds := make([]api.ReleaseDate, 0, len(p.IGDB.ReleaseDates))
 			for _, rd := range p.IGDB.ReleaseDates {
-				rds = append(rds, api.ReleaseDate{Region: rd.Region, Date: openapi_types.Date{Time: rd.Date}})
+				rds = append(rds, api.ReleaseDate{Region: api.ReleaseDateRegion(rd.Region), Date: openapi_types.Date{Time: rd.Date}})
 			}
 			m.ReleaseDates = &rds
 		}
@@ -251,9 +251,7 @@ func quoteOf(p pricecharting.Product) store.PriceQuote {
 func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req api.ResolveRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, 16*1024, &req) {
 		return
 	}
 	typ := string(req.Type)
@@ -289,7 +287,7 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !errors.Is(err, store.ErrNotFound) {
-		problem(w, r, http.StatusInternalServerError, "internal", "lookup failed")
+		h.internalError(w, r, "resolve_lookup", "lookup failed", err)
 		return
 	}
 	p, err := h.buildHardwareProduct(ctx, typ, key)
@@ -323,7 +321,7 @@ func (h *Handlers) resolveGame(w http.ResponseWriter, r *http.Request, req api.R
 			return
 		}
 		if !errors.Is(err, store.ErrNotFound) {
-			problem(w, r, http.StatusInternalServerError, "internal", "lookup failed")
+			h.internalError(w, r, "resolve_game_lookup", "lookup failed", err)
 			return
 		}
 		p, berr := h.buildGameProduct(ctx, key)
@@ -358,7 +356,7 @@ func (h *Handlers) resolveGame(w http.ResponseWriter, r *http.Request, req api.R
 		return
 	}
 	if !errors.Is(ferr, store.ErrNotFound) {
-		problem(w, r, http.StatusInternalServerError, "internal", "lookup failed")
+		h.internalError(w, r, "resolve_game_lookup", "lookup failed", ferr)
 		return
 	}
 	platform.LogoURL = h.platformLogoFor(ctx, platform.IGDBID)
@@ -392,7 +390,7 @@ func (h *Handlers) resolveError(w http.ResponseWriter, r *http.Request, err erro
 		problem(w, r, re.status, re.code, re.detail)
 		return
 	}
-	problem(w, r, http.StatusInternalServerError, "internal", "resolve failed")
+	h.internalError(w, r, "resolve", "resolve failed", err)
 }
 
 func (h *Handlers) buildGameProduct(ctx context.Context, key store.ProductKey) (store.Product, error) {
@@ -562,7 +560,7 @@ func (h *Handlers) createAndServe(ctx context.Context, w http.ResponseWriter, r 
 	p.ID = uuid.NewString()
 	created, err := h.store.CreateProduct(ctx, p)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "create failed")
+		h.internalError(w, r, "product_create", "create failed", err)
 		return
 	}
 	if created.PriceCharting != nil && created.ID == p.ID {
@@ -640,15 +638,11 @@ func withHolder(ctx context.Context, st Store, detail string, key store.ProductK
 // against the provider, fetch prices, snapshot, mark verified.
 func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
 	ctx := r.Context()
-	claims, _ := jwtauth.FromContext(ctx)
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	if !h.requireAdmin(w, r) {
 		return
 	}
 	var req api.MappingRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, 16*1024, &req) {
 		return
 	}
 	id := productId.String()
@@ -657,7 +651,7 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 		problem(w, r, http.StatusNotFound, "product_not_found", "no such product")
 		return
 	} else if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+		h.internalError(w, r, "product_mapping_get", "get failed", err)
 		return
 	}
 	if prod.Origin == "community" {
@@ -672,7 +666,7 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 				withHolder(ctx, h.store, "clearing would collide with an existing unmatched product of the same identity", identityKey(prod, 0)))
 			return
 		} else if err != nil {
-			problem(w, r, http.StatusInternalServerError, "internal", "mapping clear failed")
+			h.internalError(w, r, "product_mapping_clear", "mapping clear failed", err)
 			return
 		}
 	} else {
@@ -697,7 +691,7 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 				withHolder(ctx, h.store, "another product with the same identity already carries that listing", identityKey(prod, pc.ID)))
 			return
 		} else if err != nil {
-			problem(w, r, http.StatusInternalServerError, "internal", "mapping update failed")
+			h.internalError(w, r, "product_mapping_update", "mapping update failed", err)
 			return
 		}
 		// A moderated correction is a fresh price point.
@@ -715,7 +709,7 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 	}
 	p, err := h.store.GetProduct(ctx, id)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "reload failed")
+		h.internalError(w, r, "product_mapping_reload", "reload failed", err)
 		return
 	}
 	h.writeProduct(ctx, w, r, p)
@@ -728,15 +722,13 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 // because entries are invisible from here.
 func (h *Handlers) DeleteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
 	ctx := r.Context()
-	claims, _ := jwtauth.FromContext(ctx)
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	if !h.requireAdmin(w, r) {
 		return
 	}
 	id := productId.String()
 	deleted, err := h.store.DeleteUnmatchedProduct(ctx, id)
 	if err != nil && !deleted {
-		problem(w, r, http.StatusInternalServerError, "internal", "delete failed")
+		h.internalError(w, r, "product_delete", "delete failed", err)
 		return
 	}
 	if err != nil {
@@ -749,7 +741,7 @@ func (h *Handlers) DeleteProduct(w http.ResponseWriter, r *http.Request, product
 			problem(w, r, http.StatusNotFound, "product_not_found", "no such product")
 			return
 		} else if gerr != nil {
-			problem(w, r, http.StatusInternalServerError, "internal", "get failed")
+			h.internalError(w, r, "product_delete_get", "get failed", gerr)
 			return
 		}
 		problem(w, r, http.StatusConflict, "product_matched", "the product carries a mapping - clear it first")

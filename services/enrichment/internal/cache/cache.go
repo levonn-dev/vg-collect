@@ -11,11 +11,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 )
 
 // Cache wraps the service's Valkey client.
@@ -39,42 +40,24 @@ func searchKey(kind, q string) string {
 
 func productKey(id string) string { return "product:v1:" + id }
 
-func (c *Cache) get(ctx context.Context, key, op string) ([]byte, error) {
-	v, err := c.rdb.Get(ctx, key).Result()
-	if errors.Is(err, redis.Nil) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("cache: %s: %w", op, err)
-	}
-	// Copied out of the client's reply string so callers own the bytes.
-	return []byte(v), nil
-}
-
 // GetSearch returns the cached response body for a query, or nil.
 func (c *Cache) GetSearch(ctx context.Context, kind, q string) ([]byte, error) {
-	return c.get(ctx, searchKey(kind, q), "get search")
+	return valkeykit.GetBytes(ctx, c.rdb, searchKey(kind, q), "cache: get search")
 }
 
 // PutSearch caches a search response body.
 func (c *Cache) PutSearch(ctx context.Context, kind, q string, body []byte, ttl time.Duration) error {
-	if err := c.rdb.Set(ctx, searchKey(kind, q), body, ttl).Err(); err != nil {
-		return fmt.Errorf("cache: put search: %w", err)
-	}
-	return nil
+	return valkeykit.PutBytes(ctx, c.rdb, searchKey(kind, q), body, ttl, "cache: put search")
 }
 
 // GetProduct returns the cached product body, or nil.
 func (c *Cache) GetProduct(ctx context.Context, id string) ([]byte, error) {
-	return c.get(ctx, productKey(id), "get product")
+	return valkeykit.GetBytes(ctx, c.rdb, productKey(id), "cache: get product")
 }
 
 // PutProduct caches a product body.
 func (c *Cache) PutProduct(ctx context.Context, id string, body []byte, ttl time.Duration) error {
-	if err := c.rdb.Set(ctx, productKey(id), body, ttl).Err(); err != nil {
-		return fmt.Errorf("cache: put product: %w", err)
-	}
-	return nil
+	return valkeykit.PutBytes(ctx, c.rdb, productKey(id), body, ttl, "cache: put product")
 }
 
 // InvalidateProduct drops a product's cache entry (admin mapping
@@ -92,13 +75,10 @@ const platformsKey = "platforms:v1"
 
 // GetPlatforms returns the cached platform-catalog body, or nil.
 func (c *Cache) GetPlatforms(ctx context.Context) ([]byte, error) {
-	return c.get(ctx, platformsKey, "get platforms")
+	return valkeykit.GetBytes(ctx, c.rdb, platformsKey, "cache: get platforms")
 }
 
 // PutPlatforms caches the platform-catalog body.
 func (c *Cache) PutPlatforms(ctx context.Context, body []byte, ttl time.Duration) error {
-	if err := c.rdb.Set(ctx, platformsKey, body, ttl).Err(); err != nil {
-		return fmt.Errorf("cache: put platforms: %w", err)
-	}
-	return nil
+	return valkeykit.PutBytes(ctx, c.rdb, platformsKey, body, ttl, "cache: put platforms")
 }

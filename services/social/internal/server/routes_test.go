@@ -1,58 +1,38 @@
 package server_test
 
 import (
-	"bytes"
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/libs/go/jwtauthtest"
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/social/internal/server"
 )
 
 // authEnv is an in-process token mint + JWKS: real Ed25519 signatures
-// through the real jwtauth middleware, no auth service needed.
+// through the real jwtauth middleware, no auth service needed. The
+// nil-roles-means-"user" default in token is local policy - most
+// callers here want a plain user token and pass no roles at all -
+// jwtauthtest.Env.Token itself leaves roles exactly as passed.
 type authEnv struct {
 	v   *jwtauth.Validator
-	key ed25519.PrivateKey
-	kid string
+	env *jwtauthtest.Env
 }
 
 func newAuthEnv(t *testing.T) authEnv {
 	t.Helper()
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	const kid = "test-key"
-	jwks := fmt.Sprintf(`{"keys":[{"kty":"OKP","crv":"Ed25519","kid":%q,"x":%q}]}`,
-		kid, base64.RawURLEncoding.EncodeToString(pub))
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(jwks))
-	}))
-	t.Cleanup(srv.Close)
-	return authEnv{
-		v:   jwtauth.NewValidatorWithRefetchInterval(srv.URL, "vgkeep-auth", "vgkeep", 0),
-		key: priv,
-		kid: kid,
-	}
+	env := jwtauthtest.NewEnv(t)
+	return authEnv{v: env.Validator, env: env}
 }
 
 // token mints a valid access token for sub (a user uuid string).
@@ -61,17 +41,7 @@ func (a authEnv) token(t *testing.T, sub string, roles ...string) string {
 	if roles == nil {
 		roles = []string{"user"}
 	}
-	tok := jwt.NewWithClaims(jwt.SigningMethodEdDSA, jwt.MapClaims{
-		"sub": sub, "iss": "vgkeep-auth", "aud": "vgkeep",
-		"jti": uuid.NewString(), "exp": time.Now().Add(5 * time.Minute).Unix(),
-		"roles": roles,
-	})
-	tok.Header["kid"] = a.kid
-	s, err := tok.SignedString(a.key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return s
+	return a.env.Token(t, sub, roles...)
 }
 
 // testLogger discards output: the valid-token route loop in
@@ -98,24 +68,7 @@ func newUnitServer(t *testing.T, st server.Store, col server.Collection, users s
 // response. body is JSON-encoded when non-nil.
 func do(t *testing.T, method, url, bearer string, body any) *http.Response {
 	t.Helper()
-	var r io.Reader
-	if body != nil {
-		buf := &bytes.Buffer{}
-		if err := json.NewEncoder(buf).Encode(body); err != nil {
-			t.Fatal(err)
-		}
-		r = buf
-	}
-	req, err := http.NewRequest(method, url, r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bearer != "" {
-		req.Header.Set("Authorization", "Bearer "+bearer)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
+	req := reqtest.NewJSONRequest(t, method, url, bearer, body)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -127,21 +80,7 @@ func do(t *testing.T, method, url, bearer string, body any) *http.Response {
 // wantProblem asserts a problem+json answer with the given code.
 func wantProblem(t *testing.T, resp *http.Response, status int, code string) {
 	t.Helper()
-	if resp.StatusCode != status {
-		t.Fatalf("status: got %d, want %d", resp.StatusCode, status)
-	}
-	if ct := resp.Header.Get("Content-Type"); ct != "application/problem+json" {
-		t.Fatalf("content type: %q", ct)
-	}
-	var p struct {
-		Code string `json:"code"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
-		t.Fatal(err)
-	}
-	if p.Code != code {
-		t.Fatalf("code: got %q, want %q", p.Code, code)
-	}
+	reqtest.AssertProblem(t, resp, status, code)
 }
 
 func TestUnitHealthEndpointsAreOpen(t *testing.T) {

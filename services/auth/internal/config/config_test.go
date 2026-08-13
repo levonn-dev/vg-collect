@@ -52,29 +52,15 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestLoad_MissingRequired(t *testing.T) {
-	prev := map[string]string{}
+	// caarlos0/env "required" only fires when the var is absent, not when
+	// set to empty. t.Setenv registers cleanup before os.Unsetenv so the
+	// env is restored correctly at test end.
 	for _, k := range required {
-		if v, ok := os.LookupEnv(k); ok {
-			prev[k] = v
-		}
+		t.Setenv(k, "")
 		if err := os.Unsetenv(k); err != nil {
 			t.Fatalf("unsetenv %s: %v", k, err)
 		}
 	}
-	t.Cleanup(func() {
-		for _, k := range required {
-			if v, ok := prev[k]; ok {
-				if err := os.Setenv(k, v); err != nil {
-					t.Errorf("restore setenv %s: %v", k, err)
-				}
-			} else {
-				if err := os.Unsetenv(k); err != nil {
-					t.Errorf("restore unsetenv %s: %v", k, err)
-				}
-			}
-		}
-	})
-
 	if _, err := config.Load(); err == nil {
 		t.Fatal("want error when required variables are unset")
 	}

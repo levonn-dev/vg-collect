@@ -14,7 +14,6 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
@@ -22,9 +21,8 @@ import (
 // briefly cached (the bff caches only what it composes; pass-throughs
 // stay uncached).
 func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
-	sess, claims, ok := session.FromContext(r.Context())
+	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	if body, err := h.cache.GetMe(r.Context(), claims.Sub); err != nil {
@@ -70,9 +68,8 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 // UpdateMe forwards a profile edit and drops the cached projection so
 // the app bar updates on the next fetch, not at TTL.
 func (h *Handlers) UpdateMe(w http.ResponseWriter, r *http.Request) {
-	sess, claims, ok := session.FromContext(r.Context())
+	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	body, ok := readCapped(w, r)
@@ -109,9 +106,8 @@ func (h *Handlers) UpdateMe(w http.ResponseWriter, r *http.Request) {
 // GetMyIdentities lists the session account's linked logins. Uncached:
 // it changes exactly when the user links or unlinks.
 func (h *Handlers) GetMyIdentities(w http.ResponseWriter, r *http.Request) {
-	sess, claims, ok := session.FromContext(r.Context())
+	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	ids, err := h.auth.ListIdentities(r.Context(), claims.Sub, sess.AccessToken)
@@ -129,9 +125,8 @@ func (h *Handlers) GetMyIdentities(w http.ResponseWriter, r *http.Request) {
 // DeleteMyIdentity unlinks one login, relaying the auth service's two
 // user-meaningful refusals.
 func (h *Handlers) DeleteMyIdentity(w http.ResponseWriter, r *http.Request, identityId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	err := h.auth.DeleteIdentity(r.Context(), identityId, sess.AccessToken)
@@ -153,9 +148,8 @@ func (h *Handlers) DeleteMyIdentity(w http.ResponseWriter, r *http.Request, iden
 // leaves a login-able account that can retry, and the email fallback
 // re-attaches an abandoned partial.
 func (h *Handlers) DeleteMe(w http.ResponseWriter, r *http.Request) {
-	sess, claims, ok := session.FromContext(r.Context())
+	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.collection.PurgeUserData(r.Context(), sess.AccessToken)

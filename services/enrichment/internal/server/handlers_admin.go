@@ -12,7 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/regionkit"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/match"
@@ -25,9 +26,7 @@ const refreshBudget = 30 * time.Minute
 
 // TriggerRefresh is the admin's immediate-refresh trigger.
 func (h *Handlers) TriggerRefresh(w http.ResponseWriter, r *http.Request) {
-	claims, _ := jwtauth.FromContext(r.Context())
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	if !h.requireAdmin(w, r) {
 		return
 	}
 	h.startRefresh(w, r, "admin")
@@ -45,42 +44,38 @@ func (h *Handlers) InternalRefresh(w http.ResponseWriter, r *http.Request) {
 	h.startRefresh(w, r, "internal")
 }
 
-// startRefresh answers 202 and detaches the catalog refresh: at
-// polite provider rates a real catalog outlives the server's write
-// timeout, so the summary goes to the log, not the response. One
-// refresh at a time.
+// startRefresh answers 202 and detaches the catalog refresh via
+// httpkit.TriggerDetached: at polite provider rates a real catalog
+// outlives the server's write timeout, so the summary goes to the
+// log, not the response. One refresh at a time (409
+// refresh_in_progress on conflict).
 func (h *Handlers) startRefresh(w http.ResponseWriter, r *http.Request, trigger string) {
-	if !h.refreshing.CompareAndSwap(false, true) {
-		problem(w, r, http.StatusConflict, "refresh_in_progress", "a catalog refresh is already running")
+	started := httpkit.TriggerDetached(w, r, httpkit.TriggerDetachedOptions{
+		Guard:          &h.refreshing,
+		ConflictCode:   "refresh_in_progress",
+		ConflictDetail: "a catalog refresh is already running",
+		Started: func() {
+			// The started line pairs with the per-step finished
+			// summaries: a start with no finishes inside the budget
+			// marks a hung refresh.
+			h.logger.InfoContext(r.Context(), "catalog refresh started", "trigger", trigger)
+		},
+		Budget:   refreshBudget,
+		Logger:   h.logger,
+		PanicMsg: "catalog refresh panicked",
+		Run: func(ctx context.Context) {
+			h.runRefresh(ctx)
+			// Every igdb-bearing product's projection is rebuilt from its
+			// raw payload on what remains of the budget; only changed
+			// projections are written, so steady state costs no provider
+			// calls and any future projection-logic change self-deploys.
+			h.runReprojection(ctx)
+			h.runCandidateSweep(ctx)
+		},
+	})
+	if !started {
 		return
 	}
-	// The started line pairs with the per-step finished summaries: a
-	// start with no finishes inside the budget marks a hung refresh.
-	h.logger.InfoContext(r.Context(), "catalog refresh started", "trigger", trigger)
-	go func() { //nolint:gosec // G118: the refresh run deliberately outlives the trigger request (202 + detach)
-		defer h.refreshing.Store(false)
-		// Detached from the request context: the trigger returns at 202.
-		ctx, cancel := context.WithTimeout(context.Background(), refreshBudget)
-		defer cancel()
-		// Registered last so it unwinds first: a panic in the refresh
-		// run (a malformed doc, a nil field breaking an assumed
-		// contract) is contained here instead of killing the process.
-		// The guard reset and context cancel above still run afterward
-		// as usual. The CronJob retries daily, so an uncontained panic
-		// on a persistently bad doc would otherwise crash-loop.
-		defer func() {
-			if v := recover(); v != nil {
-				h.logger.ErrorContext(ctx, "catalog refresh panicked", "panic", v)
-			}
-		}()
-		h.runRefresh(ctx)
-		// Every igdb-bearing product's projection is rebuilt from its
-		// raw payload on what remains of the budget; only changed
-		// projections are written, so steady state costs no provider
-		// calls and any future projection-logic change self-deploys.
-		h.runReprojection(ctx)
-		h.runCandidateSweep(ctx)
-	}()
 	writeJSON(w, http.StatusAccepted, api.RefreshAccepted{Status: "started"})
 }
 
@@ -365,10 +360,11 @@ func (h *Handlers) runCandidateSweep(ctx context.Context) {
 
 // InternalNormalizeCommunityRegions promotes free-text community
 // product regions into the known set: every community product whose
-// curated community.region sits outside knownRegions is folded
-// (lowercase, trimmed) against the known values and regionSynonyms -
-// exact-or-synonym, never fuzzy, so an unreviewed string is left as
-// typed rather than misfiled. This is enrichment's twin of
+// curated community.region sits outside regionkit.KnownRegions is
+// folded (lowercase, trimmed) against the known values and
+// regionkit.RegionSynonyms - exact-or-synonym, never fuzzy, so an
+// unreviewed string is left as typed rather than misfiled. This is
+// enrichment's twin of
 // collection's normalize-regions lever, scoped to the community
 // products this service owns, but with no fetch arm: a community
 // product carries no provider identity to re-fetch and no release-
@@ -404,10 +400,10 @@ func (h *Handlers) InternalNormalizeCommunityRegions(w http.ResponseWriter, r *h
 	ctx := r.Context()
 	refs, err := h.store.ListCommunityRegionDocs(ctx)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		h.internalError(w, r, "normalize_regions_list", "list failed", err)
 		return
 	}
-	folds := regionFoldMap()
+	folds := regionkit.RegionFoldMap()
 	norm := func(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
 	var normalized, skipped int
 	for _, ref := range refs {

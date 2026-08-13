@@ -5,8 +5,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -18,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/enrichmentclient"
@@ -233,8 +232,8 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 		opts.Logger = slog.Default()
 	}
 	meter := otel.Meter("github.com/levonn-dev/vgkeep/services/bff")
-	counter := func(name, unit, desc string) metric.Int64Counter {
-		c, err := meter.Int64Counter(name, metric.WithUnit(unit), metric.WithDescription(desc))
+	counter := func(name, description, unit string) metric.Int64Counter {
+		c, err := vgotel.Counter(meter, name, description, unit)
 		if err != nil {
 			// A telemetry hiccup must not stop logins; every emit
 			// helper guards the nil.
@@ -242,14 +241,14 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 		}
 		return c
 	}
-	failOpen := counter("vg.bff.cache.fail_open", "",
-		"Valkey operations that failed and were failed open")
-	logins := counter("vg.bff.auth.logins", "{login}",
-		"Completed login and account-link attempts by flow and outcome")
-	refreshes := counter("vg.bff.session.refreshes", "{refresh}",
-		"Session refresh attempts by terminal outcome")
-	cacheLookups := counter("vg.bff.cache.lookups", "{lookup}",
-		"Composition cache lookups (me, recs) by hit or miss")
+	failOpen := counter("vg.bff.cache.fail_open",
+		"Valkey operations that failed and were failed open", "")
+	logins := counter("vg.bff.auth.logins",
+		"Completed login and account-link attempts by flow and outcome", "{login}")
+	refreshes := counter("vg.bff.session.refreshes",
+		"Session refresh attempts by terminal outcome", "{refresh}")
+	cacheLookups := counter("vg.bff.cache.lookups",
+		"Composition cache lookups (me, recs) by hit or miss", "{lookup}")
 	return &Handlers{
 		codec: codec, cache: cache, auth: auth, users: users, enrichment: enrichment, collection: collection, social: social,
 		logger:        opts.Logger,
@@ -279,9 +278,7 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 // fail open on (log + metric; alerting watches the metric).
 func (h *Handlers) failOpenEvent(ctx context.Context, op string, err error) {
 	h.logger.ErrorContext(ctx, "dependency unavailable; failing open", "op", op, "err", err)
-	if h.failOpen != nil {
-		h.failOpen.Add(ctx, 1, metric.WithAttributes(attribute.String("op", op)))
-	}
+	vgotel.Count(ctx, h.failOpen, attribute.String("op", op))
 }
 
 // loginEvent counts one completed login or account-link attempt
@@ -289,28 +286,20 @@ func (h *Handlers) failOpenEvent(ctx context.Context, op string, err error) {
 // to an identity provider are not counted: that attempt completes at
 // the callback.
 func (h *Handlers) loginEvent(ctx context.Context, flow, outcome string) {
-	if h.logins != nil {
-		h.logins.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("flow", flow), attribute.String("outcome", outcome)))
-	}
+	vgotel.Count(ctx, h.logins, attribute.String("flow", flow), attribute.String("outcome", outcome))
 }
 
 // refreshEvent counts one session refresh attempt reaching a terminal
 // outcome (vocabulary in the bff runbook).
 func (h *Handlers) refreshEvent(ctx context.Context, outcome string) {
-	if h.refreshes != nil {
-		h.refreshes.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
-	}
+	vgotel.Count(ctx, h.refreshes, attribute.String("outcome", outcome))
 }
 
 // cacheLookupEvent counts a composition-cache lookup (cache: me|recs).
 // A Valkey read error counts as miss (the composition runs); the
 // caller fires failOpenEvent for the error itself.
 func (h *Handlers) cacheLookupEvent(ctx context.Context, cache, outcome string) {
-	if h.cacheLookups != nil {
-		h.cacheLookups.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("cache", cache), attribute.String("outcome", outcome)))
-	}
+	vgotel.Count(ctx, h.cacheLookups, attribute.String("cache", cache), attribute.String("outcome", outcome))
 }
 
 func writeProblem(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
@@ -328,6 +317,22 @@ func (h *Handlers) clearAndUnauthorized(w http.ResponseWriter, r *http.Request) 
 	h.unauthorized(w, r)
 }
 
+// requireSession is the entry guard every session-gated handler runs
+// first: it wraps session.FromContext and, on a miss, writes the 401
+// itself so every call site collapses to a single ok check instead of
+// repeating the unauthorized call. Mid-handler re-checks (an account
+// that vanished after the prologue already passed, a cookie that needs
+// clearing) call h.unauthorized or h.clearAndUnauthorized directly -
+// requireSession is only for the handler's own opening guard.
+func (h *Handlers) requireSession(w http.ResponseWriter, r *http.Request) (session.Session, session.Claims, bool) {
+	sess, claims, ok := session.FromContext(r.Context())
+	if !ok {
+		h.unauthorized(w, r)
+		return session.Session{}, session.Claims{}, false
+	}
+	return sess, claims, true
+}
+
 // writeRelay serves an upstream answer verbatim (pass-throughs are
 // never cached at the bff: one staleness authority per data type).
 func writeRelay(w http.ResponseWriter, status int, contentType string, body []byte) {
@@ -342,13 +347,7 @@ func writeRelay(w http.ResponseWriter, status int, contentType string, body []by
 // readCapped reads a pass-through body under the standard cap; a
 // false return means the 400 was already written.
 func readCapped(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
-	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadRequest, "invalid_body", "unreadable body")
-		return nil, false
-	}
-	return body, true
+	return httpkit.ReadCapped(w, r, 64*1024)
 }
 
 // relayCollection funnels every collection pass-through: session
@@ -362,15 +361,30 @@ func (h *Handlers) relayCollection(w http.ResponseWriter, r *http.Request, res c
 	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+// relayEnrichment funnels every enrichment pass-through: session check
+// happened at the caller; any client error is an infrastructure fault
+// answered 502 (relayCollection's twin for the enrichment service).
+func (h *Handlers) relayEnrichment(w http.ResponseWriter, r *http.Request, res enrichmentclient.Result, err error) {
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
 
-func writeRawJSON(w http.ResponseWriter, body []byte) {
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(body)
+// relayUser funnels every user-service pass-through: session check
+// happened at the caller; any client error is an infrastructure fault
+// answered 502 (relayCollection's twin for the user service).
+func (h *Handlers) relayUser(w http.ResponseWriter, r *http.Request, res userclient.Result, err error) {
+	if err != nil {
+		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "user service unavailable")
+		return
+	}
+	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
+
+func writeJSON(w http.ResponseWriter, status int, v any) { httpkit.WriteJSON(w, status, v) }
+
+func writeRawJSON(w http.ResponseWriter, body []byte) { httpkit.WriteRawJSON(w, http.StatusOK, body) }
 
 var _ api.ServerInterface = (*Handlers)(nil)

@@ -20,33 +20,15 @@ func TestLoad(t *testing.T) {
 }
 
 func TestLoad_MissingRequired(t *testing.T) {
-	// caarlos0/env v11 `required` only fails when the variable is **unset**
-	// (os.LookupEnv returns exists=false). Setting it to "" passes required
-	// validation. We therefore unset the variables and restore via t.Cleanup
-	// to guarantee hermeticity regardless of the caller's environment.
-	prev := map[string]string{}
+	// caarlos0/env "required" only fires when the var is absent, not when
+	// set to empty. t.Setenv registers cleanup before os.Unsetenv so the
+	// env is restored correctly at test end.
 	for _, k := range []string{"DATABASE_URL", "JWKS_URL"} {
-		if v, ok := os.LookupEnv(k); ok {
-			prev[k] = v
-		}
+		t.Setenv(k, "")
 		if err := os.Unsetenv(k); err != nil {
 			t.Fatalf("unsetenv %s: %v", k, err)
 		}
 	}
-	t.Cleanup(func() {
-		for _, k := range []string{"DATABASE_URL", "JWKS_URL"} {
-			if v, ok := prev[k]; ok {
-				if err := os.Setenv(k, v); err != nil {
-					t.Errorf("restore setenv %s: %v", k, err)
-				}
-			} else {
-				if err := os.Unsetenv(k); err != nil {
-					t.Errorf("restore unsetenv %s: %v", k, err)
-				}
-			}
-		}
-	})
-
 	if _, err := config.Load(); err == nil {
 		t.Fatal("want error without DATABASE_URL/JWKS_URL")
 	}

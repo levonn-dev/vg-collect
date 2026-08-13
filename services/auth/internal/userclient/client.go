@@ -7,11 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/gen/userapi"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/token"
 )
@@ -32,10 +31,7 @@ type Client struct {
 // New builds a client against baseURL. A fresh service token is minted
 // per request: signing is cheap and this avoids expiry bookkeeping.
 func New(baseURL string, minter *token.Minter) (*Client, error) {
-	hc := &http.Client{
-		Timeout:   10 * time.Second,
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-	}
+	hc := httpkit.NewHTTPClient()
 	api, err := userapi.NewClientWithResponses(baseURL,
 		userapi.WithHTTPClient(hc),
 		userapi.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {

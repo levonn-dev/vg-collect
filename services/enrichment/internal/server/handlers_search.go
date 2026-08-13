@@ -111,7 +111,7 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 		h.logger.WarnContext(ctx, "search provider unavailable; serving local catalog match", "kind", kind, "err", perr)
 		local, err := h.store.SearchByName(ctx, q, searchLimit)
 		if err != nil {
-			problem(w, r, http.StatusInternalServerError, "internal", "search failed")
+			h.internalError(w, r, "search_local_fallback", "search failed", err)
 			return
 		}
 		results = localResults(kind, local)
@@ -126,7 +126,7 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 	out = api.SearchResults{Degraded: degraded, Results: results}
 	body, err := json.Marshal(out)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "encoding failed")
+		h.internalError(w, r, "search_encode", "encoding failed", err)
 		return
 	}
 	// Degraded answers are never cached: the next request should try
@@ -456,8 +456,15 @@ func gameResult(g igdb.Game) api.SearchResult {
 		prs := make([]api.PlatformRef, 0, len(g.Platforms))
 		for _, p := range g.Platforms {
 			pr := api.PlatformRef{IgdbPlatformId: p.ID, Name: p.Name}
+			// platformReleaseRegions stays plain []string (a pure, wire-type-free
+			// helper covered by its own unit test below); the wire enum
+			// conversion happens only here, at the api.PlatformRef boundary.
 			if regions := platformReleaseRegions(g, p.ID); len(regions) > 0 {
-				pr.ReleaseRegions = &regions
+				wire := make([]api.PlatformRefReleaseRegions, len(regions))
+				for i, r := range regions {
+					wire[i] = api.PlatformRefReleaseRegions(r)
+				}
+				pr.ReleaseRegions = &wire
 			}
 			prs = append(prs, pr)
 		}

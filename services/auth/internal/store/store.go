@@ -41,6 +41,30 @@ type Store struct{ pool *pgxpool.Pool }
 
 func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
+// scanAll drains rows into a slice, closing them once done. Both call
+// sites in this package start from a nil slice and return rows.Err()
+// raw, so scanAll bakes that convention in. DeleteIdentity's own loop
+// is a clean unconditional append, but the scanned slice only feeds a
+// membership/last-identity check after the loop closes rather than
+// being the function's return value, so pulling just the loop out
+// saves little; Rotate's loop conditionally appends (only jtis newer
+// than a cutoff) into a field on a struct captured from the enclosing
+// function, not scanAll's unconditional one-append-per-row shape.
+// Both stay idiomatic inline loops. scan keeps its own error-wrap
+// text.
+func scanAll[T any](rows pgx.Rows, scan func(pgx.Rows) (T, error)) ([]T, error) {
+	defer rows.Close()
+	var out []T
+	for rows.Next() {
+		x, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}
+
 // RegisterSigningKey records a verification key for the JWKS. Kids are
 // derived deterministically from the key, so re-registration on every
 // boot is a no-op.
@@ -70,16 +94,13 @@ func (s *Store) ActiveSigningKeys(ctx context.Context) ([]SigningKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: signing keys: %w", err)
 	}
-	defer rows.Close()
-	var keys []SigningKey
-	for rows.Next() {
+	return scanAll(rows, func(r pgx.Rows) (SigningKey, error) {
 		var k SigningKey
-		if err := rows.Scan(&k.Kid, &k.PublicKeyB64); err != nil {
-			return nil, fmt.Errorf("store: scan signing key: %w", err)
+		if err := r.Scan(&k.Kid, &k.PublicKeyB64); err != nil {
+			return SigningKey{}, fmt.Errorf("store: scan signing key: %w", err)
 		}
-		keys = append(keys, k)
-	}
-	return keys, rows.Err()
+		return k, nil
+	})
 }
 
 type AuthState struct {
@@ -218,16 +239,13 @@ func (s *Store) ListIdentities(ctx context.Context, userID uuid.UUID) ([]Identit
 	if err != nil {
 		return nil, fmt.Errorf("store: list identities: %w", err)
 	}
-	defer rows.Close()
-	var ids []Identity
-	for rows.Next() {
+	return scanAll(rows, func(r pgx.Rows) (Identity, error) {
 		var id Identity
-		if err := rows.Scan(&id.ID, &id.Provider, &id.Subject, &id.Email, &id.UserID, &id.CreatedAt); err != nil {
-			return nil, fmt.Errorf("store: scan identity: %w", err)
+		if err := r.Scan(&id.ID, &id.Provider, &id.Subject, &id.Email, &id.UserID, &id.CreatedAt); err != nil {
+			return Identity{}, fmt.Errorf("store: scan identity: %w", err)
 		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
+		return id, nil
+	})
 }
 
 // DeleteIdentity unlinks one login. The row lock on the user's

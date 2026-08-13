@@ -4,98 +4,70 @@
 package server
 
 import (
-	"io"
 	"net/http"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 )
 
 // SearchCatalog proxies catalog discovery search to the enrichment
 // service with the user's own token.
 func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params api.SearchCatalogParams) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.enrichment.Search(r.Context(), sess.AccessToken, string(params.Type), params.Q)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayEnrichment(w, r, res, err)
 }
 
 // GetFx relays the enrichment service's exchange-rate snapshot with
 // the user's own token.
 func (h *Handlers) GetFx(w http.ResponseWriter, r *http.Request) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.enrichment.FX(r.Context(), sess.AccessToken)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayEnrichment(w, r, res, err)
 }
 
 // ListPlatforms relays the platform catalog for the custom-entry picker.
 func (h *Handlers) ListPlatforms(w http.ResponseWriter, r *http.Request) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.enrichment.ListPlatforms(r.Context(), sess.AccessToken)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayEnrichment(w, r, res, err)
 }
 
 // ResolveProduct proxies find-or-create; the body passes through
 // untouched (enrichment owns its validation).
 func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadRequest, "invalid_body", "unreadable body")
+	body, ok := httpkit.ReadCapped(w, r, 16*1024)
+	if !ok {
 		return
 	}
 	res, err := h.enrichment.Resolve(r.Context(), sess.AccessToken, body)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayEnrichment(w, r, res, err)
 }
 
 // GetProduct proxies a catalog product read.
 func (h *Handlers) GetProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.enrichment.Product(r.Context(), sess.AccessToken, productId)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayEnrichment(w, r, res, err)
 }
 
 // GetRecommendations composes the collection library summary with
@@ -104,9 +76,8 @@ func (h *Handlers) GetProduct(w http.ResponseWriter, r *http.Request, productId 
 // mutations invalidate it, and a degraded score is never cached (it
 // would pin a bad answer for the whole TTL).
 func (h *Handlers) GetRecommendations(w http.ResponseWriter, r *http.Request) {
-	sess, claims, ok := session.FromContext(r.Context())
+	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	if body, err := h.cache.GetRecs(r.Context(), claims.Sub); err != nil {

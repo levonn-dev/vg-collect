@@ -5,28 +5,16 @@ import (
 	"log/slog"
 	"net/http"
 
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 	"github.com/levonn-dev/vgkeep/services/user/internal/gen/api"
 )
 
-// NewRouter wires: Recover -> otelhttp (span) -> RequestLogger -> mux,
-// with /healthz and /readyz outside JWT auth and every API route inside it.
+// NewRouter builds the API handler behind jwtauth.Middleware and hands
+// it to httpkit.NewRouter, which wires the rest: Recover -> otelhttp
+// span -> RequestLogger -> mux, with /healthz and /readyz outside JWT
+// auth and every API route inside it.
 func NewRouter(h *Handlers, v *jwtauth.Validator, logger *slog.Logger, ready func(context.Context) error) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		if err := ready(r.Context()); err != nil {
-			problem(w, r, http.StatusServiceUnavailable, "not_ready", "dependency not ready")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
-	})
-
 	apiMux := http.NewServeMux()
 	apiRoutes := api.HandlerWithOptions(h, api.StdHTTPServerOptions{
 		BaseRouter: apiMux,
@@ -36,11 +24,8 @@ func NewRouter(h *Handlers, v *jwtauth.Validator, logger *slog.Logger, ready fun
 			problem(w, r, http.StatusBadRequest, "invalid_param", err.Error())
 		},
 	})
-	mux.Handle("/", jwtauth.Middleware(v, problemEW)(apiRoutes))
-
-	handler := httpkit.RequestLogger(logger)(mux)
-	handler = otelhttp.NewHandler(httpkit.RouteLabel(handler, apiMux, mux), "user")
-	return httpkit.Recover(logger)(handler)
+	authed := jwtauth.Middleware(v, problemEW)(apiRoutes)
+	return httpkit.NewRouter("user", authed, apiMux, logger, ready)
 }
 
 func problemEW(w http.ResponseWriter, r *http.Request, status int, code, detail string) {

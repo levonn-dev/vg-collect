@@ -5,24 +5,26 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/time/rate"
+
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 )
 
 func newTestPCClient(t *testing.T, h http.HandlerFunc) *Client {
 	t.Helper()
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	c := NewClient("test-key")
-	c.baseURL = srv.URL
-	// The production budget is 1 call per second (pinned by its own
-	// test); paying it here would cost a wall-clock second per call.
-	c.limiter = rate.NewLimiter(rate.Inf, 1)
-	return c
+	return reqtest.NewTestClient(t, h, func(baseURL string) *Client {
+		c := NewClient("test-key")
+		c.baseURL = baseURL
+		// The production budget is 1 call per second (pinned by its
+		// own test); paying it here would cost a wall-clock second
+		// per call.
+		c.limiter = rate.NewLimiter(rate.Inf, 1)
+		return c
+	})
 }
 
 func TestNewClient_RespectsDocumentedRateLimit(t *testing.T) {

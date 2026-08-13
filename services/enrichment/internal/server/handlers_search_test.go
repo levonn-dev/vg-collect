@@ -82,7 +82,7 @@ func TestSearch_GameResultCarriesReleaseRegions(t *testing.T) {
 	if n64.ReleaseRegions == nil {
 		t.Fatal("want release_regions populated on a game platform ref")
 	}
-	want := []string{"japan", "north_america", "europe"}
+	want := []api.PlatformRefReleaseRegions{"japan", "north_america", "europe"}
 	if !slices.Equal(*n64.ReleaseRegions, want) {
 		t.Fatalf("release_regions order: got %v, want %v", *n64.ReleaseRegions, want)
 	}

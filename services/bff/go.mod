@@ -8,7 +8,11 @@ replace github.com/levonn-dev/vgkeep/libs/go/httpkit => ../../libs/go/httpkit
 
 replace github.com/levonn-dev/vgkeep/libs/go/otel => ../../libs/go/otel
 
+replace github.com/levonn-dev/vgkeep/libs/go/reqtest => ../../libs/go/reqtest
+
 replace github.com/levonn-dev/vgkeep/libs/go/valkeykit => ../../libs/go/valkeykit
+
+replace github.com/levonn-dev/vgkeep/libs/go/valkeytest => ../../libs/go/valkeytest
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -16,10 +20,11 @@ require (
 	github.com/levonn-dev/vgkeep/libs/go/config v0.0.0-00010101000000-000000000000
 	github.com/levonn-dev/vgkeep/libs/go/httpkit v0.0.0-00010101000000-000000000000
 	github.com/levonn-dev/vgkeep/libs/go/otel v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/reqtest v0.0.0-00010101000000-000000000000
 	github.com/levonn-dev/vgkeep/libs/go/valkeykit v0.0.0-20260612004207-2005a308ef97
+	github.com/levonn-dev/vgkeep/libs/go/valkeytest v0.0.0-00010101000000-000000000000
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/redis/go-redis/v9 v9.22.0
-	github.com/testcontainers/testcontainers-go/modules/valkey v0.35.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/metric v1.44.0
@@ -82,6 +87,7 @@ require (
 	github.com/speakeasy-api/openapi v1.24.0 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/testcontainers/testcontainers-go v0.35.0 // indirect
+	github.com/testcontainers/testcontainers-go/modules/valkey v0.35.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect

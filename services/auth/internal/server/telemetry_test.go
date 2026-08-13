@@ -25,6 +25,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/libs/go/metrictest"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/oidc"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/server"
@@ -36,57 +37,11 @@ import (
 // provider before any Handlers is built. Without it the default
 // delegating provider would queue every instrument and callback
 // registered by earlier tests and replay them into the first per-test
-// provider installMeterReader installs, so its Collect would fire
+// provider metrictest.Install installs, so its Collect would fire
 // signing-key callbacks against stubs those tests never wired.
 func TestMain(m *testing.M) {
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider())
 	os.Exit(m.Run())
-}
-
-// installMeterReader routes instruments created during this test into
-// a manual reader; cleanup swaps in a fresh readerless provider so
-// later tests never collect this test's callbacks.
-func installMeterReader(t *testing.T) *sdkmetric.ManualReader {
-	t.Helper()
-	reader := sdkmetric.NewManualReader()
-	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
-	t.Cleanup(func() { otel.SetMeterProvider(sdkmetric.NewMeterProvider()) })
-	return reader
-}
-
-func collectMetrics(t *testing.T, reader *sdkmetric.ManualReader) metricdata.ResourceMetrics {
-	t.Helper()
-	var rm metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &rm); err != nil {
-		t.Fatalf("collect: %v", err)
-	}
-	return rm
-}
-
-func metricByName(rm metricdata.ResourceMetrics, name string) (metricdata.Metrics, bool) {
-	for _, sm := range rm.ScopeMetrics {
-		for _, m := range sm.Metrics {
-			if m.Name == name {
-				return m, true
-			}
-		}
-	}
-	return metricdata.Metrics{}, false
-}
-
-// sumPoints returns the named Int64Counter's data points (nil when the
-// instrument recorded nothing).
-func sumPoints(t *testing.T, reader *sdkmetric.ManualReader, name string) []metricdata.DataPoint[int64] {
-	t.Helper()
-	m, ok := metricByName(collectMetrics(t, reader), name)
-	if !ok {
-		return nil
-	}
-	sum, ok := m.Data.(metricdata.Sum[int64])
-	if !ok {
-		t.Fatalf("%s data = %T, want Sum[int64]", name, m.Data)
-	}
-	return sum.DataPoints
 }
 
 // wantSingleCount asserts the counter recorded exactly one data point:
@@ -444,7 +399,7 @@ func TestLoginOutcomeMetric(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			reader := installMeterReader(t)
+			reader := metrictest.Install(t)
 			h := tc.build()
 			rec := httptest.NewRecorder()
 			req := jsonReq(t, http.MethodPost, "/x", tc.body)
@@ -453,7 +408,7 @@ func TestLoginOutcomeMetric(t *testing.T) {
 			if rec.Code != tc.wantStatus {
 				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.wantStatus, rec.Body.String())
 			}
-			pts := sumPoints(t, reader, "vg.auth.login.outcomes")
+			pts := metrictest.Int64Points(t, reader, "vg.auth.login.outcomes")
 			if tc.wantOutcome == "" {
 				if len(pts) != 0 {
 					t.Fatalf("terminal must not be counted, got %+v", pts)
@@ -568,7 +523,7 @@ func TestRefreshOutcomeMetric(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			reader := installMeterReader(t)
+			reader := metrictest.Install(t)
 			tc.st.activeSigningKeys = signingKeysOK
 			m := tc.minter
 			if m == nil {
@@ -588,7 +543,7 @@ func TestRefreshOutcomeMetric(t *testing.T) {
 			if rec.Code != tc.wantStatus {
 				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.wantStatus, rec.Body.String())
 			}
-			pts := sumPoints(t, reader, "vg.auth.token.refreshes")
+			pts := metrictest.Int64Points(t, reader, "vg.auth.token.refreshes")
 			if tc.wantOutcome == "" {
 				if len(pts) != 0 {
 					t.Fatalf("terminal must not be counted, got %+v", pts)
@@ -601,7 +556,7 @@ func TestRefreshOutcomeMetric(t *testing.T) {
 }
 
 func TestSigningKeysGauge(t *testing.T) {
-	reader := installMeterReader(t)
+	reader := metrictest.Install(t)
 	var sawDeadline bool
 	st := &stubStore{activeSigningKeys: func(ctx context.Context) ([]store.SigningKey, error) {
 		if d, ok := ctx.Deadline(); ok && time.Until(d) <= 5*time.Second {
@@ -611,7 +566,7 @@ func TestSigningKeysGauge(t *testing.T) {
 	}}
 	newUnit(st, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 
-	m, ok := metricByName(collectMetrics(t, reader), "vg.auth.signing_keys.active")
+	m, ok := metrictest.ByName(metrictest.Collect(t, reader), "vg.auth.signing_keys.active")
 	if !ok {
 		t.Fatal("gauge not collected")
 	}
@@ -628,17 +583,20 @@ func TestSigningKeysGauge(t *testing.T) {
 }
 
 func TestSigningKeysGaugeStoreErrorIsAGap(t *testing.T) {
-	reader := installMeterReader(t)
+	reader := metrictest.Install(t)
 	st := &stubStore{activeSigningKeys: func(context.Context) ([]store.SigningKey, error) {
 		return nil, errStub
 	}}
 	newUnit(st, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 
 	// Collect surfaces the callback error; what matters is that no
-	// observation was recorded: a gap, never a false zero.
+	// observation was recorded: a gap, never a false zero. reader.Collect
+	// runs directly (not through metrictest.Collect, which would fail the
+	// test on this exact error) so the possibly error-degraded result can
+	// still be inspected via the pure ByName lookup.
 	var rm metricdata.ResourceMetrics
 	_ = reader.Collect(context.Background(), &rm)
-	if m, ok := metricByName(rm, "vg.auth.signing_keys.active"); ok {
+	if m, ok := metrictest.ByName(rm, "vg.auth.signing_keys.active"); ok {
 		if g, isGauge := m.Data.(metricdata.Gauge[int64]); isGauge && len(g.DataPoints) != 0 {
 			t.Fatalf("store error must record nothing, got %+v", g.DataPoints)
 		}

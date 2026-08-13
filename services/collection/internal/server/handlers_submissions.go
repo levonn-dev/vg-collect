@@ -4,7 +4,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
@@ -185,20 +185,8 @@ func (h *Handlers) ListSubmissions(w http.ResponseWriter, r *http.Request, param
 		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
 		return
 	}
-	limit := 200
-	if params.Limit != nil {
-		limit = *params.Limit
-	}
-	if limit < 1 {
-		limit = 1
-	}
-	if limit > 500 {
-		limit = 500
-	}
-	offset := 0
-	if params.Offset != nil && *params.Offset > 0 {
-		offset = *params.Offset
-	}
+	limit := httpkit.ClampSilent(params.Limit, 200, 1, 500)
+	offset := httpkit.ClampSilent(params.Offset, 0, 0)
 	rows, total, err := h.store.ListPendingSubmissions(r.Context(), limit, offset)
 	if err != nil {
 		h.internalError(w, r, "list failed", err)
@@ -250,9 +238,7 @@ func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submiss
 		return
 	}
 	var body api.VerdictRequest
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, maxBodyBytes, &body) {
 		return
 	}
 	sub, err := h.store.GetSubmission(r.Context(), submissionId)

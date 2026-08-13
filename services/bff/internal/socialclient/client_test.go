@@ -5,23 +5,24 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 )
 
 func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
 	t.Helper()
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	c, err := New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return c
+	return reqtest.NewTestClient(t, h, func(baseURL string) *Client {
+		c, err := New(baseURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	})
 }
 
 // TestRelayMethods_RouteBearerStatusAndBody drives every Result-returning

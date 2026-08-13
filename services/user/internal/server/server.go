@@ -4,9 +4,9 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
 	"github.com/levonn-dev/vgkeep/services/user/internal/store"
 )
 
@@ -55,32 +56,61 @@ func New(st Store, cooldown time.Duration) *Handlers {
 	h := &Handlers{store: st, handleCooldown: cooldown}
 	m := otel.Meter("github.com/levonn-dev/vgkeep/services/user")
 	var err error
-	if h.accountUpserts, err = m.Int64Counter("vg.user.account.upserts",
-		metric.WithDescription("Login-path profile upserts by outcome (created or existing)"),
-		metric.WithUnit("{upsert}")); err != nil {
+	if h.accountUpserts, err = vgotel.Counter(m, "vg.user.account.upserts",
+		"Login-path profile upserts by outcome (created or existing)", "{upsert}"); err != nil {
 		slog.Error("account upserts counter unavailable", "err", err)
 	}
-	if h.currencySeeds, err = m.Int64Counter("vg.user.currency.seeds",
-		metric.WithDescription("preferred_currency seeds for new accounts by source (locale hint or fallback)"),
-		metric.WithUnit("{seed}")); err != nil {
+	if h.currencySeeds, err = vgotel.Counter(m, "vg.user.currency.seeds",
+		"preferred_currency seeds for new accounts by source (locale hint or fallback)", "{seed}"); err != nil {
 		slog.Error("currency seeds counter unavailable", "err", err)
 	}
-	if h.accountDeletes, err = m.Int64Counter("vg.user.account.deletes",
-		metric.WithDescription("Account deletions by outcome (deleted or noop)"),
-		metric.WithUnit("{delete}")); err != nil {
+	if h.accountDeletes, err = vgotel.Counter(m, "vg.user.account.deletes",
+		"Account deletions by outcome (deleted or noop)", "{delete}"); err != nil {
 		slog.Error("account deletes counter unavailable", "err", err)
 	}
 	return h
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+func writeJSON(w http.ResponseWriter, status int, v any) { httpkit.WriteJSON(w, status, v) }
+func problem(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
+	httpkit.WriteProblemFields(w, r, status, code, detail)
 }
 
-func problem(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
-	httpkit.WriteProblem(w, r, httpkit.Problem{
-		Status: status, Title: http.StatusText(status), Code: code, Detail: detail,
-	})
+// internalError answers a 500 and logs its cause via the package
+// default logger: this service holds no *slog.Logger field on
+// Handlers (every other log line here already goes through slog's
+// package-level funcs), so the helper matches rather than introducing
+// a second logging path. op is the log's "op" key, detail the
+// response text - collection's h.internalError proved the
+// log-then-respond shape; social and enrichment share the op/err key
+// convention, so this stays a method for the same h.internalError
+// call-site shape even though it does not touch h.
+func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, op, detail string, err error) {
+	slog.ErrorContext(r.Context(), "store error", "op", op, "err", err)
+	problem(w, r, http.StatusInternalServerError, "internal", detail)
+}
+
+// validEnum checks a hand-decoded enum field against its allowed
+// members, collapsing UpdateUser's ProfileVisibility/LandingPage
+// switches into one generic. val == nil (the field was absent from
+// the request) is valid and resolves to a nil result, leaving that
+// dimension untouched; a present val outside allowed writes the
+// contract's 400 and reports false. field and allowedList build the
+// message text ("<field> must be one of <allowedList>"), matching
+// each call site's original wording exactly. The generated enum types
+// are plain strings with no UnmarshalJSON validation of their own,
+// and UpdateUser hand-decodes its body rather than routing through
+// the generated param binder, so an invalid value must be rejected
+// here - otherwise it reaches the store and only the DB CHECK
+// constraint catches it, surfacing as a 500 instead of a 400.
+func validEnum[T ~string](w http.ResponseWriter, r *http.Request, val *T, allowed []T, field, allowedList string) (*string, bool) {
+	if val == nil {
+		return nil, true
+	}
+	if !slices.Contains(allowed, *val) {
+		problem(w, r, http.StatusBadRequest, "invalid_body", field+" must be one of "+allowedList)
+		return nil, false
+	}
+	v := string(*val)
+	return &v, true
 }

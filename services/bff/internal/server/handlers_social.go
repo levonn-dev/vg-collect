@@ -6,20 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/socialapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/socialclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
@@ -119,9 +117,8 @@ func (h *Handlers) composeShelfPage(w http.ResponseWriter, r *http.Request, bear
 
 // GetShelfPage composes a shared shelf's page by id.
 func (h *Handlers) GetShelfPage(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	shelf, owner, ok := h.effectiveShelf(w, r, sess.AccessToken, shelfId)
@@ -139,9 +136,8 @@ func (h *Handlers) GetShelfPage(w http.ResponseWriter, r *http.Request, shelfId 
 // doesn't) independently of the shelf, which is exactly the oracle
 // effective-visibility exists to deny.
 func (h *Handlers) GetProfileShelfPage(w http.ResponseWriter, r *http.Request, handle string, slug string) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	bearer := sess.AccessToken
@@ -210,9 +206,8 @@ func (h *Handlers) socialForProfile(ctx context.Context, bearer string, ownerID 
 // profilePageShelvesLimit of their listed shelves, and social counts.
 // Owners see exactly what visitors see (an honest preview).
 func (h *Handlers) GetProfilePage(w http.ResponseWriter, r *http.Request, handle string) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	bearer := sess.AccessToken
@@ -253,9 +248,8 @@ func (h *Handlers) GetProfilePage(w http.ResponseWriter, r *http.Request, handle
 // after the same effective-visibility check every shelf sub-route
 // applies.
 func (h *Handlers) ListShelfEntries(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID, params api.ListShelfEntriesParams) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	if _, _, ok := h.effectiveShelf(w, r, sess.AccessToken, shelfId); !ok {
@@ -274,9 +268,8 @@ func (h *Handlers) ListShelfEntries(w http.ResponseWriter, r *http.Request, shel
 // verbatim, unchanged from before this composition existed; cursor
 // and limit still pass straight through to social.
 func (h *Handlers) ListShelfComments(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID, params api.ListShelfCommentsParams) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	if _, _, ok := h.effectiveShelf(w, r, sess.AccessToken, shelfId); !ok {
@@ -317,21 +310,59 @@ type rawCommentsPage struct {
 	NextCursor *string      `json:"next_cursor,omitempty"`
 }
 
+// dedupedIDs collects each item's id once, in first-seen order; when
+// keep is non-nil, an id failing it is skipped entirely rather than
+// deduped-and-kept - dedupedCommentAuthorIDs' only use of this, to
+// drop uuid.Nil (a purged/anonymized comment author) from the batch.
+// Every other call site passes a nil keep and takes every id.
+func dedupedIDs[T any](items []T, idOf func(T) uuid.UUID, keep func(uuid.UUID) bool) []uuid.UUID {
+	ids := make([]uuid.UUID, 0, len(items))
+	seen := make(map[uuid.UUID]bool, len(items))
+	for _, item := range items {
+		id := idOf(item)
+		if keep != nil && !keep(id) {
+			continue
+		}
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// indexByID maps each item under idOf's key; a duplicate id is last
+// write wins (none of today's call sites produce one).
+func indexByID[T any](items []T, idOf func(T) uuid.UUID) map[uuid.UUID]T {
+	m := make(map[uuid.UUID]T, len(items))
+	for _, item := range items {
+		m[idOf(item)] = item
+	}
+	return m
+}
+
+// indexByIDPtr is indexByID's pointer-map variant: a missing key
+// reads back nil rather than a zero-valued T. shelfSocialByID is the
+// one caller that needs this - toShelfCard's nil check (which leaves
+// a card's social fields absent rather than zeroed) depends on it.
+func indexByIDPtr[T any](items []T, idOf func(T) uuid.UUID) map[uuid.UUID]*T {
+	m := make(map[uuid.UUID]*T, len(items))
+	for i := range items {
+		v := items[i]
+		m[idOf(v)] = &v
+	}
+	return m
+}
+
 // dedupedCommentAuthorIDs collects each live comment's non-nil author
 // id once, in first-seen order - the batch input for the single
 // follow-up SharedCardsByIDs call (dedupedOwnerIDs' sibling for
 // comments). A purge-anonymized comment (author_id uuid.Nil)
 // contributes nothing.
 func dedupedCommentAuthorIDs(comments []rawComment) []uuid.UUID {
-	ids := make([]uuid.UUID, 0, len(comments))
-	seen := make(map[uuid.UUID]bool, len(comments))
-	for _, c := range comments {
-		if c.AuthorId != uuid.Nil && !seen[c.AuthorId] {
-			seen[c.AuthorId] = true
-			ids = append(ids, c.AuthorId)
-		}
-	}
-	return ids
+	return dedupedIDs(comments,
+		func(c rawComment) uuid.UUID { return c.AuthorId },
+		func(id uuid.UUID) bool { return id != uuid.Nil })
 }
 
 // composeCommentsPage attaches an author ProfileCard to every comment
@@ -382,9 +413,8 @@ func (h *Handlers) composeCommentsPage(w http.ResponseWriter, r *http.Request, b
 // effective-visibility check; the body passes through untouched (the
 // social service owns its validation).
 func (h *Handlers) CreateShelfComment(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	if _, _, ok := h.effectiveShelf(w, r, sess.AccessToken, shelfId); !ok {
@@ -402,9 +432,8 @@ func (h *Handlers) CreateShelfComment(w http.ResponseWriter, r *http.Request, sh
 // social already knows the row's shelf and owner and authorizes by
 // row (author or shelf owner).
 func (h *Handlers) DeleteComment(w http.ResponseWriter, r *http.Request, commentId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.social.DeleteComment(r.Context(), sess.AccessToken, commentId)
@@ -426,9 +455,8 @@ func (h *Handlers) relaySocial(w http.ResponseWriter, r *http.Request, res socia
 // the social service validates the target (self-follow, shelf
 // visibility) itself, so there is no effectiveShelf call here.
 func (h *Handlers) Follow(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.social.Follow(r.Context(), sess.AccessToken, userId)
@@ -436,9 +464,8 @@ func (h *Handlers) Follow(w http.ResponseWriter, r *http.Request, userId openapi
 }
 
 func (h *Handlers) Unfollow(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.social.Unfollow(r.Context(), sess.AccessToken, userId)
@@ -446,9 +473,8 @@ func (h *Handlers) Unfollow(w http.ResponseWriter, r *http.Request, userId opena
 }
 
 func (h *Handlers) Like(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.social.Like(r.Context(), sess.AccessToken, shelfId)
@@ -456,9 +482,8 @@ func (h *Handlers) Like(w http.ResponseWriter, r *http.Request, shelfId openapi_
 }
 
 func (h *Handlers) Unlike(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.social.Unlike(r.Context(), sess.AccessToken, shelfId)
@@ -467,37 +492,24 @@ func (h *Handlers) Unlike(w http.ResponseWriter, r *http.Request, shelfId openap
 
 // SearchUsers relays a listed-handle substring search.
 func (h *Handlers) SearchUsers(w http.ResponseWriter, r *http.Request, params api.SearchUsersParams) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.users.SearchProfiles(r.Context(), sess.AccessToken, params.Q)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "user service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayUser(w, r, res, err)
 }
 
 // cardsByID indexes profile cards by user id for repeated per-event
 // lookups after one batched SharedCardsByIDs call.
 func cardsByID(cards []userapi.ProfileCard) map[uuid.UUID]userapi.ProfileCard {
-	m := make(map[uuid.UUID]userapi.ProfileCard, len(cards))
-	for _, c := range cards {
-		m[c.UserId] = c
-	}
-	return m
+	return indexByID(cards, func(c userapi.ProfileCard) uuid.UUID { return c.UserId })
 }
 
 // shelfSummariesByID indexes shelf summaries by id after one batched
 // SharedShelvesByIDs call.
 func shelfSummariesByID(shelves []collectionapi.SharedShelfSummary) map[uuid.UUID]collectionapi.SharedShelfSummary {
-	m := make(map[uuid.UUID]collectionapi.SharedShelfSummary, len(shelves))
-	for _, s := range shelves {
-		m[s.Id] = s
-	}
-	return m
+	return indexByID(shelves, func(s collectionapi.SharedShelfSummary) uuid.UUID { return s.Id })
 }
 
 // shelfSocialByID indexes social summaries by shelf id after one
@@ -505,12 +517,7 @@ func shelfSummariesByID(shelves []collectionapi.SharedShelfSummary) map[uuid.UUI
 // that was never requested, or a request that failed open) yields a
 // nil *ShelfSocialSummary, which toShelfCard treats as "no counts".
 func shelfSocialByID(summaries []socialapi.ShelfSocialSummary) map[uuid.UUID]*socialapi.ShelfSocialSummary {
-	m := make(map[uuid.UUID]*socialapi.ShelfSocialSummary, len(summaries))
-	for i := range summaries {
-		s := summaries[i]
-		m[s.ShelfId] = &s
-	}
-	return m
+	return indexByIDPtr(summaries, func(s socialapi.ShelfSocialSummary) uuid.UUID { return s.ShelfId })
 }
 
 // dedupedOwnerIDs collects each shelf summary's owner id once, in
@@ -519,15 +526,7 @@ func shelfSocialByID(summaries []socialapi.ShelfSocialSummary) map[uuid.UUID]*so
 // owners and repeats them (one prolific lister's several shelves);
 // the profile page's single owner never needs this.
 func dedupedOwnerIDs(shelves []collectionapi.SharedShelfSummary) []uuid.UUID {
-	ids := make([]uuid.UUID, 0, len(shelves))
-	seen := make(map[uuid.UUID]bool, len(shelves))
-	for _, s := range shelves {
-		if !seen[s.OwnerId] {
-			seen[s.OwnerId] = true
-			ids = append(ids, s.OwnerId)
-		}
-	}
-	return ids
+	return dedupedIDs(shelves, func(s collectionapi.SharedShelfSummary) uuid.UUID { return s.OwnerId }, nil)
 }
 
 // feedFillRounds bounds how many raw pages GetFeed will fetch trying
@@ -550,9 +549,8 @@ const (
 // 400 on either input) into one generic error, so an unvalidated bad
 // tab or cursor would otherwise surface as a misleading 502.
 func (h *Handlers) GetFeed(w http.ResponseWriter, r *http.Request, params api.GetFeedParams) {
-	sess, claims, ok := session.FromContext(r.Context())
+	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	switch params.Tab {
@@ -561,18 +559,16 @@ func (h *Handlers) GetFeed(w http.ResponseWriter, r *http.Request, params api.Ge
 		writeProblem(w, r, http.StatusBadRequest, "invalid_param", "tab must be following or you")
 		return
 	}
-	if params.Limit != nil && *params.Limit < 1 {
+	limit, ok := httpkit.ClampOrReject(params.Limit, 20, 1)
+	if !ok {
 		writeProblem(w, r, http.StatusBadRequest, "invalid_param", "limit must be at least 1")
 		return
 	}
-	limit := 20
-	if params.Limit != nil {
-		limit = min(*params.Limit, feedPageMax)
-	}
+	limit = min(limit, feedPageMax)
 	tab := string(params.Tab)
 	var cursor *string
 	if params.Cursor != nil && *params.Cursor != "" {
-		if !validFeedCursor(*params.Cursor) {
+		if _, err := httpkit.ParseCursor(*params.Cursor); err != nil {
 			writeProblem(w, r, http.StatusBadRequest, "invalid_param", "cursor must be <unixnano>.<uuid>")
 			return
 		}
@@ -596,7 +592,7 @@ func (h *Handlers) GetFeed(w http.ResponseWriter, r *http.Request, params api.Ge
 				continue // gated out
 			}
 			items = append(items, *item)
-			c := rawCursorOf(events[i])
+			c := (httpkit.Cursor{CreatedAt: events[i].CreatedAt, ID: events[i].Id}).String()
 			nextCursor = &c
 			if len(items) == limit {
 				break
@@ -615,30 +611,6 @@ func (h *Handlers) GetFeed(w http.ResponseWriter, r *http.Request, params api.Ge
 		}
 	}
 	writeJSON(w, http.StatusOK, api.FeedPage{Items: items, NextCursor: nextCursor})
-}
-
-// rawCursorOf reproduces social's own Cursor.String() encoding
-// ("<unixnano>.<uuid>") from an already-fetched event, so the fill
-// loop can resume from the last INCLUDED row without a round trip.
-func rawCursorOf(e socialapi.ActivityEvent) string {
-	return strconv.FormatInt(e.CreatedAt.UnixNano(), 10) + "." + e.Id.String()
-}
-
-// validFeedCursor is rawCursorOf's inverse check: reports whether a
-// caller-supplied cursor has the "<unixnano>.<uuid>" shape social's
-// own Cursor.String() produces. Splits on the FIRST dot only, so a
-// well-formed uuid tail (which never itself contains a dot) is never
-// mistaken for extra fields.
-func validFeedCursor(s string) bool {
-	nanos, id, found := strings.Cut(s, ".")
-	if !found {
-		return false
-	}
-	if _, err := strconv.ParseInt(nanos, 10, 64); err != nil {
-		return false
-	}
-	_, err := uuid.Parse(id)
-	return err == nil
 }
 
 // hydrateFeed batches actor, followee, and shelf-owner cards; shelf
@@ -713,10 +685,11 @@ func (h *Handlers) hydrateFeed(ctx context.Context, bearer, _, tab string, event
 			return nil, fmt.Errorf("hydrate feed: comments: %w", err)
 		}
 	}
-	commentByID := make(map[uuid.UUID]socialapi.Comment, len(comments))
-	for _, c := range comments {
-		commentByID[c.Id] = c
-	}
+	// Same value-map shape as cardsByID/shelfSummariesByID above -
+	// indexByID fits with no filter and no pointer-map nuance
+	// (commentByID's one reader is an `if c, ok := ...; ok` lookup,
+	// so a nil-vs-zero-value miss distinction never mattered here).
+	commentByID := indexByID(comments, func(c socialapi.Comment) uuid.UUID { return c.Id })
 
 	var summaries []socialapi.ShelfSocialSummary
 	if len(shelfIDs) > 0 {
@@ -793,30 +766,24 @@ const (
 // paged) or top (the fixed like-count leaderboard). Both surfaces are
 // listed-only by construction.
 func (h *Handlers) GetExplore(w http.ResponseWriter, r *http.Request, params api.GetExploreParams) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	bearer := sess.AccessToken
 	switch params.Sort {
 	case api.Recent:
-		if params.Limit != nil && *params.Limit < 1 {
+		limit, ok := httpkit.ClampOrReject(params.Limit, 20, 1)
+		if !ok {
 			writeProblem(w, r, http.StatusBadRequest, "invalid_param", "limit must be at least 1")
 			return
 		}
-		if params.Offset != nil && *params.Offset < 0 {
+		offset, ok := httpkit.ClampOrReject(params.Offset, 0, 0)
+		if !ok {
 			writeProblem(w, r, http.StatusBadRequest, "invalid_param", "offset must be at least 0")
 			return
 		}
-		limit := 20
-		if params.Limit != nil {
-			limit = min(*params.Limit, explorePageMax)
-		}
-		offset := 0
-		if params.Offset != nil {
-			offset = *params.Offset
-		}
+		limit = min(limit, explorePageMax)
 		h.exploreRecent(w, r, bearer, limit, offset)
 	case api.Top:
 		h.exploreTop(w, r, bearer)
@@ -988,9 +955,8 @@ func (h *Handlers) exploreTop(w http.ResponseWriter, r *http.Request, bearer str
 // body relay), so it is re-marshaled into the envelope the frontend
 // expects rather than passed through verbatim.
 func (h *Handlers) GetSharedProfilesByIds(w http.ResponseWriter, r *http.Request, params api.GetSharedProfilesByIdsParams) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	cards, err := h.users.SharedCardsByIDs(r.Context(), sess.AccessToken, params.Ids)

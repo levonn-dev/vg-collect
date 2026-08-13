@@ -3,6 +3,7 @@
 package server
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,28 @@ import (
 
 	"github.com/google/uuid"
 )
+
+// assertOversizeBodyProblem checks the 400 problem an over-cap OTLP
+// body answers with, detail text included - the wording mentions the
+// 1MiB cap by name rather than httpkit.ReadCapped's generic default,
+// so a future refactor silently losing it fails a test instead of
+// only a reviewer's eye.
+func assertOversizeBodyProblem(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("oversize body: code = %d", rec.Code)
+	}
+	var p struct {
+		Code   string `json:"code"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Code != "invalid_body" || p.Detail != "request body unreadable or over 1MiB" {
+		t.Fatalf("problem = %+v, want code=invalid_body detail=%q", p, "request body unreadable or over 1MiB")
+	}
+}
 
 // stubRoundTripper lets a test assert whether the otlp relay's upstream
 // http.Client was ever dialed.
@@ -149,9 +172,7 @@ func TestUnitProxyTraces_OversizeBodyAnswers400(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	newRouterFor(t, h).ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("oversize body: code = %d", rec.Code)
-	}
+	assertOversizeBodyProblem(t, rec)
 }
 
 func TestUnitProxyMetrics_RequiresSession(t *testing.T) {
@@ -271,7 +292,5 @@ func TestUnitProxyMetrics_OversizeBodyAnswers400(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	newRouterFor(t, h).ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("oversize body: code = %d", rec.Code)
-	}
+	assertOversizeBodyProblem(t, rec)
 }

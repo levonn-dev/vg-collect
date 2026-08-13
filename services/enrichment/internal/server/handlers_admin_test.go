@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/match"
@@ -30,30 +31,11 @@ import (
 // Refresh runner + admin endpoints
 // ---------------------------------------------------------------
 
-// waitFor polls until check passes (the catalog refresh is detached).
-func waitFor(t *testing.T, timeout time.Duration, check func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if check() {
-			return
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	t.Fatal("condition not reached in time")
-}
-
 // doInternal drives the CronJob path: a Bearer service token instead
 // of a user's own.
 func (s *stack) doInternal(bearer string) *http.Response {
 	s.t.Helper()
-	req, err := http.NewRequest(http.MethodPost, s.srv.URL+"/internal/refresh", nil)
-	if err != nil {
-		s.t.Fatal(err)
-	}
-	if bearer != "" {
-		req.Header.Set("Authorization", "Bearer "+bearer)
-	}
+	req := reqtest.NewJSONRequest(s.t, http.MethodPost, s.srv.URL+"/internal/refresh", bearer, nil)
 	resp, err := s.client.Do(req)
 	if err != nil {
 		s.t.Fatal(err)
@@ -64,10 +46,7 @@ func (s *stack) doInternal(bearer string) *http.Response {
 // serveInternal is the unit-layer equivalent of doInternal.
 func serveInternal(t *testing.T, h *Handlers, env *authEnv, bearer string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/internal/refresh", nil)
-	if bearer != "" {
-		req.Header.Set("Authorization", "Bearer "+bearer)
-	}
+	req := reqtest.NewJSONRequest(t, http.MethodPost, "/internal/refresh", bearer, nil)
 	rec := httptest.NewRecorder()
 	router := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil })
 	router.ServeHTTP(rec, req)
@@ -90,7 +69,7 @@ func TestRefresh_InternalWalksCatalogAndSnapshots(t *testing.T) {
 	_ = resp.Body.Close()
 
 	ctx := context.Background()
-	waitFor(t, 10*time.Second, func() bool {
+	reqtest.WaitFor(t, 10*time.Second, func() bool {
 		// Each matched product got its resolve-time snapshot plus one
 		// refresh snapshot; Terranigma got none.
 		n, err := s.mdb.Collection("price_snapshots").CountDocuments(ctx, map[string]any{})
@@ -123,7 +102,7 @@ func TestRefresh_WalksPCListingProducts(t *testing.T) {
 	_ = resp.Body.Close()
 
 	ctx := context.Background()
-	waitFor(t, 10*time.Second, func() bool {
+	reqtest.WaitFor(t, 10*time.Second, func() bool {
 		// The create-time snapshot plus one refresh snapshot.
 		n, err := s.mdb.Collection("price_snapshots").CountDocuments(ctx, map[string]any{})
 		return err == nil && n == 2
@@ -154,7 +133,7 @@ func TestRefresh_AdminRBACAndConflict(t *testing.T) {
 		t.Fatalf("admin: %d", resp.StatusCode)
 	}
 	_ = resp.Body.Close()
-	waitFor(t, 10*time.Second, func() bool { return !s.h.refreshing.Load() })
+	reqtest.WaitFor(t, 10*time.Second, func() bool { return !s.h.refreshing.Load() })
 }
 
 // TestUnitInternalRefresh_RequiresServiceToken pins the guard that
@@ -191,7 +170,7 @@ func TestUnitInternalRefresh_RequiresServiceToken(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("service token: %d %s", rec.Code, rec.Body.String())
 	}
-	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
+	reqtest.WaitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 }
 
 func TestUnitRefresh_ConflictWhileRunning(t *testing.T) {
@@ -219,7 +198,7 @@ func TestUnitRefresh_ConflictWhileRunning(t *testing.T) {
 		t.Fatalf("concurrent trigger: %d %s", rec.Code, rec.Body.String())
 	}
 	close(release)
-	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
+	reqtest.WaitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 
 	// The guard resets: a third trigger is accepted again.
 	st.listPriced = func(context.Context) ([]store.Product, error) { return nil, nil }
@@ -227,7 +206,7 @@ func TestUnitRefresh_ConflictWhileRunning(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("post-refresh trigger: %d", rec.Code)
 	}
-	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
+	reqtest.WaitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 }
 
 func TestUnitRefresh_RefreshSurvivesPerProductFailures(t *testing.T) {
@@ -258,7 +237,7 @@ func TestUnitRefresh_RefreshSurvivesPerProductFailures(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("trigger: %d", rec.Code)
 	}
-	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
+	reqtest.WaitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 	if snaps != 1 {
 		t.Fatalf("the healthy product must still snapshot: %d", snaps)
 	}
@@ -314,7 +293,7 @@ func TestUnitRefresh_RefreshPanicIsContained(t *testing.T) {
 	// If the panic escaped the goroutine, the whole test binary would
 	// already be dead here; reaching this line at all is part of the
 	// proof.
-	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
+	reqtest.WaitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 
 	// The guard reset after the panic: a second trigger is accepted
 	// again, not 409 (a leaked guard would answer 409 forever).
@@ -323,7 +302,7 @@ func TestUnitRefresh_RefreshPanicIsContained(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("post-panic trigger: %d", rec.Code)
 	}
-	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
+	reqtest.WaitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 }
 
 // The reprojection's core repair: a pre-feature product (no raw
@@ -655,7 +634,7 @@ func TestUnitRefresh_InternalTriggerRunsReprojection(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("trigger: %d", rec.Code)
 	}
-	waitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
+	reqtest.WaitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 	if !called {
 		t.Fatal("startRefresh must run the reprojection pass")
 	}
@@ -762,7 +741,7 @@ func TestUnitCandidateSweep_HardwareFlagsSkipsDismissedAndSortsBestFirst(t *test
 // TestUnitInternalNormalizeCommunityRegions_PromotesFoldMatchSkipsUnknown
 // pins the fold+synonym promotion (enrichment's twin of collection's
 // normalize-regions lever, scoped to the community products this
-// service owns): a reviewed synonym promotes through the twin tables,
+// service owns): a reviewed synonym promotes through regionkit's synonym table,
 // a graduated region promotes through its identity fold, an
 // unreviewed string is left untouched, and the response counts all
 // three.

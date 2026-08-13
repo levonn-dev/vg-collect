@@ -4,11 +4,30 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 )
+
+// idsToStrings enforces the request cap on product_ids (the schema's
+// maxItems is documentation; the generated models do not validate it)
+// and converts to the string form the store layer takes - the shared
+// tail of BatchPrices and BatchPriceHistory. A false return means the
+// 400 was already written.
+func idsToStrings(w http.ResponseWriter, r *http.Request, ids []openapi_types.UUID) ([]string, bool) {
+	if len(ids) > 500 {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "at most 500 product_ids per call")
+		return nil, false
+	}
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = id.String()
+	}
+	return out, true
+}
 
 // GetFxLatest serves the provider's cached rate snapshot. Rates power
 // display-side conversion in the SPA only; nothing stored ever
@@ -28,24 +47,16 @@ func (h *Handlers) GetFxLatest(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) BatchPrices(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req api.PricesBatchRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, 64*1024, &req) {
 		return
 	}
-	// The schema's maxItems is documentation; the generated models do
-	// not validate, so the cap is enforced here.
-	if len(req.ProductIds) > 500 {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "at most 500 product_ids per call")
+	ids, ok := idsToStrings(w, r, req.ProductIds)
+	if !ok {
 		return
-	}
-	ids := make([]string, len(req.ProductIds))
-	for i, id := range req.ProductIds {
-		ids[i] = id.String()
 	}
 	prods, err := h.store.ProductsByIDs(ctx, ids)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "price lookup failed")
+		h.internalError(w, r, "batch_prices", "price lookup failed", err)
 		return
 	}
 	prices := make(map[string]api.ProductPrices, len(prods))
@@ -70,15 +81,11 @@ func (h *Handlers) BatchPrices(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) BatchPriceHistory(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req api.PriceHistoryRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, 64*1024, &req) {
 		return
 	}
-	// The schema's maxItems is documentation; the generated models do
-	// not validate, so the cap is enforced here.
-	if len(req.ProductIds) > 500 {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "at most 500 product_ids per call")
+	ids, ok := idsToStrings(w, r, req.ProductIds)
+	if !ok {
 		return
 	}
 	days := 90
@@ -89,13 +96,9 @@ func (h *Handlers) BatchPriceHistory(w http.ResponseWriter, r *http.Request) {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "days must be between 1 and 365")
 		return
 	}
-	ids := make([]string, len(req.ProductIds))
-	for i, id := range req.ProductIds {
-		ids[i] = id.String()
-	}
 	snaps, err := h.store.SnapshotsSince(ctx, ids, h.now().UTC().AddDate(0, 0, -days))
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "history lookup failed")
+		h.internalError(w, r, "batch_price_history", "history lookup failed", err)
 		return
 	}
 	series := make(map[string][]api.PricePoint, len(snaps))

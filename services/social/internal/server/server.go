@@ -8,10 +8,8 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +19,7 @@ import (
 
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
 	"github.com/levonn-dev/vgkeep/services/social/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/social/internal/store"
 	"github.com/levonn-dev/vgkeep/services/social/internal/userclient"
@@ -99,7 +98,7 @@ func New(st Store, col Collection, users Users, opts Options) *Handlers {
 	}
 	m := otel.Meter("github.com/levonn-dev/vgkeep/services/social")
 	counter := func(name, desc, unit string) metric.Int64Counter {
-		ctr, err := m.Int64Counter(name, metric.WithDescription(desc), metric.WithUnit(unit))
+		ctr, err := vgotel.Counter(m, name, desc, unit)
 		if err != nil {
 			opts.Logger.Error("counter unavailable", "name", name, "err", err)
 		}
@@ -124,37 +123,52 @@ func New(st Store, col Collection, users Users, opts Options) *Handlers {
 	}
 }
 
+// count is kept as a named method (rather than inlining vgotel.Count
+// at each of its call sites in handlers.go) so every social handler
+// keeps counting through one instrument-plus-attribute call shape;
+// the nil guard and the Add itself now live in vgotel.Count, the
+// shared emission helper this method's own shape was lifted into.
 func (h *Handlers) count(ctx context.Context, c metric.Int64Counter, key, val string) {
-	if c == nil {
-		return
-	}
-	c.Add(ctx, 1, metric.WithAttributes(attribute.String(key, val)))
+	vgotel.Count(ctx, c, attribute.String(key, val))
 }
 
 // caller extracts the authenticated subject and raw bearer.
 func (h *Handlers) caller(w http.ResponseWriter, r *http.Request) (uuid.UUID, string, bool) {
-	claims, ok := jwtauth.FromContext(r.Context())
-	if !ok {
-		problem(w, r, http.StatusUnauthorized, "missing_token", "no validated token in context")
-		return uuid.Nil, "", false
-	}
-	id, err := uuid.Parse(claims.Subject)
-	if err != nil {
-		h.logger.ErrorContext(r.Context(), "token subject is not a user id", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "bad subject")
-		return uuid.Nil, "", false
-	}
-	return id, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), true
+	return jwtauth.CallerID(w, r, problemEW)
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
+func writeJSON(w http.ResponseWriter, status int, v any) { httpkit.WriteJSON(w, status, v) }
 func problem(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
-	httpkit.WriteProblem(w, r, httpkit.Problem{
-		Status: status, Title: http.StatusText(status), Code: code, Detail: detail,
-	})
+	httpkit.WriteProblemFields(w, r, status, code, detail)
+}
+
+// internalError answers a 500 and logs its cause: op is the log's
+// stable "op" label, detail the response's human-readable text - the
+// two already varied independently across the fourteen inline copies
+// this collapses (e.g. op "list_comments" against detail "list
+// failed"). Same shape as collection's h.internalError and
+// enrichment's twin.
+func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, op, detail string, err error) {
+	h.logger.ErrorContext(r.Context(), "store error", "op", op, "err", err)
+	problem(w, r, http.StatusInternalServerError, "internal", detail)
+}
+
+// capExceeded counts one rate-cap rejection on capRejections and
+// answers 429. Follow, LikeShelf, and CreateShelfComment reach this
+// identical branch, differing only in kind (the counter's label) and
+// the noun in detail; kept as a literal per-kind switch rather than
+// derived from kind's plural spelling, so a future kind cannot go
+// stale by silently mismatching its message.
+func (h *Handlers) capExceeded(w http.ResponseWriter, r *http.Request, kind string) {
+	h.count(r.Context(), h.capRejections, "kind", kind)
+	var detail string
+	switch kind {
+	case "follows":
+		detail = "follow limit reached; try again later"
+	case "likes":
+		detail = "like limit reached; try again later"
+	case "comments":
+		detail = "comment limit reached; try again later"
+	}
+	problem(w, r, http.StatusTooManyRequests, "cap_exceeded", detail)
 }

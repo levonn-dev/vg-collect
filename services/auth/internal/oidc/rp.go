@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -35,6 +36,39 @@ func (e *ProviderError) Error() string {
 }
 
 func (e *ProviderError) Unwrap() error { return e.Err }
+
+// doJSON runs one provider HTTP round trip and decodes a JSON response
+// into out. Every failure mode -- request construction, transport, a
+// non-200 status, or a malformed body -- comes back as *ProviderError,
+// so every call site (fetchDiscovery, redeemCode, and the JWKS
+// refetch) blames the identity provider the same way and
+// OauthCallback's errors.As sees the same type regardless of which
+// leg of the OIDC dance failed. Callers still own any check that needs
+// the decoded value (issuer match, a non-empty id_token, ...): that is
+// not a transport failure, so it is not doJSON's to classify.
+func doJSON(ctx context.Context, hc *http.Client, method, url string, body io.Reader, headers map[string]string, op string, out any) *ProviderError {
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return &ProviderError{Op: op, Err: err}
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return &ProviderError{Op: op, Err: err}
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode != http.StatusOK {
+		return &ProviderError{Op: op, Status: resp.StatusCode}
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return &ProviderError{Op: op, Err: err}
+	}
+	return nil
+}
 
 // RPConfig parameterizes one generic OIDC relying party. Provider
 // quirks (scopes, extra authorize params) live in the per-provider
@@ -153,23 +187,9 @@ func (p *RP) discover(ctx context.Context) (*discovery, error) {
 // (mix-up defense).
 func (p *RP) fetchDiscovery(ctx context.Context) (*discovery, error) {
 	u := strings.TrimSuffix(p.cfg.IssuerURL, "/") + "/.well-known/openid-configuration"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := p.hc.Do(req)
-	if err != nil {
-		return nil, &ProviderError{Op: "discovery", Err: err}
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-	if resp.StatusCode != http.StatusOK {
-		return nil, &ProviderError{Op: "discovery", Status: resp.StatusCode}
-	}
 	var d discovery
-	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
-		return nil, &ProviderError{Op: "discovery", Err: err}
+	if err := doJSON(ctx, p.hc, http.MethodGet, u, nil, nil, "discovery", &d); err != nil {
+		return nil, err
 	}
 	if strings.TrimSuffix(d.Issuer, "/") != strings.TrimSuffix(p.cfg.IssuerURL, "/") {
 		return nil, &ProviderError{Op: "discovery",
@@ -228,27 +248,13 @@ func (p *RP) redeemCode(ctx context.Context, d *discovery, code, verifier string
 		"client_id":     {p.cfg.ClientID},
 		"client_secret": {p.cfg.ClientSecret},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.TokenEndpoint,
-		strings.NewReader(form.Encode()))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := p.hc.Do(req)
-	if err != nil {
-		return "", &ProviderError{Op: "token exchange", Err: err}
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-	if resp.StatusCode != http.StatusOK {
-		return "", &ProviderError{Op: "token exchange", Status: resp.StatusCode}
-	}
 	var body struct {
 		IDToken string `json:"id_token"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return "", &ProviderError{Op: "token exchange", Err: err}
+	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
+	if err := doJSON(ctx, p.hc, http.MethodPost, d.TokenEndpoint,
+		strings.NewReader(form.Encode()), headers, "token exchange", &body); err != nil {
+		return "", err
 	}
 	if body.IDToken == "" {
 		return "", &ProviderError{Op: "token exchange", Err: errors.New("no id_token in response")}

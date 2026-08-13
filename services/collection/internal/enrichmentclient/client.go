@@ -11,11 +11,10 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 )
 
@@ -37,27 +36,16 @@ type Client struct {
 // New builds a Client against baseURL using an otelhttp transport and
 // a 10-second timeout.
 func New(baseURL string) (*Client, error) {
-	hc := &http.Client{
-		Timeout:   10 * time.Second,
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-	}
-	api, err := enrichapi.NewClientWithResponses(baseURL, enrichapi.WithHTTPClient(hc))
+	api, err := enrichapi.NewClientWithResponses(baseURL, enrichapi.WithHTTPClient(httpkit.NewHTTPClient()))
 	if err != nil {
 		return nil, fmt.Errorf("enrichmentclient: %w", err)
 	}
 	return &Client{api: api}, nil
 }
 
-func bearerEditor(bearer string) enrichapi.RequestEditorFn {
-	return func(_ context.Context, req *http.Request) error {
-		req.Header.Set("Authorization", "Bearer "+bearer)
-		return nil
-	}
-}
-
 // GetProduct fetches one catalog product.
 func (c *Client) GetProduct(ctx context.Context, bearer string, id uuid.UUID) (enrichapi.Product, error) {
-	resp, err := c.api.GetProductWithResponse(ctx, id, bearerEditor(bearer))
+	resp, err := c.api.GetProductWithResponse(ctx, id, httpkit.BearerEditor(bearer))
 	if err != nil {
 		return enrichapi.Product{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
@@ -78,7 +66,7 @@ func (c *Client) GetProduct(ctx context.Context, bearer string, id uuid.UUID) (e
 // region-aware repoint paths use it to land an entry's region-correct
 // sibling member; the caller's own bearer rides the hop.
 func (c *Client) Resolve(ctx context.Context, bearer string, req enrichapi.ResolveRequest) (enrichapi.Product, error) {
-	resp, err := c.api.ResolveProductWithResponse(ctx, req, bearerEditor(bearer))
+	resp, err := c.api.ResolveProductWithResponse(ctx, req, httpkit.BearerEditor(bearer))
 	if err != nil {
 		return enrichapi.Product{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
@@ -99,7 +87,7 @@ type Platform struct {
 // ListPlatforms fetches the canonical platform catalog (igdb id + name
 // + aliases). The admin's own bearer rides the hop.
 func (c *Client) ListPlatforms(ctx context.Context, bearer string) ([]Platform, error) {
-	resp, err := c.api.ListPlatformsWithResponse(ctx, bearerEditor(bearer))
+	resp, err := c.api.ListPlatformsWithResponse(ctx, httpkit.BearerEditor(bearer))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
@@ -119,7 +107,7 @@ func (c *Client) ListPlatforms(ctx context.Context, bearer string) ([]Platform, 
 // unexpected 403 here is configuration skew and reads as
 // unavailability.
 func (c *Client) CreateCommunityProduct(ctx context.Context, bearer string, req enrichapi.CreateCommunityProductJSONRequestBody) (enrichapi.Product, error) {
-	resp, err := c.api.CreateCommunityProductWithResponse(ctx, req, bearerEditor(bearer))
+	resp, err := c.api.CreateCommunityProductWithResponse(ctx, req, httpkit.BearerEditor(bearer))
 	if err != nil {
 		return enrichapi.Product{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
@@ -146,7 +134,7 @@ func (c *Client) BatchPrices(ctx context.Context, bearer string, ids []uuid.UUID
 		end := min(start+batchLimit, len(uniq))
 		resp, err := c.api.BatchPricesWithResponse(ctx,
 			enrichapi.BatchPricesJSONRequestBody{ProductIds: uniq[start:end]},
-			bearerEditor(bearer))
+			httpkit.BearerEditor(bearer))
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 		}
@@ -175,7 +163,7 @@ func (c *Client) PriceHistory(ctx context.Context, bearer string, ids []uuid.UUI
 		end := min(start+batchLimit, len(uniq))
 		resp, err := c.api.BatchPriceHistoryWithResponse(ctx,
 			enrichapi.BatchPriceHistoryJSONRequestBody{ProductIds: uniq[start:end], Days: &days},
-			bearerEditor(bearer))
+			httpkit.BearerEditor(bearer))
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 		}

@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -9,11 +10,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
+	"github.com/levonn-dev/vgkeep/libs/go/metrictest"
 	"github.com/levonn-dev/vgkeep/services/user/internal/store"
 )
 
@@ -69,45 +70,17 @@ func (c *logCapture) find(msg string) (slog.Level, map[string]string, bool) {
 	return 0, nil, false
 }
 
+// captureTelemetry adapts metrictest.Install for this package's tests,
+// which also need the record-capturing default slog handler swapped
+// in and restored on the same cleanup.
 func captureTelemetry(t *testing.T) (*sdkmetric.ManualReader, *logCapture) {
 	t.Helper()
-	reader := sdkmetric.NewManualReader()
-	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	prevMP := otel.GetMeterProvider()
-	otel.SetMeterProvider(mp)
+	reader := metrictest.Install(t)
 	logs := &logCapture{}
 	prevLog := slog.Default()
 	slog.SetDefault(slog.New(logs))
-	t.Cleanup(func() {
-		slog.SetDefault(prevLog)
-		otel.SetMeterProvider(prevMP)
-		_ = mp.Shutdown(context.Background())
-	})
+	t.Cleanup(func() { slog.SetDefault(prevLog) })
 	return reader, logs
-}
-
-// counterPoints collects and returns the data points of the named
-// counter; nil when the counter never incremented (an instrument with
-// no measurements produces no data).
-func counterPoints(t *testing.T, reader *sdkmetric.ManualReader, name string) []metricdata.DataPoint[int64] {
-	t.Helper()
-	var rm metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &rm); err != nil {
-		t.Fatalf("collect metrics: %v", err)
-	}
-	for _, sm := range rm.ScopeMetrics {
-		for _, m := range sm.Metrics {
-			if m.Name != name {
-				continue
-			}
-			sum, ok := m.Data.(metricdata.Sum[int64])
-			if !ok {
-				t.Fatalf("%s: data type %T, want Sum[int64]", name, m.Data)
-			}
-			return sum.DataPoints
-		}
-	}
-	return nil
 }
 
 // wantCounterPoint asserts the data point carrying label=value has the
@@ -143,8 +116,8 @@ func TestUpsertTelemetry_Created(t *testing.T) {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 
-	wantCounterPoint(t, counterPoints(t, reader, "vg.user.account.upserts"), "outcome", "created", 1)
-	wantCounterPoint(t, counterPoints(t, reader, "vg.user.currency.seeds"), "source", "locale", 1)
+	wantCounterPoint(t, metrictest.Int64Points(t, reader, "vg.user.account.upserts"), "outcome", "created", 1)
+	wantCounterPoint(t, metrictest.Int64Points(t, reader, "vg.user.currency.seeds"), "source", "locale", 1)
 
 	level, attrs, ok := logs.find("account created")
 	if !ok {
@@ -176,12 +149,12 @@ func TestUpsertTelemetry_Existing(t *testing.T) {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 
-	upserts := counterPoints(t, reader, "vg.user.account.upserts")
+	upserts := metrictest.Int64Points(t, reader, "vg.user.account.upserts")
 	wantCounterPoint(t, upserts, "outcome", "existing", 1)
 	wantCounterPoint(t, upserts, "outcome", "created", 0)
 	// The seed happens only at account creation; a returning login with
 	// a mappable hint must not count.
-	if pts := counterPoints(t, reader, "vg.user.currency.seeds"); len(pts) != 0 {
+	if pts := metrictest.Int64Points(t, reader, "vg.user.currency.seeds"); len(pts) != 0 {
 		t.Fatalf("currency.seeds incremented on the existing branch: %v", pts)
 	}
 	if _, _, ok := logs.find("account created"); ok {
@@ -213,7 +186,7 @@ func TestUpsertTelemetry_SeedSourceByHintClass(t *testing.T) {
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("status = %d, want 200", resp.StatusCode)
 			}
-			wantCounterPoint(t, counterPoints(t, reader, "vg.user.currency.seeds"), "source", tc.wantSource, 1)
+			wantCounterPoint(t, metrictest.Int64Points(t, reader, "vg.user.currency.seeds"), "source", tc.wantSource, 1)
 		})
 	}
 }
@@ -243,7 +216,7 @@ func TestUpsertTelemetry_StoreErrorLog(t *testing.T) {
 		t.Fatalf("store error attrs = %v, want op=upsert with err", attrs)
 	}
 	// A failed upsert has no outcome; the counter must not move.
-	if pts := counterPoints(t, reader, "vg.user.account.upserts"); len(pts) != 0 {
+	if pts := metrictest.Int64Points(t, reader, "vg.user.account.upserts"); len(pts) != 0 {
 		t.Fatalf("account.upserts incremented on the error path: %v", pts)
 	}
 }
@@ -306,7 +279,7 @@ func TestDeleteTelemetry_OutcomeAndLog(t *testing.T) {
 				t.Fatalf("status = %d, want 204", resp.StatusCode)
 			}
 
-			points := counterPoints(t, reader, "vg.user.account.deletes")
+			points := metrictest.Int64Points(t, reader, "vg.user.account.deletes")
 			wantCounterPoint(t, points, "outcome", tc.wantOutcome, 1)
 			if len(points) != 1 {
 				t.Fatalf("account.deletes points = %d, want 1", len(points))
@@ -341,7 +314,38 @@ func TestDeleteTelemetry_StoreErrorLog(t *testing.T) {
 	if !ok || attrs["op"] != "delete" || attrs["err"] == "" {
 		t.Fatalf("store error record = %v (found %v), want op=delete with err", attrs, ok)
 	}
-	if pts := counterPoints(t, reader, "vg.user.account.deletes"); len(pts) != 0 {
+	if pts := metrictest.Int64Points(t, reader, "vg.user.account.deletes"); len(pts) != 0 {
 		t.Fatalf("account.deletes incremented on the error path: %v", pts)
+	}
+}
+
+// TestUnitInternalErrorLogCarriesCause pins the shared 500 helper
+// itself (the four *_StoreErrorLog tests above already pin each call
+// site's own op/detail pairing): the problem body carries the generic
+// detail text, distinct from the log line's op label and cause,
+// exactly as collection's h.internalError - the model this and
+// enrichment's helper share - established.
+func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
+	_, logs := captureTelemetry(t)
+	st := &stubStore{get: func(context.Context, uuid.UUID) (store.User, error) { return store.User{}, errStubUser }}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "GET", srv.URL+"/users/"+uuid.NewString(), a.token(t, "svc", "service"), nil)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+	var p struct {
+		Code   string `json:"code"`
+		Detail string `json:"detail"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Code != "internal" || p.Detail != "get failed" {
+		t.Fatalf("problem = %+v, want code internal, detail %q", p, "get failed")
+	}
+
+	level, attrs, ok := logs.find("store error")
+	if !ok || level != slog.LevelError || attrs["op"] != "get" || attrs["err"] == "" {
+		t.Fatalf("store error record = %v (found %v), want ERROR op=get with err", attrs, ok)
 	}
 }

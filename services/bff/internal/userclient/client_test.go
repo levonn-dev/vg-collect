@@ -6,16 +6,32 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
+// newTestClient boots a server serving h and returns a userclient.Client
+// pointed at it; this file exercises userclient.New's error handling
+// itself (TestGet_BadUUID et al. call it directly), so unlike the
+// other client packages' identical helper, failure here is a genuine
+// t.Fatal rather than something worth a separate test.
+func newTestClient(t *testing.T, h http.HandlerFunc) *userclient.Client {
+	t.Helper()
+	return reqtest.NewTestClient(t, h, func(baseURL string) *userclient.Client {
+		c, err := userclient.New(baseURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	})
+}
+
 func TestGet_ForwardsBearerAndParses(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer the-users-token" {
 			t.Errorf("Authorization = %q", got)
 		}
@@ -29,11 +45,6 @@ func TestGet_ForwardsBearerAndParses(t *testing.T) {
 			"created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
 		})
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
 	u, err := c.Get(context.Background(), "2b1f9c5e-3f47-4d10-9f3e-111111111111", "the-users-token")
 	if err != nil {
 		t.Fatal(err)
@@ -44,19 +55,14 @@ func TestGet_ForwardsBearerAndParses(t *testing.T) {
 }
 
 func TestGet_NotFound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"type": "about:blank", "title": "Not Found", "status": 404, "code": "user_not_found",
 		})
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = c.Get(context.Background(), "2b1f9c5e-3f47-4d10-9f3e-111111111111", "tok")
+	_, err := c.Get(context.Background(), "2b1f9c5e-3f47-4d10-9f3e-111111111111", "tok")
 	if !errors.Is(err, userclient.ErrUserNotFound) {
 		t.Fatalf("want ErrUserNotFound, got %v", err)
 	}
@@ -76,7 +82,7 @@ func TestUpdate_ForwardsBearerAndBodyAndRelaysResult(t *testing.T) {
 	const id = "2b1f9c5e-3f47-4d10-9f3e-111111111111"
 	var gotAuth, gotMethod, gotPath, gotContentType string
 	var gotBody []byte
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth, gotMethod, gotPath = r.Header.Get("Authorization"), r.Method, r.URL.Path
 		gotContentType = r.Header.Get("Content-Type")
 		gotBody, _ = io.ReadAll(r.Body)
@@ -84,11 +90,6 @@ func TestUpdate_ForwardsBearerAndBodyAndRelaysResult(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"id":"` + id + `","display_name":"new-name"}`))
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
 	res, err := c.Update(context.Background(), id, "the-users-token", []byte(`{"display_name":"new-name"}`))
 	if err != nil {
 		t.Fatal(err)
@@ -111,16 +112,11 @@ func TestUpdate_ForwardsBearerAndBodyAndRelaysResult(t *testing.T) {
 func TestUpdate_RelaysValidationProblemVerbatim(t *testing.T) {
 	const id = "2b1f9c5e-3f47-4d10-9f3e-111111111111"
 	const problemBody = `{"type":"about:blank","title":"Bad Request","status":400,"code":"invalid_body","detail":"display_name"}`
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(problemBody))
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
 	res, err := c.Update(context.Background(), id, "tok", []byte(`{}`))
 	if err != nil {
 		t.Fatal(err)
@@ -143,15 +139,10 @@ func TestUpdate_BadUUID(t *testing.T) {
 func TestDelete_ForwardsBearerAndSucceeds(t *testing.T) {
 	const id = "2b1f9c5e-3f47-4d10-9f3e-111111111111"
 	var gotAuth, gotMethod, gotPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth, gotMethod, gotPath = r.Header.Get("Authorization"), r.Method, r.URL.Path
 		w.WriteHeader(http.StatusNoContent)
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := c.Delete(context.Background(), id, "the-users-token"); err != nil {
 		t.Fatal(err)
 	}
@@ -164,20 +155,34 @@ func TestDelete_ForwardsBearerAndSucceeds(t *testing.T) {
 }
 
 func TestDelete_NonNoContentIsError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusForbidden)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"type": "about:blank", "title": "Forbidden", "status": 403,
 		})
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := c.Delete(context.Background(), "2b1f9c5e-3f47-4d10-9f3e-111111111111", "tok"); err == nil {
 		t.Fatal("want an error for a non-204 status")
+	}
+}
+
+// TestDelete_NonNoContentIsErrUpstream pins Delete's fallback branch to
+// the same wrapping SharedProfile and Get already use: a caller gating
+// on errors.Is(err, userclient.ErrUpstream) must actually match instead
+// of silently falling through, the way a bare fmt.Errorf without %w
+// would.
+func TestDelete_NonNoContentIsErrUpstream(t *testing.T) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"type": "about:blank", "title": "Internal Server Error", "status": 500,
+		})
+	}))
+	err := c.Delete(context.Background(), "2b1f9c5e-3f47-4d10-9f3e-111111111111", "tok")
+	if !errors.Is(err, userclient.ErrUpstream) {
+		t.Fatalf("want ErrUpstream, got %v", err)
 	}
 }
 
@@ -192,17 +197,12 @@ func TestDelete_BadUUID(t *testing.T) {
 }
 
 func TestGet_NonJSON404IsNotNotFound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte("<html>404 from some proxy</html>"))
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = c.Get(context.Background(), "2b1f9c5e-3f47-4d10-9f3e-111111111111", "tok")
+	_, err := c.Get(context.Background(), "2b1f9c5e-3f47-4d10-9f3e-111111111111", "tok")
 	if err == nil {
 		t.Fatal("want an error for a 404")
 	}
@@ -211,9 +211,28 @@ func TestGet_NonJSON404IsNotNotFound(t *testing.T) {
 	}
 }
 
+// TestGet_NonOKIsErrUpstream pins Get's fallback branch to the same
+// wrapping SharedProfile already uses: a caller gating on
+// errors.Is(err, userclient.ErrUpstream) must actually match instead
+// of silently falling through, the way a bare fmt.Errorf without %w
+// would.
+func TestGet_NonOKIsErrUpstream(t *testing.T) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"type": "about:blank", "title": "Internal Server Error", "status": 500,
+		})
+	}))
+	_, err := c.Get(context.Background(), "2b1f9c5e-3f47-4d10-9f3e-111111111111", "tok")
+	if !errors.Is(err, userclient.ErrUpstream) {
+		t.Fatalf("want ErrUpstream, got %v", err)
+	}
+}
+
 func TestSharedProfile_ForwardsBearerAndDecodes(t *testing.T) {
 	var gotPath, gotAuth string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -221,11 +240,6 @@ func TestSharedProfile_ForwardsBearerAndDecodes(t *testing.T) {
 			"profile_visibility": "unlisted",
 		})
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
 	card, err := c.SharedProfile(context.Background(), "the-users-token", "alice")
 	if err != nil {
 		t.Fatal(err)
@@ -242,19 +256,14 @@ func TestSharedProfile_ForwardsBearerAndDecodes(t *testing.T) {
 }
 
 func TestSharedProfile_NotFound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"type": "about:blank", "title": "Not Found", "status": 404, "code": "profile_not_found",
 		})
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = c.SharedProfile(context.Background(), "tok", "nobody")
+	_, err := c.SharedProfile(context.Background(), "tok", "nobody")
 	if !errors.Is(err, userclient.ErrProfileNotFound) {
 		t.Fatalf("want ErrProfileNotFound, got %v", err)
 	}
@@ -264,7 +273,7 @@ func TestSharedProfile_NotFound(t *testing.T) {
 // deliberate ambiguity: a private handle's problem+json 404 is
 // indistinguishable from an unknown one, both ErrProfileNotFound.
 func TestSharedProfile_PrivateHandleAlsoErrProfileNotFound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -272,29 +281,19 @@ func TestSharedProfile_PrivateHandleAlsoErrProfileNotFound(t *testing.T) {
 			"detail": "private",
 		})
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = c.SharedProfile(context.Background(), "tok", "private-handle")
+	_, err := c.SharedProfile(context.Background(), "tok", "private-handle")
 	if !errors.Is(err, userclient.ErrProfileNotFound) {
 		t.Fatalf("want ErrProfileNotFound, got %v", err)
 	}
 }
 
 func TestSharedProfile_NonJSON404IsNotProfileNotFound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte("<html>404 from some proxy</html>"))
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = c.SharedProfile(context.Background(), "tok", "alice")
+	_, err := c.SharedProfile(context.Background(), "tok", "alice")
 	if err == nil {
 		t.Fatal("want an error for a 404")
 	}
@@ -306,16 +305,11 @@ func TestSharedProfile_NonJSON404IsNotProfileNotFound(t *testing.T) {
 func TestSharedCardsByIDs_ForwardsBearerAndDecodes(t *testing.T) {
 	const id = "2b1f9c5e-3f47-4d10-9f3e-111111111111"
 	var gotPath, gotAuth string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"profiles":[{"user_id":"` + id + `","handle":"alice","profile_visibility":"listed"}]}`))
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
 	cards, err := c.SharedCardsByIDs(context.Background(), "tok", []uuid.UUID{uuid.MustParse(id)})
 	if err != nil {
 		t.Fatal(err)
@@ -332,15 +326,10 @@ func TestSharedCardsByIDs_ForwardsBearerAndDecodes(t *testing.T) {
 }
 
 func TestSharedCardsByIDs_NonOKIsErrUpstream(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = c.SharedCardsByIDs(context.Background(), "tok", []uuid.UUID{uuid.New()})
+	_, err := c.SharedCardsByIDs(context.Background(), "tok", []uuid.UUID{uuid.New()})
 	if !errors.Is(err, userclient.ErrUpstream) {
 		t.Fatalf("want ErrUpstream, got %v", err)
 	}
@@ -348,17 +337,12 @@ func TestSharedCardsByIDs_NonOKIsErrUpstream(t *testing.T) {
 
 func TestSearchProfiles_ForwardsBearerQueryAndRelaysBody(t *testing.T) {
 	var gotPath, gotQuery, gotAuth string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotQuery, gotAuth = r.URL.Path, r.URL.RawQuery, r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"profiles":[{"handle":"alice"}]}`))
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
 	res, err := c.SearchProfiles(context.Background(), "the-users-token", "ali")
 	if err != nil {
 		t.Fatal(err)
@@ -375,17 +359,12 @@ func TestSearchProfiles_ForwardsBearerQueryAndRelaysBody(t *testing.T) {
 }
 
 func TestSearchProfiles_NonOKIsErrUpstream(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]any{"type": "about:blank", "title": "Unauthorized", "status": 401})
 	}))
-	t.Cleanup(srv.Close)
-	c, err := userclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = c.SearchProfiles(context.Background(), "tok", "ali")
+	_, err := c.SearchProfiles(context.Background(), "tok", "ali")
 	if !errors.Is(err, userclient.ErrUpstream) {
 		t.Fatalf("want ErrUpstream, got %v", err)
 	}

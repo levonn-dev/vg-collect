@@ -38,15 +38,25 @@ func (h *Handlers) OauthStart(w http.ResponseWriter, r *http.Request) {
 		problem(w, r, http.StatusBadRequest, "unknown_provider", "provider not enabled")
 		return
 	}
+	h.startDance(w, r, p, nil, "could not persist login state")
+}
+
+// startDance runs the shared tail of OauthStart and OauthLinkStart:
+// persist a fresh state row and hand back the provider's authorize
+// URL. linkUserID is nil for a login-mode start (OauthStart) and the
+// caller's id for a link-mode start (OauthLinkStart); persistErrDetail
+// is the two callers' only other difference, the wording of the 500
+// they answer when the state write itself fails.
+func (h *Handlers) startDance(w http.ResponseWriter, r *http.Request, p oidc.Provider, linkUserID *uuid.UUID, persistErrDetail string) {
 	state := oidc.RandomToken()
 	nonce := oidc.RandomToken()
 	verifier, challenge := oidc.NewPKCE()
 	if err := h.store.CreateState(r.Context(), store.AuthState{
 		State: state, PKCEVerifier: verifier, Nonce: nonce,
-		Provider: p.Name(), ExpiresAt: time.Now().Add(stateTTL),
+		Provider: p.Name(), ExpiresAt: time.Now().Add(stateTTL), LinkUserID: linkUserID,
 	}); err != nil {
 		logStoreError(r.Context(), "create_state", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "could not persist login state")
+		problem(w, r, http.StatusInternalServerError, "internal", persistErrDetail)
 		return
 	}
 	authorizeURL, err := p.AuthorizeURL(r.Context(), state, nonce, challenge)
@@ -129,24 +139,7 @@ func (h *Handlers) OauthLinkStart(w http.ResponseWriter, r *http.Request) {
 		problem(w, r, http.StatusBadRequest, "unknown_provider", "provider not enabled")
 		return
 	}
-	state := oidc.RandomToken()
-	nonce := oidc.RandomToken()
-	verifier, challenge := oidc.NewPKCE()
-	if err := h.store.CreateState(r.Context(), store.AuthState{
-		State: state, PKCEVerifier: verifier, Nonce: nonce,
-		Provider: p.Name(), ExpiresAt: time.Now().Add(stateTTL), LinkUserID: &userID,
-	}); err != nil {
-		logStoreError(r.Context(), "create_state", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "could not persist link state")
-		return
-	}
-	authorizeURL, err := p.AuthorizeURL(r.Context(), state, nonce, challenge)
-	if err != nil {
-		logProviderError(r.Context(), p.Name(), err)
-		problem(w, r, http.StatusBadGateway, "provider_error", "identity provider unavailable")
-		return
-	}
-	writeJSON(w, http.StatusOK, api.StartResponse{AuthorizeUrl: authorizeURL})
+	h.startDance(w, r, p, &userID, "could not persist link state")
 }
 
 // DevLink is the dev provider's one-hop link (no external IdP, so
@@ -443,12 +436,7 @@ func tokenPairResponse(access, refresh string, accessTTL time.Duration, refreshE
 // on failure. All auth endpoints take tiny bodies; 64KB caps a buggy
 // caller.
 func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
-		return false
-	}
-	return true
+	return httpkit.DecodeBody(w, r, 64*1024, v)
 }
 
 // RefreshToken rotates a refresh token. Ordering is deliberate: the

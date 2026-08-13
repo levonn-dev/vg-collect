@@ -1,22 +1,20 @@
 package server
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 	"time"
 
-	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
-	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
 	"go.mongodb.org/mongo-driver/mongo"
 
+	"github.com/levonn-dev/vgkeep/libs/go/mongotest"
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
+	"github.com/levonn-dev/vgkeep/libs/go/valkeytest"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/cache"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/db"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/fx"
@@ -431,21 +429,7 @@ func newUnitHandlers(st Store, games GameProvider, prices PriceProvider, c Cache
 // serveUnit routes one request through the real router + jwtauth.
 func serveUnit(t *testing.T, h *Handlers, env *authEnv, method, path, token string, body any) *httptest.ResponseRecorder {
 	t.Helper()
-	var rd io.Reader
-	if body != nil {
-		buf, err := json.Marshal(body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		rd = bytes.NewReader(buf)
-	}
-	req := httptest.NewRequest(method, path, rd)
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
+	req := reqtest.NewJSONRequest(t, method, path, token, body)
 	rec := httptest.NewRecorder()
 	router := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil })
 	router.ServeHTTP(rec, req)
@@ -487,45 +471,17 @@ type stack struct {
 	client *http.Client
 }
 
-// One MongoDB and one valkey container serve this whole package (the
-// same shared-container pattern as the store package's fixture): the
-// per-test containers this replaces spent most of the package's
-// runtime on boots. Each test still opens on a fresh, fully migrated
-// database and an empty keyspace via the drop + re-migrate and
-// FlushAll resets in newStack. No Terminate: the testcontainers
-// reaper collects both containers when the test process exits.
-var (
-	sharedMongo struct {
-		once sync.Once
-		url  string
-		err  error
-	}
-	sharedVK struct {
-		once sync.Once
-		url  string
-		err  error
-	}
-)
-
+// newStack shares one MongoDB container across this whole package via
+// mongotest.URL (the Valkey half below uses the same shared-container
+// pattern via valkeytest.URL) and still owns the drop + re-migrate
+// reset, so every test opens on a fresh, fully migrated database
+// regardless of what an earlier test left behind.
 func newStack(t *testing.T) *stack {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
 	ctx := context.Background()
 
-	sharedMongo.once.Do(func() {
-		mc, err := tcmongo.Run(ctx, "mongo:8")
-		if err != nil {
-			sharedMongo.err = err
-			return
-		}
-		sharedMongo.url, sharedMongo.err = mc.ConnectionString(ctx)
-	})
-	if sharedMongo.err != nil {
-		t.Fatal(sharedMongo.err)
-	}
-	mclient, err := db.Connect(ctx, sharedMongo.url)
+	url := mongotest.URL(t)
+	mclient, err := db.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -533,28 +489,19 @@ func newStack(t *testing.T) *stack {
 	if err := mclient.Database("enrichment").Drop(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Migrate(ctx, sharedMongo.url, "enrichment", migrations.FS, "."); err != nil {
+	if err := db.Migrate(ctx, url, "enrichment", migrations.FS, "."); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	mdb := mclient.Database("enrichment")
 	st := store.New(mdb)
 
-	sharedVK.once.Do(func() {
-		vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine")
-		if err != nil {
-			sharedVK.err = err
-			return
-		}
-		sharedVK.url, sharedVK.err = vk.ConnectionString(ctx)
-	})
-	if sharedVK.err != nil {
-		t.Fatal(sharedVK.err)
-	}
-	rdb, err := valkeykit.Connect(ctx, sharedVK.url)
+	rdb, err := valkeykit.Connect(ctx, valkeytest.URL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = rdb.Close() })
+	// Reset: flush whatever the previous test cached so each test
+	// starts on an empty cache.
 	if err := rdb.FlushAll(ctx).Err(); err != nil {
 		t.Fatal(err)
 	}
@@ -601,24 +548,7 @@ func (s *stack) serviceToken() string {
 // do sends a request with an optional Bearer token and JSON body.
 func (s *stack) do(method, path, token string, body any) *http.Response {
 	s.t.Helper()
-	var rd io.Reader
-	if body != nil {
-		buf, err := json.Marshal(body)
-		if err != nil {
-			s.t.Fatal(err)
-		}
-		rd = bytes.NewReader(buf)
-	}
-	req, err := http.NewRequest(method, s.srv.URL+path, rd)
-	if err != nil {
-		s.t.Fatal(err)
-	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
+	req := reqtest.NewJSONRequest(s.t, method, s.srv.URL+path, token, body)
 	resp, err := s.client.Do(req)
 	if err != nil {
 		s.t.Fatal(err)
@@ -628,12 +558,7 @@ func (s *stack) do(method, path, token string, body any) *http.Response {
 
 func decodeBody[T any](t *testing.T, resp *http.Response) T {
 	t.Helper()
-	defer func() { _ = resp.Body.Close() }()
-	var v T
-	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
-		t.Fatal(err)
-	}
-	return v
+	return reqtest.DecodeJSON[T](t, resp)
 }
 
 // resolveGame is the shared shortcut used across the handler tests

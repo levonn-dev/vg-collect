@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/user/internal/store"
 )
 
@@ -166,7 +167,7 @@ func TestUnitSharedSearch_StoreError_InternalServerError(t *testing.T) {
 	}}
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "GET", srv.URL+"/shared/profiles/search?q=Alice_P", a.token(t, "viewer"), nil)
-	wantUnitProblem(t, resp, http.StatusInternalServerError, "internal")
+	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }
 
 func TestUnitSharedSearch_QueryTooLong_BadRequest(t *testing.T) {
@@ -176,7 +177,7 @@ func TestUnitSharedSearch_QueryTooLong_BadRequest(t *testing.T) {
 	q := strings.Repeat("a", 65)
 	srv, a := newUnitServer(t, &stubStore{})
 	resp := do(t, "GET", srv.URL+"/shared/profiles/search?q="+q, a.token(t, "viewer"), nil)
-	wantUnitProblem(t, resp, http.StatusBadRequest, "query_too_long")
+	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "query_too_long")
 }
 
 func TestUnitSharedProfile_StoreError_InternalServerError(t *testing.T) {
@@ -186,7 +187,7 @@ func TestUnitSharedProfile_StoreError_InternalServerError(t *testing.T) {
 	}}
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "GET", srv.URL+"/shared/profiles/whoever", a.token(t, "viewer"), nil)
-	wantUnitProblem(t, resp, http.StatusInternalServerError, "internal")
+	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }
 
 func TestUnitSharedByIds_StoreError_InternalServerError(t *testing.T) {
@@ -196,7 +197,7 @@ func TestUnitSharedByIds_StoreError_InternalServerError(t *testing.T) {
 	}}
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "GET", srv.URL+"/shared/profiles/by-ids?ids="+uuid.New().String(), a.token(t, "viewer"), nil)
-	wantUnitProblem(t, resp, http.StatusInternalServerError, "internal")
+	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }
 
 func TestUnitSharedByIds_TooManyIds_BadRequest(t *testing.T) {
@@ -209,5 +210,5 @@ func TestUnitSharedByIds_TooManyIds_BadRequest(t *testing.T) {
 	}
 	srv, a := newUnitServer(t, &stubStore{})
 	resp := do(t, "GET", srv.URL+"/shared/profiles/by-ids?"+q.Encode(), a.token(t, "viewer"), nil)
-	wantUnitProblem(t, resp, http.StatusBadRequest, "too_many_ids")
+	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "too_many_ids")
 }

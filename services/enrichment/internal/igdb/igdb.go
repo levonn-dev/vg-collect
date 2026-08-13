@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/levonn-dev/vgkeep/libs/go/regionkit"
 )
 
 // Named is any IGDB reference expanded to {id, name} (genres, themes,
@@ -119,17 +121,11 @@ func (g Game) ReleaseDate() time.Time {
 	return time.Unix(g.FirstReleaseDate, 0).UTC().Truncate(24 * time.Hour)
 }
 
-// regionNames maps the IGDB region enum onto canonical names; unknown
-// values drop the row (nothing downstream can pick them).
-var regionNames = map[int]string{
-	1: "europe", 2: "north_america", 3: "australia", 4: "new_zealand",
-	5: "japan", 6: "china", 7: "asia", 8: "worldwide", 9: "korea", 10: "brazil",
-}
-
-// RegionName resolves the region enum; ok=false means an enum value
-// this service does not know (skip the row).
+// RegionName resolves the region enum against regionkit.ReleaseRegionNames
+// (generated from api/domain.yaml's release_regions rows); ok=false
+// means an enum value this service does not know (skip the row).
 func RegionName(r int) (string, bool) {
-	name, ok := regionNames[r]
+	name, ok := regionkit.ReleaseRegionNames[r]
 	return name, ok
 }
 
@@ -233,31 +229,25 @@ func BundleLocalizations(g Game) []LocalizationBundle {
 	return out
 }
 
-// twinPlatforms pairs the JP regional twins IGDB models as separate
-// platforms: a Super Nintendo product (19) and its Super Famicom (58)
-// counterpart are the same console to a collector, but the japan
-// release row rides the Famicom platform id. Same for NES (18) and
-// Family Computer (99). The pairing is symmetric so a lookup from
-// either side yields the other.
-//
-// These two pairs are the complete set (full 220-row catalog swept
-// 2026-07-16): IGDB keeps every other regional-name pair as ONE
-// combined entry (Sega Mega Drive/Genesis 29, Master System/Mark III
-// 64, TurboGrafx-16/PC Engine 86 and its CD 150), and the remaining
-// JP-flavored entries are different devices with their own libraries
-// (Famicom Disk System 51, SuperGrafx 128, Satellaview 306, 64DD 416),
-// which must NOT fold.
-var twinPlatforms = map[int64]int64{
-	19: 58, 58: 19, // Super Nintendo <-> Super Famicom
-	18: 99, 99: 18, // Nintendo Entertainment System <-> Family Computer
-}
-
 // TwinPlatformID returns the JP regional twin of a platform id, or 0
-// when the platform has none. The store folds a twin's release rows
-// into its sibling's projection so a SNES product still shows its
-// japan (Super Famicom) date.
+// when the platform has none (regionkit.TwinPlatformIDs, generated
+// from api/domain.yaml platforms[].twin_igdb_id). The store folds a
+// twin's release rows into its sibling's projection so a SNES product
+// still shows its japan (Super Famicom) date.
+//
+// The pairing is symmetric (a lookup from either side yields the
+// other): a Super Nintendo product (19) and its Super Famicom (58)
+// counterpart are the same console to a collector, but the japan
+// release row rides the Famicom platform id; same for NES (18) and
+// Family Computer (99). These two pairs are the complete set (full
+// 220-row catalog swept 2026-07-16): IGDB keeps every other
+// regional-name pair as ONE combined entry (Sega Mega Drive/Genesis
+// 29, Master System/Mark III 64, TurboGrafx-16/PC Engine 86 and its
+// CD 150), and the remaining JP-flavored entries are different
+// devices with their own libraries (Famicom Disk System 51,
+// SuperGrafx 128, Satellaview 306, 64DD 416), which must NOT fold.
 func TwinPlatformID(id int64) int64 {
-	return twinPlatforms[id]
+	return regionkit.TwinPlatformIDs[id]
 }
 
 // LogoURL builds the t_logo_med image URL, or "" without a logo.

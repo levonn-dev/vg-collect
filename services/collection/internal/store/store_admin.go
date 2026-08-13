@@ -60,21 +60,15 @@ func (s *Store) ListGameBackedRefs(ctx context.Context) ([]GameEntryRef, error) 
 	if err != nil {
 		return nil, fmt.Errorf("store: list game-backed refs: %w", err)
 	}
-	defer rows.Close()
-	var out []GameEntryRef
-	for rows.Next() {
-		var r GameEntryRef
-		if err := rows.Scan(&r.EntryID, &r.ProductID, &r.Region, &r.FirstReleaseDate,
-			&r.LocalizedName, &r.LocalizedNameTranslit, &r.LocalizedCoverURL,
-			&r.Developers, &r.Publishers); err != nil {
-			return nil, fmt.Errorf("store: list game-backed refs: %w", err)
+	return scanAll(rows, nil, "list game-backed refs", func(r pgx.Rows) (GameEntryRef, error) {
+		var ref GameEntryRef
+		if err := r.Scan(&ref.EntryID, &ref.ProductID, &ref.Region, &ref.FirstReleaseDate,
+			&ref.LocalizedName, &ref.LocalizedNameTranslit, &ref.LocalizedCoverURL,
+			&ref.Developers, &ref.Publishers); err != nil {
+			return GameEntryRef{}, fmt.Errorf("store: list game-backed refs: %w", err)
 		}
-		out = append(out, r)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: list game-backed refs: %w", err)
-	}
-	return out, nil
+		return ref, nil
+	})
 }
 
 // SetSnapshotFields narrowly rewrites one entry's product-derived
@@ -131,20 +125,14 @@ func (s *Store) ListAutoGameRematchRefs(ctx context.Context) ([]RematchEntryRef,
 	if err != nil {
 		return nil, fmt.Errorf("store: list rematch refs: %w", err)
 	}
-	defer rows.Close()
-	var out []RematchEntryRef
-	for rows.Next() {
-		var r RematchEntryRef
-		if err := rows.Scan(&r.EntryID, &r.ProductID, &r.IGDBGameID, &r.PlatformIGDBID, &r.Region,
-			&r.FirstReleaseDate, &r.LocalizedName, &r.LocalizedNameTranslit, &r.LocalizedCoverURL); err != nil {
-			return nil, fmt.Errorf("store: list rematch refs: %w", err)
+	return scanAll(rows, nil, "list rematch refs", func(r pgx.Rows) (RematchEntryRef, error) {
+		var ref RematchEntryRef
+		if err := r.Scan(&ref.EntryID, &ref.ProductID, &ref.IGDBGameID, &ref.PlatformIGDBID, &ref.Region,
+			&ref.FirstReleaseDate, &ref.LocalizedName, &ref.LocalizedNameTranslit, &ref.LocalizedCoverURL); err != nil {
+			return RematchEntryRef{}, fmt.Errorf("store: list rematch refs: %w", err)
 		}
-		out = append(out, r)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: list rematch refs: %w", err)
-	}
-	return out, nil
+		return ref, nil
+	})
 }
 
 // RepointEntry moves one entry to a sibling member and rewrites its
@@ -182,19 +170,13 @@ func (s *Store) ListNameOnlyPlatformEntries(ctx context.Context) ([]PlatformEntr
 	if err != nil {
 		return nil, fmt.Errorf("store: list name-only platforms: %w", err)
 	}
-	defer rows.Close()
-	var out []PlatformEntryRef
-	for rows.Next() {
+	return scanAll(rows, nil, "list name-only platforms", func(r pgx.Rows) (PlatformEntryRef, error) {
 		var ref PlatformEntryRef
-		if err := rows.Scan(&ref.EntryID, &ref.PlatformName); err != nil {
-			return nil, fmt.Errorf("store: scan platform ref: %w", err)
+		if err := r.Scan(&ref.EntryID, &ref.PlatformName); err != nil {
+			return PlatformEntryRef{}, fmt.Errorf("store: scan platform ref: %w", err)
 		}
-		out = append(out, ref)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: list name-only platforms: %w", err)
-	}
-	return out, nil
+		return ref, nil
+	})
 }
 
 // SetEntryPlatformIdentity stamps one entry's canonical platform id and
@@ -231,19 +213,13 @@ func (s *Store) ListOpenRegionEntries(ctx context.Context, known []string) ([]Op
 	if err != nil {
 		return nil, fmt.Errorf("store: list open region entries: %w", err)
 	}
-	defer rows.Close()
-	var out []OpenRegionEntryRef
-	for rows.Next() {
+	return scanAll(rows, nil, "list open region entries", func(r pgx.Rows) (OpenRegionEntryRef, error) {
 		var ref OpenRegionEntryRef
-		if err := rows.Scan(&ref.EntryID, &ref.ProductID, &ref.IGDBGameID, &ref.Region); err != nil {
-			return nil, fmt.Errorf("store: scan open region ref: %w", err)
+		if err := r.Scan(&ref.EntryID, &ref.ProductID, &ref.IGDBGameID, &ref.Region); err != nil {
+			return OpenRegionEntryRef{}, fmt.Errorf("store: scan open region ref: %w", err)
 		}
-		out = append(out, ref)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: list open region entries: %w", err)
-	}
-	return out, nil
+		return ref, nil
+	})
 }
 
 // PromoteEntryRegion canonicalizes one entry's region string. A

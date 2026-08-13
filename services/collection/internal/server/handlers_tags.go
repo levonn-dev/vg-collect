@@ -3,7 +3,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
@@ -52,9 +52,7 @@ func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body api.TagCreate
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, maxBodyBytes, &body) {
 		return
 	}
 	if detail := validateTagName(body.Name); detail != "" {
@@ -85,9 +83,7 @@ func (h *Handlers) RenameTag(w http.ResponseWriter, r *http.Request, tagId opena
 		return
 	}
 	var body api.TagCreate
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, maxBodyBytes, &body) {
 		return
 	}
 	if detail := validateTagName(body.Name); detail != "" {

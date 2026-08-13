@@ -228,20 +228,18 @@ func (s *Store) ListPendingSubmissions(ctx context.Context, limit, offset int) (
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: list queue: %w", err)
 	}
-	defer rows.Close()
-	var out []SubmissionProposal
-	for rows.Next() {
+	out, err := scanAll(rows, nil, "list queue", func(r pgx.Rows) (SubmissionProposal, error) {
 		var p SubmissionProposal
-		if err := rows.Scan(&p.ID, &p.EntryID, &p.UserID, &p.Status, &p.RejectReason, &p.ProductID,
+		if err := r.Scan(&p.ID, &p.EntryID, &p.UserID, &p.Status, &p.RejectReason, &p.ProductID,
 			&p.CreatedAt, &p.UpdatedAt, &p.ReviewedAt,
 			&p.DisplayName, &p.ItemType, &p.PlatformName, &p.Region, &p.Edition, &p.FirstReleaseDate, &p.CoverURL,
 			&p.Developers, &p.Publishers); err != nil {
-			return nil, 0, fmt.Errorf("store: scan queue row: %w", err)
+			return SubmissionProposal{}, fmt.Errorf("store: scan queue row: %w", err)
 		}
-		out = append(out, p)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("store: list queue: %w", err)
+		return p, nil
+	})
+	if err != nil {
+		return nil, 0, err
 	}
 	return out, total, nil
 }

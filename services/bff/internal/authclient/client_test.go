@@ -6,24 +6,24 @@ import (
 	"errors"
 	"maps"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
 )
 
 // stubAuth answers like the auth service for one canned scenario per path.
 func stubAuth(t *testing.T, handler http.HandlerFunc) *authclient.Client {
 	t.Helper()
-	srv := httptest.NewServer(handler)
-	t.Cleanup(srv.Close)
-	c, err := authclient.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return c
+	return reqtest.NewTestClient(t, handler, func(baseURL string) *authclient.Client {
+		c, err := authclient.New(baseURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	})
 }
 
 func writeProblem(w http.ResponseWriter, status int, code string, extra map[string]any) {

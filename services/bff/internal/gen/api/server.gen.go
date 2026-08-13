@@ -828,6 +828,48 @@ func (e MeProfileVisibility) Valid() bool {
 	}
 }
 
+// Defines values for PlatformRefReleaseRegions.
+const (
+	PlatformRefReleaseRegionsAsia         PlatformRefReleaseRegions = "asia"
+	PlatformRefReleaseRegionsAustralia    PlatformRefReleaseRegions = "australia"
+	PlatformRefReleaseRegionsBrazil       PlatformRefReleaseRegions = "brazil"
+	PlatformRefReleaseRegionsChina        PlatformRefReleaseRegions = "china"
+	PlatformRefReleaseRegionsEurope       PlatformRefReleaseRegions = "europe"
+	PlatformRefReleaseRegionsJapan        PlatformRefReleaseRegions = "japan"
+	PlatformRefReleaseRegionsKorea        PlatformRefReleaseRegions = "korea"
+	PlatformRefReleaseRegionsNewZealand   PlatformRefReleaseRegions = "new_zealand"
+	PlatformRefReleaseRegionsNorthAmerica PlatformRefReleaseRegions = "north_america"
+	PlatformRefReleaseRegionsWorldwide    PlatformRefReleaseRegions = "worldwide"
+)
+
+// Valid indicates whether the value is a known member of the PlatformRefReleaseRegions enum.
+func (e PlatformRefReleaseRegions) Valid() bool {
+	switch e {
+	case PlatformRefReleaseRegionsAsia:
+		return true
+	case PlatformRefReleaseRegionsAustralia:
+		return true
+	case PlatformRefReleaseRegionsBrazil:
+		return true
+	case PlatformRefReleaseRegionsChina:
+		return true
+	case PlatformRefReleaseRegionsEurope:
+		return true
+	case PlatformRefReleaseRegionsJapan:
+		return true
+	case PlatformRefReleaseRegionsKorea:
+		return true
+	case PlatformRefReleaseRegionsNewZealand:
+		return true
+	case PlatformRefReleaseRegionsNorthAmerica:
+		return true
+	case PlatformRefReleaseRegionsWorldwide:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProductOrigin.
 const (
 	ProductOriginCommunity ProductOrigin = "community"
@@ -915,6 +957,48 @@ const (
 func (e RefreshAcceptedStatus) Valid() bool {
 	switch e {
 	case RefreshAcceptedStatusStarted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReleaseDateRegion.
+const (
+	ReleaseDateRegionAsia         ReleaseDateRegion = "asia"
+	ReleaseDateRegionAustralia    ReleaseDateRegion = "australia"
+	ReleaseDateRegionBrazil       ReleaseDateRegion = "brazil"
+	ReleaseDateRegionChina        ReleaseDateRegion = "china"
+	ReleaseDateRegionEurope       ReleaseDateRegion = "europe"
+	ReleaseDateRegionJapan        ReleaseDateRegion = "japan"
+	ReleaseDateRegionKorea        ReleaseDateRegion = "korea"
+	ReleaseDateRegionNewZealand   ReleaseDateRegion = "new_zealand"
+	ReleaseDateRegionNorthAmerica ReleaseDateRegion = "north_america"
+	ReleaseDateRegionWorldwide    ReleaseDateRegion = "worldwide"
+)
+
+// Valid indicates whether the value is a known member of the ReleaseDateRegion enum.
+func (e ReleaseDateRegion) Valid() bool {
+	switch e {
+	case ReleaseDateRegionAsia:
+		return true
+	case ReleaseDateRegionAustralia:
+		return true
+	case ReleaseDateRegionBrazil:
+		return true
+	case ReleaseDateRegionChina:
+		return true
+	case ReleaseDateRegionEurope:
+		return true
+	case ReleaseDateRegionJapan:
+		return true
+	case ReleaseDateRegionKorea:
+		return true
+	case ReleaseDateRegionNewZealand:
+		return true
+	case ReleaseDateRegionNorthAmerica:
+		return true
+	case ReleaseDateRegionWorldwide:
 		return true
 	default:
 		return false
@@ -2297,8 +2381,11 @@ type PlatformRef struct {
 	Name    string  `json:"name"`
 
 	// ReleaseRegions Distinct canonical IGDB release regions for this game on this platform (japan, north_america, europe, ...), ordered by that region's earliest release date on the platform (dateless rows last, then alphabetical). Platform-exact: JP twin platforms are NOT folded here (a Famicom row stays on Famicom), unlike the product projection's date fold - the physical release is platform-specific. Populated on game search results only; absent on product payloads and hardware results.
-	ReleaseRegions *[]string `json:"release_regions,omitempty"`
+	ReleaseRegions *[]PlatformRefReleaseRegions `json:"release_regions,omitempty"`
 }
+
+// PlatformRefReleaseRegions defines model for PlatformRef.ReleaseRegions.
+type PlatformRefReleaseRegions string
 
 // PricechartingMeta The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
 type PricechartingMeta struct {
@@ -2446,8 +2533,11 @@ type RefreshAcceptedStatus string
 // ReleaseDate defines model for ReleaseDate.
 type ReleaseDate struct {
 	Date   openapi_types.Date `json:"date"`
-	Region string             `json:"region"`
+	Region ReleaseDateRegion  `json:"region"`
 }
+
+// ReleaseDateRegion defines model for ReleaseDate.Region.
+type ReleaseDateRegion string
 
 // RematchAccepted defines model for RematchAccepted.
 type RematchAccepted struct {

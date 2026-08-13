@@ -560,9 +560,10 @@ func TestUnitCreateCommunityProduct_CoverOnlyMint(t *testing.T) {
 }
 
 // TestUnitCreateCommunityProduct_CoverLengthBoundary pins
-// validCoverURL's 512-char boundary through the handler (no direct-unit
-// sibling pattern exists for this file's helpers - every case here
-// goes through serveUnit).
+// catalogval.ValidCoverURL's 512-char boundary through the handler
+// (catalogval carries its own direct-unit boundary tests; this one
+// additionally pins that CreateCommunityProduct wires a false result
+// through to a 400).
 func TestUnitCreateCommunityProduct_CoverLengthBoundary(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})

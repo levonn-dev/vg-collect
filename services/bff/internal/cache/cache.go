@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 )
 
 type Cache struct {
@@ -110,22 +112,12 @@ func meKey(sub string) string { return "me:" + meKeyVersion + ":" + sub }
 // GetMe returns the cached /api/me body for sub, or nil when absent.
 // Copied out of the client's reply string so callers own the bytes.
 func (c *Cache) GetMe(ctx context.Context, sub string) ([]byte, error) {
-	v, err := c.rdb.Get(ctx, meKey(sub)).Result()
-	if errors.Is(err, redis.Nil) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("cache: get me: %w", err)
-	}
-	return []byte(v), nil
+	return valkeykit.GetBytes(ctx, c.rdb, meKey(sub), "cache: get me")
 }
 
 // PutMe caches a marshaled /api/me body.
 func (c *Cache) PutMe(ctx context.Context, sub string, body []byte, ttl time.Duration) error {
-	if err := c.rdb.Set(ctx, meKey(sub), body, ttl).Err(); err != nil {
-		return fmt.Errorf("cache: put me: %w", err)
-	}
-	return nil
+	return valkeykit.PutBytes(ctx, c.rdb, meKey(sub), body, ttl, "cache: put me")
 }
 
 // InvalidateMe drops a user's cached /api/me after a profile edit so
@@ -139,22 +131,12 @@ func (c *Cache) InvalidateMe(ctx context.Context, sub string) error {
 
 // GetRecs returns the cached recommendations body for sub, or nil.
 func (c *Cache) GetRecs(ctx context.Context, sub string) ([]byte, error) {
-	v, err := c.rdb.Get(ctx, "recs:"+sub).Result()
-	if errors.Is(err, redis.Nil) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("cache: get recs: %w", err)
-	}
-	return []byte(v), nil
+	return valkeykit.GetBytes(ctx, c.rdb, "recs:"+sub, "cache: get recs")
 }
 
 // PutRecs caches a composed recommendations body.
 func (c *Cache) PutRecs(ctx context.Context, sub string, body []byte, ttl time.Duration) error {
-	if err := c.rdb.Set(ctx, "recs:"+sub, body, ttl).Err(); err != nil {
-		return fmt.Errorf("cache: put recs: %w", err)
-	}
-	return nil
+	return valkeykit.PutBytes(ctx, c.rdb, "recs:"+sub, body, ttl, "cache: put recs")
 }
 
 // InvalidateRecs drops a user's recommendations after one of their

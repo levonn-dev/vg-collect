@@ -194,16 +194,13 @@ func loadTags(ctx context.Context, q querier, entryID uuid.UUID) ([]TagRef, erro
 	if err != nil {
 		return nil, fmt.Errorf("store: load tags: %w", err)
 	}
-	defer rows.Close()
-	tags := []TagRef{}
-	for rows.Next() {
+	return scanAll(rows, []TagRef{}, "", func(r pgx.Rows) (TagRef, error) {
 		var t TagRef
-		if err := rows.Scan(&t.ID, &t.Name); err != nil {
-			return nil, fmt.Errorf("store: scan tag: %w", err)
+		if err := r.Scan(&t.ID, &t.Name); err != nil {
+			return TagRef{}, fmt.Errorf("store: scan tag: %w", err)
 		}
-		tags = append(tags, t)
-	}
-	return tags, rows.Err()
+		return t, nil
+	})
 }
 
 // CreateEntry inserts e for e.UserID, assigning an end-of-backlog rank
@@ -806,17 +803,15 @@ func (s *Store) ListEntries(ctx context.Context, userID uuid.UUID, f Filters) ([
 	if err != nil {
 		return nil, fmt.Errorf("store: list entries: %w", err)
 	}
-	defer rows.Close()
-	entries := []Entry{}
-	for rows.Next() {
-		e, err := scanEntry(rows)
+	entries, err := scanAll(rows, []Entry{}, "list entries", func(r pgx.Rows) (Entry, error) {
+		e, err := scanEntry(r)
 		if err != nil {
-			return nil, fmt.Errorf("store: scan entry: %w", err)
+			return Entry{}, fmt.Errorf("store: scan entry: %w", err)
 		}
-		entries = append(entries, e)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: list entries: %w", err)
+		return e, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	if len(entries) == 0 {

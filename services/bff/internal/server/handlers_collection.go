@@ -13,7 +13,6 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 )
 
 func castSlice[T ~string, U ~string](in *[]T) *[]U {
@@ -69,9 +68,8 @@ func (h *Handlers) relayCollectionMutation(w http.ResponseWriter, r *http.Reques
 
 // ListEntries proxies the collection list matrix.
 func (h *Handlers) ListEntries(w http.ResponseWriter, r *http.Request, params api.ListEntriesParams) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.collection.ListEntries(r.Context(), sess.AccessToken, collectionListParams(params))
@@ -80,9 +78,8 @@ func (h *Handlers) ListEntries(w http.ResponseWriter, r *http.Request, params ap
 
 // CreateEntry proxies entry creation.
 func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
-	sess, claims, ok := session.FromContext(r.Context())
+	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	body, ok := readCapped(w, r)
@@ -95,9 +92,8 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 
 // GetEntry proxies a single entry read.
 func (h *Handlers) GetEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.collection.GetEntry(r.Context(), sess.AccessToken, entryId)
@@ -106,9 +102,8 @@ func (h *Handlers) GetEntry(w http.ResponseWriter, r *http.Request, entryId open
 
 // UpdateEntry proxies the full-state replace.
 func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
-	sess, claims, ok := session.FromContext(r.Context())
+	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	body, ok := readCapped(w, r)
@@ -121,9 +116,8 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 
 // DeleteEntry proxies entry deletion.
 func (h *Handlers) DeleteEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
-	sess, claims, ok := session.FromContext(r.Context())
+	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.collection.DeleteEntry(r.Context(), sess.AccessToken, entryId)
@@ -135,9 +129,8 @@ func (h *Handlers) DeleteEntry(w http.ResponseWriter, r *http.Request, entryId o
 // (no recommendations invalidation) - the same choice as
 // AckSubmissionResolution below.
 func (h *Handlers) AckEntryRegionMismatch(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.collection.AckRegionMismatch(r.Context(), sess.AccessToken, entryId)
@@ -146,9 +139,8 @@ func (h *Handlers) AckEntryRegionMismatch(w http.ResponseWriter, r *http.Request
 
 // ReorderEntry proxies the backlog drag.
 func (h *Handlers) ReorderEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
-	sess, claims, ok := session.FromContext(r.Context())
+	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	body, ok := readCapped(w, r)
@@ -165,9 +157,8 @@ func (h *Handlers) ReorderEntry(w http.ResponseWriter, r *http.Request, entryId 
 // transaction). A mutation like every other entry write, so it
 // invalidates recommendations the same way.
 func (h *Handlers) BulkUpdateEntries(w http.ResponseWriter, r *http.Request) {
-	sess, claims, ok := session.FromContext(r.Context())
+	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	body, ok := readCapped(w, r)
@@ -180,9 +171,8 @@ func (h *Handlers) BulkUpdateEntries(w http.ResponseWriter, r *http.Request) {
 
 // ListTags / CreateTag / RenameTag / DeleteTag proxy the tag surface.
 func (h *Handlers) ListTags(w http.ResponseWriter, r *http.Request) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.collection.ListTags(r.Context(), sess.AccessToken)
@@ -190,9 +180,8 @@ func (h *Handlers) ListTags(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	body, ok := readCapped(w, r)
@@ -204,9 +193,8 @@ func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) RenameTag(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	body, ok := readCapped(w, r)
@@ -218,9 +206,8 @@ func (h *Handlers) RenameTag(w http.ResponseWriter, r *http.Request, tagId opena
 }
 
 func (h *Handlers) DeleteTag(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.collection.DeleteTag(r.Context(), sess.AccessToken, tagId)
@@ -253,9 +240,8 @@ func (h *Handlers) publishIfListed(r *http.Request, accessToken string, res coll
 
 // ListViews / CreateView / UpdateView / DeleteView proxy saved views.
 func (h *Handlers) ListViews(w http.ResponseWriter, r *http.Request) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.collection.ListViews(r.Context(), sess.AccessToken)
@@ -263,9 +249,8 @@ func (h *Handlers) ListViews(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) CreateView(w http.ResponseWriter, r *http.Request) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	body, ok := readCapped(w, r)
@@ -280,9 +265,8 @@ func (h *Handlers) CreateView(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) UpdateView(w http.ResponseWriter, r *http.Request, viewId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	body, ok := readCapped(w, r)
@@ -297,9 +281,8 @@ func (h *Handlers) UpdateView(w http.ResponseWriter, r *http.Request, viewId ope
 }
 
 func (h *Handlers) DeleteView(w http.ResponseWriter, r *http.Request, viewId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.collection.DeleteView(r.Context(), sess.AccessToken, viewId)
@@ -325,9 +308,8 @@ func collectionDashboardParams(p api.GetDashboardParams) *collectionapi.GetDashb
 // its owner, never here - one staleness authority per data type),
 // forwarding the filter dimensions.
 func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params api.GetDashboardParams) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.collection.GetDashboard(r.Context(), sess.AccessToken, collectionDashboardParams(params))
@@ -338,9 +320,8 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params a
 // (single-source: the collection service owns its cache and
 // invalidation; the bff never caches pass-throughs).
 func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	res, err := h.collection.GetValueHistory(r.Context(), sess.AccessToken)

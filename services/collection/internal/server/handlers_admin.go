@@ -13,7 +13,9 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/libs/go/regionkit"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
@@ -128,48 +130,41 @@ const rematchBudget = 30 * time.Minute
 // region-aware matching. Contract-described and served by the
 // generated mux behind the blanket JWT middleware, admin-or-service-
 // gated in the handler; the caller's bearer rides the enrichment
-// hops, captured before the run detaches. One run at a time (mirrors
-// the catalog refresh's guard): a concurrent trigger answers 409
-// rematch_in_progress rather than racing the run in flight. Answers
-// 202 and detaches the sweep - mirrors the catalog refresh, for the
-// same reason: a day-one backfill resolves at the provider's polite
-// rate (1 req/s), which outlives httpkit's 30s write timeout on
-// exactly the runs that matter. Each successful repoint logs entry
-// and old->new product ids - the audit trail that keeps a run
-// reviewable and hand-reversible - and the run's own completion log
-// plus the rematch.* metrics now carry the three counts the
-// synchronous response used to answer with directly.
+// hops, captured before the run detaches. Triggering goes through
+// httpkit.TriggerDetached: one run at a time (409 rematch_in_progress
+// on conflict, mirrors the catalog refresh's guard), 202 immediately,
+// sweep detached on its own 30-minute budget - a day-one backfill
+// resolves at the provider's polite rate (1 req/s), which outlives
+// httpkit's 30s write timeout on exactly the runs that matter. Each
+// successful repoint logs entry and old->new product ids - the audit
+// trail that keeps a run reviewable and hand-reversible - and the
+// run's own completion log plus the rematch.* metrics now carry the
+// three counts the synchronous response used to answer with directly.
 func (h *Handlers) InternalRematchEntries(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdminOrService(w, r) {
-		return
-	}
-	if !h.rematching.CompareAndSwap(false, true) {
-		problem(w, r, http.StatusConflict, "rematch_in_progress", "an entry rematch is already running")
 		return
 	}
 	// Captured here, before detaching: the goroutine reuses it for the
 	// enrichment hops, and the request itself is not safe to read from
 	// once this handler has returned.
 	bearer := bearerToken(r)
-	// The started line pairs with "rematch-entries complete": a start
-	// with no completion inside the budget marks a hung run.
-	h.logger.InfoContext(r.Context(), "entry rematch started")
-	go func() { //nolint:gosec // G118: the rematch run deliberately outlives the trigger request (202 + detach)
-		defer h.rematching.Store(false)
-		// Detached from the request context: the trigger returns at 202.
-		ctx, cancel := context.WithTimeout(context.Background(), rematchBudget)
-		defer cancel()
-		// Registered last so it unwinds first: a panic mid-sweep (a
-		// malformed payload, a nil field breaking an assumed contract)
-		// is contained here instead of killing the process. The guard
-		// reset and context cancel above still run afterward as usual.
-		defer func() {
-			if v := recover(); v != nil {
-				h.logger.ErrorContext(ctx, "entry rematch panicked", "panic", v)
-			}
-		}()
-		h.runRematch(ctx, bearer)
-	}()
+	started := httpkit.TriggerDetached(w, r, httpkit.TriggerDetachedOptions{
+		Guard:          &h.rematching,
+		ConflictCode:   "rematch_in_progress",
+		ConflictDetail: "an entry rematch is already running",
+		Started: func() {
+			// The started line pairs with "rematch-entries complete": a
+			// start with no completion inside the budget marks a hung run.
+			h.logger.InfoContext(r.Context(), "entry rematch started")
+		},
+		Budget:   rematchBudget,
+		Logger:   h.logger,
+		PanicMsg: "entry rematch panicked",
+		Run:      func(ctx context.Context) { h.runRematch(ctx, bearer) },
+	})
+	if !started {
+		return
+	}
 	writeJSON(w, http.StatusAccepted, api.RematchAccepted{Status: "started"})
 }
 
@@ -348,10 +343,11 @@ func (h *Handlers) InternalNormalizePlatforms(w http.ResponseWriter, r *http.Req
 }
 
 // InternalNormalizeRegions promotes free-text entry regions into the
-// known set: every entry whose region sits outside knownRegions is
-// folded (lowercase, trimmed) against the known values and
-// regionSynonyms - exact-or-synonym, never fuzzy, so an unreviewed
-// string is left as typed rather than misfiled. A custom entry (no
+// known set: every entry whose region sits outside
+// regionkit.KnownRegions is folded (lowercase, trimmed) against the
+// known values and regionkit.RegionSynonyms - exact-or-synonym, never
+// fuzzy, so an unreviewed string is left as typed rather than
+// misfiled. A custom entry (no
 // product) gets a plain region write; a game-backed entry additionally
 // re-picks its release-date and localized snapshot for the promoted
 // region from a fresh product fetch, the same GetProduct hop the
@@ -388,11 +384,11 @@ func (h *Handlers) InternalNormalizeRegions(w http.ResponseWriter, r *http.Reque
 	// Reads bearerToken directly rather than calling caller(): see the
 	// same note on InternalNormalizePlatforms above.
 	bearer := bearerToken(r)
-	known := make([]string, 0, len(knownRegions))
-	for k := range knownRegions {
+	known := make([]string, 0, len(regionkit.KnownRegions))
+	for k := range regionkit.KnownRegions {
 		known = append(known, k)
 	}
-	folds := regionFoldMap()
+	folds := regionkit.RegionFoldMap()
 	refs, err := h.store.ListOpenRegionEntries(r.Context(), known)
 	if err != nil {
 		h.internalError(w, r, "list failed", err)

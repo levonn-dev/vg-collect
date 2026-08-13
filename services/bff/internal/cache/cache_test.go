@@ -2,26 +2,15 @@ package cache_test
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
 
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
+	"github.com/levonn-dev/vgkeep/libs/go/valkeytest"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/cache"
 )
-
-// One Valkey container serves this whole package. Each test still
-// starts on an empty keyspace via the FlushAll in
-// newTestCacheWithClient. No Terminate: the testcontainers reaper
-// collects the container when the test process exits.
-var sharedVK struct {
-	once sync.Once
-	url  string
-	err  error
-}
 
 func newTestCache(t *testing.T) *cache.Cache {
 	t.Helper()
@@ -31,25 +20,12 @@ func newTestCache(t *testing.T) *cache.Cache {
 
 // newTestCacheWithClient is newTestCache but also hands back the raw
 // client, for tests that need to reach around the Cache API (e.g. to
-// seed or inspect a key directly).
+// seed or inspect a key directly). Each test starts on an empty
+// keyspace via its own FlushAll below.
 func newTestCacheWithClient(t *testing.T) (*cache.Cache, *redis.Client) {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
 	ctx := context.Background()
-	sharedVK.once.Do(func() {
-		vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine")
-		if err != nil {
-			sharedVK.err = err
-			return
-		}
-		sharedVK.url, sharedVK.err = vk.ConnectionString(ctx)
-	})
-	if sharedVK.err != nil {
-		t.Fatal(sharedVK.err)
-	}
-	client, err := valkeykit.Connect(ctx, sharedVK.url)
+	client, err := valkeykit.Connect(ctx, valkeytest.URL(t))
 	if err != nil {
 		t.Fatal(err)
 	}

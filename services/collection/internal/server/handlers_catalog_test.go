@@ -1,7 +1,6 @@
 package server
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -21,7 +20,7 @@ func TestPickReleaseDate(t *testing.T) {
 	}
 	date := func(s string) openapi_types.Date { return openapi_types.Date{Time: day(s)} }
 	rd := func(region, s string) enrichapi.ReleaseDate {
-		return enrichapi.ReleaseDate{Region: region, Date: date(s)}
+		return enrichapi.ReleaseDate{Region: enrichapi.ReleaseDateRegion(region), Date: date(s)}
 	}
 	scalar := date("1995-03-11")
 	meta := func(rows ...enrichapi.ReleaseDate) *enrichapi.IgdbMeta {
@@ -124,26 +123,6 @@ func TestPickLocalization(t *testing.T) {
 					gotName, gotTr, gotCov, tc.wantName, tc.wantTr, tc.wantCov)
 			}
 		})
-	}
-}
-
-// TestUnitValidCoverURL_LengthBoundary pins the 512-char boundary
-// directly, same direct-unit style as TestPickReleaseDate above (this
-// file's tests live in package server, unlike handlers_test.go's
-// black-box package server_test, so it is the sibling home for a
-// direct call against an unexported helper).
-func TestUnitValidCoverURL_LengthBoundary(t *testing.T) {
-	const prefix = "https://img.example/"
-	url512 := prefix + strings.Repeat("a", 512-len(prefix))
-	if len(url512) != 512 {
-		t.Fatalf("fixture length = %d, want 512", len(url512))
-	}
-	if !validCoverURL(url512) {
-		t.Fatalf("512-char https URL must pass")
-	}
-	url513 := url512 + "a"
-	if validCoverURL(url513) {
-		t.Fatalf("513-char https URL must fail")
 	}
 }
 

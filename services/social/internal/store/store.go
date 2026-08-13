@@ -8,13 +8,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 )
 
 var (
@@ -30,30 +29,30 @@ func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 // Cursor is the keyset position (created_at, id), encoded
 // "<unixnano>.<uuid>". Keyset beats offsets here: stable while new
 // events arrive, and it can express "how far the raw stream was read"
-// for the bff's fill loop.
-type Cursor struct {
-	CreatedAt time.Time
-	ID        uuid.UUID
-}
+// for the bff's fill loop. bff re-encodes and validates the same wire
+// format across the service boundary, so both sides share httpkit's
+// type rather than risk drift between two hand copies.
+type Cursor = httpkit.Cursor
 
-func (c Cursor) String() string {
-	return strconv.FormatInt(c.CreatedAt.UnixNano(), 10) + "." + c.ID.String()
-}
+var ParseCursor = httpkit.ParseCursor
 
-func ParseCursor(s string) (*Cursor, error) {
-	dot := strings.IndexByte(s, '.')
-	if dot < 1 {
-		return nil, fmt.Errorf("store: malformed cursor")
+// scanAll drains rows into a slice, closing them once done. Every
+// call site in this package starts from an empty (non-nil) slice and
+// returns rows.Err() raw, so scanAll bakes that one convention in
+// rather than taking parameters neither caller varies; scan keeps its
+// own error-wrap text so a scan failure reads exactly as it did
+// before extraction.
+func scanAll[T any](rows pgx.Rows, scan func(pgx.Rows) (T, error)) ([]T, error) {
+	defer rows.Close()
+	out := []T{}
+	for rows.Next() {
+		x, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, x)
 	}
-	nanos, err := strconv.ParseInt(s[:dot], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("store: malformed cursor time")
-	}
-	id, err := uuid.Parse(s[dot+1:])
-	if err != nil {
-		return nil, fmt.Errorf("store: malformed cursor id")
-	}
-	return &Cursor{CreatedAt: time.Unix(0, nanos), ID: id}, nil
+	return out, rows.Err()
 }
 
 // capCount counts a user's rows in the rolling 24h window.
@@ -148,16 +147,13 @@ func (s *Store) FolloweeIDs(ctx context.Context, follower uuid.UUID) ([]uuid.UUI
 	if err != nil {
 		return nil, fmt.Errorf("store: followees: %w", err)
 	}
-	defer rows.Close()
-	out := []uuid.UUID{}
-	for rows.Next() {
+	return scanAll(rows, func(r pgx.Rows) (uuid.UUID, error) {
 		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("store: scan followee: %w", err)
+		if err := r.Scan(&id); err != nil {
+			return uuid.UUID{}, fmt.Errorf("store: scan followee: %w", err)
 		}
-		out = append(out, id)
-	}
-	return out, rows.Err()
+		return id, nil
+	})
 }
 
 // Like inserts the edge (+event iff inserted). shelfOwner is
@@ -234,16 +230,13 @@ func (s *Store) ShelfSummaries(ctx context.Context, ids []uuid.UUID, viewer uuid
 	if err != nil {
 		return nil, fmt.Errorf("store: shelf summaries: %w", err)
 	}
-	defer rows.Close()
-	out := []ShelfSummary{}
-	for rows.Next() {
+	return scanAll(rows, func(r pgx.Rows) (ShelfSummary, error) {
 		var x ShelfSummary
-		if err := rows.Scan(&x.ShelfID, &x.LikeCount, &x.CommentCount, &x.ViewerLikes); err != nil {
-			return nil, fmt.Errorf("store: scan summary: %w", err)
+		if err := r.Scan(&x.ShelfID, &x.LikeCount, &x.CommentCount, &x.ViewerLikes); err != nil {
+			return ShelfSummary{}, fmt.Errorf("store: scan summary: %w", err)
 		}
-		out = append(out, x)
-	}
-	return out, rows.Err()
+		return x, nil
+	})
 }
 
 // TopShelves is the all-time like-count leaderboard.
@@ -254,16 +247,13 @@ func (s *Store) TopShelves(ctx context.Context, limit int) ([]uuid.UUID, error) 
 	if err != nil {
 		return nil, fmt.Errorf("store: top shelves: %w", err)
 	}
-	defer rows.Close()
-	out := []uuid.UUID{}
-	for rows.Next() {
+	return scanAll(rows, func(r pgx.Rows) (uuid.UUID, error) {
 		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("store: scan top: %w", err)
+		if err := r.Scan(&id); err != nil {
+			return uuid.UUID{}, fmt.Errorf("store: scan top: %w", err)
 		}
-		out = append(out, id)
-	}
-	return out, rows.Err()
+		return id, nil
+	})
 }
 
 // Pool exposes the pool for test assertions only.

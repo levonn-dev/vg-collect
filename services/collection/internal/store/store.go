@@ -6,6 +6,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
@@ -52,4 +53,37 @@ type querier interface {
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
+}
+
+// scanAll drains rows into a slice, closing them once done. Call
+// sites across this package predate scanAll disagreeing on two
+// independent axes that must survive extraction: seed is the
+// zero-row starting value (nil for some readers, []T{} for others -
+// some callers distinguish a nil result from an empty one on the
+// wire or in a store-level contract), and op, when non-empty, wraps a
+// trailing rows.Err() under the same "store: <op>: %w" text that
+// call site's Query-issue error already uses (callers passing ""
+// report rows.Err() raw alongside whatever partial slice had already
+// been assembled, as they did before). scan keeps its own
+// error-wrap text, so a scan failure reads exactly as it did before
+// extraction; on a scan error this always returns (nil, err)
+// regardless of seed or op, matching every site's original
+// discard-partial-results behavior.
+func scanAll[T any](rows pgx.Rows, seed []T, op string, scan func(pgx.Rows) (T, error)) ([]T, error) {
+	defer rows.Close()
+	out := seed
+	for rows.Next() {
+		x, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	if err := rows.Err(); err != nil {
+		if op == "" {
+			return out, err
+		}
+		return nil, fmt.Errorf("store: %s: %w", op, err)
+	}
+	return out, nil
 }

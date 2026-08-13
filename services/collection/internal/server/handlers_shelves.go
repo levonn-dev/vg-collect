@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
@@ -60,39 +61,39 @@ func filtersFromViewParams(params []byte) (store.Filters, string) {
 	if err := json.Unmarshal(params, &doc); err != nil {
 		return f, ""
 	}
-	keep := func(vals []string, allowed map[string]bool) []string {
+	keep := func(vals []string, valid func(string) bool) []string {
 		out := []string{}
 		for _, v := range vals {
-			if allowed[v] {
+			if valid(v) {
 				out = append(out, v)
 			}
 		}
 		return out
 	}
-	f.ItemTypes = keep(doc.ItemType, itemTypeVals)
-	f.Statuses = keep(doc.Status, statusVals)
-	f.Packagings = keep(doc.Packaging, packagingVals)
+	f.ItemTypes = keep(doc.ItemType, validItemType)
+	f.Statuses = keep(doc.Status, validStatus)
+	f.Packagings = keep(doc.Packaging, validPackaging)
 	// region has no allowed set to gate against (open-world); a
 	// stored free-text value passes through exactly like the live
 	// list endpoint's own filter param. Credits share the posture.
 	f.Regions = doc.Region
 	f.Developers = doc.Developer
 	f.Publishers = doc.Publisher
-	f.ItemConditions = keep(doc.ItemCondition, conditionVals)
+	f.ItemConditions = keep(doc.ItemCondition, validCondition)
 	f.PlatformIDs = doc.PlatformID
 	for _, raw := range doc.TagID {
 		if id, err := uuid.Parse(raw); err == nil {
 			f.TagIDs = append(f.TagIDs, id)
 		}
 	}
-	if sortVals[doc.Sort] {
+	if api.ListEntriesParamsSort(doc.Sort).Valid() {
 		f.Sort = doc.Sort
 	}
-	if orderVals[doc.Order] {
+	if api.ListEntriesParamsOrder(doc.Order).Valid() {
 		f.Order = doc.Order
 	}
 	groupBy := ""
-	if groupVals[doc.GroupBy] {
+	if api.ListEntriesParamsGroupBy(doc.GroupBy).Valid() {
 		groupBy = doc.GroupBy
 	}
 	return f, groupBy
@@ -209,20 +210,15 @@ func (h *Handlers) ListSharedShelfEntries(w http.ResponseWriter, r *http.Request
 	// Pagination is validated before any store call (including the
 	// shelf lookup) or slicing - an unvalidated negative offset or
 	// out-of-range limit panics on the page slice below.
-	limit, offset := 100, 0
-	if params.Limit != nil {
-		if *params.Limit < 1 || *params.Limit > 200 {
-			problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 200")
-			return
-		}
-		limit = *params.Limit
+	limit, ok := httpkit.ClampOrReject(params.Limit, 100, 1, 200)
+	if !ok {
+		problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 200")
+		return
 	}
-	if params.Offset != nil {
-		if *params.Offset < 0 {
-			problem(w, r, http.StatusBadRequest, "invalid_param", "offset must not be negative")
-			return
-		}
-		offset = *params.Offset
+	offset, ok := httpkit.ClampOrReject(params.Offset, 0, 0)
+	if !ok {
+		problem(w, r, http.StatusBadRequest, "invalid_param", "offset must not be negative")
+		return
 	}
 	v, ok := h.sharedShelfOr404(w, r, shelfId)
 	if !ok {
@@ -263,20 +259,15 @@ func (h *Handlers) ListSharedShelves(w http.ResponseWriter, r *http.Request, par
 		problem(w, r, http.StatusBadRequest, "too_many_owner_ids", "owner_ids must contain at most 5000 entries")
 		return
 	}
-	limit, offset := 20, 0
-	if params.Limit != nil {
-		if *params.Limit < 1 || *params.Limit > 100 {
-			problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 100")
-			return
-		}
-		limit = *params.Limit
+	limit, ok := httpkit.ClampOrReject(params.Limit, 20, 1, 100)
+	if !ok {
+		problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 100")
+		return
 	}
-	if params.Offset != nil {
-		if *params.Offset < 0 {
-			problem(w, r, http.StatusBadRequest, "invalid_param", "offset must not be negative")
-			return
-		}
-		offset = *params.Offset
+	offset, ok := httpkit.ClampOrReject(params.Offset, 0, 0)
+	if !ok {
+		problem(w, r, http.StatusBadRequest, "invalid_param", "offset must not be negative")
+		return
 	}
 	var owners []uuid.UUID
 	if params.OwnerIds != nil {

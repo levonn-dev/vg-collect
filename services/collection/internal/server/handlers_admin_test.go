@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
@@ -68,7 +69,7 @@ func gameProductWithDates(id uuid.UUID, scalar time.Time, perRegion map[string]t
 	if len(perRegion) > 0 {
 		rows := make([]enrichapi.ReleaseDate, 0, len(perRegion))
 		for region, when := range perRegion {
-			rows = append(rows, enrichapi.ReleaseDate{Region: region, Date: openapi_types.Date{Time: when}})
+			rows = append(rows, enrichapi.ReleaseDate{Region: enrichapi.ReleaseDateRegion(region), Date: openapi_types.Date{Time: when}})
 		}
 		p.Igdb.ReleaseDates = &rows
 	}
@@ -499,7 +500,7 @@ func TestInternalRematchEntries_RepointsAndIsIdempotent(t *testing.T) {
 	tok := a.token(t, uuid.NewString(), "admin")
 
 	triggerRematch(t, srv, tok)
-	waitFor(t, 5*time.Second, func() bool {
+	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return refs[0].ProductID == productJP && refs[1].ProductID == productJP
@@ -532,7 +533,7 @@ func TestInternalRematchEntries_RepointsAndIsIdempotent(t *testing.T) {
 	// (and, since nothing async follows within the triple, finished)
 	// the no-op path.
 	triggerRematch(t, srv, tok)
-	waitFor(t, 5*time.Second, func() bool {
+	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return getProductCalls == 2
@@ -605,7 +606,7 @@ func TestInternalRematchEntries_ClassGuardIsPerEntry(t *testing.T) {
 	srv, a := newUnitServer(t, st, enrich, newStubCache())
 	triggerRematch(t, srv, a.token(t, uuid.NewString(), "admin"))
 
-	waitFor(t, 5*time.Second, func() bool {
+	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return len(repointed) == 1
@@ -674,7 +675,7 @@ func TestInternalRematchEntries_MemberFetchMemoizedAcrossTriples(t *testing.T) {
 	srv, a := newUnitServer(t, st, enrich, newStubCache())
 	triggerRematch(t, srv, a.token(t, uuid.NewString(), "admin"))
 
-	waitFor(t, 5*time.Second, func() bool {
+	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return len(repointed) == 2
@@ -740,7 +741,7 @@ func TestInternalRematchEntries_CountsFailuresAndContinues(t *testing.T) {
 	srv, a := newUnitServer(t, st, enrich, newStubCache())
 	triggerRematch(t, srv, a.token(t, uuid.NewString(), "admin"))
 
-	waitFor(t, 5*time.Second, func() bool {
+	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return len(repointed) == 1
@@ -800,7 +801,7 @@ func TestInternalRematchEntries_SkipsUserPicks(t *testing.T) {
 	srv, a := newUnitServer(t, st, enrich, newStubCache())
 	triggerRematch(t, srv, a.token(t, uuid.NewString(), "admin"))
 
-	waitFor(t, 5*time.Second, func() bool {
+	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return len(repointed) == 1
@@ -868,7 +869,7 @@ func TestInternalRematchEntries_ConcurrentTriggerIs409(t *testing.T) {
 	// run already consumed its one call to the blocking closure, and a
 	// second call to it would close(started) again and panic.
 	st.listAutoGameRematchRefs = func(context.Context) ([]store.RematchEntryRef, error) { return nil, nil }
-	waitFor(t, 5*time.Second, func() bool {
+	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", tok, nil)
 		return resp.StatusCode == http.StatusAccepted
 	})

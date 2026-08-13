@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 )
 
 // proxyOTLP relays a browser OTLP batch to the collector agent
@@ -17,14 +17,11 @@ import (
 // capped; the collector's response status and body pass through so
 // the web SDK sees real OTLP semantics. Never cached.
 func (h *Handlers) proxyOTLP(w http.ResponseWriter, r *http.Request, signal string) {
-	if _, _, ok := session.FromContext(r.Context()); !ok {
-		h.unauthorized(w, r)
+	if _, _, ok := h.requireSession(w, r); !ok {
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadRequest, "invalid_body", "request body unreadable or over 1MiB")
+	body, ok := httpkit.ReadCapped(w, r, 1<<20, "request body unreadable or over 1MiB")
+	if !ok {
 		return
 	}
 	if h.otlpProxyURL == "" {
@@ -41,7 +38,7 @@ func (h *Handlers) proxyOTLP(w http.ResponseWriter, r *http.Request, signal stri
 	if enc := r.Header.Get("Content-Encoding"); enc != "" {
 		req.Header.Set("Content-Encoding", enc)
 	}
-	res, err := h.otlpHTTP.Do(req)
+	res, err := h.otlpHTTP.Do(req) //nolint:gosec // G704: destination is h.otlpProxyURL, a fixed operator-configured collector address never derived from the request; only the opaque, size-capped body is caller-supplied
 	if err != nil {
 		// The 502 shows in RED metrics; the line carries the cause
 		// (DNS, refused, timeout) that the status alone loses.

@@ -80,16 +80,13 @@ func (s *Store) ListLiveComments(ctx context.Context, shelf uuid.UUID, cursor *C
 	if err != nil {
 		return nil, fmt.Errorf("store: list comments: %w", err)
 	}
-	defer rows.Close()
-	out := []Comment{}
-	for rows.Next() {
-		c, err := scanComment(rows)
+	return scanAll(rows, func(r pgx.Rows) (Comment, error) {
+		c, err := scanComment(r)
 		if err != nil {
-			return nil, fmt.Errorf("store: scan comment: %w", err)
+			return Comment{}, fmt.Errorf("store: scan comment: %w", err)
 		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
+		return c, nil
+	})
 }
 
 // LiveCommentsByIDs batch-loads live rows (feed excerpts). By
@@ -103,16 +100,13 @@ func (s *Store) LiveCommentsByIDs(ctx context.Context, ids []uuid.UUID) ([]Comme
 	if err != nil {
 		return nil, fmt.Errorf("store: comments by ids: %w", err)
 	}
-	defer rows.Close()
-	out := []Comment{}
-	for rows.Next() {
-		c, err := scanComment(rows)
+	return scanAll(rows, func(r pgx.Rows) (Comment, error) {
+		c, err := scanComment(r)
 		if err != nil {
-			return nil, fmt.Errorf("store: scan comment: %w", err)
+			return Comment{}, fmt.Errorf("store: scan comment: %w", err)
 		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
+		return c, nil
+	})
 }
 
 // DeleteComment tombstones per the lifecycle: the author's own delete

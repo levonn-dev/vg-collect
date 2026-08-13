@@ -7,7 +7,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -21,6 +20,8 @@ import (
 
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
+	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/cache"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
@@ -156,18 +157,14 @@ func New(st Store, enrich Enrichment, c Cache, opts Options) *Handlers {
 	}
 	m := otel.Meter("github.com/levonn-dev/vgkeep/services/collection")
 	counter := func(name, desc, unit string) metric.Int64Counter {
-		ctr, err := m.Int64Counter(name, metric.WithDescription(desc), metric.WithUnit(unit))
+		ctr, err := vgotel.Counter(m, name, desc, unit)
 		if err != nil {
 			opts.Logger.Error("counter unavailable", "name", name, "err", err)
 		}
 		return ctr
 	}
 	histogram := func(name, desc, unit string, buckets ...float64) metric.Float64Histogram {
-		histOpts := []metric.Float64HistogramOption{metric.WithDescription(desc), metric.WithUnit(unit)}
-		if len(buckets) > 0 {
-			histOpts = append(histOpts, metric.WithExplicitBucketBoundaries(buckets...))
-		}
-		hg, err := m.Float64Histogram(name, histOpts...)
+		hg, err := vgotel.Histogram(m, name, desc, unit, buckets...)
 		if err != nil {
 			opts.Logger.Error("histogram unavailable", "name", name, "err", err)
 		}
@@ -193,10 +190,11 @@ func New(st Store, enrich Enrichment, c Cache, opts Options) *Handlers {
 			"{event}"),
 		// Explicit boundaries: the SDK defaults top out at 10s and would
 		// flatten a multi-minute entry-rematch run into the last bucket
-		// (same fix as enrichment's refresh.step_duration histogram).
+		// (the same shared DurationBuckets tuple enrichment's
+		// refresh.step_duration histogram uses).
 		rematchDuration: histogram("vg.collection.rematch.duration",
 			"Elapsed seconds per entry-rematch run",
-			"s", 1, 5, 15, 60, 300, 900, 1800),
+			"s", vgotel.DurationBuckets...),
 		rematchTriples: counter("vg.collection.rematch.triples",
 			"Entry-rematch (game, platform, region) triples by outcome",
 			"{triple}"),
@@ -240,31 +238,19 @@ func registerPendingGauge(m metric.Meter, st Store, logger *slog.Logger) {
 	}
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
+func writeJSON(w http.ResponseWriter, status int, v any) { httpkit.WriteJSON(w, status, v) }
 
 // writeRawJSON serves cached response bodies without re-encoding.
-func writeRawJSON(w http.ResponseWriter, body []byte) {
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(body) //nolint:gosec // G705: body is our own json.Marshal output (already HTML-escaped there), never raw user input; served as application/json, never rendered as HTML
-}
+func writeRawJSON(w http.ResponseWriter, body []byte) { httpkit.WriteRawJSON(w, http.StatusOK, body) }
 
 func problem(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
-	httpkit.WriteProblem(w, r, httpkit.Problem{
-		Status: status, Title: http.StatusText(status), Code: code, Detail: detail,
-	})
+	httpkit.WriteProblemFields(w, r, status, code, detail)
 }
 
 // failOpen records a Valkey failure the caller is about to treat as a
 // cache miss (log + metric; the service dashboard watches the metric).
 func (h *Handlers) failOpen(ctx context.Context, op string, err error) {
-	h.logger.WarnContext(ctx, "valkey unavailable; failing open", "op", op, "err", err)
-	if h.cacheFailOpen != nil {
-		h.cacheFailOpen.Add(ctx, 1, metric.WithAttributes(attribute.String("op", op)))
-	}
+	valkeykit.FailOpen(ctx, h.logger, h.cacheFailOpen, op, err)
 }
 
 // composeEvent counts one read-time value composition that reached
@@ -272,15 +258,11 @@ func (h *Handlers) failOpen(ctx context.Context, op string, err error) {
 // that price nothing never get here, keeping degraded/(ok+degraded)
 // a clean enrichment-hop failure rate.
 func (h *Handlers) composeEvent(ctx context.Context, op string, err error) {
-	if h.pricingCompose == nil {
-		return
-	}
 	outcome := "ok"
 	if err != nil {
 		outcome = "degraded"
 	}
-	h.pricingCompose.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("op", op), attribute.String("outcome", outcome)))
+	vgotel.Count(ctx, h.pricingCompose, attribute.String("op", op), attribute.String("outcome", outcome))
 }
 
 // cacheLookup counts a cache GET as hit or miss. The surface label is
@@ -289,24 +271,17 @@ func (h *Handlers) composeEvent(ctx context.Context, op string, err error) {
 // operation key on the fail-open counter. An errored GET is a miss
 // here and additionally a fail-open event at the failOpen site.
 func (h *Handlers) cacheLookup(ctx context.Context, cache string, hit bool) {
-	if h.cacheLookups == nil {
-		return
-	}
 	outcome := "miss"
 	if hit {
 		outcome = "hit"
 	}
-	h.cacheLookups.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("cache", cache), attribute.String("outcome", outcome)))
+	vgotel.Count(ctx, h.cacheLookups, attribute.String("cache", cache), attribute.String("outcome", outcome))
 }
 
 // submissionEvent counts one submission lifecycle transition
 // (created, cancelled, approved, rejected).
 func (h *Handlers) submissionEvent(ctx context.Context, event string) {
-	if h.submissionEvents == nil {
-		return
-	}
-	h.submissionEvents.Add(ctx, 1, metric.WithAttributes(attribute.String("event", event)))
+	vgotel.Count(ctx, h.submissionEvents, attribute.String("event", event))
 }
 
 // countRematchTriple records one entry-rematch (game, platform,
@@ -316,29 +291,20 @@ func (h *Handlers) submissionEvent(ctx context.Context, event string) {
 // (not this counter) is the honest signal for a partial repoint;
 // failed when the member fetch or the resolve call itself errored.
 func (h *Handlers) countRematchTriple(ctx context.Context, outcome string) {
-	if h.rematchTriples == nil {
-		return
-	}
-	h.rematchTriples.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+	vgotel.Count(ctx, h.rematchTriples, attribute.String("outcome", outcome))
 }
 
 // countRematchRepoint records one entry the entry rematch actually
 // repointed onto a region-correct sibling member.
 func (h *Handlers) countRematchRepoint(ctx context.Context) {
-	if h.rematchRepoints == nil {
-		return
-	}
-	h.rematchRepoints.Add(ctx, 1)
+	vgotel.Count(ctx, h.rematchRepoints)
 }
 
 // recordRematchDuration records one entry-rematch run's elapsed
 // seconds (the CAS-gated run only; a 409-refused overlap never runs
 // and so never records).
 func (h *Handlers) recordRematchDuration(ctx context.Context, seconds float64) {
-	if h.rematchDuration == nil {
-		return
-	}
-	h.rematchDuration.Record(ctx, seconds)
+	vgotel.Record(ctx, h.rematchDuration, seconds)
 }
 
 // countNormalizePlatformsRow records one normalize-platforms sweep
@@ -346,10 +312,7 @@ func (h *Handlers) recordRematchDuration(ctx context.Context, seconds float64) {
 // failed (the store write itself errored) - the same three-way split
 // countNormalizeRegionsRow uses for its sibling lever.
 func (h *Handlers) countNormalizePlatformsRow(ctx context.Context, outcome string) {
-	if h.normalizePlatformsRuns == nil {
-		return
-	}
-	h.normalizePlatformsRuns.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+	vgotel.Count(ctx, h.normalizePlatformsRuns, attribute.String("outcome", outcome))
 }
 
 // countNormalizeRegionsRow records one normalize-regions sweep row's
@@ -361,10 +324,7 @@ func (h *Handlers) countNormalizePlatformsRow(ctx context.Context, outcome strin
 // through the warning log line and this failed outcome - matching the
 // platforms lever's response posture.
 func (h *Handlers) countNormalizeRegionsRow(ctx context.Context, outcome string) {
-	if h.normalizeRegionsRuns == nil {
-		return
-	}
-	h.normalizeRegionsRuns.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+	vgotel.Count(ctx, h.normalizeRegionsRuns, attribute.String("outcome", outcome))
 }
 
 // internalError answers a 500 and logs its cause, which the problem
@@ -384,42 +344,23 @@ func bearerToken(r *http.Request) string {
 }
 
 // caller resolves the authenticated caller: the JWT subject as the
-// owning user id, plus the raw bearer for enrichment hops. jwtauth has
-// already validated the token, so a non-uuid subject is a minting bug
-// on our side, answered as an internal error (false = answered).
-// Never call this before the caller is known to be a real user: a
-// service token's subject (svc:<name>) is not a uuid and would trip
-// the internalError branch (a 500, not a clean 403). Every ordinary
-// route is user-scoped already. Of the internal levers: resnapshot,
-// the entry rematch, normalize-platforms, and normalize-regions all
-// admit a service token, so they read bearerToken directly instead
-// and never call this at all.
+// owning user id, plus the raw bearer for enrichment hops. Never call
+// this before the caller is known to be a real user: a service
+// token's subject (svc:<name>) is not a uuid, and jwtauth.CallerID
+// answers that with a 500, not a clean 403. Every ordinary route is
+// user-scoped already. Of the internal levers: resnapshot, the entry
+// rematch, normalize-platforms, and normalize-regions all admit a
+// service token, so they read bearerToken directly instead and never
+// call this at all.
 func (h *Handlers) caller(w http.ResponseWriter, r *http.Request) (uuid.UUID, string, bool) {
-	claims, ok := jwtauth.FromContext(r.Context())
-	if !ok {
-		problem(w, r, http.StatusUnauthorized, "missing_token", "no validated token in context")
-		return uuid.Nil, "", false
-	}
-	id, err := uuid.Parse(claims.Subject)
-	if err != nil {
-		h.internalError(w, r, "token subject is not a user id", err)
-		return uuid.Nil, "", false
-	}
-	return id, bearerToken(r), true
+	return jwtauth.CallerID(w, r, problemEW)
 }
 
 // requireAdminOrService admits an admin user or a service token - the
 // guard on every operator lever a CronJob drives: resnapshot, the
-// entry rematch, normalize-platforms, and normalize-regions. Same
-// claims-access path and 403 problem shape as the admin-only gates
-// elsewhere in this file.
+// entry rematch, normalize-platforms, and normalize-regions.
 func (h *Handlers) requireAdminOrService(w http.ResponseWriter, r *http.Request) bool {
-	claims, _ := jwtauth.FromContext(r.Context())
-	if claims.HasRole("admin") || claims.IsService() {
-		return true
-	}
-	problem(w, r, http.StatusForbidden, "forbidden", "role admin or a service token is required")
-	return false
+	return jwtauth.RequireAdminOrService(w, r, problemEW)
 }
 
 var _ api.ServerInterface = (*Handlers)(nil)

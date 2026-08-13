@@ -11,6 +11,7 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
@@ -38,9 +39,7 @@ const maxViewParamsBytes = 8192
 // private).
 func viewBody(w http.ResponseWriter, r *http.Request) (api.ViewCreate, []byte, string, bool) {
 	var body api.ViewCreate
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, maxBodyBytes, &body) {
 		return body, nil, "", false
 	}
 	if strings.TrimSpace(body.Name) == "" || utf8.RuneCountInString(body.Name) > 100 {

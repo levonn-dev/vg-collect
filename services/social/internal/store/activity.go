@@ -57,16 +57,13 @@ func (s *Store) Feed(ctx context.Context, viewer uuid.UUID, tab string, cursor *
 	if err != nil {
 		return nil, fmt.Errorf("store: feed: %w", err)
 	}
-	defer rows.Close()
-	out := []Event{}
-	for rows.Next() {
-		e, err := scanEvent(rows)
+	return scanAll(rows, func(r pgx.Rows) (Event, error) {
+		e, err := scanEvent(r)
 		if err != nil {
-			return nil, fmt.Errorf("store: scan event: %w", err)
+			return Event{}, fmt.Errorf("store: scan event: %w", err)
 		}
-		out = append(out, e)
-	}
-	return out, rows.Err()
+		return e, nil
+	})
 }
 
 // RecordPublish keeps exactly one live publish row per shelf.

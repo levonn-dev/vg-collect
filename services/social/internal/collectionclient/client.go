@@ -8,12 +8,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/social/internal/gen/collectionapi"
 )
 
@@ -37,29 +35,18 @@ type Client struct {
 }
 
 func New(baseURL string) (*Client, error) {
-	hc := &http.Client{
-		Timeout:   10 * time.Second,
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-	}
-	api, err := collectionapi.NewClientWithResponses(baseURL, collectionapi.WithHTTPClient(hc))
+	api, err := collectionapi.NewClientWithResponses(baseURL, collectionapi.WithHTTPClient(httpkit.NewHTTPClient()))
 	if err != nil {
 		return nil, fmt.Errorf("collectionclient: %w", err)
 	}
 	return &Client{api: api}, nil
 }
 
-func bearerEditor(bearer string) collectionapi.RequestEditorFn {
-	return func(_ context.Context, req *http.Request) error {
-		req.Header.Set("Authorization", "Bearer "+bearer)
-		return nil
-	}
-}
-
 // SharedShelf resolves a shelf id. Collection's 404 covers both
 // unknown and private (no existence oracle) - both are
 // ErrShelfNotFound here.
 func (c *Client) SharedShelf(ctx context.Context, bearer string, id uuid.UUID) (Shelf, error) {
-	resp, err := c.api.GetSharedShelfWithResponse(ctx, id, bearerEditor(bearer))
+	resp, err := c.api.GetSharedShelfWithResponse(ctx, id, httpkit.BearerEditor(bearer))
 	if err != nil {
 		return Shelf{}, fmt.Errorf("collectionclient: shared shelf: %w", err)
 	}

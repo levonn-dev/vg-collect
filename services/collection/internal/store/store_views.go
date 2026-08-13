@@ -49,16 +49,13 @@ func (s *Store) ListViews(ctx context.Context, userID uuid.UUID) ([]View, error)
 	if err != nil {
 		return nil, fmt.Errorf("store: list views: %w", err)
 	}
-	defer rows.Close()
-	out := []View{}
-	for rows.Next() {
-		v, err := scanView(rows)
+	return scanAll(rows, []View{}, "", func(r pgx.Rows) (View, error) {
+		v, err := scanView(r)
 		if err != nil {
-			return nil, fmt.Errorf("store: scan view: %w", err)
+			return View{}, fmt.Errorf("store: scan view: %w", err)
 		}
-		out = append(out, v)
-	}
-	return out, rows.Err()
+		return v, nil
+	})
 }
 
 // slugConstraint is the per-user folded-slug unique index; a
@@ -248,16 +245,25 @@ func (s *Store) ListListedShelves(ctx context.Context, ownerIDs []uuid.UUID, lim
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: list listed shelves: %w", err)
 	}
-	defer rows.Close()
-	out := []View{}
-	for rows.Next() {
-		v, err := scanView(rows)
+	// The original's trailing rows.Err() branch returned (out, total,
+	// err) - the real total and whatever shelves had already been
+	// scanned - while its own two earlier error branches above return
+	// (nil, 0, err). seed []View{} is non-nil, so scanAll only ever
+	// returns a nil slice here via its own scan-closure short-circuit;
+	// a nil out is therefore an unambiguous signal that this was a
+	// scan error (which the original also reported as (nil, 0, err)),
+	// not a trailing one.
+	out, err := scanAll(rows, []View{}, "", func(r pgx.Rows) (View, error) {
+		v, err := scanView(r)
 		if err != nil {
-			return nil, 0, fmt.Errorf("store: scan shelf: %w", err)
+			return View{}, fmt.Errorf("store: scan shelf: %w", err)
 		}
-		out = append(out, v)
+		return v, nil
+	})
+	if out == nil && err != nil {
+		return nil, 0, err
 	}
-	return out, total, rows.Err()
+	return out, total, err
 }
 
 // SharedShelvesByIDs batch-loads non-private views for hydration;
@@ -269,14 +275,11 @@ func (s *Store) SharedShelvesByIDs(ctx context.Context, ids []uuid.UUID) ([]View
 	if err != nil {
 		return nil, fmt.Errorf("store: shelves by ids: %w", err)
 	}
-	defer rows.Close()
-	out := []View{}
-	for rows.Next() {
-		v, err := scanView(rows)
+	return scanAll(rows, []View{}, "", func(r pgx.Rows) (View, error) {
+		v, err := scanView(r)
 		if err != nil {
-			return nil, fmt.Errorf("store: scan shelf: %w", err)
+			return View{}, fmt.Errorf("store: scan shelf: %w", err)
 		}
-		out = append(out, v)
-	}
-	return out, rows.Err()
+		return v, nil
+	})
 }

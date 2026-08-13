@@ -5,12 +5,10 @@ package userclient
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/social/internal/gen/userapi"
 )
 
@@ -27,11 +25,7 @@ type Client struct {
 }
 
 func New(baseURL string) (*Client, error) {
-	hc := &http.Client{
-		Timeout:   10 * time.Second,
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-	}
-	api, err := userapi.NewClientWithResponses(baseURL, userapi.WithHTTPClient(hc))
+	api, err := userapi.NewClientWithResponses(baseURL, userapi.WithHTTPClient(httpkit.NewHTTPClient()))
 	if err != nil {
 		return nil, fmt.Errorf("userclient: %w", err)
 	}
@@ -43,11 +37,7 @@ func New(baseURL string) (*Client, error) {
 // requires non-private.
 func (c *Client) CardsByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]Card, error) {
 	resp, err := c.api.GetSharedProfilesByIdsWithResponse(ctx,
-		&userapi.GetSharedProfilesByIdsParams{Ids: ids},
-		func(_ context.Context, req *http.Request) error {
-			req.Header.Set("Authorization", "Bearer "+bearer)
-			return nil
-		})
+		&userapi.GetSharedProfilesByIdsParams{Ids: ids}, httpkit.BearerEditor(bearer))
 	if err != nil {
 		return nil, fmt.Errorf("userclient: cards: %w", err)
 	}

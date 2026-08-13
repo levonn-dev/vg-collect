@@ -74,16 +74,13 @@ func (s *Store) ListTags(ctx context.Context, userID uuid.UUID) ([]Tag, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: list tags: %w", err)
 	}
-	defer rows.Close()
-	out := []Tag{}
-	for rows.Next() {
+	return scanAll(rows, []Tag{}, "", func(r pgx.Rows) (Tag, error) {
 		var t Tag
-		if err := rows.Scan(&t.ID, &t.Name, &t.EntryCount); err != nil {
-			return nil, fmt.Errorf("store: scan tag: %w", err)
+		if err := r.Scan(&t.ID, &t.Name, &t.EntryCount); err != nil {
+			return Tag{}, fmt.Errorf("store: scan tag: %w", err)
 		}
-		out = append(out, t)
-	}
-	return out, rows.Err()
+		return t, nil
+	})
 }
 
 // RenameTag renames one of the user's tags.

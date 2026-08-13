@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // LibraryGame is one deduplicated owned game for recommendation
@@ -31,16 +32,13 @@ func (s *Store) LibrarySummary(ctx context.Context, userID uuid.UUID) ([]Library
 	if err != nil {
 		return nil, fmt.Errorf("store: library summary: %w", err)
 	}
-	defer rows.Close()
-	out := []LibraryGame{}
-	for rows.Next() {
+	return scanAll(rows, []LibraryGame{}, "", func(r pgx.Rows) (LibraryGame, error) {
 		var g LibraryGame
-		if err := rows.Scan(&g.IGDBGameID, &g.Rating, &g.AllDropped); err != nil {
-			return nil, fmt.Errorf("store: scan library game: %w", err)
+		if err := r.Scan(&g.IGDBGameID, &g.Rating, &g.AllDropped); err != nil {
+			return LibraryGame{}, fmt.Errorf("store: scan library game: %w", err)
 		}
-		out = append(out, g)
-	}
-	return out, rows.Err()
+		return g, nil
+	})
 }
 
 // CoverURLs returns the first non-empty cover urls of a shelf's
@@ -55,16 +53,13 @@ func (s *Store) CoverURLs(ctx context.Context, userID uuid.UUID, f Filters, limi
 	if err != nil {
 		return nil, fmt.Errorf("store: cover urls: %w", err)
 	}
-	defer rows.Close()
-	out := []string{}
-	for rows.Next() {
+	return scanAll(rows, []string{}, "", func(r pgx.Rows) (string, error) {
 		var u string
-		if err := rows.Scan(&u); err != nil {
-			return nil, fmt.Errorf("store: scan cover: %w", err)
+		if err := r.Scan(&u); err != nil {
+			return "", fmt.Errorf("store: scan cover: %w", err)
 		}
-		out = append(out, u)
-	}
-	return out, rows.Err()
+		return u, nil
+	})
 }
 
 // PlatformCount is one dashboard platform bucket ("" = no platform).
@@ -130,18 +125,17 @@ func (s *Store) DashboardCounts(ctx context.Context, userID uuid.UUID, f Filters
 	if err != nil {
 		return DashboardCounts{}, fmt.Errorf("store: dashboard platforms: %w", err)
 	}
-	defer rows.Close()
-	out.ByPlatform = []PlatformCount{}
-	for rows.Next() {
+	byPlatform, err := scanAll(rows, []PlatformCount{}, "dashboard platforms", func(r pgx.Rows) (PlatformCount, error) {
 		var p PlatformCount
-		if err := rows.Scan(&p.Name, &p.Count); err != nil {
-			return DashboardCounts{}, fmt.Errorf("store: scan platform count: %w", err)
+		if err := r.Scan(&p.Name, &p.Count); err != nil {
+			return PlatformCount{}, fmt.Errorf("store: scan platform count: %w", err)
 		}
-		out.ByPlatform = append(out.ByPlatform, p)
+		return p, nil
+	})
+	if err != nil {
+		return DashboardCounts{}, err
 	}
-	if err := rows.Err(); err != nil {
-		return DashboardCounts{}, fmt.Errorf("store: dashboard platforms: %w", err)
-	}
+	out.ByPlatform = byPlatform
 	srows, err := s.pool.Query(ctx, `
 		SELECT currency, sum(price_paid_cents) FROM entries
 		WHERE `+cond+` AND price_paid_cents IS NOT NULL
@@ -149,16 +143,27 @@ func (s *Store) DashboardCounts(ctx context.Context, userID uuid.UUID, f Filters
 	if err != nil {
 		return DashboardCounts{}, fmt.Errorf("store: dashboard spend: %w", err)
 	}
-	defer srows.Close()
-	out.Spend = []CurrencySpend{}
-	for srows.Next() {
+	// op "" here (unlike the ByPlatform block above): the original tail
+	// was a bare `return out, srows.Err()`, so a trailing rows.Err()
+	// failure reports its raw error AND keeps whatever out already
+	// held (Total/ByStatus/ByItemType/ByPlatform, plus every Spend row
+	// already scanned) - only a scan error discards out entirely, as
+	// the original did. seed []CurrencySpend{} is non-nil, so scanAll
+	// only ever returns a nil slice here via its own scan-closure
+	// short-circuit; a nil spend is therefore an unambiguous signal
+	// that this was a scan error, not a trailing one.
+	spend, err := scanAll(srows, []CurrencySpend{}, "", func(r pgx.Rows) (CurrencySpend, error) {
 		var c CurrencySpend
-		if err := srows.Scan(&c.Currency, &c.TotalCents); err != nil {
-			return DashboardCounts{}, fmt.Errorf("store: scan spend: %w", err)
+		if err := r.Scan(&c.Currency, &c.TotalCents); err != nil {
+			return CurrencySpend{}, fmt.Errorf("store: scan spend: %w", err)
 		}
-		out.Spend = append(out.Spend, c)
+		return c, nil
+	})
+	if spend == nil && err != nil {
+		return DashboardCounts{}, err
 	}
-	return out, srows.Err()
+	out.Spend = spend
+	return out, err
 }
 
 // PricingRow is the slim projection the dashboard's value composition
@@ -187,15 +192,12 @@ func (s *Store) PricingRows(ctx context.Context, userID uuid.UUID, f Filters) ([
 	if err != nil {
 		return nil, fmt.Errorf("store: pricing rows: %w", err)
 	}
-	defer rows.Close()
-	out := []PricingRow{}
-	for rows.Next() {
-		var r PricingRow
-		if err := rows.Scan(&r.EntryID, &r.Packaging, &r.PricingMode, &r.ProductID,
-			&r.PricingProductID, &r.CustomValueCents, &r.CustomValueSetAt); err != nil {
-			return nil, fmt.Errorf("store: scan pricing row: %w", err)
+	return scanAll(rows, []PricingRow{}, "", func(r pgx.Rows) (PricingRow, error) {
+		var row PricingRow
+		if err := r.Scan(&row.EntryID, &row.Packaging, &row.PricingMode, &row.ProductID,
+			&row.PricingProductID, &row.CustomValueCents, &row.CustomValueSetAt); err != nil {
+			return PricingRow{}, fmt.Errorf("store: scan pricing row: %w", err)
 		}
-		out = append(out, r)
-	}
-	return out, rows.Err()
+		return row, nil
+	})
 }

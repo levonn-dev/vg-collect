@@ -12,49 +12,37 @@ import (
 
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 )
 
 // ListUnmatchedProducts relays the admin worklist. The bff holds no
 // role logic for admin routes: enrichment enforces, problems relay.
 func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request, params api.ListUnmatchedProductsParams) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	up := &enrichapi.ListUnmatchedProductsParams{Limit: params.Limit, Offset: params.Offset}
 	res, err := h.enrichment.UnmatchedProducts(r.Context(), sess.AccessToken, up)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayEnrichment(w, r, res, err)
 }
 
 // ListCommunityProducts relays the admin community listing. The bff
 // holds no role logic for admin routes: enrichment enforces, problems
 // relay.
 func (h *Handlers) ListCommunityProducts(w http.ResponseWriter, r *http.Request, params api.ListCommunityProductsParams) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	cp := &enrichapi.ListCommunityProductsParams{Limit: params.Limit, Offset: params.Offset}
 	res, err := h.enrichment.CommunityProducts(r.Context(), sess.AccessToken, cp)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayEnrichment(w, r, res, err)
 }
 
 // SetProductMapping relays the moderated mapping correction.
 func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	body, ok := readCapped(w, r)
@@ -62,11 +50,7 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 		return
 	}
 	res, err := h.enrichment.SetProductMapping(r.Context(), sess.AccessToken, productId, body)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayEnrichment(w, r, res, err)
 }
 
 // DeleteProduct is the one orchestrated admin call: only collection
@@ -74,9 +58,8 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 // relaying enrichment's guarded delete. Collection's 403 relays
 // first, which keeps the role gate ahead of any cross-user fact.
 func (h *Handlers) DeleteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	refs, err := h.collection.CountProductReferences(r.Context(), sess.AccessToken, productId)
@@ -104,19 +87,14 @@ func (h *Handlers) DeleteProduct(w http.ResponseWriter, r *http.Request, product
 		return
 	}
 	res, err := h.enrichment.DeleteProduct(r.Context(), sess.AccessToken, productId)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayEnrichment(w, r, res, err)
 }
 
 // CreateCommunityProduct relays the admin mint; enrichment enforces
 // the role.
 func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	body, ok := readCapped(w, r)
@@ -124,18 +102,13 @@ func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request
 		return
 	}
 	res, err := h.enrichment.CreateCommunityProduct(r.Context(), sess.AccessToken, body)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayEnrichment(w, r, res, err)
 }
 
 // PromoteProduct relays the in-place promotion.
 func (h *Handlers) PromoteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	body, ok := readCapped(w, r)
@@ -143,34 +116,24 @@ func (h *Handlers) PromoteProduct(w http.ResponseWriter, r *http.Request, produc
 		return
 	}
 	res, err := h.enrichment.PromoteProduct(r.Context(), sess.AccessToken, productId, body)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayEnrichment(w, r, res, err)
 }
 
 // ListPromoteCandidates relays the sweep worklist.
 func (h *Handlers) ListPromoteCandidates(w http.ResponseWriter, r *http.Request, params api.ListPromoteCandidatesParams) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	up := &enrichapi.ListPromoteCandidatesParams{Limit: params.Limit, Offset: params.Offset, ProductId: params.ProductId}
 	res, err := h.enrichment.PromoteCandidates(r.Context(), sess.AccessToken, up)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayEnrichment(w, r, res, err)
 }
 
 // DismissPromoteCandidate relays a candidate dismissal.
 func (h *Handlers) DismissPromoteCandidate(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
-	sess, _, ok := session.FromContext(r.Context())
+	sess, _, ok := h.requireSession(w, r)
 	if !ok {
-		h.unauthorized(w, r)
 		return
 	}
 	body, ok := readCapped(w, r)
@@ -178,9 +141,5 @@ func (h *Handlers) DismissPromoteCandidate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	res, err := h.enrichment.DismissPromoteCandidate(r.Context(), sess.AccessToken, productId, body)
-	if err != nil {
-		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
-		return
-	}
-	writeRelay(w, res.Status, res.ContentType, res.Body)
+	h.relayEnrichment(w, r, res, err)
 }

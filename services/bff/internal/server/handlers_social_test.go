@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/socialapi"
@@ -400,6 +401,67 @@ func TestUnitSocialRelays_PassProblemsVerbatim(t *testing.T) {
 	})
 }
 
+// TestUnitSearchUsers_RelaysForwardsBearerAndGatesSession pins
+// SearchUsers, the one route relayUser carries: a listed-handle
+// search relays the user service's status and body verbatim and
+// forwards the caller's own bearer and q untouched, a dead client
+// answers the exact upstream_error problem relayUser produces (not
+// just "some 502"), and no session is 401 before the handler - and
+// before the user service - ever runs.
+func TestUnitSearchUsers_RelaysForwardsBearerAndGatesSession(t *testing.T) {
+	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
+	env := &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
+
+	t.Run("relays body and status, forwards bearer and q", func(t *testing.T) {
+		const page = `{"profiles":[{"user_id":"11111111-1111-1111-1111-111111111111","handle":"alice"}]}`
+		var gotBearer, gotQ string
+		h.users = &stubUsersFull{searchProfiles: func(_ context.Context, bearer, q string) (userclient.Result, error) {
+			gotBearer, gotQ = bearer, q
+			return userclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: []byte(page)}, nil
+		}}
+		rec := doAuthed(t, h, env, http.MethodGet, "/api/search/users?q=alice")
+		if rec.Code != http.StatusOK || rec.Body.String() != page {
+			t.Fatalf("relay: %d %s", rec.Code, rec.Body.String())
+		}
+		if gotBearer != env.sessionAccessToken || gotQ != "alice" {
+			t.Fatalf("bearer/q reaching users: %q %q", gotBearer, gotQ)
+		}
+	})
+
+	t.Run("client error answers the exact problem relayUser produces", func(t *testing.T) {
+		h.users = &stubUsersFull{searchProfiles: func(context.Context, string, string) (userclient.Result, error) {
+			return userclient.Result{}, userclient.ErrUpstream
+		}}
+		rec := doAuthed(t, h, env, http.MethodGet, "/api/search/users?q=alice")
+		if rec.Code != http.StatusBadGateway {
+			t.Fatalf("status: %d, want 502", rec.Code)
+		}
+		var p struct {
+			Code   string `json:"code"`
+			Detail string `json:"detail"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+			t.Fatalf("problem body: %v (%s)", err, rec.Body.String())
+		}
+		if p.Code != "upstream_error" || p.Detail != "user service unavailable" {
+			t.Fatalf("problem = %+v", p)
+		}
+	})
+
+	t.Run("no session is 401 before the user service ever runs", func(t *testing.T) {
+		// searchProfiles stays nil: reaching the user service would
+		// panic, which is the ordering assertion (mirrors
+		// TestUnitAdminDelete_ReferencedAnswers409BeforeEnrichment's
+		// deleteProduct-stays-nil trick).
+		h.users = &stubUsersFull{}
+		rec := doUnauthed(t, h, env, http.MethodGet, "/api/search/users?q=alice")
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("no session: %d", rec.Code)
+		}
+	})
+}
+
 // mockComment builds a social comment row for a stubbed ListComments
 // body. AuthorId is a pointer purely for fixture-building so a nil
 // marshals to the JSON literal null - the purge-anonymized shape
@@ -782,7 +844,7 @@ func TestUnitFeed_FillLoopAndGating(t *testing.T) {
 		if len(got.Items) != 2 || got.Items[0].Id != event1.Id || got.Items[1].Id != event4.Id {
 			t.Fatalf("items = %+v, want exactly [event1, event4] in order", got.Items)
 		}
-		wantCursor := rawCursorOf(event4)
+		wantCursor := (httpkit.Cursor{CreatedAt: event4.CreatedAt, ID: event4.Id}).String()
 		if got.NextCursor == nil || *got.NextCursor != wantCursor {
 			t.Fatalf("next_cursor = %v, want %q (raw cursor of the last INCLUDED event)", got.NextCursor, wantCursor)
 		}
@@ -966,7 +1028,7 @@ func TestUnitFeed_ValidatesTabAndCursor(t *testing.T) {
 	}
 
 	t.Run("valid cursor is forwarded to social.Feed verbatim", func(t *testing.T) {
-		valid := rawCursorOf(socialapi.ActivityEvent{Id: uuid.New(), CreatedAt: time.Now()})
+		valid := (httpkit.Cursor{CreatedAt: time.Now(), ID: uuid.New()}).String()
 		var gotCursor *string
 		h.social = &stubSocialFull{feed: func(_ context.Context, _, _ string, cursor *string, _ int) ([]socialapi.ActivityEvent, *string, error) {
 			gotCursor = cursor
@@ -1846,4 +1908,152 @@ func TestUnitExplore_ValidatesLimitAndOffsetMinimum(t *testing.T) {
 			t.Fatal("want the upstream collection call to happen at limit=1")
 		}
 	})
+}
+
+// --- Direct pins for the ID-collection helper family (two
+// dedupe-builders, three index-builders) below, written before
+// converting them to share generics. dedupedCommentAuthorIDs
+// deliberately filters uuid.Nil (purged/anonymized comment authors -
+// see rawComment's own doc comment above); shelfSocialByID must keep
+// returning a POINTER map because a missing key reading back nil, not
+// a zero-valued struct, is load-bearing at toShelfCard and all three
+// of its call sites (composeShelfPage, hydrateFeed, exploreRecent,
+// exploreTop - toShelfCard's nil check is what leaves a card's social
+// fields absent rather than zeroed). TestUnitShelfComments_AuthorHydration
+// above and the explore/feed suites elsewhere in this file already
+// exercise these functions indirectly through full HTTP routes; these
+// five are the direct, single-function pins a shared-generic
+// conversion needs so a naive reuse (a filterless dedupe, or a
+// value-typed index) fails a fast unit test instead of only a full
+// composition test three call sites away.
+
+func TestUnitDedupedCommentAuthorIDs_FiltersNilAndDedupesInFirstSeenOrder(t *testing.T) {
+	alice, bob := uuid.New(), uuid.New()
+	comments := []rawComment{
+		{AuthorId: alice},
+		{AuthorId: uuid.Nil}, // purge-anonymized; must not appear or count as "seen"
+		{AuthorId: bob},
+		{AuthorId: alice}, // duplicate; must not repeat
+		{AuthorId: uuid.Nil},
+	}
+	got := dedupedCommentAuthorIDs(comments)
+	want := []uuid.UUID{alice, bob}
+	if len(got) != len(want) {
+		t.Fatalf("got = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d] = %s, want %s (first-seen order, alice before bob)", i, got[i], want[i])
+		}
+	}
+}
+
+// TestUnitDedupedOwnerIDs_DedupesInFirstSeenOrderNoNilFilter is
+// dedupedCommentAuthorIDs' sibling: the same dedupe shape, but
+// WITHOUT a uuid.Nil filter - collectionapi.SharedShelfSummary.OwnerId
+// is never the purge sentinel (every shelf has a real owner), so a
+// shared generic must not apply the comment-author filter here.
+func TestUnitDedupedOwnerIDs_DedupesInFirstSeenOrderNoNilFilter(t *testing.T) {
+	ownerA, ownerB := uuid.New(), uuid.New()
+	shelves := []collectionapi.SharedShelfSummary{
+		{Id: uuid.New(), OwnerId: ownerA},
+		{Id: uuid.New(), OwnerId: ownerB},
+		{Id: uuid.New(), OwnerId: ownerA},
+	}
+	got := dedupedOwnerIDs(shelves)
+	want := []uuid.UUID{ownerA, ownerB}
+	if len(got) != len(want) {
+		t.Fatalf("got = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d] = %s, want %s", i, got[i], want[i])
+		}
+	}
+}
+
+func TestUnitCardsByID_IndexesByUserID(t *testing.T) {
+	a, b := uuid.New(), uuid.New()
+	cards := []userapi.ProfileCard{
+		{UserId: a, Handle: "alice"},
+		{UserId: b, Handle: "bob"},
+	}
+	got := cardsByID(cards)
+	if len(got) != 2 || got[a].Handle != "alice" || got[b].Handle != "bob" {
+		t.Fatalf("got = %+v", got)
+	}
+	if _, ok := got[uuid.New()]; ok {
+		t.Fatal("unrequested id must not be present")
+	}
+}
+
+func TestUnitShelfSummariesByID_IndexesByShelfID(t *testing.T) {
+	s1, s2 := uuid.New(), uuid.New()
+	shelves := []collectionapi.SharedShelfSummary{
+		{Id: s1, Name: "one"},
+		{Id: s2, Name: "two"},
+	}
+	got := shelfSummariesByID(shelves)
+	if len(got) != 2 || got[s1].Name != "one" || got[s2].Name != "two" {
+		t.Fatalf("got = %+v", got)
+	}
+}
+
+// TestUnitCommentByID_IndexesByCommentID pins hydrateFeed's inline
+// commentByID map-build (no standalone named function - it has only
+// the one call site, unlike cardsByID/shelfSummariesByID/
+// shelfSocialByID above), converted to indexByID with the exact same
+// closure shape hydrateFeed itself now uses. A value map is correct
+// here: commentByID's one reader is an `if c, ok := ...; ok` guarded
+// lookup (TestUnitFeed_CommentExcerpts exercises it end to end), so
+// unlike shelfSocialByID there is no nil-on-miss contract to
+// preserve.
+func TestUnitCommentByID_IndexesByCommentID(t *testing.T) {
+	c1, c2 := uuid.New(), uuid.New()
+	comments := []socialapi.Comment{
+		{Id: c1, Body: "first"},
+		{Id: c2, Body: "second"},
+	}
+	got := indexByID(comments, func(c socialapi.Comment) uuid.UUID { return c.Id })
+	if len(got) != 2 || got[c1].Body != "first" || got[c2].Body != "second" {
+		t.Fatalf("got = %+v", got)
+	}
+	if _, ok := got[uuid.New()]; ok {
+		t.Fatal("unrequested id must not be present")
+	}
+}
+
+// TestUnitShelfSocialByID_MissingKeyReadsNilNotZeroValue pins the
+// pointer-map contract shelfSocialByID exists for: a shelf id NOT in
+// the input summaries must read back a nil *ShelfSocialSummary from
+// the returned map, not a pointer to a zero-valued struct. This is
+// the property that rules out a naive value-typed indexByID reuse.
+func TestUnitShelfSocialByID_MissingKeyReadsNilNotZeroValue(t *testing.T) {
+	present, missing := uuid.New(), uuid.New()
+	summaries := []socialapi.ShelfSocialSummary{
+		{ShelfId: present, LikeCount: 5, CommentCount: 2, ViewerLikes: true},
+	}
+	got := shelfSocialByID(summaries)
+
+	if got[missing] != nil {
+		t.Fatalf("missing key = %+v, want nil", got[missing])
+	}
+	p := got[present]
+	if p == nil {
+		t.Fatal("present key = nil, want a populated pointer")
+	}
+	if p.LikeCount != 5 || p.CommentCount != 2 || !p.ViewerLikes {
+		t.Fatalf("present value = %+v, want the seeded summary", *p)
+	}
+
+	// A nil (never-assigned) map must behave identically: every
+	// exploreRecent/exploreTop call site declares summaryByID as a
+	// bare `var`, populated only on a successful ShelvesSummary call,
+	// and reads straight from it either way - a nil Go map read never
+	// panics and always yields the zero value for the value type,
+	// nil, here.
+	var nilMap map[uuid.UUID]*socialapi.ShelfSocialSummary
+	if nilMap[present] != nil {
+		t.Fatalf("nil map read = %+v, want nil", nilMap[present])
+	}
 }

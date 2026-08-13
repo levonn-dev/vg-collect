@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/social/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/social/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/social/internal/store"
@@ -48,13 +49,11 @@ func (h *Handlers) Follow(w http.ResponseWriter, r *http.Request, userId openapi
 	}
 	inserted, err := h.store.Follow(r.Context(), me, userId, h.opts.CapFollows)
 	if errors.Is(err, store.ErrCapExceeded) {
-		h.count(r.Context(), h.capRejections, "kind", "follows")
-		problem(w, r, http.StatusTooManyRequests, "cap_exceeded", "follow limit reached; try again later")
+		h.capExceeded(w, r, "follows")
 		return
 	}
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "follow", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "follow failed")
+		h.internalError(w, r, "follow", "follow failed", err)
 		return
 	}
 	if inserted {
@@ -69,8 +68,7 @@ func (h *Handlers) Unfollow(w http.ResponseWriter, r *http.Request, userId opena
 		return
 	}
 	if err := h.store.Unfollow(r.Context(), me, userId); err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "unfollow", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "unfollow failed")
+		h.internalError(w, r, "unfollow", "unfollow failed", err)
 		return
 	}
 	h.count(r.Context(), h.follows, "op", "delete")
@@ -84,8 +82,7 @@ func (h *Handlers) GetProfileSocialSummary(w http.ResponseWriter, r *http.Reques
 	}
 	followers, following, viewerFollows, err := h.store.ProfileSummary(r.Context(), userId, me)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "profile_summary", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "summary failed")
+		h.internalError(w, r, "profile_summary", "summary failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, api.ProfileSocialSummary{
@@ -122,13 +119,11 @@ func (h *Handlers) LikeShelf(w http.ResponseWriter, r *http.Request, shelfId ope
 	}
 	inserted, err := h.store.Like(r.Context(), me, shelf.ID, shelf.OwnerID, h.opts.CapLikes)
 	if errors.Is(err, store.ErrCapExceeded) {
-		h.count(r.Context(), h.capRejections, "kind", "likes")
-		problem(w, r, http.StatusTooManyRequests, "cap_exceeded", "like limit reached; try again later")
+		h.capExceeded(w, r, "likes")
 		return
 	}
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "like", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "like failed")
+		h.internalError(w, r, "like", "like failed", err)
 		return
 	}
 	if inserted {
@@ -143,8 +138,7 @@ func (h *Handlers) UnlikeShelf(w http.ResponseWriter, r *http.Request, shelfId o
 		return
 	}
 	if err := h.store.Unlike(r.Context(), me, shelfId); err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "unlike", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "unlike failed")
+		h.internalError(w, r, "unlike", "unlike failed", err)
 		return
 	}
 	h.count(r.Context(), h.likes, "op", "delete")
@@ -164,8 +158,7 @@ func (h *Handlers) GetShelvesSocialSummary(w http.ResponseWriter, r *http.Reques
 	copy(ids, params.Ids)
 	sums, err := h.store.ShelfSummaries(r.Context(), ids, me)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "shelf_summaries", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "summaries failed")
+		h.internalError(w, r, "shelf_summaries", "summaries failed", err)
 		return
 	}
 	out := make([]api.ShelfSocialSummary, len(sums))
@@ -206,18 +199,14 @@ func (h *Handlers) ListShelfComments(w http.ResponseWriter, r *http.Request, she
 	if !ok {
 		return
 	}
-	limit := 20
-	if params.Limit != nil {
-		if *params.Limit < 1 || *params.Limit > 50 {
-			problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 50")
-			return
-		}
-		limit = *params.Limit
+	limit, ok := httpkit.ClampOrReject(params.Limit, 20, 1, 50)
+	if !ok {
+		problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 50")
+		return
 	}
 	comments, err := h.store.ListLiveComments(r.Context(), shelfId, cur, limit)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "list_comments", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "list failed")
+		h.internalError(w, r, "list_comments", "list failed", err)
 		return
 	}
 	out := struct {
@@ -242,9 +231,7 @@ func (h *Handlers) CreateShelfComment(w http.ResponseWriter, r *http.Request, sh
 	var req struct {
 		Body string `json:"body"`
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, 64*1024, &req) {
 		return
 	}
 	body := strings.TrimSpace(req.Body)
@@ -263,13 +250,11 @@ func (h *Handlers) CreateShelfComment(w http.ResponseWriter, r *http.Request, sh
 	}
 	c, err := h.store.CreateComment(r.Context(), shelf.ID, shelf.OwnerID, me, body, h.opts.CapComments)
 	if errors.Is(err, store.ErrCapExceeded) {
-		h.count(r.Context(), h.capRejections, "kind", "comments")
-		problem(w, r, http.StatusTooManyRequests, "cap_exceeded", "comment limit reached; try again later")
+		h.capExceeded(w, r, "comments")
 		return
 	}
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "create_comment", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "comment failed")
+		h.internalError(w, r, "create_comment", "comment failed", err)
 		return
 	}
 	h.count(r.Context(), h.comments, "op", "create")
@@ -291,8 +276,7 @@ func (h *Handlers) DeleteComment(w http.ResponseWriter, r *http.Request, comment
 		return
 	}
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "delete_comment", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "delete failed")
+		h.internalError(w, r, "delete_comment", "delete failed", err)
 		return
 	}
 	h.count(r.Context(), h.comments, "op", outcome)
@@ -312,8 +296,7 @@ func (h *Handlers) GetCommentsByIds(w http.ResponseWriter, r *http.Request, para
 	copy(ids, params.Ids)
 	comments, err := h.store.LiveCommentsByIDs(r.Context(), ids)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "comments_by_ids", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "batch failed")
+		h.internalError(w, r, "comments_by_ids", "batch failed", err)
 		return
 	}
 	out := make([]api.Comment, len(comments))
@@ -336,18 +319,14 @@ func (h *Handlers) GetFeed(w http.ResponseWriter, r *http.Request, params api.Ge
 	if !ok {
 		return
 	}
-	limit := 20
-	if params.Limit != nil {
-		if *params.Limit < 1 || *params.Limit > 50 {
-			problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 50")
-			return
-		}
-		limit = *params.Limit
+	limit, ok := httpkit.ClampOrReject(params.Limit, 20, 1, 50)
+	if !ok {
+		problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 50")
+		return
 	}
 	events, err := h.store.Feed(r.Context(), me, string(params.Tab), cur, limit)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "feed", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "feed failed")
+		h.internalError(w, r, "feed", "feed failed", err)
 		return
 	}
 	h.count(r.Context(), h.feedReads, "tab", string(params.Tab))
@@ -411,8 +390,7 @@ func (h *Handlers) RecordShelfPublished(w http.ResponseWriter, r *http.Request) 
 	}
 	outcome, err := h.store.RecordPublish(r.Context(), shelf.OwnerID, shelf.ID, publishRefreshThrottle)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "record_publish", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "record failed")
+		h.internalError(w, r, "record_publish", "record failed", err)
 		return
 	}
 	h.count(r.Context(), h.publishEvents, "outcome", outcome)
@@ -424,18 +402,14 @@ func (h *Handlers) GetTopShelves(w http.ResponseWriter, r *http.Request, params 
 	if !ok {
 		return
 	}
-	limit := 50
-	if params.Limit != nil {
-		if *params.Limit < 1 || *params.Limit > 50 {
-			problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 50")
-			return
-		}
-		limit = *params.Limit
+	limit, ok := httpkit.ClampOrReject(params.Limit, 50, 1, 50)
+	if !ok {
+		problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 50")
+		return
 	}
 	ids, err := h.store.TopShelves(r.Context(), limit)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "top_shelves", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "leaderboard failed")
+		h.internalError(w, r, "top_shelves", "leaderboard failed", err)
 		return
 	}
 	out := make([]openapi_types.UUID, len(ids))
@@ -449,8 +423,7 @@ func (h *Handlers) PurgeUserData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.PurgeUser(r.Context(), me); err != nil {
-		h.logger.ErrorContext(r.Context(), "store error", "op", "purge", "err", err)
-		problem(w, r, http.StatusInternalServerError, "internal", "purge failed")
+		h.internalError(w, r, "purge", "purge failed", err)
 		return
 	}
 	h.count(r.Context(), h.purgeRuns, "outcome", "ok")
