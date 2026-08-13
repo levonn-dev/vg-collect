@@ -29,3 +29,11 @@ func WriteProblem(w http.ResponseWriter, r *http.Request, p Problem) {
 	w.WriteHeader(p.Status)
 	_ = json.NewEncoder(w).Encode(p)
 }
+
+// WriteProblemFields builds a Problem from status, code, and detail,
+// deriving Title from status via http.StatusText, and writes it via
+// WriteProblem. Type and Instance are left at their WriteProblem
+// defaults (about:blank, the request path).
+func WriteProblemFields(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
+	WriteProblem(w, r, Problem{Status: status, Title: http.StatusText(status), Code: code, Detail: detail})
+}
