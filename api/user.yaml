@@ -196,6 +196,9 @@ components:
         email: { type: string }
         handle:
           type: string
+          minLength: 2
+          maxLength: 30
+          pattern: "^[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?$"
           description: >
             The user's single identity. 2-30 chars, alphanumeric plus
             interior underscores; case and underscores are decoration
@@ -247,6 +250,9 @@ components:
       properties:
         handle:
           type: string
+          minLength: 2
+          maxLength: 30
+          pattern: "^[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?$"
           description: >
             New typed form. Decoration-only changes are free renames;
             one change per cooldown window (429 handle_cooldown);
