@@ -1133,7 +1133,7 @@ export interface components {
             /** @description IGDB platform logo; the display fallback for products without cover art. */
             logo_url?: string;
             /** @description Distinct canonical IGDB release regions for this game on this platform (japan, north_america, europe, ...), ordered by that region's earliest release date on the platform (dateless rows last, then alphabetical). Platform-exact: JP twin platforms are NOT folded here (a Famicom row stays on Famicom), unlike the product projection's date fold - the physical release is platform-specific. Populated on game search results only; absent on product payloads and hardware results. */
-            release_regions?: string[];
+            release_regions?: ("europe" | "north_america" | "australia" | "new_zealand" | "japan" | "china" | "asia" | "worldwide" | "korea" | "brazil")[];
         };
         /** @description One platform-catalog row with its known aliases. */
         CatalogPlatform: {
@@ -1222,7 +1222,8 @@ export interface components {
             publisher: boolean;
         };
         ReleaseDate: {
-            region: string;
+            /** @enum {string} */
+            region: "europe" | "north_america" | "australia" | "new_zealand" | "japan" | "china" | "asia" | "worldwide" | "korea" | "brazil";
             /** Format: date */
             date: string;
         };

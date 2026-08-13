@@ -2,11 +2,11 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
 import type { ReactNode } from 'react'
-import { Link } from 'react-router'
 import type { Entry } from '../../api/collection'
 import { formatCents, releaseYear } from '../../lib/format'
 import { entryTitle, entryTitleLang, titleFormFor } from '../../lib/productTitle'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
+import EntryLink from './EntryLink'
 import { isFullEntry, rowMeta, type EntryRow } from './rowMeta'
 
 // eslint-disable-next-line react-refresh/only-export-components -- shared label map, consumed by other collection views alongside this component.
@@ -128,13 +128,9 @@ export default function EntryTable({
               {numbered && <td className="py-2 pr-3 text-right text-gray-400">{i + 1}</td>}
               <td className="py-2 pr-3">
                 {meta.pin}
-                {linkTo?.(e) === null
-                  ? <span className="font-medium"><span lang={entryTitleLang(e, form)}>{entryTitle(e, form)}</span></span>
-                  : (
-                    <Link to={(linkTo ?? (x => `/entries/${x.id}`))(e)!} className="font-medium hover:underline">
-                      <span lang={entryTitleLang(e, form)}>{entryTitle(e, form)}</span>
-                    </Link>
-                  )}
+                <EntryLink entry={e} linkTo={linkTo} plainClassName="font-medium" linkClassName="font-medium hover:underline">
+                  <span lang={entryTitleLang(e, form)}>{entryTitle(e, form)}</span>
+                </EntryLink>
                 {e.edition && <span className="ml-2 text-xs text-gray-500">{e.edition}</span>}
                 {releaseYear(e.first_release_date) && (
                   <span className="ml-2 text-xs text-gray-400">{releaseYear(e.first_release_date)}</span>

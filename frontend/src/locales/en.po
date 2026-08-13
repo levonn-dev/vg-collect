@@ -139,11 +139,11 @@ msgstr "59.99"
 msgid "A provider product already holds that identity - nothing changed."
 msgstr "A provider product already holds that identity - nothing changed."
 
-#: src/components/admin/RefreshTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "A refresh is already running."
 msgstr "A refresh is already running."
 
-#: src/components/admin/RematchTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "A rematch is already running."
 msgstr "A rematch is already running."
 
@@ -372,7 +372,7 @@ msgstr "Cancel"
 msgid "Cancel submission"
 msgstr "Cancel submission"
 
-#: src/components/admin/RefreshTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "Catalog refresh"
 msgstr "Catalog refresh"
 
@@ -456,8 +456,7 @@ msgstr "Clear mapping"
 msgid "Clear this mapping? The product becomes unmatched and is held out of the nightly entry rematch."
 msgstr "Clear this mapping? The product becomes unmatched and is held out of the nightly entry rematch."
 
-#: src/components/entry/ProxyPicker.tsx
-#: src/components/wizard/ManualMatchPicker.tsx
+#: src/components/SearchPickerDialog.tsx
 msgid "Close"
 msgstr "Close"
 
@@ -731,8 +730,7 @@ msgid "disabled (no market value)"
 msgstr "disabled (no market value)"
 
 #: src/components/admin/PromotePanel.tsx
-#: src/components/entry/ApprovalNotice.tsx
-#: src/components/entry/RegionMismatchBanner.tsx
+#: src/components/entry/DismissibleNotice.tsx
 #: src/pages/Account.tsx
 msgid "Dismiss"
 msgstr "Dismiss"
@@ -804,7 +802,7 @@ msgstr "Entry detail"
 msgid "Entry editor"
 msgstr "Entry editor"
 
-#: src/components/admin/RematchTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "Entry rematch"
 msgstr "Entry rematch"
 
@@ -1073,14 +1071,7 @@ msgstr "Listed - appears in Explore and search"
 msgid "Listing: {listingName}"
 msgstr "Listing: {listingName}"
 
-#: src/components/admin/CommunityProducts.tsx
-#: src/components/admin/PromoteCandidates.tsx
-#: src/components/admin/SubmissionsQueue.tsx
-#: src/components/admin/UnmatchedWorklist.tsx
-#: src/components/social/CommentList.tsx
-#: src/pages/Explore.tsx
-#: src/pages/Feed.tsx
-#: src/pages/SharedShelf.tsx
+#: src/components/LoadMoreButton.tsx
 msgid "Load more"
 msgstr "Load more"
 
@@ -1186,8 +1177,7 @@ msgstr "loose"
 msgid "Loose"
 msgstr "Loose"
 
-#: src/components/catalog/SearchPicker.tsx
-#: src/components/entry/PricingPanel.tsx
+#: src/components/PriceTriple.tsx
 msgid "Loose {loose} / CIB {cib} / New {newPrice}"
 msgstr "Loose {loose} / CIB {cib} / New {newPrice}"
 
@@ -1718,7 +1708,7 @@ msgstr "Recommended for you"
 msgid "Recommended next"
 msgstr "Recommended next"
 
-#: src/components/admin/RefreshTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "Refresh started."
 msgstr "Refresh started."
 
@@ -1767,7 +1757,7 @@ msgstr "Release date"
 msgid "Released on {groupPlatformName}"
 msgstr "Released on {groupPlatformName}"
 
-#: src/components/admin/RematchTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "Rematch started."
 msgstr "Rematch started."
 
@@ -2213,7 +2203,7 @@ msgstr "The provider is unavailable - try again."
 msgid "The queue could not be loaded."
 msgstr "The queue could not be loaded."
 
-#: src/components/admin/RematchTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "The rematch trigger failed - try again."
 msgstr "The rematch trigger failed - try again."
 
@@ -2234,7 +2224,7 @@ msgstr "The sweep failed - try again."
 msgid "The tag could not be created."
 msgstr "The tag could not be created."
 
-#: src/components/admin/RefreshTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "The trigger failed - try again."
 msgstr "The trigger failed - try again."
 
@@ -2302,11 +2292,11 @@ msgstr "Totals"
 msgid "Track your game collection."
 msgstr "Track your game collection."
 
-#: src/components/admin/RefreshTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "Trigger catalog refresh"
 msgstr "Trigger catalog refresh"
 
-#: src/components/admin/RematchTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "Trigger entry rematch"
 msgstr "Trigger entry rematch"
 

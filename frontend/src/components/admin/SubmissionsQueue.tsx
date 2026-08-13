@@ -5,7 +5,10 @@ import { Link } from 'react-router'
 import { fetchProfileCards, fetchSubmissions } from '../../api/admin'
 import type { AdminSubmission, ProfileCard } from '../../api/admin'
 import type { ApiError } from '../../api/client'
+import { offsetNextPageParam } from '../../lib/pagination'
+import { renderQueryState } from '../../lib/queryBoundary'
 import { regionLabelText } from '../../lib/regionLabels'
+import LoadMoreButton from '../LoadMoreButton'
 import ReviewPanel, { verdictErrorMessage } from './ReviewPanel'
 
 // SubmitterCell resolves a row's user_id against the batched profile
@@ -38,10 +41,7 @@ export default function SubmissionsQueue() {
     queryKey: ['admin', 'submissions'],
     queryFn: ({ pageParam }) => fetchSubmissions(pageParam),
     initialPageParam: 0,
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((n, p) => n + p.submissions.length, 0)
-      return loaded < last.total_count ? loaded : undefined
-    },
+    getNextPageParam: (last, pages) => offsetNextPageParam(last, pages, (p) => p.submissions.length),
   })
 
   // Hoisted above the isPending/isError returns below, alongside the
@@ -64,13 +64,15 @@ export default function SubmissionsQueue() {
     void queryClient.invalidateQueries({ queryKey: ['admin'] })
   }
 
-  if (list.isPending) return <p className="mt-4 text-sm text-gray-500"><Trans>Loading queue...</Trans></p>
-  if (list.isError)
-    return (
-      <p role="alert" className="mt-4 text-sm text-red-700">
-        <Trans>The queue could not be loaded.</Trans>
-      </p>
-    )
+  if (list.isPending || list.isError) {
+    return renderQueryState(list, {
+      size: 'subsection',
+      className: 'mt-4',
+      role: 'alert',
+      loading: <Trans>Loading queue...</Trans>,
+      error: <Trans>The queue could not be loaded.</Trans>,
+    })
+  }
 
   const total = list.data.pages[0].total_count
 
@@ -123,16 +125,7 @@ export default function SubmissionsQueue() {
           ))}
         </tbody>
       </table>
-      {list.hasNextPage && (
-        <button
-          type="button"
-          onClick={() => void list.fetchNextPage()}
-          disabled={list.isFetchingNextPage}
-          className="mt-2 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
-        >
-          <Trans>Load more</Trans>
-        </button>
-      )}
+      <LoadMoreButton query={list} className="mt-2" />
       {/* key={reviewing.id}: without it, switching the reviewed row while
           the panel is open reuses the same mounted instance, so its
           prefilled fields and adopt view carry over from the old row

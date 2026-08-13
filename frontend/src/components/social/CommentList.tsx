@@ -1,8 +1,12 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchMe } from '../../api/client'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { deleteComment, fetchShelfComments } from '../../api/social'
+import { confirmThen } from '../../lib/confirm'
+import { renderQueryState } from '../../lib/queryBoundary'
 import { relativeTime } from '../../lib/relativeTime'
+import { useMe } from '../../lib/useMe'
+import LoadMoreButton from '../LoadMoreButton'
+import SectionLabel from '../SectionLabel'
 import { useCommentDelete } from './useCommentDelete'
 import UserChip from './UserChip'
 
@@ -69,7 +73,7 @@ interface CommentListProps {
 // committed immediately through its own mutation.
 export default function CommentList({ shelfId, ownerId }: CommentListProps) {
   const { t } = useLingui()
-  const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
+  const me = useMe()
   const { pendingIds, requestDelete, undo } = useCommentDelete(shelfId)
   const qc = useQueryClient()
   const list = useInfiniteQuery({
@@ -90,14 +94,13 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
 
   return (
     <section aria-label={t`Comments`} className="mt-6">
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500"><Trans>Comments</Trans></h3>
-      {list.isPending && <p className="text-sm text-gray-500"><Trans>Loading comments...</Trans></p>}
-      {list.isError && (
-        <p role="alert" className="text-sm text-red-700">
-          <Trans>Comments cannot be loaded right now. Please try again.</Trans>
-        </p>
-      )}
-      {!list.isPending && !list.isError && (
+      <SectionLabel as="h3" size="sm" className="mb-3"><Trans>Comments</Trans></SectionLabel>
+      {renderQueryState(list, {
+        size: 'subsection',
+        role: 'alert',
+        loading: <Trans>Loading comments...</Trans>,
+        error: <Trans>Comments cannot be loaded right now. Please try again.</Trans>,
+      }) ?? (
         comments.length === 0 ? (
           <p className="text-sm text-gray-500"><Trans>No comments yet.</Trans></p>
         ) : (
@@ -147,15 +150,12 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
                       {canModerate && (
                         <button
                           type="button"
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                t`Remove this comment? The author will not be able to restore it.`,
-                              )
-                            ) {
-                              ownerRemove.mutate(c.id)
-                            }
-                          }}
+                          onClick={() =>
+                            confirmThen(
+                              t`Remove this comment? The author will not be able to restore it.`,
+                              () => ownerRemove.mutate(c.id),
+                            )
+                          }
                           disabled={ownerRemove.isPending}
                           aria-label={t`Remove comment: ${bodyPreview}`}
                           className="ml-auto text-xs text-gray-500 hover:text-red-700 disabled:opacity-50"
@@ -169,16 +169,7 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
                 )
               })}
             </ul>
-            {list.hasNextPage && (
-              <button
-                type="button"
-                onClick={() => void list.fetchNextPage()}
-                disabled={list.isFetchingNextPage}
-                className="mt-3 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
-              >
-                <Trans>Load more</Trans>
-              </button>
-            )}
+            <LoadMoreButton query={list} className="mt-3" />
           </>
         )
       )}

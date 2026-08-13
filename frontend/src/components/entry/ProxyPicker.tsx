@@ -1,9 +1,9 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation } from '@tanstack/react-query'
-import { useEffect, useRef } from 'react'
 import type { Product } from '../../api/catalog'
 import { fetchProduct, resolveProduct } from '../../api/catalog'
 import { resolveRequestFor } from '../../lib/catalog'
+import SearchPickerDialog from '../SearchPickerDialog'
 import type { CatalogPick } from '../catalog/SearchPicker'
 import SearchPicker from '../catalog/SearchPicker'
 
@@ -21,16 +21,6 @@ interface ProxyPickerProps {
 // The caller owns the PUT that activates it.
 export default function ProxyPicker({ onPick, onClose, initialQuery }: ProxyPickerProps) {
   const { t } = useLingui()
-  const dialogRef = useRef<HTMLDivElement>(null)
-
-  // A dialog opens on top of the page's own focus; move focus in so
-  // keyboard and screen-reader users land inside it, and give it back
-  // to whatever had it when this closes (unmounts).
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null
-    dialogRef.current?.querySelector<HTMLElement>('input')?.focus()
-    return () => opener?.focus()
-  }, [])
 
   const resolve = useMutation({
     // The community lane is suppressed here (communityLane="hidden"):
@@ -44,19 +34,11 @@ export default function ProxyPicker({ onPick, onClose, initialQuery }: ProxyPick
   })
 
   return (
-    <div
-      ref={dialogRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label={t`Choose a price source`}
-      className="mt-3 rounded border border-gray-300 bg-gray-50 p-3"
+    <SearchPickerDialog
+      ariaLabel={t`Choose a price source`}
+      title={<Trans>Choose a price source</Trans>}
+      onClose={onClose}
     >
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-sm font-semibold"><Trans>Choose a price source</Trans></p>
-        <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-900">
-          <Trans>Close</Trans>
-        </button>
-      </div>
       <SearchPicker
         kinds={['game', 'hardware', 'pc_listing']}
         communityLane="hidden"
@@ -69,6 +51,6 @@ export default function ProxyPicker({ onPick, onClose, initialQuery }: ProxyPick
           <Trans>That listing cannot be used right now; pick another or try again.</Trans>
         </p>
       )}
-    </div>
+    </SearchPickerDialog>
   )
 }

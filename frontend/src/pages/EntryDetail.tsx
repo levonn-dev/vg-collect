@@ -11,7 +11,10 @@ import ApprovalNotice from '../components/entry/ApprovalNotice'
 import CatalogSubmission from '../components/entry/CatalogSubmission'
 import EntryForm from '../components/entry/EntryForm'
 import RegionMismatchBanner from '../components/entry/RegionMismatchBanner'
+import { confirmThen } from '../lib/confirm'
+import { invalidateEntryQueries } from '../lib/entryQueries'
 import { releaseYear } from '../lib/format'
+import { renderQueryState } from '../lib/queryBoundary'
 import { entryCover, entrySecondary, entrySecondaryLang, entryTitle, entryTitleLang, titleFormFor } from '../lib/productTitle'
 
 // Identity-preserving: the byline has never been prettified, so the
@@ -39,36 +42,28 @@ export default function EntryDetail() {
     mutationFn: (update: EntryUpdate) => updateEntry(id, update),
     onSuccess: (updated) => {
       queryClient.setQueryData(['entry', id], updated)
-      void queryClient.invalidateQueries({ queryKey: ['entries'] })
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      void queryClient.invalidateQueries({ queryKey: ['recommendations'] })
+      invalidateEntryQueries(queryClient)
     },
   })
   const remove = useMutation({
     mutationFn: () => deleteEntry(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['entries'] })
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      void queryClient.invalidateQueries({ queryKey: ['recommendations'] })
+      invalidateEntryQueries(queryClient)
       queryClient.removeQueries({ queryKey: ['entry', id] })
       void navigate('/collection')
     },
   })
 
-  if (entry.isPending) return <main className="py-8"><Trans>Loading entry...</Trans></main>
-  if (entry.isError) {
-    if (entry.error instanceof ApiError && entry.error.status === 404) {
-      return (
-        <main className="py-8" role="alert">
-          <Trans>This entry does not exist (it may have been deleted).</Trans>
-        </main>
-      )
-    }
-    return (
-      <main className="py-8" role="alert">
-        <Trans>The entry cannot be loaded right now. Please try again.</Trans>
-      </main>
-    )
+  if (entry.isPending || entry.isError) {
+    return renderQueryState(entry, {
+      size: 'page',
+      role: 'alert',
+      loading: <Trans>Loading entry...</Trans>,
+      error: <Trans>The entry cannot be loaded right now. Please try again.</Trans>,
+      notFound: entry.isError && entry.error instanceof ApiError && entry.error.status === 404
+        ? <main className="py-8" role="alert"><Trans>This entry does not exist (it may have been deleted).</Trans></main>
+        : undefined,
+    })
   }
 
   const e = entry.data
@@ -125,9 +120,7 @@ export default function EntryDetail() {
           )}
         </div>
         <button
-          onClick={() => {
-            if (window.confirm(t`Delete this entry? This cannot be undone.`)) remove.mutate()
-          }}
+          onClick={() => confirmThen(t`Delete this entry? This cannot be undone.`, () => remove.mutate())}
           disabled={remove.isPending}
           className="ml-auto rounded border border-red-300 px-3 py-1 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
         >

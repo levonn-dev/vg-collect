@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
-import { jsonResponse, meFixture, putBody } from '../../test/fixtures'
+import { jsonResponse, meFixture, problemResponse, putBody } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import { defaultListState, toViewParams } from '../../lib/listParams'
 import ShelfManager from './ShelfManager'
@@ -97,10 +97,7 @@ it('clicking a row visibility segment calls updateView with that shelf\'s own na
 it('surfaces a failed visibility change as an alert', async () => {
   const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
     Promise.resolve(init?.method === 'PUT'
-      ? jsonResponse(500, {
-          type: 'about:blank', title: 'Internal Server Error', status: 500,
-          code: 'internal', detail: 'view visibility update failed',
-        })
+      ? problemResponse(500, 'internal', 'view visibility update failed')
       : jsonResponse(200, { views: [view] })))
   vi.stubGlobal('fetch', fetchMock)
   renderManager()

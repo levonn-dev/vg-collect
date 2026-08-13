@@ -4,7 +4,7 @@ import { act, cleanup, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { messages as jaMessages } from '../../locales/ja.po'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, problemResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import SubmissionsQueue from './SubmissionsQueue'
 
@@ -154,7 +154,7 @@ it("links a listed or unlisted submitter's handle to their profile and shows a p
 it('falls back to the short user id when the profile cards query errors', async () => {
   stubFetch({
     '/api/admin/submissions?': { submissions: [{ ...row('s1', 'Repro Alpha'), user_id: 'abcdefgh-1234' }], total_count: 1 },
-    '/api/shared/profiles/by-ids': jsonResponse(502, { type: 'about:blank', title: 'Bad Gateway', status: 502 }),
+    '/api/shared/profiles/by-ids': problemResponse(502),
   })
   renderQueue()
   await screen.findByText('Repro Alpha')
@@ -201,10 +201,7 @@ it('resets every prefilled field and the adopt view when the reviewed row change
 it('carries the raced-verdict message to a queue notice after the panel closes', async () => {
   stubFetch({
     '/api/admin/submissions?': { submissions: [row('s1', 'Repro Alpha')], total_count: 1 },
-    '/api/admin/submissions/': jsonResponse(409, {
-      type: 'about:blank', title: 'Conflict', status: 409,
-      code: 'submission_resolved', detail: 'already resolved',
-    }),
+    '/api/admin/submissions/': problemResponse(409, 'submission_resolved', 'already resolved'),
     '/api/search': { degraded: false, results: [] },
     '/api/shared/profiles/by-ids': noCards,
   })
@@ -221,10 +218,7 @@ it('carries the raced-verdict message to a queue notice after the panel closes',
 it('rephrases a standing notice when the locale changes', async () => {
   stubFetch({
     '/api/admin/submissions?': { submissions: [row('s1', 'Repro Alpha')], total_count: 1 },
-    '/api/admin/submissions/': jsonResponse(409, {
-      type: 'about:blank', title: 'Conflict', status: 409,
-      code: 'submission_resolved', detail: 'already resolved',
-    }),
+    '/api/admin/submissions/': problemResponse(409, 'submission_resolved', 'already resolved'),
     '/api/search': { degraded: false, results: [] },
     '/api/shared/profiles/by-ids': noCards,
   })

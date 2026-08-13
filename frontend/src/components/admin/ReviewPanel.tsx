@@ -1,6 +1,6 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { t } from '@lingui/core/macro'
-import type { I18n } from '@lingui/core'
+import { msg, t } from '@lingui/core/macro'
+import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { submitVerdict } from '../../api/admin'
@@ -11,6 +11,7 @@ import { ApiError } from '../../api/client'
 import { resolveRequestFor } from '../../lib/catalog'
 import { releaseYear } from '../../lib/format'
 import { cleanNames } from '../../lib/credits'
+import { resolveApiError } from '../../lib/resolveApiError'
 import StringListInput from '../StringListInput'
 import PlatformPicker from '../catalog/PlatformPicker'
 import type { PlatformValue } from '../catalog/PlatformPicker'
@@ -28,21 +29,20 @@ interface ReviewPanelProps {
   onDone: (error?: ApiError) => void
 }
 
-// t(i18n) throughout this file, component included: verdictErrorMessage
-// is a plain function (cannot call useLingui() itself), so it takes the
-// caller's i18n explicitly; the ReviewPanel component uses the same
-// explicit form for its own strings rather than importing a second,
-// same-named t. PotentialDuplicates below has no such helper to collide
-// with, so it uses the plain useLingui()-bound Trans/t as usual.
+const verdictErrorCodes: Record<string, MessageDescriptor> = {
+  submission_resolved: msg`Another admin already resolved this submission.`,
+  unknown_product: msg`No product with that id.`,
+  enrichment_unavailable: msg`The catalog cannot be reached - try again.`,
+}
+
+// This file's own strings use the explicit t(i18n) form (not the
+// useLingui()-bound t) so they match resolveApiError's own
+// explicit-i18n signature without importing a second, same-named t.
+// PotentialDuplicates below has no such helper to collide with, so it
+// uses the plain useLingui()-bound Trans/t as usual.
 // eslint-disable-next-line react-refresh/only-export-components -- shared with SubmissionsQueue, which phrases the error this panel hands it, alongside this component.
 export function verdictErrorMessage(e: unknown, i18n: I18n): string {
-  if (e instanceof ApiError) {
-    if (e.code === 'submission_resolved') return t(i18n)`Another admin already resolved this submission.`
-    if (e.code === 'unknown_product') return t(i18n)`No product with that id.`
-    if (e.code === 'enrichment_unavailable') return t(i18n)`The catalog cannot be reached - try again.`
-    if (e.message) return e.message
-  }
-  return t(i18n)`The verdict failed.`
+  return resolveApiError(e, i18n, verdictErrorCodes, msg`The verdict failed.`)
 }
 
 function duplicatesKind(itemType: AdminSubmission['item_type']): SearchKind {

@@ -1,12 +1,7 @@
 import { screen } from '@testing-library/react'
 import { renderWithI18n } from './test/i18n'
+import { jsonResponse, problemResponse } from './test/fixtures'
 import App from './App'
-
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -29,9 +24,7 @@ it('boots into the app shell', async () => {
 
 it('does not retry a 401 and routes to login', async () => {
   window.history.pushState({}, '', '/')
-  const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, {
-    type: 'about:blank', title: 'Unauthorized', status: 401, code: 'unauthenticated',
-  }))
+  const fetchMock = vi.fn().mockResolvedValue(problemResponse(401, 'unauthenticated'))
   vi.stubGlobal('fetch', fetchMock)
   renderWithI18n(<App />)
   // The login route renders its own provider buttons region.

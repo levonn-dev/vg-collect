@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, problemResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import CommentComposer from './CommentComposer'
 
@@ -70,12 +70,7 @@ it('posts the trimmed body, clears the field, and invalidates the comment querie
 })
 
 it('shows the rate-limit message for a 429 and leaves the draft in place', async () => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue(
-      jsonResponse(429, { type: 'about:blank', title: 'Too Many Requests', status: 429, code: 'cap_exceeded' }),
-    ),
-  )
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problemResponse(429, 'cap_exceeded')))
   renderComposer()
   const box = screen.getByRole('textbox', { name: 'Add a comment' })
   await userEvent.type(box, 'One more!')

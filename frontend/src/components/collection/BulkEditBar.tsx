@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { ApiError } from '../../api/client'
 import type { BulkUpdateRequest, Entry, Tag } from '../../api/collection'
 import { bulkUpdateEntries } from '../../api/collection'
+import { invalidateEntryQueries } from '../../lib/entryQueries'
+import SectionLabel from '../SectionLabel'
 import { statusLabels } from './EntryTable'
 
 // The server's own cap on entry_ids per request (api/bff.yaml); the
@@ -50,10 +52,7 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
       // status change alters them server-side - dropped halves a
       // game's weight - the same reason EntryDetail's single-entry
       // save invalidates 'recommendations' on every save).
-      void queryClient.invalidateQueries({ queryKey: ['entries'] })
-      void queryClient.invalidateQueries({ queryKey: ['tags'] })
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      void queryClient.invalidateQueries({ queryKey: ['recommendations'] })
+      invalidateEntryQueries(queryClient, [['tags']])
       onApplied(result.updated_count)
     },
   })
@@ -88,9 +87,9 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
       <div className="flex flex-wrap items-end gap-4">
         <span className="text-sm font-medium"><Trans>{selectedCount} selected</Trans></span>
         <fieldset disabled={disabled} className="flex flex-wrap items-center gap-2">
-          <legend className="float-left mr-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <SectionLabel as="legend" size="xs" className="float-left mr-2">
             <Trans>Add tags</Trans>
-          </legend>
+          </SectionLabel>
           {tags.map((tag) => (
             <label key={tag.id} className="flex items-center gap-1 text-sm">
               <input type="checkbox" checked={addTagIds.includes(tag.id)} onChange={() => toggleAddTag(tag.id)} />
@@ -100,9 +99,9 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
           {tags.length === 0 && <span className="text-xs text-gray-400"><Trans>No tags yet</Trans></span>}
         </fieldset>
         <fieldset disabled={disabled} className="flex flex-wrap items-center gap-2">
-          <legend className="float-left mr-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <SectionLabel as="legend" size="xs" className="float-left mr-2">
             <Trans>Remove tags</Trans>
-          </legend>
+          </SectionLabel>
           {tags.map((tag) => (
             <label key={tag.id} className="flex items-center gap-1 text-sm">
               <input type="checkbox" checked={removeTagIds.includes(tag.id)} onChange={() => toggleRemoveTag(tag.id)} />

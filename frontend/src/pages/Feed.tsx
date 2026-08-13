@@ -6,8 +6,11 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import type { FeedItem, FeedTab, ShelfCard as ShelfCardData } from '../api/social'
 import { fetchFeed } from '../api/social'
+import EmptyState from '../components/EmptyState'
+import LoadMoreButton from '../components/LoadMoreButton'
 import Tabs, { type Tab } from '../components/Tabs'
 import UserChip from '../components/social/UserChip'
+import { renderQueryState } from '../lib/queryBoundary'
 import { relativeTime } from '../lib/relativeTime'
 
 // Tabs.tsx renders whatever label string each caller hands it (no
@@ -137,22 +140,22 @@ export default function Feed() {
         onChange={setTab}
       />
 
-      {query.isPending && <p className="mt-4 text-sm text-gray-500"><Trans>Loading feed...</Trans></p>}
-      {query.isError && (
-        <p role="alert" className="mt-4 text-sm text-red-700">
-          <Trans>The feed cannot be loaded right now. Please try again.</Trans>
-        </p>
-      )}
-      {!query.isPending && !query.isError && (
+      {renderQueryState(query, {
+        size: 'subsection',
+        className: 'mt-4',
+        role: 'alert',
+        loading: <Trans>Loading feed...</Trans>,
+        error: <Trans>The feed cannot be loaded right now. Please try again.</Trans>,
+      }) ?? (
         items.length === 0 ? (
           tab === 'following' ? (
-            <p className="py-12 text-center text-gray-500">
+            <EmptyState size="default">
               <Trans>
                 Nothing yet. <Link to="/explore" className="text-gray-900 hover:underline">Explore</Link> people to follow.
               </Trans>
-            </p>
+            </EmptyState>
           ) : (
-            <p className="py-12 text-center text-gray-500"><Trans>No activity yet.</Trans></p>
+            <EmptyState size="default"><Trans>No activity yet.</Trans></EmptyState>
           )
         ) : (
           <>
@@ -161,16 +164,7 @@ export default function Feed() {
                 <FeedRow key={item.id} item={item} />
               ))}
             </ul>
-            {query.hasNextPage && (
-              <button
-                type="button"
-                onClick={() => void query.fetchNextPage()}
-                disabled={query.isFetchingNextPage}
-                className="mt-4 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
-              >
-                <Trans>Load more</Trans>
-              </button>
-            )}
+            <LoadMoreButton query={query} className="mt-4" />
           </>
         )
       )}

@@ -1,6 +1,6 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { t } from '@lingui/core/macro'
-import type { I18n } from '@lingui/core'
+import { msg, t } from '@lingui/core/macro'
+import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { dismissPromoteCandidate, promoteProduct } from '../../api/admin'
@@ -8,6 +8,8 @@ import type { PromoteCandidatesPage } from '../../api/admin'
 import type { Product } from '../../api/catalog'
 import { ApiError } from '../../api/client'
 import type { ManualMatch } from '../../lib/catalog'
+import { confirmThen } from '../../lib/confirm'
+import { resolveApiError } from '../../lib/resolveApiError'
 import SearchPicker from '../catalog/SearchPicker'
 import type { CatalogPick } from '../catalog/SearchPicker'
 import ManualMatchPicker from '../wizard/ManualMatchPicker'
@@ -20,22 +22,25 @@ interface PromotePanelProps {
   onDone: () => void
 }
 
-// t(i18n) throughout this file, component included: promoteErrorMessage
-// is a plain function (cannot call useLingui() itself), so it takes the
-// caller's i18n explicitly; the component uses the same explicit form
-// for its own strings rather than importing a second, same-named t.
+const promoteErrorCodes: Record<string, MessageDescriptor> = {
+  identity_taken: msg`A provider product already holds that identity - nothing changed.`,
+  product_not_community: msg`This product is already provider-identified.`,
+  unknown_game: msg`The provider does not know that id.`,
+  unknown_pc_product: msg`The provider does not know that id.`,
+  upstream_unavailable: msg`The provider is unavailable - try again.`,
+}
+
+// This file's own strings use the explicit t(i18n) form (not the
+// useLingui()-bound t) so they match resolveApiError's own
+// explicit-i18n signature without importing a second, same-named t.
+//
+// identity_taken names the provider holder; surface it verbatim (ahead
+// of resolveApiError's own code lookup) - this is the true-merge signal
+// an admin acts on by hand, so it wins even though the code itself
+// already matches a known entry.
 function promoteErrorMessage(e: unknown, i18n: I18n): string {
-  if (e instanceof ApiError) {
-    // identity_taken names the provider holder; surface it verbatim -
-    // this is the true-merge signal an admin acts on by hand.
-    if (e.code === 'identity_taken')
-      return e.message || t(i18n)`A provider product already holds that identity - nothing changed.`
-    if (e.code === 'product_not_community') return t(i18n)`This product is already provider-identified.`
-    if (e.code === 'unknown_game' || e.code === 'unknown_pc_product') return t(i18n)`The provider does not know that id.`
-    if (e.code === 'upstream_unavailable') return t(i18n)`The provider is unavailable - try again.`
-    if (e.message) return e.message
-  }
-  return t(i18n)`The promotion failed.`
+  if (e instanceof ApiError && e.code === 'identity_taken' && e.message) return e.message
+  return resolveApiError(e, i18n, promoteErrorCodes, msg`The promotion failed.`)
 }
 
 // PromotePanel is a community product's upgrade surface: confirm the
@@ -62,14 +67,10 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin'] }),
   })
 
-  const confirmAnd = (run: () => void) => {
-    if (
-      window.confirm(
-        t(i18n)`Promote this community product to provider identity? Adopter entries upgrade in place; this cannot be undone from the UI.`,
-      )
-    )
-      run()
-  }
+  // Both promote paths (game pick and manual match pick below) ask the
+  // exact same question, so the message is computed once here rather
+  // than repeated at each confirmThen call site.
+  const promoteMessage = t(i18n)`Promote this community product to provider identity? Adopter entries upgrade in place; this cannot be undone from the UI.`
   const pickGame = (p: CatalogPick) => {
     if (p.kind !== 'game') return
     setPicking(false)
@@ -77,7 +78,7 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
     // The attached listing is optional: without one the body is the two
     // provider ids, exactly as before; a pick adds pc_product_id so the
     // promoted product re-enters the index already priced.
-    confirmAnd(() =>
+    confirmThen(promoteMessage, () =>
       promote.mutate(listing ? { ...identity, pc_product_id: listing.pcProductId } : identity),
     )
   }
@@ -155,7 +156,7 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
             initialQuery={seed}
             onPick={(m) => {
               setPicking(false)
-              confirmAnd(() => promote.mutate({ pc_product_id: m.pcProductId }))
+              confirmThen(promoteMessage, () => promote.mutate({ pc_product_id: m.pcProductId }))
             }}
             onClose={() => setPicking(false)}
           />

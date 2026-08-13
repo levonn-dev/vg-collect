@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { BulkUpdateRequest, Tag } from '../../api/collection'
-import { jsonResponse, putBody } from '../../test/fixtures'
+import { jsonResponse, problemResponse, putBody } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import BulkEditBar from './BulkEditBar'
 
@@ -182,9 +182,7 @@ it('invalidates entries, tags, dashboard, and recommendations, and reports the u
 })
 
 it('shows the ApiError message and keeps the draft and selection for a retry, without exiting', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(400, {
-    type: 'about:blank', title: 'Bad Request', status: 400, code: 'tag_cap_exceeded', detail: 'entry would exceed 50 tags',
-  })))
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problemResponse(400, 'tag_cap_exceeded', 'entry would exceed 50 tags')))
   const { onApplied, onCancel } = renderBar()
   const addGroup = within(screen.getByRole('group', { name: 'Add tags' }))
   await userEvent.click(addGroup.getByRole('checkbox', { name: 'rpg' }))

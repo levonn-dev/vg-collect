@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse, putBody } from '../../test/fixtures'
+import { jsonResponse, problemResponse, putBody } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import { defaultListState, toViewParams } from '../../lib/listParams'
 import ViewPicker from './ViewPicker'
@@ -87,9 +87,7 @@ it('deletes the active shelf and resets the applied id', async () => {
 it('surfaces a name conflict on save', async () => {
   const fetchMock = vi.fn()
     .mockResolvedValueOnce(jsonResponse(200, { views: [view] }))
-    .mockResolvedValueOnce(jsonResponse(409, {
-      type: 'about:blank', title: 'Conflict', status: 409, code: 'name_taken', detail: 'view name already in use',
-    }))
+    .mockResolvedValueOnce(problemResponse(409, 'name_taken', 'view name already in use'))
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(window, 'prompt').mockReturnValue('Backlog wall')
   renderPicker(savedState)
@@ -100,9 +98,7 @@ it('surfaces a name conflict on save', async () => {
 it('clears a stale save error once a later, different action succeeds', async () => {
   const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
     if (init?.method === 'POST') {
-      return Promise.resolve(jsonResponse(409, {
-        type: 'about:blank', title: 'Conflict', status: 409, code: 'name_taken', detail: 'view name already in use',
-      }))
+      return Promise.resolve(problemResponse(409, 'name_taken', 'view name already in use'))
     }
     if (init?.method === 'PUT') return Promise.resolve(jsonResponse(200, view))
     return Promise.resolve(jsonResponse(200, { views: [view] }))

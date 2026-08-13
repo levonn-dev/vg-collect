@@ -7,6 +7,7 @@ import { fetchProduct, resolveProduct } from '../../api/catalog'
 import { createEntry } from '../../api/collection'
 import type { ManualMatch } from '../../lib/catalog'
 import { resolveRequestFor } from '../../lib/catalog'
+import { invalidateEntryQueries } from '../../lib/entryQueries'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import type { CatalogPick } from '../catalog/SearchPicker'
 import type { DetailsValues } from './DetailsStep'
@@ -58,10 +59,7 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
       })
     },
     onSuccess: (entry) => {
-      void queryClient.invalidateQueries({ queryKey: ['entries'] })
-      void queryClient.invalidateQueries({ queryKey: ['entry-facets'] })
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      void queryClient.invalidateQueries({ queryKey: ['recommendations'] })
+      invalidateEntryQueries(queryClient, [['entry-facets']])
       void navigate(`/entries/${entry.id}`, { state: { justAdded: true } })
     },
   })

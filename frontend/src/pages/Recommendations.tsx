@@ -2,20 +2,22 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { fetchRecommendations } from '../api/catalog'
+import EmptyState from '../components/EmptyState'
 import ItemTypeIcon from '../components/ItemTypeIcon'
 import { releaseYear } from '../lib/format'
+import { renderQueryState } from '../lib/queryBoundary'
 
 export default function Recommendations() {
   const { t } = useLingui()
   const recs = useQuery({ queryKey: ['recommendations'], queryFn: fetchRecommendations })
 
-  if (recs.isPending) return <main className="py-8"><Trans>Scoring your library...</Trans></main>
-  if (recs.isError) {
-    return (
-      <main className="py-8" role="alert">
-        <Trans>Recommendations cannot be loaded right now. Please try again.</Trans>
-      </main>
-    )
+  if (recs.isPending || recs.isError) {
+    return renderQueryState(recs, {
+      size: 'page',
+      role: 'alert',
+      loading: <Trans>Scoring your library...</Trans>,
+      error: <Trans>Recommendations cannot be loaded right now. Please try again.</Trans>,
+    })
   }
 
   const { degraded, recommendations } = recs.data
@@ -31,9 +33,9 @@ export default function Recommendations() {
         </p>
       )}
       {recommendations.length === 0 ? (
-        <p className="py-12 text-center text-gray-500">
+        <EmptyState size="default">
           <Trans>Nothing to recommend yet - add and rate a few games first.</Trans>
-        </p>
+        </EmptyState>
       ) : (
         <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {recommendations.map((r) => {

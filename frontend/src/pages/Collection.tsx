@@ -17,8 +17,11 @@ import ShelfManager from '../components/collection/ShelfManager'
 import ViewPicker from '../components/collection/ViewPicker'
 import InsightsPanel from '../components/insights/InsightsPanel'
 import Tabs, { type Tab } from '../components/Tabs'
+import EmptyState from '../components/EmptyState'
+import EntryGroupSection from '../components/EntryGroupSection'
 import type { ListState } from '../lib/listParams'
 import { fromSearchParams, toQuery, toSearchParams } from '../lib/listParams'
+import { renderQueryState } from '../lib/queryBoundary'
 
 type CollectionTab = 'items' | 'shelves'
 
@@ -90,13 +93,13 @@ export default function Collection() {
   const facets = useQuery({ queryKey: ['entry-facets'], queryFn: fetchEntryFacets })
   const tags = useQuery({ queryKey: ['tags'], queryFn: fetchTags })
 
-  if (list.isPending) return <main className="py-8"><Trans>Loading collection...</Trans></main>
-  if (list.isError) {
-    return (
-      <main className="py-8" role="alert">
-        <Trans>The collection cannot be loaded right now. Please try again.</Trans>
-      </main>
-    )
+  if (list.isPending || list.isError) {
+    return renderQueryState(list, {
+      size: 'page',
+      role: 'alert',
+      loading: <Trans>Loading collection...</Trans>,
+      error: <Trans>The collection cannot be loaded right now. Please try again.</Trans>,
+    })
   }
 
   const { entries = [], groups, total_count, pricing_available } = list.data
@@ -191,24 +194,21 @@ export default function Collection() {
           )}
           {total_count === 0 ? (
             filtered ? (
-              <p className="py-12 text-center text-gray-500"><Trans>Nothing matches these filters.</Trans></p>
+              <EmptyState size="default"><Trans>Nothing matches these filters.</Trans></EmptyState>
             ) : (
-              <p className="py-12 text-center text-gray-500">
+              <EmptyState size="default">
                 <Trans>
                   Nothing here yet. <Link to="/add" className="underline">Add your first item.</Link>
                 </Trans>
-              </p>
+              </EmptyState>
             )
           ) : state.sort === 'backlog_rank' && !groups ? (
             <BacklogBoard entries={entries} />
           ) : groups ? (
             groups.map((g) => (
-              <section key={g.key} aria-label={g.label} className="mb-6">
-                <h3 className="mb-1 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                  {g.label}
-                </h3>
+              <EntryGroupSection key={g.key} label={g.label}>
                 {renderEntries(g.entries)}
-              </section>
+              </EntryGroupSection>
             ))
           ) : (
             renderEntries(entries)

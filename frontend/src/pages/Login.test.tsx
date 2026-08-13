@@ -2,14 +2,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
+import { jsonResponse } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Login from './Login'
-
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
 
 function renderLogin(path = '/login') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })

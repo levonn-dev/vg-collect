@@ -111,6 +111,20 @@ export const jsonResponse = (status: number, body: unknown) =>
     headers: { 'Content-Type': 'application/json' },
   })
 
+// problemResponse builds an RFC 9457 problem+json error Response - the
+// shape ApiError-mapping tests need. type/title are fixed placeholders
+// (toApiError only reads status/code/detail off the body - see
+// api/client.ts - so nothing ever observes them), and code/detail stay
+// optional so a caller that only cares about the status can omit both;
+// JSON.stringify drops an undefined value's key entirely, so an
+// omitted code or detail is simply absent from the body, same as a
+// hand-built literal that never set the key.
+export const problemResponse = (status: number, code?: string, detail?: string) =>
+  new Response(JSON.stringify({ type: 'about:blank', title: 'x', status, code, detail }), {
+    status,
+    headers: { 'Content-Type': 'application/problem+json' },
+  })
+
 // putBody parses the JSON body recorded on a fetch mock call - the
 // cast-and-parse step every mutation-body assertion in this suite
 // needs before comparing the object a component actually sent.

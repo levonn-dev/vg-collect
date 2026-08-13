@@ -1,10 +1,5 @@
 import { ApiError, fetchMe, fetchProviders, logout, sendJSON, updateMe, fetchIdentities, unlinkIdentity, deleteAccount } from './client'
-
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
+import { jsonResponse, problemResponse } from '../test/fixtures'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -17,9 +12,7 @@ it('fetchMe returns the profile', async () => {
 })
 
 it('maps problem+json onto ApiError', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(401, {
-    type: 'about:blank', title: 'Unauthorized', status: 401, code: 'unauthenticated',
-  })))
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problemResponse(401, 'unauthenticated')))
   const err = await fetchMe().catch((e: unknown) => e)
   expect(err).toBeInstanceOf(ApiError)
   expect((err as ApiError).status).toBe(401)
@@ -71,9 +64,7 @@ it('sendJSON threads the keepalive option into the fetch init', async () => {
 })
 
 it('sendJSON maps problem bodies onto ApiError', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(409, {
-    type: 'about:blank', title: 'Conflict', status: 409, code: 'conflicting_order',
-  })))
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problemResponse(409, 'conflicting_order')))
   const err = await sendJSON('POST', '/api/entries/e1/reorder', {}).catch((e: unknown) => e)
   expect(err).toBeInstanceOf(ApiError)
   expect((err as ApiError).code).toBe('conflicting_order')

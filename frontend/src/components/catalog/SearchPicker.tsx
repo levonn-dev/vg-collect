@@ -12,6 +12,7 @@ import { bundleLang, consoleRegionFor, homeRegionFor, platformEntryRegions, REGI
 import { regionLabels, regionLabelText } from '../../lib/regionLabels'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import ItemTypeIcon from '../ItemTypeIcon'
+import PriceTriple from '../PriceTriple'
 
 export interface GamePick {
   kind: 'game'
@@ -412,12 +413,7 @@ export default function SearchPicker({ initialQuery = '', initialState, onPick, 
                   </p>
                 ) : r.type === 'pc_listing' && r.pc_product_id !== undefined ? (
                   <div className="mt-1 flex flex-col gap-1">
-                    <p className="text-xs text-gray-500">
-                      <Trans>
-                        Loose {loose} / CIB {cib} / New{' '}
-                        {newPrice}
-                      </Trans>
-                    </p>
+                    <PriceTriple loose={loose} cib={cib} newPrice={newPrice} className="text-xs text-gray-500" />
                     <button
                       type="button"
                       onClick={() =>

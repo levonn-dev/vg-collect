@@ -1,7 +1,8 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useState } from 'react'
-import type { EntryRegion } from '../../lib/productTitle'
+import { inputClass, labelClass, linkButtonClass } from '../../lib/formStyles'
 import { REGIONS } from '../../lib/listParams'
+import type { EntryRegion } from '../../lib/productTitle'
 import { regionLabels } from '../../lib/regionLabels'
 
 // RegionPicker is PlatformPicker's sibling for the open-world region:
@@ -22,9 +23,6 @@ export default function RegionPicker({ value, onChange, regionGroup, required }:
   const { t, i18n } = useLingui()
   const known = value === '' || (REGIONS as readonly string[]).includes(value)
   const [freeText, setFreeText] = useState(!known)
-  const inputClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
-  const labelClass = 'flex flex-col gap-1 text-sm font-medium'
-  const linkButtonClass = 'self-start text-xs text-gray-500 underline'
 
   if (freeText || !known) {
     return (

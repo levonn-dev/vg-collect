@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, problemResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import TagPicker from './TagPicker'
 
@@ -52,9 +52,7 @@ it('creates a tag inline and selects it', async () => {
 it('surfaces a duplicate-name conflict', async () => {
   const fetchMock = vi.fn()
     .mockResolvedValueOnce(jsonResponse(200, { tags }))
-    .mockResolvedValueOnce(jsonResponse(409, {
-      type: 'about:blank', title: 'Conflict', status: 409, code: 'name_taken', detail: 'tag name already in use',
-    }))
+    .mockResolvedValueOnce(problemResponse(409, 'name_taken', 'tag name already in use'))
   vi.stubGlobal('fetch', fetchMock)
   renderPicker()
   await screen.findByRole('checkbox', { name: /rpg/ })

@@ -2,15 +2,16 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { fetchRecommendations } from '../../api/catalog'
+import SectionLabel from '../SectionLabel'
 
 export default function RecsPanel() {
   const { t } = useLingui()
   const recs = useQuery({ queryKey: ['recommendations'], queryFn: fetchRecommendations })
   return (
     <section aria-label={t`Recommendations`} className="rounded border border-gray-200 p-4">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+      <SectionLabel as="h3" size="xs" className="mb-2">
         <Trans>Recommended next</Trans>
-      </h3>
+      </SectionLabel>
       {recs.isPending && <p className="text-sm text-gray-500"><Trans>Scoring your library...</Trans></p>}
       {recs.isError && (
         <p className="text-sm text-gray-500"><Trans>Recommendations are unavailable right now.</Trans></p>

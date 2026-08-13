@@ -5,10 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import {
-  ApiError,
   deleteAccount,
   fetchIdentities,
-  fetchMe,
   fetchProviders,
   unlinkIdentity,
   updateMe,
@@ -16,15 +14,11 @@ import {
   type Me,
 } from '../api/client'
 import CopyButton from '../components/CopyButton'
-
-// Proper nouns only (leave-alone list) - never wrapped for translation.
-// An unknown provider id falls back to itself, same as before.
-const providerNames: Record<string, string> = {
-  google: 'Google',
-  twitch: 'Twitch',
-}
-
-const devFixtures = ['alice', 'bob', 'admin']
+import SectionLabel from '../components/SectionLabel'
+import { confirmThen } from '../lib/confirm'
+import { devFixtures, providerNames } from '../lib/providers'
+import { resolveApiError } from '../lib/resolveApiError'
+import { useMe } from '../lib/useMe'
 
 const linkErrorMessages: Record<string, MessageDescriptor> = {
   conflict: msg`That login already belongs to another account, so it was not linked.`,
@@ -44,21 +38,17 @@ const landingPageOptions: [Me['landing_page'], MessageDescriptor][] = [
   ['explore', msg`Explore`],
 ]
 
-// t(i18n) throughout this file, every component included:
-// saveErrorMessage is a plain function (cannot call useLingui() itself),
-// so it takes the caller's i18n explicitly; the components below use
-// the same explicit form for their own strings rather than importing a
-// second, same-named t.
-//
-// The handle-cooldown and taken-handle problems get their own copy;
-// anything else (validation, network) falls back to the generic line.
+const saveErrorCodes: Record<string, MessageDescriptor> = {
+  handle_taken: msg`That handle is taken.`,
+  handle_cooldown: msg`Handle changed too recently - try again later.`,
+}
+
+// t(i18n) throughout this file, every component included: this file's
+// own strings use the explicit form (not the useLingui()-bound t) so
+// they match resolveApiError's own explicit-i18n signature without
+// importing a second, same-named t.
 function saveErrorMessage(error: unknown, i18n: I18n): string {
-  if (error instanceof ApiError) {
-    if (error.code === 'handle_taken') return t(i18n)`That handle is taken.`
-    if (error.code === 'handle_cooldown') return t(i18n)`Handle changed too recently - try again later.`
-    if (error.message) return error.message
-  }
-  return t(i18n)`Saving failed. Please try again.`
+  return resolveApiError(error, i18n, saveErrorCodes, msg`Saving failed. Please try again.`)
 }
 
 // ProfileForm is keyed by me.id at the call site so its local draft
@@ -209,10 +199,12 @@ function LinkedLogins({ identities }: { identities: Identity[] }) {
               </p>
             </div>
             <button
-              onClick={() => {
-                if (window.confirm(t(i18n)`Unlink this login? You will no longer be able to sign in with it.`))
-                  unlink.mutate(identity.id)
-              }}
+              onClick={() =>
+                confirmThen(
+                  t(i18n)`Unlink this login? You will no longer be able to sign in with it.`,
+                  () => unlink.mutate(identity.id),
+                )
+              }
               disabled={lastOne || unlink.isPending}
               title={lastOne ? t(i18n)`Your account needs at least one login` : undefined}
               className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
@@ -239,7 +231,7 @@ export default function Account() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
+  const me = useMe()
   const identities = useQuery({ queryKey: ['identities'], queryFn: fetchIdentities })
   const providers = useQuery({ queryKey: ['providers'], queryFn: fetchProviders })
   const removeAccount = useMutation({
@@ -316,9 +308,9 @@ export default function Account() {
             })}
           {providers.data?.includes('dev') && (
             <div className="mt-1 border-t border-gray-200 pt-3">
-              <p className="mb-2 text-xs uppercase tracking-wide text-gray-500">
+              <SectionLabel as="p" size="xs" bold={false} className="mb-2">
                 <Trans>Link a dev fixture</Trans>
-              </p>
+              </SectionLabel>
               <div className="flex gap-2">
                 {devFixtures.map((user) => (
                   <a
@@ -345,14 +337,12 @@ export default function Account() {
         </p>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => {
-              if (
-                window.confirm(
-                  t(i18n)`Delete your account? Your collection, tags, shelves, linked logins, and profile will be permanently removed.`,
-                )
+            onClick={() =>
+              confirmThen(
+                t(i18n)`Delete your account? Your collection, tags, shelves, linked logins, and profile will be permanently removed.`,
+                () => removeAccount.mutate(),
               )
-                removeAccount.mutate()
-            }}
+            }
             disabled={removeAccount.isPending}
             className="w-fit rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
           >

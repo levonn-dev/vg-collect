@@ -4,6 +4,7 @@
 // tests can stub the env.
 import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
+import { providerNames } from './providers'
 
 export type DataSource = {
   key: string
@@ -47,10 +48,9 @@ const DATA_SOURCES: DataSource[] = [
   },
 ]
 
-const AUTH_PROVIDERS: AuthProvider[] = [
-  { key: 'google', label: 'Google' },
-  { key: 'twitch', label: 'Twitch' },
-]
+// Derived from the same providerNames Login and Account render their
+// buttons from (see lib/providers.ts), so the two never drift.
+const AUTH_PROVIDERS: AuthProvider[] = Object.entries(providerNames).map(([key, label]) => ({ key, label }))
 
 // Unset and empty both mean none (what is set is what exists), and
 // unknown keys are dropped. Result order is catalog order.

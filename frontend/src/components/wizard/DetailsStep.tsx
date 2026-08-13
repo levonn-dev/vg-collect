@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { EntryCreate } from '../../api/collection'
 import type { ManualMatch } from '../../lib/catalog'
 import { dollarsToCents } from '../../lib/format'
+import { inputClass, labelClass } from '../../lib/formStyles'
 import { CONDITIONS, PACKAGINGS, STATUSES } from '../../lib/listParams'
 import type { EntryRegion, LocalizationBundle } from '../../lib/productTitle'
 import { regionTitle, titleFormFor } from '../../lib/productTitle'
@@ -123,8 +124,6 @@ export default function DetailsStep({ product, regionGroup, currency, initialVal
   const title = regionTitle(product.name, product.localizations, v.region, form)
   const titleText = title.text
 
-  const inputClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
-  const labelClass = 'flex flex-col gap-1 text-sm font-medium'
   const group = regionGroup && regionGroup.regions.length > 0 ? regionGroup : undefined
   const conditionSelect = (label: string, key: 'boxCondition' | 'manualCondition' | 'itemCondition') => (
     <label className={labelClass}>

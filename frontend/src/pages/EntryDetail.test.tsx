@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { Entry } from '../api/collection'
 import { messages as jaMessages } from '../locales/ja.po'
-import { entryFixture, jsonResponse } from '../test/fixtures'
+import { entryFixture, jsonResponse, problemResponse } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import EntryDetail from './EntryDetail'
 
@@ -53,11 +53,7 @@ const jp: Partial<Entry> = {
 // Every product-backed fixture here also drives ApprovalNotice's own
 // submission fetch; answer it with "no submission" so the banner
 // stays hidden and each test can assert its own concern undisturbed.
-const noSubmission = () =>
-  new Response(
-    JSON.stringify({ type: 'about:blank', title: 'x', status: 404, code: 'submission_not_found', detail: 'x' }),
-    { status: 404, headers: { 'Content-Type': 'application/problem+json' } },
-  )
+const noSubmission = () => problemResponse(404, 'submission_not_found', 'x')
 
 it('renders the catalog header and the form for a product-backed entry', async () => {
   const e = entryFixture({ display_name: 'Chrono Trigger', value_cents: 4200 })
@@ -139,10 +135,7 @@ it('surfaces a 404 pricing problem from the save', async () => {
     if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
     if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
     if (init?.method === 'PUT') {
-      return Promise.resolve(jsonResponse(404, {
-        type: 'about:blank', title: 'Not Found', status: 404,
-        code: 'unknown_pricing_product', detail: 'no such pricing product in the catalog',
-      }))
+      return Promise.resolve(problemResponse(404, 'unknown_pricing_product', 'no such pricing product in the catalog'))
     }
     return Promise.resolve(jsonResponse(200, e))
   }))
@@ -193,10 +186,7 @@ it('invalidates dashboard/recommendations and drops the entry cache on delete', 
       return Promise.resolve(new Response(null, { status: 204 }))
     }
     if (deleted && String(url) === `/api/entries/${e.id}`) {
-      return Promise.resolve(new Response(
-        JSON.stringify({ type: 'about:blank', title: 'x', status: 404, code: 'entry_not_found', detail: 'x' }),
-        { status: 404, headers: { 'Content-Type': 'application/problem+json' } },
-      ))
+      return Promise.resolve(problemResponse(404, 'entry_not_found', 'x'))
     }
     return Promise.resolve(jsonResponse(200, e))
   }))

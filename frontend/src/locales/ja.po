@@ -139,11 +139,11 @@ msgstr "59.99"
 msgid "A provider product already holds that identity - nothing changed."
 msgstr "プロバイダー商品がすでにその識別情報を持っているため、何も変更されませんでした。"
 
-#: src/components/admin/RefreshTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "A refresh is already running."
 msgstr "更新はすでに実行中です。"
 
-#: src/components/admin/RematchTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "A rematch is already running."
 msgstr "再照合はすでに実行中です。"
 
@@ -372,7 +372,7 @@ msgstr "キャンセル"
 msgid "Cancel submission"
 msgstr "カタログ申請をキャンセル"
 
-#: src/components/admin/RefreshTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "Catalog refresh"
 msgstr "カタログ更新"
 
@@ -456,8 +456,7 @@ msgstr "マッピングをクリア"
 msgid "Clear this mapping? The product becomes unmatched and is held out of the nightly entry rematch."
 msgstr "このマッピングをクリアしますか？商品は未マッピングになり、保留として毎晩のエントリー再照合の対象から外れます。"
 
-#: src/components/entry/ProxyPicker.tsx
-#: src/components/wizard/ManualMatchPicker.tsx
+#: src/components/SearchPickerDialog.tsx
 msgid "Close"
 msgstr "閉じる"
 
@@ -731,8 +730,7 @@ msgid "disabled (no market value)"
 msgstr "無効（相場なし）"
 
 #: src/components/admin/PromotePanel.tsx
-#: src/components/entry/ApprovalNotice.tsx
-#: src/components/entry/RegionMismatchBanner.tsx
+#: src/components/entry/DismissibleNotice.tsx
 #: src/pages/Account.tsx
 msgid "Dismiss"
 msgstr "非表示にする"
@@ -804,7 +802,7 @@ msgstr "アイテムの詳細"
 msgid "Entry editor"
 msgstr "アイテムの編集"
 
-#: src/components/admin/RematchTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "Entry rematch"
 msgstr "エントリー再照合"
 
@@ -1073,14 +1071,7 @@ msgstr "公開 - 「見つける」と検索に表示されます"
 msgid "Listing: {listingName}"
 msgstr "リスティング：{listingName}"
 
-#: src/components/admin/CommunityProducts.tsx
-#: src/components/admin/PromoteCandidates.tsx
-#: src/components/admin/SubmissionsQueue.tsx
-#: src/components/admin/UnmatchedWorklist.tsx
-#: src/components/social/CommentList.tsx
-#: src/pages/Explore.tsx
-#: src/pages/Feed.tsx
-#: src/pages/SharedShelf.tsx
+#: src/components/LoadMoreButton.tsx
 msgid "Load more"
 msgstr "さらに読み込む"
 
@@ -1186,8 +1177,7 @@ msgstr "箱説なし"
 msgid "Loose"
 msgstr "箱説なし"
 
-#: src/components/catalog/SearchPicker.tsx
-#: src/components/entry/PricingPanel.tsx
+#: src/components/PriceTriple.tsx
 msgid "Loose {loose} / CIB {cib} / New {newPrice}"
 msgstr "箱説なし {loose} / 完品 {cib} / 新品 {newPrice}"
 
@@ -1718,7 +1708,7 @@ msgstr "あなたへのおすすめ"
 msgid "Recommended next"
 msgstr "次のおすすめ"
 
-#: src/components/admin/RefreshTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "Refresh started."
 msgstr "更新を開始しました。"
 
@@ -1767,7 +1757,7 @@ msgstr "発売日"
 msgid "Released on {groupPlatformName}"
 msgstr "{groupPlatformName}で発売"
 
-#: src/components/admin/RematchTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "Rematch started."
 msgstr "再照合を開始しました。"
 
@@ -2213,7 +2203,7 @@ msgstr "プロバイダーが現在利用できません。もう一度お試し
 msgid "The queue could not be loaded."
 msgstr "キューを読み込めませんでした。"
 
-#: src/components/admin/RematchTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "The rematch trigger failed - try again."
 msgstr "再照合を開始できませんでした。もう一度お試しください。"
 
@@ -2234,7 +2224,7 @@ msgstr "処理に失敗しました。もう一度お試しください。"
 msgid "The tag could not be created."
 msgstr "タグを作成できませんでした。"
 
-#: src/components/admin/RefreshTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "The trigger failed - try again."
 msgstr "更新を開始できませんでした。もう一度お試しください。"
 
@@ -2302,11 +2292,11 @@ msgstr "合計"
 msgid "Track your game collection."
 msgstr "ゲームコレクションを記録・管理。"
 
-#: src/components/admin/RefreshTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "Trigger catalog refresh"
 msgstr "カタログ更新を開始"
 
-#: src/components/admin/RematchTrigger.tsx
+#: src/pages/Admin.tsx
 msgid "Trigger entry rematch"
 msgstr "エントリー再照合を開始"
 

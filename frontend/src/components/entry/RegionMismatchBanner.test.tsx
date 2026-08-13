@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, problemResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import RegionMismatchBanner from './RegionMismatchBanner'
 
@@ -16,12 +16,6 @@ function renderBanner(overrides: { region?: string; regionMismatchAckAt?: string
 }
 
 afterEach(() => vi.unstubAllGlobals())
-
-const problem = (status: number, code: string) =>
-  new Response(JSON.stringify({ type: 'about:blank', title: 'x', status, code, detail: 'x' }), {
-    status,
-    headers: { 'Content-Type': 'application/problem+json' },
-  })
 
 const product = (consoleName: string) =>
   jsonResponse(200, {
@@ -57,7 +51,7 @@ it('re-shows the banner when the ack request fails', async () => {
   const fetchMock = vi
     .fn()
     .mockResolvedValueOnce(product('JP Super Nintendo'))
-    .mockResolvedValue(problem(500, 'internal'))
+    .mockResolvedValue(problemResponse(500, 'internal', 'x'))
   vi.stubGlobal('fetch', fetchMock)
   renderBanner()
   const dismiss = await screen.findByRole('button', { name: 'Dismiss region mismatch notice' })

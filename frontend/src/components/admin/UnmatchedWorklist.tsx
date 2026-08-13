@@ -3,6 +3,9 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { fetchUnmatchedProducts } from '../../api/admin'
 import type { Product } from '../../api/catalog'
+import { offsetNextPageParam } from '../../lib/pagination'
+import { renderQueryState } from '../../lib/queryBoundary'
+import LoadMoreButton from '../LoadMoreButton'
 import MappingFix from './MappingFix'
 
 // UnmatchedWorklist pages through every product with no mapping
@@ -17,10 +20,7 @@ export default function UnmatchedWorklist() {
     queryKey: ['admin', 'unmatched'],
     queryFn: ({ pageParam }) => fetchUnmatchedProducts(pageParam),
     initialPageParam: 0,
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((n, p) => n + p.products.length, 0)
-      return loaded < last.total_count ? loaded : undefined
-    },
+    getNextPageParam: (last, pages) => offsetNextPageParam(last, pages, (p) => p.products.length),
   })
 
   const done = () => {
@@ -28,13 +28,15 @@ export default function UnmatchedWorklist() {
     void queryClient.invalidateQueries({ queryKey: ['admin'] })
   }
 
-  if (list.isPending) return <p className="mt-4 text-sm text-gray-500"><Trans>Loading worklist...</Trans></p>
-  if (list.isError)
-    return (
-      <p role="alert" className="mt-4 text-sm text-red-700">
-        <Trans>The worklist could not be loaded.</Trans>
-      </p>
-    )
+  if (list.isPending || list.isError) {
+    return renderQueryState(list, {
+      size: 'subsection',
+      className: 'mt-4',
+      role: 'alert',
+      loading: <Trans>Loading worklist...</Trans>,
+      error: <Trans>The worklist could not be loaded.</Trans>,
+    })
+  }
 
   const products = list.data.pages.flatMap((p) => p.products)
   const total = list.data.pages[0].total_count
@@ -81,16 +83,7 @@ export default function UnmatchedWorklist() {
           ))}
         </tbody>
       </table>
-      {list.hasNextPage && (
-        <button
-          type="button"
-          onClick={() => void list.fetchNextPage()}
-          disabled={list.isFetchingNextPage}
-          className="mt-2 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
-        >
-          <Trans>Load more</Trans>
-        </button>
-      )}
+      <LoadMoreButton query={list} className="mt-2" />
       {fixing && <MappingFix product={fixing} onDone={done} />}
     </section>
   )

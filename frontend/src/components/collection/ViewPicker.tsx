@@ -1,6 +1,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createView, deleteView, fetchViews, updateView } from '../../api/collection'
+import { confirmThen } from '../../lib/confirm'
 import type { ListState } from '../../lib/listParams'
 import { fromViewParams, toViewParams } from '../../lib/listParams'
 
@@ -116,12 +117,12 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
             </button>
             <button
               type="button"
-              onClick={() => {
-                if (window.confirm(t`Delete this shelf?`)) {
+              onClick={() =>
+                confirmThen(t`Delete this shelf?`, () => {
                   resetErrors()
                   remove.mutate()
-                }
-              }}
+                })
+              }
               disabled={remove.isPending}
               className="rounded border border-gray-300 px-2 py-1 text-sm text-red-700 enabled:hover:bg-red-50 disabled:opacity-50"
             >

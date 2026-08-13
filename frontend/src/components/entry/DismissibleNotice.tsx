@@ -1,0 +1,41 @@
+import { Trans } from '@lingui/react/macro'
+import type { ReactNode } from 'react'
+
+type NoticeTone = 'green' | 'amber'
+
+// Full class strings per tone, not a color-token interpolated into a
+// shared template: Tailwind's build only picks up classes it can find
+// as literal strings in source, so bg-${tone}-50 would silently drop
+// out of the compiled CSS. Same reasoning as Avatar.tsx's SIZES table.
+const TONES: Record<NoticeTone, { container: string; button: string }> = {
+  green: {
+    container: 'mb-4 flex items-start justify-between gap-3 rounded bg-green-50 p-3 text-sm text-green-800',
+    button: 'shrink-0 rounded border border-green-300 px-2 py-0.5 hover:bg-white',
+  },
+  amber: {
+    container: 'mb-4 flex items-start justify-between gap-3 rounded bg-amber-50 p-3 text-sm text-amber-800',
+    button: 'shrink-0 rounded border border-amber-300 px-2 py-0.5 hover:bg-white',
+  },
+}
+
+interface DismissibleNoticeProps {
+  tone: NoticeTone
+  dismissLabel: string
+  onDismiss: () => void
+  children: ReactNode
+}
+
+// DismissibleNotice is the banner shell ApprovalNotice and
+// RegionMismatchBanner both render around useDismissibleAck's state:
+// a role="status" bar with the caller's message and a Dismiss button.
+export default function DismissibleNotice({ tone, dismissLabel, onDismiss, children }: DismissibleNoticeProps) {
+  const cls = TONES[tone]
+  return (
+    <div role="status" className={cls.container}>
+      <p>{children}</p>
+      <button type="button" aria-label={dismissLabel} onClick={onDismiss} className={cls.button}>
+        <Trans>Dismiss</Trans>
+      </button>
+    </div>
+  )
+}

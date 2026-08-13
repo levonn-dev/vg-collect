@@ -4,21 +4,14 @@ import type { MessageDescriptor } from '@lingui/core'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { fetchProviders } from '../api/client'
+import SectionLabel from '../components/SectionLabel'
+import { devFixtures, providerNames } from '../lib/providers'
 
 const errorMessages: Record<string, MessageDescriptor> = {
   login_failed: msg`Login failed. Please try again.`,
   email_unverified: msg`That account has no verified email address; verify it there and sign in again.`,
   provider_error: msg`That sign-in service is unavailable. Please try again shortly.`,
 }
-
-// Proper nouns only (leave-alone list) - never wrapped for translation.
-// An unknown provider id falls back to itself, same as before.
-const providerNames: Record<string, string> = {
-  google: 'Google',
-  twitch: 'Twitch',
-}
-
-const devFixtures = ['alice', 'bob', 'admin']
 
 // next must be an internal path: leading slash, not protocol-relative.
 function safeNext(raw: string | null): string | null {
@@ -81,7 +74,7 @@ export default function Login() {
           })}
         {providers.data?.includes('dev') && (
           <div className="mt-2 border-t border-gray-200 pt-4">
-            <p className="mb-2 text-xs uppercase tracking-wide text-gray-500"><Trans>Dev fixtures</Trans></p>
+            <SectionLabel as="p" size="xs" bold={false} className="mb-2"><Trans>Dev fixtures</Trans></SectionLabel>
             <div className="flex gap-2">
               {devFixtures.map((user) => (
                 <a

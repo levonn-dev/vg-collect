@@ -4,9 +4,9 @@ import type { MessageDescriptor } from '@lingui/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
-import { fetchMe } from '../../api/client'
 import type { SavedView } from '../../api/collection'
 import { fetchViews, updateView } from '../../api/collection'
+import { useMe } from '../../lib/useMe'
 import CopyButton from '../CopyButton'
 import VisibilityControl from '../social/VisibilityControl'
 
@@ -43,7 +43,7 @@ const visibilityLabels: Record<SavedView['visibility'], MessageDescriptor> = {
 export default function ShelfManager() {
   const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
-  const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
+  const me = useMe()
   const views = useQuery({ queryKey: ['views'], queryFn: fetchViews })
   const myHandle = me.data?.handle
 

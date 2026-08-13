@@ -1,8 +1,7 @@
 import { useLingui } from '@lingui/react/macro'
-import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet } from 'react-router'
-import { fetchMe } from '../api/client'
 import { site } from '../lib/site'
+import { useMe } from '../lib/useMe'
 import AppBar from './AppBar'
 import Footer from './Footer'
 import Logo from './Logo'
@@ -16,7 +15,7 @@ import Logo from './Logo'
 // viewport bottom on short pages and lets Login center vertically.
 export default function PublicShell() {
   const { t } = useLingui()
-  const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
+  const me = useMe()
   return (
     <div className="mx-auto flex min-h-screen max-w-6xl flex-col p-4">
       {me.data ? (

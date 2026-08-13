@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, problemResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import ProductLookup from './ProductLookup'
 
@@ -62,9 +62,7 @@ it('re-running the same id refetches the product', async () => {
 
 it('renders a plain message when the id is unknown', async () => {
   const user = userEvent.setup()
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(404, {
-    type: 'about:blank', title: 'Not Found', status: 404, code: 'product_not_found', detail: 'no such product',
-  })))
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problemResponse(404, 'product_not_found', 'no such product')))
   renderLookup()
   await user.type(screen.getByRole('textbox', { name: 'Product id' }), 'missing-id')
   await user.click(screen.getByRole('button', { name: 'Look up' }))

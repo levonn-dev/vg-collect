@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, problemResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import CatalogSubmission from './CatalogSubmission'
 
@@ -16,19 +16,13 @@ function renderBlock() {
 
 afterEach(() => vi.unstubAllGlobals())
 
-const problem = (status: number, code: string, detail: string) =>
-  new Response(JSON.stringify({ type: 'about:blank', title: 'x', status, code, detail }), {
-    status,
-    headers: { 'Content-Type': 'application/problem+json' },
-  })
-
 const sub = (status: string, extra: object = {}) =>
   jsonResponse(200, { id: 's1', entry_id: 'e1', status, created_at: 'x', updated_at: 'x', ...extra })
 
 it('never-submitted offers Submit and posts', async () => {
   const fetchMock = vi
     .fn()
-    .mockResolvedValueOnce(problem(404, 'submission_not_found', 'none'))
+    .mockResolvedValueOnce(problemResponse(404, 'submission_not_found', 'none'))
     .mockResolvedValueOnce(jsonResponse(201, { id: 's1', entry_id: 'e1', status: 'pending', created_at: 'x', updated_at: 'x' }))
     .mockResolvedValue(sub('pending'))
   vi.stubGlobal('fetch', fetchMock)
@@ -62,8 +56,8 @@ it('rejected shows the reason and offers Resubmit', async () => {
 it('renders the 429 detail verbatim at the button', async () => {
   const fetchMock = vi
     .fn()
-    .mockResolvedValueOnce(problem(404, 'submission_not_found', 'none'))
-    .mockResolvedValueOnce(problem(429, 'submission_rate_limited', 'at most 20 submissions per rolling 24h; try again later'))
+    .mockResolvedValueOnce(problemResponse(404, 'submission_not_found', 'none'))
+    .mockResolvedValueOnce(problemResponse(429, 'submission_rate_limited', 'at most 20 submissions per rolling 24h; try again later'))
   vi.stubGlobal('fetch', fetchMock)
   renderBlock()
   await userEvent.click(await screen.findByRole('button', { name: 'Submit to catalog' }))

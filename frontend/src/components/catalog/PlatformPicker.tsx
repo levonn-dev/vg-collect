@@ -2,6 +2,7 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { fetchPlatforms } from '../../api/platforms'
+import { inputClass, labelClass, linkButtonClass } from '../../lib/formStyles'
 
 export interface PlatformValue {
   platformIgdbId?: number
@@ -42,10 +43,6 @@ export default function PlatformPicker({ value, onChange }: { value: PlatformVal
       )
       .slice(0, 8)
   }, [query, freeText, platforms.data])
-
-  const inputClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
-  const labelClass = 'flex flex-col gap-1 text-sm font-medium'
-  const linkButtonClass = 'self-start text-xs text-gray-500 underline'
 
   if (value.platformIgdbId !== undefined) {
     return (

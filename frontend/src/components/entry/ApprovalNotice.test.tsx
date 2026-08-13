@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, problemResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import ApprovalNotice from './ApprovalNotice'
 
@@ -16,12 +16,6 @@ function renderNotice() {
 }
 
 afterEach(() => vi.unstubAllGlobals())
-
-const problem = (status: number, code: string) =>
-  new Response(JSON.stringify({ type: 'about:blank', title: 'x', status, code, detail: 'x' }), {
-    status,
-    headers: { 'Content-Type': 'application/problem+json' },
-  })
 
 const sub = (extra: object) =>
   jsonResponse(200, { id: 's1', entry_id: 'e1', status: 'approved', created_at: 'x', updated_at: 'x', ...extra })
@@ -48,7 +42,7 @@ it('re-shows the banner when the ack request fails', async () => {
   const fetchMock = vi
     .fn()
     .mockResolvedValueOnce(sub({}))
-    .mockResolvedValue(problem(500, 'internal'))
+    .mockResolvedValue(problemResponse(500, 'internal', 'x'))
   vi.stubGlobal('fetch', fetchMock)
   renderNotice()
   const dismiss = await screen.findByRole('button', { name: 'Dismiss approval notice' })
@@ -97,7 +91,7 @@ it('stays hidden when already acknowledged', async () => {
 })
 
 it('stays hidden with no submission (404)', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problem(404, 'submission_not_found')))
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problemResponse(404, 'submission_not_found', 'x')))
   renderNotice()
   await new Promise((r) => setTimeout(r, 0))
   expect(screen.queryByRole('status')).not.toBeInTheDocument()

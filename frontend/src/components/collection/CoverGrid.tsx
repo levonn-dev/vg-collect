@@ -1,10 +1,10 @@
 import { useLingui } from '@lingui/react/macro'
 import type { ReactNode } from 'react'
-import { Link } from 'react-router'
 import type { Entry } from '../../api/collection'
 import { entryCover, entryTitle, entryTitleLang, titleFormFor } from '../../lib/productTitle'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import ItemTypeIcon from '../ItemTypeIcon'
+import EntryLink from './EntryLink'
 import { rowMeta, type EntryRow } from './rowMeta'
 
 interface CoverGridProps {
@@ -58,9 +58,9 @@ export default function CoverGrid({ entries, pinSlot, linkTo, shared }: CoverGri
         )
         return (
           <li key={e.id} className="rounded border border-gray-200 p-2">
-            {linkTo?.(e) === null
-              ? <div className="block">{cover}</div>
-              : <Link to={(linkTo ?? (x => `/entries/${x.id}`))(e)!} className="block">{cover}</Link>}
+            <EntryLink entry={e} linkTo={linkTo} as="div" plainClassName="block" linkClassName="block">
+              {cover}
+            </EntryLink>
             <p className="mt-1 flex items-center justify-between text-xs text-gray-500">
               <span>{meta.platform}</span>
               {!shared && <span>{meta.value}</span>}

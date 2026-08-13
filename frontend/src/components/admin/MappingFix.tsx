@@ -1,11 +1,13 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { t } from '@lingui/core/macro'
-import type { I18n } from '@lingui/core'
+import { msg, t } from '@lingui/core/macro'
+import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { deleteProduct, setProductMapping } from '../../api/admin'
 import type { Product } from '../../api/catalog'
 import { ApiError } from '../../api/client'
+import { confirmThen } from '../../lib/confirm'
+import { resolveApiError } from '../../lib/resolveApiError'
 import ManualMatchPicker from '../wizard/ManualMatchPicker'
 
 interface MappingFixProps {
@@ -13,21 +15,24 @@ interface MappingFixProps {
   onDone: () => void
 }
 
-// t(i18n) throughout this file, component included: fixErrorMessage is
-// a plain function (cannot call useLingui() itself), so it takes the
-// caller's i18n explicitly; the component uses the same explicit form
-// for its own strings rather than importing a second, same-named t.
+const fixErrorCodes: Record<string, MessageDescriptor> = {
+  identity_taken: msg`Another product already carries that identity - the mapping was not changed.`,
+  unknown_pc_product: msg`PriceCharting does not know that listing.`,
+  upstream_unavailable: msg`The price provider is unavailable - try again.`,
+}
+
+// This file's own strings use the explicit t(i18n) form (not the
+// useLingui()-bound t) so they match resolveApiError's own
+// explicit-i18n signature without importing a second, same-named t.
+//
+// identity_taken's server detail names the holding product; surface it
+// verbatim (ahead of resolveApiError's own code lookup) so the admin
+// can look the holder up, same as any other code's server detail would
+// win once no code matches at all - this is that same preference,
+// just also applying to a code that DOES match.
 function fixErrorMessage(e: unknown, i18n: I18n): string {
-  if (e instanceof ApiError) {
-    // The server's identity_taken detail names the holding product;
-    // surface it verbatim so the admin can look the holder up.
-    if (e.code === 'identity_taken')
-      return e.message || t(i18n)`Another product already carries that identity - the mapping was not changed.`
-    if (e.code === 'unknown_pc_product') return t(i18n)`PriceCharting does not know that listing.`
-    if (e.code === 'upstream_unavailable') return t(i18n)`The price provider is unavailable - try again.`
-    if (e.message) return e.message
-  }
-  return t(i18n)`The mapping change failed.`
+  if (e instanceof ApiError && e.code === 'identity_taken' && e.message) return e.message
+  return resolveApiError(e, i18n, fixErrorCodes, msg`The mapping change failed.`)
 }
 
 // MappingFix is the admin correction surface for one product: set a
@@ -43,40 +48,28 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
     onSuccess: onDone,
   })
 
-  const clear = () => {
-    if (
-      !window.confirm(
-        t(i18n)`Clear this mapping? The product becomes unmatched and is held out of the nightly entry rematch.`,
-      )
+  const clear = () =>
+    confirmThen(
+      t(i18n)`Clear this mapping? The product becomes unmatched and is held out of the nightly entry rematch.`,
+      () => fix.mutate(null),
     )
-      return
-    fix.mutate(null)
-  }
 
-  const hold = () => {
-    if (
-      !window.confirm(
-        t(i18n)`Hold this product out of the nightly entry rematch? Setting any mapping lifts the hold.`,
-      )
+  const hold = () =>
+    confirmThen(
+      t(i18n)`Hold this product out of the nightly entry rematch? Setting any mapping lifts the hold.`,
+      () => fix.mutate(null),
     )
-      return
-    fix.mutate(null)
-  }
 
   const del = useMutation({
     mutationFn: () => deleteProduct(product.id),
     onSuccess: onDone,
   })
 
-  const remove = () => {
-    if (
-      !window.confirm(
-        t(i18n)`Delete this product from the catalog? Only unmatched products that no entries reference can be deleted.`,
-      )
+  const remove = () =>
+    confirmThen(
+      t(i18n)`Delete this product from the catalog? Only unmatched products that no entries reference can be deleted.`,
+      () => del.mutate(),
     )
-      return
-    del.mutate()
-  }
 
   const pc = product.pricecharting
   const productName = product.name

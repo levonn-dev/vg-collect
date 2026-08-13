@@ -5,9 +5,12 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import type { ExploreSort } from '../api/social'
 import { fetchExplore, searchUsers } from '../api/social'
+import EmptyState from '../components/EmptyState'
+import LoadMoreButton from '../components/LoadMoreButton'
 import ShelfCard from '../components/social/ShelfCard'
 import UserChip from '../components/social/UserChip'
 import Tabs, { type Tab } from '../components/Tabs'
+import { renderQueryState } from '../lib/queryBoundary'
 
 // Tabs.tsx renders whatever label string each caller hands it (no
 // i18n awareness of its own - see components/Tabs.tsx); the table
@@ -111,35 +114,28 @@ export default function Explore() {
         className="mt-6"
       />
 
-      {active.isPending && <p className="mt-4 text-sm text-gray-500"><Trans>Loading shelves...</Trans></p>}
-      {active.isError && (
-        <p role="alert" className="mt-4 text-sm text-red-700">
-          <Trans>Shelves cannot be loaded right now. Please try again.</Trans>
-        </p>
-      )}
-      {!active.isPending && !active.isError && shelves && (
-        shelves.length === 0 ? (
-          <p className="py-12 text-center text-gray-500"><Trans>No shared shelves yet.</Trans></p>
-        ) : (
-          <>
-            <ul className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {shelves.map((s) => (
-                <li key={s.id}>
-                  <ShelfCard card={s} />
-                </li>
-              ))}
-            </ul>
-            {tab === 'recent' && recent.hasNextPage && (
-              <button
-                type="button"
-                onClick={() => void recent.fetchNextPage()}
-                disabled={recent.isFetchingNextPage}
-                className="mt-4 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
-              >
-                <Trans>Load more</Trans>
-              </button>
-            )}
-          </>
+      {renderQueryState(active, {
+        size: 'subsection',
+        className: 'mt-4',
+        role: 'alert',
+        loading: <Trans>Loading shelves...</Trans>,
+        error: <Trans>Shelves cannot be loaded right now. Please try again.</Trans>,
+      }) ?? (
+        shelves && (
+          shelves.length === 0 ? (
+            <EmptyState size="default"><Trans>No shared shelves yet.</Trans></EmptyState>
+          ) : (
+            <>
+              <ul className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {shelves.map((s) => (
+                  <li key={s.id}>
+                    <ShelfCard card={s} />
+                  </li>
+                ))}
+              </ul>
+              {tab === 'recent' && <LoadMoreButton query={recent} className="mt-4" />}
+            </>
+          )
         )
       )}
     </main>

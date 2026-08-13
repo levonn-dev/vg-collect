@@ -1,6 +1,6 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useEffect, useRef } from 'react'
 import type { ManualMatch } from '../../lib/catalog'
+import SearchPickerDialog from '../SearchPickerDialog'
 import type { CatalogPick } from '../catalog/SearchPicker'
 import SearchPicker from '../catalog/SearchPicker'
 
@@ -15,39 +15,21 @@ interface ManualMatchPickerProps {
 // ManualMatchPicker chooses the exact PriceCharting listing for a game
 // being added. Search only - no resolve here; the choice rides the
 // game resolve, which lands on that listing's own product (game
-// identity is listing-keyed). Same dialog conventions as ProxyPicker.
+// identity is listing-keyed). Same dialog shell as ProxyPicker.
 export default function ManualMatchPicker({ initialQuery, onPick, onClose }: ManualMatchPickerProps) {
   const { t } = useLingui()
-  const dialogRef = useRef<HTMLDivElement>(null)
-
-  // A dialog opens on top of the page's own focus; move focus in so
-  // keyboard and screen-reader users land inside it, and give it back
-  // to whatever had it when this closes (unmounts).
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null
-    dialogRef.current?.querySelector<HTMLElement>('input')?.focus()
-    return () => opener?.focus()
-  }, [])
 
   const pickListing = (pick: CatalogPick) => {
     if (pick.kind === 'pc_listing') onPick({ pcProductId: pick.pcProductId, name: pick.name })
   }
 
   return (
-    <div
-      ref={dialogRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label={t`Match a price listing`}
-      className="mt-3 rounded border border-gray-300 bg-gray-50 p-3"
+    <SearchPickerDialog
+      ariaLabel={t`Match a price listing`}
+      title={<Trans>Match a price listing</Trans>}
+      onClose={onClose}
     >
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-sm font-semibold"><Trans>Match a price listing</Trans></p>
-        <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-900">
-          <Trans>Close</Trans>
-        </button>
-      </div>
       <SearchPicker kinds={['pc_listing']} initialQuery={initialQuery} onPick={pickListing} />
-    </div>
+    </SearchPickerDialog>
   )
 }

@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import type { Entry } from '../../api/collection'
 import { centsToDollars } from '../../lib/format'
-import { entryFixture, fxRatesFixture, jsonResponse, putBody } from '../../test/fixtures'
+import { entryFixture, fxRatesFixture, jsonResponse, problemResponse, putBody } from '../../test/fixtures'
 import { renderWithMoney } from '../../test/money'
 import type { PricingValue } from './PricingPanel'
 import PricingPanel from './PricingPanel'
@@ -33,10 +33,7 @@ function stubFetch(handlers: Record<string, unknown>) {
     for (const [prefix, body] of Object.entries(handlers)) {
       if (u.startsWith(prefix)) return Promise.resolve(jsonResponse(200, body))
     }
-    return Promise.resolve(jsonResponse(404, {
-      type: 'about:blank', title: 'Not Found', status: 404, code: 'unknown_pricing_product',
-      detail: 'no such pricing product in the catalog',
-    }))
+    return Promise.resolve(problemResponse(404, 'unknown_pricing_product', 'no such pricing product in the catalog'))
   })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock

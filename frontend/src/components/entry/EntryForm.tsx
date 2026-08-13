@@ -3,8 +3,9 @@ import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
 import { useState } from 'react'
 import type { Entry, EntryUpdate } from '../../api/collection'
-import { centsToDollars, dollarsToCents, enteredCentsToUsdCents, usdCentsToMajor } from '../../lib/format'
 import { entryToUpdate } from '../../lib/entryUpdate'
+import { centsToDollars, dollarsToCents, enteredCentsToUsdCents, usdCentsToMajor } from '../../lib/format'
+import { inputClass, labelClass } from '../../lib/formStyles'
 import { CONDITIONS, PACKAGINGS, STATUSES } from '../../lib/listParams'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import PlatformPicker from '../catalog/PlatformPicker'
@@ -206,17 +207,13 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
   const custom = !entry.product_id
   const currency = entry.currency
 
-  const selectClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
-  const inputClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
-  const labelClass = 'flex flex-col gap-1 text-sm font-medium'
-
   const conditionSelect = (
     label: string,
     key: 'boxCondition' | 'manualCondition' | 'itemCondition',
   ) => (
     <label className={labelClass}>
       {label}
-      <select value={v[key]} onChange={(e) => set(key, e.target.value as FormValues[typeof key])} className={selectClass}>
+      <select value={v[key]} onChange={(e) => set(key, e.target.value as FormValues[typeof key])} className={inputClass}>
         <option value="">{t`Not graded`}</option>
         {CONDITIONS.map((c) => (
           <option key={c} value={c}>
@@ -296,7 +293,7 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
         </label>
         <label className={labelClass}>
           <Trans>Packaging</Trans>
-          <select value={v.packaging} onChange={(e) => setPackaging(e.target.value as Entry['packaging'])} className={selectClass}>
+          <select value={v.packaging} onChange={(e) => setPackaging(e.target.value as Entry['packaging'])} className={inputClass}>
             {PACKAGINGS.map((p) => (
               <option key={p} value={p}>
                 {packagingLabels[p] ? i18n._(packagingLabels[p]) : p}
@@ -335,7 +332,7 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
       <section aria-label={t`Personal`} className="flex flex-wrap gap-3">
         <label className={labelClass}>
           <Trans>Status</Trans>
-          <select value={v.status} onChange={(e) => set('status', e.target.value as Entry['status'])} className={selectClass}>
+          <select value={v.status} onChange={(e) => set('status', e.target.value as Entry['status'])} className={inputClass}>
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {statusLabels[s] ? i18n._(statusLabels[s]) : s}
@@ -345,7 +342,7 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
         </label>
         <label className={labelClass}>
           <Trans>Rating</Trans>
-          <select value={v.rating} onChange={(e) => set('rating', e.target.value)} className={selectClass}>
+          <select value={v.rating} onChange={(e) => set('rating', e.target.value)} className={inputClass}>
             <option value="">{t`Unrated`}</option>
             {Array.from({ length: 10 }, (_, i) => String(i + 1)).map((n) => (
               <option key={n} value={n}>

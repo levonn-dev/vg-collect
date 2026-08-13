@@ -2,6 +2,9 @@ import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { fetchPromoteCandidates } from '../../api/admin'
+import { offsetNextPageParam } from '../../lib/pagination'
+import { renderQueryState } from '../../lib/queryBoundary'
+import LoadMoreButton from '../LoadMoreButton'
 import PromotePanel from './PromotePanel'
 
 // PromoteCandidates pages through every community product the
@@ -21,10 +24,7 @@ export default function PromoteCandidates() {
     queryKey: ['admin', 'candidates'],
     queryFn: ({ pageParam }) => fetchPromoteCandidates(pageParam),
     initialPageParam: 0,
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((n, p) => n + p.products.length, 0)
-      return loaded < last.total_count ? loaded : undefined
-    },
+    getNextPageParam: (last, pages) => offsetNextPageParam(last, pages, (p) => p.products.length),
   })
 
   const done = () => {
@@ -32,13 +32,15 @@ export default function PromoteCandidates() {
     void queryClient.invalidateQueries({ queryKey: ['admin'] })
   }
 
-  if (list.isPending) return <p className="mt-4 text-sm text-gray-500"><Trans>Loading candidates...</Trans></p>
-  if (list.isError)
-    return (
-      <p role="alert" className="mt-4 text-sm text-red-700">
-        <Trans>The promote candidates could not be loaded.</Trans>
-      </p>
-    )
+  if (list.isPending || list.isError) {
+    return renderQueryState(list, {
+      size: 'subsection',
+      className: 'mt-4',
+      role: 'alert',
+      loading: <Trans>Loading candidates...</Trans>,
+      error: <Trans>The promote candidates could not be loaded.</Trans>,
+    })
+  }
 
   const rows = list.data.pages.flatMap((p) => p.products)
   const total = list.data.pages[0].total_count
@@ -89,16 +91,7 @@ export default function PromoteCandidates() {
           ))}
         </tbody>
       </table>
-      {list.hasNextPage && (
-        <button
-          type="button"
-          onClick={() => void list.fetchNextPage()}
-          disabled={list.isFetchingNextPage}
-          className="mt-2 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
-        >
-          <Trans>Load more</Trans>
-        </button>
-      )}
+      <LoadMoreButton query={list} className="mt-2" />
       {reviewing && <PromotePanel product={reviewing.product} candidates={reviewing.candidates} onDone={done} />}
     </section>
   )

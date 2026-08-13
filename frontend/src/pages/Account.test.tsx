@@ -2,14 +2,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { jsonResponse, problemResponse } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Account from './Account'
-
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
 
 const me = {
   id: 'u1', email: 'alice@example.com', handle: 'Alice', roles: ['user'], profile_visibility: 'private',
@@ -133,20 +128,14 @@ it('submits the selected default page alongside the rest of the form', async () 
 })
 
 it('shows a specific message when the handle is taken', async () => {
-  const problem = jsonResponse(409, {
-    type: 'about:blank', title: 'Conflict', status: 409, code: 'handle_taken',
-  })
-  stubFetch({ '/api/me': problem })
+  stubFetch({ '/api/me': problemResponse(409, 'handle_taken') })
   renderAccount()
   await userEvent.click(await screen.findByRole('button', { name: 'Save' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('That handle is taken.')
 })
 
 it('shows a specific message when the handle cooldown blocks the change', async () => {
-  const problem = jsonResponse(429, {
-    type: 'about:blank', title: 'Too Many Requests', status: 429, code: 'handle_cooldown',
-  })
-  stubFetch({ '/api/me': problem })
+  stubFetch({ '/api/me': problemResponse(429, 'handle_cooldown') })
   renderAccount()
   await userEvent.click(await screen.findByRole('button', { name: 'Save' }))
   expect(await screen.findByRole('alert'))

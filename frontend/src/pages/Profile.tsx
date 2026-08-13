@@ -1,13 +1,17 @@
 import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router'
-import { ApiError, fetchMe } from '../api/client'
+import { ApiError } from '../api/client'
 import { fetchProfilePage } from '../api/social'
 import Avatar from '../components/Avatar'
+import EmptyState from '../components/EmptyState'
+import SectionLabel from '../components/SectionLabel'
 import FollowButton from '../components/social/FollowButton'
 import NotFoundState from '../components/social/NotFoundState'
 import ShelfCard from '../components/social/ShelfCard'
 import { foldHandle } from '../lib/handle'
+import { renderQueryState } from '../lib/queryBoundary'
+import { useMe } from '../lib/useMe'
 
 // Profile is the public /u/:handle page: owner card, follower/
 // following counts, a follow control (hidden for the signed-in owner
@@ -24,20 +28,22 @@ import { foldHandle } from '../lib/handle'
 export default function Profile() {
   const { t } = useLingui()
   const { handle = '' } = useParams()
-  const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
+  const me = useMe()
   const profile = useQuery({
     queryKey: ['profile', foldHandle(handle)],
     queryFn: () => fetchProfilePage(handle),
   })
 
-  if (profile.isPending) return <main className="py-8"><Trans>Loading profile...</Trans></main>
-  if (profile.isError) {
-    if (profile.error instanceof ApiError && profile.error.status === 404) return <NotFoundState />
-    return (
-      <main className="py-8" role="alert">
-        <Trans>This profile cannot be loaded right now. Please try again.</Trans>
-      </main>
-    )
+  if (profile.isPending || profile.isError) {
+    return renderQueryState(profile, {
+      size: 'page',
+      role: 'alert',
+      loading: <Trans>Loading profile...</Trans>,
+      error: <Trans>This profile cannot be loaded right now. Please try again.</Trans>,
+      notFound: profile.isError && profile.error instanceof ApiError && profile.error.status === 404
+        ? <NotFoundState />
+        : undefined,
+    })
   }
 
   const { profile: card, social_available, social, shelves, total_count } = profile.data
@@ -71,12 +77,12 @@ export default function Profile() {
 
       <section aria-label={t`Shelves`} className="mt-6">
         {shelves.length === 0 ? (
-          <p className="py-12 text-center text-gray-500"><Trans>No shared shelves yet.</Trans></p>
+          <EmptyState size="default"><Trans>No shared shelves yet.</Trans></EmptyState>
         ) : (
           <>
-            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            <SectionLabel as="h3" size="sm" className="mb-3">
               <Plural value={total_count} one="# shared shelf" other="# shared shelves" />
-            </h3>
+            </SectionLabel>
             <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {shelves.map((s) => (
                 <li key={s.id}>

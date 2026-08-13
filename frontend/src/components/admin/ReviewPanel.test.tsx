@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { AdminSubmission } from '../../api/admin'
 import type { Platform } from '../../api/platforms'
 import { ApiError } from '../../api/client'
-import { jsonResponse, putBody } from '../../test/fixtures'
+import { jsonResponse, problemResponse, putBody } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import ReviewPanel from './ReviewPanel'
 
@@ -274,10 +274,7 @@ it('adopt via a provider pick resolves first, then adopts the resolved product',
 it('renders submission_resolved inline and refetches', async () => {
   const fetchMock = vi.fn().mockImplementation((url: string) => {
     if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
-    return Promise.resolve(jsonResponse(409, {
-      type: 'about:blank', title: 'Conflict', status: 409,
-      code: 'submission_resolved', detail: 'Another admin already handled this submission.',
-    }))
+    return Promise.resolve(problemResponse(409, 'submission_resolved', 'Another admin already handled this submission.'))
   })
   vi.stubGlobal('fetch', fetchMock)
   const onDone = vi.fn()

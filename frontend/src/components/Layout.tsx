@@ -1,8 +1,8 @@
 import { Trans } from '@lingui/react/macro'
-import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router'
-import { ApiError, fetchMe } from '../api/client'
+import { ApiError } from '../api/client'
+import { useMe } from '../lib/useMe'
 import AppBar from './AppBar'
 import Footer from './Footer'
 
@@ -10,7 +10,7 @@ import Footer from './Footer'
 // to login), then renders the app bar and the routed page. Every
 // signed-in page nests under it.
 export default function Layout() {
-  const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
+  const me = useMe()
   const navigate = useNavigate()
   const location = useLocation()
 

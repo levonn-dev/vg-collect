@@ -3,7 +3,7 @@ import { fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import Home from '../pages/Home'
-import { fxRatesFixture, jsonResponse, meFixture } from '../test/fixtures'
+import { fxRatesFixture, jsonResponse, meFixture, problemResponse } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Layout from './Layout'
 
@@ -106,17 +106,13 @@ it('shows the initial when the profile has no avatar', async () => {
 })
 
 it('bounces to login on 401', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(401, {
-    type: 'about:blank', title: 'Unauthorized', status: 401, code: 'unauthenticated',
-  })))
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problemResponse(401, 'unauthenticated')))
   renderLayout()
   expect(await screen.findByText('login-page')).toBeInTheDocument()
 })
 
 it('carries the attempted deep path as ?next= on the login redirect', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(401, {
-    type: 'about:blank', title: 'Unauthorized', status: 401, code: 'unauthenticated',
-  })))
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problemResponse(401, 'unauthenticated')))
   renderLayout('/entries/abc')
   expect(await screen.findByText(`login-page?next=${encodeURIComponent('/entries/abc')}`))
     .toBeInTheDocument()

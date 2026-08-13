@@ -2,6 +2,7 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import type { Dashboard } from '../../api/collection'
 import { formatCents } from '../../lib/format'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
+import SectionLabel from '../SectionLabel'
 
 export default function StatCards({ dashboard }: { dashboard: Dashboard }) {
   const { t } = useLingui()
@@ -14,11 +15,11 @@ export default function StatCards({ dashboard }: { dashboard: Dashboard }) {
   return (
     <section aria-label={t`Totals`} className="grid gap-4 sm:grid-cols-3">
       <div className="rounded border border-gray-200 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500"><Trans>Items</Trans></p>
+        <SectionLabel as="p" size="xs"><Trans>Items</Trans></SectionLabel>
         <p className="mt-1 text-3xl font-bold">{dashboard.total_entries}</p>
       </div>
       <div className="rounded border border-gray-200 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500"><Trans>Collection value ({currency})</Trans></p>
+        <SectionLabel as="p" size="xs"><Trans>Collection value ({currency})</Trans></SectionLabel>
         {p.available ? (
           <>
             <p className="mt-1 text-3xl font-bold">{money.format(p.total_value_cents) ?? money.format(0)}</p>
@@ -33,7 +34,7 @@ export default function StatCards({ dashboard }: { dashboard: Dashboard }) {
         )}
       </div>
       <div className="rounded border border-gray-200 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500"><Trans>Spent</Trans></p>
+        <SectionLabel as="p" size="xs"><Trans>Spent</Trans></SectionLabel>
         {dashboard.spend.length === 0 ? (
           <p className="mt-1 text-sm text-gray-500"><Trans>No purchase prices recorded.</Trans></p>
         ) : (

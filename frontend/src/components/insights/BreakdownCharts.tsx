@@ -3,6 +3,8 @@ import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { Dashboard } from '../../api/collection'
+import SectionLabel from '../SectionLabel'
+import { CHART_TOOLTIP_STYLE } from './chartTooltipStyle'
 
 // Identity-preserving: by_status/by_item_type row labels have never
 // been prettified (the old key.replace('_', ' ') was a no-op for
@@ -34,7 +36,7 @@ function CountList({
   const rows = Object.entries(counts).sort((a, b) => b[1] - a[1])
   return (
     <section aria-label={title} className="rounded border border-gray-200 p-4">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</h3>
+      <SectionLabel as="h3" size="xs" className="mb-2">{title}</SectionLabel>
       <ul className="flex flex-col gap-1 text-sm">
         {rows.map(([key, count]) => (
           <li key={key} className="flex justify-between">
@@ -56,20 +58,13 @@ export default function BreakdownCharts({ dashboard }: { dashboard: Dashboard })
   return (
     <div className="grid gap-4 md:grid-cols-3">
       <section aria-label={t`By platform`} className="rounded border border-gray-200 p-4 md:col-span-1">
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500"><Trans>By platform</Trans></h3>
+        <SectionLabel as="h3" size="xs" className="mb-2"><Trans>By platform</Trans></SectionLabel>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={platforms} layout="vertical" margin={{ left: 24 }}>
               <XAxis type="number" allowDecimals={false} />
               <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11 }} />
-              {/* Recharts' default hover band and tooltip box are
-                  hardcoded light; theme variables keep the mouse-over
-                  readable in dark mode. */}
-              <Tooltip
-                cursor={{ fill: 'var(--color-gray-100)' }}
-                contentStyle={{ backgroundColor: 'var(--color-white)', border: '1px solid var(--color-gray-300)' }}
-                labelStyle={{ color: 'var(--color-gray-900)' }}
-              />
+              <Tooltip cursor={{ fill: 'var(--color-gray-100)' }} {...CHART_TOOLTIP_STYLE} />
               {/* Theme variable, not a hex: the bar follows light/dark. */}
               <Bar dataKey="count" fill="var(--color-gray-900)" />
             </BarChart>

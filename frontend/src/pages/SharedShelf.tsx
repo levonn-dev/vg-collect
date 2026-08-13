@@ -3,6 +3,11 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import { fetchShelfEntries, fetchShelfPage } from '../api/social'
+import { offsetNextPageParam } from '../lib/pagination'
+import { renderQueryState } from '../lib/queryBoundary'
+import EmptyState from '../components/EmptyState'
+import EntryGroupSection from '../components/EntryGroupSection'
+import LoadMoreButton from '../components/LoadMoreButton'
 import CompactList from '../components/collection/CompactList'
 import CoverGrid from '../components/collection/CoverGrid'
 import EntryTable from '../components/collection/EntryTable'
@@ -65,24 +70,25 @@ export default function SharedShelf() {
     queryKey: ['sharedEntries', shelfId],
     queryFn: ({ pageParam }) => fetchShelfEntries(shelfId!, pageParam),
     initialPageParam: 0,
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce(
-        (n, p) => n + (p.entries?.length ?? p.groups?.reduce((m, g) => m + g.entries.length, 0) ?? 0),
-        0,
-      )
-      return loaded < last.total_count ? loaded : undefined
-    },
+    getNextPageParam: (last, pages) =>
+      offsetNextPageParam(
+        last,
+        pages,
+        (p) => p.entries?.length ?? p.groups?.reduce((m, g) => m + g.entries.length, 0) ?? 0,
+      ),
     enabled: shelfId !== undefined,
   })
 
-  if (page.isPending) return <main className="py-8"><Trans>Loading shelf...</Trans></main>
-  if (page.isError) {
-    if (page.error instanceof ApiError && page.error.status === 404) return <NotFoundState />
-    return (
-      <main className="py-8" role="alert">
-        <Trans>This shelf cannot be loaded right now. Please try again.</Trans>
-      </main>
-    )
+  if (page.isPending || page.isError) {
+    return renderQueryState(page, {
+      size: 'page',
+      role: 'alert',
+      loading: <Trans>Loading shelf...</Trans>,
+      error: <Trans>This shelf cannot be loaded right now. Please try again.</Trans>,
+      notFound: page.isError && page.error instanceof ApiError && page.error.status === 404
+        ? <NotFoundState />
+        : undefined,
+    })
   }
 
   const { shelf, owner, social_available, social } = page.data
@@ -115,25 +121,21 @@ export default function SharedShelf() {
       </header>
 
       <section aria-label={t`Entries`} className="mb-8">
-        {entries.isPending && <p className="text-sm text-gray-500"><Trans>Loading entries...</Trans></p>}
-        {entries.isError && (
-          <p role="alert" className="text-sm text-red-700">
-            <Trans>Entries cannot be loaded right now. Please try again.</Trans>
-          </p>
-        )}
-        {!entries.isPending && !entries.isError && (
+        {renderQueryState(entries, {
+          size: 'subsection',
+          role: 'alert',
+          loading: <Trans>Loading entries...</Trans>,
+          error: <Trans>Entries cannot be loaded right now. Please try again.</Trans>,
+        }) ?? (
           flatEntries.length === 0 && groups.length === 0 ? (
-            <p className="py-8 text-center text-gray-500"><Trans>This shelf is empty.</Trans></p>
+            <EmptyState size="compact"><Trans>This shelf is empty.</Trans></EmptyState>
           ) : (
             <>
               {groups.length > 0 ? (
                 groups.map((g) => (
-                  <section key={g.key} aria-label={g.label} className="mb-6">
-                    <h3 className="mb-1 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                      {g.label}
-                    </h3>
+                  <EntryGroupSection key={g.key} label={g.label}>
                     <View entries={g.entries} linkTo={() => null} shared />
-                  </section>
+                  </EntryGroupSection>
                 ))
               ) : mode === 'table' ? (
                 <EntryTable
@@ -145,16 +147,7 @@ export default function SharedShelf() {
               ) : (
                 <View entries={flatEntries} linkTo={() => null} shared />
               )}
-              {entries.hasNextPage && (
-                <button
-                  type="button"
-                  onClick={() => void entries.fetchNextPage()}
-                  disabled={entries.isFetchingNextPage}
-                  className="mt-4 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
-                >
-                  <Trans>Load more</Trans>
-                </button>
-              )}
+              <LoadMoreButton query={entries} className="mt-4" />
             </>
           )
         )}

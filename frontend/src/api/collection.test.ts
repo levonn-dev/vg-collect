@@ -1,12 +1,7 @@
 import {
   bulkUpdateEntries, createTag, deleteEntry, fetchEntries, fetchEntryFacets, fetchTags, fetchViews, reorderEntry,
 } from './collection'
-
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
+import { jsonResponse } from '../test/fixtures'
 
 afterEach(() => vi.unstubAllGlobals())
 

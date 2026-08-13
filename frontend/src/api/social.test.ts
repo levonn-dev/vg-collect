@@ -2,12 +2,7 @@ import {
   deleteComment, fetchExplore, fetchFeed, fetchProfilePage, fetchShelfComments, fetchShelfEntries,
   fetchShelfPage, follow, like, postComment, searchUsers, unfollow, unlike,
 } from './social'
-
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
+import { jsonResponse } from '../test/fixtures'
 
 afterEach(() => vi.unstubAllGlobals())
 

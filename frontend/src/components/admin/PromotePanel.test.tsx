@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { PromoteCandidatesPage } from '../../api/admin'
 import type { Product } from '../../api/catalog'
-import { jsonResponse, putBody } from '../../test/fixtures'
+import { jsonResponse, problemResponse, putBody } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import PromotePanel from './PromotePanel'
 
@@ -163,11 +163,11 @@ it('renders the identity_taken holder detail verbatim', async () => {
         results: [{ type: 'game', name: 'Chrono Trigger', igdb_game_id: 1011,
           platforms: [{ igdb_platform_id: 19, name: 'SNES' }] }],
       }))
-    return Promise.resolve(jsonResponse(409, {
-      type: 'about:blank', title: 'Conflict', status: 409,
-      code: 'identity_taken',
-      detail: 'another product with the same identity already carries that listing (holder: 8563fd43 "Tony Hawk\'s Pro Skater")',
-    }))
+    return Promise.resolve(problemResponse(
+      409,
+      'identity_taken',
+      'another product with the same identity already carries that listing (holder: 8563fd43 "Tony Hawk\'s Pro Skater")',
+    ))
   })
   vi.stubGlobal('fetch', fetchMock)
   renderPanel(communityGame, [candidate])
@@ -176,6 +176,30 @@ it('renders the identity_taken holder detail verbatim', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
   const alert = await screen.findByRole('alert')
   expect(alert).toHaveTextContent(/holder: 8563fd43/i)
+})
+
+// Regression for the resolveApiError refactor: identity_taken prefers
+// e.message over its own fixed text, but only when the server actually
+// sent one - an empty detail must still fall through to the fixed
+// text, not render a blank alert.
+it('falls back to the fixed identity_taken text when the server sends no detail', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url.startsWith('/api/search'))
+      return Promise.resolve(jsonResponse(200, {
+        degraded: false,
+        results: [{ type: 'game', name: 'Chrono Trigger', igdb_game_id: 1011,
+          platforms: [{ igdb_platform_id: 19, name: 'SNES' }] }],
+      }))
+    return Promise.resolve(problemResponse(409, 'identity_taken', ''))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderPanel(communityGame, [candidate])
+  await userEvent.click(screen.getByRole('button', { name: 'Promote to provider identity' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Search' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
+  const alert = await screen.findByRole('alert')
+  expect(alert).toHaveTextContent('A provider product already holds that identity - nothing changed.')
 })
 
 it('hardware promote picks via manual match and posts pc_product_id only', async () => {

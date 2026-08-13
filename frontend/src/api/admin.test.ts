@@ -11,12 +11,7 @@ import {
   triggerRefresh,
   triggerRematch,
 } from './admin'
-
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
+import { jsonResponse } from '../test/fixtures'
 
 afterEach(() => vi.unstubAllGlobals())
 

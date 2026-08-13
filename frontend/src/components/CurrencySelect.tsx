@@ -1,7 +1,8 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchMe, updateMe, type Me } from '../api/client'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { updateMe, type Me } from '../api/client'
 import { useFxRates } from '../lib/useDisplayMoney'
+import { useMe } from '../lib/useMe'
 
 // CurrencySelect sets the profile's display currency from the app
 // header. The choice is optimistic: the cache flips immediately so
@@ -11,7 +12,7 @@ import { useFxRates } from '../lib/useDisplayMoney'
 export default function CurrencySelect() {
   const { t } = useLingui()
   const queryClient = useQueryClient()
-  const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
+  const me = useMe()
   const fx = useFxRates()
 
   const save = useMutation({

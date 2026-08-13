@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Product } from '../../api/catalog'
-import { jsonResponse, putBody } from '../../test/fixtures'
+import { jsonResponse, problemResponse, putBody } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import MappingFix from './MappingFix'
 
@@ -96,16 +96,30 @@ it('does not clear when the confirmation is declined', async () => {
 it('renders the identity_taken conflict with the server-named holder', async () => {
   const user = userEvent.setup()
   vi.spyOn(window, 'confirm').mockReturnValue(true)
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(409, {
-    type: 'about:blank', title: 'Conflict', status: 409,
-    code: 'identity_taken',
-    detail: 'another product with the same identity already carries that listing (holder: 8563fd43 "Tony Hawk\'s Pro Skater")',
-  })))
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problemResponse(
+    409,
+    'identity_taken',
+    'another product with the same identity already carries that listing (holder: 8563fd43 "Tony Hawk\'s Pro Skater")',
+  )))
   renderFix(matched)
   await user.click(screen.getByRole('button', { name: 'Clear mapping' }))
   const alert = await screen.findByRole('alert')
   expect(alert).toHaveTextContent(/already carries that listing/i)
   expect(alert).toHaveTextContent(/holder: 8563fd43/i)
+})
+
+// Regression for the resolveApiError refactor: identity_taken prefers
+// e.message over its own fixed text, but only when the server actually
+// sent one - an empty detail must still fall through to the fixed
+// text, not render a blank alert.
+it('falls back to the fixed identity_taken text when the server sends no detail', async () => {
+  const user = userEvent.setup()
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problemResponse(409, 'identity_taken', '')))
+  renderFix(matched)
+  await user.click(screen.getByRole('button', { name: 'Clear mapping' }))
+  const alert = await screen.findByRole('alert')
+  expect(alert).toHaveTextContent('Another product already carries that identity - the mapping was not changed.')
 })
 
 it('offers Hold on an unmatched, unheld product and parks it behind a confirmation', async () => {
@@ -161,10 +175,9 @@ it('does not delete when the confirmation is declined, and hides Delete on match
 it('renders the product_referenced refusal from the server detail', async () => {
   const user = userEvent.setup()
   vi.spyOn(window, 'confirm').mockReturnValue(true)
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(409, {
-    type: 'about:blank', title: 'Conflict', status: 409,
-    code: 'product_referenced', detail: '3 entries reference this product - repoint or delete those entries first',
-  })))
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+    problemResponse(409, 'product_referenced', '3 entries reference this product - repoint or delete those entries first'),
+  ))
   renderFix(unmatched)
   await user.click(screen.getByRole('button', { name: 'Delete' }))
   expect(await screen.findByRole('alert')).toHaveTextContent(/3 entries reference this product/i)

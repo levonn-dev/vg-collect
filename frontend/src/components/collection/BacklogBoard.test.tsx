@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { fetchEntries } from '../../api/collection'
-import { entryFixture, jsonResponse, listFixture, putBody } from '../../test/fixtures'
+import { entryFixture, jsonResponse, listFixture, problemResponse, putBody } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import BacklogBoard from './BacklogBoard'
 
@@ -71,10 +71,7 @@ it('edge moves are disabled', () => {
 })
 
 it('a 409 conflict reports and recovers', async () => {
-  const fetchMock = vi.fn().mockResolvedValue(jsonResponse(409, {
-    type: 'about:blank', title: 'Conflict', status: 409,
-    code: 'conflicting_order', detail: 'neighbors do not straddle',
-  }))
+  const fetchMock = vi.fn().mockResolvedValue(problemResponse(409, 'conflicting_order', 'neighbors do not straddle'))
   vi.stubGlobal('fetch', fetchMock)
   renderBoard()
   await userEvent.click(screen.getByRole('button', { name: 'Move Second down' }))

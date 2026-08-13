@@ -1,24 +1,26 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { t } from '@lingui/core/macro'
-import type { I18n } from '@lingui/core'
+import { msg, t } from '@lingui/core/macro'
+import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { deleteProduct, fetchCommunityProducts } from '../../api/admin'
-import { ApiError } from '../../api/client'
 import { releaseYear } from '../../lib/format'
+import { offsetNextPageParam } from '../../lib/pagination'
+import { renderQueryState } from '../../lib/queryBoundary'
 import { regionLabelText } from '../../lib/regionLabels'
+import { resolveApiError } from '../../lib/resolveApiError'
 import ItemTypeIcon from '../ItemTypeIcon'
+import LoadMoreButton from '../LoadMoreButton'
 
-// t(i18n) throughout this file, component included: deleteErrorMessage
-// is a plain function (cannot call useLingui() itself), so it takes the
-// caller's i18n explicitly; the component uses the same explicit form
-// for its own strings rather than importing a second, same-named t.
+const deleteErrorCodes: Record<string, MessageDescriptor> = {
+  product_referenced: msg`In use by existing entries - cannot delete.`,
+}
+
+// This file's own strings use the explicit t(i18n) form (not the
+// useLingui()-bound t) so they match resolveApiError's own
+// explicit-i18n signature without importing a second, same-named t.
 function deleteErrorMessage(e: unknown, i18n: I18n): string {
-  if (e instanceof ApiError) {
-    if (e.code === 'product_referenced') return t(i18n)`In use by existing entries - cannot delete.`
-    if (e.message) return e.message
-  }
-  return t(i18n)`The product could not be deleted.`
+  return resolveApiError(e, i18n, deleteErrorCodes, msg`The product could not be deleted.`)
 }
 
 // CommunityProducts lists every admin-minted, un-promoted community
@@ -36,10 +38,7 @@ export default function CommunityProducts() {
     queryKey: ['admin', 'community'],
     queryFn: ({ pageParam }) => fetchCommunityProducts(pageParam),
     initialPageParam: 0,
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((n, p) => n + p.products.length, 0)
-      return loaded < last.total_count ? loaded : undefined
-    },
+    getNextPageParam: (last, pages) => offsetNextPageParam(last, pages, (p) => p.products.length),
   })
 
   const clearBlocked = (productId: string) =>
@@ -64,13 +63,15 @@ export default function CommunityProducts() {
     del.mutate(productId)
   }
 
-  if (list.isPending) return <p className="mt-4 text-sm text-gray-500"><Trans>Loading community products...</Trans></p>
-  if (list.isError)
-    return (
-      <p role="alert" className="mt-4 text-sm text-red-700">
-        <Trans>Community products could not be loaded.</Trans>
-      </p>
-    )
+  if (list.isPending || list.isError) {
+    return renderQueryState(list, {
+      size: 'subsection',
+      className: 'mt-4',
+      role: 'alert',
+      loading: <Trans>Loading community products...</Trans>,
+      error: <Trans>Community products could not be loaded.</Trans>,
+    })
+  }
 
   const products = list.data.pages.flatMap((p) => p.products)
 
@@ -132,16 +133,7 @@ export default function CommunityProducts() {
           ))}
         </tbody>
       </table>
-      {list.hasNextPage && (
-        <button
-          type="button"
-          onClick={() => void list.fetchNextPage()}
-          disabled={list.isFetchingNextPage}
-          className="mt-2 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
-        >
-          <Trans>Load more</Trans>
-        </button>
-      )}
+      <LoadMoreButton query={list} className="mt-2" />
     </section>
   )
 }

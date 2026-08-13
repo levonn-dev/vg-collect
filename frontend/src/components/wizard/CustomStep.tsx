@@ -1,6 +1,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useState } from 'react'
 import type { EntryCreate } from '../../api/collection'
+import { inputClass, labelClass, linkButtonClass } from '../../lib/formStyles'
 import { REGION_PLATFORMS } from '../../lib/productTitle'
 import StringListInput from '../StringListInput'
 import PlatformPicker from '../catalog/PlatformPicker'
@@ -60,9 +61,6 @@ export default function CustomStep({ initialValues, seed, onBack, onNext }: Cust
   // below - see applyBase's comment for why a remount, not a prop
   // update, is what makes an externally applied base actually show up.
   const [baseGeneration, setBaseGeneration] = useState(0)
-  const inputClass = 'rounded border border-gray-300 px-2 py-1 text-sm'
-  const labelClass = 'flex flex-col gap-1 text-sm font-medium'
-  const linkButtonClass = 'self-start text-xs text-gray-500 underline'
 
   // Replaces the form wholesale with the picked item's own facts - a
   // starting point the user can still edit, not a link to the catalog

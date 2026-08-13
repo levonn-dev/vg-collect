@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ProfileCard, ShelfPage } from '../api/social'
 import { UNDO_WINDOW_MS } from '../components/social/useCommentDelete'
-import { fxRatesFixture, jsonResponse, meFixture, sharedEntryFixture } from '../test/fixtures'
+import { fxRatesFixture, jsonResponse, meFixture, problemResponse, sharedEntryFixture } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import SharedShelf from './SharedShelf'
 
@@ -79,9 +79,7 @@ it('shows a loading state before the shelf resolves', () => {
 it('renders NotFoundState for a 404 (unknown or private, indistinguishably)', async () => {
   stubFetch({
     '/api/me': meFixture(),
-    '/api/profiles/alice/shelves/backlog-wall': jsonResponse(404, {
-      type: 'about:blank', title: 'Not Found', status: 404, code: 'shelf_not_found',
-    }),
+    '/api/profiles/alice/shelves/backlog-wall': problemResponse(404, 'shelf_not_found'),
   })
   renderShelf()
   expect(await screen.findByRole('alert')).toHaveTextContent('Nothing here.')

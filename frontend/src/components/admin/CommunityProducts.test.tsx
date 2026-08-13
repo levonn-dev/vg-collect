@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, problemResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import CommunityProducts from './CommunityProducts'
 
@@ -98,10 +98,7 @@ it('delete 409 product_referenced shows the inline per-row message and keeps the
   const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     const u = String(url)
     if (u === '/api/admin/products/c1' && init?.method === 'DELETE') {
-      return Promise.resolve(jsonResponse(409, {
-        type: 'about:blank', title: 'Conflict', status: 409,
-        code: 'product_referenced', detail: '2 entries reference this product',
-      }))
+      return Promise.resolve(problemResponse(409, 'product_referenced', '2 entries reference this product'))
     }
     return Promise.resolve(jsonResponse(200, {
       products: [communityProduct('c1', 'Repro Alpha', { platform_name: 'SNES' })], total_count: 1,

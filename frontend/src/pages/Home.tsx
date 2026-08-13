@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
 import { Navigate } from 'react-router'
-import { fetchMe, type Me } from '../api/client'
+import type { Me } from '../api/client'
+import { useMe } from '../lib/useMe'
 
 const targets: Record<Me['landing_page'], string> = {
   collection: '/collection',
@@ -14,7 +14,7 @@ const targets: Record<Me['landing_page'], string> = {
 // cache hit; render nothing while it is not yet available rather than
 // flash a loading state under the redirect.
 export default function Home() {
-  const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
+  const me = useMe()
   if (!me.data) return null
   return <Navigate to={targets[me.data.landing_page]} replace />
 }

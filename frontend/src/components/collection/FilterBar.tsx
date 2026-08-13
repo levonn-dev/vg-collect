@@ -4,6 +4,7 @@ import type { MessageDescriptor } from '@lingui/core'
 import type { PlatformFacet, Tag } from '../../api/collection'
 import type { ListState } from '../../lib/listParams'
 import { CONDITIONS, ITEM_TYPES, PACKAGINGS, REGIONS, STATUSES } from '../../lib/listParams'
+import SectionLabel from '../SectionLabel'
 
 const chipLabels: Record<string, MessageDescriptor> = {
   backlog: msg`Backlog`, playing: msg`Playing`, beaten: msg`Beaten`, completed: msg`Completed`,
@@ -42,9 +43,9 @@ export default function FilterBar({ state, platforms, tags, developers = [], pub
   // dimension.
   const nameGroup = (legend: string, all: string[], key: 'developer' | 'publisher', empty: string) => (
     <fieldset className="flex flex-wrap items-center gap-2">
-      <legend className="float-left mr-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+      <SectionLabel as="legend" size="xs" className="float-left mr-2">
         {legend}
-      </legend>
+      </SectionLabel>
       {all.map((v) => (
         <label key={v} className="flex items-center gap-1 text-sm">
           <input
@@ -61,9 +62,9 @@ export default function FilterBar({ state, platforms, tags, developers = [], pub
 
   const chipGroup = <T extends string>(legend: string, all: readonly T[], key: keyof ListState) => (
     <fieldset className="flex flex-wrap items-center gap-2">
-      <legend className="float-left mr-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+      <SectionLabel as="legend" size="xs" className="float-left mr-2">
         {legend}
-      </legend>
+      </SectionLabel>
       {all.map((v) => (
         <label key={v} className="flex items-center gap-1 text-sm">
           <input
@@ -85,9 +86,9 @@ export default function FilterBar({ state, platforms, tags, developers = [], pub
       {chipGroup(t`Region`, REGIONS, 'region')}
       {chipGroup(t`Condition`, CONDITIONS, 'itemCondition')}
       <fieldset className="flex flex-wrap items-center gap-2">
-        <legend className="float-left mr-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <SectionLabel as="legend" size="xs" className="float-left mr-2">
           <Trans>Platform</Trans>
-        </legend>
+        </SectionLabel>
         {platforms.map((p) => (
           <label key={p.id} className="flex items-center gap-1 text-sm">
             <input
@@ -103,9 +104,9 @@ export default function FilterBar({ state, platforms, tags, developers = [], pub
       {nameGroup(t`Developer`, developers, 'developer', t`No developers yet`)}
       {nameGroup(t`Publisher`, publishers, 'publisher', t`No publishers yet`)}
       <fieldset className="flex flex-wrap items-center gap-2">
-        <legend className="float-left mr-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <SectionLabel as="legend" size="xs" className="float-left mr-2">
           <Trans>Tags (all of)</Trans>
-        </legend>
+        </SectionLabel>
         {tags.map((tag) => (
           <label key={tag.id} className="flex items-center gap-1 text-sm">
             <input

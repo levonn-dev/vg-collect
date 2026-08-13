@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ProfilePage } from '../api/social'
-import { jsonResponse } from '../test/fixtures'
+import { jsonResponse, problemResponse } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Profile from './Profile'
 
@@ -174,9 +174,7 @@ it('shows a generic error state for a non-404 failure', async () => {
 it('renders an identical not-found body for a private handle as for an unknown one - the DOM never leaks the distinction', async () => {
   stubFetch({
     '/api/me': visitorMe,
-    '/api/profiles/Ghost': jsonResponse(404, {
-      type: 'about:blank', title: 'Not Found', status: 404, code: 'profile_not_found',
-    }),
+    '/api/profiles/Ghost': problemResponse(404, 'profile_not_found'),
   })
   const plain = renderProfile('Ghost')
   expect(await screen.findByRole('alert')).toHaveTextContent('Nothing here.')
@@ -185,9 +183,7 @@ it('renders an identical not-found body for a private handle as for an unknown o
 
   stubFetch({
     '/api/me': visitorMe,
-    '/api/profiles/Hidden': jsonResponse(404, {
-      type: 'about:blank', title: 'Not Found', status: 404, code: 'profile_not_found', detail: 'private',
-    }),
+    '/api/profiles/Hidden': problemResponse(404, 'profile_not_found', 'private'),
   })
   const hidden = renderProfile('Hidden')
   await screen.findByRole('alert')

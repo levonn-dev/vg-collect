@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchMe } from '../api/client'
 import type { Entry } from '../api/collection'
 import { fetchFxRates } from '../api/fx'
 import { formatCents, formatMajor, isStaleRateDate, usdCentsToMajor } from './format'
+import { useMe } from './useMe'
 
 // useFxRates loads the daily rate snapshot. staleTime one hour: the
 // upstream refreshes daily and the bff relays a cached snapshot, so
@@ -57,7 +57,7 @@ function plausibleRate(rate: number | undefined): number | undefined {
 // render flows through it. USD stays canonical and short-circuits
 // (never a rate lookup); price-paid amounts never come through here.
 export function useDisplayMoney(): DisplayMoney {
-  const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
+  const me = useMe()
   const fx = useFxRates()
 
   const profileCurrency = me.data?.preferred_currency ?? 'USD'

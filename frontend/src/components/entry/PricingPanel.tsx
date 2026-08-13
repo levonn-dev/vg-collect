@@ -6,9 +6,13 @@ import { fetchProduct, resolveProduct } from '../../api/catalog'
 import type { Entry } from '../../api/collection'
 import { updateEntry } from '../../api/collection'
 import type { ManualMatch } from '../../lib/catalog'
+import { invalidateEntryQueries } from '../../lib/entryQueries'
 import { entryToUpdate } from '../../lib/entryUpdate'
 import { dollarsToCents, formatCents } from '../../lib/format'
+import { renderQueryState } from '../../lib/queryBoundary'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
+import PriceTriple from '../PriceTriple'
+import SectionLabel from '../SectionLabel'
 import ManualMatchPicker from '../wizard/ManualMatchPicker'
 import ProxyPicker from './ProxyPicker'
 
@@ -45,12 +49,7 @@ function MatchCard({ product }: { product: Product }) {
           </Trans>
         )}
       </p>
-      <p className="mt-1 text-xs text-green-800">
-        <Trans>
-          Loose {loose} / CIB {cib} / New{' '}
-          {newPrice}
-        </Trans>
-      </p>
+      <PriceTriple loose={loose} cib={cib} newPrice={newPrice} className="mt-1 text-xs text-green-800" />
     </div>
   )
 }
@@ -107,10 +106,7 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['entry', entry.id] })
-      void queryClient.invalidateQueries({ queryKey: ['entries'] })
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      void queryClient.invalidateQueries({ queryKey: ['recommendations'] })
-      void queryClient.invalidateQueries({ queryKey: ['product', entry.product_id] })
+      invalidateEntryQueries(queryClient, [['product', entry.product_id]])
     },
   })
   const money = useDisplayMoney()
@@ -150,7 +146,7 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
 
   return (
     <section aria-label={t`Pricing`} className="mb-6 rounded border border-gray-200 p-4">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500"><Trans>Pricing</Trans></h3>
+      <SectionLabel as="h3" size="sm"><Trans>Pricing</Trans></SectionLabel>
       <p className="mt-1 text-lg">
         {money.entryValue(entry) ?? t`No market value available.`}
       </p>
@@ -205,10 +201,15 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
                 </p>
               )}
             </>
-          ) : ownProduct.isError ? (
-            <p className="text-sm text-gray-500"><Trans>The price listing cannot be loaded right now.</Trans></p>
           ) : (
-            <p className="text-sm text-gray-500"><Trans>Checking the price match...</Trans></p>
+            // No role: a still-checking or momentarily-unavailable match
+            // status is not worth interrupting a screen reader over, unlike
+            // every role="alert" boundary elsewhere in this file.
+            renderQueryState(ownProduct, {
+              size: 'subsection',
+              loading: <Trans>Checking the price match...</Trans>,
+              error: <Trans>The price listing cannot be loaded right now.</Trans>,
+            })
           )}
         </div>
       )}

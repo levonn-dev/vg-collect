@@ -1,8 +1,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { cancelSubmission, createSubmission, fetchSubmission } from '../../api/submissions'
-import type { Submission } from '../../api/submissions'
-import { ApiError } from '../../api/client'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { cancelSubmission, createSubmission } from '../../api/submissions'
+import { useSubmission } from './useSubmission'
 
 // CatalogSubmission is the custom-entry block for the shared-catalog
 // pipeline: submit, watch the pending review, read a rejection,
@@ -12,18 +11,7 @@ import { ApiError } from '../../api/client'
 export default function CatalogSubmission({ entryId }: { entryId: string }) {
   const { t } = useLingui()
   const queryClient = useQueryClient()
-  const submission = useQuery({
-    queryKey: ['submission', entryId],
-    queryFn: async (): Promise<Submission | null> => {
-      try {
-        return await fetchSubmission(entryId)
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 404) return null
-        throw e
-      }
-    },
-    retry: false,
-  })
+  const submission = useSubmission(entryId)
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['submission', entryId] })
   const submit = useMutation({ mutationFn: () => createSubmission(entryId), onSuccess: refresh })
   const cancel = useMutation({ mutationFn: () => cancelSubmission(entryId), onSuccess: refresh })
