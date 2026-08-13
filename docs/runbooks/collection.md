@@ -127,7 +127,8 @@ Task targets:
   role; needed before admin routes answer 200 in dev).
 - Module (`services/collection/Taskfile.yml`): `task collection:gen`,
   `task collection:db:migrate` (runs `go run ./cmd/collection migrate`
-  against `DATABASE_URL`).
+  against `DATABASE_URL`; also runs under root `task migrate`,
+  alongside every other migrate-capable service).
 
 Bruno flows live in `bruno/collection/` (environment variable
 `collection_url` = http://localhost:8085): entry CRUD, bulk-update,
@@ -596,10 +597,11 @@ north_america, ntsc_j prefers japan, pal prefers europe, korea and
 china prefer their own rows then asia, brazil its own row, each
 falling back through its chain to the platform-level date) and the localized
 presentation trio `localized_name` / `localized_name_translit` /
-`localized_cover_url` (region-chained per `localizationChains`: ntsc_j
-reads the ja-JP bundle, pal reads EU, korea reads ko-KR, china reads
-zh-CN then zh-TW, brazil reads pt-BR; ntsc_u and region_free chain to
-nothing, since the canonical snapshot already is their presentation)
+`localized_cover_url` (region-chained per
+`regionkit.LocalizationChains`: ntsc_j reads the ja-JP bundle, pal
+reads EU, korea reads ko-KR, china reads zh-CN then zh-TW, brazil
+reads pt-BR; ntsc_u and region_free chain to nothing, since the
+canonical snapshot already is their presentation)
 and the credit arrays `developers`/`publishers` (IGDB company credits
 split by role, the community block's curated lists as per-field
 gap-fill; not region-scoped, so one derive serves every entry of a
@@ -701,8 +703,8 @@ in play.
 
 Normalize regions (admin role or a service token): promotes free-text
 entry regions into the known set (exact-or-synonym folding against
-`knownRegions`/`regionSynonyms`, never fuzzy - an unreviewed string is
-left as typed; growing the known set itself is
+`regionkit.KnownRegions`/`regionkit.RegionSynonyms`, never fuzzy - an
+unreviewed string is left as typed; growing the known set itself is
 docs/adding-a-region.md). A game-backed entry additionally re-picks its
 region-picked release date and localized snapshot from a fresh
 product fetch at promotion time - the same pick resnapshot performs -

@@ -45,8 +45,9 @@ Note: the fixture's handle is literally `admin` on dev databases created before 
 | `task lint`              | golangci-lint every Go module + helm lint every chart + eslint the frontend                                                 |
 | `task test`              | go test every module (testcontainers need Docker) + frontend vitest                                                         |
 | `task test:cover`        | tests + the 80% coverage gate (generated code and cmd/ wiring excluded)                                                     |
-| `task gen`               | regenerate OpenAPI server stubs/types + the frontend's typed API client                                                     |
+| `task gen`               | regenerate region/platform tables from `api/domain.yaml` + OpenAPI server stubs/types + the frontend's typed API client     |
 | `task tidy`              | go mod tidy every module                                                                                                    |
+| `task migrate`           | run db:migrate for every migrate-capable service (auth, collection, enrichment, social, user)                              |
 | `task build`             | compile every module + the frontend bundle                                                                                  |
 | `task e2e`               | Playwright smoke suite against the running stack (login, collection journey, currency, account, admin, social, submissions) |
 | `task run` / `task down` | tilt up / down                                                                                                              |

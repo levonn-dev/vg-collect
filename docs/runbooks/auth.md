@@ -133,7 +133,9 @@ Task targets that touch this service:
 - `task auth:gen` regenerates the server stubs from `api/auth.yaml` and
   the user-service client from `api/user.yaml` (also runs under root
   `task gen`).
-- `task auth:db:migrate` applies migrations to `DATABASE_URL`.
+- `task auth:db:migrate` applies migrations to `DATABASE_URL` (also
+  runs under root `task migrate`, alongside every other migrate-capable
+  service).
 - `task grant-fixture-admin` grants the admin role to the dev `admin`
   fixture (logs the fixture in first so its user row exists, then
   inserts the role on user-pg).

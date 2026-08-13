@@ -108,7 +108,8 @@ Task targets that touch this module:
   plus the collection and user typed clients (also runs inside root
   `task gen`; CI fails on drift).
 - `task social:db:migrate` runs `go run ./cmd/social migrate` against
-  `DATABASE_URL`.
+  `DATABASE_URL` (also runs under root `task migrate`, alongside every
+  other migrate-capable service).
 - Root `task build`, `task lint`, `task test:short`, `task test:cover`,
   `task tidy`, `task check` iterate over this module like every other.
   Coverage gate: `scripts/coverage.sh 80`, excluding `/internal/gen/`

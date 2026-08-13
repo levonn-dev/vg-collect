@@ -137,7 +137,8 @@ Task targets: root `task lint`, `task build`, `task test:short`,
 in `services/enrichment/`: `task gen` regenerates
 `internal/gen/api/server.gen.go` from `api/enrichment.yaml`, and
 `task db:migrate` runs `go run ./cmd/enrichment migrate` against
-`MONGO_URL`/`MONGO_DB`.
+`MONGO_URL`/`MONGO_DB` (also runs under root `task migrate`, alongside
+every other migrate-capable service).
 
 Health endpoints, outside JWT auth:
 
@@ -345,18 +346,24 @@ Emission sites, split across `internal/server/`:
   300, 900, 1800 seconds; the defaults top out at 10s and would
   flatten every step into one bucket.
 
-Log additions (slog, JSON, trace ids attached): one new line.
+Log additions (slog, JSON, trace ids attached):
 
-| Event                                  | Level | Fields                             | Emission site                                                    |
-| -------------------------------------- | ----- | ---------------------------------- | ---------------------------------------------------------------- |
-| `catalog refresh started`              | INFO  | `trigger` = admin or internal      | `startRefresh`, immediately after winning the in-flight guard    |
-| `normalize-community-regions complete` | INFO  | `scanned`, `normalized`, `skipped` | `InternalNormalizeCommunityRegions`, before writing the response |
+| Event                                  | Level | Fields                             | Emission site                                                                                               |
+| -------------------------------------- | ----- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `catalog refresh started`              | INFO  | `trigger` = admin or internal      | `startRefresh`, immediately after winning the in-flight guard                                                |
+| `normalize-community-regions complete` | INFO  | `scanned`, `normalized`, `skipped` | `InternalNormalizeCommunityRegions`, before writing the response                                             |
+| `store error`                          | ERROR | `op`, `err`                        | `internalError`, the shared 500 helper every handler file's error branches now route through (29 call sites) |
 
-It pairs with the existing per-step "finished" summaries: a started
-line without finished lines inside the 30m budget is the signature of
-a hung refresh. Everything else the refresh needs is already logged
-(finished summaries with counts, stopped-early warns, per-product
-failure warns, panic containment).
+The refresh-started line pairs with the existing per-step "finished"
+summaries: a started line without finished lines inside the 30m
+budget is the signature of a hung refresh. Everything else the
+refresh needs is already logged (finished summaries with counts,
+stopped-early warns, per-product failure warns, panic containment).
+`store error` is the general line every route's 500 now emits (see
+failure mode 1 below): `op` names the failing operation, the same
+labeling idiom `cache.fail_open`'s `op` attribute already uses, so a
+500 traces to its cause without cross-referencing which route or
+collaborator was in play.
 
 Region coverage for localized titles is a second, independent
 mechanism from the search leg above: `BundleLocalizations`
@@ -535,10 +542,20 @@ Pods and logs:
 Confirm on the "5xx ratio" panel or "5xx ratio by service" on
 vg-overview; the shared triage in
 [stack.md](stack.md#1-service-5xx-ratio-above-5-percent) applies.
-Enrichment specifics: a 500 burst on `GET /products/{productId}` and
-`POST /products/prices:batch` with "Mongo up" at 0 means Mongo
-(failure mode 2); 502s are not 5xx-of-ours in spirit but count in the
-ratio, and mean a provider outage (failure mode 3). Latency triage:
+Every 500 logs a `store error` line at ERROR carrying the failing
+operation and cause (`op`, `err`) - read it first rather than
+inferring the cause from the affected route alone:
+
+    {service_name="enrichment"} |= "store error"
+
+(the "Recent error logs" panel, or the Log additions row under
+Telemetry above - `op` names the failing operation; 29 call sites
+share 28 distinct op values, one pair deliberately alike.) Enrichment
+specifics: a 500 burst on
+`GET /products/{productId}` and `POST /products/prices:batch` with
+"Mongo up" at 0 means Mongo (failure mode 2); 502s are not 5xx-of-ours
+in spirit but count in the ratio, and mean a provider outage (failure
+mode 3). Latency triage:
 [stack.md](stack.md#2-service-p99-latency-above-500ms); use the
 exemplars on "Latency by route (p95/p99)" to jump into Jaeger traces.
 
@@ -742,8 +759,9 @@ look at `fields_version`.
 
 Normalize community regions (admin role or a service token): promotes
 free-text community-product regions into the known set
-(exact-or-synonym folding against `knownRegions`/`regionSynonyms`,
-never fuzzy - an unreviewed string is left as typed). This service's
+(exact-or-synonym folding against `regionkit.KnownRegions`/
+`regionkit.RegionSynonyms`, never fuzzy - an unreviewed string is
+left as typed). This service's
 twin of collection's normalize-regions lever, scoped to the community
 products enrichment owns; no fetch arm, since a community product
 carries no provider identity to re-fetch, so promotion is a plain

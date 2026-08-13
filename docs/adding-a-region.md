@@ -25,39 +25,76 @@ is PAL-M, a 60Hz NTSC-timing hybrid; Korea is NTSC; China broadcasts
 PAL-D but its game region was always its own). New codes are
 lowercase snake_case country or territory names.
 
-## Collection tables
+## api/domain.yaml
 
-All in `services/collection/internal/server/regions.go`:
+Edit `api/domain.yaml`, then run `task gen` (its `gen:domain` step
+runs first, ahead of the OpenAPI surfaces); CI fails on drift. This
+one file generates every table both languages read - what used to be
+a hand-synced Go/TS pair is now one edit:
 
-- `knownRegions`: the promotion target set and machinery key set.
-- `regionSynonyms`: the reviewed free-text forms the normalize lever
+- `regions[]`: add a `name` and a `class` (`base` | `jp` | `pal`, the
+  pricing-listing class the region prices from). A market with no
+  PriceCharting axis writes `class: base` explicitly - its copies
+  price from the NA catalog as a deliberate proxy, so the yaml row
+  states the choice rather than leaning on a fallback; only a region
+  string `api/domain.yaml` never declares at all defaults to `base`
+  at lookup time. Add `localization_chain` (ordered IGDB
+  localization identifiers - korea: `[ko-KR]`, china: `[zh-CN,
+  zh-TW]`) only when the region ships a localized presentation;
+  ntsc_u and region_free have none, and the field is omitted from
+  their rows entirely.
+- `jp_console_names` and `platforms[]` cover the JP twin-platform
+  machinery (Famicom/NES, Super Famicom/SNES) and PriceCharting's
+  distinct-name JP consoles. A plain region graduation does not touch
+  either.
+
+Generates `libs/go/regionkit/tables_gen.go` (`RegionClass`,
+`LocalizationChains`, `JPConsoleNames`, `ConsoleRegion`,
+`PlatformRegions`, `TwinPlatformIDs`, `RegionNames`) and
+`frontend/src/gen/domain.ts` (`REGIONS`, `Region`, `REGION_CLASS`,
+`LOCALIZATION_CHAINS`, `JP_CONSOLE_NAMES`, `consoleRegionFor`,
+`REGION_PLATFORMS`) via `tools/domaingen`. Both carry a "DO NOT EDIT"
+header; edit the yaml, never the generated output by hand.
+
+## regionkit
+
+`libs/go/regionkit/regions.go` is hand-written, not generated:
+`api/domain.yaml` holds only what both languages consume, and the
+free-text fold vocabulary is Go-only (folding happens before either
+service touches the value; both store the promoted code, never the
+fold table itself). A graduation edits this file directly, alongside
+`api/domain.yaml`:
+
+- `KnownRegions`: the promotion target set and machinery key set,
+  now one map shared by collection and enrichment instead of a
+  per-service twin.
+- `RegionSynonyms`: the reviewed free-text forms the normalize lever
   folds into the code (korea: "kr", "south korea"; brazil: "br",
   "brasil"; china: "cn"). Folding is lowercase-and-trim exact match,
   never fuzzy, and the canonical code folds via identity without a
   row.
+- `RegionFoldMap()` builds fold -> canonical from both maps above;
+  collection and enrichment both call `regionkit.RegionFoldMap()`
+  directly, no local copy.
+
+## Collection tables
+
+`services/collection/internal/server/regions.go` keeps exactly one
+table; its former known-region, synonym, localization-chain, and
+pricing-class tables all generated away into `api/domain.yaml` and
+regionkit:
+
 - `regionChains`: release-date preference, the region's own IGDB
   territory first, then siblings, then worldwide (korea and china
   list asia as their sibling; brazil has none and falls from its own
   row to the scalar). A language-market row never joins a TV-standard
   region's chain: an IGDB korea date on an ntsc_j entry marks a
-  localization launch, not the territory release.
-- `localizationChains`: entry region to IGDB localization
-  identifiers (korea reads ko-KR; china reads zh-CN then zh-TW;
-  brazil reads pt-BR).
-- `regionClass`: the pricing class. A market with no PriceCharting
-  axis classes base through the switch default, and its copies price
-  from the NA catalog as a deliberate proxy; the switch already
-  answers for it, so the change is adding the region to the comment.
+  localization launch, not the territory release. This chain is
+  collection-only - nothing else reads it - so it stays hand-written
+  rather than moving into `api/domain.yaml`.
 
 ## Enrichment tables
 
-- `knownRegions` and `regionSynonyms` twins in
-  `services/enrichment/internal/server/regions.go`, row-identical to
-  collection's. They scope the community-product normalize lever; a
-  stale twin costs an unpromoted string, never a wrong write.
-- The `countMatch` region label allowlist in
-  `services/enrichment/internal/server/server.go`. Without the new
-  code, match-outcome metrics for it clamp to the "none" label.
 - `altTagFamilies` in `services/enrichment/internal/igdb/igdb.go`,
   when the region's native titles ride alternative_names comments
   instead of game_localizations rows: one prefix/exclude rule per
@@ -67,38 +104,65 @@ All in `services/collection/internal/server/regions.go`:
   alternative names are already in every stored raw, so a new family
   needs no refetch; it takes effect at the next reprojection.
 
+No countMatch edit:
+`services/enrichment/internal/server/server.go`'s match-outcome
+metric clamps an unrecognized region to the "none" label by checking
+`regionkit.KnownRegions` directly (`countMatch`), so the
+`KnownRegions` edit above already covers it. Community-region
+promotion (`InternalNormalizeCommunityRegions` in
+`services/enrichment/internal/server/handlers_admin.go`) folds
+through `regionkit.RegionFoldMap()` the same way collection's
+normalize-regions lever does - no enrichment-local known-region or
+synonym table left to twin against collection's.
+
+Not part of a plain graduation: the one table left in
+`services/enrichment/internal/server/regions.go`, `regionQueryChains`,
+maps a region to the localization identifier PriceCharting needs for
+provider-facing search. Only ntsc_j has a row - none of
+korea/brazil/china needed one.
+
 ## Frontend tables
 
-- `Region` union and `REGIONS` in `frontend/src/lib/listParams.ts`.
-  Order: TV-standard territories, then language markets, region_free
-  last.
+`REGIONS` and `Region` (re-exported from
+`frontend/src/lib/listParams.ts`), and `LOCALIZATION_CHAINS`,
+`REGION_PLATFORMS`, `consoleRegionFor` (re-exported from
+`frontend/src/lib/productTitle.ts`, alongside `REGION_CLASS`,
+consumed there by `regionMismatch` but not re-exported) generate
+from `api/domain.yaml`; no manual edit. `JP_CONSOLE_NAMES` generates
+too, but stays internal to `frontend/src/gen/domain.ts`, feeding
+`consoleRegionFor`'s own distinct-name lookup there - no importer
+outside that file.
+
+Still hand-written, one edit each:
+
 - `regionLabels` in `frontend/src/lib/regionLabels.ts`. The map is
-  typed `Record<Region, MessageDescriptor>`, so the compiler forces
-  this row. The label is a UI string: run `task gen` (it runs the
-  lingui extract) and translate the new msgid in
-  `frontend/src/locales/ja.po`.
+  typed `Record<Region, MessageDescriptor>` against the generated
+  `Region` union, so the compiler forces this row. The label is a UI
+  string: run `task gen` (it runs the lingui extract) and translate
+  the new msgid in `frontend/src/locales/ja.po`.
 - In `frontend/src/lib/productTitle.ts`: the `EntryRegion` union
   member, an `AVAILABILITY_REGIONS` identity row (search chips badge
-  the region and the wizard's platform-first default can seed it), a
-  `LOCALIZATION_CHAINS` row mirroring the collection table, a
-  `REGION_LANGS` BCP-47 subtag (ko, zh, pt) for lang attributes on
-  native-script entry text, and a `REGION_CLASS` base row (which also
-  arms the region-mismatch banner against JP and PAL listings).
-  `REGION_PLATFORMS` gets a row only for a platform that released in
-  exactly that region. `ENTRY_REGION_ORDER` stays the TV-standard
-  trio: a worldwide release row means the classic global markets and
-  never implies a language-market release.
+  the region and the wizard's platform-first default can seed it),
+  and a `REGION_LANGS` BCP-47 subtag (ko, zh, pt) for lang attributes
+  on native-script entry text. `ENTRY_REGION_ORDER` stays the
+  TV-standard trio: a worldwide release row means the classic global
+  markets and never implies a language-market release.
+  `LOCALIZATION_CHAINS`, `REGION_PLATFORMS`, and `REGION_CLASS`
+  generate into this file's import now - nothing to hand-edit for
+  those three.
 
 RegionPicker, the filter chips, and the URL param codec all derive
 from `REGIONS` and pick the region up without edits.
 
 ## Contracts
 
-The known values appear in prose descriptions, not enums: the Entry
-region descriptions in `api/collection.yaml`, the CommunityMeta and
-ResolveRequest region descriptions in `api/enrichment.yaml`, and the
-`api/bff.yaml` mirrors of all of them, kept byte-consistent. Run
-`task gen` after editing; CI fails on drift.
+Unrelated to `api/domain.yaml` above - these are hand-maintained
+OpenAPI prose, not generated tables. The known values appear in
+prose descriptions, not enums: the Entry region descriptions in
+`api/collection.yaml`, the CommunityMeta and ResolveRequest region
+descriptions in `api/enrichment.yaml`, and the `api/bff.yaml` mirrors
+of all of them, kept byte-consistent. Run `task gen` after editing;
+CI fails on drift.
 
 Two runbook lines name regions and grow with the set: the
 match-outcomes metric label list in `docs/runbooks/enrichment.md` and
@@ -109,6 +173,12 @@ the chain prose in `docs/runbooks/collection.md`.
 These fail or go stale on graduation and are where the new region's
 behavior gets pinned:
 
+- regionkit: `TestKnownRegions_ExactlySevenRegions` in
+  `regions_test.go` (bump the count and add the region to its want
+  list) and `TestRegionClass_AllSevenRegions` in
+  `tables_gen_test.go` (add the region's expected class - a
+  hand-written pin against the generator's output, so an
+  `api/domain.yaml` edit alone does not satisfy it).
 - collection: `TestNormalizeRegions_PromotesAndRepicks` (promotion
   arms), `TestPickReleaseDate` and `TestPickLocalization` (chains),
   `TestConsoleRegionClassification` (pricing class).
