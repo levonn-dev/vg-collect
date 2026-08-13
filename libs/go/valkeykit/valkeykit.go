@@ -1,5 +1,11 @@
 // Package valkeykit constructs OTel-instrumented go-redis clients for
-// per-service Valkey caches. Construction/instrumentation/health only.
+// per-service Valkey caches, verifies their health, and carries the
+// small cache-access idioms every caller otherwise duplicated by
+// hand: GetBytes/PutBytes, byte-blob get/put with a redis.Nil miss
+// mapped to (nil, nil), and FailOpen, the log-plus-metric a caller
+// emits when it degrades a request instead of failing it on a cache
+// error. Key shapes, TTLs, and per-service metric names stay with
+// each caller; only the copy/wrap/log/count mechanics live here.
 // Connect builds plain or rediss clients; ConnectTLS pins a private CA.
 package valkeykit
 
