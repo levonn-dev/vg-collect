@@ -7,11 +7,7 @@ meta {
 get {
   url: {{enrichment_url}}/products/{{product_id}}
   body: none
-  auth: bearer
-}
-
-auth:bearer {
-  token: {{access_token}}
+  auth: inherit
 }
 
 assert {

@@ -2,12 +2,12 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: enrichment-valkey
+  name: {{ .Chart.Name }}-valkey
   labels: {{- include "enrichment.labels" . | nindent 4 }}
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: enrichment-valkey
+      app.kubernetes.io/name: {{ .Chart.Name }}-valkey
   endpoints:
     - port: metrics
       interval: 30s

@@ -2,18 +2,18 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: collection-pg-owner-only
+  name: {{ .Chart.Name }}-pg-owner-only
   labels: {{- include "collection.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: collection-pg
+      app.kubernetes.io/name: {{ .Chart.Name }}-pg
   policyTypes: [Ingress]
   ingress:
     - from:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: collection
+              app.kubernetes.io/name: {{ .Chart.Name }}
       ports:
         - { port: 5432, protocol: TCP }
     - from:
@@ -32,18 +32,18 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: collection-valkey-owner-only
+  name: {{ .Chart.Name }}-valkey-owner-only
   labels: {{- include "collection.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: collection-valkey
+      app.kubernetes.io/name: {{ .Chart.Name }}-valkey
   policyTypes: [Ingress]
   ingress:
     - from:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: collection
+              app.kubernetes.io/name: {{ .Chart.Name }}
       ports:
         - { port: 6379, protocol: TCP }
     - from:
@@ -71,7 +71,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: collection
+      app.kubernetes.io/name: {{ .Chart.Name }}
   policyTypes: [Ingress]
   ingress:
     - from:
@@ -83,6 +83,6 @@ spec:
               app.kubernetes.io/name: social
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: collection-rematch
+              app.kubernetes.io/name: {{ .Chart.Name }}-rematch
       ports:
         - { port: 8080, protocol: TCP }

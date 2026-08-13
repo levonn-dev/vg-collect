@@ -1,13 +1,13 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: enrichment
+  name: {{ .Chart.Name }}
   labels: {{- include "enrichment.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicas }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: enrichment
+      app.kubernetes.io/name: {{ .Chart.Name }}
   template:
     metadata:
       labels: {{- include "enrichment.labels" . | nindent 8 }}
@@ -16,7 +16,7 @@ spec:
         # rotation re-rolls via Tilt re-apply in dev.
         checksum/externalsecret: {{ include (print $.Template.BasePath "/externalsecret.yaml") . | sha256sum }}
     spec:
-      serviceAccountName: enrichment
+      serviceAccountName: {{ .Chart.Name }}
       initContainers:
         # The migrate subcommand loads the full config before branching,
         # so the init container gets the same env anchor as the app.
@@ -98,7 +98,7 @@ spec:
             {{- end }}
           {{- end }}
       containers:
-        - name: enrichment
+        - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:

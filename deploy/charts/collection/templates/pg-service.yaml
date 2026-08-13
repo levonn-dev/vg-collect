@@ -2,13 +2,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: collection-pg
+  name: {{ .Chart.Name }}-pg
   labels:
-    app.kubernetes.io/name: collection-pg
+    app.kubernetes.io/name: {{ .Chart.Name }}-pg
     app.kubernetes.io/part-of: vgkeep
 spec:
   selector:
-    app.kubernetes.io/name: collection-pg
+    app.kubernetes.io/name: {{ .Chart.Name }}-pg
   ports:
     - { name: pg, port: 5432, targetPort: pg }
     - name: metrics

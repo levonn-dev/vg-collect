@@ -7,11 +7,7 @@ meta {
 post {
   url: {{auth_url}}/oauth/dev/link
   body: json
-  auth: bearer
-}
-
-auth:bearer {
-  token: {{access_token}}
+  auth: inherit
 }
 
 body:json {

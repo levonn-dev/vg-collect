@@ -7,11 +7,7 @@ meta {
 post {
   url: {{enrichment_url}}/products/resolve
   body: json
-  auth: bearer
-}
-
-auth:bearer {
-  token: {{access_token}}
+  auth: inherit
 }
 
 body:json {

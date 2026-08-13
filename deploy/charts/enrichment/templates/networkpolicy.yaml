@@ -2,18 +2,18 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: enrichment-mongo-owner-only
+  name: {{ .Chart.Name }}-mongo-owner-only
   labels: {{- include "enrichment.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: enrichment-mongo
+      app.kubernetes.io/name: {{ .Chart.Name }}-mongo
   policyTypes: [Ingress]
   ingress:
     - from:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: enrichment
+              app.kubernetes.io/name: {{ .Chart.Name }}
       ports:
         - { port: 27017, protocol: TCP }
     - from:
@@ -32,18 +32,18 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: enrichment-valkey-owner-only
+  name: {{ .Chart.Name }}-valkey-owner-only
   labels: {{- include "enrichment.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: enrichment-valkey
+      app.kubernetes.io/name: {{ .Chart.Name }}-valkey
   policyTypes: [Ingress]
   ingress:
     - from:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: enrichment
+              app.kubernetes.io/name: {{ .Chart.Name }}
       ports:
         - { port: 6379, protocol: TCP }
     - from:
@@ -72,7 +72,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: enrichment
+      app.kubernetes.io/name: {{ .Chart.Name }}
   policyTypes: [Ingress]
   ingress:
     - from:
@@ -81,7 +81,7 @@ spec:
               app.kubernetes.io/name: bff
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: enrichment-refresh
+              app.kubernetes.io/name: {{ .Chart.Name }}-refresh
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: collection

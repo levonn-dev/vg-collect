@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: social
+  name: {{ .Chart.Name }}
   labels: {{- include "social.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicas }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: social
+      app.kubernetes.io/name: {{ .Chart.Name }}
   template:
     metadata:
       labels: {{- include "social.labels" . | nindent 8 }}
       annotations:
         checksum/externalsecret: {{ include (print $.Template.BasePath "/externalsecret.yaml") . | sha256sum }}
     spec:
-      serviceAccountName: social
+      serviceAccountName: {{ .Chart.Name }}
       initContainers:
         - name: migrate
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -53,7 +53,7 @@ spec:
               mountPath: /etc/vg/pg-ca
               readOnly: true
       containers:
-        - name: social
+        - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:

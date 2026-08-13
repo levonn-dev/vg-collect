@@ -2,18 +2,18 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: enrichment-valkey
+  name: {{ .Chart.Name }}-valkey
   labels: {{- include "enrichment.labels" . | nindent 4 }}
 spec:
-  serviceName: enrichment-valkey
+  serviceName: {{ .Chart.Name }}-valkey
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: enrichment-valkey
+      app.kubernetes.io/name: {{ .Chart.Name }}-valkey
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: enrichment-valkey
+        app.kubernetes.io/name: {{ .Chart.Name }}-valkey
         app.kubernetes.io/part-of: vgkeep
     spec:
       initContainers:

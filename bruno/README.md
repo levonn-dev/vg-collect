@@ -17,6 +17,15 @@ styles of folder live here:
   (`collection_url`, localhost:8085, a Tilt port-forward) using
   Bearer tokens.
 
+The four straight-to-service folders (`auth/`, `user/`, `enrichment/`,
+`collection/`) set the Bearer token once, in that folder's `folder.bru`
+(`auth { mode: bearer }` reading `{{access_token}}`); individual
+requests set `auth: inherit` rather than repeating the token. The
+handful of `auth/` requests that predate a token (`dev token`) or use
+a different credential (`refresh`, `reuse detection`, `revoke`,
+`jwks`, `internal service token`) set `auth: none` explicitly, which
+always overrides the folder default.
+
 ## Quick start
 
 1. `task run` (Tilt) and wait for green.

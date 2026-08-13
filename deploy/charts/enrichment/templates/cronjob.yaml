@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: enrichment-refresh
+  name: {{ .Chart.Name }}-refresh
   labels: {{- include "enrichment.labels" . | nindent 4 }}
 spec:
   schedule: {{ .Values.refresh.schedule | quote }}
@@ -18,7 +18,7 @@ spec:
       template:
         metadata:
           labels:
-            app.kubernetes.io/name: enrichment-refresh
+            app.kubernetes.io/name: {{ .Chart.Name }}-refresh
             app.kubernetes.io/part-of: vgkeep
         spec:
           restartPolicy: Never

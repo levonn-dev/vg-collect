@@ -7,11 +7,7 @@ meta {
 get {
   url: {{enrichment_url}}/search?type=game&q=zelda
   body: none
-  auth: bearer
-}
-
-auth:bearer {
-  token: {{access_token}}
+  auth: inherit
 }
 
 docs {

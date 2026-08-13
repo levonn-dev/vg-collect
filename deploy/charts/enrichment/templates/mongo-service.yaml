@@ -2,13 +2,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: enrichment-mongo
+  name: {{ .Chart.Name }}-mongo
   labels:
-    app.kubernetes.io/name: enrichment-mongo
+    app.kubernetes.io/name: {{ .Chart.Name }}-mongo
     app.kubernetes.io/part-of: vgkeep
 spec:
   selector:
-    app.kubernetes.io/name: enrichment-mongo
+    app.kubernetes.io/name: {{ .Chart.Name }}-mongo
   ports:
     - { name: mongo, port: 27017, targetPort: mongo }
     - name: metrics

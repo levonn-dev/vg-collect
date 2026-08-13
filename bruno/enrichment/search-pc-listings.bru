@@ -7,11 +7,7 @@ meta {
 get {
   url: {{enrichment_url}}/search?type=pc_listing&q=super mario 64
   body: none
-  auth: bearer
-}
-
-auth:bearer {
-  token: {{access_token}}
+  auth: inherit
 }
 
 assert {

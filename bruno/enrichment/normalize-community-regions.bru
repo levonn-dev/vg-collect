@@ -7,11 +7,7 @@ meta {
 post {
   url: {{enrichment_url}}/internal/normalize-community-regions
   body: none
-  auth: bearer
-}
-
-auth:bearer {
-  token: {{access_token}}
+  auth: inherit
 }
 
 assert {

@@ -7,11 +7,7 @@ meta {
 get {
   url: {{collection_url}}/entries?status=backlog&sort=backlog_rank
   body: none
-  auth: bearer
-}
-
-auth:bearer {
-  token: {{access_token}}
+  auth: inherit
 }
 
 docs {

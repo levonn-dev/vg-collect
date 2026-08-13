@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: collection
+  name: {{ .Chart.Name }}
   labels: {{- include "collection.labels" . | nindent 4 }}
 spec:
   selector:
-    app.kubernetes.io/name: collection
+    app.kubernetes.io/name: {{ .Chart.Name }}
   ports:
     - { name: http, port: 8080, targetPort: http }

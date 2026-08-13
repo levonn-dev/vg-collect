@@ -2,18 +2,18 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: bff-valkey
+  name: {{ .Chart.Name }}-valkey
   labels: {{- include "bff.labels" . | nindent 4 }}
 spec:
-  serviceName: bff-valkey
+  serviceName: {{ .Chart.Name }}-valkey
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: bff-valkey
+      app.kubernetes.io/name: {{ .Chart.Name }}-valkey
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: bff-valkey
+        app.kubernetes.io/name: {{ .Chart.Name }}-valkey
         app.kubernetes.io/part-of: vgkeep
     spec:
       initContainers:

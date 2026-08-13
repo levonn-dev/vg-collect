@@ -1,7 +1,7 @@
 apiVersion: apisix.apache.org/v2
 kind: ApisixRoute
 metadata:
-  name: bff
+  name: {{ .Chart.Name }}
   labels: {{- include "bff.labels" . | nindent 4 }}
 spec:
   ingressClassName: apisix
@@ -15,7 +15,7 @@ spec:
       match:
         paths: ["/healthz", "/readyz"]
       backends:
-        - serviceName: bff
+        - serviceName: {{ .Chart.Name }}
           servicePort: 8080
       plugins:
         - name: fault-injection
@@ -28,7 +28,7 @@ spec:
       match:
         paths: ["/api/auth/*"]
       backends:
-        - serviceName: bff
+        - serviceName: {{ .Chart.Name }}
           servicePort: 8080
       plugins:
         - name: limit-count
@@ -49,7 +49,7 @@ spec:
       match:
         paths: ["/api/*"]
       backends:
-        - serviceName: bff
+        - serviceName: {{ .Chart.Name }}
           servicePort: 8080
       plugins:
         - name: limit-count
@@ -70,7 +70,7 @@ spec:
       match:
         paths: ["/*"]
       backends:
-        - serviceName: bff
+        - serviceName: {{ .Chart.Name }}
           servicePort: 8080
       plugins:
         - name: prometheus

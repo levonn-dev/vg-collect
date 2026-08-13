@@ -1,10 +1,10 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: collection
+  name: {{ .Chart.Name }}
   labels: {{- include "collection.labels" . | nindent 4 }}
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: collection
+      app.kubernetes.io/name: {{ .Chart.Name }}

@@ -2,7 +2,7 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: social-pg
+  name: {{ .Chart.Name }}-pg
   labels: {{- include "social.labels" . | nindent 4 }}
 spec:
   # Single replica: a voluntary drain blocks rather than silently
@@ -10,5 +10,5 @@ spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: social-pg
+      app.kubernetes.io/name: {{ .Chart.Name }}-pg
 {{- end }}

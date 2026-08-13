@@ -1,10 +1,10 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: bff
+  name: {{ .Chart.Name }}
   labels: {{- include "bff.labels" . | nindent 4 }}
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: bff
+      app.kubernetes.io/name: {{ .Chart.Name }}

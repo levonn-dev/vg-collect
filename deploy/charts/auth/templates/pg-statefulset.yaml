@@ -2,18 +2,18 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: auth-pg
+  name: {{ .Chart.Name }}-pg
   labels: {{- include "auth.labels" . | nindent 4 }}
 spec:
-  serviceName: auth-pg
+  serviceName: {{ .Chart.Name }}-pg
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: auth-pg
+      app.kubernetes.io/name: {{ .Chart.Name }}-pg
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: auth-pg
+        app.kubernetes.io/name: {{ .Chart.Name }}-pg
         app.kubernetes.io/part-of: vgkeep
     spec:
       initContainers:

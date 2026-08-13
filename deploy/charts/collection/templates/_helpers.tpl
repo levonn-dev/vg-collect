@@ -1,9 +1,9 @@
 {{- define "collection.labels" -}}
-app.kubernetes.io/name: collection
+app.kubernetes.io/name: {{ .Chart.Name }}
 app.kubernetes.io/part-of: vgkeep
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
-{{- define "collection.pgHost" -}}collection-pg{{- end }}
+{{- define "collection.pgHost" -}}{{ .Chart.Name }}-pg{{- end }}
 
-{{- define "collection.valkeyHost" -}}collection-valkey{{- end }}
+{{- define "collection.valkeyHost" -}}{{ .Chart.Name }}-valkey{{- end }}

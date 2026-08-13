@@ -2,18 +2,18 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: user-pg-owner-only
+  name: {{ .Chart.Name }}-pg-owner-only
   labels: {{- include "user.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: user-pg
+      app.kubernetes.io/name: {{ .Chart.Name }}-pg
   policyTypes: [Ingress]
   ingress:
     - from:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: user
+              app.kubernetes.io/name: {{ .Chart.Name }}
       ports:
         - { port: 5432, protocol: TCP }
     - from:
@@ -38,7 +38,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: user
+      app.kubernetes.io/name: {{ .Chart.Name }}
   policyTypes: [Ingress]
   ingress:
     - from:

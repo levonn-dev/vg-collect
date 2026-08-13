@@ -2,18 +2,18 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: enrichment-mongo
+  name: {{ .Chart.Name }}-mongo
   labels: {{- include "enrichment.labels" . | nindent 4 }}
 spec:
-  serviceName: enrichment-mongo
+  serviceName: {{ .Chart.Name }}-mongo
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: enrichment-mongo
+      app.kubernetes.io/name: {{ .Chart.Name }}-mongo
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: enrichment-mongo
+        app.kubernetes.io/name: {{ .Chart.Name }}-mongo
         app.kubernetes.io/part-of: vgkeep
     spec:
       initContainers:

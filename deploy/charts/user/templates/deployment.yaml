@@ -1,13 +1,13 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: user
+  name: {{ .Chart.Name }}
   labels: {{- include "user.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicas }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: user
+      app.kubernetes.io/name: {{ .Chart.Name }}
   template:
     metadata:
       labels: {{- include "user.labels" . | nindent 8 }}
@@ -16,7 +16,7 @@ spec:
         # rotation re-rolls via Tilt re-apply in dev.
         checksum/externalsecret: {{ include (print $.Template.BasePath "/externalsecret.yaml") . | sha256sum }}
     spec:
-      serviceAccountName: user
+      serviceAccountName: {{ .Chart.Name }}
       initContainers:
         - name: migrate
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -50,7 +50,7 @@ spec:
               mountPath: /etc/vg/pg-ca
               readOnly: true
       containers:
-        - name: user
+        - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:

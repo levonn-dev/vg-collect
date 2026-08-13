@@ -7,11 +7,7 @@ meta {
 put {
   url: {{enrichment_url}}/admin/products/{{unmatched_product_id}}/pricecharting
   body: json
-  auth: bearer
-}
-
-auth:bearer {
-  token: {{access_token}}
+  auth: inherit
 }
 
 body:json {

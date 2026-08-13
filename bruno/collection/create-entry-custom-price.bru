@@ -7,11 +7,7 @@ meta {
 post {
   url: {{collection_url}}/entries
   body: json
-  auth: bearer
-}
-
-auth:bearer {
-  token: {{access_token}}
+  auth: inherit
 }
 
 body:json {

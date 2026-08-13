@@ -7,11 +7,7 @@ meta {
 get {
   url: {{collection_url}}/dashboard
   body: none
-  auth: bearer
-}
-
-auth:bearer {
-  token: {{access_token}}
+  auth: inherit
 }
 
 docs {
