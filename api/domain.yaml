@@ -1,0 +1,74 @@
+# Region and platform domain tables consumed by both Go and TypeScript.
+# Edit this file, then run `task gen`. CI fails on drift.
+regions:
+  - name: ntsc_u
+    class: base            # base | jp | pal - the pricing-listing class
+  - name: ntsc_j
+    class: jp
+    localization_chain: [ja-JP]
+  - name: pal
+    class: pal
+    localization_chain: [EU]
+  - name: korea
+    class: base
+    localization_chain: [ko-KR]
+  - name: brazil
+    class: base
+    localization_chain: [pt-BR]
+  - name: china
+    class: base
+    localization_chain: [zh-CN, zh-TW]
+  - name: region_free
+    class: base
+jp_console_names: [famicom, super famicom, famicom disk system]
+platforms:
+  - igdb_id: 99
+    name: Family Computer
+    region: ntsc_j
+    twin_igdb_id: 18       # Nintendo Entertainment System
+  - igdb_id: 58
+    name: Super Famicom
+    region: ntsc_j
+    twin_igdb_id: 19       # Super Nintendo Entertainment System
+  - igdb_id: 51
+    name: Famicom Disk System
+    region: ntsc_j
+# release_regions is IGDB's release_region vendor enum (the id an IGDB
+# release_dates or release_regions row carries on the wire), decoded to
+# its canonical name - services/enrichment/internal/igdb.RegionName.
+# entry_region is the collector's-entry region a release in that
+# region badges as, for a region with a direct 1:1 mapping; omitted
+# where there is none. worldwide has no entry_region: it expands to
+# the TV-standard trio (ntsc_u, ntsc_j, pal) instead of picking one, a
+# decision only the consuming picker can make
+# (frontend/src/lib/productTitle.ts's platformEntryRegions).
+release_regions:
+  - igdb_id: 1
+    name: europe
+    entry_region: pal
+  - igdb_id: 2
+    name: north_america
+    entry_region: ntsc_u
+  - igdb_id: 3
+    name: australia
+    entry_region: pal
+  - igdb_id: 4
+    name: new_zealand
+    entry_region: pal
+  - igdb_id: 5
+    name: japan
+    entry_region: ntsc_j
+  - igdb_id: 6
+    name: china
+    entry_region: china
+  - igdb_id: 7
+    name: asia
+    entry_region: ntsc_j
+  - igdb_id: 8
+    name: worldwide
+  - igdb_id: 9
+    name: korea
+    entry_region: korea
+  - igdb_id: 10
+    name: brazil
+    entry_region: brazil

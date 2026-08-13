@@ -1,0 +1,30 @@
+# Fixture for TestParseDomain_UnknownKeyInRegionsRejected: domain.yaml plus
+# a bogus key inside a regions row, pinning KnownFields(true) rejection for
+# one of the pre-existing sections too - not just release_regions above,
+# which is new enough that its own strict-parsing behavior had no direct
+# test before this pair.
+regions:
+  - name: ntsc_u
+    class: base
+    bogus_field: oops
+  - name: ntsc_j
+    class: jp
+    localization_chain: [ja-JP]
+  - name: pal
+    class: pal
+    localization_chain: [EU]
+jp_console_names: [famicom]
+platforms:
+  - igdb_id: 99
+    name: Family Computer
+    region: ntsc_j
+    twin_igdb_id: 18
+  - igdb_id: 51
+    name: Famicom Disk System
+    region: ntsc_j
+release_regions:
+  - igdb_id: 2
+    name: north_america
+    entry_region: ntsc_u
+  - igdb_id: 8
+    name: worldwide

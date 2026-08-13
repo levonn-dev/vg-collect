@@ -35,3 +35,4 @@ deploy/charts/*/Chart.lock
 /services/auth/auth
 /services/enrichment/enrichment
 /services/collection/collection
+/tools/domaingen/domaingen

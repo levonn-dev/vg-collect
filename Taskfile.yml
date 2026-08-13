@@ -127,6 +127,7 @@ tasks:
   gen:
     desc: Regenerate code from the OpenAPI contracts (run after editing any api/*.yaml; CI fails on drift)
     cmds:
+      - task: gen:domain
       - task: user:gen
       - task: auth:gen
       - task: bff:gen
@@ -136,11 +137,24 @@ tasks:
       - task: frontend:gen
       - task: frontend:extract
 
+  gen:domain:
+    desc: Regenerate region/platform tables from api/domain.yaml (Go regionkit + frontend TS; run after editing api/domain.yaml; CI fails on drift)
+    cmds:
+      - cd tools/domaingen && go run . -yaml ../../api/domain.yaml -go-out ../../libs/go/regionkit/tables_gen.go -ts-out ../../frontend/src/gen/domain.ts
+
   tidy:
     desc: 'go mod tidy every module (plain tidy; the repo carries no known dependency skew)'
     cmds:
       - for: { var: GO_MODULES, as: MOD }
         cmd: cd {{.MOD}} && go mod tidy
+
+  # ------------------------------- migrate --------------------------------
+
+  migrate:
+    desc: 'Run db:migrate for every migrate-capable service (auth, collection, enrichment, social, user; bff has no database). Each reads its own connection env (DATABASE_URL, or MONGO_URL/MONGO_DB for enrichment).'
+    cmds:
+      - for: [auth, collection, enrichment, social, user]
+        task: '{{.ITEM}}:db:migrate'
 
   # -------------------------------- test ---------------------------------
 

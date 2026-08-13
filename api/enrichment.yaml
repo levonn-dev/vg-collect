@@ -627,7 +627,9 @@ components:
             platform-specific. Populated on game search results only;
             absent on product payloads and hardware results.
           type: array
-          items: { type: string }
+          items:
+            type: string
+            enum: [europe, north_america, australia, new_zealand, japan, china, asia, worldwide, korea, brazil]
     CatalogPlatform:
       description: One platform-catalog row with its known aliases.
       type: object
@@ -796,7 +798,9 @@ components:
       type: object
       required: [region, date]
       properties:
-        region: { type: string }
+        region:
+          type: string
+          enum: [europe, north_america, australia, new_zealand, japan, china, asia, worldwide, korea, brazil]
         date: { type: string, format: date }
     Localization:
       description: >

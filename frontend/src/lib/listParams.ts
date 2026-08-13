@@ -1,4 +1,5 @@
 import type { paths } from '../api/schema'
+import { REGIONS } from '../gen/domain'
 
 type ListQuery = NonNullable<paths['/api/entries']['get']['parameters']['query']>
 
@@ -8,8 +9,10 @@ export type Packaging = NonNullable<ListQuery['packaging']>[number]
 // The known entry regions - the machinery key set (labels always;
 // pricing class and localization chains where a region has rows).
 // region itself is open-world on the wire; these are what the UI
-// offers first-class and what the filter buckets cover.
-export type Region = 'ntsc_u' | 'ntsc_j' | 'pal' | 'korea' | 'brazil' | 'china' | 'region_free'
+// offers first-class and what the filter buckets cover. Generated
+// from api/domain.yaml (see ../gen/domain); REGIONS re-exported below
+// for existing importers.
+export type Region = (typeof REGIONS)[number]
 export type Condition = NonNullable<ListQuery['item_condition']>[number]
 export type Sort = NonNullable<ListQuery['sort']>
 export type Order = NonNullable<ListQuery['order']>
@@ -21,7 +24,7 @@ export const PAGE_SIZE = 200
 export const ITEM_TYPES: ItemType[] = ['game', 'console', 'accessory']
 export const STATUSES: Status[] = ['backlog', 'playing', 'beaten', 'completed', 'dropped', 'shelved']
 export const PACKAGINGS: Packaging[] = ['sealed', 'cib', 'loose']
-export const REGIONS: Region[] = ['ntsc_u', 'ntsc_j', 'pal', 'korea', 'brazil', 'china', 'region_free']
+export { REGIONS }
 export const CONDITIONS: Condition[] = ['mint', 'near_mint', 'very_good', 'good', 'acceptable', 'poor']
 export const SORTS: Sort[] = ['name', 'release_date', 'purchased_at', 'created_at', 'value', 'paid', 'rating', 'backlog_rank']
 export const GROUPS: GroupBy[] = ['platform', 'status', 'item_type', 'location', 'tag']

@@ -2,6 +2,8 @@
 // No React, no Lingui: callers own rendering and translation, and this
 // module only picks which wire field to show for a given title form.
 
+import { AVAILABILITY_REGIONS, LOCALIZATION_CHAINS, REGION_CLASS, REGION_PLATFORMS, consoleRegionFor } from '../gen/domain'
+
 export type TitleForm = 'translit' | 'native'
 
 // Which title form a UI locale defaults to: translit (Latin-script
@@ -144,25 +146,17 @@ export const REGION_FROM_MATCH: Record<string, 'ntsc_u' | 'ntsc_j' | 'pal' | 're
   EU: 'pal',
 }
 
-// AVAILABILITY_REGIONS maps canonical IGDB release regions onto entry
-// regions for platformEntryRegions below. worldwide is handled there
-// by expanding to the TV-standard trio, rather than by a table row.
-// The language-market regions (korea, brazil, china) map to
-// themselves: a chip whose IGDB rows name those markets badges and
-// seeds them first-class. Extension table: one row per region.
-export const AVAILABILITY_REGIONS: Record<string, EntryRegion> = {
-  japan: 'ntsc_j', asia: 'ntsc_j', north_america: 'ntsc_u',
-  europe: 'pal', australia: 'pal', new_zealand: 'pal',
-  korea: 'korea', brazil: 'brazil', china: 'china',
-}
-
 export type EntryRegion = 'ntsc_u' | 'ntsc_j' | 'pal' | 'korea' | 'brazil' | 'china'
 
 // The TV-standard trio in REGIONS order (lib/listParams): the
 // deterministic fill order when a worldwide row expands below. A
 // worldwide release means the classic global markets - it never
 // implies a language-market (korea/brazil/china) release, so the
-// graduated three are deliberately not in this list.
+// graduated three are deliberately not in this list. worldwide has no
+// AVAILABILITY_REGIONS row (domain.yaml's release_regions omits its
+// entry_region) because it fans out to this whole trio instead of
+// picking one - a table lookup cannot express that, so the expansion
+// stays hand code here rather than moving into the generated table.
 const ENTRY_REGION_ORDER: EntryRegion[] = ['ntsc_u', 'ntsc_j', 'pal']
 
 // platformEntryRegions turns a game platform's release_regions
@@ -201,69 +195,19 @@ export function homeRegionFor(locale: string): EntryRegion | undefined {
   return LOCALE_HOME_REGIONS[locale]
 }
 
-// LOCALIZATION_CHAINS maps an entry region to its ordered localization
-// identifiers - the frontend twin of the collection service's
-// localizationChains, used to derive the wizard heading from the
-// selected region. Extension table: one row per entry region that has
-// localized bundles. china prefers Simplified script and falls back
-// to Traditional when only a zh-TW bundle exists.
-export const LOCALIZATION_CHAINS: Record<string, string[]> = {
-  ntsc_j: ['ja-JP'],
-  pal: ['EU'],
-  korea: ['ko-KR'],
-  china: ['zh-CN', 'zh-TW'],
-  brazil: ['pt-BR'],
-}
-
-// REGION_PLATFORMS defaults a custom item's region from a
-// region-specific platform pick (IGDB platform id -> entry region).
-// Seeded with the JP-market trio; ids verified against the live
-// /api/platforms catalog. A missing row costs only a missing default.
-// Extension table: one row per region-locked platform.
-export const REGION_PLATFORMS: Record<number, EntryRegion> = {
-  99: 'ntsc_j', // Family Computer
-  58: 'ntsc_j', // Super Famicom
-  51: 'ntsc_j', // Famicom Disk System
-}
-
-// JP_CONSOLE_NAMES are PriceCharting's distinct-name JP market
-// consoles - the ones filed without a "JP " prefix. Sibling of the
-// server-side tables (the enrichment match gate, the collection class
-// guard); a stale row here costs an incorrect NTSC-U tag and a
-// user-correctable wizard default, never a wrong price.
-const JP_CONSOLE_NAMES = new Set(['famicom', 'super famicom', 'famicom disk system'])
-
-// consoleRegionFor derives the entry region a PriceCharting listing
-// prices from its console-name axis: "PAL " prefix, "JP " prefix or a
-// distinct JP market name, else the NA base catalog. Hardware and
-// pc_listing rows show it as their region tag, and a hardware pick
-// seeds the wizard's region default with it - a listing prices
-// exactly one region, so any row that carries its console axis gets a
-// tag; rows without a console name get none.
-export function consoleRegionFor(consoleName: string): 'ntsc_u' | 'ntsc_j' | 'pal' {
-  const c = consoleName.trim().toLowerCase()
-  if (c.startsWith('pal ')) return 'pal'
-  if (c.startsWith('jp ') || JP_CONSOLE_NAMES.has(c)) return 'ntsc_j'
-  return 'ntsc_u'
-}
-
-// REGION_CLASS collapses an entry region to the class consoleRegionFor
-// can actually distinguish: region_free carries no console prefix of
-// its own, so it reads as the same class as ntsc_u (a listing prices
-// exactly one of the three consoleRegionFor classes - never "free").
-// korea, brazil and china also class base - PriceCharting has no axes
-// for those markets, so the base catalog is their deliberate pricing
-// proxy, and a JP or PAL listing on such an entry flags as a mismatch
-// (mirrors the collection service's regionClass).
-const REGION_CLASS: Record<string, 'base' | 'jp' | 'pal'> = {
-  ntsc_u: 'base',
-  region_free: 'base',
-  korea: 'base',
-  brazil: 'base',
-  china: 'base',
-  ntsc_j: 'jp',
-  pal: 'pal',
-}
+// LOCALIZATION_CHAINS, REGION_PLATFORMS, JP_CONSOLE_NAMES,
+// consoleRegionFor, and REGION_CLASS generate from api/domain.yaml
+// (see ../gen/domain: `task gen` regenerates it from the yaml, single
+// source of truth with the collection service's Go twins).
+// AVAILABILITY_REGIONS generates from the same yaml's release_regions
+// rows; its Go twin is regionkit.ReleaseRegionNames, which enrichment's
+// anti-drift test pins against the enrichment/bff contract enum, so
+// all three (this table, the Go map, the wire enum) move together.
+// LOCALIZATION_CHAINS, REGION_PLATFORMS, and consoleRegionFor are
+// re-exported here for existing importers; REGION_CLASS only backs
+// regionMismatch below and AVAILABILITY_REGIONS only backs
+// platformEntryRegions above, so neither is re-exported.
+export { LOCALIZATION_CHAINS, REGION_PLATFORMS, consoleRegionFor }
 
 // True when the listing's console region class and the entry's
 // region class disagree - the standing state after a region change

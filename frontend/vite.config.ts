@@ -47,9 +47,9 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**'],
-      // Entrypoint wiring and generated types are validated by the
+      // Entrypoint wiring and generated code are validated by the
       // e2e smoke and the codegen drift check, not unit tests.
-      exclude: ['src/main.tsx', 'src/api/schema.d.ts', '**/*.d.ts', 'src/test/**', '**/*.css'],
+      exclude: ['src/main.tsx', 'src/api/schema.d.ts', 'src/gen/**', '**/*.d.ts', 'src/test/**', '**/*.css'],
       thresholds: { lines: 80, branches: 80, functions: 80, statements: 80 },
     },
   },

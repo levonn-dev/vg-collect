@@ -1,0 +1,29 @@
+# Fixture for TestParseDomain_UnknownKeyInReleaseRegionsRejected: domain.yaml
+# plus a bogus key inside a release_regions row, proving KnownFields(true)
+# rejects an unrecognized field in the new section exactly like it already
+# does for the older ones.
+regions:
+  - name: ntsc_u
+    class: base
+  - name: ntsc_j
+    class: jp
+    localization_chain: [ja-JP]
+  - name: pal
+    class: pal
+    localization_chain: [EU]
+jp_console_names: [famicom]
+platforms:
+  - igdb_id: 99
+    name: Family Computer
+    region: ntsc_j
+    twin_igdb_id: 18
+  - igdb_id: 51
+    name: Famicom Disk System
+    region: ntsc_j
+release_regions:
+  - igdb_id: 2
+    name: north_america
+    entry_region: ntsc_u
+    bogus_field: oops
+  - igdb_id: 8
+    name: worldwide

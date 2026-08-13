@@ -1,0 +1,24 @@
+# Fixture for TestGenerate_RowAdditionPropagatesToBothOutputs: domain.yaml
+# plus one added region row (korea), proving a single yaml edit reaches
+# both generated outputs.
+regions:
+  - name: ntsc_u
+    class: base
+  - name: ntsc_j
+    class: jp
+    localization_chain: [ja-JP]
+  - name: pal
+    class: pal
+    localization_chain: [EU]
+  - name: korea
+    class: base
+    localization_chain: [ko-KR]
+jp_console_names: [famicom]
+platforms:
+  - igdb_id: 99
+    name: Family Computer
+    region: ntsc_j
+    twin_igdb_id: 18
+  - igdb_id: 51
+    name: Famicom Disk System
+    region: ntsc_j

@@ -1,0 +1,26 @@
+# Region and platform domain tables consumed by both Go and TypeScript.
+# Edit this file, then run `task gen`. CI fails on drift.
+regions:
+  - name: ntsc_u
+    class: base
+  - name: ntsc_j
+    class: jp
+    localization_chain: [ja-JP]
+  - name: pal
+    class: pal
+    localization_chain: [EU]
+jp_console_names: [famicom]
+platforms:
+  - igdb_id: 99
+    name: Family Computer
+    region: ntsc_j
+    twin_igdb_id: 18
+  - igdb_id: 51
+    name: Famicom Disk System
+    region: ntsc_j
+release_regions:
+  - igdb_id: 2
+    name: north_america
+    entry_region: ntsc_u
+  - igdb_id: 8
+    name: worldwide
