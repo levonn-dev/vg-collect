@@ -5,12 +5,10 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -18,25 +16,32 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/catalogval"
+	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-var (
-	currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
+var currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
 
-	packagingVals       = map[string]bool{"sealed": true, "cib": true, "loose": true}
-	conditionVals       = map[string]bool{"mint": true, "near_mint": true, "very_good": true, "good": true, "acceptable": true, "poor": true}
-	statusVals          = map[string]bool{"backlog": true, "playing": true, "beaten": true, "completed": true, "dropped": true, "shelved": true}
-	pricingVals         = map[string]bool{"auto": true, "proxy": true, "custom": true, "disabled": true}
-	matchProvenanceVals = map[string]bool{"auto": true, "user": true}
-	itemTypeVals        = map[string]bool{"game": true, "console": true, "accessory": true}
-	sortVals            = map[string]bool{"name": true, "release_date": true, "purchased_at": true, "created_at": true, "value": true, "paid": true, "rating": true, "backlog_rank": true}
-	orderVals           = map[string]bool{"asc": true, "desc": true}
-	groupVals           = map[string]bool{"platform": true, "status": true, "item_type": true, "location": true, "tag": true}
-)
+// validPackaging, validCondition, validStatus, validPricingMode, and
+// validItemType check enum membership for fields that reach this
+// package already narrowed to a plain string (entryInput and the
+// stored-view filter doc in handlers_shelves.go both erase the wire
+// type before validation runs, and one shared check covers box/manual
+// item condition alike). Each wraps a generated Valid() method instead
+// of hand-retyping the allow list; the flavor picked is byte-identical
+// in membership to every Create/Update/params sibling it stands in
+// for, so which one answers is not a behavior choice. Call sites that
+// still hold the precise generated type (params, BulkUpdateRequest)
+// call Valid() on it directly instead of routing through here.
+func validPackaging(s string) bool   { return api.EntryPackaging(s).Valid() }
+func validCondition(s string) bool   { return api.EntryItemCondition(s).Valid() }
+func validStatus(s string) bool      { return api.EntryStatus(s).Valid() }
+func validPricingMode(s string) bool { return api.EntryPricingMode(s).Valid() }
+func validItemType(s string) bool    { return api.EntryItemType(s).Valid() }
 
 // entryInput is the shared mutable field set of the create and update
 // bodies, unwrapped to plain values (defaults applied) so one
@@ -149,13 +154,6 @@ func updateInput(b api.EntryUpdate) entryInput {
 	}
 }
 
-// validCoverURL enforces the cover-link shape: https only, at most 512
-// chars. The image is never fetched server-side (SSRF surface); the
-// client renders it with a broken-image fallback.
-func validCoverURL(s string) bool {
-	return len(s) <= 512 && strings.HasPrefix(s, "https://")
-}
-
 // validateEntryInput enforces the body rules the generated layer does
 // not; a non-empty return is the 400 detail.
 func validateEntryInput(in entryInput) string {
@@ -165,19 +163,19 @@ func validateEntryInput(in entryInput) string {
 	if utf8.RuneCountInString(in.Region) > 32 {
 		return "region must be at most 32 characters"
 	}
-	if !packagingVals[in.Packaging] {
+	if !validPackaging(in.Packaging) {
 		return "packaging must be one of sealed, cib, loose"
 	}
-	if !statusVals[in.Status] {
+	if !validStatus(in.Status) {
 		return "status is not a known value"
 	}
-	if !pricingVals[in.PricingMode] {
+	if !validPricingMode(in.PricingMode) {
 		return "pricing_mode must be one of auto, proxy, custom, disabled"
 	}
 	for name, c := range map[string]*string{
 		"box_condition": in.BoxCondition, "manual_condition": in.ManualCondition, "item_condition": in.ItemCondition,
 	} {
-		if c != nil && !conditionVals[*c] {
+		if c != nil && !validCondition(*c) {
 			return name + " is not a known grade"
 		}
 	}
@@ -409,7 +407,7 @@ func validateCustomFields(body api.EntryCreate) string {
 	if utf8.RuneCountInString(*body.DisplayName) > 200 {
 		return "display_name is too long"
 	}
-	if body.ItemType == nil || !itemTypeVals[string(*body.ItemType)] {
+	if body.ItemType == nil || !body.ItemType.Valid() {
 		return "custom entries (no product_id) require item_type (game, console, or accessory)"
 	}
 	if body.PlatformName != nil && (strings.TrimSpace(*body.PlatformName) == "" || utf8.RuneCountInString(*body.PlatformName) > 100) {
@@ -418,7 +416,7 @@ func validateCustomFields(body api.EntryCreate) string {
 	if body.PlatformIgdbId != nil && (body.PlatformName == nil || strings.TrimSpace(*body.PlatformName) == "") {
 		return "platform_igdb_id requires platform_name"
 	}
-	if body.CoverUrl != nil && *body.CoverUrl != "" && !validCoverURL(*body.CoverUrl) {
+	if body.CoverUrl != nil && *body.CoverUrl != "" && !catalogval.ValidCoverURL(*body.CoverUrl) {
 		return "cover_url must be an https URL up to 512 characters"
 	}
 	return ""
@@ -436,9 +434,7 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body api.EntryCreate
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, maxBodyBytes, &body) {
 		return
 	}
 	if body.MediaType != nil && *body.MediaType != "physical" {
@@ -452,7 +448,7 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 	custom := body.ProductId == nil
 	in := createInput(body)
 	in.MatchProvenance = strDeref((*string)(body.MatchProvenance), "auto")
-	if !matchProvenanceVals[in.MatchProvenance] {
+	if !api.EntryCreateMatchProvenance(in.MatchProvenance).Valid() {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "match_provenance must be one of auto, user")
 		return
 	}
@@ -482,12 +478,12 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		e.PlatformIGDBID = body.PlatformIgdbId
 		e.CoverURL = body.CoverUrl
 		e.MatchProvenance = in.MatchProvenance
-		devs, detail := normalizeCredits("developers", body.Developers)
+		devs, detail := catalogval.NormalizeCredits("developers", body.Developers)
 		if detail != "" {
 			problem(w, r, http.StatusBadRequest, "invalid_body", detail)
 			return
 		}
-		pubs, detail := normalizeCredits("publishers", body.Publishers)
+		pubs, detail := catalogval.NormalizeCredits("publishers", body.Publishers)
 		if detail != "" {
 			problem(w, r, http.StatusBadRequest, "invalid_body", detail)
 			return
@@ -590,9 +586,7 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 	}
 
 	var body api.EntryUpdate
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, maxBodyBytes, &body) {
 		return
 	}
 	in := updateInput(body)
@@ -628,7 +622,7 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 			problem(w, r, http.StatusBadRequest, "invalid_body", "platform_igdb_id requires platform_name")
 			return
 		}
-		if body.CoverUrl != nil && *body.CoverUrl != "" && !validCoverURL(*body.CoverUrl) {
+		if body.CoverUrl != nil && *body.CoverUrl != "" && !catalogval.ValidCoverURL(*body.CoverUrl) {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "cover_url must be an https URL up to 512 characters")
 			return
 		}
@@ -787,12 +781,12 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		e.FirstReleaseDate = dateToTime(body.FirstReleaseDate)
 		e.PlatformIGDBID = body.PlatformIgdbId
 		e.CoverURL = body.CoverUrl
-		devs, detail := normalizeCredits("developers", body.Developers)
+		devs, detail := catalogval.NormalizeCredits("developers", body.Developers)
 		if detail != "" {
 			problem(w, r, http.StatusBadRequest, "invalid_body", detail)
 			return
 		}
-		pubs, detail := normalizeCredits("publishers", body.Publishers)
+		pubs, detail := catalogval.NormalizeCredits("publishers", body.Publishers)
 		if detail != "" {
 			problem(w, r, http.StatusBadRequest, "invalid_body", detail)
 			return
@@ -880,9 +874,7 @@ func (h *Handlers) ReorderEntry(w http.ResponseWriter, r *http.Request, entryId 
 		return
 	}
 	var body api.ReorderRequest
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, maxBodyBytes, &body) {
 		return
 	}
 	if body.AfterId == nil && body.BeforeId == nil {
@@ -932,7 +924,7 @@ func validateBulkUpdate(body api.BulkUpdateRequest) string {
 	if body.RemoveTagIds != nil && len(*body.RemoveTagIds) > bulkTagArrayCap {
 		return "remove_tag_ids must contain at most 50 entries"
 	}
-	if body.Status != nil && !statusVals[string(*body.Status)] {
+	if body.Status != nil && !body.Status.Valid() {
 		return "status is not a known value"
 	}
 	if body.StorageLocation != nil && utf8.RuneCountInString(*body.StorageLocation) > 200 {
@@ -956,9 +948,7 @@ func (h *Handlers) BulkUpdateEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body api.BulkUpdateRequest
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "malformed JSON body")
+	if !httpkit.DecodeBody(w, r, maxBodyBytes, &body) {
 		return
 	}
 	if detail := validateBulkUpdate(body); detail != "" {
@@ -987,269 +977,4 @@ func (h *Handlers) BulkUpdateEntries(w http.ResponseWriter, r *http.Request) {
 	}
 	h.invalidateDashboard(r.Context(), userID)
 	writeJSON(w, http.StatusOK, api.BulkUpdateResult{UpdatedCount: count})
-}
-
-// listParams validates and converts the generated query params (the
-// generated layer binds but does not enforce enum membership or
-// ranges). Returns filters, groupBy, limit, offset, and the 400
-// detail (empty means valid).
-func listParams(params api.ListEntriesParams) (store.Filters, string, int, int, string) {
-	f := store.Filters{Sort: "created_at", Order: "desc"}
-	if params.ItemType != nil {
-		for _, v := range *params.ItemType {
-			if !itemTypeVals[string(v)] {
-				return f, "", 0, 0, "item_type contains an unknown value"
-			}
-			f.ItemTypes = append(f.ItemTypes, string(v))
-		}
-	}
-	if params.Status != nil {
-		for _, v := range *params.Status {
-			if !statusVals[string(v)] {
-				return f, "", 0, 0, "status contains an unknown value"
-			}
-			f.Statuses = append(f.Statuses, string(v))
-		}
-	}
-	if params.Packaging != nil {
-		for _, v := range *params.Packaging {
-			if !packagingVals[string(v)] {
-				return f, "", 0, 0, "packaging contains an unknown value"
-			}
-			f.Packagings = append(f.Packagings, string(v))
-		}
-	}
-	if params.Region != nil {
-		for _, v := range *params.Region {
-			f.Regions = append(f.Regions, string(v))
-		}
-	}
-	// Credits are open-world snapshot facts (IGDB and community names
-	// alike): no allowed set to gate against, same as region.
-	if params.Developer != nil {
-		f.Developers = *params.Developer
-	}
-	if params.Publisher != nil {
-		f.Publishers = *params.Publisher
-	}
-	if params.ItemCondition != nil {
-		for _, v := range *params.ItemCondition {
-			if !conditionVals[string(v)] {
-				return f, "", 0, 0, "item_condition contains an unknown value"
-			}
-			f.ItemConditions = append(f.ItemConditions, string(v))
-		}
-	}
-	if params.PlatformId != nil {
-		f.PlatformIDs = *params.PlatformId
-	}
-	if params.TagId != nil {
-		f.TagIDs = *params.TagId
-	}
-	if params.Sort != nil {
-		if !sortVals[string(*params.Sort)] {
-			return f, "", 0, 0, "sort is not a known value"
-		}
-		f.Sort = string(*params.Sort)
-	}
-	if params.Order != nil {
-		if !orderVals[string(*params.Order)] {
-			return f, "", 0, 0, "order must be asc or desc"
-		}
-		f.Order = string(*params.Order)
-	}
-	groupBy := ""
-	if params.GroupBy != nil {
-		if !groupVals[string(*params.GroupBy)] {
-			return f, "", 0, 0, "group_by is not a known value"
-		}
-		groupBy = string(*params.GroupBy)
-	}
-	limit, offset := 200, 0
-	if params.Limit != nil {
-		if *params.Limit < 1 || *params.Limit > 500 {
-			return f, "", 0, 0, "limit must be between 1 and 500"
-		}
-		limit = *params.Limit
-	}
-	if params.Offset != nil {
-		if *params.Offset < 0 {
-			return f, "", 0, 0, "offset must not be negative"
-		}
-		offset = *params.Offset
-	}
-	return f, groupBy, limit, offset, ""
-}
-
-// sortEntriesByValue re-sorts in memory after price composition:
-// pinned first, then value with nulls last, then the standard
-// tiebreak. Stable, so equal keys keep the SQL base order.
-func sortEntriesByValue(entries []store.Entry, values map[uuid.UUID]*int64, order string) {
-	sort.SliceStable(entries, func(i, j int) bool {
-		if entries[i].Pinned != entries[j].Pinned {
-			return entries[i].Pinned
-		}
-		vi, vj := values[entries[i].ID], values[entries[j].ID]
-		switch {
-		case vi == nil && vj == nil:
-			// fall through to the tiebreak
-		case vi == nil:
-			return false // nulls last in both directions
-		case vj == nil:
-			return true
-		case *vi != *vj:
-			if order == "desc" {
-				return *vi > *vj
-			}
-			return *vi < *vj
-		}
-		if !entries[i].CreatedAt.Equal(entries[j].CreatedAt) {
-			return entries[i].CreatedAt.After(entries[j].CreatedAt)
-		}
-		return entries[i].ID.String() < entries[j].ID.String()
-	})
-}
-
-// groupLabels names the group(s) an entry belongs to; group_by=tag
-// repeats a multi-tagged entry in each of its tag groups.
-func groupLabels(e store.Entry, groupBy string) []string {
-	switch groupBy {
-	case "platform":
-		if e.PlatformName != nil {
-			return []string{*e.PlatformName}
-		}
-		return []string{"Unknown"}
-	case "status":
-		return []string{e.Status}
-	case "item_type":
-		return []string{e.ItemType}
-	case "location":
-		if e.StorageLocation != nil && *e.StorageLocation != "" {
-			return []string{*e.StorageLocation}
-		}
-		return []string{"Unassigned"}
-	default: // tag
-		if len(e.Tags) == 0 {
-			return []string{"Untagged"}
-		}
-		labels := make([]string, len(e.Tags))
-		for i, t := range e.Tags {
-			labels[i] = t.Name
-		}
-		return labels
-	}
-}
-
-var catchAllLabels = map[string]bool{"Unknown": true, "Unassigned": true, "Untagged": true}
-
-// buildGroups partitions the sorted entries, preserving order within
-// each group; groups sort by label ascending with the catch-all last.
-func buildGroups(entries []store.Entry, apiEntries []api.Entry, groupBy string) []api.EntryGroup {
-	byLabel := map[string][]api.Entry{}
-	for i, e := range entries {
-		for _, label := range groupLabels(e, groupBy) {
-			byLabel[label] = append(byLabel[label], apiEntries[i])
-		}
-	}
-	labels := make([]string, 0, len(byLabel))
-	for label := range byLabel {
-		labels = append(labels, label)
-	}
-	sort.Slice(labels, func(i, j int) bool {
-		ci, cj := catchAllLabels[labels[i]], catchAllLabels[labels[j]]
-		if ci != cj {
-			return cj // catch-all sorts last
-		}
-		return strings.ToLower(labels[i]) < strings.ToLower(labels[j])
-	})
-	groups := make([]api.EntryGroup, len(labels))
-	for i, label := range labels {
-		groups[i] = api.EntryGroup{Key: label, Label: label, Entries: byLabel[label]}
-	}
-	return groups
-}
-
-// ListEntries answers one page of the filter x sort x group matrix.
-// The full filtered set is fetched and sorted (person-scale by
-// design: pagination bounds payloads, not queries), total_count is
-// taken, then the page sliced. Prices arrive in one batched call -
-// over every effective id when sorting by value (the order needs them
-// all), otherwise over the page only. Enrichment being down degrades
-// to pricing_available=false, never a failure.
-func (h *Handlers) ListEntries(w http.ResponseWriter, r *http.Request, params api.ListEntriesParams) {
-	userID, bearer, ok := h.caller(w, r)
-	if !ok {
-		return
-	}
-	f, groupBy, limit, offset, detail := listParams(params)
-	if detail != "" {
-		problem(w, r, http.StatusBadRequest, "invalid_param", detail)
-		return
-	}
-	entries, err := h.store.ListEntries(r.Context(), userID, f)
-	if err != nil {
-		h.internalError(w, r, "list failed", err)
-		return
-	}
-
-	pricingAvailable := true
-	values := map[uuid.UUID]*int64{}
-	compose := func(subset []store.Entry) {
-		var ids []uuid.UUID
-		for _, e := range subset {
-			if e.PricingMode == "custom" {
-				values[e.ID] = e.CustomValueCents
-				continue
-			}
-			if id := effectiveProductID(e.PricingMode, e.ProductID, e.PricingProductID); id != nil {
-				ids = append(ids, *id)
-			}
-		}
-		if len(ids) == 0 {
-			return
-		}
-		prices, err := h.enrichment.BatchPrices(r.Context(), bearer, ids)
-		h.composeEvent(r.Context(), "list", err)
-		if err != nil {
-			pricingAvailable = false
-			h.logger.WarnContext(r.Context(), "list value composition unavailable", "err", err)
-			return
-		}
-		for _, e := range subset {
-			if e.PricingMode == "custom" {
-				continue
-			}
-			if id := effectiveProductID(e.PricingMode, e.ProductID, e.PricingProductID); id != nil {
-				if p, okPrice := prices[id.String()]; okPrice {
-					values[e.ID] = valueForPackaging(e.Packaging, p)
-				}
-			}
-		}
-	}
-	if f.Sort == "value" {
-		compose(entries)
-		sortEntriesByValue(entries, values, f.Order)
-	}
-
-	total := len(entries)
-	// offset has no contract upper bound; clamp into range before adding
-	// limit so the sum can never overflow.
-	start := min(offset, total)
-	page := entries[start:min(start+limit, total)]
-	if f.Sort != "value" {
-		compose(page)
-	}
-
-	apiEntries := make([]api.Entry, len(page))
-	for i, e := range page {
-		apiEntries[i] = toAPIEntry(e, values[e.ID])
-	}
-	out := api.EntryList{PricingAvailable: pricingAvailable, TotalCount: total}
-	if groupBy == "" {
-		out.Entries = &apiEntries
-	} else {
-		groups := buildGroups(page, apiEntries, groupBy)
-		out.Groups = &groups
-	}
-	writeJSON(w, http.StatusOK, out)
 }
