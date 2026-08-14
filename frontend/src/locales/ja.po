@@ -1543,13 +1543,11 @@ msgstr "価格ソース：<0>{proxyName}</0>"
 msgid "PriceCharting does not know that listing."
 msgstr "PriceChartingにそのリスティングは存在しません。"
 
-#: src/components/entry/PricingPanel.tsx
-#: src/components/wizard/ConfirmStep.tsx
+#: src/components/MatchStatusCard.tsx
 msgid "Priced as \"{pcName}\" ({consoleName}) - match {confidence}%, verified."
 msgstr "「{pcName}」（{consoleName}）の価格を参照しています。一致度{confidence}%、確認済み。"
 
-#: src/components/entry/PricingPanel.tsx
-#: src/components/wizard/ConfirmStep.tsx
+#: src/components/MatchStatusCard.tsx
 msgid "Priced as \"{pcName}\" ({consoleName}) - match {confidence}%."
 msgstr "「{pcName}」（{consoleName}）の価格を参照しています。一致度{confidence}%。"
 

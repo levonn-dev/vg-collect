@@ -9,6 +9,7 @@ import type { ManualMatch } from '../../lib/catalog'
 import { resolveRequestFor } from '../../lib/catalog'
 import { invalidateEntryQueries } from '../../lib/entryQueries'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
+import MatchStatusCard from '../MatchStatusCard'
 import type { CatalogPick } from '../catalog/SearchPicker'
 import type { DetailsValues } from './DetailsStep'
 import { detailsToCreate } from './DetailsStep'
@@ -87,9 +88,6 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
 
   const p = product.data
   const pc = p.pricecharting
-  const pcName = pc?.pc_name
-  const consoleName = pc?.console_name
-  const confidence = pc ? Math.round(pc.match_confidence * 100) : undefined
   return (
     <ConfirmShell
       ariaLabel={t`Confirm`}
@@ -112,18 +110,7 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
           onClose={() => setMatchOpen(false)}
         />
       ) : pc ? (
-        <div className="rounded bg-green-50 p-3 text-sm text-green-800">
-          <p>
-            {pc.verified ? (
-              <Trans>
-                Priced as "{pcName}" ({consoleName}) - match {confidence}%, verified.
-              </Trans>
-            ) : (
-              <Trans>
-                Priced as "{pcName}" ({consoleName}) - match {confidence}%.
-              </Trans>
-            )}
-          </p>
+        <MatchStatusCard pc={pc} showPrices={false}>
           {pick.kind === 'game' && (
             <button
               type="button"
@@ -133,7 +120,7 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
               <Trans>Change listing</Trans>
             </button>
           )}
-        </div>
+        </MatchStatusCard>
       ) : (
         <div className="rounded bg-gray-50 p-3 text-sm text-gray-600">
           <p><Trans>No confirmed price listing yet - market value stays empty until a match is made.</Trans></p>

@@ -1543,13 +1543,11 @@ msgstr "Price source: <0>{proxyName}</0>"
 msgid "PriceCharting does not know that listing."
 msgstr "PriceCharting does not know that listing."
 
-#: src/components/entry/PricingPanel.tsx
-#: src/components/wizard/ConfirmStep.tsx
+#: src/components/MatchStatusCard.tsx
 msgid "Priced as \"{pcName}\" ({consoleName}) - match {confidence}%, verified."
 msgstr "Priced as \"{pcName}\" ({consoleName}) - match {confidence}%, verified."
 
-#: src/components/entry/PricingPanel.tsx
-#: src/components/wizard/ConfirmStep.tsx
+#: src/components/MatchStatusCard.tsx
 msgid "Priced as \"{pcName}\" ({consoleName}) - match {confidence}%."
 msgstr "Priced as \"{pcName}\" ({consoleName}) - match {confidence}%."
 

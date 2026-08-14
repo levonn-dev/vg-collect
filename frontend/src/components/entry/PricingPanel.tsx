@@ -11,17 +11,16 @@ import { entryToUpdate } from '../../lib/entryUpdate'
 import { dollarsToCents, formatCents } from '../../lib/format'
 import { renderQueryState } from '../../lib/queryBoundary'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
-import PriceTriple from '../PriceTriple'
+import MatchStatusCard from '../MatchStatusCard'
 import SectionLabel from '../SectionLabel'
 import ManualMatchPicker from '../wizard/ManualMatchPicker'
 import ProxyPicker from './ProxyPicker'
 
-// MatchCard renders entirely through Trans, which subscribes to the
-// locale context itself and does not depend on its caller re-rendering
-// to stay live (contrast rowMeta.tsx, a non-component helper with no
-// such subscription of its own).
+// MatchCard owns the no-match paragraph itself (a bare <p>, unlike
+// ConfirmStep's boxed gray branch below it) and otherwise defers to
+// the shared status card, with prices on - the one difference from
+// ConfirmStep's own (prices-off) use of that same card.
 function MatchCard({ product }: { product: Product }) {
-  const money = useDisplayMoney()
   const pc = product.pricecharting
   if (!pc) {
     return (
@@ -30,28 +29,7 @@ function MatchCard({ product }: { product: Product }) {
       </p>
     )
   }
-  const pcName = pc.pc_name
-  const consoleName = pc.console_name
-  const confidence = Math.round(pc.match_confidence * 100)
-  const loose = money.format(pc.loose_cents) ?? '-'
-  const cib = money.format(pc.cib_cents) ?? '-'
-  const newPrice = money.format(pc.new_cents) ?? '-'
-  return (
-    <div className="rounded bg-green-50 p-3 text-sm text-green-800">
-      <p>
-        {pc.verified ? (
-          <Trans>
-            Priced as "{pcName}" ({consoleName}) - match {confidence}%, verified.
-          </Trans>
-        ) : (
-          <Trans>
-            Priced as "{pcName}" ({consoleName}) - match {confidence}%.
-          </Trans>
-        )}
-      </p>
-      <PriceTriple loose={loose} cib={cib} newPrice={newPrice} className="mt-1 text-xs text-green-800" />
-    </div>
-  )
+  return <MatchStatusCard pc={pc} showPrices />
 }
 
 // The pricing slice of the entry form's draft. customValue is the
