@@ -14,8 +14,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 
+	"github.com/levonn-dev/vgkeep/libs/go/mongokit"
 	"github.com/levonn-dev/vgkeep/libs/go/mongotest"
-	"github.com/levonn-dev/vgkeep/services/enrichment/internal/db"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 	"github.com/levonn-dev/vgkeep/services/enrichment/migrations"
@@ -31,7 +31,7 @@ func newTestStore(t *testing.T) (*store.Store, *mongo.Database) {
 	t.Helper()
 	ctx := context.Background()
 	url := mongotest.URL(t)
-	client, err := db.Connect(ctx, url)
+	client, err := mongokit.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func newTestStore(t *testing.T) (*store.Store, *mongo.Database) {
 	if err := client.Database("enrichment").Drop(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Migrate(ctx, url, "enrichment", migrations.FS, "."); err != nil {
+	if err := mongokit.Migrate(ctx, url, "enrichment", migrations.FS, "."); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	mdb := client.Database("enrichment")
@@ -748,7 +748,7 @@ func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := db.Connect(ctx, url)
+	client, err := mongokit.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -853,7 +853,7 @@ func TestMigration_CommunityRegionMovesIntoBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := db.Connect(ctx, url)
+	client, err := mongokit.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,9 +1,16 @@
-// Package db owns the enrichment service's MongoDB bootstrap:
-// construction, OTel instrumentation, migration running, and health.
-// Queries live in internal/store. This mirrors the datastore-kit scope
-// (pgkit/valkeykit) without being a shared lib, because enrichment is
-// the only document-store consumer.
-package db
+// Package mongokit constructs OTel-instrumented MongoDB clients for
+// per-service document stores, runs each service's embedded
+// golang-migrate migrations, and verifies health. ComposeURL folds
+// optional MONGO_USERNAME/MONGO_PASSWORD credentials into a base
+// connection URL, injecting them as userinfo when both are set and
+// leaving baseURL unchanged otherwise. Migrate applies a service's
+// up-migrations from an embedded iofs.FS and is idempotent (a
+// no-change run is success); concurrent runners (e.g. two replicas'
+// init containers) serialize on the driver's advisory-lock
+// collection. Construction, instrumentation, migration running, and
+// health live here; queries, collections, and indexes stay in each
+// consumer's store layer.
+package mongokit
 
 import (
 	"context"

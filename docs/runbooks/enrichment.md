@@ -143,10 +143,11 @@ every other migrate-capable service).
 Health endpoints, outside JWT auth:
 
 - `GET /healthz` answers 200 whenever the process is up.
-- `GET /readyz` pings Mongo primary and nothing else. Mongo is the
-  hard dependency; Valkey is deliberately absent because every cache
-  call fails open. A Mongo outage therefore takes the pod out of
-  Service endpoints after the probe's failure threshold.
+- `GET /readyz` pings Mongo primary via mongokit.Health and nothing
+  else. Mongo is the hard dependency; Valkey is deliberately absent
+  because every cache call fails open. A Mongo outage therefore takes
+  the pod out of Service endpoints after the probe's failure
+  threshold.
 
 `POST /internal/refresh` sits behind the same blanket JWT middleware
 as every other route (no more standing shared secret at this service):
@@ -156,10 +157,11 @@ and only a service token minted by auth's `/internal/service-token`
 passes. The NetworkPolicy stays the outer layer.
 
 Migrate mode: `enrichment migrate` loads the full config, runs the
-embedded migrations (golang-migrate, mongodb driver, JSON arrays of
-runCommand documents in `services/enrichment/migrations/`) and exits.
-The deployment runs it as an init container with the same env anchor
-as the app, so every rollout migrates before serving.
+embedded migrations via mongokit.Migrate (golang-migrate, mongodb
+driver, JSON arrays of runCommand documents in
+`services/enrichment/migrations/`) and exits. The deployment runs it
+as an init container with the same env anchor as the app, so every
+rollout migrates before serving.
 
 Startup order matters at boot only: main connects and pings Mongo,
 then Valkey, and exits on either failure (crash loop with backoff

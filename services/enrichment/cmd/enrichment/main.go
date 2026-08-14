@@ -15,11 +15,11 @@ import (
 
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
+	"github.com/levonn-dev/vgkeep/libs/go/mongokit"
 	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/cache"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/config"
-	"github.com/levonn-dev/vgkeep/services/enrichment/internal/db"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/fx"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
@@ -43,13 +43,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	mongoURL, err := db.ComposeURL(cfg.MongoURL, cfg.MongoUsername, cfg.MongoPassword)
+	mongoURL, err := mongokit.ComposeURL(cfg.MongoURL, cfg.MongoUsername, cfg.MongoPassword)
 	if err != nil {
 		return err
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
-		return db.Migrate(ctx, mongoURL, cfg.MongoDB, migrations.FS, ".")
+		return mongokit.Migrate(ctx, mongoURL, cfg.MongoDB, migrations.FS, ".")
 	}
 
 	shutdown, err := vgotel.Setup(ctx, vgotel.Config{ServiceName: "enrichment", Version: cfg.Version})
@@ -58,7 +58,7 @@ func run() error {
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
-	client, err := db.Connect(ctx, mongoURL)
+	client, err := mongokit.Connect(ctx, mongoURL)
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func run() error {
 	// Readiness = Mongo only: the catalog is a hard dependency, the
 	// cache fails open per-request.
 	router := server.NewRouter(h, v, slog.Default(),
-		func(c context.Context) error { return db.Health(c, client) })
+		func(c context.Context) error { return mongokit.Health(c, client) })
 
 	srv := httpkit.NewServer(cfg.HTTPAddr, router)
 	defer func() { _ = srv.Close() }() // idempotent after Run; closes on every exit path

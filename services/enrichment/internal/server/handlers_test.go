@@ -11,12 +11,12 @@ import (
 
 	"go.mongodb.org/mongo-driver/mongo"
 
+	"github.com/levonn-dev/vgkeep/libs/go/mongokit"
 	"github.com/levonn-dev/vgkeep/libs/go/mongotest"
 	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeytest"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/cache"
-	"github.com/levonn-dev/vgkeep/services/enrichment/internal/db"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/fx"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
@@ -481,7 +481,7 @@ func newStack(t *testing.T) *stack {
 	ctx := context.Background()
 
 	url := mongotest.URL(t)
-	mclient, err := db.Connect(ctx, url)
+	mclient, err := mongokit.Connect(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +489,7 @@ func newStack(t *testing.T) *stack {
 	if err := mclient.Database("enrichment").Drop(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Migrate(ctx, url, "enrichment", migrations.FS, "."); err != nil {
+	if err := mongokit.Migrate(ctx, url, "enrichment", migrations.FS, "."); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	mdb := mclient.Database("enrichment")
@@ -526,7 +526,7 @@ func newStack(t *testing.T) *stack {
 		Logger:           slog.New(slog.DiscardHandler),
 	})
 	router := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler),
-		func(c context.Context) error { return db.Health(c, mclient) })
+		func(c context.Context) error { return mongokit.Health(c, mclient) })
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
