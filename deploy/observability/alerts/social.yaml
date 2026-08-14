@@ -1,0 +1,18 @@
+service: social
+# social's availability instantiation reproduces vg-social-down exactly
+# (uid, title, expr, for, noDataState, severity): the template's own
+# comment in alerts/golden.yaml records that every one of those field
+# values was lifted verbatim from social's rule as it ran before this
+# template had other instantiators. summary is the one field this
+# service overrides rather than takes from the template: the template's
+# own summary is now datastore-neutral (bff and enrichment instantiate
+# it too, and neither runs Postgres), so this override restores
+# social's own original wording verbatim - the exact text
+# vg-social-down's summary carried before this template existed. social
+# carries no alerts of its own, so its two golden instantiations are
+# its whole rule set.
+golden:
+  availability:
+    summary: "social is down or its postgres exporter cannot reach it"
+  pdb_budget: {}
+alerts: []

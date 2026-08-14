@@ -1,0 +1,50 @@
+group:
+  name: vgkeep
+  folder: vgkeep
+  interval: 1m
+datasource: prometheus
+services: [auth, bff, collection, enrichment, social, user]
+external_metric_prefixes: [kube_, node_, up]
+templates:
+  # Most fields below are lifted verbatim from vg-social-down (social
+  # was this template's only instantiator before the availability
+  # golden panel existed): title uses the lowercase {service} form
+  # (today's title is "social service down", not "Social service
+  # down"), severity is page (not crit - this rule set only ever uses
+  # page/warn). summary is the one field NOT lifted from social's own
+  # wording: it names the datastore-neutral truth ("metrics exporters",
+  # not "postgres exporter") because bff (Valkey only, no Postgres) and
+  # enrichment (Mongo+Valkey, no Postgres) also instantiate this
+  # template now - alerts/social.yaml carries social's own original
+  # wording back as an explicit summary override instead, so
+  # vg-social-down itself stays field-identical to what was live before
+  # this template grew a shared runbook section and panel. runbook and
+  # panel_ref now point at that shared golden-block section/panel
+  # (dashboards/golden.yaml's Availability panel; stack.md's "Service
+  # down" section) instead of social's own runbook page, since every
+  # service instantiates this template with the identical query shape.
+  availability:
+    uid: vg-{service}-down
+    title: "{service} service down"
+    expr: up{namespace="vgkeep", pod=~"{service}-.*"}
+    condition: lt 1
+    instant: true
+    for: 2m
+    noDataState: Alerting
+    execErrState: Error
+    severity: page
+    summary: "{service} is down or its metrics exporters cannot reach it"
+    runbook: stack.md#service-down
+    panel_ref: "{service}/Availability"
+  pdb_budget:
+    uid: vg-{service}-pdb-exhausted
+    title: "{Service} disruption budget exhausted"
+    expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"{service}.*"})
+    condition: lt 1
+    instant: true
+    for: 1h
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: "{service} (or one of its datastores) cannot tolerate any pod disruption"
+    runbook: stack.md#pdb-exhausted

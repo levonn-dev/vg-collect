@@ -1,0 +1,46 @@
+# Golden block: panels present in ALL SIX dashboards with only
+# {service}/{Service}-substitutable differences. Derivation (the
+# dashboard migration): every candidate concept (request rate by
+# route, 5xx ratio, latency p95/p99, errors by route/status,
+# goroutines, heap, pod CPU/memory/restarts, recent error logs) was
+# checked mechanically against all six dashboards and DISQUALIFIED -
+# each one differs across dashboards by more than title wording
+# (gridPos shifts from differing custom-panel layouts, and in
+# several cases real query differences: pod=~"X-.*" vs pod=~"X.*" vs
+# container="X"; ERROR vs ERROR|WARN; an added OOM-kill target). Every
+# one of those panels therefore lives in its own service manifest as
+# a verbatim custom panel instead.
+#
+# Availability is the one exception: a net-new panel (no HEAD
+# dashboard had one), authored directly into this shared block so the
+# availability golden alert template has a real panel_ref target
+# (every service instantiates the same up{} query against its own pod
+# prefix, so it is six-way common by construction, not derived from
+# existing content). Provisioned Grafana dashboards render panels at
+# their literal gridPos - there is no runtime vertical compaction - so
+# y must be at or beyond the tallest dashboard's last occupied row
+# (max(gridPos.y + gridPos.h) across that dashboard's other panels),
+# or this panel overlaps real content on any shorter dashboard. That
+# maximum is currently 128 (enrichment, "Normalize sweeps (rows/night
+# by outcome)" at y:120 h:8); y:128 below is exactly that bound, so
+# this panel starts flush at the end of the tallest dashboard's
+# content and appears as empty grid rows above it on the other five,
+# which is harmless - an overlap is not.
+panels:
+  - |
+    {
+      "type": "timeseries",
+      "title": "Availability",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 128 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "up{namespace=\"vgkeep\", pod=~\"{service}-.*\"}",
+          "legendFormat": "{{pod}}",
+          "exemplar": false
+        }
+      ]
+    }

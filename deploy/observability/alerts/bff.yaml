@@ -1,0 +1,41 @@
+service: bff
+golden:
+  availability: {}
+  pdb_budget: {}
+alerts:
+  - uid: vg-denylist-failopen
+    title: BFF denylist failing open
+    expr: sum(increase(vg_bff_cache_fail_open_total{op=~"denylist_.*"}[10m]))
+    condition: gt 0
+    instant: true
+    range: 10m
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    severity: page
+    summary: revoked-token checks are being skipped because Valkey is unreachable
+    runbook: bff.md#1-valkey-unreachable
+  - uid: vg-bff-refresh-failures
+    title: BFF session refresh failures spiking
+    expr: sum(increase(vg_bff_session_refreshes_total{outcome=~"rejected|reuse_revoked|failed"}[10m]))
+    condition: gt 10
+    instant: true
+    range: 10m
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: bff session refreshes are failing; users are being logged out
+    runbook: bff.md#3-refresh-failure-storm-mass-logout
+  - uid: vg-bff-valkey-pool-timeouts
+    title: BFF Valkey client pool exhausted
+    expr: sum(increase(vg_valkeykit_pool_timeouts_total{service_name="bff"}[10m]))
+    condition: gt 0
+    instant: true
+    range: 10m
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: bff callers are timing out waiting for a Valkey pool connection
+    runbook: bff.md#5-valkey-client-pool-exhaustion

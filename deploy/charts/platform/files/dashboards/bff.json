@@ -1,28 +1,56 @@
 {
   "uid": "vg-bff",
   "title": "Bff Service",
+  "description": "Generated from deploy/observability/. Do not edit by hand.",
   "schemaVersion": 39,
   "editable": true,
   "timezone": "browser",
-  "time": { "from": "now-1h", "to": "now" },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "refresh": "30s",
-  "tags": ["vgkeep"],
+  "tags": [
+    "vgkeep"
+  ],
   "templating": {
     "list": []
   },
   "panels": [
     {
       "id": 1,
-      "type": "stat",
-      "title": "Request rate",
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "type": "timeseries",
+      "title": "Availability",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 128
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "fieldConfig": {
         "defaults": {
-          "unit": "reqps",
+          "unit": "short",
           "thresholds": {
             "mode": "absolute",
-            "steps": [{ "color": "green", "value": null }]
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line"
+            }
           }
         },
         "overrides": []
@@ -30,8 +58,12 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(http_server_request_duration_seconds_count{service_name=\"bff\"}[5m]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "up{namespace=\"vgkeep\", pod=~\"bff-.*\"}",
+          "legendFormat": "{{pod}}",
           "exemplar": false
         }
       ]
@@ -39,17 +71,27 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "5xx ratio",
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "title": "Request rate",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit",
+          "unit": "reqps",
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 0.05 }
+              {
+                "color": "green",
+                "value": null
+              }
             ]
           }
         },
@@ -58,8 +100,11 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(http_server_request_duration_seconds_count{service_name=\"bff\",http_response_status_code=~\"5..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"bff\"}[5m]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(http_server_request_duration_seconds_count{service_name=\"bff\"}[5m]))",
           "exemplar": false
         }
       ]
@@ -67,17 +112,31 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "p99 latency",
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "title": "5xx ratio",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "percentunit",
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.5 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
             ]
           }
         },
@@ -86,25 +145,56 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"bff\"}[5m])))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(http_server_request_duration_seconds_count{service_name=\"bff\",http_response_status_code=~\"5..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"bff\"}[5m]))",
           "exemplar": false
         }
       ]
     },
     {
       "id": 4,
-      "type": "timeseries",
-      "title": "Request rate by route",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "type": "stat",
+      "title": "p99 latency",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name=\"bff\"}[$__rate_interval]))",
-          "legendFormat": "{{http_route}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"bff\"}[5m])))",
           "exemplar": false
         }
       ]
@@ -112,16 +202,32 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Errors by route and status",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "title": "Request rate by route",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name=\"bff\",http_response_status_code=~\"4..|5..\"}[$__rate_interval]))",
-          "legendFormat": "{{http_route}} {{http_response_status_code}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name=\"bff\"}[$__rate_interval]))",
+          "legendFormat": "{{http_route}}",
           "exemplar": false
         }
       ]
@@ -129,21 +235,73 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Latency by route p95/p99",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "title": "Errors by route and status",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name=\"bff\",http_response_status_code=~\"4..|5..\"}[$__rate_interval]))",
+          "legendFormat": "{{http_route}} {{http_response_status_code}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Latency by route p95/p99",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name=\"bff\"}[$__rate_interval])))",
           "legendFormat": "p95 {{http_route}}",
           "exemplar": true
         },
         {
           "refId": "B",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name=\"bff\"}[$__rate_interval])))",
           "legendFormat": "p99 {{http_route}}",
           "exemplar": true
@@ -151,16 +309,32 @@
       ]
     },
     {
-      "id": 7,
+      "id": 8,
       "type": "timeseries",
       "title": "Login and link outcomes",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "sum by (flow, outcome) (increase(vg_bff_auth_logins_total[5m]))",
           "legendFormat": "{{flow}} {{outcome}}",
           "exemplar": false
@@ -168,16 +342,32 @@
       ]
     },
     {
-      "id": 8,
+      "id": 9,
       "type": "timeseries",
       "title": "Session refresh outcomes",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "sum by (outcome) (increase(vg_bff_session_refreshes_total[5m]))",
           "legendFormat": "{{outcome}}",
           "exemplar": false
@@ -185,16 +375,32 @@
       ]
     },
     {
-      "id": 9,
+      "id": 10,
       "type": "timeseries",
       "title": "Composition cache hit ratio (me, recs)",
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 28 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 28
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "sum by (cache) (rate(vg_bff_cache_lookups_total{outcome=\"hit\"}[5m])) / sum by (cache) (rate(vg_bff_cache_lookups_total[5m]))",
           "legendFormat": "{{cache}}",
           "exemplar": false
@@ -202,16 +408,32 @@
       ]
     },
     {
-      "id": 10,
+      "id": 11,
       "type": "timeseries",
       "title": "Valkey fail-open events by op",
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 28 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 28
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "sum by (op) (increase(vg_bff_cache_fail_open_total[5m]))",
           "legendFormat": "{{op}}",
           "exemplar": false
@@ -219,16 +441,32 @@
       ]
     },
     {
-      "id": 11,
+      "id": 12,
       "type": "timeseries",
       "title": "Browser telemetry relay responses by route",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 28 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 28
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name=\"bff\",http_route=~\"POST /api/otlp/v1/(traces|metrics)\"}[$__rate_interval]))",
           "legendFormat": "{{http_route}} {{http_response_status_code}}",
           "exemplar": false
@@ -236,23 +474,42 @@
       ]
     },
     {
-      "id": 12,
+      "id": 13,
       "type": "timeseries",
       "title": "Valkey client pool connections",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "vg_valkeykit_pool_connections{service_name=\"bff\"}",
           "legendFormat": "open",
           "exemplar": false
         },
         {
           "refId": "B",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "vg_valkeykit_pool_connections_idle{service_name=\"bff\"}",
           "legendFormat": "idle",
           "exemplar": false
@@ -260,30 +517,52 @@
       ]
     },
     {
-      "id": 13,
+      "id": 14,
       "type": "timeseries",
       "title": "Valkey pool acquire outcomes",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 36
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "rate(vg_valkeykit_pool_hits_total{service_name=\"bff\"}[$__rate_interval])",
           "legendFormat": "hits",
           "exemplar": false
         },
         {
           "refId": "B",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "rate(vg_valkeykit_pool_misses_total{service_name=\"bff\"}[$__rate_interval])",
           "legendFormat": "misses",
           "exemplar": false
         },
         {
           "refId": "C",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "rate(vg_valkeykit_pool_timeouts_total{service_name=\"bff\"}[$__rate_interval])",
           "legendFormat": "timeouts",
           "exemplar": false
@@ -291,16 +570,32 @@
       ]
     },
     {
-      "id": 14,
+      "id": 15,
       "type": "timeseries",
       "title": "bff-valkey server memory",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 44 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 44
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "redis_memory_used_bytes{service=\"bff-valkey\"}",
           "legendFormat": "{{service}}",
           "exemplar": false
@@ -308,23 +603,42 @@
       ]
     },
     {
-      "id": 15,
+      "id": 16,
       "type": "timeseries",
       "title": "bff-valkey evictions and clients",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 44 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 44
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "rate(redis_evicted_keys_total{service=\"bff-valkey\"}[$__rate_interval])",
           "legendFormat": "evictions",
           "exemplar": false
         },
         {
           "refId": "B",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "redis_connected_clients{service=\"bff-valkey\"}",
           "legendFormat": "clients",
           "exemplar": false
@@ -332,16 +646,32 @@
       ]
     },
     {
-      "id": 16,
+      "id": 17,
       "type": "timeseries",
       "title": "Goroutines",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 52
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "go_goroutine_count{service_name=\"bff\"}",
           "legendFormat": "goroutines",
           "exemplar": false
@@ -349,16 +679,32 @@
       ]
     },
     {
-      "id": 17,
+      "id": 18,
       "type": "timeseries",
       "title": "Heap used",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 52
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "go_memory_used_bytes{service_name=\"bff\"}",
           "legendFormat": "heap",
           "exemplar": false
@@ -366,34 +712,33 @@
       ]
     },
     {
-      "id": 18,
-      "type": "timeseries",
-      "title": "Pod CPU",
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 60 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"vgkeep\", pod=~\"bff.*\", container!=\"\"}[$__rate_interval]))",
-          "legendFormat": "{{pod}}",
-          "exemplar": false
-        }
-      ]
-    },
-    {
       "id": 19,
       "type": "timeseries",
-      "title": "Pod working-set memory",
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 60 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "title": "Pod CPU",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 60
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"vgkeep\", pod=~\"bff.*\", container!=\"\"})",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"vgkeep\", pod=~\"bff.*\", container!=\"\"}[$__rate_interval]))",
           "legendFormat": "{{pod}}",
           "exemplar": false
         }
@@ -402,15 +747,31 @@
     {
       "id": 20,
       "type": "timeseries",
-      "title": "Pod restarts (15m)",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 60 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "title": "Pod working-set memory",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 60
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"vgkeep\", pod=~\"bff.*\"}[15m]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"vgkeep\", pod=~\"bff.*\", container!=\"\"})",
           "legendFormat": "{{pod}}",
           "exemplar": false
         }
@@ -418,15 +779,64 @@
     },
     {
       "id": 21,
-      "type": "logs",
-      "title": "Recent error logs",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 68 },
-      "datasource": { "type": "loki", "uid": "loki" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "type": "timeseries",
+      "title": "Pod restarts (15m)",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 60
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"vgkeep\", pod=~\"bff.*\"}[15m]))",
+          "legendFormat": "{{pod}}",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "logs",
+      "title": "Recent error logs",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 68
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
           "expr": "{service_name=\"bff\"} | severity_text=\"ERROR\""
         }
       ]

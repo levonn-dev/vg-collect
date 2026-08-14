@@ -1,0 +1,41 @@
+service: auth
+golden:
+  availability: {}
+  pdb_budget: {}
+alerts:
+  - uid: vg-auth-jwks-empty
+    title: Auth JWKS has no active signing keys
+    expr: vg_auth_signing_keys_active
+    condition: lt 1
+    instant: true
+    range: 5m
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    severity: page
+    summary: auth is serving an empty JWKS; every service's token validation fails as consumer caches miss
+    runbook: auth.md#6-platform-wide-401s-jwks-trouble
+  - uid: vg-auth-refresh-reuse
+    title: Auth refresh token reuse detected
+    expr: sum(increase(vg_auth_token_refreshes_total{outcome="reuse_detected"}[15m]))
+    condition: gt 0
+    instant: true
+    range: 15m
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: a refresh token was replayed and its session family revoked; theft or a client double-refresh regression
+    runbook: auth.md#3-refresh-reuse-detections
+  - uid: vg-auth-provider-errors
+    title: Auth login provider failing
+    expr: sum by (provider) (increase(vg_auth_login_outcomes_total{outcome="provider_error"}[10m]))
+    condition: gt 5
+    instant: true
+    range: 10m
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: "{{ $labels.provider }} logins are failing at the identity provider (outage or expired client credentials)"
+    runbook: auth.md#1-logins-failing-at-the-provider-hop

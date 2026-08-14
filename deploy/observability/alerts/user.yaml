@@ -1,0 +1,17 @@
+service: user
+golden:
+  availability: {}
+  pdb_budget: {}
+alerts:
+  - uid: vg-user-upsert-5xx
+    title: User profile upsert failing (logins blocked)
+    expr: sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert", http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert"}[5m]))
+    condition: gt 0.2
+    instant: true
+    range: 10m
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: page
+    summary: the user service is failing profile upserts; every login runs this call, so logins are down while the service-wide 5xx ratio can stay under vg-service-5xx's threshold
+    runbook: user.md#1-logins-fail-at-the-upsert-leg

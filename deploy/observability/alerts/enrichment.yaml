@@ -1,0 +1,42 @@
+service: enrichment
+golden:
+  availability: {}
+  pdb_budget: {}
+alerts:
+  - uid: vg-mongo-down
+    title: MongoDB unreachable
+    expr: mongodb_up
+    condition: lt 1
+    instant: true
+    range: 5m
+    for: 2m
+    noDataState: Alerting
+    execErrState: Error
+    severity: page
+    summary: enrichment-mongo is down or its exporter cannot reach it
+    runbook: enrichment.md#2-mongo-down
+  - uid: vg-enrichment-refresh-stalled
+    title: Enrichment nightly catalog refresh has not completed in 26h
+    expr: sum(increase(vg_enrichment_refresh_step_duration_seconds_count{step="prices"}[26h]))
+    condition: lt 1
+    instant: true
+    range: 26h
+    for: 1h
+    noDataState: Alerting
+    execErrState: Error
+    severity: warn
+    summary: enrichment has not finished a price refresh in more than 26 hours; catalog prices are going stale
+    runbook: enrichment.md#4-catalog-refresh-missing
+    panel_ref: enrichment/Catalog refresh duration by step
+  - uid: vg-enrichment-search-degraded
+    title: Enrichment search serving degraded answers
+    expr: sum(rate(vg_enrichment_search_requests_total{source="degraded"}[15m])) / sum(rate(vg_enrichment_search_requests_total[15m]))
+    condition: gt 0.1
+    instant: true
+    range: 15m
+    for: 15m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: more than 10 percent of enrichment search answers are degraded local fallbacks; a provider is failing
+    runbook: enrichment.md#3-search-degraded

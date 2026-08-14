@@ -115,6 +115,11 @@ tasks:
           helm dependency build deploy/charts/platform >/dev/null)
       - test ! -d deploy/charts || for charts in deploy/charts/*/; do helm lint "$charts" || exit 1; done
 
+  lint:obs:
+    desc: 'obsgen lint against deploy/observability/: uid uniqueness, panel_ref resolution, runbook anchors, and PromQL metric names (D11). Runs inside `task check`, after build so services/libs/go at least parse.'
+    cmds:
+      - cd tools/obsgen && go run . lint ../../deploy/observability ../..
+
   # --------------------------- build / codegen ---------------------------
 
   build:
@@ -128,6 +133,7 @@ tasks:
     desc: Regenerate code from the OpenAPI contracts (run after editing any api/*.yaml; CI fails on drift)
     cmds:
       - task: gen:domain
+      - task: gen:obs
       - task: user:gen
       - task: auth:gen
       - task: bff:gen
@@ -141,6 +147,11 @@ tasks:
     desc: Regenerate region/platform tables from api/domain.yaml (Go regionkit + frontend TS; run after editing api/domain.yaml; CI fails on drift)
     cmds:
       - cd tools/domaingen && go run . -yaml ../../api/domain.yaml -go-out ../../libs/go/regionkit/tables_gen.go -ts-out ../../frontend/src/gen/domain.ts
+
+  gen:obs:
+    desc: Regenerate the Grafana alert provisioning file and per-service dashboards from deploy/observability/ (run after editing anything under deploy/observability/; CI fails on drift)
+    cmds:
+      - cd tools/obsgen && go run . gen ../../deploy/observability ../..
 
   tidy:
     desc: 'go mod tidy every module (plain tidy; the repo carries no known dependency skew)'
@@ -181,10 +192,11 @@ tasks:
   # ---------------------------- check / clean ----------------------------
 
   check:
-    desc: 'Pre-commit gate: lint (incl. formatting) + build + full test suite (needs Docker for the integration tests). Non-mutating. (CI additionally enforces the 80% coverage gate via test:cover and codegen drift via gen.)'
+    desc: 'Pre-commit gate: lint (incl. formatting) + build + obsgen lint + full test suite (needs Docker for the integration tests). Non-mutating. (CI additionally enforces the 80% coverage gate via test:cover and codegen drift via gen.)'
     cmds:
       - task: lint
       - task: build
+      - task: lint:obs
       - task: test
 
   clean:

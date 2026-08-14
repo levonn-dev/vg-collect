@@ -285,48 +285,68 @@ HTTP row:
 1. Request rate by route. timeseries, unit `reqps`, legend
    `{{http_route}}`.
 
-        sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="social"}[$__rate_interval]))
+    ```promql
+    sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="social"}[$__rate_interval]))
+    ```
 
 2. 5xx ratio. timeseries, unit `percentunit`.
 
-        sum(rate(http_server_request_duration_seconds_count{service_name="social",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="social"}[5m]))
+    ```promql
+    sum(rate(http_server_request_duration_seconds_count{service_name="social",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="social"}[5m]))
+    ```
 
 3. Latency by route (p95/p99). timeseries, unit `s`, exemplars on,
    legends `p95 {{http_route}}` / `p99 {{http_route}}`.
 
-        histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="social"}[$__rate_interval])))
-        histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="social"}[$__rate_interval])))
+    ```promql
+    histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="social"}[$__rate_interval])))
+    histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="social"}[$__rate_interval])))
+    ```
 
 4. 4xx and 5xx by route and status. timeseries, unit `reqps`, legend
    `{{http_route}} {{http_response_status_code}}`.
 
-        sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="social",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+    ```promql
+    sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="social",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+    ```
 
 Domain row (two rows of three, unit `ops` throughout):
 
 5. Follows by op. legend `{{op}}`.
 
-        sum(rate(vg_social_follows_total[$__rate_interval])) by (op)
+    ```promql
+    sum(rate(vg_social_follows_total[$__rate_interval])) by (op)
+    ```
 
 6. Likes by op. legend `{{op}}`.
 
-        sum(rate(vg_social_likes_total[$__rate_interval])) by (op)
+    ```promql
+    sum(rate(vg_social_likes_total[$__rate_interval])) by (op)
+    ```
 
 7. Comment ops. legend `{{op}}`.
 
-        sum(rate(vg_social_comments_total[$__rate_interval])) by (op)
+    ```promql
+    sum(rate(vg_social_comments_total[$__rate_interval])) by (op)
+    ```
 
 8. Feed reads by tab. legend `{{tab}}`.
 
-        sum(rate(vg_social_feed_reads_total[$__rate_interval])) by (tab)
+    ```promql
+    sum(rate(vg_social_feed_reads_total[$__rate_interval])) by (tab)
+    ```
 
 9. Cap rejections by kind. legend `{{kind}}`.
 
-        sum(rate(vg_social_caps_rejections_total[$__rate_interval])) by (kind)
+    ```promql
+    sum(rate(vg_social_caps_rejections_total[$__rate_interval])) by (kind)
+    ```
 
 10. Publish outcomes. legend `{{outcome}}`.
 
-        sum(rate(vg_social_publish_events_total[$__rate_interval])) by (outcome)
+    ```promql
+    sum(rate(vg_social_publish_events_total[$__rate_interval])) by (outcome)
+    ```
 
 Datastore row (the pgkit pool panels, same shape as collection's own
 pool row):
@@ -334,19 +354,25 @@ pool row):
 11. PG pool connections. timeseries, unit `short`, legends `in pool` /
     `idle` / `max`.
 
-        vg_pgkit_pool_connections{service_name="social"}
-        vg_pgkit_pool_connections_idle{service_name="social"}
-        vg_pgkit_pool_connections_max{service_name="social"}
+    ```promql
+    vg_pgkit_pool_connections{service_name="social"}
+    vg_pgkit_pool_connections_idle{service_name="social"}
+    vg_pgkit_pool_connections_max{service_name="social"}
+    ```
 
 12. PG pool mean acquire wait. timeseries, unit `s`.
 
-        rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name="social"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="social"}[5m])
+    ```promql
+    rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name="social"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="social"}[5m])
+    ```
 
 13. PG server connections vs max. timeseries, unit `short`, legends
     `connections` / `max` (exporter side).
 
-        sum(pg_stat_activity_count{service="social-pg"})
-        max(pg_settings_max_connections{service="social-pg"})
+    ```promql
+    sum(pg_stat_activity_count{service="social-pg"})
+    max(pg_settings_max_connections{service="social-pg"})
+    ```
 
 Runtime and pod row (query shapes match pod-details.json; the
 `container="social"` selector scopes to the app container and keeps
@@ -354,33 +380,45 @@ social-pg and the init container out):
 
 14. Goroutines. timeseries, unit `short`, legend `goroutines`.
 
-        go_goroutine_count{service_name="social"}
+    ```promql
+    go_goroutine_count{service_name="social"}
+    ```
 
 15. Heap used. timeseries, unit `bytes`, legend `heap`.
 
-        go_memory_used_bytes{service_name="social"}
+    ```promql
+    go_memory_used_bytes{service_name="social"}
+    ```
 
 16. Pod CPU. timeseries, unit `short`, legend `{{pod}}`.
 
-        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", container="social"}[$__rate_interval]))
+    ```promql
+    sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", container="social"}[$__rate_interval]))
+    ```
 
 17. Pod memory working set. timeseries, unit `bytes`, legend `{{pod}}`
     (limit is 128Mi; read this panel against it).
 
-        sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", container="social"})
+    ```promql
+    sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", container="social"})
+    ```
 
 18. Restarts (15m) and OOM kills. timeseries, unit `short`, legends
     `restarts {{pod}}` / `oom {{pod}}`; `pod=~"social-.*"` covers the
     app and social-pg pods.
 
-        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"social-.*"}[15m]))
-        sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vgkeep", pod=~"social-.*"})
+    ```promql
+    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"social-.*"}[15m]))
+    sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vgkeep", pod=~"social-.*"})
+    ```
 
 Logs row:
 
 19. Recent error logs. logs panel, Loki datasource.
 
-        {service_name="social"} | severity_text="ERROR"
+    ```logql
+    {service_name="social"} | severity_text="ERROR"
+    ```
 
 ## Failure modes and triage
 
@@ -396,11 +434,15 @@ reads, those have no substance without social. Confirm on the bff's
 fail-open counter climbing while vg-social's own request-rate panels
 go flat:
 
-    sum by (op) (increase(vg_bff_cache_fail_open_total{op=~"social_summary|comment_authors"}[5m]))
+```promql
+sum by (op) (increase(vg_bff_cache_fail_open_total{op=~"social_summary|comment_authors"}[5m]))
+```
 
 The vg-social-down rule pages after 2 minutes on:
 
-    up{namespace="vgkeep", pod=~"social-.*"}
+```promql
+up{namespace="vgkeep", pod=~"social-.*"}
+```
 
 which in practice tracks the social-pg exporter's scrape target (the
 app itself is OTLP push-only, so it has no scraped `up` series of its
@@ -447,7 +489,9 @@ re-attempts it. Compare `vg_social_publish_events_total` (this
 service's own view: did the call even arrive, and with what outcome)
 against the bff's
 
-    sum by (op) (increase(vg_bff_cache_fail_open_total{op="social_publish_event"}[15m]))
+```promql
+sum by (op) (increase(vg_bff_cache_fail_open_total{op="social_publish_event"}[15m]))
+```
 
 (its view: how many attempts never reached social, or errored getting
 there). A gap between the two - the bff's fail-open counter climbing

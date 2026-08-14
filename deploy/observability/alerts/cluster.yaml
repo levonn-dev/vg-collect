@@ -1,0 +1,98 @@
+alerts:
+  - uid: vg-service-5xx
+    title: Service 5xx ratio above 5 percent
+    expr: sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) / sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
+    condition: gt 0.05
+    instant: true
+    range: 10m
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: page
+    summary: "{{ $labels.service_name }} is answering more than 5 percent 5xx"
+    runbook: stack.md#1-service-5xx-ratio-above-5-percent
+  - uid: vg-service-p99
+    title: Service p99 latency above 500ms
+    expr: histogram_quantile(0.99, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m])))
+    condition: gt 0.5
+    instant: true
+    range: 10m
+    for: 10m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: "{{ $labels.service_name }} p99 is above the 500ms objective"
+    runbook: stack.md#2-service-p99-latency-above-500ms
+  - uid: vg-pod-churn
+    title: Pod restart churn or OOM kill
+    expr: sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~"vgkeep|vg-platform"}[15m])) > 3 or sum by (namespace, pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace=~"vgkeep|vg-platform"}) > 0
+    condition: gt 0
+    instant: true
+    range: 15m
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: "{{ $labels.namespace }}/{{ $labels.pod }} is restart-churning or was OOM-killed"
+    runbook: stack.md#4-pod-restart-churn-or-oom-kill
+  - uid: vg-node-pressure
+    title: Node under memory, disk or PID pressure
+    expr: kube_node_status_condition{condition=~"MemoryPressure|DiskPressure|PIDPressure", status="true"} > 0 or (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.10
+    condition: gt 0
+    instant: true
+    range: 10m
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: page
+    summary: node pressure condition active or memory nearly exhausted
+    runbook: stack.md#5-node-under-memory-disk-or-pid-pressure
+  - uid: vg-pg-saturation
+    title: Postgres connections above 80 percent of max
+    expr: sum by (service) (pg_stat_activity_count) / max by (service) (pg_settings_max_connections)
+    condition: gt 0.8
+    instant: true
+    range: 10m
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: "{{ $labels.service }} is using more than 80 percent of max_connections"
+    runbook: stack.md#6-postgres-connections-above-80-percent-of-max
+  - uid: vg-valkey-pressure
+    title: Valkey evicting keys or memory unusually high
+    expr: rate(redis_evicted_keys_total[5m]) > 0 or redis_memory_used_bytes > 209715200
+    condition: gt 0
+    instant: true
+    range: 10m
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: "{{ $labels.service }} is evicting keys or holding over 200MiB"
+    runbook: stack.md#7-valkey-evicting-keys-or-memory-unusually-high
+  - uid: vg-collector-drops
+    title: OTel collector dropping telemetry
+    expr: sum(rate({__name__=~"otelcol_exporter_(send|enqueue)_failed_.*"}[5m]))
+    condition: gt 0
+    instant: true
+    range: 10m
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: the otel pipeline is failing to deliver spans, metrics or logs
+    runbook: stack.md#telemetry-pipeline-operations
+  - uid: vg-loki-errors
+    title: Error log spike
+    expr: sum by (service_name) (count_over_time({service_name=~".+"} | severity_text="ERROR" [5m]))
+    condition: gt 20
+    instant: true
+    range: 5m
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: "{{ $labels.service_name }} logged more than 20 errors in 5 minutes"
+    runbook: stack.md#3-error-log-spike
+    datasource: loki

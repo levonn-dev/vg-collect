@@ -46,7 +46,7 @@ and triage, admin levers, capacity and rollout.
 
 ## Alert rules
 
-The twenty-one rules live in
+The thirty-two rules live in
 `deploy/charts/platform/files/alerting/vg-rules.yaml`, provisioned
 into the `vgkeep` folder and evaluated every 1m. Each rule's
 `runbook_url` annotation deep-links the runbook section below; that
@@ -77,11 +77,22 @@ from Alerting > Alert rules in Grafana (localhost:3000).
 | vg-enrichment-refresh-stalled - Enrichment nightly catalog refresh has not completed in 26h | warn     | [enrichment.md](enrichment.md#4-catalog-refresh-missing)             |
 | vg-enrichment-search-degraded - Enrichment search serving degraded answers                  | warn     | [enrichment.md](enrichment.md#3-search-degraded)                     |
 | vg-user-upsert-5xx - User profile upsert failing (logins blocked)                           | page     | [user.md](user.md#1-logins-fail-at-the-upsert-leg)                   |
-| vg-social-down - social service down                                                        | page     | [social.md](social.md#1-social-down)                                 |
+| vg-social-down - social service down                                                        | page     | [stack.md](stack.md#service-down)                                    |
+| vg-auth-down - auth service down                                                            | page     | [stack.md](stack.md#service-down)                                    |
+| vg-bff-down - bff service down                                                              | page     | [stack.md](stack.md#service-down)                                    |
+| vg-collection-down - collection service down                                                | page     | [stack.md](stack.md#service-down)                                    |
+| vg-enrichment-down - enrichment service down                                                | page     | [stack.md](stack.md#service-down)                                    |
+| vg-user-down - user service down                                                            | page     | [stack.md](stack.md#service-down)                                    |
+| vg-auth-pdb-exhausted - Auth disruption budget exhausted                                    | warn     | [stack.md](stack.md#pdb-exhausted)                                   |
+| vg-bff-pdb-exhausted - BFF disruption budget exhausted                                      | warn     | [stack.md](stack.md#pdb-exhausted)                                   |
+| vg-collection-pdb-exhausted - Collection disruption budget exhausted                        | warn     | [stack.md](stack.md#pdb-exhausted)                                   |
+| vg-enrichment-pdb-exhausted - Enrichment disruption budget exhausted                        | warn     | [stack.md](stack.md#pdb-exhausted)                                   |
+| vg-social-pdb-exhausted - Social disruption budget exhausted                                | warn     | [stack.md](stack.md#pdb-exhausted)                                   |
+| vg-user-pdb-exhausted - User disruption budget exhausted                                    | warn     | [stack.md](stack.md#pdb-exhausted)                                   |
 
 `page` marks user-visible breakage worth interrupting someone for;
 `warn` is everything else worth investigating on the next pass. The
 dev tier has no contact point configured on purpose, so nothing here
 pages out: alerts are read from the Grafana UI (Alerting > Alert
-rules for the current state of all twenty-one, Alerting > Active
+rules for the current state of all thirty-two, Alerting > Active
 alerts for what is firing right now).

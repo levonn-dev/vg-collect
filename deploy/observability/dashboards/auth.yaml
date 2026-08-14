@@ -1,0 +1,402 @@
+service: auth
+dashboard:
+  uid: vg-auth
+  title: 'Auth Service'
+custom_panels:
+  - |
+    {
+      "type": "timeseries",
+      "title": "Request rate by route",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name=\"auth\"}[$__rate_interval]))",
+          "legendFormat": "{{http_route}}",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "5xx ratio",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum (rate(http_server_request_duration_seconds_count{service_name=\"auth\",http_response_status_code=~\"5..\"}[5m])) / sum (rate(http_server_request_duration_seconds_count{service_name=\"auth\"}[5m]))",
+          "legendFormat": "5xx ratio",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "Latency by route, p95 and p99",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name=\"auth\"}[$__rate_interval])))",
+          "legendFormat": "p95 {{http_route}}",
+          "exemplar": true
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name=\"auth\"}[$__rate_interval])))",
+          "legendFormat": "p99 {{http_route}}",
+          "exemplar": true
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "Errors by route and status",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name=\"auth\",http_response_status_code=~\"4..|5..\"}[$__rate_interval]))",
+          "legendFormat": "{{http_route}} {{http_response_status_code}}",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "Logins by provider, flow, outcome, 5m",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (provider, flow, outcome) (increase(vg_auth_login_outcomes_total[5m]))",
+          "legendFormat": "{{provider}} {{flow}} {{outcome}}",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "Refresh outcomes, 5m",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (outcome) (increase(vg_auth_token_refreshes_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "stat",
+      "title": "Reuse detections, 24h",
+      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(increase(vg_auth_token_refreshes_total{outcome=\"reuse_detected\"}[24h]))",
+          "legendFormat": "reuse",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "stat",
+      "title": "Active signing keys",
+      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "max(vg_auth_signing_keys_active)",
+          "legendFormat": "keys",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "Provider request p95 by op",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (le, provider, op) (rate(vg_auth_provider_request_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "{{provider}} {{op}}",
+          "exemplar": true
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "Provider request errors, 5m",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (provider, op) (increase(vg_auth_provider_request_duration_seconds_count{outcome=\"error\"}[5m]))",
+          "legendFormat": "{{provider}} {{op}}",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "PG pool connections",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "vg_pgkit_pool_connections{service_name=\"auth\"}",
+          "legendFormat": "in pool",
+          "exemplar": false
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "vg_pgkit_pool_connections_idle{service_name=\"auth\"}",
+          "legendFormat": "idle",
+          "exemplar": false
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "vg_pgkit_pool_connections_max{service_name=\"auth\"}",
+          "legendFormat": "max",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "PG pool mean acquire wait",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name=\"auth\"}[$__rate_interval]) / rate(vg_pgkit_pool_acquires_total{service_name=\"auth\"}[$__rate_interval])",
+          "legendFormat": "mean wait",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "auth-pg connections vs max",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(pg_stat_activity_count{service=\"auth-pg\"})",
+          "legendFormat": "connections",
+          "exemplar": false
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "max(pg_settings_max_connections{service=\"auth-pg\"})",
+          "legendFormat": "max",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "auth-pg transactions",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(pg_stat_database_xact_commit{service=\"auth-pg\",datname!~\"template.*\"}[$__rate_interval]))",
+          "legendFormat": "commit",
+          "exemplar": false
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(pg_stat_database_xact_rollback{service=\"auth-pg\",datname!~\"template.*\"}[$__rate_interval]))",
+          "legendFormat": "rollback",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "Pod CPU",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 48 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"vgkeep\", pod=~\"auth-.*\", container!=\"\"}[$__rate_interval]))",
+          "legendFormat": "{{pod}}",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "Pod working-set memory",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 48 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"vgkeep\", pod=~\"auth-.*\", container!=\"\"})",
+          "legendFormat": "{{pod}}",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "Pod restarts, 15m",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 48 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"vgkeep\", pod=~\"auth-.*\"}[15m]))",
+          "legendFormat": "{{pod}}",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "Goroutines",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 56 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "go_goroutine_count{service_name=\"auth\"}",
+          "legendFormat": "goroutines",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "timeseries",
+      "title": "Heap used",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 56 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "go_memory_used_bytes{service_name=\"auth\"}",
+          "legendFormat": "heap",
+          "exemplar": false
+        }
+      ]
+    }
+  - |
+    {
+      "type": "logs",
+      "title": "Recent error logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 64 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{service_name=\"auth\"} | severity_text=\"ERROR\""
+        }
+      ]
+    }

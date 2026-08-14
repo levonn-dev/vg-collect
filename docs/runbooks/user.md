@@ -258,65 +258,87 @@ HTTP row:
 1. Request rate by route. timeseries, unit `reqps`, legend
    `{{http_route}}`.
 
-        sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="user"}[$__rate_interval]))
+    ```promql
+    sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="user"}[$__rate_interval]))
+    ```
 
 2. 5xx ratio. timeseries, unit `percentunit`.
 
-        sum(rate(http_server_request_duration_seconds_count{service_name="user",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="user"}[5m]))
+    ```promql
+    sum(rate(http_server_request_duration_seconds_count{service_name="user",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="user"}[5m]))
+    ```
 
 3. Latency by route (p95/p99). timeseries, unit `s`, exemplars on,
    legends `p95 {{http_route}}` / `p99 {{http_route}}`.
 
-        histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="user"}[$__rate_interval])))
-        histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="user"}[$__rate_interval])))
+    ```promql
+    histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="user"}[$__rate_interval])))
+    histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="user"}[$__rate_interval])))
+    ```
 
 4. 4xx and 5xx by route and status. timeseries, unit `reqps`, legend
    `{{http_route}} {{http_response_status_code}}`. This is where 401
    floods (JWKS trouble) and 403 spikes (authz regressions) show up
    without their own metric.
 
-        sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="user",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+    ```promql
+    sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="user",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+    ```
 
 Feature row:
 
 5. Account upserts by outcome (5m). timeseries, unit `short`, legend
    `{{outcome}}`.
 
-        sum by (outcome) (increase(vg_user_account_upserts_total[5m]))
+    ```promql
+    sum by (outcome) (increase(vg_user_account_upserts_total[5m]))
+    ```
 
 6. New-account currency seed source (5m). timeseries, unit `short`,
    legend `{{source}}`.
 
-        sum by (source) (increase(vg_user_currency_seeds_total[5m]))
+    ```promql
+    sum by (source) (increase(vg_user_currency_seeds_total[5m]))
+    ```
 
 7. Account deletions by outcome (5m). timeseries, unit `short`, legend
    `{{outcome}}`.
 
-        sum by (outcome) (increase(vg_user_account_deletes_total[5m]))
+    ```promql
+    sum by (outcome) (increase(vg_user_account_deletes_total[5m]))
+    ```
 
 Datastore row:
 
 8. PG client pool: connections vs max. timeseries, unit `short`,
    legends `in pool` / `idle` / `max`.
 
-        vg_pgkit_pool_connections{service_name="user"}
-        vg_pgkit_pool_connections_idle{service_name="user"}
-        vg_pgkit_pool_connections_max{service_name="user"}
+    ```promql
+    vg_pgkit_pool_connections{service_name="user"}
+    vg_pgkit_pool_connections_idle{service_name="user"}
+    vg_pgkit_pool_connections_max{service_name="user"}
+    ```
 
 9. PG client pool: mean acquire wait. timeseries, unit `s`.
 
-        rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name="user"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="user"}[5m])
+    ```promql
+    rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name="user"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="user"}[5m])
+    ```
 
 10. PG client pool: empty acquires (5m). timeseries, unit `short`.
 
-        increase(vg_pgkit_pool_empty_acquires_total{service_name="user"}[5m])
+    ```promql
+    increase(vg_pgkit_pool_empty_acquires_total{service_name="user"}[5m])
+    ```
 
 11. user-pg server connections vs max_connections. timeseries, unit
     `short`, legends `connections` / `max` (exporter side; same names
     the Datastores dashboard proves).
 
-        sum(pg_stat_activity_count{service="user-pg"})
-        max(pg_settings_max_connections{service="user-pg"})
+    ```promql
+    sum(pg_stat_activity_count{service="user-pg"})
+    max(pg_settings_max_connections{service="user-pg"})
+    ```
 
 Runtime and pod row (query shapes match pod-details.json; the
 `container="user"` selector scopes to the app container and keeps
@@ -324,33 +346,45 @@ user-pg and the init container out):
 
 12. Goroutines. timeseries, unit `short`, legend `goroutines`.
 
-        go_goroutine_count{service_name="user"}
+    ```promql
+    go_goroutine_count{service_name="user"}
+    ```
 
 13. Heap used. timeseries, unit `bytes`, legend `heap`.
 
-        go_memory_used_bytes{service_name="user"}
+    ```promql
+    go_memory_used_bytes{service_name="user"}
+    ```
 
 14. Pod CPU. timeseries, unit `short`, legend `{{pod}}`.
 
-        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", container="user"}[$__rate_interval]))
+    ```promql
+    sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", container="user"}[$__rate_interval]))
+    ```
 
 15. Pod memory working set. timeseries, unit `bytes`, legend
     `{{pod}}` (limit is 128Mi; read this panel against it).
 
-        sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", container="user"})
+    ```promql
+    sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", container="user"})
+    ```
 
 16. Restarts (15m) and OOM kills. timeseries, unit `short`, legends
     `restarts {{pod}}` / `oom {{pod}}`; `pod=~"user-.*"` covers the
     app and user-pg pods.
 
-        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"user-.*"}[15m]))
-        sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vgkeep", pod=~"user-.*"})
+    ```promql
+    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"user-.*"}[15m]))
+    sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vgkeep", pod=~"user-.*"})
+    ```
 
 Logs row:
 
 17. Recent error logs. logs panel, Loki datasource.
 
-        {service_name="user"} | severity_text="ERROR"
+    ```logql
+    {service_name="user"} | severity_text="ERROR"
+    ```
 
 ## Failure modes and triage
 
@@ -363,13 +397,17 @@ stays green and the whole-service 5xx ratio can stay under the
 service-wide alert threshold. Confirm on "4xx and 5xx by route and
 status" with
 
-    sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert", http_response_status_code=~"5.."}[5m]))
+```promql
+sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert", http_response_status_code=~"5.."}[5m]))
+```
 
 and in "Recent error logs" by `store error` lines with `op=upsert`.
 The vg-user-upsert-5xx rule pages when 5xx exceed 20 percent of
 upsert requests:
 
-    sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert", http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert"}[5m]))
+```promql
+sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert", http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert"}[5m]))
+```
 
 Then check user-pg: `kubectl -n vgkeep exec statefulset/user-pg
 -- psql -U user -d user -c "SHOW transaction_read_only;"` and disk on
@@ -394,7 +432,9 @@ p95 climbs on all routes together on "Latency by route (p95/p99)"
 while user-pg looks idle. "PG client pool: mean acquire wait" and "PG
 client pool: empty acquires (5m)" confirm it: the wait rising and
 
-    rate(vg_pgkit_pool_empty_acquires_total{service_name="user"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="user"}[5m])
+```promql
+rate(vg_pgkit_pool_empty_acquires_total{service_name="user"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="user"}[5m])
+```
 
 above roughly 0.25 sustained means callers queue behind a drained
 pool. "PG client pool: connections vs max" shows the ceiling being
@@ -465,11 +505,13 @@ purpose, so every lever is psql-level and idempotent.
 Grant admin (the documented lever; roles reach the JWT at next login
 or refresh):
 
-    kubectl -n vgkeep exec statefulset/user-pg -- \
-      psql -U user -d user -c \
-      "INSERT INTO user_roles (user_id, role) \
-       SELECT id, 'admin' FROM users WHERE email = 'someone@example.com' \
-       ON CONFLICT DO NOTHING;"
+```bash
+kubectl -n vgkeep exec statefulset/user-pg -- \
+  psql -U user -d user -c \
+  "INSERT INTO user_roles (user_id, role) \
+   SELECT id, 'admin' FROM users WHERE email = 'someone@example.com' \
+   ON CONFLICT DO NOTHING;"
+```
 
 For the dev fixture specifically, `task grant-fixture-admin` runs a dev
 login (so the row exists) followed by exactly this insert for
@@ -477,22 +519,28 @@ login (so the row exists) followed by exactly this insert for
 
 Revoke admin (same propagation rule):
 
-    kubectl -n vgkeep exec statefulset/user-pg -- \
-      psql -U user -d user -c \
-      "DELETE FROM user_roles WHERE role = 'admin' \
-       AND user_id = (SELECT id FROM users WHERE email = 'someone@example.com');"
+```bash
+kubectl -n vgkeep exec statefulset/user-pg -- \
+  psql -U user -d user -c \
+  "DELETE FROM user_roles WHERE role = 'admin' \
+   AND user_id = (SELECT id FROM users WHERE email = 'someone@example.com');"
+```
 
 Inspect a user's roles:
 
-    kubectl -n vgkeep exec statefulset/user-pg -- \
-      psql -U user -d user -c \
-      "SELECT u.email, r.role FROM users u \
-       LEFT JOIN user_roles r ON r.user_id = u.id \
-       WHERE u.email = 'someone@example.com';"
+```bash
+kubectl -n vgkeep exec statefulset/user-pg -- \
+  psql -U user -d user -c \
+  "SELECT u.email, r.role FROM users u \
+   LEFT JOIN user_roles r ON r.user_id = u.id \
+   WHERE u.email = 'someone@example.com';"
+```
 
 Re-run migrations (safe anytime; no-change is success):
 
-    task user:db:migrate
+```bash
+task user:db:migrate
+```
 
 ## Capacity and rollout
 

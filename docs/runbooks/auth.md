@@ -329,100 +329,140 @@ Grafana default palette; thresholds only on the two state panels noted.
 
 **1. Request rate by route** (timeseries, reqps, legend `{{http_route}}`)
 
-    sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="auth"}[$__rate_interval]))
+```promql
+sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="auth"}[$__rate_interval]))
+```
 
 **2. 5xx ratio** (timeseries, percentunit, legend `5xx ratio`)
 
-    sum (rate(http_server_request_duration_seconds_count{service_name="auth",http_response_status_code=~"5.."}[5m])) / sum (rate(http_server_request_duration_seconds_count{service_name="auth"}[5m]))
+```promql
+sum (rate(http_server_request_duration_seconds_count{service_name="auth",http_response_status_code=~"5.."}[5m])) / sum (rate(http_server_request_duration_seconds_count{service_name="auth"}[5m]))
+```
 
 **3. Latency by route, p95 and p99** (timeseries, s, `"exemplar": true`
 on both targets, legends `p95 {{http_route}}` / `p99 {{http_route}}`)
 
-    histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="auth"}[$__rate_interval])))
-    histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="auth"}[$__rate_interval])))
+```promql
+histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="auth"}[$__rate_interval])))
+histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="auth"}[$__rate_interval])))
+```
 
 **4. Errors by route and status** (timeseries, reqps, legend
 `{{http_route}} {{http_response_status_code}}`)
 
-    sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="auth",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+```promql
+sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="auth",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+```
 
 **5. Logins by provider, flow, outcome, 5m** (timeseries, short, legend
 `{{provider}} {{flow}} {{outcome}}`)
 
-    sum by (provider, flow, outcome) (increase(vg_auth_login_outcomes_total[5m]))
+```promql
+sum by (provider, flow, outcome) (increase(vg_auth_login_outcomes_total[5m]))
+```
 
 **6. Refresh outcomes, 5m** (timeseries, short, legend `{{outcome}}`)
 
-    sum by (outcome) (increase(vg_auth_token_refreshes_total[5m]))
+```promql
+sum by (outcome) (increase(vg_auth_token_refreshes_total[5m]))
+```
 
 **7. Reuse detections, 24h** (stat, short; state thresholds: green 0,
 red >= 1)
 
-    sum(increase(vg_auth_token_refreshes_total{outcome="reuse_detected"}[24h]))
+```promql
+sum(increase(vg_auth_token_refreshes_total{outcome="reuse_detected"}[24h]))
+```
 
 **8. Active signing keys** (stat, short; state thresholds: red below 1,
 green at 1 and above; max() because every replica exports the gauge and
 a surge rollout briefly runs two pods)
 
-    max(vg_auth_signing_keys_active)
+```promql
+max(vg_auth_signing_keys_active)
+```
 
 **9. Provider request p95 by op** (timeseries, s, `"exemplar": true`,
 legend `{{provider}} {{op}}`)
 
-    histogram_quantile(0.95, sum by (le, provider, op) (rate(vg_auth_provider_request_duration_seconds_bucket[$__rate_interval])))
+```promql
+histogram_quantile(0.95, sum by (le, provider, op) (rate(vg_auth_provider_request_duration_seconds_bucket[$__rate_interval])))
+```
 
 **10. Provider request errors, 5m** (timeseries, short, legend
 `{{provider}} {{op}}`)
 
-    sum by (provider, op) (increase(vg_auth_provider_request_duration_seconds_count{outcome="error"}[5m]))
+```promql
+sum by (provider, op) (increase(vg_auth_provider_request_duration_seconds_count{outcome="error"}[5m]))
+```
 
 **11. PG pool connections** (timeseries, short, legends `in pool` /
 `idle` / `max`)
 
-    vg_pgkit_pool_connections{service_name="auth"}
-    vg_pgkit_pool_connections_idle{service_name="auth"}
-    vg_pgkit_pool_connections_max{service_name="auth"}
+```promql
+vg_pgkit_pool_connections{service_name="auth"}
+vg_pgkit_pool_connections_idle{service_name="auth"}
+vg_pgkit_pool_connections_max{service_name="auth"}
+```
 
 **12. PG pool mean acquire wait** (timeseries, s, legend `mean wait`)
 
-    rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name="auth"}[$__rate_interval]) / rate(vg_pgkit_pool_acquires_total{service_name="auth"}[$__rate_interval])
+```promql
+rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name="auth"}[$__rate_interval]) / rate(vg_pgkit_pool_acquires_total{service_name="auth"}[$__rate_interval])
+```
 
 **13. auth-pg connections vs max** (timeseries, short, legends
 `connections` / `max`)
 
-    sum(pg_stat_activity_count{service="auth-pg"})
-    max(pg_settings_max_connections{service="auth-pg"})
+```promql
+sum(pg_stat_activity_count{service="auth-pg"})
+max(pg_settings_max_connections{service="auth-pg"})
+```
 
 **14. auth-pg transactions** (timeseries, ops, legends `commit` /
 `rollback`)
 
-    sum(rate(pg_stat_database_xact_commit{service="auth-pg",datname!~"template.*"}[$__rate_interval]))
-    sum(rate(pg_stat_database_xact_rollback{service="auth-pg",datname!~"template.*"}[$__rate_interval]))
+```promql
+sum(rate(pg_stat_database_xact_commit{service="auth-pg",datname!~"template.*"}[$__rate_interval]))
+sum(rate(pg_stat_database_xact_rollback{service="auth-pg",datname!~"template.*"}[$__rate_interval]))
+```
 
 **15. Pod CPU** (timeseries, short, legend `{{pod}}`; the `auth-.*`
 scope intentionally covers auth-pg-0 too)
 
-    sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"auth-.*", container!=""}[$__rate_interval]))
+```promql
+sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"auth-.*", container!=""}[$__rate_interval]))
+```
 
 **16. Pod working-set memory** (timeseries, bytes, legend `{{pod}}`)
 
-    sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"auth-.*", container!=""})
+```promql
+sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"auth-.*", container!=""})
+```
 
 **17. Pod restarts, 15m** (timeseries, short, legend `{{pod}}`)
 
-    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"auth-.*"}[15m]))
+```promql
+sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"auth-.*"}[15m]))
+```
 
 **18. Goroutines** (timeseries, short, legend `goroutines`)
 
-    go_goroutine_count{service_name="auth"}
+```promql
+go_goroutine_count{service_name="auth"}
+```
 
 **19. Heap used** (timeseries, bytes, legend `heap`)
 
-    go_memory_used_bytes{service_name="auth"}
+```promql
+go_memory_used_bytes{service_name="auth"}
+```
 
 **20. Recent error logs** (logs panel, Loki datasource)
 
-    {service_name="auth"} | severity_text="ERROR"
+```logql
+{service_name="auth"} | severity_text="ERROR"
+```
 
 ## Failure modes and triage
 
@@ -434,7 +474,9 @@ provider while the other stays healthy; "Provider request errors, 5m"
 names the failing hop. The vg-auth-provider-errors rule fires when one
 provider exceeds five `provider_error` outcomes in 10 minutes:
 
-    sum by (provider) (increase(vg_auth_login_outcomes_total{outcome="provider_error"}[10m]))
+```promql
+sum by (provider) (increase(vg_auth_login_outcomes_total{outcome="provider_error"}[10m]))
+```
 
 Confirm with the
 `provider request failed` log line. `op=discovery` points at issuer
@@ -462,7 +504,9 @@ Symptom: "Reuse detections, 24h" above zero; `refresh reuse detected`
 WARN lines. The vg-auth-refresh-reuse rule fires on any detection
 inside 15 minutes:
 
-    sum(increase(vg_auth_token_refreshes_total{outcome="reuse_detected"}[15m]))
+```promql
+sum(increase(vg_auth_token_refreshes_total{outcome="reuse_detected"}[15m]))
+```
 
 One
 detection is a replayed refresh token: either theft or a client
@@ -510,14 +554,18 @@ Symptom: every service starts rejecting Bearer tokens within minutes;
 auth itself may look healthy. Check "Active signing keys"; the
 vg-auth-jwks-empty rule pages the moment this gauge reads below 1:
 
-    vg_auth_signing_keys_active
+```promql
+vg_auth_signing_keys_active
+```
 
 Zero means the JWKS is empty, which happens when a retire UPDATE hit
 every key (the boot-time registration makes 0 impossible otherwise).
 A pod restart does not fix this: key registration is insert-only and
 skips the existing retired row. Un-retire immediately:
 
-    kubectl -n vgkeep exec statefulset/auth-pg -- psql -U auth -d auth -c "UPDATE signing_keys SET retired_at = NULL WHERE kid = '<kid>';"
+```bash
+kubectl -n vgkeep exec statefulset/auth-pg -- psql -U auth -d auth -c "UPDATE signing_keys SET retired_at = NULL WHERE kid = '<kid>';"
+```
 
 If the count is fine but 401s persist, compare the `kid` in a rejected
 token's header against `curl -s http://localhost:8082/.well-known/jwks.json`:
@@ -560,14 +608,18 @@ renormalization. The levers are:
   4. After the last old-key access token expired (ACCESS_TOKEN_TTL,
      5 minutes), retire the old key:
 
-         kubectl -n vgkeep exec statefulset/auth-pg -- psql -U auth -d auth -c "UPDATE signing_keys SET retired_at = now() WHERE kid = '<old-kid>';"
+     ```bash
+     kubectl -n vgkeep exec statefulset/auth-pg -- psql -U auth -d auth -c "UPDATE signing_keys SET retired_at = now() WHERE kid = '<old-kid>';"
+     ```
 
      "Active signing keys" should read 2 during the overlap and 1
      after. Retired the wrong kid? Set `retired_at = NULL` for it (see
      failure mode 6).
 - Revoke every session of one user (compromised account):
 
-      kubectl -n vgkeep exec statefulset/auth-pg -- psql -U auth -d auth -c "UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = '<uuid>' AND revoked_at IS NULL;"
+  ```bash
+  kubectl -n vgkeep exec statefulset/auth-pg -- psql -U auth -d auth -c "UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = '<uuid>' AND revoked_at IS NULL;"
+  ```
 
   The user's next refresh answers 401 `refresh_reused` and the bff
   clears the session. Outstanding access tokens stay valid up to 5

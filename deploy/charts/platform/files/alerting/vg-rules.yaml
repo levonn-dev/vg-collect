@@ -1,3 +1,4 @@
+# Generated from deploy/observability/. Do not edit by hand.
 apiVersion: 1
 groups:
   - orgId: 1
@@ -173,34 +174,6 @@ groups:
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#7-valkey-evicting-keys-or-memory-unusually-high
         labels:
           severity: warn
-      - uid: vg-mongo-down
-        title: MongoDB unreachable
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange: { from: 300, to: 0 }
-            datasourceUid: prometheus
-            model:
-              refId: A
-              instant: true
-              expr: mongodb_up
-          - refId: C
-            relativeTimeRange: { from: 0, to: 0 }
-            datasourceUid: __expr__
-            model:
-              refId: C
-              type: threshold
-              expression: A
-              conditions:
-                - evaluator: { type: lt, params: [1] }
-        noDataState: Alerting
-        execErrState: Error
-        for: 2m
-        annotations:
-          summary: "enrichment-mongo is down or its exporter cannot reach it"
-          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/enrichment.md#2-mongo-down
-        labels:
-          severity: page
       - uid: vg-collector-drops
         title: OTel collector dropping telemetry
         condition: C
@@ -229,34 +202,6 @@ groups:
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#telemetry-pipeline-operations
         labels:
           severity: warn
-      - uid: vg-denylist-failopen
-        title: BFF denylist failing open
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange: { from: 600, to: 0 }
-            datasourceUid: prometheus
-            model:
-              refId: A
-              instant: true
-              expr: sum(increase(vg_bff_cache_fail_open_total{op=~"denylist_.*"}[10m]))
-          - refId: C
-            relativeTimeRange: { from: 0, to: 0 }
-            datasourceUid: __expr__
-            model:
-              refId: C
-              type: threshold
-              expression: A
-              conditions:
-                - evaluator: { type: gt, params: [0] }
-        noDataState: OK
-        execErrState: Error
-        for: 0s
-        annotations:
-          summary: "revoked-token checks are being skipped because Valkey is unreachable"
-          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/bff.md#1-valkey-unreachable
-        labels:
-          severity: page
       - uid: vg-loki-errors
         title: Error log spike
         condition: C
@@ -283,6 +228,64 @@ groups:
         annotations:
           summary: "{{ $labels.service_name }} logged more than 20 errors in 5 minutes"
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#3-error-log-spike
+        labels:
+          severity: warn
+      - uid: vg-auth-down
+        title: auth service down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: up{namespace="vgkeep", pod=~"auth-.*"}
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "auth is down or its metrics exporters cannot reach it"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
+          __dashboardUid__: vg-auth
+          __panelId__: "1"
+        labels:
+          severity: page
+      - uid: vg-auth-pdb-exhausted
+        title: Auth disruption budget exhausted
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"auth.*"})
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        annotations:
+          summary: "auth (or one of its datastores) cannot tolerate any pod disruption"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#pdb-exhausted
         labels:
           severity: warn
       - uid: vg-auth-jwks-empty
@@ -369,6 +372,92 @@ groups:
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/auth.md#1-logins-failing-at-the-provider-hop
         labels:
           severity: warn
+      - uid: vg-bff-down
+        title: bff service down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: up{namespace="vgkeep", pod=~"bff-.*"}
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "bff is down or its metrics exporters cannot reach it"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
+          __dashboardUid__: vg-bff
+          __panelId__: "1"
+        labels:
+          severity: page
+      - uid: vg-bff-pdb-exhausted
+        title: BFF disruption budget exhausted
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"bff.*"})
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        annotations:
+          summary: "bff (or one of its datastores) cannot tolerate any pod disruption"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#pdb-exhausted
+        labels:
+          severity: warn
+      - uid: vg-denylist-failopen
+        title: BFF denylist failing open
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(increase(vg_bff_cache_fail_open_total{op=~"denylist_.*"}[10m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "revoked-token checks are being skipped because Valkey is unreachable"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/bff.md#1-valkey-unreachable
+        labels:
+          severity: page
       - uid: vg-bff-refresh-failures
         title: BFF session refresh failures spiking
         condition: C
@@ -423,6 +512,64 @@ groups:
         annotations:
           summary: "bff callers are timing out waiting for a Valkey pool connection"
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/bff.md#5-valkey-client-pool-exhaustion
+        labels:
+          severity: warn
+      - uid: vg-collection-down
+        title: collection service down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: up{namespace="vgkeep", pod=~"collection-.*"}
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "collection is down or its metrics exporters cannot reach it"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
+          __dashboardUid__: vg-collection
+          __panelId__: "1"
+        labels:
+          severity: page
+      - uid: vg-collection-pdb-exhausted
+        title: Collection disruption budget exhausted
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"collection.*"})
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        annotations:
+          summary: "collection (or one of its datastores) cannot tolerate any pod disruption"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#pdb-exhausted
         labels:
           severity: warn
       - uid: vg-collection-pricing-degraded
@@ -481,6 +628,92 @@ groups:
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/collection.md#6-submission-queue-not-draining
         labels:
           severity: warn
+      - uid: vg-enrichment-down
+        title: enrichment service down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: up{namespace="vgkeep", pod=~"enrichment-.*"}
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "enrichment is down or its metrics exporters cannot reach it"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
+          __dashboardUid__: vg-enrichment
+          __panelId__: "1"
+        labels:
+          severity: page
+      - uid: vg-enrichment-pdb-exhausted
+        title: Enrichment disruption budget exhausted
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"enrichment.*"})
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        annotations:
+          summary: "enrichment (or one of its datastores) cannot tolerate any pod disruption"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#pdb-exhausted
+        labels:
+          severity: warn
+      - uid: vg-mongo-down
+        title: MongoDB unreachable
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: mongodb_up
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "enrichment-mongo is down or its exporter cannot reach it"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/enrichment.md#2-mongo-down
+        labels:
+          severity: page
       - uid: vg-enrichment-refresh-stalled
         title: Enrichment nightly catalog refresh has not completed in 26h
         condition: C
@@ -507,6 +740,8 @@ groups:
         annotations:
           summary: "enrichment has not finished a price refresh in more than 26 hours; catalog prices are going stale"
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/enrichment.md#4-catalog-refresh-missing
+          __dashboardUid__: vg-enrichment
+          __panelId__: "13"
         labels:
           severity: warn
       - uid: vg-enrichment-search-degraded
@@ -537,6 +772,122 @@ groups:
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/enrichment.md#3-search-degraded
         labels:
           severity: warn
+      - uid: vg-social-down
+        title: social service down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: up{namespace="vgkeep", pod=~"social-.*"}
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "social is down or its postgres exporter cannot reach it"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
+          __dashboardUid__: vg-social
+          __panelId__: "1"
+        labels:
+          severity: page
+      - uid: vg-social-pdb-exhausted
+        title: Social disruption budget exhausted
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"social.*"})
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        annotations:
+          summary: "social (or one of its datastores) cannot tolerate any pod disruption"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#pdb-exhausted
+        labels:
+          severity: warn
+      - uid: vg-user-down
+        title: user service down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: up{namespace="vgkeep", pod=~"user-.*"}
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "user is down or its metrics exporters cannot reach it"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
+          __dashboardUid__: vg-user
+          __panelId__: "1"
+        labels:
+          severity: page
+      - uid: vg-user-pdb-exhausted
+        title: User disruption budget exhausted
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"user.*"})
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        annotations:
+          summary: "user (or one of its datastores) cannot tolerate any pod disruption"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#pdb-exhausted
+        labels:
+          severity: warn
       - uid: vg-user-upsert-5xx
         title: User profile upsert failing (logins blocked)
         condition: C
@@ -563,33 +914,5 @@ groups:
         annotations:
           summary: "the user service is failing profile upserts; every login runs this call, so logins are down while the service-wide 5xx ratio can stay under vg-service-5xx's threshold"
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/user.md#1-logins-fail-at-the-upsert-leg
-        labels:
-          severity: page
-      - uid: vg-social-down
-        title: social service down
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange: { from: 300, to: 0 }
-            datasourceUid: prometheus
-            model:
-              refId: A
-              instant: true
-              expr: up{namespace="vgkeep", pod=~"social-.*"}
-          - refId: C
-            relativeTimeRange: { from: 0, to: 0 }
-            datasourceUid: __expr__
-            model:
-              refId: C
-              type: threshold
-              expression: A
-              conditions:
-                - evaluator: { type: lt, params: [1] }
-        noDataState: Alerting
-        execErrState: Error
-        for: 2m
-        annotations:
-          summary: "social is down or its postgres exporter cannot reach it"
-          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/social.md#1-social-down
         labels:
           severity: page

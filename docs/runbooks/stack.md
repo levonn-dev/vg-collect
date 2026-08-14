@@ -210,26 +210,71 @@ relayed through the bff the same way traces are - has its own runbook:
 
 ## Alerting
 
-Twenty-one rules provision from
+Thirty-two rules provision from
 `deploy/charts/platform/files/alerting/vg-rules.yaml` into the same
-`vgkeep` folder, evaluated every 1m. `severity: page` (seven
+`vgkeep` folder, evaluated every 1m. `severity: page` (twelve
 rules) marks user-visible breakage worth interrupting someone for;
-`severity: warn` (fourteen) queues investigation on the next pass. The
+`severity: warn` (twenty) queues investigation on the next pass. The
 dev tier configures no contact point on purpose, so nothing sends:
 read state in Grafana under Alerting > Alert rules, and what is firing
 under Alerting > Active alerts. Every rule's `runbook_url` lands on
 the runbook (or the exact failure-mode section) that triages it;
 [README.md](README.md) holds the full alert-to-runbook table.
 
-Three rules treat missing data as firing because absence is their
+Eight rules treat missing data as firing because absence is their
 signal: vg-mongo-down (an unreachable exporter usually means an
 unreachable Mongo), vg-enrichment-refresh-stalled (no completed
 catalog refresh in 26h; a brand-new stack fires this until its first
-refresh finishes at 06:00 or by manual trigger), and vg-social-down
-(the social app has no ServiceMonitor of its own, so the absence of
-its pg exporter target is the signal). Every other rule sets
-`noDataState: OK`, so a not-yet-emitting instrument stays silent
-rather than false-firing.
+refresh finishes at 06:00 or by manual trigger), and the six
+vg-{service}-down rules ([Service down](#service-down) below - none of
+the six services has a ServiceMonitor of its own, so the absence of
+its datastore exporter's scrape target is the signal). Every other
+rule sets `noDataState: OK`, so a not-yet-emitting instrument stays
+silent rather than false-firing.
+
+### Rule convergence and retirement
+
+Rules ship as one ConfigMap:
+`deploy/charts/platform/templates/grafana-alerting-configmap.yaml`
+renders every file under `deploy/charts/platform/files/alerting/`
+(today, just `vg-rules.yaml`) into `vg-alerting`, labeled
+`grafana_alert` so the grafana chart's own alerts sidecar
+(`grafana.sidecar.alerts.enabled` in
+`deploy/charts/platform/values.yaml`) picks it up. The sidecar watches
+labeled ConfigMaps in its own namespace, rewrites its mounted copy of
+the file on any change, and POSTs Grafana's
+`http://localhost:3000/api/admin/provisioning/alerting/reload`
+endpoint - so editing a rule (`task gen:obs`, then a `helm upgrade`)
+reaches a live cluster with no Grafana restart. Its own RBAC matches
+that scope: a namespaced Role (`grafana.rbac.namespaced` plus
+`grafana.rbac.extraRoleRules`, same values file) grants get/watch/list
+on ConfigMaps only, inside vg-platform alone - no cluster-wide reach,
+no Secrets access. This replaces the old
+`extraConfigmapMounts` mount, which Grafana only read at container
+startup; a renamed metric could leave a stale rule firing across
+deploys until someone noticed and restarted the pod by hand. If a
+shipped change does not show up under Alerting > Alert rules, the
+sidecar's own log is the first stop:
+`kubectl logs -n vg-platform deploy/grafana -c grafana-sc-alerts`.
+
+Retiring a rule: delete its definition from wherever it lives
+(`cluster.yaml` or the owning service's file under
+`deploy/observability/alerts/`), then add its uid, a date, and a
+reason to `deploy/observability/alerts/retired.yaml`. `task gen:obs`
+emits a `deleteRules` entry (`orgId` plus `uid`) into `vg-rules.yaml`
+alongside the regenerated `groups` list, which no longer carries the
+retired rule; `task lint:obs` (part of `task check`) fails the build
+if a uid is retired while still defined live. The `deleteRules`
+stanza ships in the same file, the same ConfigMap, and converges over
+the same sidecar path as any other rule edit - Grafana drops the named
+rule by uid on the next reload, no separate cleanup step.
+
+One-time note for a cluster still running the pre-sidecar chart: this
+change itself alters the grafana pod spec (it adds the sidecar
+container), so the `helm upgrade` that ships it rolls Grafana once
+regardless of any rule content. Every rule edit or retirement after
+that lands live with no further restart; until that one upgrade lands,
+alert changes on that cluster still need the old manual restart.
 
 ## Telemetry pipeline operations
 
@@ -237,7 +282,9 @@ The pipeline has one early-warning rule, vg-collector-drops (severity
 warn), firing when the pipeline fails to export at least one batch of
 spans, metrics or logs, sustained for 5 minutes:
 
-    sum(rate({__name__=~"otelcol_exporter_(send|enqueue)_failed_.*"}[5m]))
+```promql
+sum(rate({__name__=~"otelcol_exporter_(send|enqueue)_failed_.*"}[5m]))
+```
 
 Anything nonzero means otel-agent or otel-gateway is failing to
 deliver spans, metrics, or logs downstream, and telemetry is lying by
@@ -308,6 +355,7 @@ runbooks in:
 | Revoked tokens still usable                                                                 | [bff.md](bff.md#1-valkey-unreachable)                                                                                                                                                    | exposure is bounded: a revoked token outlives revocation by its remaining TTL, 5 minutes max                                                                                                                               |
 | Prices null, stale, or thin search results                                                  | [collection.md](collection.md#1-enrichment-unreachable)                                                                                                                                  | [enrichment.md](enrichment.md#3-search-degraded), [enrichment.md](enrichment.md#4-catalog-refresh-missing)                                                                                                                 |
 | Like/follower counts missing from shelf or profile pages, or feed and social writes failing | [social.md](social.md#1-social-down)                                                                                                                                                     | [social.md](social.md#2-collection-or-user-down) if only writes 502                                                                                                                                                        |
+| A service is completely unresponsive, all pods gone                                         | [Service down](#service-down)                                                                                                                                                            | [Pod restart churn](#4-pod-restart-churn-or-oom-kill) if it is crashlooping rather than clean-down, or that service's own runbook failure modes                                                                            |
 | One service erroring or slow                                                                | [5xx ratio](#1-service-5xx-ratio-above-5-percent), [p99 latency](#2-service-p99-latency-above-500ms) below                                                                               | that service's runbook failure modes                                                                                                                                                                                       |
 | A datastore down or saturated                                                               | [enrichment.md](enrichment.md#2-mongo-down), [Postgres saturation](#6-postgres-connections-above-80-percent-of-max), [Valkey pressure](#7-valkey-evicting-keys-or-memory-unusually-high) | the owning service runbook for readiness behavior and blast radius                                                                                                                                                         |
 | Dashboards blank, service healthy                                                           | [Telemetry pipeline operations](#telemetry-pipeline-operations) above                                                                                                                    | the four-step walk there, ending at the backend pods                                                                                                                                                                       |
@@ -330,7 +378,9 @@ the number you read here is the number that fired.
 The vg-service-5xx rule (severity page) fires when more than 5 percent
 of a service's responses were 5xx for 5 minutes:
 
-    sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) / sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
+```promql
+sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) / sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
+```
 
 1. "5xx ratio by service" on vg-overview shows the same ratio per
    service; open the firing service's own dashboard (vg-auth, vg-bff,
@@ -351,7 +401,9 @@ Then continue in that service's runbook failure modes.
 The vg-service-p99 rule (severity warn) fires when a service's p99
 request latency stays above the 500ms objective for 10 minutes:
 
-    histogram_quantile(0.99, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m])))
+```promql
+histogram_quantile(0.99, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m])))
+```
 
 1. "p99 latency by service" on vg-overview shows the same quantile per
    service; the firing service's own dashboard splits it per route on
@@ -368,7 +420,9 @@ request latency stays above the 500ms objective for 10 minutes:
 The vg-loki-errors rule (severity warn) fires when a service logs more
 than 20 ERROR lines in a 5 minute window, sustained for 5 minutes:
 
-    sum by (service_name) (count_over_time({service_name=~".+"} | severity_text="ERROR" [5m]))
+```logql
+sum by (service_name) (count_over_time({service_name=~".+"} | severity_text="ERROR" [5m]))
+```
 
 1. Open Explore against Loki with the rule's LogQL (drop the
    count_over_time wrapper to read the raw lines) and read the error
@@ -386,7 +440,9 @@ than 3 times in 15 minutes, or was OOM-killed, sustained for 5
 minutes. The query combines the two series the Pod details dashboard
 plots separately (restart count and OOM-kill count):
 
-    sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~"vgkeep|vg-platform"}[15m])) > 3 or sum by (namespace, pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace=~"vgkeep|vg-platform"}) > 0
+```promql
+sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~"vgkeep|vg-platform"}[15m])) > 3 or sum by (namespace, pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace=~"vgkeep|vg-platform"}) > 0
+```
 
 1. Run `kubectl -n <namespace> describe pod <pod>` and read the last
    termination reason and event list.
@@ -409,7 +465,9 @@ available, for 5 minutes. The query combines the two series the Node
 details dashboard plots separately (the pressure condition panel and
 the available-memory ratio panel):
 
-    kube_node_status_condition{condition=~"MemoryPressure|DiskPressure|PIDPressure", status="true"} > 0 or (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.10
+```promql
+kube_node_status_condition{condition=~"MemoryPressure|DiskPressure|PIDPressure", status="true"} > 0 or (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.10
+```
 
 1. Open the Node details dashboard (vg-node-details) and confirm which
    condition is set and how low available memory has gone.
@@ -426,7 +484,9 @@ instance's active connections stay above 80 percent of
 max_connections for 5 minutes. The query divides the two values the
 Datastores dashboard shows as separate panels:
 
-    sum by (service) (pg_stat_activity_count) / max by (service) (pg_settings_max_connections)
+```promql
+sum by (service) (pg_stat_activity_count) / max by (service) (pg_settings_max_connections)
+```
 
 1. Open the Datastores dashboard (vg-datastores); panel 1 shows which
    service's Postgres instance is affected.
@@ -446,7 +506,9 @@ instance evicts keys, or holds over 200MiB of memory, for 5 minutes.
 The query combines the two series the Datastores dashboard plots
 separately (eviction rate and memory used):
 
-    rate(redis_evicted_keys_total[5m]) > 0 or redis_memory_used_bytes > 209715200
+```promql
+rate(redis_evicted_keys_total[5m]) > 0 or redis_memory_used_bytes > 209715200
+```
 
 1. Check the `service` label on the firing series to identify which
    Valkey instance (bff, collection or enrichment) is affected.
@@ -456,6 +518,89 @@ separately (eviction rate and memory used):
 3. Consider shorter TTLs on the hot keys for that service; if memory
    keeps growing without any evictions, suspect a key leak (keys
    written without a TTL) instead.
+
+The two sections below are different in kind from 1-7 above: each is
+one rule shape instantiated once per service (six copies with the
+same query, not one rule aggregating across all six), so there is no
+single number that fired.
+
+### Service down
+
+The vg-{service}-down rules (severity page: vg-auth-down, vg-bff-down,
+vg-collection-down, vg-enrichment-down, vg-social-down, vg-user-down)
+page after 2 minutes on:
+
+```promql
+up{namespace="vgkeep", pod=~"{service}-.*"}
+```
+
+Every service pushes telemetry over OTLP and has no scraped `up`
+series of its own, so in practice this tracks that service's datastore
+exporter target: auth, social, and user each have one Postgres
+exporter (`<service>-pg`); bff has one Valkey exporter
+(`bff-valkey`); collection and enrichment have two apiece
+(`<service>-pg` and `<service>-valkey`; `<service>-mongo` and
+`<service>-valkey`). A datastore outage usually takes the service's
+own readiness down with it too, since readiness pings the connection
+pool - by far the most common route to this rule firing.
+
+1. The uid names the affected service directly (vg-collection-down is
+   collection, no label lookup needed). Run
+   `kubectl -n vgkeep get pods -l app.kubernetes.io/name=<service>`
+   and the matching `-l app.kubernetes.io/name=<service>-pg` (or
+   `-valkey`, `-mongo`) to see which side, app or datastore, is
+   actually down.
+2. Check that service's own dashboard (vg-<service>) for request-rate
+   and latency panels going flat at the same time as the alert; a flat
+   dashboard next to a healthy-looking datastore pod points at a
+   NetworkPolicy or scrape-config problem instead of an outage.
+3. Read the down pod's logs (`kubectl -n vgkeep logs <pod>`) for the
+   cause, and check the Pod details dashboard (vg-pod-details) for a
+   restart or OOM kill immediately before.
+4. A pure app-level crash with the datastore still healthy does not
+   fire this rule (it never scrapes the app); that path is caught by
+   [pod restart churn](#4-pod-restart-churn-or-oom-kill) or
+   [5xx ratio](#1-service-5xx-ratio-above-5-percent) instead.
+   [social.md](social.md#1-social-down) documents this exact behavior
+   in more depth for its own single Postgres exporter, the rule this
+   template generalizes from.
+
+### PDB exhausted
+
+The vg-{service}-pdb-exhausted rules (severity warn) fire after 1 hour
+on:
+
+```promql
+min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"{service}.*"})
+```
+
+The `{service}.*` match picks up both the service's own
+PodDisruptionBudget and its datastore's (e.g. `auth` and `auth-pg`;
+`collection`, `collection-pg`, and `collection-valkey`), so it fires
+if either one has zero allowed disruptions - a voluntary eviction
+(a node drain, a cluster-autoscaler scale-down, a rolling node
+upgrade) would be blocked, or would breach availability if forced.
+
+1. Run `kubectl -n vgkeep get pdb` and match the budget(s) at zero
+   against the alert's service name.
+2. Run `kubectl -n vgkeep get pods -l app.kubernetes.io/name=<service>`
+   (or the datastore's own label) to check the ready pod count against
+   what the chart deploys; a healthy pod count sitting right at
+   minAvailable, with nothing crashing, is the expected dev state
+   (every chart here runs one replica, so `kubectl -n vgkeep get pdb`
+   shows every budget at zero allowed disruptions once its one pod is
+   healthy - there is no spare replica to give up). Fewer ready pods
+   than the chart deploys, or a pod stuck Pending or CrashLoopBackOff,
+   is the real problem to chase.
+3. In dev this rule is informational: proceeding with a node drain or
+   `kubectl delete pod` while it fires queues or blocks the disruption
+   until a replacement pod is ready, rather than causing an outage. A
+   production deployment running multiple replicas per service (see
+   [../production-paths.md](../production-paths.md)) is where this
+   rule's signal changes meaning - a healthy multi-replica service
+   should normally show a nonzero allowed-disruptions count, and zero
+   there means a real capacity or rollout problem, not just "one
+   replica, no spare."
 
 ## Smoke surfaces
 
@@ -487,35 +632,47 @@ vg-platform deploy/charts/platform -n vg-platform --wait --timeout
 port-forwards are listed under Ports.
 
 Dashboards hot-reload from the ConfigMap within a minute. Alert rules
-do not: Grafana reads alerting provisioning only at startup or on an
-explicit reload, and the reload endpoint requires the basic admin
-login (the anonymous Admin role lacks `provisioning:reload`). After
-the ConfigMap lands, reload and count, expecting twenty-one rules:
+converge the same way now, and faster: the grafana alerts sidecar (see
+[Rule convergence and retirement](#rule-convergence-and-retirement)
+above) watches the `vg-alerting` ConfigMap on the Kubernetes API and
+reloads Grafana itself within seconds of the ConfigMap landing, no
+manual reload call needed. Count what landed, expecting thirty-two
+rules (the provisioning API requires the basic admin login; anonymous
+access, even with the Admin role, is not accepted there):
 
-    curl -u admin:admin -X POST http://localhost:3000/api/admin/provisioning/alerting/reload
-    curl -s -u admin:admin http://localhost:3000/api/v1/provisioning/alert-rules | jq length
+```bash
+curl -s -u admin:admin http://localhost:3000/api/v1/provisioning/alert-rules | jq length
+```
 
 Dashboards provisioned, expecting twelve `.json` entries in the
 ConfigMap and twelve `vg-` uids in the `vgkeep` folder (Grafana
 reloads provisioned files within a minute of the ConfigMap landing):
 
-    kubectl -n vg-platform get cm vg-dashboards -o json | jq -r '.data | keys[]'
-    curl -s "http://localhost:3000/api/search?tag=vgkeep&limit=50" | jq -r '.[] | select(.type=="dash-db") | .uid'
+```bash
+kubectl -n vg-platform get cm vg-dashboards -o json | jq -r '.data | keys[]'
+curl -s "http://localhost:3000/api/search?tag=vgkeep&limit=50" | jq -r '.[] | select(.type=="dash-db") | .uid'
+```
 
 Service deployments rolled, expecting `successfully rolled out` six
 times:
 
-    for d in auth bff collection enrichment social user; do kubectl -n vgkeep rollout status deployment/$d; done
+```bash
+for d in auth bff collection enrichment social user; do kubectl -n vgkeep rollout status deployment/$d; done
+```
 
 Pool gauges emit without traffic, expecting pg series for auth,
 collection, social, user and valkey series for bff, collection,
 enrichment:
 
-    curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum by (service_name) (vg_pgkit_pool_connections)'
-    curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum by (service_name) (vg_valkeykit_pool_connections)'
+```bash
+curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum by (service_name) (vg_pgkit_pool_connections)'
+curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum by (service_name) (vg_valkeykit_pool_connections)'
+```
 
 One domain counter through the dev fixture login, expecting a nonzero
 sum on the scrape after the curl (allow 30s):
 
-    curl -sf "http://localhost:8090/api/auth/login?provider=dev&user=alice"
-    curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum(vg_auth_login_outcomes_total)'
+```bash
+curl -sf "http://localhost:8090/api/auth/login?provider=dev&user=alice"
+curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum(vg_auth_login_outcomes_total)'
+```

@@ -419,123 +419,171 @@ HTTP (all Prometheus, scoped `service_name="enrichment"`):
 
 1. "Request rate by route" - timeseries, reqps, legend `{{http_route}}`
 
-        sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="enrichment"}[$__rate_interval]))
+    ```promql
+    sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="enrichment"}[$__rate_interval]))
+    ```
 
 2. "5xx ratio" - timeseries, percentunit
 
-        sum (rate(http_server_request_duration_seconds_count{service_name="enrichment",http_response_status_code=~"5.."}[5m])) / sum (rate(http_server_request_duration_seconds_count{service_name="enrichment"}[5m]))
+    ```promql
+    sum (rate(http_server_request_duration_seconds_count{service_name="enrichment",http_response_status_code=~"5.."}[5m])) / sum (rate(http_server_request_duration_seconds_count{service_name="enrichment"}[5m]))
+    ```
 
 3. "Latency by route (p95/p99)" - timeseries, s, `"exemplar": true` on
    both targets, legends `p95 {{http_route}}` / `p99 {{http_route}}`
 
-        histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="enrichment"}[$__rate_interval])))
-        histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="enrichment"}[$__rate_interval])))
+    ```promql
+    histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="enrichment"}[$__rate_interval])))
+    histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="enrichment"}[$__rate_interval])))
+    ```
 
 4. "Errors by route and status" - timeseries, reqps, legend
    `{{http_route}} {{http_response_status_code}}`
 
-        sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="enrichment",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+    ```promql
+    sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="enrichment",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+    ```
 
 5. "Goroutines" - timeseries, short, legend `goroutines`
 
-        go_goroutine_count{service_name="enrichment"}
+    ```promql
+    go_goroutine_count{service_name="enrichment"}
+    ```
 
 6. "Heap used" - timeseries, bytes, legend `heap`
 
-        go_memory_used_bytes{service_name="enrichment"}
+    ```promql
+    go_memory_used_bytes{service_name="enrichment"}
+    ```
 
 Feature health:
 
 7. "Search answers by source" - timeseries, short, legend
    `{{kind}} {{source}}`
 
-        sum by (kind, source) (increase(vg_enrichment_search_requests_total[5m]))
+    ```promql
+    sum by (kind, source) (increase(vg_enrichment_search_requests_total[5m]))
+    ```
 
 8. "Auto-match outcomes" - timeseries, short, legend
    `{{source}}/{{outcome}}/{{region}}`
 
-        sum by (source, outcome, region) (increase(vg_enrichment_match_outcomes_total[1h]))
+    ```promql
+    sum by (source, outcome, region) (increase(vg_enrichment_match_outcomes_total[1h]))
+    ```
 
 9. "Match fallback searches" - timeseries, short, legend `{{outcome}}`
    (only fired fallback legs count; most resolves never trip it)
 
-        sum by (outcome) (increase(vg_enrichment_match_fallback_search_total[1h]))
+    ```promql
+    sum by (outcome) (increase(vg_enrichment_match_fallback_search_total[1h]))
+    ```
 
 10. "Localization search legs" - timeseries, short, legend
    `{{outcome}}` (only non-Latin queries reach this leg; `error`
    still serves primary results, so this panel is a feature-health
    signal, not an availability one)
 
-        sum by (outcome) (rate(vg_enrichment_search_localization_leg_total[5m]))
+    ```promql
+    sum by (outcome) (rate(vg_enrichment_search_localization_leg_total[5m]))
+    ```
 
 11. "Catalog refresh items by step and outcome" - timeseries, short,
    legend `{{step}} {{outcome}}`
 
-        sum by (step, outcome) (increase(vg_enrichment_refresh_items_total[1h]))
+    ```promql
+    sum by (step, outcome) (increase(vg_enrichment_refresh_items_total[1h]))
+    ```
 
 12. "Catalog refresh duration by step" - timeseries, s, legend `{{step}}`
    (one refresh per day: the 1h increase of the sum is the last refresh's
    elapsed seconds at the refresh hour, zero elsewhere)
 
-        sum by (step) (increase(vg_enrichment_refresh_step_duration_seconds_sum[1h]))
+    ```promql
+    sum by (step) (increase(vg_enrichment_refresh_step_duration_seconds_sum[1h]))
+    ```
 
 13. "Valkey fail-open events" - timeseries, short, legend `{{op}}`
 
-        sum by (op) (increase(vg_enrichment_cache_fail_open_total[5m]))
+    ```promql
+    sum by (op) (increase(vg_enrichment_cache_fail_open_total[5m]))
+    ```
 
 Datastores and pools:
 
 14. "Valkey client pool connections" - timeseries, short, legends
     `open` / `idle`
 
-        vg_valkeykit_pool_connections{service_name="enrichment"}
-        vg_valkeykit_pool_connections_idle{service_name="enrichment"}
+    ```promql
+    vg_valkeykit_pool_connections{service_name="enrichment"}
+    vg_valkeykit_pool_connections_idle{service_name="enrichment"}
+    ```
 
 15. "Valkey pool reuse ratio" - timeseries, percentunit
 
-        rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) / (rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) + rate(vg_valkeykit_pool_misses_total{service_name="enrichment"}[5m]))
+    ```promql
+    rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) / (rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) + rate(vg_valkeykit_pool_misses_total{service_name="enrichment"}[5m]))
+    ```
 
 16. "Valkey pool timeouts" - timeseries, short (flat zero is the only
     healthy shape)
 
-        increase(vg_valkeykit_pool_timeouts_total{service_name="enrichment"}[5m])
+    ```promql
+    increase(vg_valkeykit_pool_timeouts_total{service_name="enrichment"}[5m])
+    ```
 
 17. "Mongo up" - stat, short; state thresholds: red below 1, green at
     1 and above
 
-        mongodb_up{service="enrichment-mongo"}
+    ```promql
+    mongodb_up{service="enrichment-mongo"}
+    ```
 
 18. "Mongo operations" - timeseries, ops, legend `{{legacy_op_type}}`
 
-        sum by (legacy_op_type) (rate(mongodb_ss_opcounters{service="enrichment-mongo"}[$__rate_interval]))
+    ```promql
+    sum by (legacy_op_type) (rate(mongodb_ss_opcounters{service="enrichment-mongo"}[$__rate_interval]))
+    ```
 
 19. "Valkey server memory" - timeseries, bytes
 
-        redis_memory_used_bytes{service="enrichment-valkey"}
+    ```promql
+    redis_memory_used_bytes{service="enrichment-valkey"}
+    ```
 
 20. "Valkey keyspace hit ratio" - timeseries, percentunit
 
-        rate(redis_keyspace_hits_total{service="enrichment-valkey"}[5m]) / (rate(redis_keyspace_hits_total{service="enrichment-valkey"}[5m]) + rate(redis_keyspace_misses_total{service="enrichment-valkey"}[5m]))
+    ```promql
+    rate(redis_keyspace_hits_total{service="enrichment-valkey"}[5m]) / (rate(redis_keyspace_hits_total{service="enrichment-valkey"}[5m]) + rate(redis_keyspace_misses_total{service="enrichment-valkey"}[5m]))
+    ```
 
 Pods and logs:
 
 21. "CPU by pod" - timeseries, short, legend `{{pod}}` (covers the
     app, mongo, valkey and refresh job pods)
 
-        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"enrichment.*", container!=""}[$__rate_interval]))
+    ```promql
+    sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"enrichment.*", container!=""}[$__rate_interval]))
+    ```
 
 22. "Working-set memory by pod" - timeseries, bytes, legend `{{pod}}`
 
-        sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"enrichment.*", container!=""})
+    ```promql
+    sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"enrichment.*", container!=""})
+    ```
 
 23. "Restarts (15m windows) by pod" - timeseries, short, legend
     `{{pod}}`
 
-        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"enrichment.*"}[15m]))
+    ```promql
+    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"enrichment.*"}[15m]))
+    ```
 
 24. "Recent error logs" - logs panel, Loki datasource
 
-        {service_name="enrichment"} | severity_text="ERROR"
+    ```logql
+    {service_name="enrichment"} | severity_text="ERROR"
+    ```
 
 ## Failure modes and triage
 
@@ -548,7 +596,9 @@ Every 500 logs a `store error` line at ERROR carrying the failing
 operation and cause (`op`, `err`) - read it first rather than
 inferring the cause from the affected route alone:
 
-    {service_name="enrichment"} |= "store error"
+```logql
+{service_name="enrichment"} |= "store error"
+```
 
 (the "Recent error logs" panel, or the Log additions row under
 Telemetry above - `op` names the failing operation; 29 call sites
@@ -568,7 +618,9 @@ below 1, or produces no data at all, for 2 minutes; it treats missing
 data the same as down, because an unreachable exporter usually means
 an unreachable Mongo. The "Mongo up" stat shows the same series:
 
-    mongodb_up
+```promql
+mongodb_up
+```
 
 1. Run `kubectl -n vgkeep get pods enrichment-mongo-0` to see
    whether the pod is down, crash-looping or just unready.
@@ -594,11 +646,15 @@ users see thinner results with stale prices, and the log line below
 appears at WARN. The vg-enrichment-search-degraded rule fires when
 the degraded share holds above 10 percent for 15 minutes:
 
-    sum(rate(vg_enrichment_search_requests_total{source="degraded"}[15m])) / sum(rate(vg_enrichment_search_requests_total[15m]))
+```promql
+sum(rate(vg_enrichment_search_requests_total{source="degraded"}[15m])) / sum(rate(vg_enrichment_search_requests_total[15m]))
+```
 
 The confirming log line:
 
-    {service_name="enrichment"} |= "search provider unavailable; serving local catalog match"
+```logql
+{service_name="enrichment"} |= "search provider unavailable; serving local catalog match"
+```
 
 This is the IGDB (kind game) or PriceCharting (hardware, pc_listing)
 search path failing. Degraded answers are never cached, so recovery is
@@ -625,7 +681,9 @@ as stale `pricecharting.as_of` stamps). Confirm: "Catalog refresh
 items by step and outcome" and "Catalog refresh duration by step" flat
 for more than 24h, or
 
-    sum(increase(vg_enrichment_refresh_step_duration_seconds_count{step="prices"}[26h]))
+```promql
+sum(increase(vg_enrichment_refresh_step_duration_seconds_count{step="prices"}[26h]))
+```
 
 reads 0. The vg-enrichment-refresh-stalled rule fires on the same
 expression, and treats an absent series as firing too (a refresh that
@@ -672,7 +730,9 @@ Admin levers).
 "Catalog refresh items by step and outcome" shows a `failed` share, or
 the stopped-early warn appears:
 
-    {service_name="enrichment"} |= "price refresh stopped early: context done"
+```logql
+{service_name="enrichment"} |= "price refresh stopped early: context done"
+```
 
 A failed share tracks provider or Mongo trouble mid-refresh; individual
 products are skipped, the refresh finishes what it can, and the next
@@ -738,11 +798,15 @@ refresh trigger.
 Run the catalog refresh now, CronJob path (exchanges its own service
 token, in-cluster):
 
-    kubectl -n vgkeep create job --from=cronjob/enrichment-refresh refresh-now
+```bash
+kubectl -n vgkeep create job --from=cronjob/enrichment-refresh refresh-now
+```
 
 Same refresh via the admin API (port-forward 8084):
 
-    curl -X POST -H "Authorization: Bearer $ADMIN_JWT" http://localhost:8084/admin/refresh
+```bash
+curl -X POST -H "Authorization: Bearer $ADMIN_JWT" http://localhost:8084/admin/refresh
+```
 
 Both run all three steps: prices, reprojection, candidate sweep. The
 reprojection step is the catalog's self-healing backfill:
@@ -775,8 +839,10 @@ Admin page's "Run community region normalization" button (`POST
 endpoint). Bruno: `bruno/enrichment/normalize-community-regions.bru`,
 or:
 
-    curl -X POST -H "Authorization: Bearer $ADMIN_JWT" \
-      http://localhost:8084/internal/normalize-community-regions
+```bash
+curl -X POST -H "Authorization: Bearer $ADMIN_JWT" \
+  http://localhost:8084/internal/normalize-community-regions
+```
 
 Answers `{"scanned":N,"normalized":N,"skipped":N}`. Idempotent: a
 promoted row leaves the selection set, so a second run normalizes 0
@@ -785,9 +851,11 @@ once nothing unreviewed remains.
 Moderated mapping fix (validates against the provider, snapshots,
 marks verified; `{}` clears the mapping):
 
-    curl -X PUT -H "Authorization: Bearer $ADMIN_JWT" -H "Content-Type: application/json" \
-      -d '{"pc_product_id": 6910}' \
-      http://localhost:8084/admin/products/<product-uuid>/pricecharting
+```bash
+curl -X PUT -H "Authorization: Bearer $ADMIN_JWT" -H "Content-Type: application/json" \
+  -d '{"pc_product_id": 6910}' \
+  http://localhost:8084/admin/products/<product-uuid>/pricecharting
+```
 
 Worklists and community moderation, same auth:
 

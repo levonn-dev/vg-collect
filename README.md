@@ -40,18 +40,18 @@ Note: the fixture's handle is literally `admin` on dev databases created before 
 
 ## Dev commands
 
-| Command                  | What                                                                                                                        |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `task lint`              | golangci-lint every Go module + helm lint every chart + eslint the frontend                                                 |
-| `task test`              | go test every module (testcontainers need Docker) + frontend vitest                                                         |
-| `task test:cover`        | tests + the 80% coverage gate (generated code and cmd/ wiring excluded)                                                     |
-| `task gen`               | regenerate region/platform tables from `api/domain.yaml` + OpenAPI server stubs/types + the frontend's typed API client     |
-| `task tidy`              | go mod tidy every module                                                                                                    |
-| `task migrate`           | run db:migrate for every migrate-capable service (auth, collection, enrichment, social, user)                              |
-| `task build`             | compile every module + the frontend bundle                                                                                  |
-| `task e2e`               | Playwright smoke suite against the running stack (login, collection journey, currency, account, admin, social, submissions) |
-| `task run` / `task down` | tilt up / down                                                                                                              |
-| `task nuke`              | full app-stack reset: tilt down + the vgkeep namespace (see Teardown)                                                       |
+| Command                  | What                                                                                                                                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task lint`              | golangci-lint every Go module + helm lint every chart + eslint the frontend                                                                                                                       |
+| `task test`              | go test every module (testcontainers need Docker) + frontend vitest                                                                                                                               |
+| `task test:cover`        | tests + the 80% coverage gate (generated code and cmd/ wiring excluded)                                                                                                                           |
+| `task gen`               | regenerate region/platform tables from `api/domain.yaml` + OpenAPI server stubs/types + the frontend's typed API client + Grafana alert rules and service dashboards from `deploy/observability/` |
+| `task tidy`              | go mod tidy every module                                                                                                                                                                          |
+| `task migrate`           | run db:migrate for every migrate-capable service (auth, collection, enrichment, social, user)                                                                                                     |
+| `task build`             | compile every module + the frontend bundle                                                                                                                                                        |
+| `task e2e`               | Playwright smoke suite against the running stack (login, collection journey, currency, account, admin, social, submissions)                                                                       |
+| `task run` / `task down` | tilt up / down                                                                                                                                                                                    |
+| `task nuke`              | full app-stack reset: tilt down + the vgkeep namespace (see Teardown)                                                                                                                             |
 
 ## Teardown
 
@@ -134,7 +134,7 @@ Eleven dashboards are provisioned into the `vgkeep` Grafana folder
   `vg-user` - one per service: RED, domain metrics, datastore health
   from that service's seat, pods, and error logs
 
-Twenty-one alert rules are provisioned alongside them in the same
+Thirty-two alert rules are provisioned alongside them in the same
 `vgkeep` folder; each links a runbook under `docs/runbooks/` via
 its `runbook_url` annotation. The same directory holds an operating
 runbook per service and `docs/runbooks/stack.md` for the application

@@ -341,48 +341,66 @@ Row 1 - HTTP (RED, this service only):
 
 1. "Request rate by route" - timeseries, reqps, legend {{http_route}}
 
-       sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="collection"}[$__rate_interval]))
+   ```promql
+   sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="collection"}[$__rate_interval]))
+   ```
 
 2. "5xx ratio" - timeseries, percentunit
 
-       sum(rate(http_server_request_duration_seconds_count{service_name="collection",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="collection"}[5m]))
+   ```promql
+   sum(rate(http_server_request_duration_seconds_count{service_name="collection",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="collection"}[5m]))
+   ```
 
 3. "Latency by route (p95/p99)" - timeseries, s, exemplar true on
    both targets, legends `p95 {{http_route}}` / `p99 {{http_route}}`
 
-       histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="collection"}[$__rate_interval])))
-       histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="collection"}[$__rate_interval])))
+   ```promql
+   histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="collection"}[$__rate_interval])))
+   histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="collection"}[$__rate_interval])))
+   ```
 
 4. "Errors by route and status" - timeseries, reqps, legend
    `{{http_route}} {{http_response_status_code}}`
 
-       sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="collection",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+   ```promql
+   sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="collection",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+   ```
 
 Row 2 - feature health:
 
 5. "Pricing composition outcomes" - timeseries, short, legend
    `{{op}} {{outcome}}`
 
-       sum by (op, outcome) (increase(vg_collection_pricing_compose_total[5m]))
+   ```promql
+   sum by (op, outcome) (increase(vg_collection_pricing_compose_total[5m]))
+   ```
 
 6. "Cache hit ratio by surface" - timeseries, percentunit, legend
    {{cache}}
 
-       sum by (cache) (rate(vg_collection_cache_lookups_total{outcome="hit"}[5m])) / sum by (cache) (rate(vg_collection_cache_lookups_total[5m]))
+   ```promql
+   sum by (cache) (rate(vg_collection_cache_lookups_total{outcome="hit"}[5m])) / sum by (cache) (rate(vg_collection_cache_lookups_total[5m]))
+   ```
 
 7. "Valkey fail-open events" - timeseries, short, legend {{op}}
 
-       sum by (op) (increase(vg_collection_cache_fail_open_total[5m]))
+   ```promql
+   sum by (op) (increase(vg_collection_cache_fail_open_total[5m]))
+   ```
 
 8. "Submission lifecycle events" - timeseries, short, legend
    {{event}}
 
-       sum by (event) (increase(vg_collection_submissions_events_total[5m]))
+   ```promql
+   sum by (event) (increase(vg_collection_submissions_events_total[5m]))
+   ```
 
 9. "Pending submissions" - stat, short, thresholds green to 25,
    yellow 25, red 100 (queue state, not series identity)
 
-       max(vg_collection_submissions_pending)
+   ```promql
+   max(vg_collection_submissions_pending)
+   ```
 
 Row 3 - datastores from this service's seat:
 
@@ -390,31 +408,43 @@ Row 3 - datastores from this service's seat:
     `idle` / `max` (the pool gauge counts constructing, acquired,
     and idle together)
 
-        vg_pgkit_pool_connections{service_name="collection"}
-        vg_pgkit_pool_connections_idle{service_name="collection"}
-        vg_pgkit_pool_connections_max{service_name="collection"}
+    ```promql
+    vg_pgkit_pool_connections{service_name="collection"}
+    vg_pgkit_pool_connections_idle{service_name="collection"}
+    vg_pgkit_pool_connections_max{service_name="collection"}
+    ```
 
 11. "PG pool mean acquire wait" - timeseries, s
 
-        rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name="collection"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="collection"}[5m])
+    ```promql
+    rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name="collection"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="collection"}[5m])
+    ```
 
 12. "PG server connections vs max" - timeseries, short, legends
     `connections` / `max`
 
-        sum(pg_stat_activity_count{service="collection-pg"})
-        max(pg_settings_max_connections{service="collection-pg"})
+    ```promql
+    sum(pg_stat_activity_count{service="collection-pg"})
+    max(pg_settings_max_connections{service="collection-pg"})
+    ```
 
 13. "Valkey pool reuse ratio" - timeseries, percentunit
 
-        rate(vg_valkeykit_pool_hits_total{service_name="collection"}[5m]) / (rate(vg_valkeykit_pool_hits_total{service_name="collection"}[5m]) + rate(vg_valkeykit_pool_misses_total{service_name="collection"}[5m]))
+    ```promql
+    rate(vg_valkeykit_pool_hits_total{service_name="collection"}[5m]) / (rate(vg_valkeykit_pool_hits_total{service_name="collection"}[5m]) + rate(vg_valkeykit_pool_misses_total{service_name="collection"}[5m]))
+    ```
 
 14. "Valkey pool timeouts" - timeseries, short
 
-        increase(vg_valkeykit_pool_timeouts_total{service_name="collection"}[5m])
+    ```promql
+    increase(vg_valkeykit_pool_timeouts_total{service_name="collection"}[5m])
+    ```
 
 15. "Valkey memory (collection-valkey)" - timeseries, bytes
 
-        redis_memory_used_bytes{service="collection-valkey"}
+    ```promql
+    redis_memory_used_bytes{service="collection-valkey"}
+    ```
 
 Row 4 - workload health and logs (pod regex `collection.*`
 deliberately catches the app plus collection-pg and collection-valkey;
@@ -422,45 +452,61 @@ those statefulset pods are part of this service's blast radius):
 
 16. "CPU by pod" - timeseries, short, legend {{pod}}
 
-        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"collection.*", container!=""}[$__rate_interval]))
+    ```promql
+    sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"collection.*", container!=""}[$__rate_interval]))
+    ```
 
 17. "Working-set memory by pod" - timeseries, bytes, legend {{pod}}
     (limits to read against: app 128Mi, pg 256Mi, valkey 128Mi)
 
-        sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"collection.*", container!=""})
+    ```promql
+    sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"collection.*", container!=""})
+    ```
 
 18. "Restarts last 15m" - timeseries, short, legend {{pod}}
 
-        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"collection.*"}[15m]))
+    ```promql
+    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"collection.*"}[15m]))
+    ```
 
 19. "Goroutines" - timeseries, short
 
-        go_goroutine_count{service_name="collection"}
+    ```promql
+    go_goroutine_count{service_name="collection"}
+    ```
 
 20. "Heap used" - timeseries, bytes
 
-        go_memory_used_bytes{service_name="collection"}
+    ```promql
+    go_memory_used_bytes{service_name="collection"}
+    ```
 
 21. "Recent error and warn logs" - logs panel, Loki datasource. WARN
     is included on purpose: this service's characteristic failures
     (fail-open, degraded pricing) log at WARN, not ERROR.
 
-        {service_name="collection"} | severity_text=~"ERROR|WARN"
+    ```logql
+    {service_name="collection"} | severity_text=~"ERROR|WARN"
+    ```
 
 Row 5 - the entry rematch:
 
 22. "Entry rematch" - timeseries, short, legends `triples/{{outcome}}`
     and `repoints`
 
-        sum by (outcome) (increase(vg_collection_rematch_triples_total[1h]))
-        increase(vg_collection_rematch_repoints_total[1h])
+    ```promql
+    sum by (outcome) (increase(vg_collection_rematch_triples_total[1h]))
+    increase(vg_collection_rematch_repoints_total[1h])
+    ```
 
 23. "Entry rematch duration" - timeseries, s, legend `duration` (the
     rematch runs once nightly: the 1h increase of the sum is the last
     run's elapsed seconds at the rematch hour, zero elsewhere - same
     reading as the catalog refresh's own duration panel, enrichment.md)
 
-        sum(increase(vg_collection_rematch_duration_seconds_sum[1h]))
+    ```promql
+    sum(increase(vg_collection_rematch_duration_seconds_sum[1h]))
+    ```
 
 ## Failure modes and triage
 
@@ -478,11 +524,15 @@ degraded rising, and "Errors by route and status" shows 502s on POST
 /entries and the verdict route. The vg-collection-pricing-degraded
 rule fires when the degraded share holds above 20 percent:
 
-    sum(rate(vg_collection_pricing_compose_total{outcome="degraded"}[5m])) / sum(rate(vg_collection_pricing_compose_total[5m]))
+```promql
+sum(rate(vg_collection_pricing_compose_total{outcome="degraded"}[5m])) / sum(rate(vg_collection_pricing_compose_total[5m]))
+```
 
 Or in Loki:
 
-    {service_name="collection"} |= "pricing unavailable"
+```logql
+{service_name="collection"} |= "pricing unavailable"
+```
 
 The 502 face shows on the 5xx alert path
 ([stack.md](stack.md#1-service-5xx-ratio-above-5-percent)).
@@ -497,15 +547,19 @@ Down: /readyz fails, the pod goes NotReady, the bff answers 502
 `upstream_error` for every collection route. Confirm with "Restarts
 last 15m" and:
 
-    kubectl -n vgkeep get pods -l app.kubernetes.io/name=collection
-    kubectl -n vgkeep logs statefulset/collection-pg
+```bash
+kubectl -n vgkeep get pods -l app.kubernetes.io/name=collection
+kubectl -n vgkeep logs statefulset/collection-pg
+```
 
 Saturated: the "PG pool connections", "PG pool mean acquire wait",
 and "PG server connections vs max" panels. Mean acquire wait climbing
 while in-pool sits pinned at max means the pool is the bottleneck;
 the contention share is
 
-    rate(vg_pgkit_pool_empty_acquires_total{service_name="collection"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="collection"}[5m])
+```promql
+rate(vg_pgkit_pool_empty_acquires_total{service_name="collection"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="collection"}[5m])
+```
 
 Server-side saturation is
 [stack.md](stack.md#6-postgres-connections-above-80-percent-of-max)'s
@@ -552,7 +606,9 @@ an outage: nobody with role admin is working the queue. The
 vg-collection-submissions-backlog rule fires after six hours above 25
 on the panel's own query:
 
-    max(vg_collection_submissions_pending)
+```promql
+max(vg_collection_submissions_pending)
+```
 
 "Submission
 lifecycle events" shows arrivals vs verdicts. The queue itself is at
@@ -617,11 +673,13 @@ their localized trio once their product carries it. Admin page: the
 `POST /api/admin/resnapshot`). Bruno:
 `bruno/collection/resnapshot.bru`, or:
 
-    TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
-      -H 'Content-Type: application/json' -d '{"user":"admin"}' \
-      | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
-    curl -s -X POST http://localhost:8085/internal/resnapshot \
-      -H "Authorization: Bearer $TOKEN"
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
+  -H 'Content-Type: application/json' -d '{"user":"admin"}' \
+  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+curl -s -X POST http://localhost:8085/internal/resnapshot \
+  -H "Authorization: Bearer $TOKEN"
+```
 
 Answers `{"products_seen":N,"products_failed":N,"entries_updated":N}`;
 a second run reports entries_updated 0.
@@ -655,11 +713,13 @@ repoints 0 once nothing is left to repoint. Bruno:
 `bruno/collection/rematch-entries.bru` (grant the
 fixture admin first, `task grant-fixture-admin`), or:
 
-    TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
-      -H 'Content-Type: application/json' -d '{"user":"admin"}' \
-      | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
-    curl -s -X POST http://localhost:8085/internal/rematch-entries \
-      -H "Authorization: Bearer $TOKEN"
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
+  -H 'Content-Type: application/json' -d '{"user":"admin"}' \
+  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+curl -s -X POST http://localhost:8085/internal/rematch-entries \
+  -H "Authorization: Bearer $TOKEN"
+```
 
 Scheduled nightly at 07:00 as the third and final step of the
 collection-rematch CronJob's chain - normalize-platforms, then
@@ -692,8 +752,10 @@ to this same endpoint). Bruno:
 `bruno/collection/normalize-platforms.bru`, or grant the dev fixture
 first with `task grant-fixture-admin`, mint the token as above, then:
 
-    curl -s -X POST http://localhost:8085/internal/normalize-platforms \
-      -H "Authorization: Bearer $TOKEN"
+```bash
+curl -s -X POST http://localhost:8085/internal/normalize-platforms \
+  -H "Authorization: Bearer $TOKEN"
+```
 
 Answers `{"scanned":N,"normalized":N,"skipped":N}`; skipped rows are
 names the catalog does not know, left untouched for a rerun after the
@@ -720,8 +782,10 @@ normalization" button (`POST /api/admin/normalize-regions`, relayed
 to this same endpoint). Bruno: `bruno/collection/normalize-regions.bru`,
 or:
 
-    curl -s -X POST http://localhost:8085/internal/normalize-regions \
-      -H "Authorization: Bearer $TOKEN"
+```bash
+curl -s -X POST http://localhost:8085/internal/normalize-regions \
+  -H "Authorization: Bearer $TOKEN"
+```
 
 Answers `{"scanned":N,"normalized":N,"skipped":N}`. Idempotent: a
 promoted row leaves the selection set, so a second run normalizes 0

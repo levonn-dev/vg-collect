@@ -1,0 +1,29 @@
+service: collection
+golden:
+  availability: {}
+  pdb_budget: {}
+alerts:
+  - uid: vg-collection-pricing-degraded
+    title: Collection pricing composition degraded
+    expr: sum(rate(vg_collection_pricing_compose_total{outcome="degraded"}[5m])) / sum(rate(vg_collection_pricing_compose_total[5m]))
+    condition: gt 0.2
+    instant: true
+    range: 10m
+    for: 10m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: collection is composing values without enrichment prices; users see null values and available=false
+    runbook: collection.md#1-enrichment-unreachable
+  - uid: vg-collection-submissions-backlog
+    title: Collection submission queue not draining
+    expr: max(vg_collection_submissions_pending)
+    condition: gt 25
+    instant: true
+    range: 10m
+    for: 6h
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: the catalog submission review queue has stayed above 25 pending; reviews are not keeping up
+    runbook: collection.md#6-submission-queue-not-draining

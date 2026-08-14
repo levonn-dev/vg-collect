@@ -195,8 +195,10 @@ labels.
 
 Triage access (read-only; `--scan`, never `KEYS`):
 
-    kubectl -n vgkeep exec statefulset/bff-valkey -c valkey -- \
-      valkey-cli --tls --cacert /tls/ca.crt -p 6379 --scan --pattern 'denylist:*'
+```bash
+kubectl -n vgkeep exec statefulset/bff-valkey -c valkey -- \
+  valkey-cli --tls --cacert /tls/ca.crt -p 6379 --scan --pattern 'denylist:*'
+```
 
 ## Telemetry
 
@@ -286,112 +288,154 @@ Headline row:
 
 1. "Request rate" - stat, unit `reqps`:
 
-       sum(rate(http_server_request_duration_seconds_count{service_name="bff"}[5m]))
+   ```promql
+   sum(rate(http_server_request_duration_seconds_count{service_name="bff"}[5m]))
+   ```
 
 2. "5xx ratio" - stat, unit `percentunit`, state thresholds green under
    0.05 / red at 0.05 (the vg-service-5xx page objective):
 
-       sum(rate(http_server_request_duration_seconds_count{service_name="bff",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="bff"}[5m]))
+   ```promql
+   sum(rate(http_server_request_duration_seconds_count{service_name="bff",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="bff"}[5m]))
+   ```
 
 3. "p99 latency" - stat, unit `s`, state thresholds green under 0.5 /
    yellow at 0.5 (the vg-service-p99 warn objective):
 
-       histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="bff"}[5m])))
+   ```promql
+   histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="bff"}[5m])))
+   ```
 
 Traffic by route:
 
 4. "Request rate by route" - timeseries, `reqps`, legend `{{http_route}}`:
 
-       sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="bff"}[$__rate_interval]))
+   ```promql
+   sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="bff"}[$__rate_interval]))
+   ```
 
 5. "Errors by route and status" - timeseries, `reqps`, legend
    `{{http_route}} {{http_response_status_code}}`:
 
-       sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="bff",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+   ```promql
+   sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="bff",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+   ```
 
 6. "Latency by route p95/p99" - timeseries, `s`, `"exemplar": true` on both
    targets, legends `p95 {{http_route}}` / `p99 {{http_route}}`:
 
-       histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="bff"}[$__rate_interval])))
-       histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="bff"}[$__rate_interval])))
+   ```promql
+   histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="bff"}[$__rate_interval])))
+   histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="bff"}[$__rate_interval])))
+   ```
 
 Feature health:
 
 7. "Login and link outcomes" - timeseries, `short`, legend
    `{{flow}} {{outcome}}`:
 
-       sum by (flow, outcome) (increase(vg_bff_auth_logins_total[5m]))
+   ```promql
+   sum by (flow, outcome) (increase(vg_bff_auth_logins_total[5m]))
+   ```
 
 8. "Session refresh outcomes" - timeseries, `short`, legend `{{outcome}}`:
 
-       sum by (outcome) (increase(vg_bff_session_refreshes_total[5m]))
+   ```promql
+   sum by (outcome) (increase(vg_bff_session_refreshes_total[5m]))
+   ```
 
 9. "Composition cache hit ratio (me, recs)" - timeseries, `percentunit`,
    legend `{{cache}}`:
 
-       sum by (cache) (rate(vg_bff_cache_lookups_total{outcome="hit"}[5m])) / sum by (cache) (rate(vg_bff_cache_lookups_total[5m]))
+   ```promql
+   sum by (cache) (rate(vg_bff_cache_lookups_total{outcome="hit"}[5m])) / sum by (cache) (rate(vg_bff_cache_lookups_total[5m]))
+   ```
 
 10. "Valkey fail-open events by op" - timeseries, `short`, legend `{{op}}`:
 
-        sum by (op) (increase(vg_bff_cache_fail_open_total[5m]))
+    ```promql
+    sum by (op) (increase(vg_bff_cache_fail_open_total[5m]))
+    ```
 
 11. "Browser telemetry relay responses by route" - timeseries, `reqps`,
     legend `{{http_route}} {{http_response_status_code}}`:
 
-        sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="bff",http_route=~"POST /api/otlp/v1/(traces|metrics)"}[$__rate_interval]))
+    ```promql
+    sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="bff",http_route=~"POST /api/otlp/v1/(traces|metrics)"}[$__rate_interval]))
+    ```
 
 Valkey:
 
 12. "Valkey client pool connections" - timeseries, `short`, legends `open` /
     `idle`:
 
-        vg_valkeykit_pool_connections{service_name="bff"}
-        vg_valkeykit_pool_connections_idle{service_name="bff"}
+    ```promql
+    vg_valkeykit_pool_connections{service_name="bff"}
+    vg_valkeykit_pool_connections_idle{service_name="bff"}
+    ```
 
 13. "Valkey pool acquire outcomes" - timeseries, `ops`, legends `hits` /
     `misses` / `timeouts`:
 
-        rate(vg_valkeykit_pool_hits_total{service_name="bff"}[$__rate_interval])
-        rate(vg_valkeykit_pool_misses_total{service_name="bff"}[$__rate_interval])
-        rate(vg_valkeykit_pool_timeouts_total{service_name="bff"}[$__rate_interval])
+    ```promql
+    rate(vg_valkeykit_pool_hits_total{service_name="bff"}[$__rate_interval])
+    rate(vg_valkeykit_pool_misses_total{service_name="bff"}[$__rate_interval])
+    rate(vg_valkeykit_pool_timeouts_total{service_name="bff"}[$__rate_interval])
+    ```
 
 14. "bff-valkey server memory" - timeseries, `bytes`, legend `{{service}}`:
 
-        redis_memory_used_bytes{service="bff-valkey"}
+    ```promql
+    redis_memory_used_bytes{service="bff-valkey"}
+    ```
 
 15. "bff-valkey evictions and clients" - timeseries, `short`, legends
     `evictions` / `clients`:
 
-        rate(redis_evicted_keys_total{service="bff-valkey"}[$__rate_interval])
-        redis_connected_clients{service="bff-valkey"}
+    ```promql
+    rate(redis_evicted_keys_total{service="bff-valkey"}[$__rate_interval])
+    redis_connected_clients{service="bff-valkey"}
+    ```
 
 Runtime and pods:
 
 16. "Goroutines" - timeseries, `short`, legend `goroutines`:
 
-        go_goroutine_count{service_name="bff"}
+    ```promql
+    go_goroutine_count{service_name="bff"}
+    ```
 
 17. "Heap used" - timeseries, `bytes`, legend `heap`:
 
-        go_memory_used_bytes{service_name="bff"}
+    ```promql
+    go_memory_used_bytes{service_name="bff"}
+    ```
 
 18. "Pod CPU" - timeseries, `short`, legend `{{pod}}`:
 
-        sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"bff.*", container!=""}[$__rate_interval]))
+    ```promql
+    sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"bff.*", container!=""}[$__rate_interval]))
+    ```
 
 19. "Pod working-set memory" - timeseries, `bytes`, legend `{{pod}}`:
 
-        sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"bff.*", container!=""})
+    ```promql
+    sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"bff.*", container!=""})
+    ```
 
 20. "Pod restarts (15m)" - timeseries, `short`, legend `{{pod}}`:
 
-        sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"bff.*"}[15m]))
+    ```promql
+    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"bff.*"}[15m]))
+    ```
 
 Logs:
 
 21. "Recent error logs" - logs panel against Loki:
 
-        {service_name="bff"} | severity_text="ERROR"
+    ```logql
+    {service_name="bff"} | severity_text="ERROR"
+    ```
 
 ## Failure modes and triage
 
@@ -400,7 +444,9 @@ Logs:
 Requests keep succeeding; the service fails open. Confirm on the "Valkey
 fail-open events by op" panel, or:
 
-    sum by (op) (increase(vg_bff_cache_fail_open_total[5m]))
+```promql
+sum by (op) (increase(vg_bff_cache_fail_open_total[5m]))
+```
 
 plus the ERROR line `dependency unavailable; failing open`. Many ops firing at
 once means Valkey itself is down (check the `bff-valkey` pod); a single op
@@ -410,7 +456,9 @@ The `vg-denylist-failopen` rule (severity page) covers the denylist slice
 of the same counter over a 10 minute window, with no for delay: it fires
 on the first revoked-token check skipped because Valkey was unreachable:
 
-    sum(increase(vg_bff_cache_fail_open_total{op=~"denylist_.*"}[10m]))
+```promql
+sum(increase(vg_bff_cache_fail_open_total{op=~"denylist_.*"}[10m]))
+```
 
 Revoked-token checks are skipped by design (requests proceed rather than
 blocking), so this is a degraded-availability signal, not a functional
@@ -426,7 +474,9 @@ The bff answers 502 `upstream_error` with the failing dependency named in the
 problem detail. Confirm which routes on the "Errors by route and status"
 panel, or:
 
-    sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="bff",http_response_status_code="502"}[5m]))
+```promql
+sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="bff",http_response_status_code="502"}[5m]))
+```
 
 Route-to-dependency map: `/api/auth/*` and `/api/me/identities*` > auth;
 `/api/me` > user; `/api/entries*`, `/api/tags*`, `/api/views*`,
@@ -446,12 +496,16 @@ from the other direction).
 Users report being logged out; 401s climb. Confirm on the "Session refresh
 outcomes" panel:
 
-    sum by (outcome) (increase(vg_bff_session_refreshes_total[10m]))
+```promql
+sum by (outcome) (increase(vg_bff_session_refreshes_total[10m]))
+```
 
 The vg-bff-refresh-failures rule fires when the failing outcomes
 together exceed 10 in 10 minutes:
 
-    sum(increase(vg_bff_session_refreshes_total{outcome=~"rejected|reuse_revoked|failed"}[10m]))
+```promql
+sum(increase(vg_bff_session_refreshes_total{outcome=~"rejected|reuse_revoked|failed"}[10m]))
+```
 
 - `rejected` or `reuse_revoked` climbing: auth is refusing rotations. If it
   started at a deploy, suspect an auth signing-key or TTL change.
@@ -471,7 +525,9 @@ Correlate with the WARN lines `token refresh failed` and
 
 Confirm on the "Login and link outcomes" panel:
 
-    sum by (flow, outcome) (increase(vg_bff_auth_logins_total[15m]))
+```promql
+sum by (flow, outcome) (increase(vg_bff_auth_logins_total[15m]))
+```
 
 `provider_error` means the identity provider or the auth service's OAuth
 exchange is failing (retryable, IdP-side); `email_unverified` is policy
@@ -485,7 +541,9 @@ Requests slow down or error while Valkey itself looks healthy. A nonzero
 `timeouts` series on the "Valkey pool acquire outcomes" panel is the
 confirmation, or:
 
-    sum(increase(vg_valkeykit_pool_timeouts_total{service_name="bff"}[10m]))
+```promql
+sum(increase(vg_valkeykit_pool_timeouts_total{service_name="bff"}[10m]))
+```
 
 The vg-bff-valkey-pool-timeouts rule fires on any nonzero value of the
 same expression. A rising miss rate on "Valkey pool acquire outcomes" without timeouts means
@@ -499,7 +557,9 @@ traffic. Evictions are the dangerous case: an evicted `denylist:` key
 un-revokes a token until its natural expiry. Confirm on the "bff-valkey
 server memory" and "bff-valkey evictions and clients" panels, or with:
 
-    rate(redis_evicted_keys_total{service="bff-valkey"}[5m]) > 0 or redis_memory_used_bytes{service="bff-valkey"} > 209715200
+```promql
+rate(redis_evicted_keys_total{service="bff-valkey"}[5m]) > 0 or redis_memory_used_bytes{service="bff-valkey"} > 209715200
+```
 
 Shared triage in
 [stack.md](stack.md#7-valkey-evicting-keys-or-memory-unusually-high).
@@ -527,7 +587,9 @@ the pipeline healthy point here first: [frontend.md](frontend.md).
 IP on `/api/auth/*`, 300/min on `/api/*`, unlimited static). Confirm on the
 "Rate-limited (429)" panel of the APISIX Edge dashboard (vg-apisix-edge):
 
-    sum(rate(apisix_http_status{code="429"}[$__rate_interval]))
+```promql
+sum(rate(apisix_http_status{code="429"}[$__rate_interval]))
+```
 
 A 429 wave from one IP is a hot loop or an abuser; from many IPs it means the
 budgets no longer fit the app's request fan-out.
@@ -540,8 +602,10 @@ relays and key material.
 - Catalog refresh trigger (relayed to enrichment, which enforces the admin
   role). One-off from a shell against the dev stack:
 
-      curl -sc /tmp/vg-admin.jar -o /dev/null "http://localhost:8090/api/auth/login?provider=dev&user=admin"
-      curl -sb /tmp/vg-admin.jar -X POST "http://localhost:8090/api/admin/refresh"
+  ```bash
+  curl -sc /tmp/vg-admin.jar -o /dev/null "http://localhost:8090/api/auth/login?provider=dev&user=admin"
+  curl -sb /tmp/vg-admin.jar -X POST "http://localhost:8090/api/admin/refresh"
+  ```
 
   The same journey exists as a Bruno flow under `bruno/bff/admin/`. All other
   `/api/admin/*` endpoints (worklists, verdicts, promotes, mapping
@@ -550,8 +614,10 @@ relays and key material.
 - Entry rematch trigger (relayed to collection, which enforces admin-or-service).
   Same shape as the catalog refresh trigger above, one route later:
 
-      curl -sc /tmp/vg-admin.jar -o /dev/null "http://localhost:8090/api/auth/login?provider=dev&user=admin"
-      curl -sb /tmp/vg-admin.jar -X POST "http://localhost:8090/api/admin/rematch"
+  ```bash
+  curl -sc /tmp/vg-admin.jar -o /dev/null "http://localhost:8090/api/auth/login?provider=dev&user=admin"
+  curl -sb /tmp/vg-admin.jar -X POST "http://localhost:8090/api/admin/rematch"
+  ```
 
   Also a Bruno flow under `bruno/bff/admin/`, and the Admin page's own
   "Trigger entry rematch" button.
@@ -560,8 +626,10 @@ relays and key material.
   Synchronous, unlike the two triggers above - the sweep counts ride the
   response:
 
-      curl -sc /tmp/vg-admin.jar -o /dev/null "http://localhost:8090/api/auth/login?provider=dev&user=admin"
-      curl -sb /tmp/vg-admin.jar -X POST "http://localhost:8090/api/admin/resnapshot"
+  ```bash
+  curl -sc /tmp/vg-admin.jar -o /dev/null "http://localhost:8090/api/auth/login?provider=dev&user=admin"
+  curl -sb /tmp/vg-admin.jar -X POST "http://localhost:8090/api/admin/resnapshot"
+  ```
 
   Also a Bruno flow under `bruno/bff/admin/`, and the Admin page's own
   "Run entry resnapshot" card.
@@ -576,7 +644,9 @@ relays and key material.
   deployment's checksum annotation tracks the ExternalSecret manifest, not
   the value, so force the roll:
 
-      kubectl -n vgkeep rollout restart deployment/bff
+  ```bash
+  kubectl -n vgkeep rollout restart deployment/bff
+  ```
 
   Every live cookie stops opening; every user re-logs-in. Expect the "Login
   and link outcomes" spike and a 401 wave (scenario 3's last bullet) as
@@ -584,7 +654,9 @@ relays and key material.
 
 - Cache reset: restart the cache, since it holds nothing persistent:
 
-      kubectl -n vgkeep rollout restart statefulset/bff-valkey
+  ```bash
+  kubectl -n vgkeep rollout restart statefulset/bff-valkey
+  ```
 
   Consequences are scenario 1's for the restart window plus a cold-cache
   latency bump on `/api/me` and `/api/recommendations`, and denylist entries
