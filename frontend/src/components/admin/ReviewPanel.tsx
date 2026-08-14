@@ -291,7 +291,20 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
       </div>
       {adopting && (
         <div className="mt-3 border-t border-gray-200 pt-3">
-          <SearchPicker kinds={['game', 'hardware']} initialQuery={submission.display_name} onPick={adoptPick} />
+          <SearchPicker
+            kinds={['game', 'hardware']}
+            // Seeds the picker's kind radio through the same initialState
+            // seam the add wizard uses to restore a typed search (see
+            // AddWizard) - text/submitted mirror what initialQuery alone
+            // used to set, kind now matches the submission's own item
+            // type instead of always defaulting to the first kind (game).
+            initialState={{
+              kind: duplicatesKind(submission.item_type),
+              text: submission.display_name,
+              submitted: submission.display_name.trim(),
+            }}
+            onPick={adoptPick}
+          />
           <form
             className="mt-2 flex gap-2"
             onSubmit={(e) => {

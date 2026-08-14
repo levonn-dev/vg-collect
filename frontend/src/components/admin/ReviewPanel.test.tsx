@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { screen, within } from '@testing-library/react'
+import { cleanup, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { AdminSubmission } from '../../api/admin'
 import type { Platform } from '../../api/platforms'
@@ -269,6 +269,24 @@ it('adopt via a provider pick resolves first, then adopts the resolved product',
     action: 'approve_existing', product_id: resolvedId,
   })
   expect(onDone).toHaveBeenCalled()
+})
+
+it('opens the adopt picker on the kind matching the submission: Hardware for hardware, Games for a game', async () => {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+    return Promise.resolve(jsonResponse(200, row))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  renderPanel({ ...row, item_type: 'console' })
+  await userEvent.click(screen.getByRole('button', { name: 'Adopt existing product' }))
+  expect(screen.getByRole('radio', { name: 'Hardware' })).toBeChecked()
+  expect(screen.getByRole('radio', { name: 'Games' })).not.toBeChecked()
+  cleanup()
+
+  renderPanel(row) // row.item_type is 'game'
+  await userEvent.click(screen.getByRole('button', { name: 'Adopt existing product' }))
+  expect(screen.getByRole('radio', { name: 'Games' })).toBeChecked()
 })
 
 it('renders submission_resolved inline and refetches', async () => {
