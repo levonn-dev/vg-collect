@@ -1,0 +1,727 @@
+package lint_test
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/lint"
+	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/manifest"
+)
+
+// TestKnown_ExtractsRepresentativeRegistrations proves names.Known
+// against a fixture tree that mirrors all three real registration
+// shapes found in services/ and libs/go/ (a direct vgotel call -
+// user/auth/enrichment's shape; a same-order pass-through closure -
+// social/collection/bff's shape; a direct OTel SDK call - pgkit's/
+// valkeykit's/auth's own gauges), scans both services/ and libs/go/,
+// and expands every exporter unit form unitSuffix recognizes
+// (curly-brace, s, ms, By, and no unit at all).
+func TestKnown_ExtractsRepresentativeRegistrations(t *testing.T) {
+	known, err := lint.Known("testdata/names-valid")
+	if err != nil {
+		t.Fatalf("Known: unexpected error: %v", err)
+	}
+
+	want := []string{
+		// services/widget: direct vgotel call, curly-brace unit -> no suffix, counter -> _total.
+		"vg_widget_cache_fail_open_total",
+		// services/widget: pass-through closure, curly-brace unit, counter.
+		"vg_widget_spins_count_total",
+		// services/widget: pass-through closure, "s" unit, histogram -> three suffixes.
+		"vg_widget_refresh_duration_seconds_bucket",
+		"vg_widget_refresh_duration_seconds_count",
+		"vg_widget_refresh_duration_seconds_sum",
+		// services/widget: direct OTel SDK call, observable gauge with an
+		// explicit metric.WithUnit - no structural suffix at all.
+		"vg_widget_pool_connections",
+		// services/widget: direct OTel SDK call, counter with no
+		// metric.WithUnit option at all (the no-unit case) -> counter -> _total.
+		"vg_widget_no_unit_count_total",
+		// services/widget: direct OTel SDK call, histogram with a real
+		// (non-curly-brace) "s" unit -> unit suffix "_seconds" applied to
+		// the base name BEFORE the three-way structural split, proving
+		// that ordering on the direct path specifically (the "s"-unit
+		// histogram case above only exercises it via the vgotel-closure
+		// path).
+		"vg_widget_pool_wait_seconds_bucket",
+		"vg_widget_pool_wait_seconds_count",
+		"vg_widget_pool_wait_seconds_sum",
+		// libs/go/sharedmetric: direct vgotel call, "ms" unit, histogram.
+		"vg_shared_queue_lag_milliseconds_bucket",
+		"vg_shared_queue_lag_milliseconds_count",
+		"vg_shared_queue_lag_milliseconds_sum",
+		// libs/go/sharedmetric: direct vgotel call, "By" unit, counter.
+		"vg_shared_payload_size_bytes_total",
+	}
+	for _, name := range want {
+		if _, ok := known[name]; !ok {
+			t.Errorf("Known()[%q] missing; got %v", name, known)
+		}
+	}
+
+	// The dynamic (non-literal) registration in services/widget must
+	// contribute nothing - not an error, just silently unrecognized.
+	for name := range known {
+		if strings.Contains(name, "dynamic") {
+			t.Errorf("Known() must not resolve a non-literal metric name, found %q", name)
+		}
+	}
+
+	// testdata/names-valid/other/decoy.go sits outside services/ and
+	// libs/go/ and must never be scanned.
+	if _, ok := known["vg_decoy_should_not_appear_total"]; ok {
+		t.Error("Known() scanned a file outside services/ and libs/go/")
+	}
+
+	// Exact size: proves no extra names snuck in beyond the ones wanted
+	// above (the fixture's dynamic registration and the out-of-tree
+	// decoy are the only other registrations present, and neither may
+	// contribute a name).
+	if len(known) != len(want) {
+		t.Errorf("len(Known()) = %d, want %d; got %v", len(known), len(want), known)
+	}
+}
+
+// TestKnown_UnrecognizedUnitErrors proves an exporter unit outside the
+// four documented forms ({x}, s, ms, By) fails loud rather than
+// silently guessing a suffix or omitting one.
+func TestKnown_UnrecognizedUnitErrors(t *testing.T) {
+	_, err := lint.Known("testdata/names-bad-unit")
+	if err == nil {
+		t.Fatal("Known: want an error for an unrecognized unit, got nil")
+	}
+	if !strings.Contains(err.Error(), "kg") {
+		t.Errorf("Known error = %q, want it to mention the offending unit %q", err.Error(), "kg")
+	}
+}
+
+// TestKnown_MissingTree proves a repoRoot with no services/ or libs/go/
+// directory fails loud (a misconfigured repoRoot should not silently
+// yield an empty known set, which would make every subsequent metric-
+// name check in lint.Run report every real metric as unknown).
+func TestKnown_MissingTree(t *testing.T) {
+	_, err := lint.Known("testdata/does-not-exist")
+	if err == nil {
+		t.Fatal("Known: want an error for a missing repoRoot, got nil")
+	}
+}
+
+// repoRoot is the fixture every TestRun_* case below reads real files
+// from (docs/runbooks, services/, libs/go/) - see
+// testdata/repo/docs/runbooks/{stack,widget}.md for the headings and
+// fenced blocks validModel's rules/panels are built to resolve
+// cleanly against.
+const repoRoot = "testdata/repo"
+
+// validModel builds a small, internally-consistent manifest.Model -
+// one cluster rule, one service ("widget") with a golden availability
+// instantiation and two custom rules (one Prometheus, one loki), one
+// golden dashboard panel (carrying a real "legendFormat": "{{pod}}"
+// target field - Grafana's own double-brace legend syntax, which real
+// dashboards put on nearly every timeseries panel and which nests a
+// single-brace-shaped span inside it, proving the whole-fragment
+// placeholder scan's jurisdiction stays clean against it) and three
+// custom panels (a plain Prometheus one, one carrying a Grafana
+// $__rate_interval macro, and a Loki-datasourced logs panel whose expr
+// is LogQL) - that produces zero findings against repoRoot. Every
+// TestRun_Findings case below starts
+// from a fresh call to this (never a shared instance - Model holds
+// slices/maps, and mutating a shared instance would leak between
+// subtests) and changes exactly one thing, mirroring internal/
+// dashboards/assemble_test.go's and internal/alerts/emit_test.go's own
+// fixtureModel-plus-mutate pattern.
+func validModel() *manifest.Model {
+	return &manifest.Model{
+		Alerts: manifest.AlertTree{
+			Group:                  manifest.AlertGroup{Name: "vgkeep", Folder: "vgkeep", Interval: "1m"},
+			Datasource:             "prometheus",
+			ExternalMetricPrefixes: []string{"up"},
+			Templates: map[string]manifest.Template{
+				"availability": {
+					UID:          "vg-{service}-down",
+					Title:        "{Service} service down",
+					Expr:         `up{namespace="vgkeep", pod=~"{service}-.*"}`,
+					Condition:    "lt 1",
+					Instant:      true,
+					For:          "5m",
+					NoDataState:  "Alerting",
+					ExecErrState: "Error",
+					Severity:     "crit",
+					Summary:      "{service} has no ready pods answering scrapes",
+					Runbook:      "stack.md#1-widget-down-hard",
+					PanelRef:     "{service}/Availability",
+				},
+			},
+			Cluster: []manifest.Rule{
+				{
+					UID: "vg-cluster-thing", Title: "Cluster thing",
+					Expr: `up{namespace="vgkeep"}`, Condition: "gt 0",
+					Instant: true, Range: "5m", For: "5m",
+					NoDataState: "OK", ExecErrState: "Error", Severity: "warn",
+					Summary: "a cluster thing happened", Runbook: "stack.md#2-cluster-thing",
+				},
+			},
+			Services: []manifest.ServiceAlerts{
+				{
+					Service: "widget",
+					Golden:  map[string]manifest.Overrides{"availability": {}},
+					Alerts: []manifest.Rule{
+						{
+							UID: "vg-widget-spins-high", Title: "Widget spins elevated",
+							Expr: "rate(vg_widget_spins_count_total[5m])", Condition: "gt 10",
+							Instant: true, Range: "10m", For: "5m",
+							NoDataState: "OK", ExecErrState: "Error", Severity: "warn",
+							Summary: "widget spin rate is elevated", Runbook: "widget.md#2-widgets-queue-backlog",
+							PanelRef: "widget/Spins",
+						},
+						{
+							// Clean-side twin of the "token-scans instead
+							// of AST-parsing" case below: a loki-
+							// datasourced rule whose expr is LogQL (not
+							// valid PromQL, so it must never hit the AST
+							// path) quoting a metric name that IS
+							// registered. Proves the token-scan path
+							// passes cleanly on real content, not only
+							// that it fires on bad content - without
+							// this, "clean" and "token-scanned" were
+							// never exercised together anywhere.
+							UID: "vg-widget-loki-check", Title: "Widget error log spike",
+							Expr: `{service_name="widget"} |= "vg_widget_spins_count_total"`, Condition: "gt 0",
+							Instant: true, Range: "5m", For: "5m",
+							NoDataState: "OK", ExecErrState: "Error", Severity: "warn",
+							Summary: "widget is logging something", Runbook: "widget.md#2-widgets-queue-backlog",
+							Datasource: "loki",
+						},
+					},
+				},
+			},
+		},
+		Dashboards: manifest.DashTree{
+			Golden: []manifest.GoldenPanel{
+				{
+					Fragment: json.RawMessage(`{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{service}-.*\"}", "legendFormat": "{{pod}}"}]}`),
+					GridPos:  manifest.GridPos{H: 8, W: 12, X: 0, Y: 0},
+				},
+			},
+			Services: []manifest.ServiceDash{
+				{
+					Service: "widget", UID: "vg-widget", Title: "Widget",
+					CustomPanels: []json.RawMessage{
+						json.RawMessage(`{"title": "Spins", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "targets": [{"expr": "sum(rate(vg_widget_spins_count_total[5m]))"}]}`),
+						// Clean-side macro case: real dashboards write the
+						// range selector of nearly every rate panel as
+						// [$__rate_interval], which Grafana expands client-
+						// side and promql/parser rejects on sight. The
+						// panel must parse (after parse-only substitution)
+						// and still have its metric names checked.
+						json.RawMessage(`{"title": "Spin rate", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(vg_widget_spins_count_total[$__rate_interval]))"}]}`),
+						// Clean-side Loki case: every real dashboard carries
+						// one logs panel whose datasource is loki and whose
+						// expr is LogQL, not PromQL. It must route to the
+						// token scan (no expr-parse-error) while the vg_
+						// name it quotes stays jurisdiction-checked.
+						json.RawMessage(`{"title": "Recent error logs", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}, "datasource": {"type": "loki", "uid": "loki"}, "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "{service_name=\"widget\"} | severity_text=\"ERROR\" |= \"vg_widget_spins_count_total\""}]}`),
+					},
+				},
+			},
+		},
+	}
+}
+
+// TestRun_Clean proves the happy path: validModel against repoRoot
+// produces zero findings - every rule's runbook anchor resolves, every
+// panel_ref resolves, every expr parses and names only known metrics
+// or an external prefix (the Prometheus-datasourced rules/panels via
+// the AST path - including one panel whose range selector is a Grafana
+// $__rate_interval macro - and the loki-datasourced rule and logs panel
+// via the token-scan fallback, proving those paths pass cleanly, not
+// only that they fire on bad content), and both of repoRoot's own
+// runbook files' fenced blocks (one AST-checked, one token-scanned) are
+// clean too.
+func TestRun_Clean(t *testing.T) {
+	findings := lint.Run(validModel(), repoRoot)
+	if len(findings) != 0 {
+		t.Errorf("Run() = %+v, want no findings", findings)
+	}
+}
+
+// findingsWithRule filters findings to those whose Rule matches want.
+func findingsWithRule(findings []lint.Finding, want string) []lint.Finding {
+	var out []lint.Finding
+	for _, f := range findings {
+		if f.Rule == want {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// TestRun_Findings tables every check Run owns, each isolated to one
+// deliberate change from validModel's otherwise-clean baseline so a
+// failure is unambiguous about which check broke. want lists
+// substrings that must all appear somewhere in the combined
+// Path+Rule+Message text of at least one finding carrying wantRule.
+func TestRun_Findings(t *testing.T) {
+	cases := []struct {
+		name       string
+		mutate     func(*manifest.Model)
+		wantRule   string
+		wantPath   string // exact Finding.Path
+		wantSubstr string // the single strongest substring of Finding.Message
+	}{
+		{
+			name: "duplicate uid after {service} expansion",
+			mutate: func(m *manifest.Model) {
+				// Collides with the golden availability instantiation's
+				// own expanded uid (vg-{service}-down -> vg-widget-down),
+				// a collision internal/manifest.Load's own checkUIDs
+				// cannot see (it excludes template uids - see checkUIDs'
+				// doc comment).
+				m.Alerts.Cluster[0].UID = "vg-widget-down"
+			},
+			wantRule: "duplicate-uid",
+			// The finding lands on the SECOND occurrence (the golden
+			// instantiation, alerts/widget.yaml) and names the FIRST
+			// (alerts/cluster.yaml) - both facts, not just the shared uid.
+			wantPath:   "alerts/widget.yaml",
+			wantSubstr: "also used in alerts/cluster.yaml",
+		},
+		{
+			name: "retired uid collides with a live expanded uid",
+			mutate: func(m *manifest.Model) {
+				m.Alerts.Retired = []manifest.RetiredUID{{UID: "vg-widget-down", Date: "2026-01-01", Reason: "test"}}
+			},
+			wantRule:   "retired-live-collision",
+			wantPath:   "alerts/retired.yaml",
+			wantSubstr: "still resolves to a live rule in alerts/widget.yaml",
+		},
+		{
+			name: "unresolved placeholder from a misspelled template token",
+			mutate: func(m *manifest.Model) {
+				tmpl := m.Alerts.Templates["availability"]
+				tmpl.Title = "{Svc} service down" // {Svc}, not {Service} - substitute never touches it
+				m.Alerts.Templates["availability"] = tmpl
+			},
+			wantRule:   "unresolved-placeholder",
+			wantPath:   "alerts/widget.yaml",
+			wantSubstr: "title still contains {Svc}",
+		},
+		{
+			// goldenItem must build the linted item from the override
+			// actually in effect, not the template's own default summary -
+			// otherwise this exact typo would reach vg-rules.yaml unnoticed
+			// (see goldenItem's doc comment).
+			name: "unresolved placeholder from a misspelled golden override summary",
+			mutate: func(m *manifest.Model) {
+				m.Alerts.Services[0].Golden["availability"] = manifest.Overrides{Summary: "{servce} down"}
+			},
+			wantRule:   "unresolved-placeholder",
+			wantPath:   "alerts/widget.yaml",
+			wantSubstr: "summary still contains {servce}",
+		},
+		{
+			name: "unknown golden template name",
+			mutate: func(m *manifest.Model) {
+				m.Alerts.Services[0].Golden["does-not-exist"] = manifest.Overrides{}
+			},
+			wantRule:   "unknown-golden-template",
+			wantPath:   "alerts/widget.yaml",
+			wantSubstr: `unknown golden template "does-not-exist"`,
+		},
+		{
+			name: "panel_ref malformed (no slash)",
+			mutate: func(m *manifest.Model) {
+				m.Alerts.Services[0].Alerts[0].PanelRef = "widget-no-slash"
+			},
+			wantRule:   "unresolved-panel-ref",
+			wantPath:   "alerts/widget.yaml",
+			wantSubstr: `malformed panel_ref "widget-no-slash"`,
+		},
+		{
+			name: "panel_ref names a service with no dashboard",
+			mutate: func(m *manifest.Model) {
+				m.Alerts.Services[0].Alerts[0].PanelRef = "ghost/Availability"
+			},
+			wantRule:   "unresolved-panel-ref",
+			wantPath:   "alerts/widget.yaml",
+			wantSubstr: `service "ghost" has no dashboard`,
+		},
+		{
+			name: "panel_ref names a title missing from that service's dashboard",
+			mutate: func(m *manifest.Model) {
+				m.Alerts.Services[0].Alerts[0].PanelRef = "widget/Does not exist"
+			},
+			wantRule:   "unresolved-panel-ref",
+			wantPath:   "alerts/widget.yaml",
+			wantSubstr: `service "widget" has no panel titled "Does not exist"`,
+		},
+		{
+			name: "runbook value has no #anchor",
+			mutate: func(m *manifest.Model) {
+				m.Alerts.Services[0].Alerts[0].Runbook = "widget.md"
+			},
+			wantRule:   "runbook-anchor-missing",
+			wantPath:   "alerts/widget.yaml",
+			wantSubstr: `runbook "widget.md" has no #anchor`,
+		},
+		{
+			name: "runbook file does not exist",
+			mutate: func(m *manifest.Model) {
+				m.Alerts.Services[0].Alerts[0].Runbook = "does-not-exist.md#foo"
+			},
+			wantRule: "runbook-anchor-missing",
+			wantPath: "alerts/widget.yaml",
+			// Stops short of the raw os.ReadFile error text (platform-
+			// dependent wording) - only the part this package itself
+			// formats is asserted.
+			wantSubstr: "rule vg-widget-spins-high: docs/runbooks/does-not-exist.md:",
+		},
+		{
+			name: "runbook anchor missing from an existing file",
+			mutate: func(m *manifest.Model) {
+				m.Alerts.Services[0].Alerts[0].Runbook = "widget.md#does-not-exist"
+			},
+			wantRule:   "runbook-anchor-missing",
+			wantPath:   "alerts/widget.yaml",
+			wantSubstr: `docs/runbooks/widget.md has no heading matching anchor "does-not-exist"`,
+		},
+		{
+			name: "rule expr does not parse (prometheus datasource)",
+			mutate: func(m *manifest.Model) {
+				m.Alerts.Services[0].Alerts[0].Expr = "not a valid expr ("
+			},
+			wantRule: "expr-parse-error",
+			wantPath: "alerts/widget.yaml",
+			// Only this package's own "rule <uid>:" prefix is asserted,
+			// not promql/parser's own error wording, which is free to
+			// change across dependency versions.
+			wantSubstr: "rule vg-widget-spins-high:",
+		},
+		{
+			name: "rule expr names an unknown metric (prometheus datasource, AST path)",
+			mutate: func(m *manifest.Model) {
+				m.Alerts.Services[0].Alerts[0].Expr = "rate(vg_widget_totally_unknown_total[5m])"
+			},
+			wantRule:   "unknown-metric",
+			wantPath:   "alerts/widget.yaml",
+			wantSubstr: `metric "vg_widget_totally_unknown_total" is not a known registration or external prefix`,
+		},
+		{
+			name: "rule on a non-prometheus datasource token-scans instead of AST-parsing",
+			mutate: func(m *manifest.Model) {
+				m.Alerts.Services[0].Alerts[0].Datasource = "loki"
+				// Not valid PromQL (LogQL filter syntax) - proves the
+				// datasource routing skips AST parsing entirely rather
+				// than reporting a spurious expr-parse-error.
+				m.Alerts.Services[0].Alerts[0].Expr = `{service_name="widget"} |= "vg_widget_totally_unknown_total"`
+			},
+			wantRule: "unknown-metric",
+			wantPath: "alerts/widget.yaml",
+			// One contiguous substring proving both the routing (token-
+			// scanned, not AST-parsed) and the specific token found.
+			wantSubstr: `(datasource loki, token-scanned): token "vg_widget_totally_unknown_total"`,
+		},
+		{
+			name: "panel expr does not parse",
+			mutate: func(m *manifest.Model) {
+				m.Dashboards.Services[0].CustomPanels[0] = json.RawMessage(`{"title": "Spins", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "targets": [{"expr": "not a valid expr ("}]}`)
+			},
+			wantRule:   "expr-parse-error",
+			wantPath:   "dashboards/widget.yaml",
+			wantSubstr: "panel widget/Spins:",
+		},
+		{
+			name: "panel expr names an unknown metric",
+			mutate: func(m *manifest.Model) {
+				m.Dashboards.Services[0].CustomPanels[0] = json.RawMessage(`{"title": "Spins", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "targets": [{"expr": "vg_widget_totally_unknown_total"}]}`)
+			},
+			wantRule:   "unknown-metric",
+			wantPath:   "dashboards/widget.yaml",
+			wantSubstr: `panel widget/Spins: metric "vg_widget_totally_unknown_total"`,
+		},
+		{
+			name: "loki-datasourced panel token-scans instead of AST-parsing",
+			mutate: func(m *manifest.Model) {
+				// Panel-level datasource only (no per-target override),
+				// exercising the fallback step of the resolution order;
+				// every real logs panel redundantly sets the same
+				// datasource at both levels. The expr is LogQL, so
+				// routing it to the AST path would produce a spurious
+				// expr-parse-error instead of this unknown-metric
+				// finding.
+				m.Dashboards.Services[0].CustomPanels[0] = json.RawMessage(`{"title": "Spins", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "datasource": {"type": "loki", "uid": "loki"}, "targets": [{"expr": "{service_name=\"widget\"} | severity_text=\"ERROR\" |= \"vg_widget_totally_unknown_total\""}]}`)
+			},
+			wantRule: "unknown-metric",
+			wantPath: "dashboards/widget.yaml",
+			// One contiguous substring proving both the routing (token-
+			// scanned, not AST-parsed) and the specific token found.
+			wantSubstr: `(datasource loki, token-scanned): token "vg_widget_totally_unknown_total"`,
+		},
+		{
+			name: "a target's own datasource overrides the panel's (loki target on a prometheus panel)",
+			mutate: func(m *manifest.Model) {
+				m.Dashboards.Services[0].CustomPanels[0] = json.RawMessage(`{"title": "Spins", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service_name=\"widget\"} |= \"vg_widget_totally_unknown_total\""}]}`)
+			},
+			wantRule:   "unknown-metric",
+			wantPath:   "dashboards/widget.yaml",
+			wantSubstr: `(datasource loki, token-scanned): token "vg_widget_totally_unknown_total"`,
+		},
+		{
+			name: "a target's own datasource overrides the panel's (prometheus target on a loki panel)",
+			mutate: func(m *manifest.Model) {
+				m.Dashboards.Services[0].CustomPanels[0] = json.RawMessage(`{"title": "Spins", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "datasource": {"type": "loki", "uid": "loki"}, "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "vg_widget_totally_unknown_total"}]}`)
+			},
+			wantRule: "unknown-metric",
+			wantPath: "dashboards/widget.yaml",
+			// "metric" (not "token") and no token-scanned marker: only the
+			// AST path words a finding this way, so this substring proves
+			// the target-level prometheus won over the panel-level loki.
+			wantSubstr: `panel widget/Spins: metric "vg_widget_totally_unknown_total"`,
+		},
+		{
+			name: "a datasource named by bare string still routes (and keeps the panel readable)",
+			mutate: func(m *manifest.Model) {
+				// Grafana's other accepted spelling for the same field.
+				// A strict object-only decode would fail on the whole
+				// fragment, silently dropping the panel and cascading
+				// into an unresolved panel_ref for "widget/Spins"
+				// instead of the routing this asserts.
+				m.Dashboards.Services[0].CustomPanels[0] = json.RawMessage(`{"title": "Spins", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "datasource": "loki", "targets": [{"expr": "{service_name=\"widget\"} |= \"vg_widget_totally_unknown_total\""}]}`)
+			},
+			wantRule:   "unknown-metric",
+			wantPath:   "dashboards/widget.yaml",
+			wantSubstr: `(datasource loki, token-scanned): token "vg_widget_totally_unknown_total"`,
+		},
+		{
+			name: "a macro-carrying panel expr still has its metric names checked",
+			mutate: func(m *manifest.Model) {
+				m.Dashboards.Services[0].CustomPanels[0] = json.RawMessage(`{"title": "Spins", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "targets": [{"expr": "sum(rate(vg_widget_totally_unknown_total[$__rate_interval]))"}]}`)
+			},
+			wantRule:   "unknown-metric",
+			wantPath:   "dashboards/widget.yaml",
+			wantSubstr: `panel widget/Spins: metric "vg_widget_totally_unknown_total"`,
+		},
+		{
+			name: "a rule expr carrying a Grafana macro is still a parse error (rules get no substitution)",
+			mutate: func(m *manifest.Model) {
+				// A Grafana alert rule's query is sent to the datasource
+				// as authored - no dashboard macro is ever expanded for
+				// it - so a macro here is a real defect, not the false
+				// positive the panel path exists to avoid.
+				m.Alerts.Services[0].Alerts[0].Expr = "rate(vg_widget_spins_count_total[$__rate_interval])"
+			},
+			wantRule:   "expr-parse-error",
+			wantPath:   "alerts/widget.yaml",
+			wantSubstr: "rule vg-widget-spins-high:",
+		},
+		{
+			name: "golden panel title still has an unresolved placeholder",
+			mutate: func(m *manifest.Model) {
+				m.Dashboards.Golden[0].Fragment = json.RawMessage(`{"title": "{Svc} Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up"}]}`)
+			},
+			// This mutation also cascades into a second, different-rule
+			// finding (panel_ref "widget/Availability" no longer
+			// resolves, since the panel's own title changed) -
+			// findingsWithRule below filters to this case's own rule, so
+			// that side effect does not interfere with either count or
+			// path/substring assertions.
+			wantRule:   "unresolved-placeholder",
+			wantPath:   "dashboards/golden.yaml",
+			wantSubstr: "fragment still contains {Svc}",
+		},
+		{
+			// The placeholder lint used to scan a panel's parsed title
+			// only; this proves it now also catches a typo'd placeholder
+			// buried inside a quoted label selector, where a title-only
+			// scan would never have looked.
+			name: "golden panel fragment has an unresolved placeholder outside the title (a quoted selector)",
+			mutate: func(m *manifest.Model) {
+				m.Dashboards.Golden[0].Fragment = json.RawMessage(`{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{servce}-.*\"}"}]}`)
+			},
+			wantRule:   "unresolved-placeholder",
+			wantPath:   "dashboards/golden.yaml",
+			wantSubstr: "fragment still contains {servce}",
+		},
+		{
+			name: "a malformed custom panel is skipped, cascading to an unresolved panel_ref rather than a crash",
+			mutate: func(m *manifest.Model) {
+				m.Dashboards.Services[0].CustomPanels[0] = json.RawMessage(`{not valid json`)
+			},
+			wantRule:   "unresolved-panel-ref",
+			wantPath:   "alerts/widget.yaml",
+			wantSubstr: `service "widget" has no panel titled "Spins"`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := validModel()
+			tc.mutate(m)
+
+			findings := lint.Run(m, repoRoot)
+			matches := findingsWithRule(findings, tc.wantRule)
+			if len(matches) != 1 {
+				t.Fatalf("Run() has %d %q finding(s), want exactly 1; got %+v", len(matches), tc.wantRule, findings)
+			}
+
+			got := matches[0]
+			if got.Path != tc.wantPath {
+				t.Errorf("%s finding Path = %q, want %q (Message: %q)", tc.wantRule, got.Path, tc.wantPath, got.Message)
+			}
+			if !strings.Contains(got.Message, tc.wantSubstr) {
+				t.Errorf("%s finding Message = %q, want it to contain %q", tc.wantRule, got.Message, tc.wantSubstr)
+			}
+		})
+	}
+}
+
+// TestRun_PanelMacroDoesNotMaskBreakage proves the parse-only variable
+// substitution cannot hide a genuinely broken panel expr: the query
+// below carries a real Grafana macro AND an unbalanced parenthesis, and
+// must still produce exactly one expr-parse-error. It also proves the
+// finding quotes the expr as authored (macro text intact) rather than
+// the substituted copy the parser actually saw, so whoever reads the
+// finding sees the text that is really in the manifest.
+func TestRun_PanelMacroDoesNotMaskBreakage(t *testing.T) {
+	const broken = `sum(rate(vg_widget_spins_count_total[$__rate_interval])`
+
+	m := validModel()
+	m.Dashboards.Services[0].CustomPanels[0] = json.RawMessage(
+		`{"title": "Spins", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "targets": [{"expr": "` + broken + `"}]}`)
+
+	findings := lint.Run(m, repoRoot)
+	parseErrors := findingsWithRule(findings, "expr-parse-error")
+	if len(parseErrors) != 1 {
+		t.Fatalf("want exactly 1 expr-parse-error, got %d: %+v", len(parseErrors), findings)
+	}
+	if got := parseErrors[0].Path; got != "dashboards/widget.yaml" {
+		t.Errorf("expr-parse-error Path = %q, want %q", got, "dashboards/widget.yaml")
+	}
+	if !strings.Contains(parseErrors[0].Message, "panel widget/Spins:") {
+		t.Errorf("expr-parse-error Message = %q, want this package's own panel prefix", parseErrors[0].Message)
+	}
+	if !strings.Contains(parseErrors[0].Message, broken) {
+		t.Errorf("expr-parse-error Message = %q, want it to quote the authored expr %q", parseErrors[0].Message, broken)
+	}
+}
+
+// TestRun_MetricJurisdiction proves the unknown-metric check's
+// jurisdiction on the rule/panel AST path (TestRun_RunbookDocScan
+// proves the same rule on the runbook-scan path): only a vg_-prefixed
+// selector name absent from the known set is a finding. A non-vg_ name
+// - here, the real OTel HTTP server instrumentation's own
+// http_server_request_duration_seconds_count, which this repo emits
+// but never registers by hand, so it could never appear in Known()'s
+// set either - is outside this lint's jurisdiction and must not fire,
+// regardless of whether it happens to be a real, currently-emitted
+// series. The check's purpose is catching a vg_-owned metric rename,
+// not policing every metric name this repo's dependencies emit.
+func TestRun_MetricJurisdiction(t *testing.T) {
+	m := validModel()
+	m.Alerts.Cluster = append(m.Alerts.Cluster,
+		manifest.Rule{
+			UID: "vg-cluster-non-vg-name", Title: "Non-vg_ name check",
+			Expr:      `sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))`,
+			Condition: "gt 0.05", Instant: true, Range: "5m", For: "5m",
+			NoDataState: "OK", ExecErrState: "Error", Severity: "warn",
+			Summary: "a real but unregistered, non-vg_ metric name", Runbook: "stack.md#2-cluster-thing",
+		},
+		manifest.Rule{
+			UID: "vg-cluster-vg-unknown-name", Title: "vg_ unknown name check",
+			Expr: "sum(rate(vg_widget_totally_unknown_total[5m]))", Condition: "gt 0",
+			Instant: true, Range: "5m", For: "5m",
+			NoDataState: "OK", ExecErrState: "Error", Severity: "warn",
+			Summary: "a vg_-prefixed name nothing registers", Runbook: "stack.md#2-cluster-thing",
+		},
+	)
+
+	findings := lint.Run(m, repoRoot)
+	unknown := findingsWithRule(findings, "unknown-metric")
+	if len(unknown) != 1 {
+		t.Fatalf("want exactly 1 unknown-metric finding (the vg_ one only), got %d: %+v", len(unknown), unknown)
+	}
+	if !strings.Contains(unknown[0].Message, "vg_widget_totally_unknown_total") {
+		t.Errorf("the one unknown-metric finding should be about the vg_ name, got %+v", unknown[0])
+	}
+}
+
+// TestRun_RunbookDocScan proves the runbook-doc-wide check: every
+// docs/runbooks/*.md fenced block is checked regardless of whether any
+// rule cites that file, and both
+// treatments (AST for a block that parses as PromQL, token-scan
+// fallback for one that does not) catch a metric name nothing
+// registers - the walk->step class of drift this check exists to
+// catch - while a real, non-vg_ name (section 3 of the fixture's
+// runbook) never fires, proving the jurisdiction narrowing (see
+// unresolvedMetric) applies to this path too, not just rule/panel
+// exprs. testdata/repo-runbook-drift's services/ and libs/go/ register
+// nothing, so any vg_ metric its one runbook cites is necessarily
+// unknown.
+func TestRun_RunbookDocScan(t *testing.T) {
+	m := validModel()
+	// This fixture's runbooks do not define validModel's own anchors;
+	// only the doc-wide scan's findings are asserted below, so the
+	// model's other rules are left as is rather than rebuilt from
+	// scratch for a check that does not read them.
+	findings := lint.Run(m, "testdata/repo-runbook-drift")
+
+	unknown := findingsWithRule(findings, "unknown-metric")
+	if len(unknown) < 2 {
+		t.Fatalf("want at least 2 unknown-metric findings (AST path + token-scan path), got %d: %+v", len(unknown), unknown)
+	}
+
+	var astHit, tokenHit, nonVGHit bool
+	for _, f := range unknown {
+		if f.Path != "docs/runbooks/widget.md" {
+			continue
+		}
+		if strings.Contains(f.Message, "http_server_request_duration_seconds_count") {
+			nonVGHit = true
+			continue
+		}
+		if !strings.Contains(f.Message, "vg_widget_refresh_walk_seconds_count") {
+			continue
+		}
+		switch {
+		case strings.Contains(f.Message, "fenced query:"):
+			astHit = true
+		case strings.Contains(f.Message, "token-scanned"):
+			tokenHit = true
+		}
+	}
+	if !astHit {
+		t.Errorf("no AST-path unknown-metric finding for the fenced PromQL block; got %+v", unknown)
+	}
+	if !tokenHit {
+		t.Errorf("no token-scan-path unknown-metric finding for the shell-quoted block; got %+v", unknown)
+	}
+	if nonVGHit {
+		t.Error("a non-vg_ name (section 3, outside this lint's jurisdiction) must never fire, even in the runbook scan")
+	}
+}
+
+// TestRun_MetricScanErrorDegradesGracefully proves that when Known
+// itself fails (here: a repoRoot with no services/libs tree at all),
+// Run reports exactly that as one finding and skips every metric-name-
+// dependent check rather than reporting every real metric as unknown -
+// while every check that does not depend on Known (uid uniqueness
+// here) still runs normally.
+func TestRun_MetricScanErrorDegradesGracefully(t *testing.T) {
+	m := validModel()
+	m.Alerts.Cluster[0].UID = "vg-widget-down" // also trip a uid collision, unrelated to the metric scan
+
+	findings := lint.Run(m, "testdata/does-not-exist")
+
+	scanErrors := findingsWithRule(findings, "metric-scan-error")
+	if len(scanErrors) != 1 {
+		t.Fatalf("want exactly one metric-scan-error finding, got %d: %+v", len(scanErrors), findings)
+	}
+
+	if got := findingsWithRule(findings, "duplicate-uid"); len(got) == 0 {
+		t.Errorf("duplicate-uid check must still run when Known fails; got %+v", findings)
+	}
+	if got := findingsWithRule(findings, "unknown-metric"); len(got) != 0 {
+		t.Errorf("unknown-metric must be skipped (not falsely fired) when Known fails; got %+v", got)
+	}
+}

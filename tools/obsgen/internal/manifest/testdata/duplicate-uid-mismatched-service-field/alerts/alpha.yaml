@@ -1,0 +1,19 @@
+# Fixture: this file's own service: field intentionally does not match its
+# filename (alpha.yaml) or its roster entry. A uid-collision error must
+# cite the file Load actually read (alerts/alpha.yaml), never a path
+# reconstructed from this mismatched field (which would wrongly read
+# alerts/not-actually-alpha.yaml).
+service: not-actually-alpha
+golden: {}
+alerts:
+  - uid: vg-dup-thing
+    title: Alpha copy of a duplicated rule, filed under a mismatched service name
+    expr: max(vg_alpha_thing)
+    condition: gt 1
+    instant: true
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: alpha side of an accidental duplicate uid
+    runbook: alpha.md#dup-thing

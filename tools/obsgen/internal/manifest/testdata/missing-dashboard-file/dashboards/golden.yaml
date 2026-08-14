@@ -1,0 +1,3 @@
+# Fixture: declares alpha in the roster but testdata deliberately has no
+# dashboards/alpha.yaml.
+panels: []

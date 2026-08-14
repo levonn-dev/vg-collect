@@ -1,0 +1,214 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: vgkeep
+    folder: vgkeep
+    interval: 1m
+    rules:
+      - uid: vg-pod-churn
+        title: Pod restart churn or OOM kill
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~"vgkeep"}[15m])) > 3
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "a pod is restart-churning or was OOM-killed"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#pod-restart-churn-or-oom-kill
+        labels:
+          severity: warn
+      - uid: vg-node-pressure
+        title: Node under memory, disk or PID pressure
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: kube_node_status_condition{condition=~"MemoryPressure|DiskPressure|PIDPressure", status="true"} > 0
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "node pressure condition active"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#node-pressure
+        labels:
+          severity: page
+      - uid: vg-alpha-down
+        title: Alpha service down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: up{namespace="vgkeep", pod=~"alpha-.*"}
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "alpha has no ready pods answering scrapes"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
+          __dashboardUid__: vg-alpha
+          __panelId__: "1"
+        labels:
+          severity: crit
+      - uid: vg-alpha-pdb-exhausted
+        title: Alpha disruption budget exhausted
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"alpha.*"})
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 2h
+        annotations:
+          summary: "alpha (or one of its datastores) cannot tolerate any pod disruption"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#pdb-exhausted
+        labels:
+          severity: warn
+      - uid: vg-alpha-queue-backlog
+        title: Alpha queue not draining
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: max(vg_alpha_queue_pending)
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [25] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "the alpha queue has stayed above 25 pending"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/alpha.md#queue-backlog
+          __dashboardUid__: vg-alpha
+          __panelId__: "2"
+        labels:
+          severity: warn
+      - uid: vg-alpha-error-rate
+        title: Alpha error rate elevated
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: rate(vg_alpha_errors_total[5m])
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [5] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "alpha is logging errors at an elevated rate"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/alpha.md#error-rate
+        labels:
+          severity: warn
+      - uid: vg-bravo-down
+        title: Bravo service down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: up{namespace="vgkeep", pod=~"bravo-.*"}
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [2] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "bravo override summary for bravo"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
+          __dashboardUid__: vg-bravo
+          __panelId__: "1"
+        labels:
+          severity: warn
+deleteRules:
+  - orgId: 1
+    uid: vg-old-thing-2
+  - orgId: 1
+    uid: vg-old-thing-1

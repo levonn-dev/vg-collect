@@ -1,0 +1,10 @@
+# Fixture: declares bravo in the roster but testdata deliberately has no
+# alerts/bravo.yaml.
+group:
+  name: vgkeep
+  folder: vgkeep
+  interval: 1m
+datasource: prometheus
+services: [alpha, bravo]
+external_metric_prefixes: [kube_, node_, up]
+templates: {}

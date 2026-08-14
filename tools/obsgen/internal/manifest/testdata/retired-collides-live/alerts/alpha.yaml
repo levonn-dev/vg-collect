@@ -1,0 +1,14 @@
+service: alpha
+golden: {}
+alerts:
+  - uid: vg-alpha-thing
+    title: Alpha thing still live
+    expr: max(vg_alpha_thing)
+    condition: gt 1
+    instant: true
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: alpha thing is still an active rule
+    runbook: alpha.md#thing

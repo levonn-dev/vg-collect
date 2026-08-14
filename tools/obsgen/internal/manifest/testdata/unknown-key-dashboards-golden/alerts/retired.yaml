@@ -1,0 +1,4 @@
+# Filler: this tree's case is about a different file; an empty retired
+# list keeps retired.yaml out of the way so Load fails for exactly one
+# reason.
+[]

@@ -1,0 +1,14 @@
+service: bravo
+golden: {}
+alerts:
+  - uid: vg-dup-thing
+    title: Bravo copy of a duplicated rule
+    expr: max(vg_bravo_thing)
+    condition: gt 1
+    instant: true
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: bravo side of an accidental duplicate uid
+    runbook: bravo.md#dup-thing

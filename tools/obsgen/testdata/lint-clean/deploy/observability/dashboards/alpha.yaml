@@ -1,0 +1,5 @@
+service: alpha
+dashboard:
+  uid: vg-alpha
+  title: Alpha
+custom_panels: []

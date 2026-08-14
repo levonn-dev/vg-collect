@@ -1,0 +1,23 @@
+# Fixture: a bogus key inside a golden.yaml template entry must fail Load.
+group:
+  name: vgkeep
+  folder: vgkeep
+  interval: 1m
+datasource: prometheus
+services: []
+external_metric_prefixes: [kube_, node_, up]
+templates:
+  availability:
+    uid: vg-{service}-down
+    title: "{Service} service down"
+    expr: up{namespace="vgkeep", pod=~"{service}-.*"}
+    condition: lt 1
+    instant: true
+    for: 5m
+    noDataState: Alerting
+    execErrState: Error
+    severity: crit
+    summary: "{service} has no ready pods answering scrapes"
+    runbook: stack.md#service-down
+    panel_ref: "{service}/Availability"
+    bogus_field: oops

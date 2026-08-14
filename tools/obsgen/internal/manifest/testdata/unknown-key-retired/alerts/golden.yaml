@@ -1,0 +1,9 @@
+# Minimal valid golden.yaml so Load reaches retired.yaml.
+group:
+  name: vgkeep
+  folder: vgkeep
+  interval: 1m
+datasource: prometheus
+services: []
+external_metric_prefixes: [kube_, node_, up]
+templates: {}

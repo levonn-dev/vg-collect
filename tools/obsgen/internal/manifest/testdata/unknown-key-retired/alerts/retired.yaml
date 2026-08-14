@@ -1,0 +1,5 @@
+# Fixture: a bogus key inside a retired.yaml entry must fail Load.
+- uid: vg-bravo-old-thing
+  date: "2026-01-15"
+  reason: superseded by vg-bravo-refresh-stalled
+  bogus_field: oops

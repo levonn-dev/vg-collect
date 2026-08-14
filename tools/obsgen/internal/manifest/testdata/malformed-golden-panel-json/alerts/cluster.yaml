@@ -1,0 +1,3 @@
+# Filler: this tree's case is about a different file; an empty rule list
+# keeps cluster.yaml out of the way so Load fails for exactly one reason.
+alerts: []

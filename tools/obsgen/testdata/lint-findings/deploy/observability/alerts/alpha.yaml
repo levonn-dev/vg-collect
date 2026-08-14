@@ -1,0 +1,16 @@
+service: alpha
+golden:
+  availability: {}
+alerts:
+  - uid: vg-alpha-refresh-stalled
+    title: Alpha catalog refresh has not completed
+    expr: sum(increase(vg_alpha_refresh_walk_seconds_count[26h]))
+    condition: lt 1
+    instant: true
+    range: 26h
+    for: 1h
+    noDataState: Alerting
+    execErrState: Error
+    severity: warn
+    summary: "alpha has not finished a refresh recently"
+    runbook: stack.md#alpha-refresh-missing

@@ -1,0 +1,8 @@
+# Fixture: a golden override may only set for/condition/severity/summary;
+# uid (like expr) is deliberately never one of them - a service needing a
+# different expr writes a custom rule instead of overriding a golden one.
+service: alpha
+golden:
+  availability:
+    uid: vg-alpha-custom-override-attempt
+alerts: []

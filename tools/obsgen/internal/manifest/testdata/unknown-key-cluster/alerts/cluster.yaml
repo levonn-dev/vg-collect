@@ -1,0 +1,14 @@
+# Fixture: a bogus key inside a cluster.yaml rule must fail Load.
+alerts:
+  - uid: vg-pod-churn
+    title: Pod restart churn or OOM kill
+    expr: sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~"vgkeep"}[15m])) > 3
+    condition: gt 0
+    instant: true
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: a pod is restart-churning or was OOM-killed
+    runbook: stack.md#pod-restart-churn-or-oom-kill
+    bogus_field: oops

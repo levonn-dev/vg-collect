@@ -1,0 +1,5 @@
+# Fixture: the panel text is valid yaml (a plain block scalar) but not
+# valid json, so Load's gridPos extraction must fail with this file's path.
+panels:
+  - |
+    { this is not valid json

@@ -1,0 +1,10 @@
+# Minimal valid alerts/golden.yaml; this fixture exercises dashboards
+# golden.yaml's panel-json parsing instead.
+group:
+  name: vgkeep
+  folder: vgkeep
+  interval: 1m
+datasource: prometheus
+services: []
+external_metric_prefixes: [kube_, node_, up]
+templates: {}

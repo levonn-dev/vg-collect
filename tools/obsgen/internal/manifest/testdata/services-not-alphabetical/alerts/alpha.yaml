@@ -1,0 +1,16 @@
+service: alpha
+golden:
+  availability: {}
+  pdb_budget: {}
+alerts:
+  - uid: vg-alpha-queue-backlog
+    title: Alpha queue not draining
+    expr: max(vg_alpha_queue_pending)
+    condition: gt 25
+    instant: true
+    for: 10m
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: the alpha queue has stayed above 25 pending
+    runbook: alpha.md#queue-backlog

@@ -1,0 +1,8 @@
+# Filler: this tree's case is about a different file; a bare dashboard
+# entry with no custom panels keeps dashboards/bravo.yaml out of the way so
+# Load fails for exactly one reason.
+service: bravo
+dashboard:
+  uid: vg-bravo
+  title: Bravo
+custom_panels: []

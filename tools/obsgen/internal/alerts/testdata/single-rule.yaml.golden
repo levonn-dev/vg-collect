@@ -1,0 +1,35 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: vgkeep
+    folder: vgkeep
+    interval: 1m
+    rules:
+      - uid: vg-service-5xx
+        title: Service 5xx ratio above 5 percent
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) / sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.05] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "{{ $labels.service_name }} is answering more than 5 percent 5xx"
+          runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#1-service-5xx-ratio-above-5-percent
+        labels:
+          severity: page

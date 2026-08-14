@@ -1,0 +1,37 @@
+# Small stand-in roster (alpha, bravo) for a loader test tree; not the real
+# service list. services is deliberately reversed here - this tree exists
+# to prove Load rejects a services roster that is not alphabetically
+# ordered.
+group:
+  name: vgkeep
+  folder: vgkeep
+  interval: 1m
+datasource: prometheus
+services: [bravo, alpha]
+external_metric_prefixes: [kube_, node_, up]
+templates:
+  availability:
+    uid: vg-{service}-down
+    title: "{Service} service down"
+    expr: up{namespace="vgkeep", pod=~"{service}-.*"}
+    condition: lt 1
+    instant: true
+    for: 5m
+    noDataState: Alerting
+    execErrState: Error
+    severity: crit
+    summary: "{service} has no ready pods answering scrapes"
+    runbook: stack.md#service-down
+    panel_ref: "{service}/Availability"
+  pdb_budget:
+    uid: vg-{service}-pdb-exhausted
+    title: "{Service} disruption budget exhausted"
+    expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"{service}.*"})
+    condition: lt 1
+    instant: true
+    for: 1h
+    noDataState: OK
+    execErrState: Error
+    severity: warn
+    summary: "{service} (or one of its datastores) cannot tolerate any pod disruption"
+    runbook: stack.md#pdb-exhausted

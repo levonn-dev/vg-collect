@@ -1,0 +1,8 @@
+group:
+  name: vgkeep
+  folder: vgkeep
+  interval: 1m
+datasource: prometheus
+services: [alpha]
+external_metric_prefixes: [kube_, node_, up]
+templates: {}

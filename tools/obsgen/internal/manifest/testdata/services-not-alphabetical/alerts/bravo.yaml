@@ -1,0 +1,19 @@
+service: bravo
+golden:
+  availability:
+    severity: warn
+  pdb_budget: {}
+alerts:
+  - uid: vg-bravo-refresh-stalled
+    title: Bravo nightly refresh has not completed
+    expr: sum(increase(vg_bravo_refresh_seconds_count[26h]))
+    condition: lt 1
+    instant: true
+    range: 26h
+    for: 1h
+    noDataState: Alerting
+    execErrState: Error
+    severity: warn
+    summary: bravo has not finished a refresh in more than 26 hours
+    runbook: bravo.md#refresh-missing
+    panel_ref: "bravo/Refresh duration"

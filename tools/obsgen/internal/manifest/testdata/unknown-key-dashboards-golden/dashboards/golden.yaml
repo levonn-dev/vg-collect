@@ -1,0 +1,8 @@
+# Fixture: a bogus top-level key in dashboards/golden.yaml must fail Load.
+# Panel entries are opaque verbatim JSON text (same shape as custom_panels),
+# so there is no nested YAML key to typo within one; the strict-decode
+# surface for this file kind is its top level.
+panels:
+  - |
+    {"title": "{Service} Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}}
+bogus_field: oops

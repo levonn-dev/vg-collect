@@ -1,0 +1,4 @@
+# Fixture: retires a uid that alpha.yaml's rule above still uses live.
+- uid: vg-alpha-thing
+  date: "2026-01-15"
+  reason: entered by mistake while drafting retired.yaml

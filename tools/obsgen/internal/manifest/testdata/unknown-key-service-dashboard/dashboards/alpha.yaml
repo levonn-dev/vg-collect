@@ -1,0 +1,7 @@
+# Fixture: a bogus key nested inside a service dashboard file's dashboard:
+# block must fail Load.
+service: alpha
+dashboard:
+  uid: vg-alpha
+  title: Alpha
+  bogus_field: oops

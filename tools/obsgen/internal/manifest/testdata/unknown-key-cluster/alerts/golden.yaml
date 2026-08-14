@@ -1,0 +1,10 @@
+# Minimal valid golden.yaml so Load reaches cluster.yaml; empty roster
+# means no per-service files are needed for this fixture.
+group:
+  name: vgkeep
+  folder: vgkeep
+  interval: 1m
+datasource: prometheus
+services: []
+external_metric_prefixes: [kube_, node_, up]
+templates: {}
