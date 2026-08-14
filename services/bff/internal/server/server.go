@@ -242,7 +242,7 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 		return c
 	}
 	failOpen := counter("vg.bff.cache.fail_open",
-		"Valkey operations that failed and were failed open", "")
+		"Valkey operations that failed and were failed open", "{event}")
 	logins := counter("vg.bff.auth.logins",
 		"Completed login and account-link attempts by flow and outcome", "{login}")
 	refreshes := counter("vg.bff.session.refreshes",
