@@ -234,60 +234,60 @@ func TestUnitLoginMetric_LoginFlow(t *testing.T) {
 
 	cases := []struct {
 		name          string
-		auth          *stubAuthFull
+		auth          *stubAuth
 		path          string
 		flow, outcome string
 	}{
 		{
 			name: "dev_success",
-			auth: &stubAuthFull{dev: func(context.Context, string) (authclient.TokenPair, error) {
+			auth: &stubAuth{dev: func(context.Context, string) (authclient.TokenPair, error) {
 				return pair, nil
 			}},
 			path: "/api/auth/login?provider=dev&user=alice", flow: "login", outcome: "success",
 		},
 		{
 			name: "dev_email_unverified",
-			auth: &stubAuthFull{dev: func(context.Context, string) (authclient.TokenPair, error) {
+			auth: &stubAuth{dev: func(context.Context, string) (authclient.TokenPair, error) {
 				return authclient.TokenPair{}, authclient.ErrEmailUnverified
 			}},
 			path: "/api/auth/login?provider=dev", flow: "login", outcome: "email_unverified",
 		},
 		{
 			name: "start_provider_error",
-			auth: &stubAuthFull{start: func(context.Context, string) (string, error) {
+			auth: &stubAuth{start: func(context.Context, string) (string, error) {
 				return "", authclient.ErrProviderError
 			}},
 			path: "/api/auth/login?provider=google", flow: "login", outcome: "provider_error",
 		},
 		{
 			name: "start_failure",
-			auth: &stubAuthFull{start: func(context.Context, string) (string, error) {
+			auth: &stubAuth{start: func(context.Context, string) (string, error) {
 				return "", errors.New("boom")
 			}},
 			path: "/api/auth/login?provider=google", flow: "login", outcome: "failed",
 		},
 		{
 			name: "callback_success",
-			auth: &stubAuthFull{callback: func(context.Context, string, string) (authclient.TokenPair, error) {
+			auth: &stubAuth{callback: func(context.Context, string, string) (authclient.TokenPair, error) {
 				return pair, nil
 			}},
 			path: "/api/auth/callback?code=c&state=s", flow: "login", outcome: "success",
 		},
 		{
 			name: "callback_failure",
-			auth: &stubAuthFull{callback: func(context.Context, string, string) (authclient.TokenPair, error) {
+			auth: &stubAuth{callback: func(context.Context, string, string) (authclient.TokenPair, error) {
 				return authclient.TokenPair{}, authclient.ErrLoginFailed
 			}},
 			path: "/api/auth/callback?code=c&state=s", flow: "login", outcome: "failed",
 		},
 		{
 			name: "callback_missing_params",
-			auth: &stubAuthFull{},
+			auth: &stubAuth{},
 			path: "/api/auth/callback", flow: "login", outcome: "failed",
 		},
 		{
 			name: "callback_link_success",
-			auth: &stubAuthFull{callback: func(context.Context, string, string) (authclient.TokenPair, error) {
+			auth: &stubAuth{callback: func(context.Context, string, string) (authclient.TokenPair, error) {
 				p := pair
 				p.LinkedProvider = &google
 				return p, nil
@@ -296,14 +296,14 @@ func TestUnitLoginMetric_LoginFlow(t *testing.T) {
 		},
 		{
 			name: "callback_link_conflict",
-			auth: &stubAuthFull{callback: func(context.Context, string, string) (authclient.TokenPair, error) {
+			auth: &stubAuth{callback: func(context.Context, string, string) (authclient.TokenPair, error) {
 				return authclient.TokenPair{}, authclient.ErrLinkConflict
 			}},
 			path: "/api/auth/callback?code=c&state=s", flow: "link", outcome: "conflict",
 		},
 		{
 			name: "callback_link_email_unverified",
-			auth: &stubAuthFull{callback: func(context.Context, string, string) (authclient.TokenPair, error) {
+			auth: &stubAuth{callback: func(context.Context, string, string) (authclient.TokenPair, error) {
 				return authclient.TokenPair{}, authclient.ErrLinkEmailUnverified
 			}},
 			path: "/api/auth/callback?code=c&state=s", flow: "link", outcome: "email_unverified",
@@ -320,7 +320,7 @@ func TestUnitLoginMetric_LoginFlow(t *testing.T) {
 	}
 
 	t.Run("idp_redirect_counts_nothing", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{
 			start: func(context.Context, string) (string, error) {
 				return "https://idp.example/authorize?state=s", nil
 			},
@@ -338,7 +338,7 @@ func TestUnitLoginMetric_LinkFlow(t *testing.T) {
 	linked := "dev"
 	linkedAccess := mintAccess(t, "u1", "jlinked", time.Now().Add(5*time.Minute))
 
-	drive := func(t *testing.T, auth *stubAuthFull, path string) *metricsProbe {
+	drive := func(t *testing.T, auth *stubAuth, path string) *metricsProbe {
 		t.Helper()
 		h := newTestHandlers(t, newStubCache(), auth)
 		p := probeMetrics(h)
@@ -354,32 +354,32 @@ func TestUnitLoginMetric_LinkFlow(t *testing.T) {
 	}
 
 	t.Run("dev_link_success", func(t *testing.T) {
-		p := drive(t, &stubAuthFull{devLink: func(context.Context, string, string) (authclient.TokenPair, error) {
+		p := drive(t, &stubAuth{devLink: func(context.Context, string, string) (authclient.TokenPair, error) {
 			return authclient.TokenPair{AccessToken: linkedAccess, RefreshToken: "r2",
 				ExpiresIn: 300, RefreshExpiresIn: 2000, LinkedProvider: &linked}, nil
 		}}, "/api/auth/link?provider=dev&user=bob")
 		assertOnly(t, p.logins, flowOutcome("link", "success")...)
 	})
 	t.Run("dev_link_conflict", func(t *testing.T) {
-		p := drive(t, &stubAuthFull{devLink: func(context.Context, string, string) (authclient.TokenPair, error) {
+		p := drive(t, &stubAuth{devLink: func(context.Context, string, string) (authclient.TokenPair, error) {
 			return authclient.TokenPair{}, authclient.ErrLinkConflict
 		}}, "/api/auth/link?provider=dev&user=bob")
 		assertOnly(t, p.logins, flowOutcome("link", "conflict")...)
 	})
 	t.Run("dev_link_email_unverified", func(t *testing.T) {
-		p := drive(t, &stubAuthFull{devLink: func(context.Context, string, string) (authclient.TokenPair, error) {
+		p := drive(t, &stubAuth{devLink: func(context.Context, string, string) (authclient.TokenPair, error) {
 			return authclient.TokenPair{}, authclient.ErrLinkEmailUnverified
 		}}, "/api/auth/link?provider=dev&user=bob")
 		assertOnly(t, p.logins, flowOutcome("link", "email_unverified")...)
 	})
 	t.Run("link_start_failure", func(t *testing.T) {
-		p := drive(t, &stubAuthFull{linkStart: func(context.Context, string, string) (string, error) {
+		p := drive(t, &stubAuth{linkStart: func(context.Context, string, string) (string, error) {
 			return "", errors.New("boom")
 		}}, "/api/auth/link?provider=google")
 		assertOnly(t, p.logins, flowOutcome("link", "failed")...)
 	})
 	t.Run("link_start_redirect_counts_nothing", func(t *testing.T) {
-		p := drive(t, &stubAuthFull{linkStart: func(context.Context, string, string) (string, error) {
+		p := drive(t, &stubAuth{linkStart: func(context.Context, string, string) (string, error) {
 			return "https://idp.example/authorize?state=link1", nil
 		}}, "/api/auth/link?provider=google")
 		if p.logins.count() != 0 {
@@ -653,9 +653,11 @@ func TestUnitCacheLookupMetric_MeAndRecs(t *testing.T) {
 	newMeHandlers := func(t *testing.T, fc *stubCache) (*Handlers, string) {
 		t.Helper()
 		uid := uuid.New()
-		h := newTestHandlers(t, fc, &stubAuthFull{})
-		h.users = &stubUsersFull{user: userapi.User{
-			Id: uid, Email: "alice@example.test", Handle: "alice", Roles: []userapi.UserRoles{"user"},
+		h := newTestHandlers(t, fc, &stubAuth{})
+		h.users = &stubUsers{get: func(context.Context, string, string) (userapi.User, error) {
+			return userapi.User{
+				Id: uid, Email: "alice@example.test", Handle: "alice", Roles: []userapi.UserRoles{"user"},
+			}, nil
 		}}
 		return h, uid.String()
 	}
@@ -697,7 +699,7 @@ func TestUnitCacheLookupMetric_MeAndRecs(t *testing.T) {
 
 	newRecsHandlers := func(t *testing.T, fc *stubCache) (*Handlers, *testEnv) {
 		t.Helper()
-		h := newTestHandlers(t, fc, &stubAuthFull{})
+		h := newTestHandlers(t, fc, &stubAuth{})
 		h.collection = &stubCollection{library: func(context.Context, string) (collectionapi.LibrarySummary, error) {
 			return collectionapi.LibrarySummary{Library: []collectionapi.LibraryGame{}}, nil
 		}}

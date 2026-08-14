@@ -49,7 +49,7 @@ func (s *stubRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { 
 // ("" is drop mode).
 func newTestHandlersForOtlp(t *testing.T, otlpProxyURL string) (*Handlers, *testEnv) {
 	t.Helper()
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	h.otlpProxyURL = otlpProxyURL
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 	return h, &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}

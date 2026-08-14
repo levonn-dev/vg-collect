@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeytest"
@@ -23,8 +22,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/cache"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/enrichmentclient"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/authapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
@@ -168,68 +167,6 @@ func (f *stubCache) InvalidateMe(_ context.Context, sub string) error {
 	return nil
 }
 
-// stubAuth panics on everything; tests override what they use.
-type stubAuth struct {
-	refresh func(ctx context.Context, refreshToken string) (authclient.TokenPair, error)
-}
-
-func (s *stubAuth) Start(context.Context, string) (string, error) { panic("unexpected Start") }
-func (s *stubAuth) Callback(context.Context, string, string) (authclient.TokenPair, error) {
-	panic("unexpected Callback")
-}
-func (s *stubAuth) DevToken(context.Context, string) (authclient.TokenPair, error) {
-	panic("unexpected DevToken")
-}
-func (s *stubAuth) Revoke(context.Context, string) error        { panic("unexpected Revoke") }
-func (s *stubAuth) Providers(context.Context) ([]string, error) { panic("unexpected Providers") }
-func (s *stubAuth) Refresh(ctx context.Context, rt string) (authclient.TokenPair, error) {
-	if s.refresh == nil {
-		panic("unexpected Refresh")
-	}
-	return s.refresh(ctx, rt)
-}
-func (s *stubAuth) LinkStart(context.Context, string, string) (string, error) {
-	panic("unexpected LinkStart")
-}
-func (s *stubAuth) DevLink(context.Context, string, string) (authclient.TokenPair, error) {
-	panic("unexpected DevLink")
-}
-func (s *stubAuth) ListIdentities(context.Context, string, string) ([]authapi.Identity, error) {
-	panic("unexpected ListIdentities")
-}
-func (s *stubAuth) DeleteIdentity(context.Context, uuid.UUID, string) error {
-	panic("unexpected DeleteIdentity")
-}
-func (s *stubAuth) DeleteUserAuth(context.Context, string, string) error {
-	panic("unexpected DeleteUserAuth")
-}
-
-type stubUsers struct{}
-
-func (stubUsers) Get(context.Context, string, string) (userapi.User, error) {
-	panic("unexpected users.Get")
-}
-
-func (stubUsers) Update(context.Context, string, string, []byte) (userclient.Result, error) {
-	panic("unexpected users.Update")
-}
-
-func (stubUsers) Delete(context.Context, string, string) error {
-	panic("unexpected users.Delete")
-}
-
-func (stubUsers) SharedProfile(context.Context, string, string) (userapi.ProfileCard, error) {
-	panic("unexpected users.SharedProfile")
-}
-
-func (stubUsers) SharedCardsByIDs(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
-	panic("unexpected users.SharedCardsByIDs")
-}
-
-func (stubUsers) SearchProfiles(context.Context, string, string) (userclient.Result, error) {
-	panic("unexpected users.SearchProfiles")
-}
-
 // ---- helpers ----
 
 func mintAccess(t *testing.T, sub, jti string, exp time.Time) string {
@@ -250,7 +187,7 @@ func newTestHandlers(t *testing.T, c SessionCache, a AuthAPI) *Handlers {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := New(codec, c, a, stubUsers{}, &stubEnrichment{}, &stubCollection{}, &stubSocialFull{}, Options{
+	h := New(codec, c, a, &stubUsers{}, &stubEnrichment{}, &stubCollection{}, &stubSocialFull{}, Options{
 		AccessTokenTTL: 5 * time.Minute,
 		RefreshWindow:  30 * time.Second,
 		MeCacheTTL:     45 * time.Second,
@@ -509,147 +446,6 @@ func (f *stubUserService) get(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-// stubEnrichmentService answers GET /search with a canned SearchResults
-// body, recording every call's Authorization header and a running
-// count: the never-cached-at-the-bff proof needs an exact hit count.
-type stubEnrichmentService struct {
-	srv *httptest.Server
-
-	mu         sync.Mutex
-	calls      int
-	gotAuth    []string
-	scoreCalls int
-}
-
-func newStubEnrichmentService(t *testing.T) *stubEnrichmentService {
-	t.Helper()
-	f := &stubEnrichmentService{}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /search", f.search)
-	mux.HandleFunc("POST /recommendations:score", f.score)
-	f.srv = httptest.NewServer(mux)
-	t.Cleanup(f.srv.Close)
-	return f
-}
-
-func (f *stubEnrichmentService) search(w http.ResponseWriter, r *http.Request) {
-	f.mu.Lock()
-	f.calls++
-	f.gotAuth = append(f.gotAuth, r.Header.Get("Authorization"))
-	f.mu.Unlock()
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"degraded":false,"results":[{"type":"game","name":"Chrono Trigger"}]}`))
-}
-
-func (f *stubEnrichmentService) callCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.calls
-}
-
-// score answers the recommendation scorer the composed route calls;
-// scoreCalls is the cache-lifecycle proof's hit counter.
-func (f *stubEnrichmentService) score(w http.ResponseWriter, _ *http.Request) {
-	f.mu.Lock()
-	f.scoreCalls++
-	f.mu.Unlock()
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"degraded":false,"recommendations":[{"igdb_game_id":9,"name":"Alundra","genres":["RPG"],"score":4.2}]}`))
-}
-
-func (f *stubEnrichmentService) scoreCallCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.scoreCalls
-}
-
-// stubCollectionService answers GET /entries with a canned EntryList
-// body, recording every call's Authorization header and a running
-// count: the never-cached-at-the-bff proof needs an exact hit count.
-type stubCollectionService struct {
-	srv *httptest.Server
-
-	mu               sync.Mutex
-	calls            int
-	gotAuth          []string
-	createCalls      int
-	valueHistoryHits int
-}
-
-func newStubCollectionService(t *testing.T) *stubCollectionService {
-	t.Helper()
-	f := &stubCollectionService{}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /entries", f.entries)
-	mux.HandleFunc("GET /library/summary", f.librarySummary)
-	mux.HandleFunc("POST /entries", f.createEntry)
-	mux.HandleFunc("GET /dashboard/value-history", f.valueHistory)
-	f.srv = httptest.NewServer(mux)
-	t.Cleanup(f.srv.Close)
-	return f
-}
-
-func (f *stubCollectionService) entries(w http.ResponseWriter, r *http.Request) {
-	f.mu.Lock()
-	f.calls++
-	f.gotAuth = append(f.gotAuth, r.Header.Get("Authorization"))
-	f.mu.Unlock()
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"pricing_available":true,"total_count":0,"entries":[]}`))
-}
-
-func (f *stubCollectionService) callCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.calls
-}
-
-// valueHistory answers the value-history pass-through the
-// never-cached-at-the-bff proof drives; valueHistoryHits records how
-// many times the collection service was actually reached.
-func (f *stubCollectionService) valueHistory(w http.ResponseWriter, _ *http.Request) {
-	f.mu.Lock()
-	f.valueHistoryHits++
-	f.mu.Unlock()
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"available":true,"points":[]}`))
-}
-
-func (f *stubCollectionService) valueHistoryHitCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.valueHistoryHits
-}
-
-// librarySummary answers the recommendations composition's library
-// read with a fixed one-game library.
-func (f *stubCollectionService) librarySummary(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"library":[{"igdb_game_id":9,"rating":8}]}`))
-}
-
-// createEntry answers the entry-creation mutation the invalidation
-// test drives; createCalls records how many times it ran.
-func (f *stubCollectionService) createEntry(w http.ResponseWriter, _ *http.Request) {
-	f.mu.Lock()
-	f.createCalls++
-	f.mu.Unlock()
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_, _ = w.Write([]byte(`{}`))
-}
-
-func (f *stubCollectionService) createCallCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.createCalls
-}
-
 // stubOtlpCollector answers POST /v1/traces and POST /v1/metrics with a
 // canned 200, recording a running hit count per signal: the
 // never-cached-at-the-bff proof needs an exact hit count, just like the
@@ -708,16 +504,21 @@ type stack struct {
 	codec      *session.Codec
 	auth       *stubAuthService
 	users      *stubUserService
-	enrich     *stubEnrichmentService
-	collection *stubCollectionService
+	enrich     *stubEnrichment
+	collection *stubCollection
 	otlp       *stubOtlpCollector
 	client     *http.Client
 }
 
 // newStack wires the whole bff vertical: a Valkey container behind
-// cache.New, the authclient/userclient against httptest stubs, and the
-// codec + Handlers + router on an httptest server. Skips on -short.
-// Each test starts on an empty keyspace via its own FlushAll below.
+// cache.New, the authclient/userclient against httptest stubs, the
+// shared stubEnrichment/stubCollection doubles wired directly (their
+// wire-level Authorization/Bearer formatting is the enrichmentclient
+// and collectionclient packages' own contract, proven in their tests;
+// what belongs here is that Handlers forwards the session's own bearer
+// and never shadows the upstream's caching), and the codec + Handlers
+// + router on an httptest server. Skips on -short. Each test starts on
+// an empty keyspace via its own FlushAll below.
 func newStack(t *testing.T) *stack {
 	t.Helper()
 	ctx := context.Background()
@@ -742,16 +543,46 @@ func newStack(t *testing.T) *stack {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fe := newStubEnrichmentService(t)
-	enrichClient, err := enrichmentclient.New(fe.srv.URL)
-	if err != nil {
-		t.Fatal(err)
+
+	fe := &stubEnrichment{}
+	fe.search = func(_ context.Context, bearer, _, _ string) (enrichmentclient.Result, error) {
+		fe.mu.Lock()
+		fe.calls++
+		fe.gotAuth = append(fe.gotAuth, "Bearer "+bearer)
+		fe.mu.Unlock()
+		return enrichmentclient.Result{Status: http.StatusOK, ContentType: "application/json",
+			Body: []byte(`{"degraded":false,"results":[{"type":"game","name":"Chrono Trigger"}]}`)}, nil
 	}
-	fcol := newStubCollectionService(t)
-	collClient, err := collectionclient.New(fcol.srv.URL)
-	if err != nil {
-		t.Fatal(err)
+	fe.score = func(context.Context, string, enrichapi.ScoreRequest) ([]byte, bool, error) {
+		fe.mu.Lock()
+		fe.scoreCalls++
+		fe.mu.Unlock()
+		return []byte(`{"degraded":false,"recommendations":[{"igdb_game_id":9,"name":"Alundra","genres":["RPG"],"score":4.2}]}`), false, nil
 	}
+
+	fcol := &stubCollection{}
+	fcol.answer = func(op string) (collectionclient.Result, error) {
+		switch op {
+		case "list_entries":
+			return collectionclient.Result{Status: http.StatusOK, ContentType: "application/json",
+				Body: []byte(`{"pricing_available":true,"total_count":0,"entries":[]}`)}, nil
+		case "create_entry":
+			return collectionclient.Result{Status: http.StatusCreated, ContentType: "application/json", Body: []byte(`{}`)}, nil
+		case "value_history":
+			return collectionclient.Result{Status: http.StatusOK, ContentType: "application/json",
+				Body: []byte(`{"available":true,"points":[]}`)}, nil
+		default:
+			panic("stack: unexpected collection op " + op)
+		}
+	}
+	// library answers the recommendations composition's library read
+	// with a fixed one-game library (rating 8), mirroring the fixture
+	// TestUnitRecommendations_ComposesAndCaches already exercises.
+	fcol.library = func(context.Context, string) (collectionapi.LibrarySummary, error) {
+		rating := 8
+		return collectionapi.LibrarySummary{Library: []collectionapi.LibraryGame{{IgdbGameId: 9, Rating: &rating}}}, nil
+	}
+
 	fo := newStubOtlpCollector(t)
 
 	codec, err := session.NewCodec(testCookieKey, true)
@@ -761,7 +592,7 @@ func newStack(t *testing.T) *stack {
 	// No stubSocialService double exists: none of this stack's tests
 	// exercise a social route, so a nil-panic stub (same convention as
 	// every other unused surface here) is the correct no-op.
-	h := New(codec, c, authClient, userClient, enrichClient, collClient, &stubSocialFull{}, Options{
+	h := New(codec, c, authClient, userClient, fe, fcol, &stubSocialFull{}, Options{
 		AccessTokenTTL: 5 * time.Minute,
 		RefreshWindow:  30 * time.Second,
 		MeCacheTTL:     45 * time.Second,
@@ -1518,11 +1349,12 @@ func TestReuseDenylistsAndRejects(t *testing.T) {
 }
 
 // TestSearchPassThroughReachesEnrichmentWithBearerNeverCached drives the
-// cookie-authenticated search route through the real server and the
-// real enrichmentclient (over real HTTP) against a stub enrichment
-// service, proving the session's own bearer rides the proxied call and
-// that the route is never cached at the bff: two identical calls must
-// reach the upstream twice, not once.
+// cookie-authenticated search route through the real server against
+// the shared enrichment stub, proving the session's own bearer rides
+// the proxied call and that the route is never cached at the bff: two
+// identical calls must reach the upstream twice, not once. The wire-
+// level Authorization header format is enrichmentclient's own
+// contract, proven in that package's tests.
 func TestSearchPassThroughReachesEnrichmentWithBearerNeverCached(t *testing.T) {
 	s := newStack(t)
 	const sub = "55555555-5555-5555-5555-555555555555"
@@ -1548,11 +1380,12 @@ func TestSearchPassThroughReachesEnrichmentWithBearerNeverCached(t *testing.T) {
 }
 
 // TestEntriesPassThroughHitsCollectionTwiceNeverCached drives the
-// cookie-authenticated entries route through the real server and the
-// real collectionclient (over real HTTP) against a stub collection
-// service, proving the session's own bearer rides the proxied call and
-// that the route is never cached at the bff: two identical calls must
-// reach the upstream twice, not once.
+// cookie-authenticated entries route through the real server against
+// the shared collection stub, proving the session's own bearer rides
+// the proxied call and that the route is never cached at the bff: two
+// identical calls must reach the upstream twice, not once. The wire-
+// level Authorization header format is collectionclient's own
+// contract, proven in that package's tests.
 func TestEntriesPassThroughHitsCollectionTwiceNeverCached(t *testing.T) {
 	s := newStack(t)
 	const sub = "66666666-6666-6666-6666-666666666666"
@@ -1578,12 +1411,11 @@ func TestEntriesPassThroughHitsCollectionTwiceNeverCached(t *testing.T) {
 }
 
 // TestValueHistoryPassThroughHitsCollectionTwiceNeverCached drives the
-// cookie-authenticated value-history route through the real server and
-// the real collectionclient (over real HTTP) against a stub collection
-// service, proving that the route is never cached at the bff: two
-// identical calls must reach the upstream twice, not once. This pins
-// the single-source rule for the new route (the collection service
-// owns the cache; the bff must never shadow it).
+// cookie-authenticated value-history route through the real server
+// against the shared collection stub, proving that the route is never
+// cached at the bff: two identical calls must reach the upstream
+// twice, not once. This pins the single-source rule for the new route
+// (the collection service owns the cache; the bff must never shadow it).
 func TestValueHistoryPassThroughHitsCollectionTwiceNeverCached(t *testing.T) {
 	s := newStack(t)
 	const sub = "88888888-8888-8888-8888-888888888888"

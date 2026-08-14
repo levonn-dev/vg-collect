@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -44,7 +43,7 @@ func TestUnitViewPublish_FiresEventFailOpen(t *testing.T) {
 	}
 
 	setup := func(col *stubCollection, soc *stubSocialFull) (*Handlers, *testEnv) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.collection, h.social = col, soc
 		access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 		return h, &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
@@ -197,244 +196,11 @@ func TestUnitViewPublish_FiresEventFailOpen(t *testing.T) {
 	})
 }
 
-// stubCollection implements server.CollectionAPI via function fields;
-// the route-matrix test only needs the generic answer field.
-type stubCollection struct {
-	answer  func(op string) (collectionclient.Result, error)
-	library func(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error)
-
-	createSubmission   func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
-	getSubmission      func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
-	cancelSubmission   func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
-	ackSubmission      func(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error)
-	listSubmissions    func(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error)
-	submitVerdict      func(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error)
-	triggerRematch     func(ctx context.Context, bearer string) (collectionclient.Result, error)
-	resnapshot         func(ctx context.Context, bearer string) (collectionclient.Result, error)
-	normalizePlatforms func(ctx context.Context, bearer string) (collectionclient.Result, error)
-	normalizeRegions   func(ctx context.Context, bearer string) (collectionclient.Result, error)
-
-	sharedShelf        func(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error)
-	sharedShelfBySlug  func(ctx context.Context, bearer string, ownerID uuid.UUID, slug string) (collectionapi.SharedShelf, error)
-	sharedShelfEntries func(ctx context.Context, bearer string, id uuid.UUID, limit, offset *int) (collectionclient.Result, error)
-	listSharedShelves  func(ctx context.Context, bearer string, ownerIDs []uuid.UUID, limit, offset int) ([]collectionapi.SharedShelfSummary, int, error)
-	sharedShelvesByIDs func(ctx context.Context, bearer string, ids []uuid.UUID) ([]collectionapi.SharedShelfSummary, error)
-
-	mu        sync.Mutex
-	gotBearer []string
-	gotOps    []string
-}
-
-func (s *stubCollection) call(op, bearer string) (collectionclient.Result, error) {
-	s.mu.Lock()
-	s.gotOps = append(s.gotOps, op)
-	s.gotBearer = append(s.gotBearer, bearer)
-	s.mu.Unlock()
-	if s.answer == nil {
-		panic("unexpected collection call: " + op)
-	}
-	return s.answer(op)
-}
-
-func (s *stubCollection) ListEntries(_ context.Context, bearer string, _ *collectionapi.ListEntriesParams) (collectionclient.Result, error) {
-	return s.call("list_entries", bearer)
-}
-
-func (s *stubCollection) CreateEntry(_ context.Context, bearer string, _ []byte) (collectionclient.Result, error) {
-	return s.call("create_entry", bearer)
-}
-
-func (s *stubCollection) GetEntry(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
-	return s.call("get_entry", bearer)
-}
-
-func (s *stubCollection) UpdateEntry(_ context.Context, bearer string, _ uuid.UUID, _ []byte) (collectionclient.Result, error) {
-	return s.call("update_entry", bearer)
-}
-
-func (s *stubCollection) DeleteEntry(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
-	return s.call("delete_entry", bearer)
-}
-
-func (s *stubCollection) AckRegionMismatch(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
-	return s.call("ack_region_mismatch", bearer)
-}
-
-func (s *stubCollection) ReorderEntry(_ context.Context, bearer string, _ uuid.UUID, _ []byte) (collectionclient.Result, error) {
-	return s.call("reorder_entry", bearer)
-}
-
-func (s *stubCollection) BulkUpdateEntries(_ context.Context, bearer string, _ []byte) (collectionclient.Result, error) {
-	return s.call("bulk_update_entries", bearer)
-}
-
-func (s *stubCollection) ListTags(_ context.Context, bearer string) (collectionclient.Result, error) {
-	return s.call("list_tags", bearer)
-}
-
-func (s *stubCollection) CreateTag(_ context.Context, bearer string, _ []byte) (collectionclient.Result, error) {
-	return s.call("create_tag", bearer)
-}
-
-func (s *stubCollection) RenameTag(_ context.Context, bearer string, _ uuid.UUID, _ []byte) (collectionclient.Result, error) {
-	return s.call("rename_tag", bearer)
-}
-
-func (s *stubCollection) DeleteTag(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
-	return s.call("delete_tag", bearer)
-}
-
-func (s *stubCollection) ListViews(_ context.Context, bearer string) (collectionclient.Result, error) {
-	return s.call("list_views", bearer)
-}
-
-func (s *stubCollection) CreateView(_ context.Context, bearer string, _ []byte) (collectionclient.Result, error) {
-	return s.call("create_view", bearer)
-}
-
-func (s *stubCollection) UpdateView(_ context.Context, bearer string, _ uuid.UUID, _ []byte) (collectionclient.Result, error) {
-	return s.call("update_view", bearer)
-}
-
-func (s *stubCollection) DeleteView(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
-	return s.call("delete_view", bearer)
-}
-
-func (s *stubCollection) GetDashboard(_ context.Context, bearer string, _ *collectionapi.GetDashboardParams) (collectionclient.Result, error) {
-	return s.call("dashboard", bearer)
-}
-
-func (s *stubCollection) GetValueHistory(_ context.Context, bearer string) (collectionclient.Result, error) {
-	return s.call("value_history", bearer)
-}
-
-func (s *stubCollection) LibrarySummary(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error) {
-	if s.library == nil {
-		panic("unexpected LibrarySummary")
-	}
-	return s.library(ctx, bearer)
-}
-
-func (s *stubCollection) PurgeUserData(_ context.Context, bearer string) (collectionclient.Result, error) {
-	return s.call("purge_user_data", bearer)
-}
-
-func (s *stubCollection) CountProductReferences(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
-	return s.call("count_product_references", bearer)
-}
-
-func (s *stubCollection) CreateSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error) {
-	if s.createSubmission == nil {
-		panic("unexpected CreateSubmission")
-	}
-	return s.createSubmission(ctx, bearer, id)
-}
-
-func (s *stubCollection) GetSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error) {
-	if s.getSubmission == nil {
-		panic("unexpected GetSubmission")
-	}
-	return s.getSubmission(ctx, bearer, id)
-}
-
-func (s *stubCollection) CancelSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error) {
-	if s.cancelSubmission == nil {
-		panic("unexpected CancelSubmission")
-	}
-	return s.cancelSubmission(ctx, bearer, id)
-}
-
-func (s *stubCollection) AckSubmission(ctx context.Context, bearer string, id uuid.UUID) (collectionclient.Result, error) {
-	if s.ackSubmission == nil {
-		panic("unexpected AckSubmission")
-	}
-	return s.ackSubmission(ctx, bearer, id)
-}
-
-func (s *stubCollection) ListSubmissions(ctx context.Context, bearer string, params *collectionapi.ListSubmissionsParams) (collectionclient.Result, error) {
-	if s.listSubmissions == nil {
-		panic("unexpected ListSubmissions")
-	}
-	return s.listSubmissions(ctx, bearer, params)
-}
-
-func (s *stubCollection) SubmitVerdict(ctx context.Context, bearer string, id uuid.UUID, body []byte) (collectionclient.Result, error) {
-	if s.submitVerdict == nil {
-		panic("unexpected SubmitVerdict")
-	}
-	return s.submitVerdict(ctx, bearer, id, body)
-}
-
-func (s *stubCollection) TriggerRematch(ctx context.Context, bearer string) (collectionclient.Result, error) {
-	if s.triggerRematch == nil {
-		panic("unexpected TriggerRematch")
-	}
-	return s.triggerRematch(ctx, bearer)
-}
-
-func (s *stubCollection) Resnapshot(ctx context.Context, bearer string) (collectionclient.Result, error) {
-	if s.resnapshot == nil {
-		panic("unexpected Resnapshot")
-	}
-	return s.resnapshot(ctx, bearer)
-}
-
-func (s *stubCollection) NormalizePlatforms(ctx context.Context, bearer string) (collectionclient.Result, error) {
-	if s.normalizePlatforms == nil {
-		panic("unexpected NormalizePlatforms")
-	}
-	return s.normalizePlatforms(ctx, bearer)
-}
-
-func (s *stubCollection) NormalizeRegions(ctx context.Context, bearer string) (collectionclient.Result, error) {
-	if s.normalizeRegions == nil {
-		panic("unexpected NormalizeRegions")
-	}
-	return s.normalizeRegions(ctx, bearer)
-}
-
-func (s *stubCollection) SharedShelf(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error) {
-	if s.sharedShelf == nil {
-		panic("unexpected SharedShelf")
-	}
-	return s.sharedShelf(ctx, bearer, id)
-}
-
-func (s *stubCollection) SharedShelfBySlug(ctx context.Context, bearer string, ownerID uuid.UUID, slug string) (collectionapi.SharedShelf, error) {
-	if s.sharedShelfBySlug == nil {
-		panic("unexpected SharedShelfBySlug")
-	}
-	return s.sharedShelfBySlug(ctx, bearer, ownerID, slug)
-}
-
-func (s *stubCollection) SharedShelfEntries(ctx context.Context, bearer string, id uuid.UUID, limit, offset *int) (collectionclient.Result, error) {
-	if s.sharedShelfEntries == nil {
-		panic("unexpected SharedShelfEntries")
-	}
-	return s.sharedShelfEntries(ctx, bearer, id, limit, offset)
-}
-
-func (s *stubCollection) ListSharedShelves(ctx context.Context, bearer string, ownerIDs []uuid.UUID, limit, offset int) ([]collectionapi.SharedShelfSummary, int, error) {
-	if s.listSharedShelves == nil {
-		panic("unexpected ListSharedShelves")
-	}
-	return s.listSharedShelves(ctx, bearer, ownerIDs, limit, offset)
-}
-
-func (s *stubCollection) SharedShelvesByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]collectionapi.SharedShelfSummary, error) {
-	if s.sharedShelvesByIDs == nil {
-		panic("unexpected SharedShelvesByIDs")
-	}
-	return s.sharedShelvesByIDs(ctx, bearer, ids)
-}
-
-var _ CollectionAPI = (*stubCollection)(nil)
-
 // newTestHandlersWithCollection wires a session-ready Handlers around
 // the collection stub.
 func newTestHandlersWithCollection(t *testing.T, col *stubCollection) (*Handlers, *testEnv) {
 	t.Helper()
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	h.collection = col
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 	return h, &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}

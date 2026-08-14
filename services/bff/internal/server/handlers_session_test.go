@@ -17,7 +17,7 @@ import (
 )
 
 func TestLoginProviderRedirects(t *testing.T) {
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+	h := newTestHandlers(t, newStubCache(), &stubAuth{
 		start: func(_ context.Context, p string) (string, error) {
 			if p != "google" {
 				t.Errorf("provider = %q", p)
@@ -34,7 +34,7 @@ func TestLoginProviderRedirects(t *testing.T) {
 
 func TestLoginDevSetsCookieAndGoesHome(t *testing.T) {
 	access := mintAccess(t, "u1", "j1", time.Now().Add(5*time.Minute))
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+	h := newTestHandlers(t, newStubCache(), &stubAuth{
 		dev: func(_ context.Context, user string) (authclient.TokenPair, error) {
 			if user != "alice" {
 				t.Errorf("user = %q", user)
@@ -68,7 +68,7 @@ func TestLoginFailureRedirectsToLoginPage(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.code+"_"+tc.err.Error(), func(t *testing.T) {
-			h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			h := newTestHandlers(t, newStubCache(), &stubAuth{
 				start: func(context.Context, string) (string, error) { return "", tc.err },
 			})
 			rec := httptest.NewRecorder()
@@ -82,7 +82,7 @@ func TestLoginFailureRedirectsToLoginPage(t *testing.T) {
 
 func TestCallbackSuccess(t *testing.T) {
 	access := mintAccess(t, "u1", "j1", time.Now().Add(5*time.Minute))
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+	h := newTestHandlers(t, newStubCache(), &stubAuth{
 		callback: func(_ context.Context, code, state string) (authclient.TokenPair, error) {
 			if code != "c1" || state != "s1" {
 				t.Errorf("code=%q state=%q", code, state)
@@ -109,7 +109,7 @@ func TestCallbackFailures(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.code, func(t *testing.T) {
-			h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			h := newTestHandlers(t, newStubCache(), &stubAuth{
 				callback: func(context.Context, string, string) (authclient.TokenPair, error) {
 					return authclient.TokenPair{}, tc.err
 				},
@@ -122,7 +122,7 @@ func TestCallbackFailures(t *testing.T) {
 		})
 	}
 	// Missing params never reach the auth service.
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	rec := httptest.NewRecorder()
 	newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/callback", nil))
 	if rec.Header().Get("Location") != "/login?error=login_failed" {
@@ -135,7 +135,7 @@ func TestCallbackLinkOutcomes(t *testing.T) {
 	google := "google"
 
 	t.Run("link_success_redirects_to_account_with_provider", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{
 			callback: func(context.Context, string, string) (authclient.TokenPair, error) {
 				return authclient.TokenPair{AccessToken: access, RefreshToken: "r1",
 					ExpiresIn: 300, RefreshExpiresIn: 2000, LinkedProvider: &google}, nil
@@ -156,7 +156,7 @@ func TestCallbackLinkOutcomes(t *testing.T) {
 	})
 
 	t.Run("conflict_redirects_without_a_cookie", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{
 			callback: func(context.Context, string, string) (authclient.TokenPair, error) {
 				return authclient.TokenPair{}, authclient.ErrLinkConflict
 			},
@@ -172,7 +172,7 @@ func TestCallbackLinkOutcomes(t *testing.T) {
 	})
 
 	t.Run("email_unverified_redirects_with_link_error", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{
 			callback: func(context.Context, string, string) (authclient.TokenPair, error) {
 				return authclient.TokenPair{}, authclient.ErrLinkEmailUnverified
 			},
@@ -188,7 +188,7 @@ func TestCallbackLinkOutcomes(t *testing.T) {
 	})
 
 	t.Run("plain_login_still_redirects_home", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{
 			callback: func(context.Context, string, string) (authclient.TokenPair, error) {
 				return authclient.TokenPair{AccessToken: access, RefreshToken: "r1",
 					ExpiresIn: 300, RefreshExpiresIn: 2000}, nil
@@ -205,7 +205,7 @@ func TestCallbackLinkOutcomes(t *testing.T) {
 func TestLogout(t *testing.T) {
 	fc := newStubCache()
 	revoked := ""
-	h := newTestHandlers(t, fc, &stubAuthFull{
+	h := newTestHandlers(t, fc, &stubAuth{
 		revoke: func(_ context.Context, rt string) error { revoked = rt; return nil },
 	})
 	access := mintAccess(t, "u1", "j1", time.Now().Add(2*time.Minute))
@@ -225,7 +225,7 @@ func TestLogout(t *testing.T) {
 }
 
 func TestLogoutWithoutSessionIsIdempotent(t *testing.T) {
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{}) // revoke would panic
+	h := newTestHandlers(t, newStubCache(), &stubAuth{}) // revoke would panic
 	rec := httptest.NewRecorder()
 	newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil))
 	if rec.Code != http.StatusNoContent || !clearedCookie(rec) {
@@ -236,7 +236,7 @@ func TestLogoutWithoutSessionIsIdempotent(t *testing.T) {
 func TestLogoutSurvivesDependencyOutages(t *testing.T) {
 	fc := newStubCache()
 	fc.err = errors.New("valkey down")
-	h := newTestHandlers(t, fc, &stubAuthFull{
+	h := newTestHandlers(t, fc, &stubAuth{
 		revoke: func(context.Context, string) error { return errors.New("auth down") },
 	})
 	access := mintAccess(t, "u1", "j1", time.Now().Add(2*time.Minute))
@@ -250,7 +250,7 @@ func TestLogoutSurvivesDependencyOutages(t *testing.T) {
 }
 
 func TestProviders(t *testing.T) {
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+	h := newTestHandlers(t, newStubCache(), &stubAuth{
 		providers: func(context.Context) ([]string, error) { return []string{"google", "dev"}, nil },
 	})
 	rec := httptest.NewRecorder()
@@ -265,7 +265,7 @@ func TestProviders(t *testing.T) {
 }
 
 func TestProvidersUpstreamError(t *testing.T) {
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+	h := newTestHandlers(t, newStubCache(), &stubAuth{
 		providers: func(context.Context) ([]string, error) { return nil, errors.New("auth down") },
 	})
 	rec := httptest.NewRecorder()

@@ -156,8 +156,8 @@ func TestUnitShelfPage_EffectiveVisibility(t *testing.T) {
 	listedOwner := userapi.ProfileCard{UserId: ownerID, Handle: "alice", ProfileVisibility: "listed"}
 	privateOwner := userapi.ProfileCard{UserId: ownerID, Handle: "alice", ProfileVisibility: "private"}
 
-	setup := func(col *stubCollection, usr *stubUsersFull, soc *stubSocialFull) (*Handlers, *testEnv) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	setup := func(col *stubCollection, usr *stubUsers, soc *stubSocialFull) (*Handlers, *testEnv) {
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.collection, h.users, h.social = col, usr, soc
 		access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 		return h, &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
@@ -168,7 +168,7 @@ func TestUnitShelfPage_EffectiveVisibility(t *testing.T) {
 		col := &stubCollection{sharedShelf: func(context.Context, string, uuid.UUID) (collectionapi.SharedShelf, error) {
 			return shelf, nil
 		}}
-		usr := &stubUsersFull{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+		usr := &stubUsers{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
 			return []userapi.ProfileCard{listedOwner}, nil
 		}}
 		soc := &stubSocialFull{shelvesSummary: func(context.Context, string, []uuid.UUID) ([]socialapi.ShelfSocialSummary, error) {
@@ -197,7 +197,7 @@ func TestUnitShelfPage_EffectiveVisibility(t *testing.T) {
 		col := &stubCollection{sharedShelf: func(context.Context, string, uuid.UUID) (collectionapi.SharedShelf, error) {
 			return listedShelf, nil
 		}}
-		usr := &stubUsersFull{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+		usr := &stubUsers{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
 			return []userapi.ProfileCard{privateOwner}, nil
 		}}
 		h, env := setup(col, usr, &stubSocialFull{})
@@ -211,7 +211,7 @@ func TestUnitShelfPage_EffectiveVisibility(t *testing.T) {
 		col := &stubCollection{sharedShelf: func(context.Context, string, uuid.UUID) (collectionapi.SharedShelf, error) {
 			return collectionapi.SharedShelf{}, collectionclient.ErrShelfNotFound
 		}}
-		h, env := setup(col, &stubUsersFull{}, &stubSocialFull{})
+		h, env := setup(col, &stubUsers{}, &stubSocialFull{})
 		rec := doAuthed(t, h, env, http.MethodGet, path)
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want 404", rec.Code)
@@ -222,7 +222,7 @@ func TestUnitShelfPage_EffectiveVisibility(t *testing.T) {
 		col := &stubCollection{sharedShelf: func(context.Context, string, uuid.UUID) (collectionapi.SharedShelf, error) {
 			return shelf, nil
 		}}
-		usr := &stubUsersFull{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+		usr := &stubUsers{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
 			return []userapi.ProfileCard{listedOwner}, nil
 		}}
 		soc := &stubSocialFull{shelvesSummary: func(context.Context, string, []uuid.UUID) ([]socialapi.ShelfSocialSummary, error) {
@@ -261,8 +261,8 @@ func TestUnitProfilePage_ComposesAndHides(t *testing.T) {
 		Visibility: "listed", EntryCount: 4, CoverUrls: []string{},
 	}
 
-	setup := func(usr *stubUsersFull, col *stubCollection, soc *stubSocialFull) (*Handlers, *testEnv) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	setup := func(usr *stubUsers, col *stubCollection, soc *stubSocialFull) (*Handlers, *testEnv) {
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.users, h.collection, h.social = usr, col, soc
 		access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 		return h, &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
@@ -270,7 +270,7 @@ func TestUnitProfilePage_ComposesAndHides(t *testing.T) {
 	const path = "/api/profiles/alice"
 
 	t.Run("unknown handle -> 404", func(t *testing.T) {
-		usr := &stubUsersFull{sharedProfile: func(context.Context, string, string) (userapi.ProfileCard, error) {
+		usr := &stubUsers{sharedProfile: func(context.Context, string, string) (userapi.ProfileCard, error) {
 			return userapi.ProfileCard{}, userclient.ErrProfileNotFound
 		}}
 		h, env := setup(usr, &stubCollection{}, &stubSocialFull{})
@@ -282,7 +282,7 @@ func TestUnitProfilePage_ComposesAndHides(t *testing.T) {
 
 	t.Run("happy path scopes shelves to exactly the resolved owner", func(t *testing.T) {
 		var gotOwnerIDs []uuid.UUID
-		usr := &stubUsersFull{sharedProfile: func(context.Context, string, string) (userapi.ProfileCard, error) {
+		usr := &stubUsers{sharedProfile: func(context.Context, string, string) (userapi.ProfileCard, error) {
 			return owner, nil
 		}}
 		col := &stubCollection{listSharedShelves: func(_ context.Context, _ string, ownerIDs []uuid.UUID, _, _ int) ([]collectionapi.SharedShelfSummary, int, error) {
@@ -324,7 +324,7 @@ func TestUnitProfilePage_ComposesAndHides(t *testing.T) {
 	})
 
 	t.Run("social down -> shelves still present, social_available false", func(t *testing.T) {
-		usr := &stubUsersFull{sharedProfile: func(context.Context, string, string) (userapi.ProfileCard, error) {
+		usr := &stubUsers{sharedProfile: func(context.Context, string, string) (userapi.ProfileCard, error) {
 			return owner, nil
 		}}
 		col := &stubCollection{listSharedShelves: func(context.Context, string, []uuid.UUID, int, int) ([]collectionapi.SharedShelfSummary, int, error) {
@@ -362,7 +362,7 @@ func TestUnitProfilePage_ComposesAndHides(t *testing.T) {
 // body (mirrors captureUsers'/TestUpdate_RelaysValidationProblemVerbatim's
 // body-verbatim assertions).
 func TestUnitSocialRelays_PassProblemsVerbatim(t *testing.T) {
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 	env := &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
 
@@ -388,7 +388,7 @@ func TestUnitSocialRelays_PassProblemsVerbatim(t *testing.T) {
 				Visibility: "listed", Params: map[string]any{},
 			}, nil
 		}}
-		h.users = &stubUsersFull{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+		h.users = &stubUsers{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
 			return []userapi.ProfileCard{{UserId: ownerID, Handle: "alice", ProfileVisibility: "listed"}}, nil
 		}}
 		h.social = &stubSocialFull{createComment: func(context.Context, string, uuid.UUID, []byte) (socialclient.Result, error) {
@@ -409,14 +409,14 @@ func TestUnitSocialRelays_PassProblemsVerbatim(t *testing.T) {
 // just "some 502"), and no session is 401 before the handler - and
 // before the user service - ever runs.
 func TestUnitSearchUsers_RelaysForwardsBearerAndGatesSession(t *testing.T) {
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 	env := &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
 
 	t.Run("relays body and status, forwards bearer and q", func(t *testing.T) {
 		const page = `{"profiles":[{"user_id":"11111111-1111-1111-1111-111111111111","handle":"alice"}]}`
 		var gotBearer, gotQ string
-		h.users = &stubUsersFull{searchProfiles: func(_ context.Context, bearer, q string) (userclient.Result, error) {
+		h.users = &stubUsers{searchProfiles: func(_ context.Context, bearer, q string) (userclient.Result, error) {
 			gotBearer, gotQ = bearer, q
 			return userclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: []byte(page)}, nil
 		}}
@@ -430,7 +430,7 @@ func TestUnitSearchUsers_RelaysForwardsBearerAndGatesSession(t *testing.T) {
 	})
 
 	t.Run("client error answers the exact problem relayUser produces", func(t *testing.T) {
-		h.users = &stubUsersFull{searchProfiles: func(context.Context, string, string) (userclient.Result, error) {
+		h.users = &stubUsers{searchProfiles: func(context.Context, string, string) (userclient.Result, error) {
 			return userclient.Result{}, userclient.ErrUpstream
 		}}
 		rec := doAuthed(t, h, env, http.MethodGet, "/api/search/users?q=alice")
@@ -454,7 +454,7 @@ func TestUnitSearchUsers_RelaysForwardsBearerAndGatesSession(t *testing.T) {
 		// panic, which is the ordering assertion (mirrors
 		// TestUnitAdminDelete_ReferencedAnswers409BeforeEnrichment's
 		// deleteProduct-stays-nil trick).
-		h.users = &stubUsersFull{}
+		h.users = &stubUsers{}
 		rec := doUnauthed(t, h, env, http.MethodGet, "/api/search/users?q=alice")
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("no session: %d", rec.Code)
@@ -534,8 +534,8 @@ func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 		{Id: commentD, ShelfId: shelfID, AuthorId: nil, Body: "anonymized", CreatedAt: created},
 	}
 
-	setup := func(usr *stubUsersFull, soc *stubSocialFull) (*Handlers, *testEnv) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	setup := func(usr *stubUsers, soc *stubSocialFull) (*Handlers, *testEnv) {
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.collection = &stubCollection{sharedShelf: func(context.Context, string, uuid.UUID) (collectionapi.SharedShelf, error) {
 			return shelf, nil
 		}}
@@ -549,7 +549,7 @@ func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 		var gotCursor *string
 		var gotLimit *int
 		var authorBatchCalls [][]uuid.UUID
-		usr := &stubUsersFull{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
+		usr := &stubUsers{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
 			authorBatchCalls = append(authorBatchCalls, ids)
 			byID := map[uuid.UUID]userapi.ProfileCard{ownerID: owner, aliceID: alice, bobID: bob}
 			out := make([]userapi.ProfileCard, 0, len(ids))
@@ -656,7 +656,7 @@ func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 	})
 
 	t.Run("card-fetch failure fails open: 200 without authors, event logged", func(t *testing.T) {
-		usr := &stubUsersFull{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
+		usr := &stubUsers{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
 			// The first call (effectiveShelf's owner lookup) still
 			// succeeds; only the comment-author batch (requesting
 			// alice alone) fails, so the page must still serve.
@@ -690,7 +690,7 @@ func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 		soc := &stubSocialFull{listComments: func(context.Context, string, uuid.UUID, *string, *int) (socialclient.Result, error) {
 			return socialclient.Result{Status: http.StatusBadRequest, ContentType: "application/problem+json", Body: []byte(problemBody)}, nil
 		}}
-		usr := &stubUsersFull{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+		usr := &stubUsers{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
 			return []userapi.ProfileCard{owner}, nil
 		}}
 		h, env := setup(usr, soc)
@@ -770,8 +770,8 @@ func TestUnitFeed_FillLoopAndGating(t *testing.T) {
 		shelf4: {Id: shelf4, Name: "Shelf4", Slug: "shelf4", OwnerId: owner4, Visibility: "listed", CoverUrls: []string{}},
 	}
 
-	newUsers := func() *stubUsersFull {
-		return &stubUsersFull{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
+	newUsers := func() *stubUsers {
+		return &stubUsers{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
 			out := make([]userapi.ProfileCard, 0, len(ids))
 			for _, id := range ids {
 				if c, ok := cards[id]; ok {
@@ -798,7 +798,7 @@ func TestUnitFeed_FillLoopAndGating(t *testing.T) {
 	}
 
 	t.Run("tab=following: fill loop refills to page-full, gates the unlisted shelf and unlisted followee", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.users, h.collection = newUsers(), newCollection()
 		var rounds int
 		h.social = &stubSocialFull{
@@ -851,7 +851,7 @@ func TestUnitFeed_FillLoopAndGating(t *testing.T) {
 	})
 
 	t.Run("tab=you: every row survives (own-shelf rule), actor cards still attach", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.users, h.collection = newUsers(), newCollection()
 		h.social = &stubSocialFull{
 			feed: func(_ context.Context, _, tab string, _ *string, _ int) ([]socialapi.ActivityEvent, *string, error) {
@@ -893,7 +893,7 @@ func TestUnitFeed_FillLoopAndGating(t *testing.T) {
 		// a non-nil next_cursor - the stream never reports exhausted and
 		// items never reach the limit, so only the round cap can stop
 		// the loop.
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.users, h.collection = newUsers(), newCollection()
 		var rounds int
 		var lastCursor string
@@ -953,7 +953,7 @@ func TestUnitFeed_UpstreamErrorsAreHard502s(t *testing.T) {
 	}
 
 	t.Run("social.Feed failure", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.social = &stubSocialFull{feed: func(context.Context, string, string, *string, int) ([]socialapi.ActivityEvent, *string, error) {
 			return nil, nil, errors.New("social down")
 		}}
@@ -966,7 +966,7 @@ func TestUnitFeed_UpstreamErrorsAreHard502s(t *testing.T) {
 	})
 
 	t.Run("hydrateFeed batch failure (collection down)", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.social = &stubSocialFull{feed: func(context.Context, string, string, *string, int) ([]socialapi.ActivityEvent, *string, error) {
 			return []socialapi.ActivityEvent{event}, nil, nil
 		}}
@@ -992,7 +992,7 @@ func TestUnitFeed_UpstreamErrorsAreHard502s(t *testing.T) {
 // loudly rather than passing silently; the last subtest proves a
 // well-formed cursor still reaches social.Feed unchanged.
 func TestUnitFeed_ValidatesTabAndCursor(t *testing.T) {
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 	env := &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
 
@@ -1051,7 +1051,7 @@ func TestUnitFeed_ValidatesTabAndCursor(t *testing.T) {
 // through. limit=1 (the minimum) must still be accepted and reach
 // social.Feed unchanged.
 func TestUnitFeed_ValidatesLimitMinimum(t *testing.T) {
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 	env := &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
 
@@ -1096,8 +1096,8 @@ func TestUnitFeed_DropsListedShelfWithNonListedOwner(t *testing.T) {
 		Id: uuid.New(), ActorId: actorID, Verb: socialapi.LikedShelf,
 		ObjectShelfId: &shelfID, TargetUserId: ownerID, CreatedAt: time.Now(),
 	}
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-	h.users = &stubUsersFull{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
+	h.users = &stubUsers{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
 		return []userapi.ProfileCard{
 			{UserId: actorID, Handle: "actor", ProfileVisibility: "listed"},
 			{UserId: ownerID, Handle: "owner", ProfileVisibility: "unlisted"},
@@ -1144,8 +1144,8 @@ func TestUnitFeed_FollowedUserCard(t *testing.T) {
 		Id: uuid.New(), ActorId: actorID, Verb: socialapi.FollowedUser,
 		TargetUserId: followeeID, CreatedAt: time.Now(),
 	}
-	newUsers := func() *stubUsersFull {
-		return &stubUsersFull{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+	newUsers := func() *stubUsers {
+		return &stubUsers{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
 			return []userapi.ProfileCard{
 				{UserId: actorID, Handle: "actor", ProfileVisibility: "listed"},
 				{UserId: followeeID, Handle: "followee", ProfileVisibility: "listed"},
@@ -1163,7 +1163,7 @@ func TestUnitFeed_FollowedUserCard(t *testing.T) {
 	}
 
 	t.Run("tab=following: listed followee survives and carries the followee card", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.users, h.social = newUsers(), newSocial()
 		env := setup(h)
 
@@ -1184,7 +1184,7 @@ func TestUnitFeed_FollowedUserCard(t *testing.T) {
 	})
 
 	t.Run("tab=you: follow row carries the followee card too", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.users, h.social = newUsers(), newSocial()
 		env := setup(h)
 
@@ -1218,8 +1218,8 @@ func TestUnitFeed_ActorCardAttachesAtAnyVisibility(t *testing.T) {
 			Id: uuid.New(), ActorId: actorID, Verb: socialapi.LikedShelf,
 			ObjectShelfId: &shelfID, TargetUserId: ownerID, CreatedAt: time.Now(),
 		}
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-		h.users = &stubUsersFull{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
+		h.users = &stubUsers{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
 			return []userapi.ProfileCard{
 				{UserId: actorID, Handle: "actor", ProfileVisibility: "private"},
 				{UserId: ownerID, Handle: "owner", ProfileVisibility: "listed"},
@@ -1266,8 +1266,8 @@ func TestUnitFeed_CommentExcerpts(t *testing.T) {
 		ObjectShelfId: &shelfID, ObjectCommentId: &commentID, TargetUserId: ownerID,
 		CreatedAt: time.Now(),
 	}
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-	h.users = &stubUsersFull{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
+	h.users = &stubUsers{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
 		return []userapi.ProfileCard{
 			{UserId: actorID, Handle: "actor", ProfileVisibility: "listed"},
 			{UserId: ownerID, Handle: "owner", ProfileVisibility: "listed"},
@@ -1322,8 +1322,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		shelfA := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "A", Slug: "a", OwnerId: id1, Visibility: "listed", CoverUrls: []string{}}
 		shelfB := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "B", Slug: "b", OwnerId: id2, Visibility: "listed", CoverUrls: []string{}}
 
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-		h.users = &stubUsersFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
+		h.users = &stubUsers{
 			sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
 				byID := map[uuid.UUID]userapi.ProfileCard{
 					id1: {UserId: id1, Handle: "alice", ProfileVisibility: "listed"},
@@ -1398,8 +1398,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 	t.Run("recent with social down: cards present, like_count absent, no social_available field", func(t *testing.T) {
 		id1 := uuid.New()
 		shelfA := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "A", Slug: "a", OwnerId: id1, Visibility: "listed", CoverUrls: []string{}}
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-		h.users = &stubUsersFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
+		h.users = &stubUsers{
 			sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
 				return []userapi.ProfileCard{{UserId: id1, Handle: "alice", ProfileVisibility: "listed"}}, nil
 			},
@@ -1447,8 +1447,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		kept := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "Kept", Slug: "kept", OwnerId: listedOwner, Visibility: "listed", CoverUrls: []string{}}
 		dropped := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "Dropped", Slug: "dropped", OwnerId: unlistedOwner, Visibility: "listed", CoverUrls: []string{}}
 
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-		h.users = &stubUsersFull{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
+		h.users = &stubUsers{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
 			byID := map[uuid.UUID]userapi.ProfileCard{
 				listedOwner:   {UserId: listedOwner, Handle: "keeper", ProfileVisibility: "listed"},
 				unlistedOwner: {UserId: unlistedOwner, Handle: "hidden", ProfileVisibility: "unlisted"},
@@ -1502,8 +1502,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		dropped2 := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "Dropped2", Slug: "dropped2", OwnerId: unlistedOwner2, Visibility: "listed", CoverUrls: []string{}}
 		survivor := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "Survivor", Slug: "survivor", OwnerId: listedOwner, Visibility: "listed", CoverUrls: []string{}}
 
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-		h.users = &stubUsersFull{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
+		h.users = &stubUsers{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
 			byID := map[uuid.UUID]userapi.ProfileCard{
 				unlistedOwner1: {UserId: unlistedOwner1, Handle: "hidden1", ProfileVisibility: "unlisted"},
 				unlistedOwner2: {UserId: unlistedOwner2, Handle: "hidden2", ProfileVisibility: "unlisted"},
@@ -1571,8 +1571,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		dropped := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "Dropped", Slug: "dropped", OwnerId: unlistedOwner, Visibility: "listed", CoverUrls: []string{}}
 		survivor := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "Survivor", Slug: "survivor", OwnerId: listedOwner, Visibility: "listed", CoverUrls: []string{}}
 
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-		h.users = &stubUsersFull{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
+		h.users = &stubUsers{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
 			byID := map[uuid.UUID]userapi.ProfileCard{
 				unlistedOwner: {UserId: unlistedOwner, Handle: "hidden", ProfileVisibility: "unlisted"},
 				listedOwner:   {UserId: listedOwner, Handle: "keeper", ProfileVisibility: "listed"},
@@ -1640,8 +1640,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		shelfC := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "C", Slug: "c", OwnerId: ownerC, Visibility: "listed", CoverUrls: []string{}}
 		shelfD := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "D", Slug: "d", OwnerId: ownerD, Visibility: "listed", CoverUrls: []string{}}
 
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-		h.users = &stubUsersFull{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
+		h.users = &stubUsers{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
 			byID := map[uuid.UUID]userapi.ProfileCard{
 				ownerA: {UserId: ownerA, Handle: "a", ProfileVisibility: "listed"},
 				ownerB: {UserId: ownerB, Handle: "b", ProfileVisibility: "unlisted"},
@@ -1717,8 +1717,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		ownerD := uuid.New()
 		shelfD := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "D", Slug: "d", OwnerId: ownerD, Visibility: "listed", CoverUrls: []string{}}
 
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-		h.users = &stubUsersFull{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
+		h.users = &stubUsers{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
 			return []userapi.ProfileCard{{UserId: ownerD, Handle: "d", ProfileVisibility: "listed"}}, nil
 		}}
 		var calls int
@@ -1770,8 +1770,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		owner := uuid.New()
 		shelf := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "Only", Slug: "only", OwnerId: owner, Visibility: "listed", CoverUrls: []string{}}
 
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-		h.users = &stubUsersFull{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
+		h.users = &stubUsers{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
 			return []userapi.ProfileCard{{UserId: owner, Handle: "keeper", ProfileVisibility: "listed"}}, nil
 		}}
 		h.collection = &stubCollection{listSharedShelves: func(context.Context, string, []uuid.UUID, int, int) ([]collectionapi.SharedShelfSummary, int, error) {
@@ -1810,7 +1810,7 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 			gotSummaryIDs = ids
 			return []socialapi.ShelfSocialSummary{{ShelfId: shelfA, LikeCount: 9}, {ShelfId: shelfD, LikeCount: 4}}, nil
 		}
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.social = soc
 		h.collection = &stubCollection{sharedShelvesByIDs: func(context.Context, string, []uuid.UUID) ([]collectionapi.SharedShelfSummary, error) {
 			// Deliberately returned out of leaderboard order, to prove
@@ -1823,7 +1823,7 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 				{Id: shelfA, Name: "A", Slug: "a", OwnerId: ownerA, Visibility: "listed", CoverUrls: []string{}},
 			}, nil
 		}}
-		h.users = &stubUsersFull{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+		h.users = &stubUsers{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
 			return []userapi.ProfileCard{
 				{UserId: ownerA, Handle: "ownerA", ProfileVisibility: "listed"},
 				{UserId: ownerB, Handle: "ownerB", ProfileVisibility: "listed"},
@@ -1866,7 +1866,7 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 // offset=-1 passed straight through. limit=1 (the minimum) must still
 // be accepted and reach the upstream collection call.
 func TestUnitExplore_ValidatesLimitAndOffsetMinimum(t *testing.T) {
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 	env := &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
 
@@ -1885,12 +1885,12 @@ func TestUnitExplore_ValidatesLimitAndOffsetMinimum(t *testing.T) {
 	}
 
 	t.Run("limit=0 -> 400", func(t *testing.T) {
-		h.users = &stubUsersFull{}
+		h.users = &stubUsers{}
 		assertInvalidParam(t, "/api/explore?sort=recent&limit=0")
 	})
 
 	t.Run("offset=-1 -> 400", func(t *testing.T) {
-		h.users = &stubUsersFull{}
+		h.users = &stubUsers{}
 		assertInvalidParam(t, "/api/explore?sort=recent&offset=-1")
 	})
 

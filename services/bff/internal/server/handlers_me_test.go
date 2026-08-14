@@ -31,10 +31,12 @@ func TestGetMe(t *testing.T) {
 	uid := uuid.New()
 	fc := newStubCache()
 	avatar := "https://cdn.example/a.png"
-	h := newTestHandlers(t, fc, &stubAuthFull{})
-	h.users = &stubUsersFull{user: userapi.User{
-		Id: uid, Email: "alice@example.test", Handle: "alice",
-		AvatarUrl: &avatar, Roles: []userapi.UserRoles{"user"},
+	h := newTestHandlers(t, fc, &stubAuth{})
+	h.users = &stubUsers{get: func(context.Context, string, string) (userapi.User, error) {
+		return userapi.User{
+			Id: uid, Email: "alice@example.test", Handle: "alice",
+			AvatarUrl: &avatar, Roles: []userapi.UserRoles{"user"},
+		}, nil
 	}}
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 	router := newRouterFor(t, h)
@@ -57,8 +59,9 @@ func TestGetMe(t *testing.T) {
 		t.Fatal("composition should be cached")
 	}
 
-	// Second call served from cache: break the user client to prove it.
-	h.users = &stubUsersFull{err: errors.New("must not be called")}
+	// Second call served from cache: an unconfigured user client would
+	// panic if reached, proving it never is.
+	h.users = &stubUsers{}
 	rec = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodGet, "/api/me", nil)
 	r.AddCookie(sealedCookie(t, h, access, "r1"))
@@ -69,8 +72,10 @@ func TestGetMe(t *testing.T) {
 }
 
 func TestGetMeUserGone(t *testing.T) {
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-	h.users = &stubUsersFull{err: userclient.ErrUserNotFound}
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
+	h.users = &stubUsers{get: func(context.Context, string, string) (userapi.User, error) {
+		return userapi.User{}, userclient.ErrUserNotFound
+	}}
 	uid := uuid.New()
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 	r := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -83,8 +88,10 @@ func TestGetMeUserGone(t *testing.T) {
 }
 
 func TestGetMeUpstreamError(t *testing.T) {
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-	h.users = &stubUsersFull{err: errors.New("user service down")}
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
+	h.users = &stubUsers{get: func(context.Context, string, string) (userapi.User, error) {
+		return userapi.User{}, errors.New("user service down")
+	}}
 	uid := uuid.New()
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 	r := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -145,8 +152,10 @@ func TestUpdateMe_RelaysAndInvalidatesCache(t *testing.T) {
 		userJSON := []byte(`{"id":"` + uid.String() + `","email":"alice@example.test","handle":"alice2","roles":["user"],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`)
 		fc := newStubCache()
 		fc.me[uid.String()] = []byte(`{"stale":true}`)
-		h := newTestHandlers(t, fc, &stubAuthFull{})
-		h.users = &stubUsersFull{result: userclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: userJSON}}
+		h := newTestHandlers(t, fc, &stubAuth{})
+		h.users = &stubUsers{update: func(context.Context, string, string, []byte) (userclient.Result, error) {
+			return userclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: userJSON}, nil
+		}}
 		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"handle":"alice2"}`))
 		r.AddCookie(sealedCookie(t, h, access, "r1"))
@@ -180,8 +189,10 @@ func TestUpdateMe_RelaysAndInvalidatesCache(t *testing.T) {
 		problemJSON := []byte(`{"type":"about:blank","title":"Bad Request","status":400,"code":"invalid_body","detail":"handle too long"}`)
 		fc := newStubCache()
 		fc.me[uid.String()] = []byte(`{"cached":true}`)
-		h := newTestHandlers(t, fc, &stubAuthFull{})
-		h.users = &stubUsersFull{result: userclient.Result{Status: http.StatusBadRequest, ContentType: "application/problem+json", Body: problemJSON}}
+		h := newTestHandlers(t, fc, &stubAuth{})
+		h.users = &stubUsers{update: func(context.Context, string, string, []byte) (userclient.Result, error) {
+			return userclient.Result{Status: http.StatusBadRequest, ContentType: "application/problem+json", Body: problemJSON}, nil
+		}}
 		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"handle":""}`))
 		r.AddCookie(sealedCookie(t, h, access, "r1"))
@@ -198,8 +209,10 @@ func TestUpdateMe_RelaysAndInvalidatesCache(t *testing.T) {
 	})
 
 	t.Run("upstream_error_is_502", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-		h.users = &stubUsersFull{err: errors.New("user service down")}
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
+		h.users = &stubUsers{update: func(context.Context, string, string, []byte) (userclient.Result, error) {
+			return userclient.Result{}, errors.New("user service down")
+		}}
 		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"handle":"x"}`))
 		r.AddCookie(sealedCookie(t, h, access, "r1"))
@@ -216,10 +229,12 @@ func TestUpdateMe_RelaysAndInvalidatesCache(t *testing.T) {
 // currency reaches the browser projection.
 func TestUnitGetMe_IncludesPreferredCurrency(t *testing.T) {
 	uid := uuid.New()
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-	h.users = &stubUsersFull{user: userapi.User{
-		Id: uid, Email: "alice@example.test", Handle: "alice",
-		Roles: []userapi.UserRoles{"user"}, PreferredCurrency: "EUR",
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
+	h.users = &stubUsers{get: func(context.Context, string, string) (userapi.User, error) {
+		return userapi.User{
+			Id: uid, Email: "alice@example.test", Handle: "alice",
+			Roles: []userapi.UserRoles{"user"}, PreferredCurrency: "EUR",
+		}, nil
 	}}
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 	r := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -247,10 +262,12 @@ func TestUnitGetMe_IncludesPreferredCurrency(t *testing.T) {
 func TestUnitGetMe_IncludesProfileVisibility(t *testing.T) {
 	t.Run("non_default_value_round_trips", func(t *testing.T) {
 		uid := uuid.New()
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-		h.users = &stubUsersFull{user: userapi.User{
-			Id: uid, Email: "alice@example.test", Handle: "alice",
-			Roles: []userapi.UserRoles{"user"}, ProfileVisibility: userapi.UserProfileVisibilityListed,
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
+		h.users = &stubUsers{get: func(context.Context, string, string) (userapi.User, error) {
+			return userapi.User{
+				Id: uid, Email: "alice@example.test", Handle: "alice",
+				Roles: []userapi.UserRoles{"user"}, ProfileVisibility: userapi.UserProfileVisibilityListed,
+			}, nil
 		}}
 		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 		r := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -278,10 +295,12 @@ func TestUnitGetMe_IncludesProfileVisibility(t *testing.T) {
 // dropped or defaulted-away in the composition).
 func TestUnitGetMe_IncludesLandingPage(t *testing.T) {
 	uid := uuid.New()
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-	h.users = &stubUsersFull{user: userapi.User{
-		Id: uid, Email: "alice@example.test", Handle: "alice",
-		Roles: []userapi.UserRoles{"user"}, LandingPage: userapi.UserLandingPageCollection,
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
+	h.users = &stubUsers{get: func(context.Context, string, string) (userapi.User, error) {
+		return userapi.User{
+			Id: uid, Email: "alice@example.test", Handle: "alice",
+			Roles: []userapi.UserRoles{"user"}, LandingPage: userapi.UserLandingPageCollection,
+		}, nil
 	}}
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 	r := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -306,13 +325,13 @@ func TestUnitGetMe_IncludesLandingPage(t *testing.T) {
 // while Update additionally exposes the raw body reaching the user
 // service (mirrors captureCollection's pass-through capture).
 type captureUsers struct {
-	*stubUsersFull
+	*stubUsers
 	onUpdate func(body []byte)
 }
 
 func (c *captureUsers) Update(ctx context.Context, id, bearer string, body []byte) (userclient.Result, error) {
 	c.onUpdate(body)
-	return c.stubUsersFull.Update(ctx, id, bearer, body)
+	return c.stubUsers.Update(ctx, id, bearer, body)
 }
 
 // TestUnitUpdateMe_RelaysPreferredCurrency pins that the PATCH body
@@ -320,10 +339,12 @@ func (c *captureUsers) Update(ctx context.Context, id, bearer string, body []byt
 func TestUnitUpdateMe_RelaysPreferredCurrency(t *testing.T) {
 	uid := uuid.New()
 	userJSON := []byte(`{"id":"` + uid.String() + `","email":"alice@example.test","handle":"alice","preferred_currency":"JPY","roles":["user"],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`)
-	users := &stubUsersFull{result: userclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: userJSON}}
+	users := &stubUsers{update: func(context.Context, string, string, []byte) (userclient.Result, error) {
+		return userclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: userJSON}, nil
+	}}
 	var gotBody []byte
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-	h.users = &captureUsers{stubUsersFull: users, onUpdate: func(body []byte) { gotBody = body }}
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
+	h.users = &captureUsers{stubUsers: users, onUpdate: func(body []byte) { gotBody = body }}
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 	r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"preferred_currency":"JPY"}`))
 	r.AddCookie(sealedCookie(t, h, access, "r1"))
@@ -354,10 +375,12 @@ func TestUnitUpdateMe_RelaysPreferredCurrency(t *testing.T) {
 func TestUnitUpdateMe_RelaysLandingPage(t *testing.T) {
 	uid := uuid.New()
 	userJSON := []byte(`{"id":"` + uid.String() + `","email":"alice@example.test","handle":"alice","landing_page":"collection","roles":["user"],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`)
-	users := &stubUsersFull{result: userclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: userJSON}}
+	users := &stubUsers{update: func(context.Context, string, string, []byte) (userclient.Result, error) {
+		return userclient.Result{Status: http.StatusOK, ContentType: "application/json", Body: userJSON}, nil
+	}}
 	var gotBody []byte
-	h := newTestHandlers(t, newStubCache(), &stubAuthFull{})
-	h.users = &captureUsers{stubUsersFull: users, onUpdate: func(body []byte) { gotBody = body }}
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
+	h.users = &captureUsers{stubUsers: users, onUpdate: func(body []byte) { gotBody = body }}
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 	r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"landing_page":"collection"}`))
 	r.AddCookie(sealedCookie(t, h, access, "r1"))
@@ -389,7 +412,7 @@ func TestGetMyIdentities(t *testing.T) {
 		emailA := "alice@example.test"
 		t1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 		t2 := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{
 			listIdentities: func(_ context.Context, userID, _ string) ([]authapi.Identity, error) {
 				if userID != uid.String() {
 					t.Errorf("userID = %q", userID)
@@ -421,7 +444,7 @@ func TestGetMyIdentities(t *testing.T) {
 	})
 
 	t.Run("upstream_error_is_502", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{
 			listIdentities: func(context.Context, string, string) ([]authapi.Identity, error) {
 				return nil, errors.New("auth down")
 			},
@@ -452,7 +475,7 @@ func TestDeleteMyIdentity(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+			h := newTestHandlers(t, newStubCache(), &stubAuth{
 				deleteIdentity: func(_ context.Context, gotID uuid.UUID, _ string) error {
 					if gotID != iid {
 						t.Errorf("identityID = %v", gotID)
@@ -484,7 +507,7 @@ func TestLinkLoginNavigations(t *testing.T) {
 	t.Run("dev_links_and_sets_a_fresh_cookie", func(t *testing.T) {
 		linkedAccess := mintAccess(t, "u1", "jlinked", time.Now().Add(5*time.Minute))
 		linked := "dev"
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{
 			devLink: func(_ context.Context, user, _ string) (authclient.TokenPair, error) {
 				if user != "bob" {
 					t.Errorf("user = %q", user)
@@ -511,7 +534,7 @@ func TestLinkLoginNavigations(t *testing.T) {
 	})
 
 	t.Run("dev_conflict_redirects_without_a_cookie", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{
 			devLink: func(context.Context, string, string) (authclient.TokenPair, error) {
 				return authclient.TokenPair{}, authclient.ErrLinkConflict
 			},
@@ -530,7 +553,7 @@ func TestLinkLoginNavigations(t *testing.T) {
 	})
 
 	t.Run("google_redirects_to_the_authorize_url", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{
 			linkStart: func(_ context.Context, provider, _ string) (string, error) {
 				if provider != "google" {
 					t.Errorf("provider = %q", provider)
@@ -549,7 +572,7 @@ func TestLinkLoginNavigations(t *testing.T) {
 	})
 
 	t.Run("google_start_failure_redirects_link_failed", func(t *testing.T) {
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{
 			linkStart: func(context.Context, string, string) (string, error) {
 				return "", errors.New("boom")
 			},
@@ -586,7 +609,7 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 			record("social.PurgeUserData")
 			return socialclient.Result{Status: http.StatusNoContent}, nil
 		}}
-		h := newTestHandlers(t, fc, &stubAuthFull{
+		h := newTestHandlers(t, fc, &stubAuth{
 			deleteUserAuth: func(context.Context, string, string) error {
 				record("auth.DeleteUserAuth")
 				return nil
@@ -594,7 +617,7 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 		})
 		h.collection = col
 		h.social = soc
-		h.users = &stubUsersFull{onDelete: func() { record("users.Delete") }}
+		h.users = &stubUsers{delete: func(context.Context, string, string) error { record("users.Delete"); return nil }}
 		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
 		r := httptest.NewRequest(http.MethodDelete, "/api/me", nil)
 		r.AddCookie(sealedCookie(t, h, access, "r1"))
@@ -642,14 +665,14 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 					record("collection.PurgeUserData")
 					return tc.res, tc.err
 				}}
-				h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+				h := newTestHandlers(t, newStubCache(), &stubAuth{
 					deleteUserAuth: func(context.Context, string, string) error {
 						record("auth.DeleteUserAuth")
 						return nil
 					},
 				})
 				h.collection = col
-				h.users = &stubUsersFull{onDelete: func() { record("users.Delete") }}
+				h.users = &stubUsers{delete: func(context.Context, string, string) error { record("users.Delete"); return nil }}
 				access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 				r := httptest.NewRequest(http.MethodDelete, "/api/me", nil)
 				r.AddCookie(sealedCookie(t, h, access, "r1"))
@@ -694,7 +717,7 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 					record("social.PurgeUserData")
 					return tc.res, tc.err
 				}}
-				h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+				h := newTestHandlers(t, newStubCache(), &stubAuth{
 					deleteUserAuth: func(context.Context, string, string) error {
 						record("auth.DeleteUserAuth")
 						return nil
@@ -702,7 +725,7 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 				})
 				h.collection = col
 				h.social = soc
-				h.users = &stubUsersFull{onDelete: func() { record("users.Delete") }}
+				h.users = &stubUsers{delete: func(context.Context, string, string) error { record("users.Delete"); return nil }}
 				access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 				r := httptest.NewRequest(http.MethodDelete, "/api/me", nil)
 				r.AddCookie(sealedCookie(t, h, access, "r1"))
@@ -748,7 +771,7 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 			record("social.PurgeUserData")
 			return socialclient.Result{Status: http.StatusNoContent}, nil
 		}}
-		h := newTestHandlers(t, newStubCache(), &stubAuthFull{
+		h := newTestHandlers(t, newStubCache(), &stubAuth{
 			deleteUserAuth: func(context.Context, string, string) error {
 				record("auth.DeleteUserAuth")
 				return errors.New("auth down")
@@ -756,7 +779,7 @@ func TestDeleteMe_OrchestrationOrderAndFailure(t *testing.T) {
 		})
 		h.collection = col
 		h.social = soc
-		h.users = &stubUsersFull{onDelete: func() { record("users.Delete") }}
+		h.users = &stubUsers{delete: func(context.Context, string, string) error { record("users.Delete"); return nil }}
 		access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
 		r := httptest.NewRequest(http.MethodDelete, "/api/me", nil)
 		r.AddCookie(sealedCookie(t, h, access, "r1"))
