@@ -175,6 +175,60 @@ func TestUnitDashboard_FilteredComputesLiveAndSkipsCache(t *testing.T) {
 	}
 }
 
+// TestUnitDashboard_DeveloperFilterComputesLiveAndSkipsCache mirrors
+// TestUnitDashboard_FilteredComputesLiveAndSkipsCache for the credit
+// filters: a developer-only request must reach the store filter and
+// must compute live rather than answer from the unfiltered cache,
+// which only holds if Filters.Filtered() counts Developers too.
+func TestUnitDashboard_DeveloperFilterComputesLiveAndSkipsCache(t *testing.T) {
+	user := uuid.New()
+	var gotCounts, gotRows *store.Filters
+	st := &stubStore{
+		dashboardCounts: func(_ context.Context, _ uuid.UUID, f store.Filters) (store.DashboardCounts, error) {
+			gotCounts = &f
+			return store.DashboardCounts{
+				Total:      1,
+				ByStatus:   map[string]int{"backlog": 1},
+				ByItemType: map[string]int{"game": 1},
+				ByPlatform: []store.PlatformCount{{Name: "SNES", Count: 1}},
+				Spend:      []store.CurrencySpend{},
+			}, nil
+		},
+		pricingRows: func(_ context.Context, _ uuid.UUID, f store.Filters) ([]store.PricingRow, error) {
+			gotRows = &f
+			return []store.PricingRow{}, nil
+		},
+	}
+	c := newStubCache()
+	// A cached unfiltered dashboard must never answer a developer-only
+	// request (and the live result must not replace it).
+	sentinel := []byte(`{"total_entries":999}`)
+	c.bodies[user.String()] = sentinel
+	srv, a := newUnitServer(t, st, &stubEnrichment{}, c)
+
+	resp := do(t, http.MethodGet, srv.URL+"/dashboard?developer=Nintendo", a.token(t, user.String()), nil)
+	var got struct {
+		TotalEntries int `json:"total_entries"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK || got.TotalEntries != 1 {
+		t.Fatalf("developer-filtered dashboard: %d %+v", resp.StatusCode, got)
+	}
+	if gotCounts == nil || gotRows == nil {
+		t.Fatal("both aggregates must run live for a developer-filtered request")
+	}
+	for _, f := range []*store.Filters{gotCounts, gotRows} {
+		if len(f.Developers) != 1 || f.Developers[0] != "Nintendo" {
+			t.Fatalf("developer filter did not reach the store: %+v", f)
+		}
+	}
+	if string(c.bodies[user.String()]) != string(sentinel) {
+		t.Fatal("a developer-filtered result must not overwrite the unfiltered cache")
+	}
+}
+
 // region is deliberately absent from this list: it is open-world on
 // this param now, so no string value is a bad enum for it.
 func TestUnitDashboard_BadFilterRejected(t *testing.T) {

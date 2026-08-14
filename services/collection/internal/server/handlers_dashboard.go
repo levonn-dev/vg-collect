@@ -26,6 +26,8 @@ func dashboardFilters(p api.GetDashboardParams) (store.Filters, string) {
 		Status:        castSlice[api.ListEntriesParamsStatus](p.Status),
 		Packaging:     castSlice[api.ListEntriesParamsPackaging](p.Packaging),
 		Region:        p.Region,
+		Developer:     p.Developer,
+		Publisher:     p.Publisher,
 		ItemCondition: castSlice[api.ListEntriesParamsItemCondition](p.ItemCondition),
 		PlatformId:    p.PlatformId,
 		TagId:         p.TagId,

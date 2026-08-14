@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
+	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
 )
 
@@ -360,7 +362,7 @@ func TestUnitCollectionListParams_Conversion(t *testing.T) {
 	h, env := newTestHandlersWithCollection(t, col)
 	h.collection = &captureCollection{stubCollection: col, onList: func(p *collectionapi.ListEntriesParams) { got = p }}
 	rec := doAuthed(t, h, env, http.MethodGet,
-		"/api/entries?status=backlog&status=playing&sort=value&order=desc&group_by=platform&platform_id=6")
+		"/api/entries?status=backlog&status=playing&sort=value&order=desc&group_by=platform&platform_id=6&developer=Nintendo&developer=Rare&publisher=THQ")
 	if rec.Code != 200 {
 		t.Fatalf("status %d", rec.Code)
 	}
@@ -369,6 +371,10 @@ func TestUnitCollectionListParams_Conversion(t *testing.T) {
 		string(*got.Order) != "desc" || string(*got.GroupBy) != "platform" ||
 		(*got.PlatformId)[0] != 6 {
 		t.Fatalf("converted params: %+v", got)
+	}
+	if got.Developer == nil || len(*got.Developer) != 2 || (*got.Developer)[0] != "Nintendo" || (*got.Developer)[1] != "Rare" ||
+		got.Publisher == nil || len(*got.Publisher) != 1 || (*got.Publisher)[0] != "THQ" {
+		t.Fatalf("converted developer/publisher: %+v", got)
 	}
 }
 
@@ -380,7 +386,7 @@ func TestUnitDashboardParams_Forwarded(t *testing.T) {
 	h, env := newTestHandlersWithCollection(t, col)
 	h.collection = &captureCollection{stubCollection: col, onDashboard: func(p *collectionapi.GetDashboardParams) { got = p }}
 	rec := doAuthed(t, h, env, http.MethodGet,
-		"/api/dashboard?status=backlog&item_type=game&platform_id=6")
+		"/api/dashboard?status=backlog&item_type=game&platform_id=6&developer=Nintendo&developer=Rare&publisher=THQ")
 	if rec.Code != 200 {
 		t.Fatalf("status %d", rec.Code)
 	}
@@ -390,6 +396,67 @@ func TestUnitDashboardParams_Forwarded(t *testing.T) {
 		got.PlatformId == nil || (*got.PlatformId)[0] != 6 {
 		t.Fatalf("forwarded params: %+v", got)
 	}
+	if got.Developer == nil || len(*got.Developer) != 2 || (*got.Developer)[0] != "Nintendo" || (*got.Developer)[1] != "Rare" ||
+		got.Publisher == nil || len(*got.Publisher) != 1 || (*got.Publisher)[0] != "THQ" {
+		t.Fatalf("forwarded developer/publisher: %+v", got)
+	}
+}
+
+// populateEveryPointerField sets every pointer field of v (a struct
+// value addressed via reflect.ValueOf(&x).Elem()) to a non-nil pointer
+// - a one-element slice for a slice pointer, a zero value otherwise.
+// Every field of the generated *Params structs is a pointer, so a
+// struct built this way exercises every field a mapping function must
+// carry through.
+func populateEveryPointerField(v reflect.Value) {
+	st := v.Type()
+	for i := 0; i < st.NumField(); i++ {
+		f := v.Field(i)
+		if f.Kind() != reflect.Ptr {
+			continue
+		}
+		elem := f.Type().Elem()
+		ptr := reflect.New(elem)
+		if elem.Kind() == reflect.Slice {
+			ptr.Elem().Set(reflect.MakeSlice(elem, 1, 1))
+		}
+		f.Set(ptr)
+	}
+}
+
+// assertEveryFieldMapped holds the class-closing invariant a query-
+// param mapping function must keep: every source field must land on
+// its same-named destination field non-nil, so a future contract param
+// added to one generated package and forgotten in the hand-written
+// mapping fails a test instead of silently dropping a filter - exactly
+// this task's bug, for Developer/Publisher.
+func assertEveryFieldMapped(t *testing.T, src, dst reflect.Value) {
+	t.Helper()
+	st := src.Type()
+	for i := 0; i < st.NumField(); i++ {
+		name := st.Field(i).Name
+		df := dst.FieldByName(name)
+		if !df.IsValid() {
+			continue
+		}
+		if df.Kind() != reflect.Ptr || df.IsNil() {
+			t.Errorf("field %s: not carried through the mapping", name)
+		}
+	}
+}
+
+func TestUnitCollectionListParams_MapsEveryField(t *testing.T) {
+	var src api.ListEntriesParams
+	populateEveryPointerField(reflect.ValueOf(&src).Elem())
+	dst := collectionListParams(src)
+	assertEveryFieldMapped(t, reflect.ValueOf(src), reflect.ValueOf(*dst))
+}
+
+func TestUnitDashboardParams_MapsEveryField(t *testing.T) {
+	var src api.GetDashboardParams
+	populateEveryPointerField(reflect.ValueOf(&src).Elem())
+	dst := collectionDashboardParams(src)
+	assertEveryFieldMapped(t, reflect.ValueOf(src), reflect.ValueOf(*dst))
 }
 
 // TestUnitUpdateEntryPassThrough_CustomPricingRoundTrips pins that a
