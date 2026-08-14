@@ -412,7 +412,7 @@ func populateEveryPointerField(v reflect.Value) {
 	st := v.Type()
 	for i := 0; i < st.NumField(); i++ {
 		f := v.Field(i)
-		if f.Kind() != reflect.Ptr {
+		if f.Kind() != reflect.Pointer {
 			continue
 		}
 		elem := f.Type().Elem()
@@ -439,7 +439,7 @@ func assertEveryFieldMapped(t *testing.T, src, dst reflect.Value) {
 		if !df.IsValid() {
 			continue
 		}
-		if df.Kind() != reflect.Ptr || df.IsNil() {
+		if df.Kind() != reflect.Pointer || df.IsNil() {
 			t.Errorf("field %s: not carried through the mapping", name)
 		}
 	}
