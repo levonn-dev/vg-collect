@@ -5,6 +5,10 @@ metadata:
   labels:
     app.kubernetes.io/name: grafana
     app.kubernetes.io/part-of: vgkeep
+    # Matches the chart's sidecar.alerts.label default (values.yaml:
+    # grafana.sidecar.alerts.enabled) so the alerts sidecar picks this
+    # ConfigMap up and POSTs the alerting reload endpoint on change.
+    grafana_alert: "1"
 data:
 {{- range $path, $_ := .Files.Glob "files/alerting/*.yaml" }}
   {{ base $path }}: |-

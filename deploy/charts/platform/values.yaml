@@ -69,9 +69,10 @@ kube-prometheus-stack:
   # Drops the redundant operator-name infix from operator-managed
   # object names (kps-prometheus, not kps-kube-prometheus-st-prometheus).
   cleanPrometheusOperatorObjectNames: true
-  # Alerting is Grafana unified alerting (file-provisioned, sharing the
-  # dashboard queries); the stock Prometheus rule pack and Alertmanager
-  # stay off so there is exactly one alerting authority.
+  # Alerting is Grafana unified alerting (file-provisioned via the alerts
+  # sidecar under grafana.sidecar.alerts below, sharing the dashboard
+  # queries); the stock Prometheus rule pack and Alertmanager stay off so
+  # there is exactly one alerting authority.
   defaultRules:
     create: false
   alertmanager:
@@ -264,11 +265,33 @@ grafana:
             path: /var/lib/grafana/dashboards/vg
   dashboardsConfigMaps:
     vg: vg-dashboards
-  extraConfigmapMounts:
-    - name: vg-alerting
-      configMap: vg-alerting
-      mountPath: /etc/grafana/provisioning/alerting
-      readOnly: true
+  # Scopes the alerts sidecar's own RBAC to this namespace instead of
+  # the chart's cluster-wide default: rbac.namespaced switches the
+  # grafana ServiceAccount from a ClusterRole to a namespaced Role, but
+  # the chart's own Role template only auto-populates rules for the
+  # dashboards, datasources, and plugins sidecars, not alerts, so
+  # extraRoleRules below is what actually grants the alerts sidecar
+  # below anything once namespaced is on.
+  rbac:
+    namespaced: true
+    extraRoleRules:
+      - apiGroups: [""] # "" indicates the core API group
+        resources: ["configmaps"]
+        verbs: ["get", "watch", "list"]
+  # Alert rules converge via the chart-native alerts sidecar instead of
+  # extraConfigmapMounts: it watches ConfigMaps labeled grafana_alert
+  # (sidecar.alerts.label, the chart's own default) and POSTs Grafana's
+  # alerting reload endpoint on change, so an edited or retired rule (a
+  # deleteRules stanza in vg-rules.yaml) reaches a live cluster at the
+  # next helm upgrade with no Grafana restart. The chart wires the reload
+  # URL and admin credentials automatically once enabled. The vg-alerting
+  # ConfigMap template carries the matching label. resource narrows the
+  # sidecar's own watch to ConfigMaps, matching the RBAC grant above -
+  # it never needs Secrets.
+  sidecar:
+    alerts:
+      enabled: true
+      resource: configmap
 otel-agent:
   fullnameOverride: otel-agent
   mode: daemonset
