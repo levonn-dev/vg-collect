@@ -571,36 +571,41 @@ The vg-{service}-pdb-exhausted rules (severity warn) fire after 1 hour
 on:
 
 ```promql
-min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"{service}.*"})
+min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"{service}.*"} and on(namespace, poddisruptionbudget) kube_poddisruptionbudget_status_expected_pods{namespace="vgkeep", poddisruptionbudget=~"{service}.*"} > 1)
 ```
 
 The `{service}.*` match picks up both the service's own
 PodDisruptionBudget and its datastore's (e.g. `auth` and `auth-pg`;
 `collection`, `collection-pg`, and `collection-valkey`), so it fires
-if either one has zero allowed disruptions - a voluntary eviction
-(a node drain, a cluster-autoscaler scale-down, a rolling node
-upgrade) would be blocked, or would breach availability if forced.
+if either one has zero allowed disruptions - but only for a budget
+that actually expects more than one pod. The `and on(namespace,
+poddisruptionbudget) ... > 1` clause drops every single-pod budget
+from the vector before `min()` ever runs: a PDB expecting exactly one
+pod sitting at zero allowed disruptions is not a problem, it is the
+only arithmetic a `minAvailable: 1` budget with one replica can ever
+show (there is no spare replica to give up), so the rule ignores that
+case entirely instead of alerting on it.
 
 1. Run `kubectl -n vgkeep get pdb` and match the budget(s) at zero
    against the alert's service name.
 2. Run `kubectl -n vgkeep get pods -l app.kubernetes.io/name=<service>`
    (or the datastore's own label) to check the ready pod count against
-   what the chart deploys; a healthy pod count sitting right at
-   minAvailable, with nothing crashing, is the expected dev state
-   (every chart here runs one replica, so `kubectl -n vgkeep get pdb`
-   shows every budget at zero allowed disruptions once its one pod is
-   healthy - there is no spare replica to give up). Fewer ready pods
-   than the chart deploys, or a pod stuck Pending or CrashLoopBackOff,
-   is the real problem to chase.
-3. In dev this rule is informational: proceeding with a node drain or
-   `kubectl delete pod` while it fires queues or blocks the disruption
-   until a replacement pod is ready, rather than causing an outage. A
-   production deployment running multiple replicas per service (see
-   [../production-paths.md](../production-paths.md)) is where this
-   rule's signal changes meaning - a healthy multi-replica service
-   should normally show a nonzero allowed-disruptions count, and zero
-   there means a real capacity or rollout problem, not just "one
-   replica, no spare."
+   what the chart deploys. Fewer ready pods than the chart deploys, or
+   a pod stuck Pending or CrashLoopBackOff, is the real problem to
+   chase.
+3. Dev stays quiet by design: every chart here runs one replica, so
+   every budget's `expected_pods` reads 1 and the clause above excludes
+   all of them from the rule's `min()` - `kubectl -n vgkeep get pdb`
+   still shows every budget at zero allowed disruptions once its one
+   pod is healthy, that reading has simply stopped being this rule's
+   concern. The rule arms automatically the moment any chart's
+   `replicas` rises above 1 (see
+   [../production-paths.md](../production-paths.md)): a healthy
+   multi-replica service should then show a nonzero allowed-disruptions
+   count, and zero there means a real capacity or rollout problem
+   worth chasing - proceeding with a node drain or `kubectl delete
+   pod` while it fires queues or blocks the disruption until a
+   replacement pod is ready, rather than causing an outage.
 
 ## Smoke surfaces
 

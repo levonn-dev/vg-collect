@@ -39,7 +39,7 @@ templates:
   pdb_budget:
     uid: vg-{service}-pdb-exhausted
     title: "{Service} disruption budget exhausted"
-    expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"{service}.*"})
+    expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"{service}.*"} and on(namespace, poddisruptionbudget) kube_poddisruptionbudget_status_expected_pods{namespace="vgkeep", poddisruptionbudget=~"{service}.*"} > 1)
     condition: lt 1
     instant: true
     for: 1h

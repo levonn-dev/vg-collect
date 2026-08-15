@@ -169,3 +169,32 @@ func Float64HistogramPoint(t *testing.T, reader *sdkmetric.ManualReader, name st
 	}
 	return metricdata.HistogramDataPoint[float64]{}
 }
+
+// Float64GaugePoint collects reader and returns the first point of the
+// named Gauge[float64] instrument (a callback-backed Observable gauge)
+// whose attributes carry every one of want (the zero value, Value 0,
+// when none match or the instrument was never registered) - the same
+// first-match/zero-value-on-absence contract Float64HistogramPoint
+// already gives a recorded histogram, extended to a gauge whose points
+// come from a registered callback instead of a Record call. A caller
+// asserting a callback observed nothing for a given attribute set (an
+// enrichment refresh step that has never completed in this process,
+// for instance) reads that absence through the same zero value, with
+// no separate "not observed" API.
+func Float64GaugePoint(t *testing.T, reader *sdkmetric.ManualReader, name string, want ...attribute.KeyValue) metricdata.DataPoint[float64] {
+	t.Helper()
+	m, ok := ByName(Collect(t, reader), name)
+	if !ok {
+		return metricdata.DataPoint[float64]{}
+	}
+	gauge, ok := m.Data.(metricdata.Gauge[float64])
+	if !ok {
+		t.Fatalf("%s: data type %T, want Gauge[float64]", name, m.Data)
+	}
+	for _, dp := range gauge.DataPoints {
+		if HasAttrs(dp.Attributes, want) {
+			return dp
+		}
+	}
+	return metricdata.DataPoint[float64]{}
+}

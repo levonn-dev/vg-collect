@@ -264,3 +264,38 @@ func TestFloat64HistogramPoint_FirstMatchAndZeroValueWhenAbsent(t *testing.T) {
 		t.Fatalf("absent instrument point = %+v, want the zero value", dp)
 	}
 }
+
+// TestFloat64GaugePoint_FirstMatchAndZeroValueWhenAbsent pins the
+// callback-backed-gauge sibling of
+// TestFloat64HistogramPoint_FirstMatchAndZeroValueWhenAbsent: the
+// point carrying the wanted attributes comes back, and both "no point
+// matches" and "the instrument was never registered" come back as the
+// same zero value (Value 0), not a fatal. Enrichment's restart-proof
+// refresh-last-completed gauge is the first real caller, where "no
+// point matches" is not an edge case but the expected shape for a
+// step that has not completed in this process yet.
+func TestFloat64GaugePoint_FirstMatchAndZeroValueWhenAbsent(t *testing.T) {
+	reader := metrictest.Install(t)
+	meter := otel.Meter("metrictest-test")
+	gauge, err := meter.Float64ObservableGauge("test.gauge.last_completed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := meter.RegisterCallback(func(_ context.Context, o metric.Observer) error {
+		o.ObserveFloat64(gauge, 42, metric.WithAttributes(attribute.String("step", "b")))
+		return nil
+	}, gauge); err != nil {
+		t.Fatal(err)
+	}
+
+	dp := metrictest.Float64GaugePoint(t, reader, "test.gauge.last_completed", attribute.String("step", "b"))
+	if dp.Value != 42 {
+		t.Fatalf("point = %+v, want value 42", dp)
+	}
+	if dp := metrictest.Float64GaugePoint(t, reader, "test.gauge.last_completed", attribute.String("step", "absent")); dp.Value != 0 {
+		t.Fatalf("no-match point = %+v, want the zero value", dp)
+	}
+	if dp := metrictest.Float64GaugePoint(t, reader, "never.recorded"); dp.Value != 0 {
+		t.Fatalf("absent instrument point = %+v, want the zero value", dp)
+	}
+}

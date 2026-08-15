@@ -8,6 +8,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -146,11 +147,23 @@ type Handlers struct {
 	fallbackSearch            metric.Int64Counter
 	refreshItems              metric.Int64Counter
 	refreshStepDuration       metric.Float64Histogram
+	refreshLastCompleted      metric.Float64ObservableGauge
 	normalizeCommunityRegions metric.Int64Counter
 
 	// refreshing guards the catalog refresh: one at a time, concurrent
 	// triggers answer 409.
 	refreshing atomic.Bool
+
+	// refreshStepStamps holds each step's last-completion unix time in
+	// seconds, keyed by step name: recordRefreshStepDuration stamps it,
+	// the refreshLastCompleted gauge callback reads it
+	// (observeRefreshLastCompleted). A sync.Map, not a fixed-size
+	// struct, so a step this process has never completed is simply
+	// absent from it - the callback then observes nothing for that
+	// step, never a false zero, which is what makes the gauge survive a
+	// pod replacement: Prometheus keeps the last real sample a prior
+	// process already pushed.
+	refreshStepStamps sync.Map
 
 	// now is a test seam (staleness math and snapshot stamps).
 	now func() time.Time
@@ -208,6 +221,18 @@ func New(st Store, games GameProvider, prices PriceProvider, fxRates FXProvider,
 	if h.refreshStepDuration, err = vgotel.Histogram(meter, "vg.enrichment.refresh.step_duration",
 		"Elapsed seconds per catalog refresh step", "s", vgotel.DurationBuckets...); err != nil {
 		opts.Logger.Error("refresh step duration histogram unavailable", "err", err)
+	}
+	// Direct SDK registration (not vgotel.Histogram/Counter): an
+	// Observable gauge needs RegisterCallback, which those wrappers do
+	// not expose. Mirrors libs/go/pgkit's pool gauges and this same
+	// service's auth/collection siblings (signing-keys, pending-
+	// submissions).
+	if h.refreshLastCompleted, err = meter.Float64ObservableGauge("vg.enrichment.refresh.last_completed",
+		metric.WithDescription("Unix time a catalog refresh step last completed, labeled by step"),
+		metric.WithUnit("s")); err != nil {
+		opts.Logger.Error("refresh last completed gauge unavailable", "err", err)
+	} else if _, err := meter.RegisterCallback(h.observeRefreshLastCompleted, h.refreshLastCompleted); err != nil {
+		opts.Logger.Error("refresh last completed callback unavailable", "err", err)
 	}
 	if h.normalizeCommunityRegions, err = vgotel.Counter(meter, "vg.enrichment.normalize.regions",
 		"Normalize-community-regions sweep rows by outcome", "{row}"); err != nil {
@@ -330,11 +355,31 @@ func (h *Handlers) countRefreshItem(ctx context.Context, step, outcome string) {
 }
 
 // recordRefreshStepDuration records one catalog refresh step's
-// elapsed seconds. Every step defers it, so an aborted or
-// stopped-early step still reports and the count series stays an
-// honest the-step-ran signal.
+// elapsed seconds and stamps its completion time for the
+// refreshLastCompleted gauge (observeRefreshLastCompleted). Every step
+// defers it, so an aborted or stopped-early step still reports and
+// both series stay an honest the-step-ran signal.
 func (h *Handlers) recordRefreshStepDuration(ctx context.Context, step string, seconds float64) {
 	vgotel.Record(ctx, h.refreshStepDuration, seconds, attribute.String("step", step))
+	h.refreshStepStamps.Store(step, h.now().Unix())
+}
+
+// observeRefreshLastCompleted reports each catalog refresh step's
+// last-completion unix time, stamped by recordRefreshStepDuration. A
+// step refreshStepStamps has never stamped (never completed in this
+// process) is skipped entirely rather than reported as zero: the
+// stalled-refresh alert's last_over_time query already treats an
+// absent series as "never happened", which is the truth for a step
+// this process has not run yet - and, across a pod replacement, the
+// prior process's own last real sample is still what Prometheus falls
+// back on, since a gauge (unlike a counter's increase()) re-reports
+// its last-known value on every export interval.
+func (h *Handlers) observeRefreshLastCompleted(_ context.Context, o metric.Observer) error {
+	h.refreshStepStamps.Range(func(key, value any) bool {
+		o.ObserveFloat64(h.refreshLastCompleted, float64(value.(int64)), metric.WithAttributes(attribute.String("step", key.(string))))
+		return true
+	})
+	return nil
 }
 
 // countNormalizeCommunityRegions records one normalize-community-

@@ -17,8 +17,8 @@ alerts:
     runbook: enrichment.md#2-mongo-down
   - uid: vg-enrichment-refresh-stalled
     title: Enrichment nightly catalog refresh has not completed in 26h
-    expr: sum(increase(vg_enrichment_refresh_step_duration_seconds_count{step="prices"}[26h]))
-    condition: lt 1
+    expr: time() - max(last_over_time(vg_enrichment_refresh_last_completed_seconds{step="prices"}[26h]))
+    condition: gt 93600
     instant: true
     range: 26h
     for: 1h
@@ -27,7 +27,6 @@ alerts:
     severity: warn
     summary: enrichment has not finished a price refresh in more than 26 hours; catalog prices are going stale
     runbook: enrichment.md#4-catalog-refresh-missing
-    panel_ref: enrichment/Catalog refresh duration by step
   - uid: vg-enrichment-search-degraded
     title: Enrichment search serving degraded answers
     expr: sum(rate(vg_enrichment_search_requests_total{source="degraded"}[15m])) / sum(rate(vg_enrichment_search_requests_total[15m]))

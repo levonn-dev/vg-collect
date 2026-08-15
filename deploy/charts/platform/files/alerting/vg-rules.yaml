@@ -270,7 +270,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"auth.*"})
+              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"auth.*"} and on(namespace, poddisruptionbudget) kube_poddisruptionbudget_status_expected_pods{namespace="vgkeep", poddisruptionbudget=~"auth.*"} > 1)
           - refId: C
             relativeTimeRange: { from: 0, to: 0 }
             datasourceUid: __expr__
@@ -412,7 +412,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"bff.*"})
+              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"bff.*"} and on(namespace, poddisruptionbudget) kube_poddisruptionbudget_status_expected_pods{namespace="vgkeep", poddisruptionbudget=~"bff.*"} > 1)
           - refId: C
             relativeTimeRange: { from: 0, to: 0 }
             datasourceUid: __expr__
@@ -554,7 +554,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"collection.*"})
+              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"collection.*"} and on(namespace, poddisruptionbudget) kube_poddisruptionbudget_status_expected_pods{namespace="vgkeep", poddisruptionbudget=~"collection.*"} > 1)
           - refId: C
             relativeTimeRange: { from: 0, to: 0 }
             datasourceUid: __expr__
@@ -668,7 +668,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"enrichment.*"})
+              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"enrichment.*"} and on(namespace, poddisruptionbudget) kube_poddisruptionbudget_status_expected_pods{namespace="vgkeep", poddisruptionbudget=~"enrichment.*"} > 1)
           - refId: C
             relativeTimeRange: { from: 0, to: 0 }
             datasourceUid: __expr__
@@ -724,7 +724,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: sum(increase(vg_enrichment_refresh_step_duration_seconds_count{step="prices"}[26h]))
+              expr: time() - max(last_over_time(vg_enrichment_refresh_last_completed_seconds{step="prices"}[26h]))
           - refId: C
             relativeTimeRange: { from: 0, to: 0 }
             datasourceUid: __expr__
@@ -733,15 +733,13 @@ groups:
               type: threshold
               expression: A
               conditions:
-                - evaluator: { type: lt, params: [1] }
+                - evaluator: { type: gt, params: [93600] }
         noDataState: Alerting
         execErrState: Error
         for: 1h
         annotations:
           summary: "enrichment has not finished a price refresh in more than 26 hours; catalog prices are going stale"
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/enrichment.md#4-catalog-refresh-missing
-          __dashboardUid__: vg-enrichment
-          __panelId__: "13"
         labels:
           severity: warn
       - uid: vg-enrichment-search-degraded
@@ -812,7 +810,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"social.*"})
+              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"social.*"} and on(namespace, poddisruptionbudget) kube_poddisruptionbudget_status_expected_pods{namespace="vgkeep", poddisruptionbudget=~"social.*"} > 1)
           - refId: C
             relativeTimeRange: { from: 0, to: 0 }
             datasourceUid: __expr__
@@ -870,7 +868,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"user.*"})
+              expr: min(kube_poddisruptionbudget_status_pod_disruptions_allowed{namespace="vgkeep", poddisruptionbudget=~"user.*"} and on(namespace, poddisruptionbudget) kube_poddisruptionbudget_status_expected_pods{namespace="vgkeep", poddisruptionbudget=~"user.*"} > 1)
           - refId: C
             relativeTimeRange: { from: 0, to: 0 }
             datasourceUid: __expr__

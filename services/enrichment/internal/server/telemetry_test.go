@@ -585,6 +585,47 @@ func TestUnitTelemetry_RefreshStepDurationRecordedOnAbort(t *testing.T) {
 	}
 }
 
+// The restart-proof refresh-last-completed gauge observes exactly the
+// unix time recordRefreshStepDuration's own h.now() stamped for the
+// step it just ran. Unlike the step_duration counter above (whose
+// increase() sees nothing until this process's own first measurement),
+// an OTel gauge re-reports the same last-known value on every export
+// interval, so Prometheus already holds a real sample to fall back on
+// across a pod replacement - the property the stalled-refresh alert's
+// last_over_time query depends on.
+func TestUnitTelemetry_RefreshLastCompletedObservesStampedStep(t *testing.T) {
+	reader := metrictest.Install(t)
+	h := newUnitHandlers(&stubStore{}, nil, nil, newStubCache())
+	fixed := time.Date(2026, 8, 15, 6, 0, 0, 0, time.UTC)
+	h.now = func() time.Time { return fixed }
+
+	h.recordRefreshStepDuration(context.Background(), "prices", 1.5)
+
+	const name = "vg.enrichment.refresh.last_completed"
+	dp := metrictest.Float64GaugePoint(t, reader, name, attribute.String("step", "prices"))
+	if dp.Value != float64(fixed.Unix()) {
+		t.Fatalf("last_completed{step=prices} = %v, want %v", dp.Value, float64(fixed.Unix()))
+	}
+}
+
+// A step recordRefreshStepDuration has never stamped in this process
+// yields no observation at all - never a false zero. This is what
+// makes a fresh process (right after a pod replacement) safe: every
+// step stays absent until its own first completion, matching the
+// alert's absent-series treatment instead of forcing it to special-
+// case a synthetic zero.
+func TestUnitTelemetry_RefreshLastCompletedOmitsNeverStampedStep(t *testing.T) {
+	reader := metrictest.Install(t)
+	h := newUnitHandlers(&stubStore{}, nil, nil, newStubCache())
+
+	h.recordRefreshStepDuration(context.Background(), "prices", 1.5)
+
+	const name = "vg.enrichment.refresh.last_completed"
+	if dp := metrictest.Float64GaugePoint(t, reader, name, attribute.String("step", "reprojection")); dp.Value != 0 {
+		t.Fatalf("never-stamped step must yield no observation, got %+v", dp)
+	}
+}
+
 // lockedBuffer serializes writes: the detached refresh run logs from
 // its own goroutine while the test reads the captured output.
 type lockedBuffer struct {
@@ -733,6 +774,10 @@ func (stubErrMeter) Float64Histogram(string, ...metric.Float64HistogramOption) (
 	return nil, errors.New("registration refused")
 }
 
+func (stubErrMeter) Float64ObservableGauge(string, ...metric.Float64ObservableGaugeOption) (metric.Float64ObservableGauge, error) {
+	return nil, errors.New("registration refused")
+}
+
 // Registration is best-effort: a refused instrument is logged once
 // and every emission helper tolerates the nil instead of panicking.
 func TestUnitTelemetry_RegistrationFailureIsBestEffort(t *testing.T) {
@@ -764,6 +809,7 @@ func TestUnitTelemetry_RegistrationFailureIsBestEffort(t *testing.T) {
 		"fallback search counter unavailable",
 		"refresh items counter unavailable",
 		"refresh step duration histogram unavailable",
+		"refresh last completed gauge unavailable",
 		"normalize community regions counter unavailable",
 	} {
 		if !strings.Contains(logged, want) {
