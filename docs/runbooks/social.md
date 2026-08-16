@@ -280,22 +280,51 @@ schemaVersion 39, tags `["vgkeep"]`, timezone `browser`, refresh
 no dual-axis anywhere; `legendFormat` from a label on every
 multi-series panel; latency targets set `"exemplar": true`.
 
-HTTP row:
+Overview:
 
-1. Request rate by route. timeseries, unit `reqps`, legend
+1. Availability. timeseries, unit `short`, legend
+   `{{pod}}`.
+
+    ```promql
+    up{namespace="vgkeep", pod=~"social-.*"}
+    ```
+
+2. Request rate. stat, unit `reqps`.
+
+    ```promql
+    sum(rate(http_server_request_duration_seconds_count{service_name="social"}[5m]))
+    ```
+
+3. 5xx ratio. stat, unit `percentunit`; state thresholds green
+   under 0.05 / red at 0.05 (the vg-service-5xx page objective).
+
+    ```promql
+    sum(rate(http_server_request_duration_seconds_count{service_name="social",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="social"}[5m]))
+    ```
+
+4. p99 latency. stat, unit `s`; state thresholds green under 0.5 /
+   yellow at 0.5 (the vg-service-p99 warn objective).
+
+    ```promql
+    histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="social"}[5m])))
+    ```
+
+HTTP:
+
+5. Request rate by route. timeseries, unit `reqps`, legend
    `{{http_route}}`.
 
     ```promql
     sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="social"}[$__rate_interval]))
     ```
 
-2. 5xx ratio. timeseries, unit `percentunit`.
+6. 5xx ratio (5m). timeseries, unit `percentunit`.
 
     ```promql
     sum(rate(http_server_request_duration_seconds_count{service_name="social",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="social"}[5m]))
     ```
 
-3. Latency by route (p95/p99). timeseries, unit `s`, exemplars on,
+7. Latency by route (p95/p99). timeseries, unit `s`, exemplars on,
    legends `p95 {{http_route}}` / `p99 {{http_route}}`.
 
     ```promql
@@ -303,55 +332,55 @@ HTTP row:
     histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="social"}[$__rate_interval])))
     ```
 
-4. 4xx and 5xx by route and status. timeseries, unit `reqps`, legend
+8. 4xx and 5xx by route and status. timeseries, unit `reqps`, legend
    `{{http_route}} {{http_response_status_code}}`.
 
     ```promql
     sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="social",http_response_status_code=~"4..|5.."}[$__rate_interval]))
     ```
 
-Domain row (two rows of three, unit `ops` throughout):
+Engagement (two rows of three, unit `ops` throughout):
 
-5. Follows by op. legend `{{op}}`.
+9. Follows by op. legend `{{op}}`.
 
     ```promql
     sum(rate(vg_social_follows_total[$__rate_interval])) by (op)
     ```
 
-6. Likes by op. legend `{{op}}`.
+10. Likes by op. legend `{{op}}`.
 
     ```promql
     sum(rate(vg_social_likes_total[$__rate_interval])) by (op)
     ```
 
-7. Comment ops. legend `{{op}}`.
+11. Comment ops. legend `{{op}}`.
 
     ```promql
     sum(rate(vg_social_comments_total[$__rate_interval])) by (op)
     ```
 
-8. Feed reads by tab. legend `{{tab}}`.
+12. Feed reads by tab. legend `{{tab}}`.
 
     ```promql
     sum(rate(vg_social_feed_reads_total[$__rate_interval])) by (tab)
     ```
 
-9. Cap rejections by kind. legend `{{kind}}`.
+13. Cap rejections by kind. legend `{{kind}}`.
 
     ```promql
     sum(rate(vg_social_caps_rejections_total[$__rate_interval])) by (kind)
     ```
 
-10. Publish outcomes. legend `{{outcome}}`.
+14. Publish outcomes. legend `{{outcome}}`.
 
     ```promql
     sum(rate(vg_social_publish_events_total[$__rate_interval])) by (outcome)
     ```
 
-Datastore row (the pgkit pool panels, same shape as collection's own
+PostgreSQL (the pgkit pool panels, same shape as collection's own
 pool row):
 
-11. PG pool connections. timeseries, unit `short`, legends `in pool` /
+15. PG pool connections. timeseries, unit `short`, legends `in pool` /
     `idle` / `max`.
 
     ```promql
@@ -360,13 +389,19 @@ pool row):
     vg_pgkit_pool_connections_max{service_name="social"}
     ```
 
-12. PG pool mean acquire wait. timeseries, unit `s`.
+16. PG pool mean acquire wait. timeseries, unit `s`.
 
     ```promql
     rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name="social"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="social"}[5m])
     ```
 
-13. PG server connections vs max. timeseries, unit `short`, legends
+17. PG pool empty acquires. timeseries, unit `short`.
+
+    ```promql
+    increase(vg_pgkit_pool_empty_acquires_total{service_name="social"}[5m])
+    ```
+
+18. PG server connections vs max. timeseries, unit `short`, legends
     `connections` / `max` (exporter side).
 
     ```promql
@@ -374,50 +409,60 @@ pool row):
     max(pg_settings_max_connections{service="social-pg"})
     ```
 
-Runtime and pod row (query shapes match pod-details.json; the
-`container="social"` selector scopes to the app container and keeps
-social-pg and the init container out):
+19. PG transactions. timeseries, unit `ops`, legends `commit` /
+    `rollback`.
 
-14. Goroutines. timeseries, unit `short`, legend `goroutines`.
+    ```promql
+    sum(rate(pg_stat_database_xact_commit{service="social-pg",datname!~"template.*"}[$__rate_interval]))
+    sum(rate(pg_stat_database_xact_rollback{service="social-pg",datname!~"template.*"}[$__rate_interval]))
+    ```
+
+Runtime:
+
+20. Goroutines. timeseries, unit `short`, legend `goroutines`.
 
     ```promql
     go_goroutine_count{service_name="social"}
     ```
 
-15. Heap used. timeseries, unit `bytes`, legend `heap`.
+21. Heap used. timeseries, unit `bytes`, legend `heap`.
 
     ```promql
     go_memory_used_bytes{service_name="social"}
     ```
 
-16. Pod CPU. timeseries, unit `short`, legend `{{pod}}`.
+Pods (query shapes match pod-details.json; the `container="social"`
+selector scopes to the app container and keeps social-pg and the init
+container out):
+
+22. CPU by pod. timeseries, unit `short`, legend `{{pod}}`.
 
     ```promql
     sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", container="social"}[$__rate_interval]))
     ```
 
-17. Pod memory working set. timeseries, unit `bytes`, legend `{{pod}}`
+23. Working-set memory by pod. timeseries, unit `bytes`, legend `{{pod}}`
     (limit is 128Mi; read this panel against it).
 
     ```promql
     sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", container="social"})
     ```
 
-18. Restarts (15m) and OOM kills. timeseries, unit `short`, legends
-    `restarts {{pod}}` / `oom {{pod}}`; `pod=~"social-.*"` covers the
-    app and social-pg pods.
+24. Restarts and OOM kills by pod (15m). timeseries, unit `short`, legends
+    `restarts {{pod}}` / `oom {{pod}}`; `container="social"` keeps social-pg
+    out, matching the panels above.
 
     ```promql
-    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"social-.*"}[15m]))
-    sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vgkeep", pod=~"social-.*"})
+    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", container="social"}[15m]))
+    sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vgkeep", container="social"})
     ```
 
-Logs row:
+Logs:
 
-19. Recent error logs. logs panel, Loki datasource.
+25. Recent error and warn logs. logs panel, Loki datasource.
 
     ```logql
-    {service_name="social"} | severity_text="ERROR"
+    {service_name="social"} | severity_text=~"ERROR|WARN"
     ```
 
 ## Failure modes and triage
@@ -506,11 +551,11 @@ lever.
 
 ### 4. Restart churn or OOM kill
 
-"Restarts (15m) and OOM kills" on vg-social, and the platform-wide
+"Restarts and OOM kills by pod (15m)" on vg-social, and the platform-wide
 rule already covers it:
 [stack.md](stack.md#4-pod-restart-churn-or-oom-kill). The app limit is
-128Mi with no CPU limit, matching every other service; check "Pod
-memory working set" against the limit before raising it.
+128Mi with no CPU limit, matching every other service; check
+"Working-set memory by pod" against the limit before raising it.
 
 ## Admin levers
 

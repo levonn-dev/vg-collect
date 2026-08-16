@@ -424,122 +424,128 @@ every vgkeep dashboard: schemaVersion 39, tags `["vgkeep"]`,
 timezone browser, refresh 30s, explicit datasource object per target
 (prometheus, loki). Panels, grouped by row:
 
+Overview:
+
+1. "Availability" - timeseries, short, legend `{{pod}}`
+
+    ```promql
+    up{namespace="vgkeep", pod=~"enrichment-.*"}
+    ```
+
+2. "Request rate" - stat, reqps
+
+    ```promql
+    sum(rate(http_server_request_duration_seconds_count{service_name="enrichment"}[5m]))
+    ```
+
+3. "5xx ratio" - stat, percentunit; state thresholds green under 0.05 /
+    red at 0.05 (the vg-service-5xx page objective)
+
+    ```promql
+    sum(rate(http_server_request_duration_seconds_count{service_name="enrichment",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="enrichment"}[5m]))
+    ```
+
+4. "p99 latency" - stat, s; state thresholds green under 0.5 / yellow
+    at 0.5 (the vg-service-p99 warn objective)
+
+    ```promql
+    histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="enrichment"}[5m])))
+    ```
+
 HTTP (all Prometheus, scoped `service_name="enrichment"`):
 
-1. "Request rate by route" - timeseries, reqps, legend `{{http_route}}`
+5. "Request rate by route" - timeseries, reqps, legend `{{http_route}}`
 
     ```promql
     sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="enrichment"}[$__rate_interval]))
     ```
 
-2. "5xx ratio" - timeseries, percentunit
+6. "5xx ratio (5m)" - timeseries, percentunit
 
     ```promql
-    sum (rate(http_server_request_duration_seconds_count{service_name="enrichment",http_response_status_code=~"5.."}[5m])) / sum (rate(http_server_request_duration_seconds_count{service_name="enrichment"}[5m]))
+    sum(rate(http_server_request_duration_seconds_count{service_name="enrichment",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="enrichment"}[5m]))
     ```
 
-3. "Latency by route (p95/p99)" - timeseries, s, `"exemplar": true` on
-   both targets, legends `p95 {{http_route}}` / `p99 {{http_route}}`
+7. "Latency by route (p95/p99)" - timeseries, s, `"exemplar": true` on
+    both targets, legends `p95 {{http_route}}` / `p99 {{http_route}}`
 
     ```promql
     histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="enrichment"}[$__rate_interval])))
     histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="enrichment"}[$__rate_interval])))
     ```
 
-4. "Errors by route and status" - timeseries, reqps, legend
-   `{{http_route}} {{http_response_status_code}}`
+8. "4xx and 5xx by route and status" - timeseries, reqps, legend
+    `{{http_route}} {{http_response_status_code}}`
 
     ```promql
     sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="enrichment",http_response_status_code=~"4..|5.."}[$__rate_interval]))
     ```
 
-5. "Goroutines" - timeseries, short, legend `goroutines`
+Search and matching:
 
-    ```promql
-    go_goroutine_count{service_name="enrichment"}
-    ```
-
-6. "Heap used" - timeseries, bytes, legend `heap`
-
-    ```promql
-    go_memory_used_bytes{service_name="enrichment"}
-    ```
-
-Feature health:
-
-7. "Search answers by source" - timeseries, short, legend
-   `{{kind}} {{source}}`
+9. "Search answers by source" - timeseries, short, legend
+    `{{kind}} {{source}}`
 
     ```promql
     sum by (kind, source) (increase(vg_enrichment_search_requests_total[5m]))
     ```
 
-8. "Auto-match outcomes" - timeseries, short, legend
-   `{{source}}/{{outcome}}/{{region}}`
+10. "Auto-match outcomes" - timeseries, short, legend
+    `{{source}}/{{outcome}}/{{region}}`
 
     ```promql
     sum by (source, outcome, region) (increase(vg_enrichment_match_outcomes_total[1h]))
     ```
 
-9. "Match fallback searches" - timeseries, short, legend `{{outcome}}`
-   (only fired fallback legs count; most resolves never trip it)
+11. "Match fallback searches" - timeseries, short, legend `{{outcome}}`
+    (only fired fallback legs count; most resolves never trip it)
 
     ```promql
     sum by (outcome) (increase(vg_enrichment_match_fallback_search_total[1h]))
     ```
 
-10. "Localization search legs" - timeseries, short, legend
-   `{{outcome}}` (only non-Latin queries reach this leg; `error`
-   still serves primary results, so this panel is a feature-health
-   signal, not an availability one)
+12. "Localization search legs" - timeseries, short, legend
+    `{{outcome}}` (only non-Latin queries reach this leg; `error`
+    still serves primary results, so this panel is a feature-health
+    signal, not an availability one)
 
     ```promql
     sum by (outcome) (rate(vg_enrichment_search_localization_leg_total[5m]))
     ```
 
-11. "Catalog refresh items by step and outcome" - timeseries, short,
-   legend `{{step}} {{outcome}}`
+Catalog refresh and sweeps:
+
+13. "Catalog refresh items by step and outcome" - timeseries, short,
+    legend `{{step}} {{outcome}}`
 
     ```promql
     sum by (step, outcome) (increase(vg_enrichment_refresh_items_total[1h]))
     ```
 
-12. "Catalog refresh duration by step" - timeseries, s, legend `{{step}}`
-   (one refresh per day: the 1h increase of the sum is the last refresh's
-   elapsed seconds at the refresh hour, zero elsewhere)
+14. "Catalog refresh duration by step" - timeseries, s, legend `{{step}}`
+    (one refresh per day: the 1h increase of the sum is the last refresh's
+    elapsed seconds at the refresh hour, zero elsewhere)
 
     ```promql
     sum by (step) (increase(vg_enrichment_refresh_step_duration_seconds_sum[1h]))
     ```
 
-13. "Valkey fail-open events" - timeseries, short, legend `{{op}}`
+15. "Time since refresh completed by step" - timeseries, s, legend
+    `{{step}}`; the alert threshold draws an orange line at 93600s (26h) -
+    see failure mode 4 below
 
     ```promql
-    sum by (op) (increase(vg_enrichment_cache_fail_open_total[5m]))
+    time() - max by (step) (last_over_time(vg_enrichment_refresh_last_completed_seconds[26h]))
     ```
 
-Datastores and pools:
-
-14. "Valkey client pool connections" - timeseries, short, legends
-    `open` / `idle`
+16. "Normalize sweeps (rows/night by outcome)" - timeseries, short,
+    legend `regions/{{outcome}}` (24h window: one increase per night)
 
     ```promql
-    vg_valkeykit_pool_connections{service_name="enrichment"}
-    vg_valkeykit_pool_connections_idle{service_name="enrichment"}
+    sum by (outcome) (increase(vg_enrichment_normalize_regions_total[24h]))
     ```
 
-15. "Valkey pool reuse ratio" - timeseries, percentunit
-
-    ```promql
-    rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) / (rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) + rate(vg_valkeykit_pool_misses_total{service_name="enrichment"}[5m]))
-    ```
-
-16. "Valkey pool timeouts" - timeseries, short (flat zero is the only
-    healthy shape)
-
-    ```promql
-    increase(vg_valkeykit_pool_timeouts_total{service_name="enrichment"}[5m])
-    ```
+Mongo:
 
 17. "Mongo up" - stat, short; state thresholds: red below 1, green at
     1 and above
@@ -554,44 +560,101 @@ Datastores and pools:
     sum by (legacy_op_type) (rate(mongodb_ss_opcounters{service="enrichment-mongo"}[$__rate_interval]))
     ```
 
-19. "Valkey server memory" - timeseries, bytes
+Valkey:
+
+19. "Valkey pool connections" - timeseries, short, legends
+    `open` / `idle`
+
+    ```promql
+    vg_valkeykit_pool_connections{service_name="enrichment"}
+    vg_valkeykit_pool_connections_idle{service_name="enrichment"}
+    ```
+
+20. "Valkey pool acquire outcomes" - timeseries, ops, legends `hits` /
+    `misses` / `timeouts`
+
+    ```promql
+    rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[$__rate_interval])
+    rate(vg_valkeykit_pool_misses_total{service_name="enrichment"}[$__rate_interval])
+    rate(vg_valkeykit_pool_timeouts_total{service_name="enrichment"}[$__rate_interval])
+    ```
+
+21. "Valkey pool reuse ratio" - timeseries, percentunit
+
+    ```promql
+    rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) / (rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) + rate(vg_valkeykit_pool_misses_total{service_name="enrichment"}[5m]))
+    ```
+
+22. "Valkey server memory" - timeseries, bytes
 
     ```promql
     redis_memory_used_bytes{service="enrichment-valkey"}
     ```
 
-20. "Valkey keyspace hit ratio" - timeseries, percentunit
+23. "Valkey evictions and clients" - timeseries, short, legends
+    `evictions` / `clients`
+
+    ```promql
+    rate(redis_evicted_keys_total{service="enrichment-valkey"}[$__rate_interval])
+    redis_connected_clients{service="enrichment-valkey"}
+    ```
+
+24. "Valkey keyspace hit ratio" - timeseries, percentunit
 
     ```promql
     rate(redis_keyspace_hits_total{service="enrichment-valkey"}[5m]) / (rate(redis_keyspace_hits_total{service="enrichment-valkey"}[5m]) + rate(redis_keyspace_misses_total{service="enrichment-valkey"}[5m]))
     ```
 
-Pods and logs:
-
-21. "CPU by pod" - timeseries, short, legend `{{pod}}` (covers the
-    app, mongo, valkey and refresh job pods)
+25. "Valkey fail-open events by op" - timeseries, short, legend `{{op}}`
 
     ```promql
-    sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"enrichment.*", container!=""}[$__rate_interval]))
+    sum by (op) (increase(vg_enrichment_cache_fail_open_total[5m]))
     ```
 
-22. "Working-set memory by pod" - timeseries, bytes, legend `{{pod}}`
+Runtime:
+
+26. "Goroutines" - timeseries, short, legend `goroutines`
 
     ```promql
-    sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"enrichment.*", container!=""})
+    go_goroutine_count{service_name="enrichment"}
     ```
 
-23. "Restarts (15m windows) by pod" - timeseries, short, legend
-    `{{pod}}`
+27. "Heap used" - timeseries, bytes, legend `heap`
 
     ```promql
-    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"enrichment.*"}[15m]))
+    go_memory_used_bytes{service_name="enrichment"}
     ```
 
-24. "Recent error logs" - logs panel, Loki datasource
+Pods (the `container="enrichment"` selector scopes to the app pod
+only; mongo, valkey and the refresh job's own "trigger" container all
+carry different container names):
+
+28. "CPU by pod" - timeseries, short, legend `{{pod}}`
+
+    ```promql
+    sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", container="enrichment"}[$__rate_interval]))
+    ```
+
+29. "Working-set memory by pod" - timeseries, bytes, legend `{{pod}}`
+
+    ```promql
+    sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", container="enrichment"})
+    ```
+
+30. "Restarts and OOM kills by pod (15m)" - timeseries, short, legend
+    `restarts {{pod}}` / `oom {{pod}}`
+
+    ```promql
+    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", container="enrichment"}[15m]))
+    sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vgkeep", container="enrichment"})
+    ```
+
+Logs:
+
+31. "Recent error and warn logs" - logs panel, Loki datasource
 
     ```logql
-    {service_name="enrichment"} | severity_text="ERROR"
+    {service_name="enrichment"} | severity_text=~"ERROR|WARN"
     ```
 
 ## Failure modes and triage
@@ -609,7 +672,7 @@ inferring the cause from the affected route alone:
 {service_name="enrichment"} |= "store error"
 ```
 
-(the "Recent error logs" panel, or the Log additions row under
+(the "Recent error and warn logs" panel, or the Log additions row under
 Telemetry above - `op` names the failing operation; 29 call sites
 share 28 distinct op values, one pair deliberately alike.) Enrichment
 specifics: a 500 burst on
@@ -705,7 +768,9 @@ survives the deploy that would otherwise make this alert fire by
 accident. The vg-enrichment-refresh-stalled rule fires on the same
 expression, and treats an absent series as firing too (a refresh that
 never ran is the failure case), so a brand-new stack alerts until its
-first refresh completes at 06:00 or by manual trigger. Then:
+first refresh completes at 06:00 or by manual trigger. The enrichment
+dashboard charts this as "Time since refresh completed by step" with
+the alert threshold drawn at 93600 seconds. Then:
 
 1. `kubectl -n vgkeep get jobs -l app.kubernetes.io/name=enrichment-refresh`
    and `kubectl -n vgkeep logs job/<latest>` for the curl output.
@@ -763,13 +828,14 @@ split the schedule in the service code.
 
 ### 6. Valkey failing open
 
-"Valkey fail-open events" (`vg_enrichment_cache_fail_open_total` by
+"Valkey fail-open events by op" (`vg_enrichment_cache_fail_open_total` by
 op) is the service-side signal; every op degrades to a cache miss, so
 the symptom is latency and provider load, never errors. Server-side
 memory/eviction triage is
-[stack.md](stack.md#7-valkey-evicting-keys-or-memory-unusually-high). "Valkey
-pool timeouts" nonzero means callers waited for the pool and gave
-up - a saturated pool or a wedged Valkey. A Valkey restart empties the
+[stack.md](stack.md#7-valkey-evicting-keys-or-memory-unusually-high). A
+nonzero `timeouts` series on the "Valkey pool acquire outcomes" panel
+means callers waited for the pool and gave up - a saturated pool or a
+wedged Valkey. A Valkey restart empties the
 cache (no persistence): expect a cold-start burst of provider calls
 bounded by the client limiters, and product reads hitting Mongo until
 the 5m cache refills. Boot-time exception: the service requires
@@ -780,7 +846,7 @@ during a deploy.
 
 All API routes behind JWT start answering 401 at once: the validator
 cannot fetch or verify against `JWKS_URL` (auth service down or its
-keys rotated unexpectedly). "Errors by route and status" shows 401
+keys rotated unexpectedly). "4xx and 5xx by route and status" shows 401
 across routes simultaneously, which distinguishes this from a single
 misbehaving caller. Check the auth pod, then
 `curl -s http://localhost:8082/.well-known/jwks.json` via the auth

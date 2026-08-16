@@ -253,22 +253,51 @@ stat only for headline values, default palette, no dual-axis anywhere;
 `legendFormat` from a label on every multi-series panel; latency
 targets set `"exemplar": true`.
 
-HTTP row:
+Overview:
 
-1. Request rate by route. timeseries, unit `reqps`, legend
+1. Availability. timeseries, unit `short`, legend
+   `{{pod}}`.
+
+    ```promql
+    up{namespace="vgkeep", pod=~"user-.*"}
+    ```
+
+2. Request rate. stat, unit `reqps`.
+
+    ```promql
+    sum(rate(http_server_request_duration_seconds_count{service_name="user"}[5m]))
+    ```
+
+3. 5xx ratio. stat, unit `percentunit`; state thresholds green
+   under 0.05 / red at 0.05 (the vg-service-5xx page objective).
+
+    ```promql
+    sum(rate(http_server_request_duration_seconds_count{service_name="user",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="user"}[5m]))
+    ```
+
+4. p99 latency. stat, unit `s`; state thresholds green under 0.5 /
+   yellow at 0.5 (the vg-service-p99 warn objective).
+
+    ```promql
+    histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="user"}[5m])))
+    ```
+
+HTTP:
+
+5. Request rate by route. timeseries, unit `reqps`, legend
    `{{http_route}}`.
 
     ```promql
     sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="user"}[$__rate_interval]))
     ```
 
-2. 5xx ratio. timeseries, unit `percentunit`.
+6. 5xx ratio (5m). timeseries, unit `percentunit`.
 
     ```promql
     sum(rate(http_server_request_duration_seconds_count{service_name="user",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="user"}[5m]))
     ```
 
-3. Latency by route (p95/p99). timeseries, unit `s`, exemplars on,
+7. Latency by route (p95/p99). timeseries, unit `s`, exemplars on,
    legends `p95 {{http_route}}` / `p99 {{http_route}}`.
 
     ```promql
@@ -276,7 +305,7 @@ HTTP row:
     histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="user"}[$__rate_interval])))
     ```
 
-4. 4xx and 5xx by route and status. timeseries, unit `reqps`, legend
+8. 4xx and 5xx by route and status. timeseries, unit `reqps`, legend
    `{{http_route}} {{http_response_status_code}}`. This is where 401
    floods (JWKS trouble) and 403 spikes (authz regressions) show up
    without their own metric.
@@ -285,33 +314,33 @@ HTTP row:
     sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="user",http_response_status_code=~"4..|5.."}[$__rate_interval]))
     ```
 
-Feature row:
+Accounts:
 
-5. Account upserts by outcome (5m). timeseries, unit `short`, legend
+9. Account upserts by outcome (5m). timeseries, unit `short`, legend
    `{{outcome}}`.
 
     ```promql
     sum by (outcome) (increase(vg_user_account_upserts_total[5m]))
     ```
 
-6. New-account currency seed source (5m). timeseries, unit `short`,
-   legend `{{source}}`.
+10. New-account currency seed source (5m). timeseries, unit `short`,
+    legend `{{source}}`.
 
     ```promql
     sum by (source) (increase(vg_user_currency_seeds_total[5m]))
     ```
 
-7. Account deletions by outcome (5m). timeseries, unit `short`, legend
-   `{{outcome}}`.
+11. Account deletions by outcome (5m). timeseries, unit `short`, legend
+    `{{outcome}}`.
 
     ```promql
     sum by (outcome) (increase(vg_user_account_deletes_total[5m]))
     ```
 
-Datastore row:
+PostgreSQL:
 
-8. PG client pool: connections vs max. timeseries, unit `short`,
-   legends `in pool` / `idle` / `max`.
+12. PG pool connections. timeseries, unit `short`,
+    legends `in pool` / `idle` / `max`.
 
     ```promql
     vg_pgkit_pool_connections{service_name="user"}
@@ -319,19 +348,19 @@ Datastore row:
     vg_pgkit_pool_connections_max{service_name="user"}
     ```
 
-9. PG client pool: mean acquire wait. timeseries, unit `s`.
+13. PG pool mean acquire wait. timeseries, unit `s`.
 
     ```promql
     rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name="user"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="user"}[5m])
     ```
 
-10. PG client pool: empty acquires (5m). timeseries, unit `short`.
+14. PG pool empty acquires. timeseries, unit `short`.
 
     ```promql
     increase(vg_pgkit_pool_empty_acquires_total{service_name="user"}[5m])
     ```
 
-11. user-pg server connections vs max_connections. timeseries, unit
+15. PG server connections vs max. timeseries, unit
     `short`, legends `connections` / `max` (exporter side; same names
     the Datastores dashboard proves).
 
@@ -340,50 +369,60 @@ Datastore row:
     max(pg_settings_max_connections{service="user-pg"})
     ```
 
-Runtime and pod row (query shapes match pod-details.json; the
-`container="user"` selector scopes to the app container and keeps
-user-pg and the init container out):
+16. PG transactions. timeseries, unit `ops`, legends `commit` /
+    `rollback`.
 
-12. Goroutines. timeseries, unit `short`, legend `goroutines`.
+    ```promql
+    sum(rate(pg_stat_database_xact_commit{service="user-pg",datname!~"template.*"}[$__rate_interval]))
+    sum(rate(pg_stat_database_xact_rollback{service="user-pg",datname!~"template.*"}[$__rate_interval]))
+    ```
+
+Runtime:
+
+17. Goroutines. timeseries, unit `short`, legend `goroutines`.
 
     ```promql
     go_goroutine_count{service_name="user"}
     ```
 
-13. Heap used. timeseries, unit `bytes`, legend `heap`.
+18. Heap used. timeseries, unit `bytes`, legend `heap`.
 
     ```promql
     go_memory_used_bytes{service_name="user"}
     ```
 
-14. Pod CPU. timeseries, unit `short`, legend `{{pod}}`.
+Pods (query shapes match pod-details.json; the `container="user"`
+selector scopes to the app container and keeps user-pg and the init
+container out):
+
+19. CPU by pod. timeseries, unit `short`, legend `{{pod}}`.
 
     ```promql
     sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", container="user"}[$__rate_interval]))
     ```
 
-15. Pod memory working set. timeseries, unit `bytes`, legend
+20. Working-set memory by pod. timeseries, unit `bytes`, legend
     `{{pod}}` (limit is 128Mi; read this panel against it).
 
     ```promql
     sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", container="user"})
     ```
 
-16. Restarts (15m) and OOM kills. timeseries, unit `short`, legends
-    `restarts {{pod}}` / `oom {{pod}}`; `pod=~"user-.*"` covers the
-    app and user-pg pods.
+21. Restarts and OOM kills by pod (15m). timeseries, unit `short`, legends
+    `restarts {{pod}}` / `oom {{pod}}`; `container="user"` keeps user-pg
+    out, matching the panels above.
 
     ```promql
-    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"user-.*"}[15m]))
-    sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vgkeep", pod=~"user-.*"})
+    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", container="user"}[15m]))
+    sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vgkeep", container="user"})
     ```
 
-Logs row:
+Logs:
 
-17. Recent error logs. logs panel, Loki datasource.
+22. Recent error and warn logs. logs panel, Loki datasource.
 
     ```logql
-    {service_name="user"} | severity_text="ERROR"
+    {service_name="user"} | severity_text=~"ERROR|WARN"
     ```
 
 ## Failure modes and triage
@@ -401,7 +440,7 @@ status" with
 sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert", http_response_status_code=~"5.."}[5m]))
 ```
 
-and in "Recent error logs" by `store error` lines with `op=upsert`.
+and in "Recent error and warn logs" by `store error` lines with `op=upsert`.
 The vg-user-upsert-5xx rule pages when 5xx exceed 20 percent of
 upsert requests:
 
@@ -429,19 +468,19 @@ design so the pod will not restart its way out.
 ### 3. PG pool contention
 
 p95 climbs on all routes together on "Latency by route (p95/p99)"
-while user-pg looks idle. "PG client pool: mean acquire wait" and "PG
-client pool: empty acquires (5m)" confirm it: the wait rising and
+while user-pg looks idle. "PG pool mean acquire wait" and "PG pool
+empty acquires" confirm it: the wait rising and
 
 ```promql
 rate(vg_pgkit_pool_empty_acquires_total{service_name="user"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="user"}[5m])
 ```
 
 above roughly 0.25 sustained means callers queue behind a drained
-pool. "PG client pool: connections vs max" shows the ceiling being
+pool. "PG pool connections" shows the ceiling being
 hit. Either traffic outgrew the default pool max (raise it with an
 explicit `pool_max_conns` in the chart's `DATABASE_URL`, watching the
-server-side budget on "user-pg server connections vs
-max_connections") or a query got slow (check otelpgx spans in
+server-side budget on "PG server connections vs max") or a query
+got slow (check otelpgx spans in
 Jaeger). Server-side saturation:
 [stack.md](stack.md#6-postgres-connections-above-80-percent-of-max);
 latency objective:
@@ -482,9 +521,9 @@ creation.
 
 ### 7. Restart churn or OOM kills
 
-"Restarts (15m) and OOM kills", and the platform-wide rule already
+"Restarts and OOM kills by pod (15m)", and the platform-wide rule already
 covers it: [stack.md](stack.md#4-pod-restart-churn-or-oom-kill). The
-app limit is 128Mi with no CPU limit; check "Pod memory working set"
+app limit is 128Mi with no CPU limit; check "Working-set memory by pod"
 against the limit before raising it.
 
 ### 8. Dashboard blank, service healthy

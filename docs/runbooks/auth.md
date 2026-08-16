@@ -281,8 +281,8 @@ Emission sites, precisely:
   minted -> `success`). `flow` is `link` when the consumed state
   carried `link_user_id` (and for `DevLink`), else `login`. Malformed
   bodies, `unknown_provider`, and `invalid_state` are not counted (no
-  provider to attribute); they stay visible as 4xx on "Errors by route
-  and status".
+  provider to attribute); they stay visible as 4xx on "4xx and 5xx by
+  route and status".
 - `vg.auth.token.refreshes` increments once per `RefreshToken` terminal:
   200 -> `success`; both reuse branches (revoked-family short-circuit
   and rotation-time detection) -> `reuse_detected`; unknown/expired
@@ -325,21 +325,53 @@ port-forward. It follows the structural conventions shared by every
 vgkeep dashboard: schemaVersion 39, tags `["vgkeep"]`, timezone
 `browser`, refresh `30s`, an explicit datasource object per target
 (uid `prometheus`, or `loki` for the logs panel). No dual-axis panels;
-Grafana default palette; thresholds only on the two state panels noted.
+Grafana default palette; state thresholds on five panels - the four stat
+panels noted, plus a reference line on Availability.
 
-**1. Request rate by route** (timeseries, reqps, legend `{{http_route}}`)
+**Overview**
+
+**1. Availability** (timeseries, short, legend `{{pod}}`; a red
+reference line at value 1, projected from the vg-auth-down alert)
+
+```promql
+up{namespace="vgkeep", pod=~"auth-.*"}
+```
+
+**2. Request rate** (stat, reqps)
+
+```promql
+sum(rate(http_server_request_duration_seconds_count{service_name="auth"}[5m]))
+```
+
+**3. 5xx ratio** (stat, percentunit; state thresholds green under 0.05 /
+red at 0.05 - the vg-service-5xx page objective)
+
+```promql
+sum(rate(http_server_request_duration_seconds_count{service_name="auth",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="auth"}[5m]))
+```
+
+**4. p99 latency** (stat, s; state thresholds green under 0.5 / yellow
+at 0.5 - the vg-service-p99 warn objective)
+
+```promql
+histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="auth"}[5m])))
+```
+
+**HTTP**
+
+**5. Request rate by route** (timeseries, reqps, legend `{{http_route}}`)
 
 ```promql
 sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="auth"}[$__rate_interval]))
 ```
 
-**2. 5xx ratio** (timeseries, percentunit, legend `5xx ratio`)
+**6. 5xx ratio (5m)** (timeseries, percentunit, legend `5xx ratio`)
 
 ```promql
-sum (rate(http_server_request_duration_seconds_count{service_name="auth",http_response_status_code=~"5.."}[5m])) / sum (rate(http_server_request_duration_seconds_count{service_name="auth"}[5m]))
+sum(rate(http_server_request_duration_seconds_count{service_name="auth",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="auth"}[5m]))
 ```
 
-**3. Latency by route, p95 and p99** (timeseries, s, `"exemplar": true`
+**7. Latency by route (p95/p99)** (timeseries, s, `"exemplar": true`
 on both targets, legends `p95 {{http_route}}` / `p99 {{http_route}}`)
 
 ```promql
@@ -347,34 +379,36 @@ histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_durat
 histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="auth"}[$__rate_interval])))
 ```
 
-**4. Errors by route and status** (timeseries, reqps, legend
+**8. 4xx and 5xx by route and status** (timeseries, reqps, legend
 `{{http_route}} {{http_response_status_code}}`)
 
 ```promql
 sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="auth",http_response_status_code=~"4..|5.."}[$__rate_interval]))
 ```
 
-**5. Logins by provider, flow, outcome, 5m** (timeseries, short, legend
+**Logins and providers**
+
+**9. Logins by provider, flow, outcome, 5m** (timeseries, short, legend
 `{{provider}} {{flow}} {{outcome}}`)
 
 ```promql
 sum by (provider, flow, outcome) (increase(vg_auth_login_outcomes_total[5m]))
 ```
 
-**6. Refresh outcomes, 5m** (timeseries, short, legend `{{outcome}}`)
+**10. Refresh outcomes, 5m** (timeseries, short, legend `{{outcome}}`)
 
 ```promql
 sum by (outcome) (increase(vg_auth_token_refreshes_total[5m]))
 ```
 
-**7. Reuse detections, 24h** (stat, short; state thresholds: green 0,
+**11. Reuse detections, 24h** (stat, short; state thresholds: green 0,
 red >= 1)
 
 ```promql
 sum(increase(vg_auth_token_refreshes_total{outcome="reuse_detected"}[24h]))
 ```
 
-**8. Active signing keys** (stat, short; state thresholds: red below 1,
+**12. Active signing keys** (stat, short; state thresholds: red below 1,
 green at 1 and above; max() because every replica exports the gauge and
 a surge rollout briefly runs two pods)
 
@@ -382,21 +416,23 @@ a surge rollout briefly runs two pods)
 max(vg_auth_signing_keys_active)
 ```
 
-**9. Provider request p95 by op** (timeseries, s, `"exemplar": true`,
+**13. Provider request p95 by op** (timeseries, s, `"exemplar": true`,
 legend `{{provider}} {{op}}`)
 
 ```promql
 histogram_quantile(0.95, sum by (le, provider, op) (rate(vg_auth_provider_request_duration_seconds_bucket[$__rate_interval])))
 ```
 
-**10. Provider request errors, 5m** (timeseries, short, legend
+**14. Provider request errors, 5m** (timeseries, short, legend
 `{{provider}} {{op}}`)
 
 ```promql
 sum by (provider, op) (increase(vg_auth_provider_request_duration_seconds_count{outcome="error"}[5m]))
 ```
 
-**11. PG pool connections** (timeseries, short, legends `in pool` /
+**PostgreSQL**
+
+**15. PG pool connections** (timeseries, short, legends `in pool` /
 `idle` / `max`)
 
 ```promql
@@ -405,13 +441,19 @@ vg_pgkit_pool_connections_idle{service_name="auth"}
 vg_pgkit_pool_connections_max{service_name="auth"}
 ```
 
-**12. PG pool mean acquire wait** (timeseries, s, legend `mean wait`)
+**16. PG pool mean acquire wait** (timeseries, s, legend `mean wait`)
 
 ```promql
-rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name="auth"}[$__rate_interval]) / rate(vg_pgkit_pool_acquires_total{service_name="auth"}[$__rate_interval])
+rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name="auth"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="auth"}[5m])
 ```
 
-**13. auth-pg connections vs max** (timeseries, short, legends
+**17. PG pool empty acquires** (timeseries, short, legend `empty acquires`)
+
+```promql
+increase(vg_pgkit_pool_empty_acquires_total{service_name="auth"}[5m])
+```
+
+**18. PG server connections vs max** (timeseries, short, legends
 `connections` / `max`)
 
 ```promql
@@ -419,7 +461,7 @@ sum(pg_stat_activity_count{service="auth-pg"})
 max(pg_settings_max_connections{service="auth-pg"})
 ```
 
-**14. auth-pg transactions** (timeseries, ops, legends `commit` /
+**19. PG transactions** (timeseries, ops, legends `commit` /
 `rollback`)
 
 ```promql
@@ -427,41 +469,50 @@ sum(rate(pg_stat_database_xact_commit{service="auth-pg",datname!~"template.*"}[$
 sum(rate(pg_stat_database_xact_rollback{service="auth-pg",datname!~"template.*"}[$__rate_interval]))
 ```
 
-**15. Pod CPU** (timeseries, short, legend `{{pod}}`; the `auth-.*`
-scope intentionally covers auth-pg-0 too)
+**Runtime**
 
-```promql
-sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"auth-.*", container!=""}[$__rate_interval]))
-```
-
-**16. Pod working-set memory** (timeseries, bytes, legend `{{pod}}`)
-
-```promql
-sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"auth-.*", container!=""})
-```
-
-**17. Pod restarts, 15m** (timeseries, short, legend `{{pod}}`)
-
-```promql
-sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"auth-.*"}[15m]))
-```
-
-**18. Goroutines** (timeseries, short, legend `goroutines`)
+**20. Goroutines** (timeseries, short, legend `goroutines`)
 
 ```promql
 go_goroutine_count{service_name="auth"}
 ```
 
-**19. Heap used** (timeseries, bytes, legend `heap`)
+**21. Heap used** (timeseries, bytes, legend `heap`)
 
 ```promql
 go_memory_used_bytes{service_name="auth"}
 ```
 
-**20. Recent error logs** (logs panel, Loki datasource)
+**Pods**
+
+**22. CPU by pod** (timeseries, short, legend `{{pod}}`;
+`container="auth"` is the app pod only - auth-pg-0's postgres and
+exporter containers carry different names)
+
+```promql
+sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", container="auth"}[$__rate_interval]))
+```
+
+**23. Working-set memory by pod** (timeseries, bytes, legend `{{pod}}`)
+
+```promql
+sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", container="auth"})
+```
+
+**24. Restarts and OOM kills by pod (15m)** (timeseries, short, legends
+`restarts {{pod}}` / `oom {{pod}}`)
+
+```promql
+sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", container="auth"}[15m]))
+sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vgkeep", container="auth"})
+```
+
+**Logs**
+
+**25. Recent error and warn logs** (logs panel, Loki datasource)
 
 ```logql
-{service_name="auth"} | severity_text="ERROR"
+{service_name="auth"} | severity_text=~"ERROR|WARN"
 ```
 
 ## Failure modes and triage
@@ -526,13 +577,13 @@ rollback.
 
 Symptom: every route 500s, `/readyz` answers 503, `auth store error`
 logs; the four Postgres panels ("PG pool connections", "PG pool mean
-acquire wait", "auth-pg connections vs max", "auth-pg transactions")
+acquire wait", "PG server connections vs max", "PG transactions")
 flatline or spike. auth-pg is single-replica: while
 it restarts, login, refresh, logout, linking, and JWKS reads all fail,
 but already-issued access tokens keep validating everywhere (jwtauth
 caches keys in each consumer). Sessions resume unharmed afterward since
 refresh tokens are only consumed on successful rotation. For
-saturation ("auth-pg connections vs max" nearing its max line, or
+saturation ("PG server connections vs max" nearing its max line, or
 waits climbing on "PG pool mean acquire wait"), follow
 [stack.md](stack.md#6-postgres-connections-above-80-percent-of-max).
 Restart churn on auth-pg-0:
@@ -541,7 +592,7 @@ Restart churn on auth-pg-0:
 ### 5. 429s on login at the edge
 
 Symptom: users report login failures, but "Request rate by route" and
-"Errors by route and status" show nothing.
+"4xx and 5xx by route and status" show nothing.
 APISIX rate-limits `/api/auth/*` at 20 requests per minute per client
 IP (rejected at the edge with 429, never reaching bff or auth), against
 300 per minute for the rest of `/api/*`. Confirm on the vg-apisix-edge
@@ -575,8 +626,8 @@ unknown kid within 30s).
 
 ### 7. Slow logins
 
-Symptom: p95/p99 on `/oauth/callback` climbing on "Latency by route,
-p95 and p99". "Provider request p95 by op" splits the suspects: a
+Symptom: p95/p99 on `/oauth/callback` climbing on "Latency by route
+(p95/p99)". "Provider request p95 by op" splits the suspects: a
 provider op near the 10s client timeout is the IdP being slow; flat
 provider latency with rising wait on "PG pool mean acquire wait" is
 our Postgres; both flat means the user service (its Upsert/Get are

@@ -42,10 +42,10 @@ Note: the fixture's handle is literally `admin` on dev databases created before 
 
 | Command                  | What                                                                                                                                                                                              |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task lint`              | golangci-lint every Go module + helm lint every chart + eslint the frontend                                                                                                                       |
+| `task lint`              | golangci-lint every Go module + helm lint every chart + eslint the frontend + obsgen dashboard and alert lint                                                                                     |
 | `task test`              | go test every module (testcontainers need Docker) + frontend vitest                                                                                                                               |
 | `task test:cover`        | tests + the 80% coverage gate (generated code and cmd/ wiring excluded)                                                                                                                           |
-| `task gen`               | regenerate region/platform tables from `api/domain.yaml` + OpenAPI server stubs/types + the frontend's typed API client + Grafana alert rules and service dashboards from `deploy/observability/` |
+| `task gen`               | regenerate region/platform tables from `api/domain.yaml` + OpenAPI server stubs/types + the frontend's typed API client + Grafana alert rules and golden dashboards from `deploy/observability/`  |
 | `task tidy`              | go mod tidy every module                                                                                                                                                                          |
 | `task migrate`           | run db:migrate for every migrate-capable service (auth, collection, enrichment, social, user)                                                                                                     |
 | `task build`             | compile every module + the frontend bundle                                                                                                                                                        |
@@ -121,8 +121,12 @@ through a session-gated relay on the bff, so one trace stitches the
 browser through the bff and into whichever service and database
 answered the call.
 
-Eleven dashboards are provisioned into the `vgkeep` Grafana folder
-(localhost:3000, anonymous admin in dev):
+Twelve dashboards are provisioned into the `vgkeep` Grafana folder
+(localhost:3000, anonymous admin in dev). The six service dashboards
+generate from `deploy/observability/` manifests, with panels shared
+across services drawn from named golden blocks; `task lint:obs` checks
+panel geometry and every query expression across all twelve, generated
+and hand-authored alike:
 
 - `vg-overview` - the application overview pane: edge, services, and
   datastores on one screen, with per-service rate/errors/duration
@@ -130,6 +134,8 @@ Eleven dashboards are provisioned into the `vgkeep` Grafana folder
 - `vg-datastores` - Postgres/MongoDB/Valkey health
 - `vg-pod-details` - per-pod CPU/memory/restarts
 - `vg-node-details` - node-level pressure and capacity
+- `vg-frontend` - browser telemetry: locale, prose fallback, errors,
+  network failures, web vitals
 - `vg-auth`, `vg-bff`, `vg-collection`, `vg-enrichment`, `vg-social`,
   `vg-user` - one per service: RED, domain metrics, datastore health
   from that service's seat, pods, and error logs

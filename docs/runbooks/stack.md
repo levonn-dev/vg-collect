@@ -202,6 +202,40 @@ and runs no pod of its own, so its dashboard holds nine browser-side
 instruments instead - locale, prose fallback, errors, network
 failures, and web vitals - documented in [frontend.md](frontend.md).
 
+### Generation and lint
+
+The six service dashboards (auth, bff, collection, enrichment, social,
+user) generate from `deploy/observability/` manifests. Panels shared
+across services live once, as named golden blocks in
+`deploy/observability/dashboards/golden.yaml`; each service's manifest
+instantiates the blocks it wants under `golden_blocks`, at a literal y
+anchor, and every panel inside a block keeps its own in-block y offset
+against that anchor.
+
+Grafana compacts panels upward into unoccupied grid space at render
+time, so an empty gap between blocks does not stay empty: a panel
+below the gap floats up and renders out of its authored position. The
+guarantee is not that panels never move - it is that every dashboard
+is authored fully packed, and a float-up check at generation time
+(`task gen`, once a dashboard declares sections - all six do today)
+and lint time (`task lint:obs`, unconditionally) rejects any panel
+that could still move, so the rendered layout always equals the
+authored one. Each service's manifest also declares `sections`, a map
+of section title to a literal grid anchor; the generator emits a
+full-width Grafana row panel at each anchor. A full-width row is a
+compaction barrier - a panel cannot float past it - so sections both
+pin their content in place and supply the operator-facing headers
+each service's own runbook uses in its panel list.
+
+`task lint:obs` checks panel geometry (bounds, overlap, the float-up
+stability check, id and title uniqueness) and parses every query
+expression across all twelve shipped dashboard files under
+`deploy/charts/platform/files/dashboards/`, the six generated ones and
+the six hand-authored ones (overview, apisix-edge, datastores,
+pod-details, node-details, frontend) alike. Like alert rules, a shipped
+dashboard change converges into Grafana through the provisioning
+rescan (see Verified below) - no pod restart needed.
+
 ## Frontend telemetry
 
 The SPA's telemetry - six counters and three web-vitals histograms,
@@ -263,8 +297,8 @@ Retiring a rule: delete its definition from wherever it lives
 reason to `deploy/observability/alerts/retired.yaml`. `task gen:obs`
 emits a `deleteRules` entry (`orgId` plus `uid`) into `vg-rules.yaml`
 alongside the regenerated `groups` list, which no longer carries the
-retired rule; `task lint:obs` (part of `task check`) fails the build
-if a uid is retired while still defined live. The `deleteRules`
+retired rule; `task lint:obs` (part of `task lint`, the CI gate) fails
+the build if a uid is retired while still defined live. The `deleteRules`
 stanza ships in the same file, the same ConfigMap, and converges over
 the same sidecar path as any other rule edit - Grafana drops the named
 rule by uid on the next reload, no separate cleanup step.
@@ -365,7 +399,7 @@ The dependency chain behind most of these: browser -> gateway -> bff
 enrichment for anything money-shaped, and bff -> social -> collection
 or user for anything social-shaped. Failures propagate left as 502s
 with the failing dependency named in the problem detail, so the bff's
-"Errors by route and status" panel plus its route-to-dependency map
+"4xx and 5xx by route and status" panel plus its route-to-dependency map
 ([bff.md](bff.md#2-a-downstream-service-is-down)) resolves "which
 service do I look at" in one step.
 
@@ -385,7 +419,7 @@ sum by (service_name) (rate(http_server_request_duration_seconds_count{http_resp
 1. "5xx ratio by service" on vg-overview shows the same ratio per
    service; open the firing service's own dashboard (vg-auth, vg-bff,
    vg-collection, vg-enrichment, vg-social, vg-user) and find which
-   route carries the errors on "Errors by route and status".
+   route carries the errors on "4xx and 5xx by route and status".
 2. Jump from a latency-panel exemplar dot to the Jaeger trace, or open
    the error logs panel and follow a trace link from a log line.
 3. Check the pod details dashboard (vg-pod-details) for restarts or
@@ -429,7 +463,7 @@ sum by (service_name) (count_over_time({service_name=~".+"} | severity_text="ERR
    messages for the firing service.
 2. Follow the trace link on a log line (every OTLP log line carries
    trace_id) into Jaeger to see the full request that produced it.
-3. Correlate the spike with "Errors by route and status" and the error
+3. Correlate the spike with "4xx and 5xx by route and status" and the error
    logs panel on the firing service's own dashboard for the same
    window.
 

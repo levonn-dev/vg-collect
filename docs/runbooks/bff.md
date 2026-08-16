@@ -276,7 +276,7 @@ Three lines cover paths that would otherwise fail silently:
 ## Dashboard: vg-bff
 
 Provisioned from `deploy/charts/platform/files/dashboards/bff.json` into the
-vgkeep folder, uid `vg-bff`, title `Bff Service`. Open it at
+vgkeep folder, uid `vg-bff`, title `BFF Service`. Open it at
 http://localhost:3000/d/vg-bff while `task run` holds the Grafana
 port-forward. It follows the structural conventions shared by every
 vgkeep dashboard (schemaVersion 39, tag `vgkeep`, browser timezone,
@@ -284,44 +284,49 @@ vgkeep dashboard (schemaVersion 39, tag `vgkeep`, browser timezone,
 datasource per target; the logs panel uses uid `loki`). No in-flight panel:
 the pipeline exports no active-requests series.
 
-Headline row:
+Overview:
 
-1. "Request rate" - stat, unit `reqps`:
+1. "Availability" - timeseries, unit `short`, legend `{{pod}}`:
+
+   ```promql
+   up{namespace="vgkeep", pod=~"bff-.*"}
+   ```
+
+2. "Request rate" - stat, unit `reqps`:
 
    ```promql
    sum(rate(http_server_request_duration_seconds_count{service_name="bff"}[5m]))
    ```
 
-2. "5xx ratio" - stat, unit `percentunit`, state thresholds green under
+3. "5xx ratio" - stat, unit `percentunit`, state thresholds green under
    0.05 / red at 0.05 (the vg-service-5xx page objective):
 
    ```promql
    sum(rate(http_server_request_duration_seconds_count{service_name="bff",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="bff"}[5m]))
    ```
 
-3. "p99 latency" - stat, unit `s`, state thresholds green under 0.5 /
+4. "p99 latency" - stat, unit `s`, state thresholds green under 0.5 /
    yellow at 0.5 (the vg-service-p99 warn objective):
 
    ```promql
    histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="bff"}[5m])))
    ```
 
-Traffic by route:
+HTTP:
 
-4. "Request rate by route" - timeseries, `reqps`, legend `{{http_route}}`:
+5. "Request rate by route" - timeseries, `reqps`, legend `{{http_route}}`:
 
    ```promql
    sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="bff"}[$__rate_interval]))
    ```
 
-5. "Errors by route and status" - timeseries, `reqps`, legend
-   `{{http_route}} {{http_response_status_code}}`:
+6. "5xx ratio (5m)" - timeseries, `percentunit`, legend `5xx ratio`:
 
    ```promql
-   sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="bff",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+   sum(rate(http_server_request_duration_seconds_count{service_name="bff",http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="bff"}[5m]))
    ```
 
-6. "Latency by route p95/p99" - timeseries, `s`, `"exemplar": true` on both
+7. "Latency by route (p95/p99)" - timeseries, `s`, `"exemplar": true` on both
    targets, legends `p95 {{http_route}}` / `p99 {{http_route}}`:
 
    ```promql
@@ -329,35 +334,36 @@ Traffic by route:
    histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{service_name="bff"}[$__rate_interval])))
    ```
 
-Feature health:
+8. "4xx and 5xx by route and status" - timeseries, `reqps`, legend
+   `{{http_route}} {{http_response_status_code}}`:
 
-7. "Login and link outcomes" - timeseries, `short`, legend
+   ```promql
+   sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name="bff",http_response_status_code=~"4..|5.."}[$__rate_interval]))
+   ```
+
+Sessions and composition:
+
+9. "Login and link outcomes" - timeseries, `short`, legend
    `{{flow}} {{outcome}}`:
 
    ```promql
    sum by (flow, outcome) (increase(vg_bff_auth_logins_total[5m]))
    ```
 
-8. "Session refresh outcomes" - timeseries, `short`, legend `{{outcome}}`:
-
-   ```promql
-   sum by (outcome) (increase(vg_bff_session_refreshes_total[5m]))
-   ```
-
-9. "Composition cache hit ratio (me, recs)" - timeseries, `percentunit`,
-   legend `{{cache}}`:
-
-   ```promql
-   sum by (cache) (rate(vg_bff_cache_lookups_total{outcome="hit"}[5m])) / sum by (cache) (rate(vg_bff_cache_lookups_total[5m]))
-   ```
-
-10. "Valkey fail-open events by op" - timeseries, `short`, legend `{{op}}`:
+10. "Session refresh outcomes" - timeseries, `short`, legend `{{outcome}}`:
 
     ```promql
-    sum by (op) (increase(vg_bff_cache_fail_open_total[5m]))
+    sum by (outcome) (increase(vg_bff_session_refreshes_total[5m]))
     ```
 
-11. "Browser telemetry relay responses by route" - timeseries, `reqps`,
+11. "Composition cache hit ratio (me, recs)" - timeseries, `percentunit`,
+    legend `{{cache}}`:
+
+    ```promql
+    sum by (cache) (rate(vg_bff_cache_lookups_total{outcome="hit"}[5m])) / sum by (cache) (rate(vg_bff_cache_lookups_total[5m]))
+    ```
+
+12. "Browser telemetry relay responses by route" - timeseries, `reqps`,
     legend `{{http_route}} {{http_response_status_code}}`:
 
     ```promql
@@ -366,7 +372,7 @@ Feature health:
 
 Valkey:
 
-12. "Valkey client pool connections" - timeseries, `short`, legends `open` /
+13. "Valkey pool connections" - timeseries, `short`, legends `open` /
     `idle`:
 
     ```promql
@@ -374,7 +380,7 @@ Valkey:
     vg_valkeykit_pool_connections_idle{service_name="bff"}
     ```
 
-13. "Valkey pool acquire outcomes" - timeseries, `ops`, legends `hits` /
+14. "Valkey pool acquire outcomes" - timeseries, `ops`, legends `hits` /
     `misses` / `timeouts`:
 
     ```promql
@@ -383,13 +389,19 @@ Valkey:
     rate(vg_valkeykit_pool_timeouts_total{service_name="bff"}[$__rate_interval])
     ```
 
-14. "bff-valkey server memory" - timeseries, `bytes`, legend `{{service}}`:
+15. "Valkey pool reuse ratio" - timeseries, `percentunit`, legend `reuse ratio`:
+
+    ```promql
+    rate(vg_valkeykit_pool_hits_total{service_name="bff"}[5m]) / (rate(vg_valkeykit_pool_hits_total{service_name="bff"}[5m]) + rate(vg_valkeykit_pool_misses_total{service_name="bff"}[5m]))
+    ```
+
+16. "Valkey server memory" - timeseries, `bytes`, legend `used`:
 
     ```promql
     redis_memory_used_bytes{service="bff-valkey"}
     ```
 
-15. "bff-valkey evictions and clients" - timeseries, `short`, legends
+17. "Valkey evictions and clients" - timeseries, `short`, legends
     `evictions` / `clients`:
 
     ```promql
@@ -397,44 +409,60 @@ Valkey:
     redis_connected_clients{service="bff-valkey"}
     ```
 
-Runtime and pods:
+18. "Valkey keyspace hit ratio" - timeseries, `percentunit`, legend `hit ratio`:
 
-16. "Goroutines" - timeseries, `short`, legend `goroutines`:
+    ```promql
+    rate(redis_keyspace_hits_total{service="bff-valkey"}[5m]) / (rate(redis_keyspace_hits_total{service="bff-valkey"}[5m]) + rate(redis_keyspace_misses_total{service="bff-valkey"}[5m]))
+    ```
+
+19. "Valkey fail-open events by op" - timeseries, `short`, legend `{{op}}`:
+
+    ```promql
+    sum by (op) (increase(vg_bff_cache_fail_open_total[5m]))
+    ```
+
+Runtime:
+
+20. "Goroutines" - timeseries, `short`, legend `goroutines`:
 
     ```promql
     go_goroutine_count{service_name="bff"}
     ```
 
-17. "Heap used" - timeseries, `bytes`, legend `heap`:
+21. "Heap used" - timeseries, `bytes`, legend `heap`:
 
     ```promql
     go_memory_used_bytes{service_name="bff"}
     ```
 
-18. "Pod CPU" - timeseries, `short`, legend `{{pod}}`:
+Pods:
+
+22. "CPU by pod" - timeseries, `short`, legend `{{pod}}`:
 
     ```promql
-    sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", pod=~"bff.*", container!=""}[$__rate_interval]))
+    sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", container="bff"}[$__rate_interval]))
     ```
 
-19. "Pod working-set memory" - timeseries, `bytes`, legend `{{pod}}`:
+23. "Working-set memory by pod" - timeseries, `bytes`, legend `{{pod}}`:
 
     ```promql
-    sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", pod=~"bff.*", container!=""})
+    sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", container="bff"})
     ```
 
-20. "Pod restarts (15m)" - timeseries, `short`, legend `{{pod}}`:
+24. "Restarts and OOM kills by pod (15m)" - timeseries, `short`, legends
+    `restarts {{pod}}` / `oom {{pod}}`:
 
     ```promql
-    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", pod=~"bff.*"}[15m]))
+    sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace="vgkeep", container="bff"}[15m]))
+    sum by (pod) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="vgkeep", container="bff"})
     ```
 
 Logs:
 
-21. "Recent error logs" - logs panel against Loki:
+25. "Recent error and warn logs" - logs panel against Loki:
 
     ```logql
-    {service_name="bff"} | severity_text="ERROR"
+    {service_name="bff"} | severity_text=~"ERROR|WARN"
     ```
 
 ## Failure modes and triage
@@ -471,7 +499,7 @@ bff cache operation is failing open.
 ### 2. A downstream service is down
 
 The bff answers 502 `upstream_error` with the failing dependency named in the
-problem detail. Confirm which routes on the "Errors by route and status"
+problem detail. Confirm which routes on the "4xx and 5xx by route and status"
 panel, or:
 
 ```promql
@@ -548,14 +576,14 @@ sum(increase(vg_valkeykit_pool_timeouts_total{service_name="bff"}[10m]))
 The vg-bff-valkey-pool-timeouts rule fires on any nonzero value of the
 same expression. A rising miss rate on "Valkey pool acquire outcomes" without timeouts means
 the pool is churning connections (too small, or connections being dropped
-mid-life); check "Valkey client pool connections" for zero idle under load.
+mid-life); check "Valkey pool connections" for zero idle under load.
 
 ### 6. Valkey memory growth or evictions
 
 Every bff key carries a TTL, so sustained growth tracks live sessions and
 traffic. Evictions are the dangerous case: an evicted `denylist:` key
-un-revokes a token until its natural expiry. Confirm on the "bff-valkey
-server memory" and "bff-valkey evictions and clients" panels, or with:
+un-revokes a token until its natural expiry. Confirm on the "Valkey
+server memory" and "Valkey evictions and clients" panels, or with:
 
 ```promql
 rate(redis_evicted_keys_total{service="bff-valkey"}[5m]) > 0 or redis_memory_used_bytes{service="bff-valkey"} > 209715200
@@ -668,7 +696,7 @@ One replica (`replicas: 1`), stateless by construction: session state lives in
 the cookie, so scale-out needs no session affinity, and the refresh
 singleflight already coordinates across replicas through Valkey. Requests are
 `cpu: 50m, memory: 64Mi` with a 128Mi memory limit and no CPU limit;
-bff-valkey runs the same shape. Watch "Pod working-set memory" (what the OOM
+bff-valkey runs the same shape. Watch "Working-set memory by pod" (what the OOM
 killer acts on) against the 128Mi limit before raising replicas for memory
 reasons.
 
