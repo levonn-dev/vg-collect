@@ -2,6 +2,10 @@ service: bravo
 dashboard:
   uid: vg-bravo
   title: Bravo
+golden_blocks:
+  availability: 128
+sections:
+  Refresh: 40
 custom_panels:
   - |
     {"title": "Bravo refresh duration", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32}, "targets": [{"expr": "vg_bravo_refresh_seconds"}]}

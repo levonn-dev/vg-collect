@@ -198,15 +198,15 @@ func validModel() *manifest.Model {
 			},
 		},
 		Dashboards: manifest.DashTree{
-			Golden: []manifest.GoldenPanel{
-				{
-					Fragment: json.RawMessage(`{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{service}-.*\"}", "legendFormat": "{{pod}}"}]}`),
-					GridPos:  manifest.GridPos{H: 8, W: 12, X: 0, Y: 0},
-				},
+			Blocks: map[string]manifest.Block{
+				"availability": {Panels: []string{
+					`{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{service}-.*\"}", "legendFormat": "{{pod}}"}]}`,
+				}},
 			},
 			Services: []manifest.ServiceDash{
 				{
 					Service: "widget", UID: "vg-widget", Title: "Widget",
+					GoldenBlocks: map[string]int{"availability": 0},
 					CustomPanels: []json.RawMessage{
 						json.RawMessage(`{"title": "Spins", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "targets": [{"expr": "sum(rate(vg_widget_spins_count_total[5m]))"}]}`),
 						// Clean-side macro case: real dashboards write the
@@ -328,6 +328,17 @@ func TestRun_Findings(t *testing.T) {
 			wantRule:   "unknown-golden-template",
 			wantPath:   "alerts/widget.yaml",
 			wantSubstr: `unknown golden template "does-not-exist"`,
+		},
+		{
+			name: "a defined golden block that no service instantiates is flagged unused",
+			mutate: func(m *manifest.Model) {
+				m.Dashboards.Blocks["orphan"] = manifest.Block{Panels: []string{
+					`{"title": "Orphan", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up"}]}`,
+				}}
+			},
+			wantRule:   "unused-golden-block",
+			wantPath:   "dashboards/golden.yaml",
+			wantSubstr: `block "orphan" is never instantiated`,
 		},
 		{
 			name: "panel_ref malformed (no slash)",
@@ -518,7 +529,7 @@ func TestRun_Findings(t *testing.T) {
 		{
 			name: "golden panel title still has an unresolved placeholder",
 			mutate: func(m *manifest.Model) {
-				m.Dashboards.Golden[0].Fragment = json.RawMessage(`{"title": "{Svc} Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up"}]}`)
+				m.Dashboards.Blocks["availability"].Panels[0] = `{"title": "{Svc} Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up"}]}`
 			},
 			// This mutation also cascades into a second, different-rule
 			// finding (panel_ref "widget/Availability" no longer
@@ -527,7 +538,7 @@ func TestRun_Findings(t *testing.T) {
 			// that side effect does not interfere with either count or
 			// path/substring assertions.
 			wantRule:   "unresolved-placeholder",
-			wantPath:   "dashboards/golden.yaml",
+			wantPath:   "golden.yaml block availability",
 			wantSubstr: "fragment still contains {Svc}",
 		},
 		{
@@ -537,10 +548,10 @@ func TestRun_Findings(t *testing.T) {
 			// scan would never have looked.
 			name: "golden panel fragment has an unresolved placeholder outside the title (a quoted selector)",
 			mutate: func(m *manifest.Model) {
-				m.Dashboards.Golden[0].Fragment = json.RawMessage(`{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{servce}-.*\"}"}]}`)
+				m.Dashboards.Blocks["availability"].Panels[0] = `{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{servce}-.*\"}"}]}`
 			},
 			wantRule:   "unresolved-placeholder",
-			wantPath:   "dashboards/golden.yaml",
+			wantPath:   "golden.yaml block availability",
 			wantSubstr: "fragment still contains {servce}",
 		},
 		{

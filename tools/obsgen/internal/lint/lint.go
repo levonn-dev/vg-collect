@@ -24,19 +24,26 @@
 // matches regardless of that name's own prefix; only a name outside
 // both known/prefixes AND the vg_ family is silently out of scope
 // rather than a finding.
+//
+// Placeholder checks scan whole fragments, not only titles; Grafana
+// legendFormat variables ({{label}}) are stripped before the scan so
+// they never read as unsubstituted placeholders.
 package lint
 
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/expand"
 	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/manifest"
 )
 
@@ -55,19 +62,22 @@ type Finding struct {
 }
 
 // Run checks m against every rule this package owns, plus repoRoot-
-// relative content the manifest references (runbook anchors, and every
-// registered metric name via Known). Query/metric-name checks
-// (checkRuleQuery, checkPanelQuery, checkRunbookDocs) are skipped -
-// after one metric-scan-error Finding - if Known itself fails: with no
-// real known set, every one of those checks would otherwise report
-// every legitimate metric as unknown, drowning the one real problem
-// (the scan failure) in a flood of false positives. Every other check
-// (uid uniqueness, unresolved placeholders, panel_ref resolution,
-// runbook anchor existence) does not depend on Known and still runs.
+// relative content the manifest references (runbook anchors, every
+// registered metric name via Known, and the shipped dashboard files
+// under repoRoot's deploy/charts/platform/files/dashboards). Query/
+// metric-name checks (checkRuleQuery, checkPanelQuery, checkRunbookDocs,
+// checkDashboardFiles) are skipped - after one metric-scan-error
+// Finding - if Known itself fails: with no real known set, every one of
+// those checks would otherwise report every legitimate metric as
+// unknown, drowning the one real problem (the scan failure) in a flood
+// of false positives. Every other check (uid uniqueness, unresolved
+// placeholders, panel_ref resolution, runbook anchor existence) does
+// not depend on Known and still runs.
 func Run(m *manifest.Model, repoRoot string) []Finding {
 	var findings []Finding
 
 	findings = append(findings, checkGoldenTemplates(m)...)
+	findings = append(findings, checkGoldenBlocks(m)...)
 
 	items := expandItems(m)
 	findings = append(findings, checkUIDs(items, m.Alerts.Retired)...)
@@ -111,6 +121,7 @@ func Run(m *manifest.Model, repoRoot string) []Finding {
 		}
 	}
 	findings = append(findings, checkRunbookDocs(p, repoRoot, known, prefixes)...)
+	findings = append(findings, checkDashboardFiles(filepath.Join(repoRoot, "deploy/charts/platform/files/dashboards"), p, known, prefixes)...)
 
 	return findings
 }
@@ -123,8 +134,7 @@ func Run(m *manifest.Model, repoRoot string) []Finding {
 // datasource resolved against the tree default. sourcePath is the
 // manifest file the rule lives in, by the fixed convention
 // internal/manifest.Load itself reads from (this package does not
-// carry that path on the model - see substitute's doc comment on why
-// this is a third private copy of a two-line helper).
+// carry that path on the model).
 type expandedItem struct {
 	uid        string
 	title      string
@@ -155,12 +165,7 @@ func expandItems(m *manifest.Model) []expandedItem {
 	for _, svc := range m.Alerts.Services {
 		path := "alerts/" + svc.Service + ".yaml"
 
-		names := make([]string, 0, len(svc.Golden))
-		for name := range svc.Golden {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
+		for _, name := range slices.Sorted(maps.Keys(svc.Golden)) {
 			tmpl, ok := m.Alerts.Templates[name]
 			if !ok {
 				continue
@@ -193,14 +198,15 @@ func ruleItem(r manifest.Rule, treeDatasource, path string) expandedItem {
 // expandedItem tracks - here that is summary alone. An overridden
 // summary is the one override that can carry a {service}/{Service}
 // placeholder into the generated rule (summary is one of the five
-// fields substitute() ever touches; for/condition/severity are never
-// substitute()'d in expandGoldenInstance either), so building the
-// linted item from the template's own default summary instead of the
-// override actually in effect would let a typo'd override placeholder
-// (e.g. "{servce} down") reach the generated vg-rules.yaml with
-// checkPlaceholders none the wiser. for/condition/severity get no
-// equivalent treatment: an override on any of them can never introduce
-// a placeholder, and no other check in this package reads them.
+// fields expand.Substitute ever touches; for/condition/severity are
+// never touched by expand.Substitute in expandGoldenInstance either),
+// so building the linted item from the template's own default summary
+// instead of the override actually in effect would let a typo'd
+// override placeholder (e.g. "{servce} down") reach the generated
+// vg-rules.yaml with checkPlaceholders none the wiser. for/condition/
+// severity get no equivalent treatment: an override on any of them
+// can never introduce a placeholder, and no other check in this
+// package reads them.
 func goldenItem(tmpl manifest.Template, ov manifest.Overrides, service, treeDatasource, path string) expandedItem {
 	summary := tmpl.Summary
 	if ov.Summary != "" {
@@ -208,11 +214,11 @@ func goldenItem(tmpl manifest.Template, ov manifest.Overrides, service, treeData
 	}
 
 	return expandedItem{
-		uid:      substitute(tmpl.UID, service),
-		title:    substitute(tmpl.Title, service),
-		expr:     substitute(tmpl.Expr, service),
-		summary:  substitute(summary, service),
-		panelRef: substitute(tmpl.PanelRef, service),
+		uid:      expand.Substitute(tmpl.UID, service),
+		title:    expand.Substitute(tmpl.Title, service),
+		expr:     expand.Substitute(tmpl.Expr, service),
+		summary:  expand.Substitute(summary, service),
+		panelRef: expand.Substitute(tmpl.PanelRef, service),
 		// Never substituted: a runbook anchor is the same literal string
 		// for every service instantiating the template (see internal/
 		// alerts.expandGoldenInstance, which resolves runbookShort the
@@ -221,42 +227,6 @@ func goldenItem(tmpl manifest.Template, ov manifest.Overrides, service, treeData
 		datasource: treeDatasource,
 		sourcePath: path,
 	}
-}
-
-// substitute/capitalize mirror internal/dashboards' and internal/
-// alerts' identical private helpers - a third copy, following the
-// convention those two packages already established (neither shares
-// its own copy with the other; see internal/alerts/emit.go's doc
-// comment on substitute).
-func substitute(s, service string) string {
-	s = strings.ReplaceAll(s, "{Service}", displayName(service))
-	s = strings.ReplaceAll(s, "{service}", service)
-	return s
-}
-
-// serviceDisplayNames/displayName mirror internal/dashboards' and
-// internal/alerts' identical table and helper - the third copy of the
-// owner-ruled exception to capitalize's plain first-letter fallback:
-// bff is an acronym, not a plain word, so its {Service} form must
-// render "BFF", not "Bff". Add an entry here only when capitalize's
-// fallback is wrong for that service - every other service's
-// {Service} form still comes from capitalize alone.
-var serviceDisplayNames = map[string]string{
-	"bff": "BFF",
-}
-
-func displayName(service string) string {
-	if d, ok := serviceDisplayNames[service]; ok {
-		return d
-	}
-	return capitalize(service)
-}
-
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // --- uid uniqueness / retired overlap / unknown golden template --------
@@ -269,12 +239,7 @@ func capitalize(s string) string {
 func checkGoldenTemplates(m *manifest.Model) []Finding {
 	var findings []Finding
 	for _, svc := range m.Alerts.Services {
-		names := make([]string, 0, len(svc.Golden))
-		for name := range svc.Golden {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
+		for _, name := range slices.Sorted(maps.Keys(svc.Golden)) {
 			if _, ok := m.Alerts.Templates[name]; !ok {
 				findings = append(findings, Finding{
 					Path:    "alerts/" + svc.Service + ".yaml",
@@ -282,6 +247,34 @@ func checkGoldenTemplates(m *manifest.Model) []Finding {
 					Message: fmt.Sprintf("service %q instantiates unknown golden template %q", svc.Service, name),
 				})
 			}
+		}
+	}
+	return findings
+}
+
+// checkGoldenBlocks flags a dashboards/golden.yaml block that no
+// service's golden_blocks ever instantiates - authored content (or
+// content every last instantiating service has since dropped) that no
+// generated dashboard actually renders. It mirrors checkGoldenTemplates
+// from the opposite direction: that check flags a service naming a
+// template that does not exist, this one flags a block that exists but
+// nothing names.
+func checkGoldenBlocks(m *manifest.Model) []Finding {
+	used := make(map[string]bool, len(m.Dashboards.Blocks))
+	for _, sd := range m.Dashboards.Services {
+		for name := range sd.GoldenBlocks {
+			used[name] = true
+		}
+	}
+
+	var findings []Finding
+	for _, name := range slices.Sorted(maps.Keys(m.Dashboards.Blocks)) {
+		if !used[name] {
+			findings = append(findings, Finding{
+				Path:    "dashboards/golden.yaml",
+				Rule:    "unused-golden-block",
+				Message: fmt.Sprintf("block %q is never instantiated by any service's golden_blocks", name),
+			})
 		}
 	}
 	return findings
@@ -327,13 +320,13 @@ func checkUIDs(items []expandedItem, retired []manifest.RetiredUID) []Finding {
 
 // --- unresolved placeholders --------------------------------------------
 
-// placeholderRE matches a leftover {word} token: substitute only ever
-// replaces the two exact spellings "{service}"/"{Service}" via
-// strings.ReplaceAll, which is exhaustive - so if either canonical
+// placeholderRE matches a leftover {word} token: expand.Substitute
+// only ever replaces the two exact spellings "{service}"/"{Service}"
+// via strings.ReplaceAll, which is exhaustive - so if either canonical
 // spelling could still be found post-substitution, this check would
 // find nothing, ever. The real failure mode is a *misspelled* template
-// placeholder (e.g. "{Svc}", "{srv}"): substitute never touches it, so
-// it survives verbatim into the generated output. A bare {word} is
+// placeholder (e.g. "{Svc}", "{srv}"): expand.Substitute never touches
+// it, so it survives verbatim into the generated output. A bare {word} is
 // safe to flag broadly here because it does not collide with a PromQL
 // label matcher's braces (they always hold an operator, e.g.
 // "{namespace=...}", never a lone word) or, once
@@ -344,9 +337,9 @@ var placeholderRE = regexp.MustCompile(`\{[A-Za-z]+\}`)
 // grafanaLegendFormatRE matches Grafana's own {{label}} legend-format
 // template syntax: a completely different mechanism from this
 // generator's {service}/{Service} substitution (Grafana expands it
-// client-side against each query result's own labels; substitute()
-// never touches it), which real dashboards put on nearly every
-// timeseries panel target (e.g. "legendFormat": "{{pod}}",
+// client-side against each query result's own labels;
+// expand.Substitute never touches it), which real dashboards put on
+// nearly every timeseries panel target (e.g. "legendFormat": "{{pod}}",
 // "legendFormat": "{{http_route}} {{http_response_status_code}}") -
 // and which nests a single-brace-shaped span inside it, since "{{pod}}"
 // contains the exact substring "{pod}". Scanning a whole panel fragment
@@ -409,9 +402,9 @@ type panelTarget struct {
 	datasource string
 }
 
-// panelJSON decodes just enough of a verbatim Grafana panel fragment
-// (D1) to build a panelSpec. Grafana carries a datasource on the panel
-// and, independently, on each of its targets (real dashboards under
+// panelJSON decodes just enough of a verbatim Grafana panel fragment to
+// build a panelSpec. Grafana carries a datasource on the panel and,
+// independently, on each of its targets (real dashboards under
 // deploy/charts/platform/files/dashboards/ set both, to the same value
 // on a Prometheus panel and to loki on the logs panel every service
 // dashboard ends with); a target that names one overrides its panel.
@@ -452,33 +445,34 @@ func (d *datasourceRef) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// collectPanels builds every service's panel set: the shared golden
-// block (substituted per service, mirroring internal/dashboards'
-// buildAllPanels) plus that service's own custom panels (already
-// concrete). A fragment that fails to parse as JSON is silently
-// skipped here - internal/dashboards.Assemble already reports a
+// collectPanels builds every service's panel set: every golden block it
+// instantiates (substituted per service, via expand.Blocks - mirroring
+// internal/dashboards' buildAllPanels) plus that service's own custom
+// panels (already concrete). A fragment that fails to parse as JSON is
+// silently skipped here - internal/dashboards.Assemble already reports a
 // malformed fragment clearly (with the offending service and panel
-// index) the moment anyone actually runs gen, and this package's own
+// context) the moment anyone actually runs gen, and this package's own
 // job is query/anchor/uid hygiene on panels it CAN read, not JSON
 // validity.
 func collectPanels(m *manifest.Model) map[string][]panelSpec {
 	out := make(map[string][]panelSpec, len(m.Dashboards.Services))
-
 	for _, sd := range m.Dashboards.Services {
-		var panels []panelSpec
-		for _, gp := range m.Dashboards.Golden {
-			raw := substitute(string(gp.Fragment), sd.Service)
-			if spec, ok := parsePanelSpec(raw, "dashboards/golden.yaml"); ok {
-				panels = append(panels, spec)
-			}
+		out[sd.Service] = nil
+	}
+
+	for _, bp := range expand.Blocks(m) {
+		source := fmt.Sprintf("golden.yaml block %s", bp.Block)
+		if spec, ok := parsePanelSpec(bp.Fragment, source); ok {
+			out[bp.Service] = append(out[bp.Service], spec)
 		}
+	}
+	for _, sd := range m.Dashboards.Services {
 		customPath := "dashboards/" + sd.Service + ".yaml"
 		for _, raw := range sd.CustomPanels {
 			if spec, ok := parsePanelSpec(string(raw), customPath); ok {
-				panels = append(panels, spec)
+				out[sd.Service] = append(out[sd.Service], spec)
 			}
 		}
-		out[sd.Service] = panels
 	}
 	return out
 }
@@ -549,7 +543,7 @@ func checkPanelRef(it expandedItem, panels map[string][]panelSpec) []Finding {
 	}}
 }
 
-// --- query validity and names (D11) -------------------------------------
+// --- query validity and names ---------------------------------------------
 
 // metricTokenRE is the fallback scan for content that is not PromQL: a
 // LogQL rule expr, or a runbook line quoting a query inside a shell
@@ -708,7 +702,7 @@ func substituteGrafanaVars(expr string) string {
 // a no-op here in practice; using the same function as checkQueryExpr
 // regardless keeps both paths gated identically rather than relying on
 // that regex never changing). Used for a rule expr or a panel target
-// resolved to any datasource other than "prometheus" (D11) and, via
+// resolved to any datasource other than "prometheus" and, via
 // checkRunbookBlock, for any runbook fenced block that does not parse
 // as PromQL at all.
 func checkQueryTokens(text, path, context string, known map[string]struct{}, prefixes []string) []Finding {

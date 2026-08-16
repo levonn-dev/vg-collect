@@ -32,10 +32,10 @@ type AlertTree struct {
 	Retired                []RetiredUID
 }
 
-// DashTree is the dashboard half of the model: the shared golden panel
-// block and every service's dashboard file.
+// DashTree is the dashboard half of the model: the shared golden blocks
+// and every service's dashboard file.
 type DashTree struct {
-	Golden   []GoldenPanel
+	Blocks   map[string]Block
 	Services []ServiceDash
 }
 
@@ -126,8 +126,11 @@ type RetiredUID struct {
 
 // GridPos is a Grafana panel's position and size on its dashboard grid,
 // using the same field names Grafana's own panel JSON does. It is always
-// populated by parsing a panel fragment's own JSON (see loadDashGolden),
-// never decoded from yaml directly, so it carries json tags only.
+// populated by parsing a panel fragment's own JSON - at Load time, to
+// validate a golden block panel's geometry (see loadDashGolden), and
+// again at assembly time, to sort and offset every panel's position
+// (see internal/dashboards) - never decoded from yaml directly, so it
+// carries json tags only.
 type GridPos struct {
 	H int `json:"h"`
 	W int `json:"w"`
@@ -135,21 +138,36 @@ type GridPos struct {
 	Y int `json:"y"`
 }
 
-// GoldenPanel is one entry in dashboards/golden.yaml's shared panel block:
-// a verbatim Grafana panel JSON fragment (with {service}/{Service}
-// placeholders for generation to substitute) and the fixed grid position
-// every instantiation of it uses.
-type GoldenPanel struct {
-	Fragment json.RawMessage
-	GridPos  GridPos
+// Block is one named entry in dashboards/golden.yaml's blocks map: a
+// group of verbatim Grafana panel JSON fragments (with {service}/
+// {Service} placeholders for generation to substitute) sharing one
+// gridPos.y coordinate space. Each fragment's own gridPos.y is
+// block-relative - an offset from whatever y anchor a service's
+// golden_blocks entry gives the block - rather than the panel's final
+// absolute position on any one dashboard, so the same block can be
+// instantiated at a different height on a service whose own custom
+// panels take up more or less room.
+type Block struct {
+	Panels []string `yaml:"panels"`
 }
 
 // ServiceDash is one service's dashboard file: its historical uid and
-// title (flattened here from the manifest's nested dashboard: block) plus
-// whatever custom panels it defines beyond the golden block.
+// title (flattened here from the manifest's nested dashboard: block),
+// the golden blocks it instantiates (block name -> the y anchor its
+// panels are offset from, flattened from golden_blocks:), the section
+// rows it declares (section title -> the literal y anchor the generator
+// places that row panel at, flattened from sections:), plus whatever
+// custom panels it defines beyond those blocks. Sections is nil for a
+// service that declares no sections: key at all - that is a valid,
+// ordinary dashboard, not an error; a service adopts row-pinned,
+// compaction-stable layout by declaring its first section, not by any
+// separate opt-in flag (see internal/dashboards.Assemble, which gates
+// its stability enforcement on len(Sections) > 0).
 type ServiceDash struct {
 	Service      string
 	UID          string
 	Title        string
+	GoldenBlocks map[string]int
+	Sections     map[string]int
 	CustomPanels []json.RawMessage
 }

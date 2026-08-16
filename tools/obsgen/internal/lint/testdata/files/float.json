@@ -1,0 +1,8 @@
+{
+  "panels": [
+    { "id": 1, "type": "row", "title": "Section", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [] },
+    { "id": 2, "type": "timeseries", "title": "Left", "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 } },
+    { "id": 3, "type": "timeseries", "title": "Right", "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 } },
+    { "id": 4, "type": "timeseries", "title": "Floater", "gridPos": { "h": 8, "w": 8, "x": 8, "y": 9 } }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Not a row",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "panels": [
+        { "id": 2, "type": "timeseries", "title": "Hidden child", "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 } }
+      ]
+    }
+  ]
+}

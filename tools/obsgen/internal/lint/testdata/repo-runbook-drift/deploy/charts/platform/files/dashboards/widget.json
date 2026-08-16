@@ -1,0 +1,5 @@
+{
+  "panels": [
+    { "id": 1, "type": "timeseries", "title": "Widget requests", "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 } }
+  ]
+}

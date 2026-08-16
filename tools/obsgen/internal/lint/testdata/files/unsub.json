@@ -1,0 +1,13 @@
+{
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Fail-open events",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(vg_{service}_cache_fail_open_total[5m]))" }
+      ]
+    }
+  ]
+}

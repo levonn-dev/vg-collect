@@ -143,13 +143,14 @@ func templates() map[string]manifest.Template {
 			Summary:      "{service} (or one of its datastores) cannot tolerate any pod disruption",
 			Runbook:      "stack.md#pdb-exhausted",
 			// no PanelRef: proves a golden-template instantiation with no
-			// panel_ref gains no D10 annotations, same as a custom rule.
+			// panel_ref gains no dashboard-link annotations, same as a
+			// custom rule.
 		},
 	}
 }
 
 // fixtureModel builds a two-service (alpha, bravo), two-cluster-rule
-// manifest exercising every ordering and D10 rule Emit owns:
+// manifest exercising every ordering and dashboard-link rule Emit owns:
 //   - cluster rules before any service, in their own manifest order
 //     (vg-pod-churn then vg-node-pressure - reversed from alphabetical,
 //     so an accidental alpha-sort would be caught).
@@ -170,14 +171,15 @@ func templates() map[string]manifest.Template {
 //     four permitted override fields is exercised at least once, and at
 //     least one field per case is deliberately left at the template
 //     default to prove overrides are field-by-field, not all-or-nothing.
-//   - D10 both ways on both rule origins: alpha's availability
-//     instantiation and alpha's queue-backlog custom rule both carry a
-//     panel_ref (golden-derived and custom-derived positive cases);
-//     alpha's pdb_budget instantiation and alpha's error-rate custom
-//     rule both omit one (golden-derived and custom-derived negative
-//     cases). bravo's availability instantiation is a second positive
-//     case on a second service, proving dashboardUid varies per service
-//     rather than being hardcoded.
+//   - the dashboard-link annotations appear both ways, on both rule
+//     origins: alpha's availability instantiation and alpha's
+//     queue-backlog custom rule both carry a panel_ref (golden-derived
+//     and custom-derived positive cases); alpha's pdb_budget
+//     instantiation and alpha's error-rate custom rule both omit one
+//     (golden-derived and custom-derived negative cases). bravo's
+//     availability instantiation is a second positive case on a second
+//     service, proving dashboardUid varies per service rather than
+//     being hardcoded.
 //   - two retired uids in a deliberately non-alphabetical order
 //     (old-thing-2 before old-thing-1), proving deleteRules preserves
 //     manifest order rather than sorting.
@@ -285,9 +287,9 @@ func fixtureIndex() dashboards.PanelIndex {
 }
 
 // TestEmit_ComprehensiveFixture builds both dashboards from fixtureModel
-// and checks every ordering/override/D10/deleteRules behavior Emit owns
-// structurally before comparing the emitted bytes against the committed
-// golden file.
+// and checks every ordering/override/dashboard-link-annotation/
+// deleteRules behavior Emit owns structurally before comparing the
+// emitted bytes against the committed golden file.
 func TestEmit_ComprehensiveFixture(t *testing.T) {
 	m := fixtureModel()
 	idx := fixtureIndex()
@@ -371,31 +373,32 @@ func TestEmit_ComprehensiveFixture(t *testing.T) {
 		t.Errorf("bravo availability: summary override not applied/substituted:\n%s", bravoBlock)
 	}
 
-	// D10 positive cases: golden-derived (alpha-down) and custom-derived
-	// (alpha-queue-backlog) both carry panel_ref and must gain both
-	// annotations, on the exact ids/uids fixtureIndex assigns.
+	// Positive cases for the dashboard-link annotations: golden-derived
+	// (alpha-down) and custom-derived (alpha-queue-backlog) both carry
+	// panel_ref and must gain both annotations, on the exact ids/uids
+	// fixtureIndex assigns.
 	alphaDown := ruleBlock(t, doc, "vg-alpha-down")
 	if !strings.Contains(alphaDown, "__dashboardUid__: vg-alpha") || !strings.Contains(alphaDown, `__panelId__: "1"`) {
-		t.Errorf("alpha-down: missing/wrong D10 annotations:\n%s", alphaDown)
+		t.Errorf("alpha-down: missing/wrong dashboard-link annotations:\n%s", alphaDown)
 	}
 	queueBacklog := ruleBlock(t, doc, "vg-alpha-queue-backlog")
 	if !strings.Contains(queueBacklog, "__dashboardUid__: vg-alpha") || !strings.Contains(queueBacklog, `__panelId__: "2"`) {
-		t.Errorf("alpha-queue-backlog: missing/wrong D10 annotations:\n%s", queueBacklog)
+		t.Errorf("alpha-queue-backlog: missing/wrong dashboard-link annotations:\n%s", queueBacklog)
 	}
 	bravoDown := ruleBlock(t, doc, "vg-bravo-down")
 	if !strings.Contains(bravoDown, "__dashboardUid__: vg-bravo") || !strings.Contains(bravoDown, `__panelId__: "1"`) {
-		t.Errorf("bravo-down: missing/wrong D10 annotations (dashboardUid must vary per service):\n%s", bravoDown)
+		t.Errorf("bravo-down: missing/wrong dashboard-link annotations (dashboardUid must vary per service):\n%s", bravoDown)
 	}
 
-	// D10 negative cases: no panel_ref means neither annotation appears
-	// at all, golden-derived (pdb-exhausted) and custom-derived
-	// (error-rate).
+	// Negative cases for the dashboard-link annotations: no panel_ref
+	// means neither annotation appears at all, golden-derived
+	// (pdb-exhausted) and custom-derived (error-rate).
 	if strings.Contains(pdbBlock, "__dashboardUid__") || strings.Contains(pdbBlock, "__panelId__") {
-		t.Errorf("alpha-pdb-exhausted has no panel_ref; must gain no D10 annotations:\n%s", pdbBlock)
+		t.Errorf("alpha-pdb-exhausted has no panel_ref; must gain no dashboard-link annotations:\n%s", pdbBlock)
 	}
 	errRate := ruleBlock(t, doc, "vg-alpha-error-rate")
 	if strings.Contains(errRate, "__dashboardUid__") || strings.Contains(errRate, "__panelId__") {
-		t.Errorf("alpha-error-rate has no panel_ref; must gain no D10 annotations:\n%s", errRate)
+		t.Errorf("alpha-error-rate has no panel_ref; must gain no dashboard-link annotations:\n%s", errRate)
 	}
 
 	// runbook expansion: short form -> canonical GitHub blob URL prefix.
@@ -460,13 +463,13 @@ func ruleBlock(t *testing.T, doc, uid string) string {
 	return rest[:end+1]
 }
 
-// TestEmit_WithRealAssemble proves the genuine cross-package D10 handoff:
-// dashboards.Assemble's own PanelIndex (not a hand-typed one) feeds
-// alerts.Emit, so the panel id and dashboard uid an alert's annotations
-// carry are exactly what the same manifest's dashboard assembly actually
-// produced, from the same pass - the property D10's design record and
-// PanelIndex's own doc comment ("the two can never drift apart") both
-// depend on.
+// TestEmit_WithRealAssemble proves the real cross-package handoff for
+// the dashboard-link annotations: dashboards.Assemble's own PanelIndex
+// (not a hand-typed one) feeds alerts.Emit, so the panel id and
+// dashboard uid an alert's annotations carry are exactly what the same
+// manifest's dashboard assembly actually produced, from the same pass -
+// the property PanelIndex's own doc comment ("the two can never drift
+// apart") depends on.
 func TestEmit_WithRealAssemble(t *testing.T) {
 	m := &manifest.Model{
 		Alerts: manifest.AlertTree{
@@ -478,18 +481,14 @@ func TestEmit_WithRealAssemble(t *testing.T) {
 			},
 		},
 		Dashboards: manifest.DashTree{
-			Golden: []manifest.GoldenPanel{
-				{
-					Fragment: []byte(`{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{service}-.*\"}"}]}`),
-					GridPos:  manifest.GridPos{H: 8, W: 12, X: 0, Y: 0},
-				},
-				{
-					Fragment: []byte(`{"title": "{Service} request rate", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "targets": [{"expr": "sum(rate(vg_{service}_requests_total[5m]))"}]}`),
-					GridPos:  manifest.GridPos{H: 8, W: 12, X: 12, Y: 0},
-				},
+			Blocks: map[string]manifest.Block{
+				"shared": {Panels: []string{
+					`{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{service}-.*\"}"}]}`,
+					`{"title": "{Service} request rate", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "targets": [{"expr": "sum(rate(vg_{service}_requests_total[5m]))"}]}`,
+				}},
 			},
 			Services: []manifest.ServiceDash{
-				{Service: "charlie", UID: "vg-charlie", Title: "Charlie"},
+				{Service: "charlie", UID: "vg-charlie", Title: "Charlie", GoldenBlocks: map[string]int{"shared": 0}},
 			},
 		},
 	}

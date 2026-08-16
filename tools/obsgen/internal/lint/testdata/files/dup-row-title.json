@@ -1,0 +1,6 @@
+{
+  "panels": [
+    { "id": 1, "type": "row", "title": "Same section", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [] },
+    { "id": 2, "type": "row", "title": "Same section", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 1 }, "collapsed": false, "panels": [] }
+  ]
+}

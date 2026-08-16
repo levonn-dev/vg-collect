@@ -1,0 +1,5 @@
+{
+  "panels": [
+    { "id": 1, "type": "timeseries", "title": "Wide panel", "gridPos": { "h": 4, "w": 8, "x": 20, "y": 0 } }
+  ]
+}

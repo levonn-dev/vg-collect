@@ -85,12 +85,13 @@ tasks:
   # applies it. helm lint is check-only (no autofix), so it runs in both.
 
   lint:
-    desc: 'Verify everything: golangci-lint (incl. gofmt/goimports) per module + helm lint + frontend eslint. The CI gate.'
+    desc: 'Verify everything: golangci-lint (incl. gofmt/goimports) per module + helm lint + frontend eslint + obsgen lint. The CI gate.'
     cmds:
       - for: { var: GO_MODULES, as: MOD }
         cmd: cd {{.MOD}} && golangci-lint run ./...
       - task: lint:helm
       - task: frontend:lint
+      - task: lint:obs
 
   lint:fix:
     desc: 'Auto-fix what is fixable: golangci-lint --fix (formatting + lint) per module + frontend eslint --fix; helm lint runs too (check-only, no autofix).'
@@ -116,7 +117,7 @@ tasks:
       - test ! -d deploy/charts || for charts in deploy/charts/*/; do helm lint "$charts" || exit 1; done
 
   lint:obs:
-    desc: 'obsgen lint against deploy/observability/: uid uniqueness, panel_ref resolution, runbook anchors, and PromQL metric names (D11). Runs inside `task check`, after build so services/libs/go at least parse.'
+    desc: 'obsgen lint against deploy/observability/: uid uniqueness, panel_ref resolution, runbook anchors, and PromQL metric names, including a TypeScript scan of frontend/src for browser-telemetry registrations. A syntax-only scan (no build needed first); runs as part of `task lint` (the CI gate) and `task check`.'
     cmds:
       - cd tools/obsgen && go run . lint ../../deploy/observability ../..
 
@@ -192,11 +193,10 @@ tasks:
   # ---------------------------- check / clean ----------------------------
 
   check:
-    desc: 'Pre-commit gate: lint (incl. formatting) + build + obsgen lint + full test suite (needs Docker for the integration tests). Non-mutating. (CI additionally enforces the 80% coverage gate via test:cover and codegen drift via gen.)'
+    desc: 'Pre-commit gate: lint (incl. formatting + obsgen lint) + build + full test suite (needs Docker for the integration tests). Non-mutating. (CI additionally enforces the 80% coverage gate via test:cover and codegen drift via gen.)'
     cmds:
       - task: lint
       - task: build
-      - task: lint:obs
       - task: test
 
   clean:

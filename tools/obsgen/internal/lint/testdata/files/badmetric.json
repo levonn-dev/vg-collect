@@ -1,0 +1,13 @@
+{
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Nonexistent series",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "rate(vg_nonexistent_series_total[5m])" }
+      ]
+    }
+  ]
+}

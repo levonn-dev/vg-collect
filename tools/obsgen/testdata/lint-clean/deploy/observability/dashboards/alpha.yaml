@@ -2,4 +2,6 @@ service: alpha
 dashboard:
   uid: vg-alpha
   title: Alpha
+golden_blocks:
+  availability: 0
 custom_panels: []

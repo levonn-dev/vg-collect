@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/grid"
 )
 
 // alertsGoldenFile is alerts/golden.yaml's exact shape: the shared group,
@@ -28,17 +32,22 @@ type clusterFile struct {
 	Alerts []Rule `yaml:"alerts"`
 }
 
-// dashGoldenFile is dashboards/golden.yaml's exact shape: a bare list of
-// verbatim Grafana panel JSON fragments, the same shape a service file's
-// own custom_panels list uses (real Grafana panel JSON carries gridPos as
-// one of its own keys, not a sibling manifest field - see e.g. any panel in
+// dashGoldenFile is dashboards/golden.yaml's exact shape: a map of named
+// blocks, each a group of verbatim Grafana panel JSON fragments (the
+// same shape a service file's own custom_panels list uses - real Grafana
+// panel JSON carries gridPos as one of its own keys, not a sibling
+// manifest field, see e.g. any panel in
 // deploy/charts/platform/files/dashboards/*.json).
 type dashGoldenFile struct {
-	Panels []string `yaml:"panels"`
+	Blocks map[string]Block `yaml:"blocks"`
 }
 
 // serviceDashFile is dashboards/<service>.yaml's exact shape; its nested
 // dashboard.uid/dashboard.title flatten onto ServiceDash once decoded.
+// GoldenBlocks is optional - a service that instantiates no golden block
+// simply omits golden_blocks:, decoding to a nil map, not an error.
+// Sections is likewise optional - a service that declares no sections
+// simply omits sections:, decoding to a nil map (see ServiceDash.Sections).
 // CustomPanels decodes as []string rather than []json.RawMessage directly:
 // yaml.v3 has no built-in conversion from a scalar node to a []byte-shaped
 // type, so Load converts each entry once the strict decode succeeds.
@@ -48,7 +57,9 @@ type serviceDashFile struct {
 		UID   string `yaml:"uid"`
 		Title string `yaml:"title"`
 	} `yaml:"dashboard"`
-	CustomPanels []string `yaml:"custom_panels"`
+	GoldenBlocks map[string]int `yaml:"golden_blocks"`
+	Sections     map[string]int `yaml:"sections"`
+	CustomPanels []string       `yaml:"custom_panels"`
 }
 
 // Load reads every manifest file under dir (deploy/observability by
@@ -97,6 +108,13 @@ func Load(dir string) (*Model, error) {
 	dashServices, dashErrs := loadServiceDash(dir, golden.Services)
 	errs = append(errs, dashErrs...)
 
+	if len(dashErrs) == 0 {
+		errs = append(errs, validateSections(dashServices)...)
+		if err == nil {
+			errs = append(errs, validateGoldenBlockRefs(dashGolden, dashServices)...)
+		}
+	}
+
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
@@ -112,7 +130,7 @@ func Load(dir string) (*Model, error) {
 			Retired:                retired,
 		},
 		Dashboards: DashTree{
-			Golden:   dashGolden,
+			Blocks:   dashGolden,
 			Services: dashServices,
 		},
 	}, nil
@@ -243,11 +261,14 @@ func checkUIDs(cluster []Rule, services []loadedServiceAlerts, retired []Retired
 	return errs
 }
 
-// loadDashGolden reads dashboards/golden.yaml and, for each panel fragment,
-// pulls its gridPos out into GoldenPanel's own field alongside the verbatim
-// fragment - a convenience the loader can offer once here rather than every
-// downstream reader re-parsing the same shared fragment's JSON on its own.
-func loadDashGolden(dir string) ([]GoldenPanel, error) {
+// loadDashGolden reads dashboards/golden.yaml and validates every block's
+// panels: each block must declare at least one panel, and every panel
+// fragment must parse as JSON with a complete, in-bounds gridPos (all of
+// h/w/x/y present, x >= 0, y >= 0, w > 0, h > 0, x+w <= 24 - Grafana's
+// grid is 24 columns wide). Blocks are validated in sorted name order so
+// a multi-block error's joined output is deterministic rather than
+// following Go's randomized map iteration.
+func loadDashGolden(dir string) (map[string]Block, error) {
 	rel := filepath.Join("dashboards", "golden.yaml")
 	var f dashGoldenFile
 	if err := decodeFile(dir, rel, &f); err != nil {
@@ -255,24 +276,60 @@ func loadDashGolden(dir string) ([]GoldenPanel, error) {
 	}
 
 	var errs []error
-	panels := make([]GoldenPanel, len(f.Panels))
-	for i, raw := range f.Panels {
-		var shape struct {
-			GridPos GridPos `json:"gridPos"`
-		}
-		if err := json.Unmarshal([]byte(raw), &shape); err != nil {
-			errs = append(errs, fmt.Errorf("parsing %s: panel %d: %w", rel, i, err))
+	for _, name := range slices.Sorted(maps.Keys(f.Blocks)) {
+		block := f.Blocks[name]
+		if len(block.Panels) == 0 {
+			errs = append(errs, fmt.Errorf("parsing %s: block %q has no panels", rel, name))
 			continue
 		}
-		panels[i] = GoldenPanel{
-			Fragment: json.RawMessage(raw),
-			GridPos:  shape.GridPos,
+		for i, raw := range block.Panels {
+			if err := validateBlockPanelGeometry(raw); err != nil {
+				errs = append(errs, fmt.Errorf("parsing %s: block %q panel %d: %w", rel, name, i, err))
+			}
 		}
 	}
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
-	return panels, nil
+	return f.Blocks, nil
+}
+
+// validateBlockPanelGeometry parses raw as JSON and checks its gridPos:
+// present, complete (h, w, x, y all set - an omitted field is distinct
+// from an explicit zero, so this decodes gridPos as a raw key set before
+// reading it as GridPos), and within Grafana's 24-column grid. Bounds
+// checking itself is internal/grid.Check's own job - reused here as a
+// single-Rect call rather than a second, hand-rolled copy of its five
+// clauses, so the two can never silently drift apart.
+func validateBlockPanelGeometry(raw string) error {
+	var shape struct {
+		GridPos json.RawMessage `json:"gridPos"`
+	}
+	if err := json.Unmarshal([]byte(raw), &shape); err != nil {
+		return fmt.Errorf("not valid json: %w", err)
+	}
+	if len(shape.GridPos) == 0 {
+		return errors.New("missing gridPos")
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(shape.GridPos, &fields); err != nil {
+		return fmt.Errorf("gridPos: %w", err)
+	}
+	for _, k := range [...]string{"h", "w", "x", "y"} {
+		if _, ok := fields[k]; !ok {
+			return fmt.Errorf("gridPos missing %q", k)
+		}
+	}
+
+	var gp GridPos
+	if err := json.Unmarshal(shape.GridPos, &gp); err != nil {
+		return fmt.Errorf("gridPos: %w", err)
+	}
+	if v := grid.Check([]grid.Rect{{X: gp.X, Y: gp.Y, W: gp.W, H: gp.H}}); len(v) > 0 {
+		return fmt.Errorf("gridPos out of bounds: %s", v[0].Detail)
+	}
+	return nil
 }
 
 // loadServiceDash reads dashboards/<service>.yaml for every service the
@@ -298,8 +355,69 @@ func loadServiceDash(dir string, roster []string) ([]ServiceDash, []error) {
 			Service:      f.Service,
 			UID:          f.Dashboard.UID,
 			Title:        f.Dashboard.Title,
+			GoldenBlocks: f.GoldenBlocks,
+			Sections:     f.Sections,
 			CustomPanels: panels,
 		})
 	}
 	return out, errs
+}
+
+// validateSections validates every service's sections entries: each
+// title (the map key) must be non-empty, and each anchor (the y
+// coordinate the generator places that section's row panel at) must not
+// be negative. The two clauses run independently rather than the second
+// short-circuiting on the first: a single entry can fail both at once
+// (an empty title with a negative anchor), and the loader's joined-error
+// style surfaces every distinct problem it finds in one pass everywhere
+// else, so this validation does not get to stop early either. Uniqueness
+// needs no check of its own - two sections sharing a title cannot exist
+// in the first place, since Sections is a Go map keyed on title.
+// Services are walked in their own (already roster-ordered) slice
+// order, and each service's own section titles in sorted order, so a
+// multi-service error's joined output is deterministic rather than
+// following Go's randomized map iteration - the same discipline
+// validateGoldenBlockRefs already follows for golden_blocks.
+func validateSections(services []ServiceDash) []error {
+	var errs []error
+	for _, sd := range services {
+		rel := filepath.Join("dashboards", sd.Service+".yaml")
+		for _, title := range slices.Sorted(maps.Keys(sd.Sections)) {
+			if title == "" {
+				errs = append(errs, fmt.Errorf("%s: sections: empty section title", rel))
+			}
+			if anchor := sd.Sections[title]; anchor < 0 {
+				errs = append(errs, fmt.Errorf("%s: sections: section %q: negative anchor %d", rel, title, anchor))
+			}
+		}
+	}
+	return errs
+}
+
+// validateGoldenBlockRefs validates every service's golden_blocks entries
+// against the blocks dashboards/golden.yaml actually defines: each key
+// must name a defined block, and each anchor (the y coordinate the
+// block's panels are offset from) must not be negative. Named for the
+// direction it checks (a reference exists) rather than internal/lint's
+// same-shaped but opposite-direction checkGoldenBlocks (a block is
+// referenced), so the two are never mistaken for each other. Services
+// are walked in their own (already roster-ordered) slice order, and
+// each service's own golden_blocks keys in sorted order, so a
+// multi-service error's joined output is deterministic rather than
+// following Go's randomized map iteration.
+func validateGoldenBlockRefs(golden map[string]Block, services []ServiceDash) []error {
+	var errs []error
+	for _, sd := range services {
+		rel := filepath.Join("dashboards", sd.Service+".yaml")
+		for _, name := range slices.Sorted(maps.Keys(sd.GoldenBlocks)) {
+			if _, ok := golden[name]; !ok {
+				errs = append(errs, fmt.Errorf("%s: golden_blocks: undefined block %q", rel, name))
+				continue
+			}
+			if anchor := sd.GoldenBlocks[name]; anchor < 0 {
+				errs = append(errs, fmt.Errorf("%s: golden_blocks: block %q: negative anchor %d", rel, name, anchor))
+			}
+		}
+	}
+	return errs
 }

@@ -11,8 +11,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/dashboards"
+	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/expand"
 	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/manifest"
 )
 
@@ -65,7 +67,7 @@ type expandedRule struct {
 	severity        string
 	summary         string
 	runbookShort    string
-	panelRef        string // "" means no D10 annotations
+	panelRef        string // "" means no dashboard-link annotations
 	datasource      string // refId A's datasourceUid, already resolved against the tree default
 }
 
@@ -78,8 +80,8 @@ type expandedRule struct {
 // entirely when there are none, matching today's file). idx is
 // dashboards.Assemble's own PanelIndex output for the same m - a rule
 // with a non-empty panel_ref gains __dashboardUid__/__panelId__
-// annotations resolved against it and m.Dashboards.Services (D10); a
-// rule with no panel_ref gains neither. Emit is a pure function of its
+// annotations resolved against it and m.Dashboards.Services; a rule
+// with no panel_ref gains neither. Emit is a pure function of its
 // two arguments: calling it twice on the same inputs produces
 // byte-identical output.
 func Emit(m *manifest.Model, idx dashboards.PanelIndex) ([]byte, error) {
@@ -168,13 +170,7 @@ func expandRules(m *manifest.Model) ([]expandedRule, []error) {
 	}
 
 	for _, svc := range m.Alerts.Services {
-		names := make([]string, 0, len(svc.Golden))
-		for name := range svc.Golden {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-
-		for _, name := range names {
+		for _, name := range slices.Sorted(maps.Keys(svc.Golden)) {
 			er, err := expandGoldenInstance(m.Alerts.Templates[name], svc.Golden[name], svc.Service, treeDatasource)
 			if err != nil {
 				errs = append(errs, err)
@@ -270,7 +266,7 @@ func expandGoldenInstance(tmpl manifest.Template, ov manifest.Overrides, service
 		summary = ov.Summary
 	}
 
-	uid := substitute(tmpl.UID, service)
+	uid := expand.Substitute(tmpl.UID, service)
 	op, val, err := splitCondition(uid, condition)
 	if err != nil {
 		return expandedRule{}, err
@@ -278,8 +274,8 @@ func expandGoldenInstance(tmpl manifest.Template, ov manifest.Overrides, service
 
 	return expandedRule{
 		uid:             uid,
-		title:           substitute(tmpl.Title, service),
-		expr:            substitute(tmpl.Expr, service),
+		title:           expand.Substitute(tmpl.Title, service),
+		expr:            expand.Substitute(tmpl.Expr, service),
 		conditionOp:     op,
 		conditionValue:  val,
 		instant:         tmpl.Instant,
@@ -288,52 +284,11 @@ func expandGoldenInstance(tmpl manifest.Template, ov manifest.Overrides, service
 		noDataState:     tmpl.NoDataState,
 		execErrState:    tmpl.ExecErrState,
 		severity:        severity,
-		summary:         substitute(summary, service),
+		summary:         expand.Substitute(summary, service),
 		runbookShort:    tmpl.Runbook,
-		panelRef:        substitute(tmpl.PanelRef, service),
+		panelRef:        expand.Substitute(tmpl.PanelRef, service),
 		datasource:      treeDatasource,
 	}, nil
-}
-
-// substitute replaces {Service}/{service} placeholders (capitalized and
-// lowercase forms) with service, wherever they appear in s - a
-// template's uid, title, expr, summary or panel_ref. Mirrors
-// internal/dashboards' identical private helper; not shared, since that
-// one is unexported to its own package and the two generator halves
-// otherwise share no code.
-func substitute(s, service string) string {
-	s = strings.ReplaceAll(s, "{Service}", displayName(service))
-	s = strings.ReplaceAll(s, "{service}", service)
-	return s
-}
-
-// serviceDisplayNames overrides capitalize's plain first-letter
-// fallback for a service whose {Service} form is not just its name
-// capitalized: bff is an acronym, not a plain word, so it must render
-// "BFF", not "Bff" - the owner ruling this table exists for. Mirrors
-// internal/dashboards' and internal/lint's identical tables; add an
-// entry here only when capitalize's fallback is wrong for that service
-// - every other service's {Service} form still comes from capitalize
-// alone.
-var serviceDisplayNames = map[string]string{
-	"bff": "BFF",
-}
-
-// displayName resolves service's {Service} form: serviceDisplayNames'
-// override if one exists, else capitalize's plain fallback. Mirrors
-// internal/dashboards' and internal/lint's identical private helper.
-func displayName(service string) string {
-	if d, ok := serviceDisplayNames[service]; ok {
-		return d
-	}
-	return capitalize(service)
-}
-
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // splitCondition parses a manifest condition string ("lt 1", "gt 0.05")
@@ -370,12 +325,12 @@ func rangeSeconds(uid, rangeStr string) (int, error) {
 }
 
 // resolvePanelLink splits ref's "service/title" shape and resolves it
-// against idx (D10's panel id source) and dashUIDs (the service's
-// dashboard uid, from m.Dashboards.Services) - both checked explicitly
-// so a panel_ref that Assemble would also have rejected, or one that
-// simply names a service dashUIDs has no entry for, fails Emit loudly
-// too rather than silently emitting an annotation with a blank or
-// missing field.
+// against idx (the panel id source for the dashboard-link annotations)
+// and dashUIDs (the service's dashboard uid, from m.Dashboards.Services)
+// - both checked explicitly so a panel_ref that Assemble would also
+// have rejected, or one that simply names a service dashUIDs has no
+// entry for, fails Emit loudly too rather than silently emitting an
+// annotation with a blank or missing field.
 func resolvePanelLink(uid, ref string, idx dashboards.PanelIndex, dashUIDs map[string]string) (dashboardUID string, panelID int, err error) {
 	service, title, ok := strings.Cut(ref, "/")
 	if !ok {
@@ -404,8 +359,8 @@ func resolvePanelLink(uid, ref string, idx dashboards.PanelIndex, dashUIDs map[s
 // datasourceUid always __expr__ regardless of er.datasource - it names
 // Grafana's server-side expression engine, never a real data source),
 // condition: C, noDataState/execErrState/for/labels verbatim, and
-// annotations (summary, runbook_url, plus D10's two annotations when
-// er.panelRef is set).
+// annotations (summary, runbook_url, plus the two dashboard-link
+// annotations when er.panelRef is set).
 func ruleNode(er expandedRule, idx dashboards.PanelIndex, dashUIDs map[string]string) (*yaml.Node, error) {
 	dataA := mapNode(
 		strNode("refId"), strNode("A"),

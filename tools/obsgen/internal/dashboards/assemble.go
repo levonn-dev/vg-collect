@@ -1,10 +1,20 @@
 // Package dashboards assembles the per-service Grafana dashboard JSON
-// files from a loaded observability manifest: the shared golden panel
-// block plus each service's own custom panels, with generator-assigned
-// panel ids and alert-threshold projection onto panel_ref'd panels.
-// Writing the result to its destination path is a later concern; this
-// package only builds the bytes and the panel index alert emission needs
-// to derive its own dashboard-link annotations from the same pass.
+// files from a loaded observability manifest: every golden block a
+// service instantiates (each panel's y offset by that service's own
+// anchor), its own custom panels, and one full-width row panel per
+// section it declares (pinned at a literal y anchor, titled from the
+// manifest with no substitution, carrying no children) - laid out in
+// (gridPos.y, gridPos.x) order with generator-assigned panel ids and
+// alert-threshold projection onto panel_ref'd panels. A row's title
+// never enters the panel index or the panel_ref-resolution map: rows
+// are grid items for layout purposes only, never addressable content
+// (see stagedPanel.isRow). Writing the result to its destination path is
+// a later concern; this package only builds the bytes and the panel
+// index alert emission needs to derive its own dashboard-link
+// annotations from the same pass.
+//
+// Projected threshold steps always start with Grafana's implicit null
+// base step so hand-set and generated thresholds render identically.
 package dashboards
 
 import (
@@ -12,10 +22,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/expand"
+	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/grid"
 	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/manifest"
 )
 
@@ -78,12 +92,13 @@ type dashboardTemplating struct {
 // built is Assemble's working state between its three phases: every
 // service's panels, still mutable (orderedMap, not yet marshaled) so
 // threshold injection can modify one before the final pass, plus the
-// title order each service's panels were assembled in (id assignment
-// order) and the index every assigned id landed in.
+// (gridPos.y, gridPos.x) assembly order each service's panels landed in
+// (content and row panels alike, in final marshal order) and the index
+// every assigned id landed in.
 type built struct {
-	panels map[string]map[string]*orderedMap // service -> title -> panel
-	order  map[string][]string               // service -> titles, assembly order
-	idx    PanelIndex
+	panels map[string]map[string]*orderedMap // service -> title -> panel; a row's title never enters this map, so panel_ref can never resolve to one
+	order  map[string][]stagedPanel          // service -> panels (content + rows) in final marshal order
+	idx    PanelIndex                        // content panels only; a row never gets a PanelIndex entry
 }
 
 // Assemble builds one dashboard JSON file per service in m.Dashboards,
@@ -113,27 +128,93 @@ func Assemble(m *manifest.Model) (map[string][]byte, PanelIndex, error) {
 	return files, b.idx, nil
 }
 
+// stagedPanel is one service's panel mid-layout: parsed into a mutable
+// orderedMap, with its title and final (already anchor-offset, for a
+// block panel) gridPos already known, but not yet assigned a generator
+// id - that happens only after every one of a service's panels is
+// staged and sorted, see buildAllPanels. isRow marks a section row
+// panel: it goes through the same (gridPos.y, gridPos.x) sort and id
+// assignment as any other staged panel, but its title is never recorded
+// in the panel index or the panel_ref-resolution map (see
+// buildAllPanels' post-sort loop) - a row is a layout element, not
+// addressable content.
+type stagedPanel struct {
+	om    *orderedMap
+	title string
+	pos   manifest.GridPos
+	isRow bool
+}
+
+// sectionRow is a section row panel's fixed field set, marshaled in the
+// exact key order Grafana itself uses for a row panel: alphabetical -
+// collapsed, gridPos, id, panels, title, type - distinct from every
+// other emitted panel, which lists id first because id is prepended
+// onto an author-provided fragment that never carries one of its own
+// (see orderedMap.prepend). ID here starts as a placeholder (Go's zero
+// value); the same (gridPos.y, gridPos.x)-ordered id-assignment pass
+// every other staged panel goes through overwrites it in place once the
+// combined sort is known, since prepend updates an already-present key's
+// value without moving its position.
+type sectionRow struct {
+	Collapsed bool              `json:"collapsed"`
+	GridPos   manifest.GridPos  `json:"gridPos"`
+	ID        int               `json:"id"`
+	Panels    []json.RawMessage `json:"panels"`
+	Title     string            `json:"title"`
+	Type      string            `json:"type"`
+}
+
+// buildSectionRow constructs one section's row panel: full-width, one
+// grid row tall, no children, at the manifest's literal anchor. title is
+// never substituted - the {service}/{Service} substitution rule applies
+// to golden block content, not to section titles, which are authored
+// per service already concrete.
+func buildSectionRow(title string, anchor int) (*orderedMap, error) {
+	raw, err := json.Marshal(sectionRow{
+		GridPos: manifest.GridPos{H: 1, W: 24, X: 0, Y: anchor},
+		Panels:  []json.RawMessage{},
+		Title:   title,
+		Type:    "row",
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseOrderedMap(raw)
+}
+
 // buildAllPanels parses every service's golden-block instances (with
-// {service}/{Service} substituted) and custom panels into mutable
-// orderedMaps, assigning each a generator-assigned id: golden panels get
-// ids fixed by their position in the golden block (the same ids for
-// every service, since every service gets the identical block), and
-// custom panels continue numbering from there in the manifest's own
-// order. Each service starts its own id sequence at 1.
+// {service}/{Service} substituted and each panel's block-relative
+// gridPos.y offset by that block's anchor for this service), custom
+// panels, and section row panels (one per sections entry, see
+// buildSectionRow) into mutable orderedMaps, then lays each service's
+// combined panel set out by (gridPos.y, gridPos.x), stable - the order
+// both the emitted panel array and generator-assigned ids (1, 2, 3, ...
+// per service, in that laid-out order) follow; a row's id is assigned
+// the same way, but its title never enters the panel index or the
+// panel_ref-resolution map (see stagedPanel.isRow). After layout, every
+// panel's rect is checked for grid violations (out-of-bounds or
+// overlapping) via internal/grid, since that is the first point every
+// service's full, final geometry is known; a service with at least one
+// section also gets its rects checked for compaction stability (see the
+// len(sd.Sections) gate below).
 func buildAllPanels(m *manifest.Model) (*built, []error) {
 	b := &built{
 		panels: make(map[string]map[string]*orderedMap),
-		order:  make(map[string][]string),
+		order:  make(map[string][]stagedPanel),
 		idx:    PanelIndex{},
 	}
 	var errs []error
 
+	blocksByService := make(map[string][]expand.BlockPanel)
+	for _, bp := range expand.Blocks(m) {
+		blocksByService[bp.Service] = append(blocksByService[bp.Service], bp)
+	}
+
 	for _, sd := range m.Dashboards.Services {
 		byTitle := make(map[string]*orderedMap)
-		var order []string
-		nextID := 1
+		var staged []stagedPanel
 
-		addPanel := func(raw json.RawMessage, context string) {
+		stage := func(raw json.RawMessage, context string, anchor *int) {
 			om, err := parseOrderedMap(raw)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("%s: %s: %w", sd.Service, context, err))
@@ -145,30 +226,79 @@ func buildAllPanels(m *manifest.Model) (*built, []error) {
 				return
 			}
 			if _, dup := byTitle[title]; dup {
-				// A silent overwrite here would leave order carrying the
+				// A silent overwrite here would leave staged carrying the
 				// title twice while byTitle keeps only the later panel:
 				// the emitted array would contain that one panel object
-				// twice (once per duplicate entry in order) under two
-				// different ids, and the earlier panel's content and id
-				// would simply vanish. Titles are the stable identifier
-				// panel_ref and PanelIndex both key on, so a collision
-				// fails loudly instead.
+				// twice under two different ids, and the earlier panel's
+				// content would simply vanish. Titles are the stable
+				// identifier panel_ref and PanelIndex both key on, so a
+				// collision fails loudly instead.
 				errs = append(errs, fmt.Errorf("%s: %s: duplicate panel title %q", sd.Service, context, title))
 				return
 			}
-			om.prepend("id", json.RawMessage(strconv.Itoa(nextID)))
+			pos, err := resolveGridPos(om, anchor)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("%s: %s: %w", sd.Service, context, err))
+				return
+			}
 			byTitle[title] = om
-			order = append(order, title)
-			b.idx.set(sd.Service, title, nextID)
-			nextID++
+			staged = append(staged, stagedPanel{om: om, title: title, pos: pos})
 		}
 
-		for i, gp := range m.Dashboards.Golden {
-			raw := json.RawMessage(substitute(string(gp.Fragment), sd.Service))
-			addPanel(raw, fmt.Sprintf("golden panel %d", i))
+		for i, bp := range blocksByService[sd.Service] {
+			anchor := bp.AnchorY
+			stage(json.RawMessage(bp.Fragment), fmt.Sprintf("golden block %q panel %d", bp.Block, i), &anchor)
 		}
 		for i, raw := range sd.CustomPanels {
-			addPanel(raw, fmt.Sprintf("custom panel %d", i))
+			stage(raw, fmt.Sprintf("custom panel %d", i), nil)
+		}
+		for _, title := range slices.Sorted(maps.Keys(sd.Sections)) {
+			anchor := sd.Sections[title]
+			om, err := buildSectionRow(title, anchor)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("%s: section %q: %w", sd.Service, title, err))
+				continue
+			}
+			staged = append(staged, stagedPanel{
+				om:    om,
+				title: title,
+				pos:   manifest.GridPos{H: 1, W: 24, X: 0, Y: anchor},
+				isRow: true,
+			})
+		}
+
+		sort.SliceStable(staged, func(i, j int) bool {
+			if staged[i].pos.Y != staged[j].pos.Y {
+				return staged[i].pos.Y < staged[j].pos.Y
+			}
+			return staged[i].pos.X < staged[j].pos.X
+		})
+
+		var order []stagedPanel
+		rects := make([]grid.Rect, 0, len(staged))
+		for i, p := range staged {
+			id := i + 1
+			p.om.prepend("id", json.RawMessage(strconv.Itoa(id)))
+			order = append(order, p)
+			if !p.isRow {
+				b.idx.set(sd.Service, p.title, id)
+			}
+			rects = append(rects, grid.Rect{Title: p.title, X: p.pos.X, Y: p.pos.Y, W: p.pos.W, H: p.pos.H})
+		}
+		for _, v := range grid.Check(rects) {
+			errs = append(errs, fmt.Errorf("%s: %s: %s", sd.Service, v.Kind, v.Detail))
+		}
+		// Stability enforcement is opt-in per dashboard: a service that
+		// has not yet adopted section rows keeps the original
+		// overlap/bounds-only gate, so its existing custom-panel
+		// arrangement is not suddenly rejected by a check that postdates
+		// it. A service that declares at least one section has opted in,
+		// and every one of its panels - block, custom, and row alike -
+		// must be compaction-stable.
+		if len(sd.Sections) > 0 {
+			for _, v := range grid.CheckStability(rects) {
+				errs = append(errs, fmt.Errorf("%s: %s: %s", sd.Service, v.Kind, v.Detail))
+			}
 		}
 
 		b.panels[sd.Service] = byTitle
@@ -176,6 +306,42 @@ func buildAllPanels(m *manifest.Model) (*built, []error) {
 	}
 
 	return b, errs
+}
+
+// resolveGridPos reads a panel's gridPos (h, w, x, y) out of its
+// orderedMap-decoded fragment. anchor is non-nil only for a golden block
+// panel: its gridPos.y is block-relative on entry, so resolveGridPos
+// adds *anchor to it and writes the new value back into om's own
+// gridPos.y key - through the same read-modify-write-back pattern
+// appendThresholdStep already uses for fieldConfig, so every other key
+// (and its own position) inside gridPos survives untouched. A custom
+// panel's gridPos (anchor nil) is read only, never rewritten: it is
+// already the absolute position the manifest authored.
+func resolveGridPos(om *orderedMap, anchor *int) (manifest.GridPos, error) {
+	gp, err := om.child("gridPos")
+	if err != nil {
+		return manifest.GridPos{}, fmt.Errorf("gridPos: %w", err)
+	}
+	raw, err := gp.marshal()
+	if err != nil {
+		return manifest.GridPos{}, fmt.Errorf("gridPos: %w", err)
+	}
+	var pos manifest.GridPos
+	if err := json.Unmarshal(raw, &pos); err != nil {
+		return manifest.GridPos{}, fmt.Errorf("gridPos: %w", err)
+	}
+
+	if anchor != nil {
+		pos.Y += *anchor
+		gp.set("y", json.RawMessage(strconv.Itoa(pos.Y)))
+		gpBytes, err := gp.marshal()
+		if err != nil {
+			return manifest.GridPos{}, fmt.Errorf("gridPos: %w", err)
+		}
+		om.set("gridPos", gpBytes)
+	}
+
+	return pos, nil
 }
 
 // panelTitle extracts a parsed panel's title field, the identifier
@@ -190,46 +356,6 @@ func panelTitle(om *orderedMap) (string, error) {
 		return "", fmt.Errorf("panel title: %w", err)
 	}
 	return title, nil
-}
-
-// substitute replaces {Service}/{service} placeholders (capitalized and
-// lowercase forms) with service, wherever they appear in s - a golden
-// panel fragment's title, expr, or a label selector. Order between the
-// two replacements does not matter: the two placeholder spellings never
-// overlap as substrings of each other.
-func substitute(s, service string) string {
-	s = strings.ReplaceAll(s, "{Service}", displayName(service))
-	s = strings.ReplaceAll(s, "{service}", service)
-	return s
-}
-
-// serviceDisplayNames overrides capitalize's plain first-letter
-// fallback for a service whose {Service} form is not just its name
-// capitalized: bff is an acronym, not a plain word, so it must render
-// "BFF", not "Bff" - the owner ruling this table exists for. Mirrors
-// internal/alerts' and internal/lint's identical tables; add an entry
-// here only when capitalize's fallback is wrong for that service -
-// every other service's {Service} form still comes from capitalize
-// alone.
-var serviceDisplayNames = map[string]string{
-	"bff": "BFF",
-}
-
-// displayName resolves service's {Service} form: serviceDisplayNames'
-// override if one exists, else capitalize's plain fallback. Mirrors
-// internal/alerts' and internal/lint's identical private helper.
-func displayName(service string) string {
-	if d, ok := serviceDisplayNames[service]; ok {
-		return d
-	}
-	return capitalize(service)
-}
-
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // expandedAlert is the minimal shape threshold projection needs from any
@@ -261,13 +387,7 @@ func expandAlerts(m *manifest.Model) []expandedAlert {
 	}
 
 	for _, svc := range m.Alerts.Services {
-		names := make([]string, 0, len(svc.Golden))
-		for name := range svc.Golden {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-
-		for _, name := range names {
+		for _, name := range slices.Sorted(maps.Keys(svc.Golden)) {
 			tmpl := m.Alerts.Templates[name]
 			ov := svc.Golden[name]
 
@@ -281,8 +401,8 @@ func expandAlerts(m *manifest.Model) []expandedAlert {
 			}
 
 			out = append(out, expandedAlert{
-				uid:       substitute(tmpl.UID, svc.Service),
-				panelRef:  substitute(tmpl.PanelRef, svc.Service),
+				uid:       expand.Substitute(tmpl.UID, svc.Service),
+				panelRef:  expand.Substitute(tmpl.PanelRef, svc.Service),
 				condition: condition,
 				severity:  severity,
 			})
@@ -533,18 +653,19 @@ func setThresholdsStyleLine(defaults *orderedMap) error {
 
 // marshalAll renders each service's finished panel set into a complete
 // dashboard JSON document, in the id-assignment order buildAllPanels
-// recorded (never by ranging b.panels[service], a Go map).
+// recorded (never by ranging b.panels[service], a Go map, which also
+// would not carry a row - see built.order's own doc comment).
 func marshalAll(m *manifest.Model, b *built) (map[string][]byte, []error) {
 	files := make(map[string][]byte)
 	var errs []error
 
 	for _, sd := range m.Dashboards.Services {
-		titles := b.order[sd.Service]
-		panels := make([]json.RawMessage, 0, len(titles))
-		for _, title := range titles {
-			raw, err := b.panels[sd.Service][title].marshal()
+		staged := b.order[sd.Service]
+		panels := make([]json.RawMessage, 0, len(staged))
+		for _, p := range staged {
+			raw, err := p.om.marshal()
 			if err != nil {
-				errs = append(errs, fmt.Errorf("%s: marshaling panel %q: %w", sd.Service, title, err))
+				errs = append(errs, fmt.Errorf("%s: marshaling panel %q: %w", sd.Service, p.title, err))
 				continue
 			}
 			panels = append(panels, raw)

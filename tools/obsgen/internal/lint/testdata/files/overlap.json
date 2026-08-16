@@ -1,0 +1,6 @@
+{
+  "panels": [
+    { "id": 1, "type": "timeseries", "title": "Alpha", "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 } },
+    { "id": 2, "type": "timeseries", "title": "Beta", "gridPos": { "h": 8, "w": 12, "x": 6, "y": 4 } }
+  ]
+}

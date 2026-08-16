@@ -2,6 +2,8 @@ package manifest_test
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -172,19 +174,22 @@ func TestLoad_ValidTreeLoadsExactFields(t *testing.T) {
 		t.Errorf("Alerts.Retired = %+v, want %+v", got.Alerts.Retired, wantRetired)
 	}
 
-	if len(got.Dashboards.Golden) != 1 {
-		t.Fatalf("len(Dashboards.Golden) = %d, want 1", len(got.Dashboards.Golden))
+	if len(got.Dashboards.Blocks) != 1 {
+		t.Fatalf("len(Dashboards.Blocks) = %d, want 1", len(got.Dashboards.Blocks))
 	}
-	wantGridPos := manifest.GridPos{H: 8, W: 12, X: 0, Y: 0}
-	if got.Dashboards.Golden[0].GridPos != wantGridPos {
-		t.Errorf("Dashboards.Golden[0].GridPos = %+v, want %+v", got.Dashboards.Golden[0].GridPos, wantGridPos)
+	availability, ok := got.Dashboards.Blocks["availability"]
+	if !ok {
+		t.Fatalf("Dashboards.Blocks[availability] missing; got %+v", got.Dashboards.Blocks)
 	}
-	gotFragment := got.Dashboards.Golden[0].Fragment
-	if !json.Valid(gotFragment) {
-		t.Fatalf("Dashboards.Golden[0].Fragment is not valid json: %s", gotFragment)
+	if len(availability.Panels) != 1 {
+		t.Fatalf("len(Dashboards.Blocks[availability].Panels) = %d, want 1", len(availability.Panels))
 	}
-	if !strings.Contains(string(gotFragment), `"title": "{Service} Availability"`) {
-		t.Errorf("Dashboards.Golden[0].Fragment = %s, want it to contain the availability panel title", gotFragment)
+	gotFragment := availability.Panels[0]
+	if !json.Valid([]byte(gotFragment)) {
+		t.Fatalf("Dashboards.Blocks[availability].Panels[0] is not valid json: %s", gotFragment)
+	}
+	if !strings.Contains(gotFragment, `"title": "{Service} Availability"`) {
+		t.Errorf("Dashboards.Blocks[availability].Panels[0] = %s, want it to contain the availability panel title", gotFragment)
 	}
 
 	if len(got.Dashboards.Services) != 2 {
@@ -193,6 +198,13 @@ func TestLoad_ValidTreeLoadsExactFields(t *testing.T) {
 	alphaDash := got.Dashboards.Services[0]
 	if alphaDash.Service != "alpha" || alphaDash.UID != "vg-alpha" || alphaDash.Title != "Alpha" {
 		t.Errorf("Dashboards.Services[0] = %+v, want Service=alpha UID=vg-alpha Title=Alpha", alphaDash)
+	}
+	wantGoldenBlocks := map[string]int{"availability": 128}
+	if !reflect.DeepEqual(alphaDash.GoldenBlocks, wantGoldenBlocks) {
+		t.Errorf("Dashboards.Services[0].GoldenBlocks = %+v, want %+v", alphaDash.GoldenBlocks, wantGoldenBlocks)
+	}
+	if alphaDash.Sections != nil {
+		t.Errorf("Dashboards.Services[0].Sections = %+v, want nil (alpha declares no sections: key, the transition-state case)", alphaDash.Sections)
 	}
 	if len(alphaDash.CustomPanels) != 1 || !json.Valid(alphaDash.CustomPanels[0]) {
 		t.Fatalf("Dashboards.Services[0].CustomPanels = %s, want exactly one valid json fragment", alphaDash.CustomPanels)
@@ -204,6 +216,13 @@ func TestLoad_ValidTreeLoadsExactFields(t *testing.T) {
 	bravoDash := got.Dashboards.Services[1]
 	if bravoDash.Service != "bravo" || bravoDash.UID != "vg-bravo" || bravoDash.Title != "Bravo" {
 		t.Errorf("Dashboards.Services[1] = %+v, want Service=bravo UID=vg-bravo Title=Bravo", bravoDash)
+	}
+	if !reflect.DeepEqual(bravoDash.GoldenBlocks, wantGoldenBlocks) {
+		t.Errorf("Dashboards.Services[1].GoldenBlocks = %+v, want %+v", bravoDash.GoldenBlocks, wantGoldenBlocks)
+	}
+	wantBravoSections := map[string]int{"Refresh": 40}
+	if !reflect.DeepEqual(bravoDash.Sections, wantBravoSections) {
+		t.Errorf("Dashboards.Services[1].Sections = %+v, want %+v", bravoDash.Sections, wantBravoSections)
 	}
 	if len(bravoDash.CustomPanels) != 1 || !json.Valid(bravoDash.CustomPanels[0]) {
 		t.Fatalf("Dashboards.Services[1].CustomPanels = %s, want exactly one valid json fragment", bravoDash.CustomPanels)
@@ -334,6 +353,216 @@ func TestLoad_InvalidTreesFailWithOffendingPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestLoad_GoldenBlockValidation exercises the block-shaped dashboard
+// golden schema's own validation rules. Rather than a dedicated testdata
+// fixture tree per case (TestLoad_InvalidTreesFailWithOffendingPath's own
+// style), each case here writes its one deliberate defect inline into a
+// fresh copy of testdata/valid via writeValidTreeCopy - that copy is
+// otherwise complete and valid, so joinedCount stays checkable at exactly
+// 1 the same way. The successful round-trip these cases guard against
+// regressing (a valid block loads with its GoldenBlocks anchor intact) is
+// already proven by TestLoad_ValidTreeLoadsExactFields against this same
+// base tree, so there is no separate "valid" case here.
+// availabilityBlock and alphaCustomPanel are the one deliberate-defect
+// overrides in TestLoad_GoldenBlockValidation and TestLoad_SectionValidation
+// both build on top of via writeValidTreeCopy: a complete, otherwise-valid
+// golden block and a complete, otherwise-valid alpha custom panel, shared
+// so each override string only needs to change the one field its own case
+// is actually about.
+const availabilityBlock = `blocks:
+  availability:
+    panels:
+      - |
+        {"title": "{Service} Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{service}-.*\"}"}]}
+`
+const alphaCustomPanel = `    {"title": "Alpha queue depth", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32}, "targets": [{"expr": "vg_alpha_queue_pending"}]}
+`
+
+func TestLoad_GoldenBlockValidation(t *testing.T) {
+	cases := []struct {
+		name      string
+		overrides map[string]string
+		want      []string
+	}{
+		{
+			name: "block panel fragment is not valid json",
+			overrides: map[string]string{
+				"dashboards/golden.yaml": availabilityBlock + `  stat_row:
+    panels:
+      - "{bad json"
+`,
+			},
+			want: []string{"dashboards/golden.yaml", `block "stat_row"`, "not valid json"},
+		},
+		{
+			name: "block panel missing gridPos",
+			overrides: map[string]string{
+				"dashboards/golden.yaml": `blocks:
+  availability:
+    panels:
+      - |
+        {"title": "Availability"}
+`,
+			},
+			want: []string{"dashboards/golden.yaml", `block "availability"`, "missing gridPos"},
+		},
+		{
+			name: "block panel gridPos exceeds 24 columns",
+			overrides: map[string]string{
+				"dashboards/golden.yaml": `blocks:
+  availability:
+    panels:
+      - |
+        {"title": "Availability", "gridPos": {"h": 8, "w": 20, "x": 10, "y": 0}}
+`,
+			},
+			want: []string{"dashboards/golden.yaml", `block "availability"`, "out of bounds"},
+		},
+		{
+			name: "golden_blocks references an undefined block",
+			overrides: map[string]string{
+				"dashboards/alpha.yaml": "service: alpha\ndashboard:\n  uid: vg-alpha\n  title: Alpha\ngolden_blocks:\n  nope: 0\ncustom_panels:\n  - |\n" + alphaCustomPanel,
+			},
+			want: []string{"dashboards/alpha.yaml", "undefined block", `"nope"`},
+		},
+		{
+			name: "golden_blocks anchor is negative",
+			overrides: map[string]string{
+				"dashboards/alpha.yaml": "service: alpha\ndashboard:\n  uid: vg-alpha\n  title: Alpha\ngolden_blocks:\n  availability: -1\ncustom_panels:\n  - |\n" + alphaCustomPanel,
+			},
+			want: []string{"dashboards/alpha.yaml", `block "availability"`, "negative anchor"},
+		},
+		{
+			name: "block with no panels",
+			overrides: map[string]string{
+				"dashboards/golden.yaml": availabilityBlock + `  empty_block: {}
+`,
+			},
+			want: []string{"dashboards/golden.yaml", `block "empty_block"`, "no panels"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := writeValidTreeCopy(t, tc.overrides)
+
+			got, err := manifest.Load(dir)
+			if err == nil {
+				t.Fatalf("Load(%s): want an error, got nil (model: %+v)", dir, got)
+			}
+			if got != nil {
+				t.Errorf("Load(%s): want a nil Model alongside the error, got %+v", dir, got)
+			}
+
+			msg := err.Error()
+			for _, want := range tc.want {
+				if !strings.Contains(msg, want) {
+					t.Errorf("Load(%s) error = %q, want it to contain %q", dir, msg, want)
+				}
+			}
+			if n := joinedCount(t, err); n != 1 {
+				t.Errorf("Load(%s) joined %d problems, want exactly 1 (the copied base tree is otherwise complete and valid): %v", dir, n, err)
+			}
+		})
+	}
+}
+
+// TestLoad_SectionValidation exercises the sections: schema's own
+// validation rules, in the same writeValidTreeCopy style
+// TestLoad_GoldenBlockValidation uses for golden_blocks: each case
+// writes its one deliberate defect into a fresh copy of testdata/valid,
+// otherwise complete and valid, so joinedCount stays checkable at
+// exactly 1. The successful round-trip these cases guard against
+// regressing (a valid sections map loads with its anchor intact) is
+// already proven by TestLoad_ValidTreeLoadsExactFields against this
+// same base tree (bravo's Refresh: 40 entry), so there is no separate
+// "valid" case here. Uniqueness needs no case either - Sections is a Go
+// map keyed on title, so two sections sharing a title cannot even be
+// written down.
+func TestLoad_SectionValidation(t *testing.T) {
+	cases := []struct {
+		name       string
+		overrides  map[string]string
+		want       []string
+		wantJoined int
+	}{
+		{
+			name: "section title is empty",
+			overrides: map[string]string{
+				"dashboards/alpha.yaml": "service: alpha\ndashboard:\n  uid: vg-alpha\n  title: Alpha\ngolden_blocks:\n  availability: 128\nsections:\n  \"\": 0\ncustom_panels:\n  - |\n" + alphaCustomPanel,
+			},
+			want:       []string{"dashboards/alpha.yaml", "sections", "empty section title"},
+			wantJoined: 1,
+		},
+		{
+			name: "section anchor is negative",
+			overrides: map[string]string{
+				"dashboards/alpha.yaml": "service: alpha\ndashboard:\n  uid: vg-alpha\n  title: Alpha\ngolden_blocks:\n  availability: 128\nsections:\n  Ops: -1\ncustom_panels:\n  - |\n" + alphaCustomPanel,
+			},
+			want:       []string{"dashboards/alpha.yaml", `section "Ops"`, "negative anchor"},
+			wantJoined: 1,
+		},
+		{
+			// A single entry can fail both clauses at once: an empty
+			// title with a negative anchor. The loader's joined-error
+			// style surfaces every distinct problem it finds in one
+			// pass elsewhere (see e.g. TestLoad_InvalidTreesFailWithOffendingPath's
+			// multi-file cases) - validateSections must not special-case
+			// itself out of that by stopping at the first clause an
+			// entry fails.
+			name: "section entry fails both clauses at once (empty title and negative anchor)",
+			overrides: map[string]string{
+				"dashboards/alpha.yaml": "service: alpha\ndashboard:\n  uid: vg-alpha\n  title: Alpha\ngolden_blocks:\n  availability: 128\nsections:\n  \"\": -1\ncustom_panels:\n  - |\n" + alphaCustomPanel,
+			},
+			want:       []string{"dashboards/alpha.yaml", "empty section title", `section "": negative anchor -1`},
+			wantJoined: 2,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := writeValidTreeCopy(t, tc.overrides)
+
+			got, err := manifest.Load(dir)
+			if err == nil {
+				t.Fatalf("Load(%s): want an error, got nil (model: %+v)", dir, got)
+			}
+			if got != nil {
+				t.Errorf("Load(%s): want a nil Model alongside the error, got %+v", dir, got)
+			}
+
+			msg := err.Error()
+			for _, want := range tc.want {
+				if !strings.Contains(msg, want) {
+					t.Errorf("Load(%s) error = %q, want it to contain %q", dir, msg, want)
+				}
+			}
+			if n := joinedCount(t, err); n != tc.wantJoined {
+				t.Errorf("Load(%s) joined %d problems, want exactly %d (the copied base tree is otherwise complete and valid): %v", dir, n, tc.wantJoined, err)
+			}
+		})
+	}
+}
+
+// writeValidTreeCopy copies testdata/valid into a fresh t.TempDir(), then
+// overwrites each path in overrides (relative to the copy's root, e.g.
+// "dashboards/golden.yaml") with its given content - the inline defect
+// every TestLoad_GoldenBlockValidation case above writes directly at its
+// own call site rather than checking in as its own testdata fixture.
+func writeValidTreeCopy(t *testing.T, overrides map[string]string) string {
+	t.Helper()
+	dst := t.TempDir()
+	if err := os.CopyFS(dst, os.DirFS("testdata/valid")); err != nil {
+		t.Fatalf("copying testdata/valid: %v", err)
+	}
+	for rel, content := range overrides {
+		if err := os.WriteFile(filepath.Join(dst, rel), []byte(content), 0o600); err != nil {
+			t.Fatalf("writing override %s: %v", rel, err)
+		}
+	}
+	return dst
 }
 
 // joinedCount reports how many errors an errors.Join result actually

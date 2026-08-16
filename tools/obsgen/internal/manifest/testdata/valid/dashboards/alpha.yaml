@@ -2,6 +2,8 @@ service: alpha
 dashboard:
   uid: vg-alpha
   title: Alpha
+golden_blocks:
+  availability: 128
 custom_panels:
   - |
     {"title": "Alpha queue depth", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32}, "targets": [{"expr": "vg_alpha_queue_pending"}]}

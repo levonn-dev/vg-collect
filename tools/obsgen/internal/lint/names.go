@@ -59,30 +59,36 @@ const (
 )
 
 // Known scans every .go file under repoRoot/services and
-// repoRoot/libs/go for metric registrations and returns every
-// Prometheus-form name they expand to (see expandNames). It recognizes
-// three call shapes, all real in this repo: a direct vgotel call
-// (vgotel.Counter(meter, "name", "desc", "unit"), user/auth/
-// enrichment's shape - grep for vgotel.Counter in services/ to see
-// it), a same-order pass-through closure (counter := func(name, desc,
-// unit string) T { c, _ := vgotel.Counter(meter, name, desc, unit);
-// return c }, called as counter("name", "desc", "unit") -
-// social/collection/bff's shape), and a call directly on the OTel
-// SDK's own metric.Meter - one of the twelve Xxx64[Observable]Kind
-// instrument-creation methods (see otelMethodKind) - with the metric
-// name as the call's own first argument and the unit, if any, in a
-// metric.WithUnit(...) option among the rest (libs/go/pgkit's and
-// libs/go/valkeykit's own pool-connection gauges/counters,
-// services/collection's pending-submissions gauge, services/auth's
-// signing-keys gauge and its oidc package's provider-latency
-// histogram - grep services/ and libs/go/ for ObservableGauge to see
-// the shape). Known does not attempt general data-flow analysis beyond
-// the one closure pattern above: a registration whose name is not a
-// literal at one of these three call shapes contributes nothing (no
-// error - the manifests can only ever reference a name an author could
-// grep for, so a dynamically-built name is out of scope by
-// construction, the same discipline every real registration in the
-// repo already follows).
+// repoRoot/libs/go, plus every .ts and .tsx file under
+// repoRoot/frontend/src (the browser telemetry - see names_ts.go), for
+// metric registrations and returns every Prometheus-form name they
+// expand to (see expandNames). It recognizes three Go call shapes, all
+// real in this repo: a direct vgotel call (vgotel.Counter(meter,
+// "name", "desc", "unit"), user/auth/enrichment's shape - grep for
+// vgotel.Counter in services/ to see it), a same-order pass-through
+// closure (counter := func(name, desc, unit string) T { c, _ :=
+// vgotel.Counter(meter, name, desc, unit); return c }, called as
+// counter("name", "desc", "unit") - social/collection/bff's shape),
+// and a call directly on the OTel SDK's own metric.Meter - one of the
+// twelve Xxx64[Observable]Kind instrument-creation methods (see
+// otelMethodKind) - with the metric name as the call's own first
+// argument and the unit, if any, in a metric.WithUnit(...) option
+// among the rest (libs/go/pgkit's and libs/go/valkeykit's own
+// pool-connection gauges/counters, services/collection's
+// pending-submissions gauge, services/auth's signing-keys gauge and
+// its oidc package's provider-latency histogram - grep services/ and
+// libs/go/ for ObservableGauge to see the shape), plus one TypeScript
+// call shape (RECEIVER.create<Kind>("name", { unit: "..." }) -
+// frontend/src/telemetryImpl.ts's shape, see names_ts.go for its own
+// scope notes). Known does not attempt general data-flow analysis
+// beyond the one Go closure pattern above: a registration whose name
+// is not a literal at one of these four call shapes contributes
+// nothing (no error - the manifests can only ever reference a name an
+// author could grep for, so a dynamically-built name is out of scope
+// by construction, the same discipline every real registration in the
+// repo already follows) - except a TypeScript template literal
+// containing interpolation, which names_ts.go's doc comment explains
+// is a scan error rather than a silent skip.
 func Known(repoRoot string) (map[string]struct{}, error) {
 	known := make(map[string]struct{})
 
@@ -94,6 +100,9 @@ func Known(repoRoot string) (map[string]struct{}, error) {
 		if err := scanTree(root, known); err != nil {
 			return nil, err
 		}
+	}
+	if err := scanTSTree(filepath.Join(repoRoot, "frontend", "src"), known); err != nil {
+		return nil, err
 	}
 	return known, nil
 }

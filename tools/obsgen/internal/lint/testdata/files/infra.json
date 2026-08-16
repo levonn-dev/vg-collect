@@ -1,0 +1,24 @@
+{
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Node CPU",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "rate(node_cpu_seconds_total[5m])" },
+        { "expr": "" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "logs",
+      "title": "Recent logs",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{service_name=\"infra\"} |= \"connection refused\"" }
+      ]
+    }
+  ]
+}

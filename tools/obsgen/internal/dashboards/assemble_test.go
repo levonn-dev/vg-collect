@@ -1,6 +1,7 @@
 package dashboards_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"os"
@@ -36,8 +37,12 @@ func f64(v float64) *float64 { return &v }
 // matching substrings against the final indented JSON, whose exact
 // spacing is a detail of the last marshal step, not of assembly itself.
 type panelProbe struct {
-	ID          int    `json:"id"`
-	Title       string `json:"title"`
+	ID          int               `json:"id"`
+	Type        string            `json:"type"`
+	Title       string            `json:"title"`
+	Collapsed   bool              `json:"collapsed"`
+	Panels      []json.RawMessage `json:"panels"`
+	GridPos     manifest.GridPos  `json:"gridPos"`
 	FieldConfig struct {
 		Defaults struct {
 			Thresholds *struct {
@@ -86,60 +91,118 @@ func findPanel(t *testing.T, d dashboardProbe, title string) panelProbe {
 	return panelProbe{}
 }
 
+// findRawPanel returns the raw JSON bytes of the one panel in data whose
+// decoded title matches title - the only way to check exact key order,
+// since unmarshaling into panelProbe (or any Go struct) does not
+// preserve the source order of the fields that were actually emitted.
+func findRawPanel(t *testing.T, data []byte, title string) json.RawMessage {
+	t.Helper()
+	var doc struct {
+		Panels []json.RawMessage `json:"panels"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("parsing dashboard json: %v\n%s", err, data)
+	}
+	for _, raw := range doc.Panels {
+		var probe struct {
+			Title string `json:"title"`
+		}
+		if err := json.Unmarshal(raw, &probe); err != nil {
+			t.Fatalf("parsing panel json: %v\n%s", err, raw)
+		}
+		if probe.Title == title {
+			return raw
+		}
+	}
+	t.Fatalf("no panel titled %q in dashboard json %s", title, data)
+	return nil
+}
+
+// jsonObjectKeyOrder walks raw's top-level JSON object token stream and
+// returns its keys in emitted order.
+func jsonObjectKeyOrder(t *testing.T, raw json.RawMessage) []string {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	tok, err := dec.Token()
+	if err != nil {
+		t.Fatalf("jsonObjectKeyOrder: %v", err)
+	}
+	if d, ok := tok.(json.Delim); !ok || d != '{' {
+		t.Fatalf("jsonObjectKeyOrder: expected a json object, got %v", tok)
+	}
+	var keys []string
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			t.Fatalf("jsonObjectKeyOrder: %v", err)
+		}
+		key, ok := keyTok.(string)
+		if !ok {
+			t.Fatalf("jsonObjectKeyOrder: expected a string object key, got %v", keyTok)
+		}
+		keys = append(keys, key)
+		var discard json.RawMessage
+		if err := dec.Decode(&discard); err != nil {
+			t.Fatalf("jsonObjectKeyOrder: %v", err)
+		}
+	}
+	return keys
+}
+
 // fixtureModel builds a small two-service (alpha, bravo) manifest model
 // directly - Assemble takes an in-memory *manifest.Model, so its tests
 // construct one straight from the public model types rather than
 // round-tripping through manifest.Load and a yaml fixture tree, which
-// would just be re-testing the loader. The golden block has 3 panels
-// (proving id sequencing past a single entry), with substitution
-// exercised two ways: "{Service} request rate" (title placeholder) and
-// the Availability panel's pod selector (expr placeholder; its title is
-// left constant on purpose, so panel_ref resolution needs no {Service}
-// substitution of its own). alpha's custom panel starts with a
-// pre-existing threshold step, to prove injection appends rather than
-// replacing. bravo has a second custom panel, deliberately titled so it
-// sorts alphabetically BEFORE its first ("Bravo error rate" < "Bravo
-// refresh duration"): its id still has to come out after, proving id
-// continuation follows manifest order and not, say, title order. alpha
-// has a second alert - a custom rule, not another golden instantiation -
-// pointed at the same panel_ref as its golden availability alert, so
-// alpha's Availability panel ends up with two projected steps in a
-// checkable order (golden instantiations expand before a service's own
-// custom rules); bravo's Availability panel keeps just the one, from its
-// golden instantiation alone. bravo also has a custom page-severity
-// alert (this repo's paging/most-severe level, distinct from warn and
-// crit) pointed at its own request-rate golden panel, proving
-// thresholdColor's page->red mapping on a fresh injection, separately
-// from crit's existing coverage on alpha's golden instantiation.
+// would just be re-testing the loader. The "shared" golden block has 3
+// panels (proving id sequencing past a single entry), instantiated at
+// anchor 0 for both services - so their block-relative gridPos.y (0, 0,
+// 8) is already each panel's final absolute position, keeping this
+// fixture's ordering/id assertions independent of the anchor-offset
+// behavior covered separately by TestAssemble_BlockPanelAnchoredAbsoluteY
+// - with substitution exercised two ways: "{Service} request rate"
+// (title placeholder) and the Availability panel's pod selector (expr
+// placeholder; its title is left constant on purpose, so panel_ref
+// resolution needs no {Service} substitution of its own). alpha's custom
+// panel starts with a pre-existing threshold step, to prove injection
+// appends rather than replacing. bravo has a second custom panel,
+// deliberately titled so it sorts alphabetically BEFORE its first
+// ("Bravo error rate" < "Bravo refresh duration"): its id still has to
+// come out after, proving id continuation follows position (gridPos.y,
+// then gridPos.x) and not, say, title order. alpha has a second alert -
+// a custom rule, not another golden instantiation - pointed at the same
+// panel_ref as its golden availability alert, so alpha's Availability
+// panel ends up with two projected steps in a checkable order (golden
+// instantiations expand before a service's own custom rules); bravo's
+// Availability panel keeps just the one, from its golden instantiation
+// alone. bravo also has a custom page-severity alert (this repo's
+// paging/most-severe level, distinct from warn and crit) pointed at its
+// own request-rate golden panel, proving thresholdColor's page->red
+// mapping on a fresh injection, separately from crit's existing coverage
+// on alpha's golden instantiation.
 func fixtureModel() *manifest.Model {
-	golden := []manifest.GoldenPanel{
-		{
-			Fragment: json.RawMessage(`{"title": "Availability", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}, "targets": [{"refId": "A", "expr": "up{namespace=\"vgkeep\", pod=~\"{service}-.*\"}"}]}`),
-			GridPos:  manifest.GridPos{H: 8, W: 12, X: 0, Y: 0},
-		},
-		{
-			Fragment: json.RawMessage(`{"title": "{Service} request rate", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []}, "targets": [{"refId": "A", "expr": "sum(rate(vg_{service}_requests_total[5m]))"}]}`),
-			GridPos:  manifest.GridPos{H: 8, W: 12, X: 12, Y: 0},
-		},
-		{
-			Fragment: json.RawMessage(`{"title": "Goroutines", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}, "targets": [{"refId": "A", "expr": "go_goroutine_count"}]}`),
-			GridPos:  manifest.GridPos{H: 8, W: 12, X: 0, Y: 8},
-		},
+	blocks := map[string]manifest.Block{
+		"shared": {Panels: []string{
+			`{"title": "Availability", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}, "targets": [{"refId": "A", "expr": "up{namespace=\"vgkeep\", pod=~\"{service}-.*\"}"}]}`,
+			`{"title": "{Service} request rate", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []}, "targets": [{"refId": "A", "expr": "sum(rate(vg_{service}_requests_total[5m]))"}]}`,
+			`{"title": "Goroutines", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}, "targets": [{"refId": "A", "expr": "go_goroutine_count"}]}`,
+		}},
 	}
 
 	dashServices := []manifest.ServiceDash{
 		{
-			Service: "alpha",
-			UID:     "vg-alpha",
-			Title:   "Alpha",
+			Service:      "alpha",
+			UID:          "vg-alpha",
+			Title:        "Alpha",
+			GoldenBlocks: map[string]int{"shared": 0},
 			CustomPanels: []json.RawMessage{
 				json.RawMessage(`{"title": "Alpha queue depth", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []}, "targets": [{"refId": "A", "expr": "vg_alpha_queue_pending"}]}`),
 			},
 		},
 		{
-			Service: "bravo",
-			UID:     "vg-bravo",
-			Title:   "Bravo",
+			Service:      "bravo",
+			UID:          "vg-bravo",
+			Title:        "Bravo",
+			GoldenBlocks: map[string]int{"shared": 0},
 			CustomPanels: []json.RawMessage{
 				json.RawMessage(`{"title": "Bravo refresh duration", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}, "targets": [{"refId": "A", "expr": "vg_bravo_refresh_seconds"}]}`),
 				json.RawMessage(`{"title": "Bravo error rate", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []}, "targets": [{"refId": "A", "expr": "vg_bravo_errors_ratio"}]}`),
@@ -229,7 +292,7 @@ func fixtureModel() *manifest.Model {
 			Services:   alertServices,
 		},
 		Dashboards: manifest.DashTree{
-			Golden:   golden,
+			Blocks:   blocks,
 			Services: dashServices,
 		},
 	}
@@ -528,14 +591,14 @@ func TestAssemble_PanelBuildErrors(t *testing.T) {
 		{
 			name: "golden panel fragment is not valid json",
 			mutate: func(m *manifest.Model) {
-				m.Dashboards.Golden[0].Fragment = json.RawMessage(`{not valid json`)
+				m.Dashboards.Blocks["shared"].Panels[0] = `{not valid json`
 			},
-			want: "golden panel 0",
+			want: `golden block "shared" panel 0`,
 		},
 		{
 			name: "panel fragment has no title field",
 			mutate: func(m *manifest.Model) {
-				m.Dashboards.Golden[0].Fragment = json.RawMessage(`{"gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}}`)
+				m.Dashboards.Blocks["shared"].Panels[0] = `{"gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}}`
 			},
 			want: "no title field",
 		},
@@ -549,7 +612,7 @@ func TestAssemble_PanelBuildErrors(t *testing.T) {
 		{
 			name: "two golden panels share a title",
 			mutate: func(m *manifest.Model) {
-				m.Dashboards.Golden[1].Fragment = json.RawMessage(`{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "targets": [{"expr": "up"}]}`)
+				m.Dashboards.Blocks["shared"].Panels[1] = `{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "targets": [{"expr": "up"}]}`
 			},
 			want: `duplicate panel title "Availability"`,
 		},
@@ -589,21 +652,18 @@ func TestAssemble_PanelBuildErrors(t *testing.T) {
 func TestAssemble_EmptyCustomPanels(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{
-			Golden: []manifest.GoldenPanel{
-				{
-					Fragment: json.RawMessage(`{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{service}-.*\"}"}]}`),
-					GridPos:  manifest.GridPos{H: 8, W: 12, X: 0, Y: 0},
-				},
-				{
-					Fragment: json.RawMessage(`{"title": "{Service} request rate", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "targets": [{"expr": "sum(rate(vg_{service}_requests_total[5m]))"}]}`),
-					GridPos:  manifest.GridPos{H: 8, W: 12, X: 12, Y: 0},
-				},
+			Blocks: map[string]manifest.Block{
+				"shared": {Panels: []string{
+					`{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{service}-.*\"}"}]}`,
+					`{"title": "{Service} request rate", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "targets": [{"expr": "sum(rate(vg_{service}_requests_total[5m]))"}]}`,
+				}},
 			},
 			Services: []manifest.ServiceDash{
 				{
-					Service: "charlie",
-					UID:     "vg-charlie",
-					Title:   "Charlie",
+					Service:      "charlie",
+					UID:          "vg-charlie",
+					Title:        "Charlie",
+					GoldenBlocks: map[string]int{"shared": 0},
 					// CustomPanels deliberately left nil - the zero value
 					// a service with no custom_panels: entries decodes to.
 				},
@@ -643,19 +703,15 @@ func TestAssemble_EmptyCustomPanels(t *testing.T) {
 func TestAssemble_ServiceDisplayNameAcronym(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{
-			Golden: []manifest.GoldenPanel{
-				{
-					Fragment: json.RawMessage(`{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{service}-.*\"}"}]}`),
-					GridPos:  manifest.GridPos{H: 8, W: 12, X: 0, Y: 0},
-				},
-				{
-					Fragment: json.RawMessage(`{"title": "{Service} request rate", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "targets": [{"expr": "sum(rate(vg_{service}_requests_total[5m]))"}]}`),
-					GridPos:  manifest.GridPos{H: 8, W: 12, X: 12, Y: 0},
-				},
+			Blocks: map[string]manifest.Block{
+				"shared": {Panels: []string{
+					`{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{service}-.*\"}"}]}`,
+					`{"title": "{Service} request rate", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "targets": [{"expr": "sum(rate(vg_{service}_requests_total[5m]))"}]}`,
+				}},
 			},
 			Services: []manifest.ServiceDash{
-				{Service: "auth", UID: "vg-auth", Title: "Auth"},
-				{Service: "bff", UID: "vg-bff", Title: "BFF"},
+				{Service: "auth", UID: "vg-auth", Title: "Auth", GoldenBlocks: map[string]int{"shared": 0}},
+				{Service: "bff", UID: "vg-bff", Title: "BFF", GoldenBlocks: map[string]int{"shared": 0}},
 			},
 		},
 	}
@@ -679,5 +735,409 @@ func TestAssemble_ServiceDisplayNameAcronym(t *testing.T) {
 	}
 	if got := findPanel(t, bff, "Availability").Targets[0].Expr; got != `up{namespace="vgkeep", pod=~"bff-.*"}` {
 		t.Errorf("bff Availability expr = %q, want the pod selector substituted for lowercase bff, not Bff/BFF", got)
+	}
+}
+
+// TestAssemble_BlockPanelAnchoredAbsoluteY proves a block panel's final
+// gridPos.y is its own block-relative offset (3) plus the anchor
+// charlie's manifest declares for the block (50) - 53 - while x/w/h pass
+// through untouched, since only y ever moves.
+func TestAssemble_BlockPanelAnchoredAbsoluteY(t *testing.T) {
+	m := &manifest.Model{
+		Dashboards: manifest.DashTree{
+			Blocks: map[string]manifest.Block{
+				"availability": {Panels: []string{
+					`{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 3}, "targets": [{"expr": "up"}]}`,
+				}},
+			},
+			Services: []manifest.ServiceDash{
+				{
+					Service:      "charlie",
+					UID:          "vg-charlie",
+					Title:        "Charlie",
+					GoldenBlocks: map[string]int{"availability": 50},
+				},
+			},
+		},
+	}
+
+	files, _, err := dashboards.Assemble(m)
+	if err != nil {
+		t.Fatalf("Assemble: unexpected error: %v", err)
+	}
+
+	p := findPanel(t, parseDashboard(t, files["charlie.json"]), "Availability")
+	wantGridPos := manifest.GridPos{H: 8, W: 12, X: 0, Y: 53}
+	if p.GridPos != wantGridPos {
+		t.Errorf("Availability gridPos = %+v, want %+v (anchor 50 + block-relative offset 3; x/w/h untouched)", p.GridPos, wantGridPos)
+	}
+}
+
+// TestAssemble_CombinedOrderingByYThenX proves the emitted panel array
+// (and so id assignment, which follows the same order) is sorted by
+// (gridPos.y, gridPos.x) over the combined block-plus-custom set, not by
+// manifest declaration order: "Custom low" is declared before "Custom
+// top" but its y (20) sorts after; the block panel's anchor (20) plus
+// its own block-relative y (0) ties "Custom low" at y 20, so x (12 vs 0)
+// breaks that tie.
+func TestAssemble_CombinedOrderingByYThenX(t *testing.T) {
+	m := &manifest.Model{
+		Dashboards: manifest.DashTree{
+			Blocks: map[string]manifest.Block{
+				"availability": {Panels: []string{
+					`{"title": "Availability", "gridPos": {"h": 4, "w": 12, "x": 12, "y": 0}, "targets": [{"expr": "up"}]}`,
+				}},
+			},
+			Services: []manifest.ServiceDash{
+				{
+					Service:      "charlie",
+					UID:          "vg-charlie",
+					Title:        "Charlie",
+					GoldenBlocks: map[string]int{"availability": 20},
+					CustomPanels: []json.RawMessage{
+						json.RawMessage(`{"title": "Custom low", "gridPos": {"h": 4, "w": 12, "x": 0, "y": 20}, "targets": [{"expr": "vg_low"}]}`),
+						json.RawMessage(`{"title": "Custom top", "gridPos": {"h": 4, "w": 12, "x": 0, "y": 4}, "targets": [{"expr": "vg_top"}]}`),
+					},
+				},
+			},
+		},
+	}
+
+	files, idx, err := dashboards.Assemble(m)
+	if err != nil {
+		t.Fatalf("Assemble: unexpected error: %v", err)
+	}
+
+	d := parseDashboard(t, files["charlie.json"])
+	if len(d.Panels) != 3 {
+		t.Fatalf("len(panels) = %d, want 3", len(d.Panels))
+	}
+	wantOrder := []string{"Custom top", "Custom low", "Availability"}
+	for i, want := range wantOrder {
+		if got := d.Panels[i].Title; got != want {
+			t.Errorf("panels[%d].Title = %q, want %q (want order %v, got panels %+v)", i, got, want, wantOrder, d.Panels)
+		}
+	}
+
+	wantIdx := dashboards.PanelIndex{"charlie": {"Custom top": 1, "Custom low": 2, "Availability": 3}}
+	if !reflect.DeepEqual(idx, wantIdx) {
+		t.Errorf("PanelIndex = %+v, want %+v", idx, wantIdx)
+	}
+}
+
+// TestAssemble_OverlapErrors proves a service whose panels overlap on
+// the grid fails Assemble with both panels' titles named in the error -
+// internal/grid.Check's own wiring, exercised through two custom panels
+// so the fixture stays minimal (block instantiation is not what this
+// test is about).
+func TestAssemble_OverlapErrors(t *testing.T) {
+	m := &manifest.Model{
+		Dashboards: manifest.DashTree{
+			Services: []manifest.ServiceDash{
+				{
+					Service: "charlie",
+					UID:     "vg-charlie",
+					Title:   "Charlie",
+					CustomPanels: []json.RawMessage{
+						json.RawMessage(`{"title": "Panel A", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "vg_a"}]}`),
+						json.RawMessage(`{"title": "Panel B", "gridPos": {"h": 8, "w": 12, "x": 6, "y": 4}, "targets": [{"expr": "vg_b"}]}`),
+					},
+				},
+			},
+		},
+	}
+
+	_, _, err := dashboards.Assemble(m)
+	if err == nil {
+		t.Fatal("Assemble: want an error, got nil")
+	}
+	msg := err.Error()
+	for _, want := range []string{"charlie", "overlap", "Panel A", "Panel B"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("Assemble error = %q, want it to contain %q", msg, want)
+		}
+	}
+}
+
+// TestAssemble_SectionRowEmittedAtAnchor proves a service's sections
+// entry emits a row panel at the literal anchor, with the exact field
+// set and key order a Grafana row panel carries: collapsed, gridPos,
+// id, panels, title, type - alphabetical, distinct from every other
+// emitted panel (which lists id first - see orderedMap.prepend and the
+// package's own row-shape doc).
+func TestAssemble_SectionRowEmittedAtAnchor(t *testing.T) {
+	m := &manifest.Model{
+		Dashboards: manifest.DashTree{
+			Services: []manifest.ServiceDash{
+				{
+					Service: "charlie",
+					UID:     "vg-charlie",
+					Title:   "Charlie",
+					// The section sits directly under the custom panel
+					// (which ends at y8) so the row itself is stable: with
+					// Sections non-empty, Assemble also checks compaction
+					// stability, and a row with empty space above it would
+					// be a genuine floater like any other panel.
+					Sections: map[string]int{"Ops": 8},
+					CustomPanels: []json.RawMessage{
+						json.RawMessage(`{"title": "Custom", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "vg_custom"}]}`),
+					},
+				},
+			},
+		},
+	}
+
+	files, _, err := dashboards.Assemble(m)
+	if err != nil {
+		t.Fatalf("Assemble: unexpected error: %v", err)
+	}
+
+	d := parseDashboard(t, files["charlie.json"])
+	row := findPanel(t, d, "Ops")
+	if row.Type != "row" {
+		t.Errorf("row Type = %q, want \"row\"", row.Type)
+	}
+	if row.Collapsed {
+		t.Error("row Collapsed = true, want false")
+	}
+	if len(row.Panels) != 0 {
+		t.Errorf("row Panels = %v, want empty", row.Panels)
+	}
+	wantGridPos := manifest.GridPos{H: 1, W: 24, X: 0, Y: 8}
+	if row.GridPos != wantGridPos {
+		t.Errorf("row GridPos = %+v, want %+v", row.GridPos, wantGridPos)
+	}
+
+	// row.Panels (decoded above as empty, via panelProbe) plus this key
+	// list together prove "panels" is present at its correct position and
+	// holds a literal empty array, not merely absent (which would also
+	// decode to a zero-length slice and so pass a length check alone).
+	raw := findRawPanel(t, files["charlie.json"], "Ops")
+	wantKeys := []string{"collapsed", "gridPos", "id", "panels", "title", "type"}
+	if got := jsonObjectKeyOrder(t, raw); !reflect.DeepEqual(got, wantKeys) {
+		t.Errorf("row json key order = %v, want %v", got, wantKeys)
+	}
+}
+
+// TestAssemble_SectionRowIDInSequence proves a row's generator-assigned
+// id follows the same (gridPos.y, gridPos.x) sequence as every other
+// panel - not a separate numbering space - by placing a section between
+// two custom panels and checking all three ids in order, and that the
+// row's own title never enters the panel index panel_ref resolves
+// against.
+func TestAssemble_SectionRowIDInSequence(t *testing.T) {
+	m := &manifest.Model{
+		Dashboards: manifest.DashTree{
+			Services: []manifest.ServiceDash{
+				{
+					Service:  "charlie",
+					UID:      "vg-charlie",
+					Title:    "Charlie",
+					Sections: map[string]int{"Ops": 8},
+					CustomPanels: []json.RawMessage{
+						json.RawMessage(`{"title": "Above", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0}, "targets": [{"expr": "vg_above"}]}`),
+						json.RawMessage(`{"title": "Below", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 9}, "targets": [{"expr": "vg_below"}]}`),
+					},
+				},
+			},
+		},
+	}
+
+	files, idx, err := dashboards.Assemble(m)
+	if err != nil {
+		t.Fatalf("Assemble: unexpected error: %v", err)
+	}
+
+	d := parseDashboard(t, files["charlie.json"])
+	for _, tc := range []struct {
+		title string
+		id    int
+	}{
+		{"Above", 1}, {"Ops", 2}, {"Below", 3},
+	} {
+		if got := findPanel(t, d, tc.title).ID; got != tc.id {
+			t.Errorf("panel %q id = %d, want %d", tc.title, got, tc.id)
+		}
+	}
+
+	wantIdx := dashboards.PanelIndex{"charlie": {"Above": 1, "Below": 3}}
+	if !reflect.DeepEqual(idx, wantIdx) {
+		t.Errorf("PanelIndex = %+v, want %+v (the row's title must not appear)", idx, wantIdx)
+	}
+}
+
+// TestAssemble_SectionStabilityViolationFailsAssemble proves a service
+// that has opted into sections gets its combined rects checked for
+// compaction stability, not just overlap: a panel that could float up
+// into an unoccupied hole fails Assemble, naming that panel - the same
+// error shape the overlap case already uses.
+func TestAssemble_SectionStabilityViolationFailsAssemble(t *testing.T) {
+	m := &manifest.Model{
+		Dashboards: manifest.DashTree{
+			Services: []manifest.ServiceDash{
+				{
+					Service:  "charlie",
+					UID:      "vg-charlie",
+					Title:    "Charlie",
+					Sections: map[string]int{"Ops": 0},
+					CustomPanels: []json.RawMessage{
+						json.RawMessage(`{"title": "Left", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 1}, "targets": [{"expr": "vg_left"}]}`),
+						json.RawMessage(`{"title": "Right", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 1}, "targets": [{"expr": "vg_right"}]}`),
+						json.RawMessage(`{"title": "Floater", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 9}, "targets": [{"expr": "vg_floater"}]}`),
+					},
+				},
+			},
+		},
+	}
+
+	_, _, err := dashboards.Assemble(m)
+	if err == nil {
+		t.Fatal("Assemble: want an error, got nil")
+	}
+	msg := err.Error()
+	for _, want := range []string{"charlie", "float", "Floater"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("Assemble error = %q, want it to contain %q", msg, want)
+		}
+	}
+}
+
+// TestAssemble_NoSectionsKeepsLenientOverlapOnlyGate proves a service
+// that declares no sections is not checked for compaction stability -
+// only bounds and overlap, same as before this package knew about
+// sections at all. This is the transition behavior existing (not yet
+// migrated) dashboards depend on: a service whose current layout
+// already contains an unfilled hole a later panel could float into must
+// keep generating successfully until it opts in by declaring a section.
+func TestAssemble_NoSectionsKeepsLenientOverlapOnlyGate(t *testing.T) {
+	m := &manifest.Model{
+		Dashboards: manifest.DashTree{
+			Services: []manifest.ServiceDash{
+				{
+					Service: "charlie",
+					UID:     "vg-charlie",
+					Title:   "Charlie",
+					// No Sections entry: the pre-sections dashboards this
+					// gate must not break.
+					CustomPanels: []json.RawMessage{
+						json.RawMessage(`{"title": "Left", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}, "targets": [{"expr": "vg_left"}]}`),
+						json.RawMessage(`{"title": "Right", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}, "targets": [{"expr": "vg_right"}]}`),
+						json.RawMessage(`{"title": "Floater", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8}, "targets": [{"expr": "vg_floater"}]}`),
+					},
+				},
+			},
+		},
+	}
+
+	_, _, err := dashboards.Assemble(m)
+	if err != nil {
+		t.Fatalf("Assemble: unexpected error (no sections means overlap-only): %v", err)
+	}
+}
+
+// TestAssemble_PanelRefNeverResolvesToARow proves panel_ref addresses
+// content panels only: an alert pointed at a section's own title fails
+// to resolve exactly as if no panel by that name existed, rather than
+// injecting a threshold onto the row.
+func TestAssemble_PanelRefNeverResolvesToARow(t *testing.T) {
+	m := &manifest.Model{
+		Alerts: manifest.AlertTree{
+			Services: []manifest.ServiceAlerts{
+				{
+					Service: "charlie",
+					Alerts: []manifest.Rule{
+						{
+							UID:       "vg-charlie-ops-check",
+							Expr:      "vg_charlie_ops",
+							Condition: "gt 1",
+							Severity:  "warn",
+							PanelRef:  "charlie/Ops",
+						},
+					},
+				},
+			},
+		},
+		Dashboards: manifest.DashTree{
+			Services: []manifest.ServiceDash{
+				{
+					Service:  "charlie",
+					UID:      "vg-charlie",
+					Title:    "Charlie",
+					Sections: map[string]int{"Ops": 0},
+				},
+			},
+		},
+	}
+
+	_, _, err := dashboards.Assemble(m)
+	if err == nil {
+		t.Fatal("Assemble: want an error, got nil (panel_ref must not resolve to a row)")
+	}
+	msg := err.Error()
+	for _, want := range []string{"charlie", "Ops", "no panel titled"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("Assemble error = %q, want it to contain %q", msg, want)
+		}
+	}
+}
+
+// TestAssemble_SectionsBlocksAndCustomsCompose proves golden blocks,
+// custom panels, and section rows combine into one correctly sorted,
+// stable layout: a block panel at anchor 0, a section row pinning a
+// custom region below it, and the custom panels themselves packed under
+// that row.
+func TestAssemble_SectionsBlocksAndCustomsCompose(t *testing.T) {
+	m := &manifest.Model{
+		Dashboards: manifest.DashTree{
+			Blocks: map[string]manifest.Block{
+				"stat": {Panels: []string{
+					`{"title": "{Service} request rate", "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0}, "targets": [{"expr": "sum(rate(vg_{service}_requests_total[5m]))"}]}`,
+				}},
+			},
+			Services: []manifest.ServiceDash{
+				{
+					Service:      "charlie",
+					UID:          "vg-charlie",
+					Title:        "Charlie",
+					GoldenBlocks: map[string]int{"stat": 0},
+					Sections:     map[string]int{"Custom region": 4},
+					CustomPanels: []json.RawMessage{
+						json.RawMessage(`{"title": "Custom left", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5}, "targets": [{"expr": "vg_left"}]}`),
+						json.RawMessage(`{"title": "Custom right", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5}, "targets": [{"expr": "vg_right"}]}`),
+					},
+				},
+			},
+		},
+	}
+
+	files, idx, err := dashboards.Assemble(m)
+	if err != nil {
+		t.Fatalf("Assemble: unexpected error: %v", err)
+	}
+
+	d := parseDashboard(t, files["charlie.json"])
+	if len(d.Panels) != 4 {
+		t.Fatalf("len(panels) = %d, want 4 (block panel, row, two custom panels)", len(d.Panels))
+	}
+
+	for _, tc := range []struct {
+		title string
+		id    int
+	}{
+		{"Charlie request rate", 1}, {"Custom region", 2}, {"Custom left", 3}, {"Custom right", 4},
+	} {
+		if got := findPanel(t, d, tc.title).ID; got != tc.id {
+			t.Errorf("panel %q id = %d, want %d", tc.title, got, tc.id)
+		}
+	}
+
+	row := findPanel(t, d, "Custom region")
+	if row.Type != "row" {
+		t.Errorf("row Type = %q, want \"row\"", row.Type)
+	}
+
+	wantIdx := dashboards.PanelIndex{"charlie": {"Charlie request rate": 1, "Custom left": 3, "Custom right": 4}}
+	if !reflect.DeepEqual(idx, wantIdx) {
+		t.Errorf("PanelIndex = %+v, want %+v (the row must not appear)", idx, wantIdx)
 	}
 }
