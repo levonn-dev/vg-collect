@@ -2,10 +2,11 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router'
+import { Navigate, useSearchParams } from 'react-router'
 import { fetchProviders } from '../api/client'
 import SectionLabel from '../components/SectionLabel'
 import { devFixtures, providerNames } from '../lib/providers'
+import { useMe } from '../lib/useMe'
 
 const errorMessages: Record<string, MessageDescriptor> = {
   login_failed: msg`Login failed. Please try again.`,
@@ -27,12 +28,18 @@ function safeNext(raw: string | null): string | null {
 export default function Login() {
   const { t, i18n } = useLingui()
   const [params] = useSearchParams()
+  const me = useMe()
   const providers = useQuery({ queryKey: ['providers'], queryFn: fetchProviders })
   const error = params.get('error')
   const next = safeNext(params.get('next'))
   const stash = () => {
     if (next) sessionStorage.setItem('vg_next', next)
   }
+
+  // A live session has no business here (the browser's back button
+  // lands on this page after the OAuth hop, since that hop is a full
+  // navigation): bounce to the requested page or home.
+  if (me.data) return <Navigate to={next ?? '/'} replace />
 
   return (
     <main

@@ -1,17 +1,33 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
-import { jsonResponse } from '../test/fixtures'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { jsonResponse, meFixture } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Login from './Login'
 
-function renderLogin(path = '/login') {
+function LocationProbe() {
+  const location = useLocation()
+  return <output aria-label="location">{location.pathname}</output>
+}
+
+// Each test stubs fetch for the providers call before rendering; this
+// wrapper layers the session probe's /api/me on top (signed out by
+// default) so Login's own query never swallows the providers response.
+function renderLogin(path = '/login', { authed = false } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const providersFetch = window.fetch
+  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+    (input instanceof Request ? input.url : String(input)) === '/api/me'
+      ? Promise.resolve(authed ? jsonResponse(200, meFixture()) : jsonResponse(401, { error: 'unauthorized' }))
+      : providersFetch(input, init)))
   return renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[path]}>
-        <Login />
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="*" element={<LocationProbe />} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -108,6 +124,26 @@ it('rejects an external next value (safeNext)', async () => {
   const link = await screen.findByRole('link', { name: 'Continue with Google' })
   await clickWithoutNavigating(link)
   expect(sessionStorage.getItem('vg_next')).toBeNull()
+})
+
+it('redirects an authenticated session to home', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { providers: ['google'] })))
+  renderLogin('/login', { authed: true })
+  expect(await screen.findByLabelText('location')).toHaveTextContent('/')
+})
+
+it('redirects an authenticated session to a safe next path', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { providers: ['google'] })))
+  renderLogin('/login?next=%2Fcollection', { authed: true })
+  expect(await screen.findByLabelText('location')).toHaveTextContent('/collection')
+})
+
+it('sends an authenticated session home when next is unsafe', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { providers: ['google'] })))
+  renderLogin(`/login?next=${encodeURIComponent('//evil.example')}`, { authed: true })
+  const probe = await screen.findByLabelText('location')
+  expect(probe).toHaveTextContent('/')
+  expect(probe).not.toHaveTextContent('evil')
 })
 
 it('does not stash when next is absent', async () => {
