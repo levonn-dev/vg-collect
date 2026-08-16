@@ -257,7 +257,7 @@ groups:
           summary: "auth is down or its metrics exporters cannot reach it"
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
           __dashboardUid__: vg-auth
-          __panelId__: "1"
+          __panelId__: "2"
         labels:
           severity: page
       - uid: vg-auth-pdb-exhausted
@@ -399,7 +399,7 @@ groups:
           summary: "bff is down or its metrics exporters cannot reach it"
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
           __dashboardUid__: vg-bff
-          __panelId__: "1"
+          __panelId__: "2"
         labels:
           severity: page
       - uid: vg-bff-pdb-exhausted
@@ -541,7 +541,7 @@ groups:
           summary: "collection is down or its metrics exporters cannot reach it"
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
           __dashboardUid__: vg-collection
-          __panelId__: "1"
+          __panelId__: "2"
         labels:
           severity: page
       - uid: vg-collection-pdb-exhausted
@@ -655,7 +655,7 @@ groups:
           summary: "enrichment is down or its metrics exporters cannot reach it"
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
           __dashboardUid__: vg-enrichment
-          __panelId__: "1"
+          __panelId__: "2"
         labels:
           severity: page
       - uid: vg-enrichment-pdb-exhausted
@@ -740,6 +740,8 @@ groups:
         annotations:
           summary: "enrichment has not finished a price refresh in more than 26 hours; catalog prices are going stale"
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/enrichment.md#4-catalog-refresh-missing
+          __dashboardUid__: vg-enrichment
+          __panelId__: "19"
         labels:
           severity: warn
       - uid: vg-enrichment-search-degraded
@@ -797,7 +799,7 @@ groups:
           summary: "social is down or its postgres exporter cannot reach it"
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
           __dashboardUid__: vg-social
-          __panelId__: "1"
+          __panelId__: "2"
         labels:
           severity: page
       - uid: vg-social-pdb-exhausted
@@ -855,7 +857,7 @@ groups:
           summary: "user is down or its metrics exporters cannot reach it"
           runbook_url: https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/stack.md#service-down
           __dashboardUid__: vg-user
-          __panelId__: "1"
+          __panelId__: "2"
         labels:
           severity: page
       - uid: vg-user-pdb-exhausted

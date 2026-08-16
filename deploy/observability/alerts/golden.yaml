@@ -4,6 +4,13 @@ group:
   interval: 1m
 datasource: prometheus
 services: [auth, bff, collection, enrichment, social, user]
+# kube_ and node_ are emitted by kube-state-metrics and node-exporter;
+# up is Prometheus's own scrape-health series. All three come from
+# infrastructure this repo scrapes but never registers metrics for
+# itself, so no scan - Go or TypeScript - could ever discover them.
+# (Frontend browser-telemetry metrics, vg_frontend_, used to sit here
+# too: the lint name scan now has a TypeScript pass over frontend/src
+# that resolves them directly, so they carry no exemption.)
 external_metric_prefixes: [kube_, node_, up]
 templates:
   # Most fields below are lifted verbatim from vg-social-down (social

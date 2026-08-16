@@ -27,6 +27,7 @@ alerts:
     severity: warn
     summary: enrichment has not finished a price refresh in more than 26 hours; catalog prices are going stale
     runbook: enrichment.md#4-catalog-refresh-missing
+    panel_ref: enrichment/Time since refresh completed by step
   - uid: vg-enrichment-search-degraded
     title: Enrichment search serving degraded answers
     expr: sum(rate(vg_enrichment_search_requests_total{source="degraded"}[15m])) / sum(rate(vg_enrichment_search_requests_total[15m]))
