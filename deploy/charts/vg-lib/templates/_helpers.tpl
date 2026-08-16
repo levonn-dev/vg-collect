@@ -1,7 +1,5 @@
-{{- define "collection.labels" -}}
+{{- define "vg-lib.labels" -}}
 app.kubernetes.io/name: {{ .Chart.Name }}
 app.kubernetes.io/part-of: vgkeep
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
-
-{{- define "collection.pgHost" -}}{{ .Chart.Name }}-pg{{- end }}

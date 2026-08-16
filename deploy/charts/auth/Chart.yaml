@@ -4,3 +4,7 @@ description: vgkeep auth service (OIDC relying party + token issuer)
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
+dependencies:
+  - name: vg-lib
+    version: 0.1.0
+    repository: file://../vg-lib

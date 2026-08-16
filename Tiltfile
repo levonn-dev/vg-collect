@@ -18,6 +18,12 @@ local_resource(
     labels=['preflight'],
 )
 
+# ----- vg-lib (shared helm library chart) -----
+# Each service chart vendors vg-lib via helm dependency build; re-vendor
+# when the library changes so helm() below renders current templates.
+listdir('deploy/charts/vg-lib', recursive=True)
+local('task helm:deps')
+
 # ----- namespace -----
 k8s_yaml(encode_yaml({
     'apiVersion': 'v1', 'kind': 'Namespace',

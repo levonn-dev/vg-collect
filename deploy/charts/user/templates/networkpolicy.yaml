@@ -1,33 +1,4 @@
-{{- if .Values.postgres.enabled }}
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: {{ .Chart.Name }}-pg-owner-only
-  labels: {{- include "user.labels" . | nindent 4 }}
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: {{ .Chart.Name }}-pg
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: {{ .Chart.Name }}
-      ports:
-        - { port: 5432, protocol: TCP }
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: vg-platform
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: prometheus
-      ports:
-        - protocol: TCP
-          port: 9187
-{{- end }}
----
+{{ include "vg-lib.pg.ownerOnly" . }}
 # User's callers: auth (profile upsert + role reads at mint/refresh),
 # the bff (me composition), and social (followee validation).
 apiVersion: networking.k8s.io/v1

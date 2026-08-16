@@ -1,17 +1,1 @@
-{{- if .Values.valkey.enabled }}
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ .Chart.Name }}-valkey
-  labels:
-    app.kubernetes.io/name: {{ .Chart.Name }}-valkey
-    app.kubernetes.io/part-of: vgkeep
-spec:
-  selector:
-    app.kubernetes.io/name: {{ .Chart.Name }}-valkey
-  ports:
-    - { name: valkey, port: 6379, targetPort: valkey }
-    - name: metrics
-      port: 9121
-      targetPort: metrics
-{{- end }}
+{{ include "vg-lib.valkey.service" . }}

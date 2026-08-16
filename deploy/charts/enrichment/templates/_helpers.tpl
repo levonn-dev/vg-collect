@@ -5,5 +5,3 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{- define "enrichment.mongoHost" -}}{{ .Chart.Name }}-mongo{{- end }}
-
-{{- define "enrichment.valkeyHost" -}}{{ .Chart.Name }}-valkey{{- end }}

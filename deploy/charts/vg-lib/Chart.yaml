@@ -1,0 +1,5 @@
+apiVersion: v2
+name: vg-lib
+description: Shared manifest templates for vgkeep service charts (datastore quintets, owner-only network policies, and the per-service pdb/service/serviceaccount trio)
+type: library
+version: 0.1.0

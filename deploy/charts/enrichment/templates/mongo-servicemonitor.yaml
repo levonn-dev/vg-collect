@@ -1,14 +1,1 @@
-{{- if .Values.mongo.enabled }}
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: {{ .Chart.Name }}-mongo
-  labels: {{- include "enrichment.labels" . | nindent 4 }}
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: {{ .Chart.Name }}-mongo
-  endpoints:
-    - port: metrics
-      interval: 30s
-{{- end }}
+{{ include "vg-lib.mongo.servicemonitor" . }}

@@ -1,18 +1,1 @@
-{{- if .Values.postgres.enabled }}
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: social-pg-tls
-  labels: {{- include "social.labels" . | nindent 4 }}
-spec:
-  secretName: social-pg-tls
-  duration: 2160h
-  dnsNames:
-    - {{ include "social.pgHost" . }}
-    - {{ include "social.pgHost" . }}.{{ .Release.Namespace }}.svc
-    - {{ include "social.pgHost" . }}.{{ .Release.Namespace }}.svc.cluster.local
-  issuerRef:
-    name: vg-ca
-    kind: ClusterIssuer
-    group: cert-manager.io
-{{- end }}
+{{ include "vg-lib.pg.certificate" . }}

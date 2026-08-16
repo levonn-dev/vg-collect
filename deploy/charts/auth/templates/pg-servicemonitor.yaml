@@ -1,14 +1,1 @@
-{{- if .Values.postgres.enabled }}
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: {{ .Chart.Name }}-pg
-  labels: {{- include "auth.labels" . | nindent 4 }}
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: {{ .Chart.Name }}-pg
-  endpoints:
-    - port: metrics
-      interval: 30s
-{{- end }}
+{{ include "vg-lib.pg.servicemonitor" . }}

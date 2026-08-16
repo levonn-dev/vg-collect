@@ -42,6 +42,7 @@ tasks:
   bootstrap:cluster:
     desc: 'One-shot platform install (cert-manager + ESO + APISIX + observability stack, then issuers). Idempotent.'
     cmds:
+      - task: helm:deps
       - helm repo add jetstack https://charts.jetstack.io --force-update >/dev/null
       - helm repo add external-secrets https://charts.external-secrets.io --force-update >/dev/null
       - helm repo add apiseven https://charts.apiseven.com --force-update >/dev/null
@@ -101,9 +102,32 @@ tasks:
       - task: lint:helm
       - task: frontend:lint:fix
 
+  helm:deps:
+    desc: 'Vendor the vg-lib library chart into each service chart (helm dependency build); skipped when the library and the consumers'' Chart.yaml files are unchanged (content checksums)'
+    sources:
+      - deploy/charts/vg-lib/**/*
+      - deploy/charts/auth/Chart.yaml
+      - deploy/charts/bff/Chart.yaml
+      - deploy/charts/collection/Chart.yaml
+      - deploy/charts/enrichment/Chart.yaml
+      - deploy/charts/social/Chart.yaml
+      - deploy/charts/user/Chart.yaml
+    generates:
+      - deploy/charts/auth/charts/vg-lib-0.1.0.tgz
+      - deploy/charts/bff/charts/vg-lib-0.1.0.tgz
+      - deploy/charts/collection/charts/vg-lib-0.1.0.tgz
+      - deploy/charts/enrichment/charts/vg-lib-0.1.0.tgz
+      - deploy/charts/social/charts/vg-lib-0.1.0.tgz
+      - deploy/charts/user/charts/vg-lib-0.1.0.tgz
+    method: checksum
+    cmds:
+      - for: [auth, bff, collection, enrichment, social, user]
+        cmd: helm dependency build deploy/charts/{{.ITEM}} >/dev/null
+
   lint:helm:
     desc: helm lint every chart (registers chart repos + builds the platform subchart deps first)
     cmds:
+      - task: helm:deps
       # helm lint of the platform chart needs its subchart deps vendored
       # first, which needs the chart repos registered.
       - test ! -d deploy/charts/platform || (helm repo add jetstack https://charts.jetstack.io --force-update >/dev/null &&

@@ -1,0 +1,3 @@
+# vg-lib is a library chart: it renders nothing on its own and reads the
+# consuming chart's values (postgres/valkey/mongo blocks).
+{}

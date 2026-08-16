@@ -1,33 +1,4 @@
-{{- if .Values.postgres.enabled }}
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: {{ .Chart.Name }}-pg-owner-only
-  labels: {{- include "auth.labels" . | nindent 4 }}
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: {{ .Chart.Name }}-pg
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: {{ .Chart.Name }}
-      ports:
-        - { port: 5432, protocol: TCP }
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: vg-platform
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: prometheus
-      ports:
-        - protocol: TCP
-          port: 9187
-{{- end }}
----
+{{ include "vg-lib.pg.ownerOnly" . }}
 # Auth's callers: the bff (login + token lifecycle), every
 # JWT-validating service fetching the JWKS (today: user, enrichment,
 # collection, social), and the two CronJobs (catalog-refresh,
