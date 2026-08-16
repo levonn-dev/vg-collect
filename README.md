@@ -164,8 +164,19 @@ against AWS Secrets Manager in the documented production path.
 - `libs/go/` shared modules (one concern each)
 - `services/` one Go module per service
 - `frontend/` React SPA (typed against `api/bff.yaml`, served by the bff)
-- `deploy/charts/` Helm (per-service + platform)
+- `deploy/charts/` Helm (per-service + platform + `vg-lib`, the shared
+  library chart)
 - `docs/` diagrams, runbooks, production paths, brand assets (`docs/brand/`).
+
+Helm: `deploy/charts/vg-lib` holds the templates common to every
+service chart (datastore certificate/pdb/service/servicemonitor/
+statefulset for postgres, valkey, and mongo; the datastore owner-only
+network policies; the per-service pdb, service, and serviceaccount).
+Each service chart keeps its own thin caller file per template, under
+the same file names as before. `task helm:deps` vendors `vg-lib` into
+every service chart and runs automatically from `task lint`,
+`task bootstrap:cluster`, and the Tiltfile, so a fresh clone needs no
+manual step.
 
 Translations: see `docs/translations.md` to contribute a language.
 Regions: `docs/adding-a-region.md` is the graduation checklist for a

@@ -15,17 +15,19 @@ through in-cluster PgBouncer is a per-service call: the Go pgx pools
 already in use are fine either way, and a Proxy mainly buys failover
 smoothing.
 
-Every Postgres-backed chart (user, collection, social) already carries
-a `postgres.enabled` flag: turning it off drops the in-cluster
+Every Postgres-backed chart (auth, user, collection, social) already
+carries a `postgres.enabled` flag: turning it off drops the in-cluster
 StatefulSet, its postgres-exporter sidecar, PodDisruptionBudget,
-ServiceMonitor, Certificate, and the pg-scoped NetworkPolicy rule.
-Unlike the Mongo seam below, none of the three wires `DATABASE_URL` to
-a dedicated values key yet when the flag flips off - it still composes
-against the chart's own `<service>-pg` in-cluster hostname - so
-pointing at RDS or CloudNativePG today means overriding `DATABASE_URL`
-directly at deploy time. Adding a first-class `env.databaseUrl`
-override, mirroring `env.mongoUrl` below, is the natural next step
-once a real Postgres target exists to test it against.
+ServiceMonitor, Certificate, and the pg-scoped NetworkPolicy rule - all
+templated once in the shared `vg-lib` library chart rather than
+duplicated per service. Unlike the Mongo seam below, none of the four
+wires `DATABASE_URL` to a dedicated values key yet when the flag flips
+off - it still composes against the chart's own `<service>-pg`
+in-cluster hostname - so pointing at RDS or CloudNativePG today means
+overriding `DATABASE_URL` directly at deploy time. Adding a
+first-class `env.databaseUrl` override, mirroring `env.mongoUrl`
+below, is the natural next step once a real Postgres target exists to
+test it against.
 
 MongoDB moves to MongoDB Atlas on AWS via PrivateLink, explicitly NOT
 DocumentDB: its Mongo 5.0-subset API has no time-series collections,
