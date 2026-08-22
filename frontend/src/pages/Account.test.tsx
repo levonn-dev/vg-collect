@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
-import { jsonResponse, problemResponse } from '../test/fixtures'
+import { jsonResponse, requestPath } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Account from './Account'
 
@@ -25,10 +25,11 @@ function stubFetch(
   overrides: Record<string, Response> = {},
   data: { me?: typeof me; identities?: typeof identities; providers?: typeof providers } = {},
 ) {
-  const fetchMock = vi.fn((input: string, init?: RequestInit) => {
-    const url = String(input)
+  const fetchMock = vi.fn((input: unknown) => {
+    const url = requestPath(input)
+    const method = (input as Request).method
     for (const [prefix, res] of Object.entries(overrides)) {
-      if (url.startsWith(prefix) && (init?.method ?? 'GET') !== 'GET') return Promise.resolve(res.clone())
+      if (url.startsWith(prefix) && method !== 'GET') return Promise.resolve(res.clone())
     }
     if (url === '/api/me') return Promise.resolve(jsonResponse(200, data.me ?? me))
     if (url === '/api/me/identities') return Promise.resolve(jsonResponse(200, data.identities ?? identities))
@@ -62,133 +63,6 @@ function renderAccount(path = '/account') {
 
 afterEach(() => vi.unstubAllGlobals())
 
-it('renders profile fields seeded from /api/me and saves via PATCH', async () => {
-  const fetchMock = stubFetch()
-  renderAccount()
-  const input = await screen.findByLabelText('Handle')
-  expect(input).toHaveValue('Alice')
-  await userEvent.clear(input)
-  await userEvent.type(input, 'Alicia')
-  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-  expect(await screen.findByRole('status')).toHaveTextContent('Saved.')
-  expect(fetchMock).toHaveBeenCalledWith('/api/me', expect.objectContaining({
-    method: 'PATCH',
-    body: JSON.stringify({
-      handle: 'Alicia', avatar_url: '', profile_visibility: 'private', landing_page: 'feed',
-    }),
-  }))
-})
-
-it('carries client-side handle validation matching the server rules', async () => {
-  stubFetch()
-  renderAccount()
-  const input = await screen.findByLabelText('Handle')
-  expect(input).toHaveAttribute('minLength', '2')
-  expect(input).toHaveAttribute('pattern', '[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?')
-  expect(input).toHaveAttribute('title', '2-30 characters, letters/digits, underscores inside only')
-})
-
-it('submits the selected profile visibility alongside the rest of the form', async () => {
-  const fetchMock = stubFetch()
-  renderAccount()
-  await userEvent.click(
-    await screen.findByRole('radio', { name: 'Listed - appears in Explore and search' }),
-  )
-  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-  expect(await screen.findByRole('status')).toHaveTextContent('Saved.')
-  expect(fetchMock).toHaveBeenCalledWith('/api/me', expect.objectContaining({
-    method: 'PATCH',
-    body: JSON.stringify({
-      handle: 'Alice', avatar_url: '', profile_visibility: 'listed', landing_page: 'feed',
-    }),
-  }))
-})
-
-it('renders the default-page fieldset seeded from me.landing_page', async () => {
-  stubFetch({}, { me: { ...me, landing_page: 'explore' } })
-  renderAccount()
-  expect(await screen.findByRole('radio', { name: 'Explore' })).toBeChecked()
-  expect(screen.getByRole('radio', { name: 'Feed' })).not.toBeChecked()
-  expect(screen.getByRole('radio', { name: 'Collection' })).not.toBeChecked()
-  expect(screen.getByText('Where the app opens after you sign in.')).toBeInTheDocument()
-})
-
-it('submits the selected default page alongside the rest of the form', async () => {
-  const fetchMock = stubFetch()
-  renderAccount()
-  await userEvent.click(await screen.findByRole('radio', { name: 'Collection' }))
-  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-  expect(await screen.findByRole('status')).toHaveTextContent('Saved.')
-  expect(fetchMock).toHaveBeenCalledWith('/api/me', expect.objectContaining({
-    method: 'PATCH',
-    body: JSON.stringify({
-      handle: 'Alice', avatar_url: '', profile_visibility: 'private', landing_page: 'collection',
-    }),
-  }))
-})
-
-it('shows a specific message when the handle is taken', async () => {
-  stubFetch({ '/api/me': problemResponse(409, 'handle_taken') })
-  renderAccount()
-  await userEvent.click(await screen.findByRole('button', { name: 'Save' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('That handle is taken.')
-})
-
-it('shows a specific message when the handle cooldown blocks the change', async () => {
-  stubFetch({ '/api/me': problemResponse(429, 'handle_cooldown') })
-  renderAccount()
-  await userEvent.click(await screen.findByRole('button', { name: 'Save' }))
-  expect(await screen.findByRole('alert'))
-    .toHaveTextContent('Handle changed too recently - try again later.')
-})
-
-it('hides the copy-link button while the profile is private', async () => {
-  stubFetch()
-  renderAccount()
-  await screen.findByLabelText('Handle')
-  expect(screen.queryByRole('button', { name: 'Copy profile link' })).not.toBeInTheDocument()
-})
-
-it('copies the profile link once visibility is not private', async () => {
-  const writeText = vi.fn().mockResolvedValue(undefined)
-  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
-  stubFetch({}, { me: { ...me, profile_visibility: 'listed' } })
-  renderAccount()
-  await userEvent.click(await screen.findByRole('button', { name: 'Copy profile link' }))
-  expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/u/Alice`)
-})
-
-it('lists linked logins with provider and email', async () => {
-  stubFetch()
-  renderAccount()
-  const list = await screen.findByRole('list')
-  expect(within(list).getByText(/alice@example\.com/)).toBeInTheDocument()
-  expect(within(list).getByText(/bob@example\.com/)).toBeInTheDocument()
-  expect(within(list).getAllByText('dev')).toHaveLength(2)
-})
-
-it('disables Unlink on the last remaining login', async () => {
-  stubFetch({}, { identities: { identities: [identities.identities[0]] } })
-  renderAccount()
-  const button = await screen.findByRole('button', { name: 'Unlink' })
-  expect(button).toBeDisabled()
-  expect(button).toHaveAttribute('title', 'Your account needs at least one login')
-})
-
-it('unlinks after confirmation', async () => {
-  vi.stubGlobal('confirm', vi.fn(() => true))
-  const fetchMock = stubFetch({ '/api/me/identities/': new Response(null, { status: 204 }) })
-  renderAccount()
-  const unlinkButtons = await screen.findAllByRole('button', { name: 'Unlink' })
-  await userEvent.click(unlinkButtons[1])
-  await waitFor(() => {
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/me/identities/i2',
-      expect.objectContaining({ method: 'DELETE' }),
-    )
-  })
-})
-
 it('renders link buttons as navigations to /api/auth/link', async () => {
   stubFetch()
   renderAccount()
@@ -217,5 +91,6 @@ it('deletes the account after confirmation and navigates to login', async () => 
   renderAccount()
   await userEvent.click(await screen.findByRole('button', { name: 'Delete account' }))
   expect(await screen.findByText('/login?deleted=1')).toBeInTheDocument()
-  expect(fetchMock).toHaveBeenCalledWith('/api/me', expect.objectContaining({ method: 'DELETE' }))
+  const del = fetchMock.mock.calls.find((c) => (c[0] as Request).method === 'DELETE')
+  expect(requestPath(del?.[0])).toBe('/api/me')
 })

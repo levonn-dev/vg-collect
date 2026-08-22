@@ -1,226 +1,21 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { msg, t } from '@lingui/core/macro'
-import type { I18n, MessageDescriptor } from '@lingui/core'
+import type { MessageDescriptor } from '@lingui/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import {
-  deleteAccount,
-  fetchIdentities,
-  fetchProviders,
-  unlinkIdentity,
-  updateMe,
-  type Identity,
-  type Me,
-} from '../api/client'
-import CopyButton from '../components/CopyButton'
+import { deleteAccount, fetchIdentities, fetchProviders } from '../api/me'
+import LinkedLogins from '../components/account/LinkedLogins'
+import ProfileForm from '../components/account/ProfileForm'
 import SectionLabel from '../components/SectionLabel'
 import { confirmThen } from '../lib/confirm'
+import { btnPrimary } from '../lib/formStyles'
 import { devFixtures, providerNames } from '../lib/providers'
-import { resolveApiError } from '../lib/resolveApiError'
 import { useMe } from '../lib/useMe'
 
 const linkErrorMessages: Record<string, MessageDescriptor> = {
   conflict: msg`That login already belongs to another account, so it was not linked.`,
   email_unverified: msg`That login has no verified email address; verify it there and try again.`,
   link_failed: msg`Linking failed. Please try again.`,
-}
-
-const visibilityOptions: [Me['profile_visibility'], MessageDescriptor][] = [
-  ['private', msg`Private - only you`],
-  ['unlisted', msg`Unlisted - anyone signed in who has your link`],
-  ['listed', msg`Listed - appears in Explore and search`],
-]
-
-const landingPageOptions: [Me['landing_page'], MessageDescriptor][] = [
-  ['feed', msg`Feed`],
-  ['collection', msg`Collection`],
-  ['explore', msg`Explore`],
-]
-
-const saveErrorCodes: Record<string, MessageDescriptor> = {
-  handle_taken: msg`That handle is taken.`,
-  handle_cooldown: msg`Handle changed too recently - try again later.`,
-}
-
-// t(i18n) throughout this file, every component included: this file's
-// own strings use the explicit form (not the useLingui()-bound t) so
-// they match resolveApiError's own explicit-i18n signature without
-// importing a second, same-named t.
-function saveErrorMessage(error: unknown, i18n: I18n): string {
-  return resolveApiError(error, i18n, saveErrorCodes, msg`Saving failed. Please try again.`)
-}
-
-// ProfileForm is keyed by me.id at the call site so its local draft
-// state seeds once per loaded profile.
-function ProfileForm({ me }: { me: Me }) {
-  const { i18n } = useLingui()
-  const [handle, setHandle] = useState(me.handle)
-  const [avatarUrl, setAvatarUrl] = useState(me.avatar_url ?? '')
-  const [visibility, setVisibility] = useState(me.profile_visibility)
-  const [landingPage, setLandingPage] = useState(me.landing_page)
-  const queryClient = useQueryClient()
-  const save = useMutation({
-    mutationFn: () =>
-      updateMe({
-        handle,
-        avatar_url: avatarUrl,
-        profile_visibility: visibility,
-        landing_page: landingPage,
-      }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['me'] }),
-  })
-
-  return (
-    <form
-      className="flex max-w-md flex-col gap-3"
-      onSubmit={(e) => {
-        e.preventDefault()
-        save.mutate()
-      }}
-    >
-      <div className="flex flex-col gap-1">
-        <label htmlFor="handle" className="text-sm text-gray-700">
-          <Trans>Handle</Trans>
-        </label>
-        <input
-          id="handle"
-          value={handle}
-          onChange={(e) => setHandle(e.target.value)}
-          required
-          minLength={2}
-          maxLength={30}
-          pattern="[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?"
-          title={t(i18n)`2-30 characters, letters/digits, underscores inside only`}
-          className="rounded border border-gray-300 px-3 py-2"
-        />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor="avatar-url" className="text-sm text-gray-700">
-          <Trans>Avatar image URL</Trans>
-        </label>
-        <input
-          id="avatar-url"
-          type="url"
-          value={avatarUrl}
-          onChange={(e) => setAvatarUrl(e.target.value)}
-          placeholder="https://..."
-          className="rounded border border-gray-300 px-3 py-2"
-        />
-        <p className="text-xs text-gray-500"><Trans>Leave empty to use your initial instead.</Trans></p>
-      </div>
-      <fieldset className="flex flex-col gap-1">
-        <legend className="text-sm text-gray-700"><Trans>Profile visibility</Trans></legend>
-        {visibilityOptions.map(([value, label]) => (
-          <label key={value} className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="profile_visibility"
-              value={value}
-              checked={visibility === value}
-              onChange={() => setVisibility(value)}
-            />
-            {i18n._(label)}
-          </label>
-        ))}
-      </fieldset>
-      <fieldset className="flex flex-col gap-1">
-        <legend className="text-sm text-gray-700"><Trans>Default page</Trans></legend>
-        <p className="text-xs text-gray-500"><Trans>Where the app opens after you sign in.</Trans></p>
-        {landingPageOptions.map(([value, label]) => (
-          <label key={value} className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="landing_page"
-              value={value}
-              checked={landingPage === value}
-              onChange={() => setLandingPage(value)}
-            />
-            {i18n._(label)}
-          </label>
-        ))}
-      </fieldset>
-      {me.profile_visibility !== 'private' && (
-        <CopyButton
-          text={`${location.origin}/u/${me.handle}`}
-          label={t(i18n)`Copy profile link`}
-          className="self-start px-3 py-1 text-sm"
-        />
-      )}
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={save.isPending}
-          className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-        >
-          <Trans>Save</Trans>
-        </button>
-        {save.isSuccess && (
-          <span role="status" className="text-sm text-green-800">
-            <Trans>Saved.</Trans>
-          </span>
-        )}
-        {save.isError && (
-          <span role="alert" className="text-sm text-red-700">
-            {saveErrorMessage(save.error, i18n)}
-          </span>
-        )}
-      </div>
-    </form>
-  )
-}
-
-function LinkedLogins({ identities }: { identities: Identity[] }) {
-  const { i18n } = useLingui()
-  const queryClient = useQueryClient()
-  const unlink = useMutation({
-    mutationFn: unlinkIdentity,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['identities'] }),
-  })
-  const lastOne = identities.length === 1
-
-  return (
-    <ul className="flex max-w-md flex-col gap-2">
-      {identities.map((identity) => {
-        const email = identity.email ?? t(i18n)`no email recorded`
-        const linkedDate = new Date(identity.created_at).toLocaleDateString()
-        return (
-          <li
-            key={identity.id}
-            className="flex items-center justify-between rounded border border-gray-200 px-3 py-2"
-          >
-            <div>
-              <p className="text-sm font-medium capitalize">{identity.provider}</p>
-              <p className="text-xs text-gray-500">
-                <Trans>
-                  {email} - linked{' '}
-                  {linkedDate}
-                </Trans>
-              </p>
-            </div>
-            <button
-              onClick={() =>
-                confirmThen(
-                  t(i18n)`Unlink this login? You will no longer be able to sign in with it.`,
-                  () => unlink.mutate(identity.id),
-                )
-              }
-              disabled={lastOne || unlink.isPending}
-              title={lastOne ? t(i18n)`Your account needs at least one login` : undefined}
-              className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
-            >
-              <Trans>Unlink</Trans>
-            </button>
-          </li>
-        )
-      })}
-      {unlink.isError && (
-        <li role="alert" className="text-sm text-red-700">
-          <Trans>Unlinking failed. Please try again.</Trans>
-        </li>
-      )}
-    </ul>
-  )
 }
 
 // Account is the self-service page: profile fields, linked provider
@@ -316,7 +111,7 @@ export default function Account() {
                   <a
                     key={user}
                     href={`/api/auth/link?provider=dev&user=${user}`}
-                    className="flex-1 rounded bg-gray-900 px-3 py-2 text-center text-sm text-white hover:bg-gray-700"
+                    className={`${btnPrimary} flex-1`}
                   >
                     {user}
                   </a>
