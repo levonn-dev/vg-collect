@@ -25,7 +25,12 @@ export interface PlatformValue {
 // entry that already carries a canonical platform opens confirmed, a
 // wizard Back that retains state re-enters it, and an external reset of
 // the value exits it - all for free, with no extra state to sync.
-export default function PlatformPicker({ value, onChange }: { value: PlatformValue; onChange: (v: PlatformValue) => void }) {
+// maxLength is an optional pass-through onto the free-text inputs
+// below (both the catalog-suggest search box and the escape-hatch
+// field can end up as the platformName that gets submitted) - absent
+// by default so every existing caller renders exactly as before;
+// ReviewPanel is the one caller that supplies it today.
+export default function PlatformPicker({ value, onChange, maxLength }: { value: PlatformValue; onChange: (v: PlatformValue) => void; maxLength?: number }) {
   const { t } = useLingui()
   const platforms = useQuery({ queryKey: ['platforms'], queryFn: fetchPlatforms, staleTime: Infinity })
   const [query, setQuery] = useState(value.platformName)
@@ -74,6 +79,7 @@ export default function PlatformPicker({ value, onChange }: { value: PlatformVal
           <input
             aria-label={t`Platform`}
             value={query}
+            maxLength={maxLength}
             onChange={(e) => {
               setQuery(e.target.value)
               onChange({ platformIgdbId: undefined, platformName: e.target.value })
@@ -103,6 +109,7 @@ export default function PlatformPicker({ value, onChange }: { value: PlatformVal
         <input
           aria-label={t`Platform`}
           value={query}
+          maxLength={maxLength}
           onChange={(e) => {
             setQuery(e.target.value)
             // Typing clears a prior canonical pick until a new one lands.

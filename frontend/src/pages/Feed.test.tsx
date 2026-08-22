@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { FeedItem, ProfileCard, ShelfCard as ShelfCardData } from '../api/social'
 import { messages as jaMessages } from '../locales/ja.po'
-import { jsonResponse } from '../test/fixtures'
+import { calledPath, jsonResponse, requestPath } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Feed from './Feed'
 
@@ -18,11 +18,11 @@ import Feed from './Feed'
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
   const counts: Record<string, number> = {}
-  const impl = vi.fn().mockImplementation((url: string) => {
-    const hit = Object.entries(routes).find(([prefix]) => String(url).startsWith(prefix))
+  const impl = vi.fn().mockImplementation((url: unknown) => {
+    const hit = Object.entries(routes).find(([prefix]) => requestPath(url).startsWith(prefix))
     if (!hit) {
-      unstubbed.push(String(url))
-      return Promise.reject(new Error(`unstubbed fetch: ${String(url)}`))
+      unstubbed.push(requestPath(url))
+      return Promise.reject(new Error(`unstubbed fetch: ${requestPath(url)}`))
     }
     const [prefix, entry] = hit
     const sequence = Array.isArray(entry) ? entry : [entry]
@@ -221,7 +221,7 @@ it('defaults to the Following tab, selected, and refetches the You tab with tab=
   expect(await screen.findByRole('link', { name: 'Hall of Fame' })).toBeInTheDocument()
   expect(screen.queryByRole('link', { name: 'Backlog Wall' })).not.toBeInTheDocument()
   expect(screen.getByRole('tab', { name: 'You', selected: true })).toBeInTheDocument()
-  expect(fetchMock.mock.calls.some((c) => String(c[0]) === '/api/feed?tab=you')).toBe(true)
+  expect(fetchMock.mock.calls.some((c) => requestPath(c[0]) === '/api/feed?tab=you')).toBe(true)
 })
 
 it('shows an Explore CTA when the Following feed is empty', async () => {
@@ -257,7 +257,7 @@ it('shows Load more only when next_cursor is present, and pages via the raw curs
 
   expect(await screen.findByRole('link', { name: 'Second Shelf' })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
-  expect(fetchMock.mock.calls[1][0]).toBe('/api/feed?tab=following&cursor=cur1')
+  expect(calledPath(fetchMock, 1)).toBe('/api/feed?tab=following&cursor=cur1')
 })
 
 it('shows no Load more when next_cursor is absent', async () => {

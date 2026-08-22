@@ -3,7 +3,7 @@ import { act, fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { ProfileCard, ShelfCard as ShelfCardData } from '../api/social'
-import { jsonResponse } from '../test/fixtures'
+import { calledPath, jsonResponse, requestPath } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Explore from './Explore'
 
@@ -31,11 +31,11 @@ function renderExplore() {
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
   const counts: Record<string, number> = {}
-  const impl = vi.fn().mockImplementation((url: string) => {
-    const hit = Object.entries(routes).find(([prefix]) => String(url).startsWith(prefix))
+  const impl = vi.fn().mockImplementation((url: unknown) => {
+    const hit = Object.entries(routes).find(([prefix]) => requestPath(url).startsWith(prefix))
     if (!hit) {
-      unstubbed.push(String(url))
-      return Promise.reject(new Error(`unstubbed fetch: ${String(url)}`))
+      unstubbed.push(requestPath(url))
+      return Promise.reject(new Error(`unstubbed fetch: ${requestPath(url)}`))
     }
     const [prefix, entry] = hit
     const sequence = Array.isArray(entry) ? entry : [entry]
@@ -123,7 +123,7 @@ it('loads the next recent page via Load more, using the server-computed next_off
   expect(screen.queryByRole('link', { name: 'Shelf 24' })).not.toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
   expect(await screen.findByRole('link', { name: 'Shelf 24' })).toBeInTheDocument()
-  expect(fetchMock.mock.calls[1][0]).toBe('/api/explore?sort=recent&offset=30')
+  expect(calledPath(fetchMock, 1)).toBe('/api/explore?sort=recent&offset=30')
   // The second page carries no next_offset - the stream is exhausted,
   // so Load more must not render.
   expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
@@ -163,8 +163,8 @@ it('shows a Searching indicator while the debounced query is in flight, replaced
   // immediately, which can never model an in-flight fetch) - same
   // captured-resolve idiom as CommentList.test's in-flight regression.
   let resolveSearch!: (res: Response) => void
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    if (String(url).startsWith('/api/search/users')) {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search/users')) {
       return new Promise<Response>((resolve) => { resolveSearch = resolve })
     }
     return Promise.resolve(jsonResponse(200, { shelves: [] }))

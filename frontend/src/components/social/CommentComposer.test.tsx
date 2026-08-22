@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse, problemResponse } from '../../test/fixtures'
+import { calledPath, jsonResponse, problemResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import CommentComposer from './CommentComposer'
 
@@ -62,9 +62,10 @@ it('posts the trimmed body, clears the field, and invalidates the comment querie
   await userEvent.click(screen.getByRole('button', { name: 'Post' }))
 
   await waitFor(() => expect(box).toHaveValue(''))
-  const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-  expect(url).toBe('/api/shelves/s1/comments')
-  expect(init).toMatchObject({ method: 'POST', body: JSON.stringify({ body: 'Nice shelf!' }) })
+  expect(calledPath(fetchMock, 0)).toBe('/api/shelves/s1/comments')
+  const req = fetchMock.mock.calls[0][0] as Request
+  expect(req.method).toBe('POST')
+  expect(await req.text()).toBe(JSON.stringify({ body: 'Nice shelf!' }))
   expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['shelfComments', 's1'] })
   expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['shelfSummary', 's1'] })
 })

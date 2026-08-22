@@ -1,10 +1,12 @@
+import { i18n } from '@lingui/core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { AdminSubmission } from '../../api/admin'
 import type { Platform } from '../../api/platforms'
 import { ApiError } from '../../api/client'
-import { jsonResponse, problemResponse, putBody } from '../../test/fixtures'
+import { messages as jaMessages } from '../../locales/ja.po'
+import { jsonResponse, problemResponse, putBody, requestPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import ReviewPanel from './ReviewPanel'
 
@@ -24,7 +26,13 @@ function renderPanel(submission: AdminSubmission, onDone = vi.fn(), platforms: P
   return onDone
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  // Order matters: cleanup() before activate() - see EntryDetail.test.tsx's
+  // afterEach for why (I18nProvider update outside act otherwise).
+  cleanup()
+  i18n.activate('en')
+})
 
 const row: AdminSubmission = {
   id: 's1', entry_id: 'e1', user_id: 'u1', status: 'pending',
@@ -37,8 +45,8 @@ it('approve-new mints from the curated form', async () => {
   // panel's own duplicates search and the verdict call each need their own
   // fresh Response - a Response body can only be read once, and reusing one
   // singleton across both calls would break whichever call reads it second.
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(jsonResponse(200, { ...row, status: 'approved' }))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -48,14 +56,34 @@ it('approve-new mints from the curated form', async () => {
   await userEvent.clear(name)
   await userEvent.type(name, 'Repro Alpha')
   await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
-  const verdictCall = fetchMock.mock.calls.find(([u]) => u === '/api/admin/submissions/s1/verdict')
+  const verdictCall = fetchMock.mock.calls.find(([u]) => requestPath(u) === '/api/admin/submissions/s1/verdict')
   expect(verdictCall).toBeDefined()
-  expect(putBody(verdictCall?.[1] as RequestInit)).toEqual({
+  expect(await putBody(verdictCall?.[0])).toEqual({
     action: 'approve_new',
     product: { type: 'game', name: 'Repro Alpha', platform_name: 'snes', region: 'pal', edition: 'glow cart' },
   })
   // Argument-free: only the raced-409 path below hands anything up.
   expect(onDone).toHaveBeenCalledWith()
+})
+
+// Type options used to be raw, untranslated text (a straight
+// "game"/"console"/"accessory" <option> literal) - this pins that they
+// now render through itemTypeWireLabels, so a ja reader sees ja text
+// rather than the English wire value. Options are found by their
+// locale-invariant value (not the label text, which is itself
+// translated under ja) so the query does not depend on the very
+// translation being pinned.
+it('renders the Type options through the translated wire label under ja', () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { degraded: false, results: [] })))
+  i18n.load('ja', jaMessages)
+  i18n.activate('ja')
+  renderPanel(row)
+  // Found by the option's value attribute (locale-invariant) rather
+  // than getByDisplayValue, which matches a select's VISIBLE option
+  // text - itself translated under ja, so it cannot locate the node.
+  const select = document.querySelector('option[value="game"]')!.parentElement!
+  const texts = Array.from(select.querySelectorAll('option')).map((o) => o.textContent)
+  expect(texts).toEqual(['ゲーム', 'ゲーム機', '周辺機器'])
 })
 
 it('a catalog platform pick shows the confirmed state (not a blank field) and mints the canonical name', async () => {
@@ -67,8 +95,8 @@ it('a catalog platform pick shows the confirmed state (not a blank field) and mi
     display_name: 'Chrono Trigger', item_type: 'game',
     region: 'pal', created_at: '2026-07-17T00:00:00Z', updated_at: '2026-07-17T00:00:00Z',
   }
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(jsonResponse(200, { ...noPlatform, status: 'approved' }))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -87,11 +115,11 @@ it('a catalog platform pick shows the confirmed state (not a blank field) and mi
   expect(screen.getByRole('button', { name: 'Change platform' })).toBeInTheDocument()
 
   await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
-  const verdictCall = fetchMock.mock.calls.find(([u]) => u === '/api/admin/submissions/s2/verdict')
+  const verdictCall = fetchMock.mock.calls.find(([u]) => requestPath(u) === '/api/admin/submissions/s2/verdict')
   expect(verdictCall).toBeDefined()
   // Name-only by design (community facts carry platform_name, never a
   // platform id) - toEqual on the whole body proves no id field rode along.
-  expect(putBody(verdictCall?.[1] as RequestInit)).toEqual({
+  expect(await putBody(verdictCall?.[0])).toEqual({
     action: 'approve_new',
     product: { type: 'game', name: 'Chrono Trigger', platform_name: 'Super Nintendo Entertainment System', region: 'pal' },
   })
@@ -99,8 +127,8 @@ it('a catalog platform pick shows the confirmed state (not a blank field) and mi
 })
 
 it('renders the region as a RegionPicker select prefilled with the submission region, and mints the edited region', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(jsonResponse(200, { ...row, status: 'approved' }))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -113,8 +141,8 @@ it('renders the region as a RegionPicker select prefilled with the submission re
   expect(screen.getByRole('button', { name: "My region isn't listed" })).toBeInTheDocument()
   await userEvent.selectOptions(regionField, 'ntsc_u')
   await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
-  const verdictCall = fetchMock.mock.calls.find(([u]) => u === '/api/admin/submissions/s1/verdict')
-  expect(putBody(verdictCall?.[1] as RequestInit)).toEqual({
+  const verdictCall = fetchMock.mock.calls.find(([u]) => requestPath(u) === '/api/admin/submissions/s1/verdict')
+  expect(await putBody(verdictCall?.[0])).toEqual({
     action: 'approve_new',
     product: { type: 'game', name: 'repro alpha', platform_name: 'snes', region: 'ntsc_u', edition: 'glow cart' },
   })
@@ -122,8 +150,8 @@ it('renders the region as a RegionPicker select prefilled with the submission re
 
 it('opens region in free-text mode for a stored value outside the known set, and mints the edited free-text region', async () => {
   const openWorldRow: AdminSubmission = { ...row, region: 'Korea' }
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(jsonResponse(200, { ...openWorldRow, status: 'approved' }))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -135,8 +163,8 @@ it('opens region in free-text mode for a stored value outside the known set, and
   await userEvent.clear(regionField)
   await userEvent.type(regionField, 'South Korea')
   await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
-  const verdictCall = fetchMock.mock.calls.find(([u]) => u === '/api/admin/submissions/s1/verdict')
-  expect(putBody(verdictCall?.[1] as RequestInit)).toEqual({
+  const verdictCall = fetchMock.mock.calls.find(([u]) => requestPath(u) === '/api/admin/submissions/s1/verdict')
+  expect(await putBody(verdictCall?.[0])).toEqual({
     action: 'approve_new',
     product: { type: 'game', name: 'repro alpha', platform_name: 'snes', region: 'South Korea', edition: 'glow cart' },
   })
@@ -144,8 +172,8 @@ it('opens region in free-text mode for a stored value outside the known set, and
 
 it('prefills the submitter credits and mints the edited lists', async () => {
   const credited: AdminSubmission = { ...row, developers: ['Garage Team'] }
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(jsonResponse(200, { ...credited, status: 'approved' }))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -154,8 +182,8 @@ it('prefills the submitter credits and mints the edited lists', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Add publisher' }))
   await userEvent.type(screen.getByLabelText('Publishers 1'), '  Repro House  ')
   await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
-  const verdictCall = fetchMock.mock.calls.find(([u]) => u === '/api/admin/submissions/s1/verdict')
-  expect(putBody(verdictCall?.[1] as RequestInit)).toEqual({
+  const verdictCall = fetchMock.mock.calls.find(([u]) => requestPath(u) === '/api/admin/submissions/s1/verdict')
+  expect(await putBody(verdictCall?.[0])).toEqual({
     action: 'approve_new',
     product: {
       type: 'game', name: 'repro alpha', platform_name: 'snes', region: 'pal', edition: 'glow cart',
@@ -165,8 +193,8 @@ it('prefills the submitter credits and mints the edited lists', async () => {
 })
 
 it('reject requires and sends the reason', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(jsonResponse(200, { ...row, status: 'rejected' }))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -177,9 +205,9 @@ it('reject requires and sends the reason', async () => {
   await userEvent.type(screen.getByLabelText('Rejection reason'), 'Duplicate of an existing product')
   expect(rejectButton).toBeEnabled()
   await userEvent.click(rejectButton)
-  const verdictCall = fetchMock.mock.calls.find(([u]) => u === '/api/admin/submissions/s1/verdict')
+  const verdictCall = fetchMock.mock.calls.find(([u]) => requestPath(u) === '/api/admin/submissions/s1/verdict')
   expect(verdictCall).toBeDefined()
-  expect(putBody(verdictCall?.[1] as RequestInit)).toEqual({
+  expect(await putBody(verdictCall?.[0])).toEqual({
     action: 'reject',
     reason: 'Duplicate of an existing product',
   })
@@ -187,8 +215,8 @@ it('reject requires and sends the reason', async () => {
 })
 
 it('adopt by id sends approve_existing', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(jsonResponse(200, { ...row, status: 'approved' }))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -197,9 +225,9 @@ it('adopt by id sends approve_existing', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Adopt existing product' }))
   await userEvent.type(screen.getByLabelText('Product id'), '3fa85f64-5717-4562-b3fc-2c963f66afa6')
   await userEvent.click(screen.getByRole('button', { name: 'Adopt by id' }))
-  const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'POST')
-  expect(post?.[0]).toBe('/api/admin/submissions/s1/verdict')
-  expect(putBody(post?.[1] as RequestInit)).toEqual({
+  const post = fetchMock.mock.calls.find(([input]) => (input as Request).method === 'POST')
+  expect(requestPath(post?.[0])).toBe('/api/admin/submissions/s1/verdict')
+  expect(await putBody(post?.[0])).toEqual({
     action: 'approve_existing',
     product_id: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
   })
@@ -208,8 +236,8 @@ it('adopt by id sends approve_existing', async () => {
 
 it('adopt via a community pick adopts directly, without resolving', async () => {
   const communityProductId = '11111111-2222-4333-8444-555555555555'
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search'))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search'))
       return Promise.resolve(jsonResponse(200, {
         degraded: false,
         results: [
@@ -227,26 +255,26 @@ it('adopt via a community pick adopts directly, without resolving', async () => 
   await userEvent.click(screen.getByRole('button', { name: 'Adopt existing product' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Search' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Repro Alpha on SNES' }))
-  const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'POST')
-  expect(post?.[0]).toBe('/api/admin/submissions/s1/verdict')
-  expect(putBody(post?.[1] as RequestInit)).toEqual({
+  const post = fetchMock.mock.calls.find(([input]) => (input as Request).method === 'POST')
+  expect(requestPath(post?.[0])).toBe('/api/admin/submissions/s1/verdict')
+  expect(await putBody(post?.[0])).toEqual({
     action: 'approve_existing',
     product_id: communityProductId,
   })
-  expect(fetchMock.mock.calls.some(([u]) => u === '/api/products/resolve')).toBe(false)
+  expect(fetchMock.mock.calls.some(([u]) => requestPath(u) === '/api/products/resolve')).toBe(false)
   expect(onDone).toHaveBeenCalled()
 })
 
 it('adopt via a provider pick resolves first, then adopts the resolved product', async () => {
   const resolvedId = '9f9f9f9f-0000-0000-0000-000000000001'
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search'))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search'))
       return Promise.resolve(jsonResponse(200, {
         degraded: false,
         results: [{ type: 'game', name: 'Chrono Trigger', igdb_game_id: 1011,
           platforms: [{ igdb_platform_id: 19, name: 'SNES' }] }],
       }))
-    if (url === '/api/products/resolve')
+    if (requestPath(url) === '/api/products/resolve')
       return Promise.resolve(jsonResponse(200, {
         id: resolvedId, type: 'game', name: 'Chrono Trigger', igdb: { game_id: 1011 },
         created_at: 'x', updated_at: 'x',
@@ -259,21 +287,21 @@ it('adopt via a provider pick resolves first, then adopts the resolved product',
   await userEvent.click(screen.getByRole('button', { name: 'Adopt existing product' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Search' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Chrono Trigger on SNES' }))
-  const resolveCall = fetchMock.mock.calls.find(([u]) => u === '/api/products/resolve')
+  const resolveCall = fetchMock.mock.calls.find(([u]) => requestPath(u) === '/api/products/resolve')
   expect(resolveCall).toBeDefined()
-  expect(putBody(resolveCall?.[1] as RequestInit)).toEqual({
+  expect(await putBody(resolveCall?.[0])).toEqual({
     type: 'game', igdb_game_id: 1011, platform_igdb_id: 19,
   })
-  const verdictCall = fetchMock.mock.calls.find(([u]) => u === '/api/admin/submissions/s1/verdict')
-  expect(putBody(verdictCall?.[1] as RequestInit)).toEqual({
+  const verdictCall = fetchMock.mock.calls.find(([u]) => requestPath(u) === '/api/admin/submissions/s1/verdict')
+  expect(await putBody(verdictCall?.[0])).toEqual({
     action: 'approve_existing', product_id: resolvedId,
   })
   expect(onDone).toHaveBeenCalled()
 })
 
 it('opens the adopt picker on the kind matching the submission: Hardware for hardware, Games for a game', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(jsonResponse(200, row))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -290,8 +318,8 @@ it('opens the adopt picker on the kind matching the submission: Hardware for har
 })
 
 it('renders submission_resolved inline and refetches', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(problemResponse(409, 'submission_resolved', 'Another admin already handled this submission.'))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -313,8 +341,8 @@ it('prefills the cover, previews it, and sends it in the approve_new mint', asyn
     region: 'pal', cover_url: 'https://img.example/sub.jpg',
     created_at: '2026-07-19T00:00:00Z', updated_at: '2026-07-19T00:00:00Z',
   }
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(jsonResponse(200, { id: 's1', entry_id: 'e1', status: 'approved', created_at: 'x', updated_at: 'x', product_id: 'p1' }))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -323,14 +351,14 @@ it('prefills the cover, previews it, and sends it in the approve_new mint', asyn
   expect(cover).toHaveValue('https://img.example/sub.jpg')
   expect(screen.getByRole('img', { name: /cover preview/i })).toHaveAttribute('src', 'https://img.example/sub.jpg')
   await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
-  const verdictCall = fetchMock.mock.calls.find(([u]) => u === '/api/admin/submissions/s1/verdict')
-  const body = putBody<{ product: { cover_url?: string } }>(verdictCall?.[1] as RequestInit)
+  const verdictCall = fetchMock.mock.calls.find(([u]) => requestPath(u) === '/api/admin/submissions/s1/verdict')
+  const body = await putBody<{ product: { cover_url?: string } }>(verdictCall?.[0])
   expect(body.product.cover_url).toBe('https://img.example/sub.jpg')
 })
 
 it('shows potential duplicates for the proposal name, including a community-tagged row', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search'))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search'))
       return Promise.resolve(jsonResponse(200, {
         degraded: false,
         results: [
@@ -355,12 +383,12 @@ it('shows potential duplicates for the proposal name, including a community-tagg
   expect(within(section).getByText('Super Nintendo')).toBeInTheDocument()
   expect(within(section).getByText('SNES')).toBeInTheDocument()
   // Searched on the submission's own proposal (display_name), type game.
-  expect(String(fetchMock.mock.calls[0][0])).toContain('type=game&q=repro+alpha')
+  expect(requestPath(fetchMock.mock.calls[0][0])).toContain('type=game&q=repro+alpha')
 })
 
 it('flags an exact-match duplicate row by name+platform, not a differently-named or differently-platformed row', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search'))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search'))
       return Promise.resolve(jsonResponse(200, {
         degraded: false,
         results: [
@@ -396,8 +424,8 @@ it('flags an exact-match duplicate row by name+platform, not a differently-named
 
 it('Use as existing on a community duplicate row adopts directly, without resolving, and provider rows get no such button', async () => {
   const communityProductId = '11111111-2222-4333-8444-555555555555'
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search'))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search'))
       return Promise.resolve(jsonResponse(200, {
         degraded: false,
         results: [
@@ -419,19 +447,19 @@ it('Use as existing on a community duplicate row adopts directly, without resolv
   // Exactly one: the community row gets the button, the provider row does not.
   expect(within(section).getAllByRole('button', { name: 'Use as existing' })).toHaveLength(1)
   await userEvent.click(within(section).getByRole('button', { name: 'Use as existing' }))
-  const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'POST')
-  expect(post?.[0]).toBe('/api/admin/submissions/s1/verdict')
-  expect(putBody(post?.[1] as RequestInit)).toEqual({
+  const post = fetchMock.mock.calls.find(([input]) => (input as Request).method === 'POST')
+  expect(requestPath(post?.[0])).toBe('/api/admin/submissions/s1/verdict')
+  expect(await putBody(post?.[0])).toEqual({
     action: 'approve_existing',
     product_id: communityProductId,
   })
-  expect(fetchMock.mock.calls.some(([u]) => u === '/api/products/resolve')).toBe(false)
+  expect(fetchMock.mock.calls.some(([u]) => requestPath(u) === '/api/products/resolve')).toBe(false)
   expect(onDone).toHaveBeenCalled()
 })
 
 it('shows None found when no duplicates match the proposal name', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(jsonResponse(200, row))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -440,12 +468,12 @@ it('shows None found when no duplicates match the proposal name', async () => {
 })
 
 it('maps a console/accessory submission to a hardware duplicates search', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(jsonResponse(200, row))
   })
   vi.stubGlobal('fetch', fetchMock)
   renderPanel({ ...row, item_type: 'console' })
   await screen.findByText('None found.')
-  expect(String(fetchMock.mock.calls[0][0])).toContain('type=hardware')
+  expect(requestPath(fetchMock.mock.calls[0][0])).toContain('type=hardware')
 })

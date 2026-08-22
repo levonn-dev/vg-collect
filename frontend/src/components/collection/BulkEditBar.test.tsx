@@ -64,7 +64,7 @@ it('sends only the checked ids under add_tag_ids, entry_ids from the selection',
   await userEvent.click(within(screen.getByRole('group', { name: 'Add tags' })).getByRole('checkbox', { name: 'rpg' }))
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-  const body = putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][1] as RequestInit)
+  const body = await putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][0])
   expect(body).toEqual({ entry_ids: ['e1', 'e2'], add_tag_ids: ['t1'] })
 })
 
@@ -75,7 +75,7 @@ it('sends only the checked ids under remove_tag_ids', async () => {
   await userEvent.click(within(screen.getByRole('group', { name: 'Remove tags' })).getByRole('checkbox', { name: 'snes' }))
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-  const body = putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][1] as RequestInit)
+  const body = await putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][0])
   expect(body).toEqual({ entry_ids: ['e1', 'e2'], remove_tag_ids: ['t2'] })
 })
 
@@ -90,7 +90,7 @@ it('unchecking an already-checked add-tag chip drops it from the request body', 
   expect(addGroup.getByRole('checkbox', { name: 'rpg' })).not.toBeChecked()
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-  const body = putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][1] as RequestInit)
+  const body = await putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][0])
   expect(body).toEqual({ entry_ids: ['e1', 'e2'], add_tag_ids: ['t2'] })
 })
 
@@ -105,7 +105,7 @@ it('unchecking an already-checked remove-tag chip drops it from the request body
   expect(removeGroup.getByRole('checkbox', { name: 'snes' })).not.toBeChecked()
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-  const body = putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][1] as RequestInit)
+  const body = await putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][0])
   expect(body).toEqual({ entry_ids: ['e1', 'e2'], remove_tag_ids: ['t1'] })
 })
 
@@ -116,7 +116,7 @@ it('sends the chosen status', async () => {
   await userEvent.selectOptions(screen.getByLabelText('Status'), 'shelved')
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-  const body = putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][1] as RequestInit)
+  const body = await putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][0])
   expect(body).toEqual({ entry_ids: ['e1', 'e2'], status: 'shelved' })
 })
 
@@ -127,7 +127,7 @@ it('omits storage_location entirely when Set storage location stays unchecked', 
   await userEvent.selectOptions(screen.getByLabelText('Status'), 'shelved') // an unrelated action so Apply is enabled
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-  const body = putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][1] as RequestInit)
+  const body = await putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][0])
   expect(body).not.toHaveProperty('storage_location')
 })
 
@@ -139,7 +139,7 @@ it('sends an explicit empty string when checked with no text - clears the field'
   expect(screen.getByText('Empty clears the location.')).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-  const body = putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][1] as RequestInit)
+  const body = await putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][0])
   expect(body).toEqual({ entry_ids: ['e1', 'e2'], storage_location: '' })
 })
 
@@ -151,7 +151,7 @@ it('sends the typed text when checked with a value', async () => {
   await userEvent.type(screen.getByLabelText('Storage location'), 'Shelf A')
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-  const body = putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][1] as RequestInit)
+  const body = await putBody<BulkUpdateRequest>(fetchMock.mock.calls[0][0])
   expect(body).toEqual({ entry_ids: ['e1', 'e2'], storage_location: 'Shelf A' })
 })
 
