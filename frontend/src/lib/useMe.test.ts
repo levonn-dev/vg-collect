@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
-import { meFixture } from '../test/fixtures'
+import { calledPath, meFixture } from '../test/fixtures'
 import { useMe } from './useMe'
 
 // Plain .ts (no JSX): the wrapper below uses createElement instead.
@@ -27,6 +27,6 @@ it('fetches through fetchMe on a cold cache', async () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const { result } = renderHook(() => useMe(), { wrapper: wrapper(qc) })
   await waitFor(() => expect(result.current.data?.handle).toBe('Bob'))
-  expect(fetchMock).toHaveBeenCalledWith('/api/me')
+  expect(calledPath(fetchMock, 0)).toBe('/api/me')
   vi.unstubAllGlobals()
 })

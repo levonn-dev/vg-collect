@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse, meFixture } from '../test/fixtures'
+import { jsonResponse, meFixture, putBody, requestPath } from '../test/fixtures'
 import { renderWithMoney } from '../test/money'
 import CurrencySelect from './CurrencySelect'
 
@@ -27,10 +27,10 @@ it('saves the choice optimistically and PATCHes the profile', async () => {
     (queryClient.getQueryData(['me']) as { preferred_currency: string }).preferred_currency,
   ).toBe('EUR')
   const patch = fetchMock.mock.calls.find(
-    (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',
+    (c) => (c[0] as Request).method === 'PATCH',
   )
-  expect(patch?.[0]).toBe('/api/me')
-  expect(JSON.parse((patch?.[1] as { body: string }).body)).toEqual({
+  expect(requestPath(patch?.[0])).toBe('/api/me')
+  expect(await putBody(patch?.[0])).toEqual({
     preferred_currency: 'EUR',
   })
 })

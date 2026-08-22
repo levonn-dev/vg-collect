@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
-import { jsonResponse, meFixture } from '../test/fixtures'
+import { jsonResponse, meFixture, requestPath } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Login from './Login'
 
@@ -18,7 +18,7 @@ function renderLogin(path = '/login', { authed = false } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const providersFetch = window.fetch
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
-    (input instanceof Request ? input.url : String(input)) === '/api/me'
+    requestPath(input) === '/api/me'
       ? Promise.resolve(authed ? jsonResponse(200, meFixture()) : jsonResponse(401, { error: 'unauthorized' }))
       : providersFetch(input, init)))
   return renderWithI18n(

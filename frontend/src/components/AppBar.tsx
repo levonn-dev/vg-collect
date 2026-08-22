@@ -1,7 +1,8 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, NavLink, useNavigate } from 'react-router'
-import { logout, type Me } from '../api/client'
+import { logout, type Me } from '../api/me'
+import { btnSecondary } from '../lib/formStyles'
 import { site } from '../lib/site'
 import Avatar from './Avatar'
 import CurrencySelect from './CurrencySelect'
@@ -79,7 +80,7 @@ export default function AppBar({ me }: { me: Me }) {
         <button
           onClick={() => signOut.mutate()}
           disabled={signOut.isPending}
-          className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+          className={btnSecondary}
         >
           <Trans>Log out</Trans>
         </button>

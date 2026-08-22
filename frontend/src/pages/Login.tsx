@@ -3,8 +3,9 @@ import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
 import { useQuery } from '@tanstack/react-query'
 import { Navigate, useSearchParams } from 'react-router'
-import { fetchProviders } from '../api/client'
+import { fetchProviders } from '../api/me'
 import SectionLabel from '../components/SectionLabel'
+import { btnPrimary } from '../lib/formStyles'
 import { devFixtures, providerNames } from '../lib/providers'
 import { useMe } from '../lib/useMe'
 
@@ -88,7 +89,7 @@ export default function Login() {
                   key={user}
                   href={`/api/auth/login?provider=dev&user=${user}`}
                   onClick={stash}
-                  className="flex-1 rounded bg-gray-900 px-3 py-2 text-center text-sm text-white hover:bg-gray-700"
+                  className={`${btnPrimary} flex-1`}
                 >
                   {user}
                 </a>

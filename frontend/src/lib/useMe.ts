@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchMe } from '../api/client'
+import { fetchMe } from '../api/me'
 
 // useMe centralizes the session-identity query: the app shell, the
 // public shell's session probe, and every component that needs the

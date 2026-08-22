@@ -1,6 +1,6 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { updateMe, type Me } from '../api/client'
+import { updateMe, type Me } from '../api/me'
 import { useFxRates } from '../lib/useDisplayMoney'
 import { useMe } from '../lib/useMe'
 
