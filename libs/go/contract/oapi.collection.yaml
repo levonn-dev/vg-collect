@@ -1,0 +1,8 @@
+package: collectionapi
+generate:
+  models: true
+  client: true
+  embedded-spec: true
+import-mapping:
+  ./common.yaml: github.com/levonn-dev/vgkeep/libs/go/contract/common
+output: collectionapi/client.gen.go

@@ -1,0 +1,19 @@
+version: "3"
+
+tasks:
+
+  default:
+    desc: List available tasks (run with no args)
+    silent: true
+    cmds:
+      - task --list
+
+  gen:
+    desc: Regenerate the shared common models package, then the five service clients, from api/*.yaml
+    cmds:
+      - go tool oapi-codegen -config oapi.common.yaml ../../../api/common.yaml
+      - go tool oapi-codegen -config oapi.auth.yaml ../../../api/auth.yaml
+      - go tool oapi-codegen -config oapi.user.yaml ../../../api/user.yaml
+      - go tool oapi-codegen -config oapi.collection.yaml ../../../api/collection.yaml
+      - go tool oapi-codegen -config oapi.enrichment.yaml ../../../api/enrichment.yaml
+      - go tool oapi-codegen -config oapi.social.yaml ../../../api/social.yaml

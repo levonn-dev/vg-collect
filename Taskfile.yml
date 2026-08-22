@@ -157,7 +157,9 @@ tasks:
   gen:
     desc: Regenerate code from the OpenAPI contracts (run after editing any api/*.yaml; CI fails on drift)
     cmds:
+      - task: gen:bundle
       - task: gen:domain
+      - task: contract:gen
       - task: gen:obs
       - task: user:gen
       - task: auth:gen
@@ -169,9 +171,15 @@ tasks:
       - task: frontend:extract
 
   gen:domain:
-    desc: Regenerate region/platform tables from api/domain.yaml (Go regionkit + frontend TS; run after editing api/domain.yaml; CI fails on drift)
+    desc: Regenerate region/platform tables from api/domain.yaml (Go regionkit + frontend TS) and frontend/src/gen/facets.ts (constraint values mirrored from api/bundled/bff.yaml components/schemas, components/parameters, and inline operation parameters; run after editing api/domain.yaml or after gen:bundle; CI fails on drift)
     cmds:
-      - cd tools/domaingen && go run . -yaml ../../api/domain.yaml -go-out ../../libs/go/regionkit/tables_gen.go -ts-out ../../frontend/src/gen/domain.ts
+      - cd tools/domaingen && go run . -yaml ../../api/domain.yaml -go-out ../../libs/go/regionkit/tables_gen.go -ts-out ../../frontend/src/gen/domain.ts -bundle ../../api/bundled/bff.yaml -facets-out ../../frontend/src/gen/facets.ts
+
+  gen:bundle:
+    desc: Bundle the authored OpenAPI contracts (api/*.yaml + api/common.yaml) into self-contained files under api/bundled/ (redocly; committed output, run after editing any api/*.yaml; CI fails on drift)
+    cmds:
+      - for: [auth, bff, collection, enrichment, social, user]
+        cmd: npx --prefix . redocly bundle api/{{.ITEM}}.yaml -o api/bundled/{{.ITEM}}.yaml
 
   gen:obs:
     desc: Regenerate the Grafana alert provisioning file and per-service dashboards from deploy/observability/ (run after editing anything under deploy/observability/; CI fails on drift)
@@ -195,10 +203,15 @@ tasks:
   # -------------------------------- test ---------------------------------
 
   test:
-    desc: 'Full test suite for every module (integration tests included; needs Docker) + frontend'
+    desc: 'Full test suite for every module (integration tests included; needs Docker) + frontend. -count=1 disables Go test-result caching: tests that read contract YAML from disk would otherwise report stale cached passes after spec edits.'
     cmds:
+      # -p 2 bounds how many package test binaries run at once, so
+      # their container creates reach the Docker daemon as a trickle
+      # instead of a burst it may stall on. (The testcontainers reaper
+      # stays on: the shared datastore kits deliberately skip Terminate
+      # and rely on it for cleanup.)
       - for: { var: GO_MODULES, as: MOD }
-        cmd: cd {{.MOD}} && go test ./...
+        cmd: cd {{.MOD}} && go test -count=1 -p 2 ./...
       - task: frontend:test
 
   test:short:
@@ -257,7 +270,7 @@ tasks:
       - kubectl delete namespace vgkeep --ignore-not-found
 
   e2e:
-    desc: Browser smoke (Playwright) against the running stack
+    desc: Parallel Playwright browser suite against the running stack
     cmds:
       - task: grant-fixture-admin
       - task: frontend:e2e
@@ -275,6 +288,10 @@ tasks:
          ON CONFLICT DO NOTHING;"
 
 includes:
+  contract:
+    taskfile: libs/go/contract/Taskfile.yml
+    dir: libs/go/contract
+    optional: true
   user:
     taskfile: services/user/Taskfile.yml
     dir: services/user

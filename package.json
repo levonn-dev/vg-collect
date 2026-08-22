@@ -1,0 +1,8 @@
+{
+  "name": "vgkeep",
+  "private": true,
+  "version": "0.0.0",
+  "devDependencies": {
+    "@redocly/cli": "^2.46.1"
+  }
+}

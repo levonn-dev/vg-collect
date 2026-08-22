@@ -1,0 +1,8 @@
+package: userapi
+generate:
+  models: true
+  client: true
+  embedded-spec: true
+import-mapping:
+  ./common.yaml: github.com/levonn-dev/vgkeep/libs/go/contract/common
+output: userapi/client.gen.go
