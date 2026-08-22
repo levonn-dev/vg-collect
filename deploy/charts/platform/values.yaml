@@ -95,6 +95,16 @@ kube-prometheus-stack:
     prometheusSpec:
       # The OTel gateway pushes metrics here (prometheusremotewrite).
       enableRemoteWriteReceiver: true
+      # Browser telemetry relayed by the bff collapses every concurrent
+      # browser session into one series set stamped with the bff pod's
+      # identity, so their independent client clocks interleave;
+      # without an ingestion window the later-arriving older samples
+      # are rejected as out-of-order and dropped (the browser suite's
+      # parallel sessions trip this on every run). Per-session series
+      # would fix ordering but explode cardinality; a tolerance window
+      # is the intended remedy for multi-producer remote write.
+      tsdb:
+        outOfOrderTimeWindow: 30m
       # Exemplars ride the remote-write stream and back the Grafana
       # metrics-to-traces links.
       enableFeatures:
@@ -184,6 +194,89 @@ jaeger:
     resources:
       limits:
         memory: 512Mi
+  # Setting userconfig makes the chart pass --config, which REPLACES
+  # the image's embedded all-in-one config wholesale, so this is a
+  # verbatim copy of that embedded config (jaegertracing/jaeger:2.19.0,
+  # cmd/jaeger/internal/all-in-one.yaml) with one change: max_traces
+  # 100000 -> 25000. The default cap stores far more than the 512Mi
+  # limit holds, so heavy trace bursts ended in OOM kills that dropped
+  # every stored trace; the lower cap evicts oldest-first inside the
+  # limit instead. Re-sync this copy whenever the image upgrades.
+  userconfig:
+    service:
+      extensions: [jaeger_storage, jaeger_query, jaeger_mcp, remote_sampling, healthcheckv2, expvar, zpages]
+      pipelines:
+        traces:
+          receivers: [otlp, jaeger, zipkin]
+          processors: [batch]
+          exporters: [jaeger_storage_exporter]
+      telemetry:
+        resource:
+          service.name: jaeger
+        metrics:
+          level: detailed
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: "${env:JAEGER_LISTEN_HOST:-localhost}"
+                    port: 8888
+        logs:
+          level: info
+    extensions:
+      jaeger_query:
+        storage:
+          traces: some_storage
+      jaeger_mcp:
+        http:
+          endpoint: "${env:JAEGER_LISTEN_HOST:-localhost}:16687"
+      jaeger_storage:
+        backends:
+          some_storage:
+            memory:
+              max_traces: 25000
+      remote_sampling:
+        file:
+          path:
+          default_sampling_probability: 1
+          reload_interval: 1s
+        http:
+          endpoint: "${env:JAEGER_LISTEN_HOST:-localhost}:5778"
+        grpc:
+          endpoint: "${env:JAEGER_LISTEN_HOST:-localhost}:5779"
+      healthcheckv2:
+        use_v2: true
+        http:
+          endpoint: "${env:JAEGER_LISTEN_HOST:-localhost}:13133"
+        grpc:
+      expvar:
+        endpoint: "${env:JAEGER_LISTEN_HOST:-localhost}:27777"
+      zpages:
+        endpoint: "${env:JAEGER_LISTEN_HOST:-localhost}:27778"
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: "${env:JAEGER_LISTEN_HOST:-localhost}:4317"
+          http:
+            endpoint: "${env:JAEGER_LISTEN_HOST:-localhost}:4318"
+      jaeger:
+        protocols:
+          grpc:
+            endpoint: "${env:JAEGER_LISTEN_HOST:-localhost}:14250"
+          thrift_http:
+            endpoint: "${env:JAEGER_LISTEN_HOST:-localhost}:14268"
+          thrift_binary:
+            endpoint: "${env:JAEGER_LISTEN_HOST:-localhost}:6832"
+          thrift_compact:
+            endpoint: "${env:JAEGER_LISTEN_HOST:-localhost}:6831"
+      zipkin:
+        endpoint: "${env:JAEGER_LISTEN_HOST:-localhost}:9411"
+    processors:
+      batch:
+    exporters:
+      jaeger_storage_exporter:
+        trace_storage: some_storage
 grafana:
   fullnameOverride: grafana
   # Dev tier runs credential-less end to end; anonymous gets Admin so
@@ -370,6 +463,15 @@ otel-gateway:
         # so dashboard queries never need target_info joins.
         resource_to_telemetry_conversion:
           enabled: true
+        # Remote write requires per-series in-order delivery, but this
+        # exporter's queue drains with five parallel consumers by
+        # default, and under bursty load their batches race: the
+        # later-arriving older batch comes back "400 out of order
+        # sample" - a permanent error, so its points are dropped. One
+        # consumer serializes the stream; throughput is nowhere near
+        # the point where one sender limits it here.
+        remote_write_queue:
+          num_consumers: 1
       otlphttp/loki:
         endpoint: http://loki:3100/otlp
       otlp/jaeger:
