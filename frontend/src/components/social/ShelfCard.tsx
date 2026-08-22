@@ -1,6 +1,7 @@
 import { Plural } from '@lingui/react/macro'
 import { Link } from 'react-router'
 import type { ShelfCard } from '../../api/social'
+import { formatDate } from '../../lib/format'
 import UserChip from './UserChip'
 
 // ShelfCard is the shared shelf summary tile: Explore grids, profile
@@ -35,7 +36,7 @@ export default function ShelfCard({ card }: { card: ShelfCard }) {
         {card.like_count !== undefined && (
           <span><Plural value={likeCount} one="# like" other="# likes" /></span>
         )}
-        {card.published_at && <span>{new Date(card.published_at).toLocaleDateString()}</span>}
+        {card.published_at && <span>{formatDate(card.published_at)}</span>}
       </p>
     </div>
   )

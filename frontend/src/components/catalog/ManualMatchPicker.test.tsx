@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, requestPath } from '../../test/fixtures'
 import { renderWithMoney } from '../../test/money'
 import ManualMatchPicker from './ManualMatchPicker'
 
@@ -15,8 +15,8 @@ const listingAnswer = {
 }
 
 function stubSearch() {
-  const fetchMock = vi.fn().mockImplementation((url: string) =>
-    String(url).startsWith('/api/search')
+  const fetchMock = vi.fn().mockImplementation((url: unknown) =>
+    requestPath(url).startsWith('/api/search')
       ? Promise.resolve(jsonResponse(200, listingAnswer))
       : Promise.resolve(jsonResponse(404, {})),
   )
@@ -35,7 +35,7 @@ it('searches listings only and hands back the picked one without resolving', asy
   await userEvent.click(await screen.findByRole('button', { name: /use chrono trigger/i }))
   expect(onPick).toHaveBeenCalledWith({ pcProductId: 7042, name: 'Chrono Trigger [PAL]' })
   // Search-only: the choice rides the game resolve later.
-  expect(fetchMock.mock.calls.every((c) => String(c[0]).startsWith('/api/search'))).toBe(true)
+  expect(fetchMock.mock.calls.every((c) => requestPath(c[0]).startsWith('/api/search'))).toBe(true)
 })
 
 it('prefills and auto-fires the listing search from initialQuery', async () => {

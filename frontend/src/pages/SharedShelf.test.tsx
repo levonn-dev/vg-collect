@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ProfileCard, ShelfPage } from '../api/social'
 import { UNDO_WINDOW_MS } from '../components/social/useCommentDelete'
-import { fxRatesFixture, jsonResponse, meFixture, problemResponse, sharedEntryFixture } from '../test/fixtures'
+import { fxRatesFixture, jsonResponse, meFixture, problemResponse, requestPath, sharedEntryFixture } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import SharedShelf from './SharedShelf'
 
@@ -17,11 +17,11 @@ import SharedShelf from './SharedShelf'
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
   const counts: Record<string, number> = {}
-  const impl = vi.fn().mockImplementation((url: string) => {
-    const hit = Object.entries(routes).find(([prefix]) => String(url).startsWith(prefix))
+  const impl = vi.fn().mockImplementation((url: unknown) => {
+    const hit = Object.entries(routes).find(([prefix]) => requestPath(url).startsWith(prefix))
     if (!hit) {
-      unstubbed.push(String(url))
-      return Promise.reject(new Error(`unstubbed fetch: ${String(url)}`))
+      unstubbed.push(requestPath(url))
+      return Promise.reject(new Error(`unstubbed fetch: ${requestPath(url)}`))
     }
     const [prefix, entry] = hit
     const sequence = Array.isArray(entry) ? entry : [entry]
@@ -262,7 +262,7 @@ it('posts a new comment through the composer', async () => {
   await userEvent.type(box, 'Nice shelf!')
   await userEvent.click(screen.getByRole('button', { name: 'Post' }))
   const posted = fetchMock.mock.calls.find(
-    ([url, init]) => String(url) === '/api/shelves/shelf1/comments' && (init as RequestInit | undefined)?.method === 'POST',
+    ([url]) => requestPath(url) === '/api/shelves/shelf1/comments' && (url as Request).method === 'POST',
   )
   expect(posted).toBeDefined()
 })
@@ -294,13 +294,13 @@ it('shows the undo toast and fires no immediate DELETE when the viewer deletes t
 
   expect(screen.queryByText('My take')).not.toBeInTheDocument()
   expect(screen.getByRole('status')).toHaveTextContent('Comment deleted - Undo')
-  expect(fetchMock.mock.calls.some(([url]) => String(url) === '/api/comments/c1')).toBe(false)
+  expect(fetchMock.mock.calls.some(([url]) => requestPath(url) === '/api/comments/c1')).toBe(false)
 
   // Advance to just under the undo window: still no DELETE.
   act(() => {
     vi.advanceTimersByTime(UNDO_WINDOW_MS - 1000)
   })
-  expect(fetchMock.mock.calls.some(([url]) => String(url) === '/api/comments/c1')).toBe(false)
+  expect(fetchMock.mock.calls.some(([url]) => requestPath(url) === '/api/comments/c1')).toBe(false)
 
   // c1 is still pending (never reached expiry, never undone).
   // Unmounting here - inside the test, while fetch is still mocked -

@@ -3,6 +3,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import { fetchShelfEntries, fetchShelfPage } from '../api/social'
+import { formatDate } from '../lib/format'
 import { offsetNextPageParam } from '../lib/pagination'
 import { renderQueryState } from '../lib/queryBoundary'
 import EmptyState from '../components/EmptyState'
@@ -115,7 +116,7 @@ export default function SharedShelf() {
             </span>
           )}
           {shelf.published_at && (
-            <span className="text-sm text-gray-500">{new Date(shelf.published_at).toLocaleDateString()}</span>
+            <span className="text-sm text-gray-500">{formatDate(shelf.published_at)}</span>
           )}
         </div>
       </header>

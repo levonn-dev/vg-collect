@@ -8,12 +8,13 @@ import { updateEntry } from '../../api/collection'
 import type { ManualMatch } from '../../lib/catalog'
 import { invalidateEntryQueries } from '../../lib/entryQueries'
 import { entryToUpdate } from '../../lib/entryUpdate'
-import { dollarsToCents, formatCents } from '../../lib/format'
+import { dollarsToCents, formatCents, formatDate } from '../../lib/format'
+import { btnSecondary } from '../../lib/formStyles'
 import { renderQueryState } from '../../lib/queryBoundary'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import MatchStatusCard from '../MatchStatusCard'
 import SectionLabel from '../SectionLabel'
-import ManualMatchPicker from '../wizard/ManualMatchPicker'
+import ManualMatchPicker from '../catalog/ManualMatchPicker'
 import ProxyPicker from './ProxyPicker'
 
 // MatchCard owns the no-match paragraph itself (a bare <p>, unlike
@@ -119,7 +120,7 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
   const rateDate = money.rateDate
   const staleNote = money.rateStale ? t`; more than a week old` : ''
   const proxyName = targetProduct.data?.name ?? value.productId
-  const priceSetDate = entry.custom_value_set_at ? new Date(entry.custom_value_set_at).toLocaleDateString() : ''
+  const priceSetDate = entry.custom_value_set_at ? formatDate(entry.custom_value_set_at) : ''
   const lastCustomPrice = formatCents(dollarsToCents(value.customValue), inputCurrency)
 
   return (
@@ -168,7 +169,7 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
                     type="button"
                     onClick={() => setMatching(true)}
                     disabled={rematch.isPending}
-                    className="mt-2 rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className={`${btnSecondary} mt-2`}
                   >
                     <Trans>Match listing</Trans>
                   </button>
@@ -208,7 +209,7 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
           <button
             type="button"
             onClick={() => setPicking(true)}
-            className="self-start rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
+            className={`${btnSecondary} self-start`}
           >
             <Trans>Change price source</Trans>
           </button>
@@ -221,7 +222,7 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
           <button
             type="button"
             onClick={() => setPicking(true)}
-            className="self-start rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
+            className={`${btnSecondary} self-start`}
           >
             <Trans>Choose price source</Trans>
           </button>

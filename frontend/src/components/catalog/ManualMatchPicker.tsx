@@ -1,8 +1,8 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import type { ManualMatch } from '../../lib/catalog'
 import SearchPickerDialog from '../SearchPickerDialog'
-import type { CatalogPick } from '../catalog/SearchPicker'
-import SearchPicker from '../catalog/SearchPicker'
+import type { CatalogPick } from '../../lib/catalogPicks'
+import SearchPicker from './SearchPicker'
 
 interface ManualMatchPickerProps {
   // Seeds the listing search (the game's name) so matching starts from

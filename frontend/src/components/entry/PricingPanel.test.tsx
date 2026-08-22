@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import type { Entry } from '../../api/collection'
 import { centsToDollars } from '../../lib/format'
-import { entryFixture, fxRatesFixture, jsonResponse, problemResponse, putBody } from '../../test/fixtures'
+import { entryFixture, fxRatesFixture, jsonResponse, problemResponse, putBody, requestPath } from '../../test/fixtures'
 import { renderWithMoney } from '../../test/money'
 import type { PricingValue } from './PricingPanel'
 import PricingPanel from './PricingPanel'
@@ -28,8 +28,8 @@ const unmatchedGameProduct = {
 }
 
 function stubFetch(handlers: Record<string, unknown>) {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     for (const [prefix, body] of Object.entries(handlers)) {
       if (u.startsWith(prefix)) return Promise.resolve(jsonResponse(200, body))
     }
@@ -152,7 +152,7 @@ it('reports a mode change as draft state and never saves on its own', async () =
   await userEvent.click(screen.getByRole('radio', { name: /disabled/i }))
   // The parked proxy id survives the mode change (memory, not erasure).
   expect(onChange).toHaveBeenCalledWith({ mode: 'disabled', productId: 'p9', customValue: '' })
-  const puts = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === 'PUT')
+  const puts = fetchMock.mock.calls.filter((c) => (c[0] as Request).method === 'PUT')
   expect(puts).toHaveLength(0)
 })
 
@@ -256,7 +256,7 @@ it('drafts a typed custom price as text, with no server call', () => {
   const input = screen.getByLabelText(/custom price \(usd\)/i)
   fireEvent.change(input, { target: { value: '59.99' } })
   expect(onChange).toHaveBeenCalledWith({ mode: 'custom', productId: undefined, customValue: '59.99' })
-  const puts = fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === 'PUT')
+  const puts = fetchMock.mock.calls.filter((c) => (c[0] as Request).method === 'PUT')
   expect(puts).toHaveLength(0)
 })
 
@@ -368,20 +368,20 @@ it('resolves the picked listing and PUTs the entry onto the member', async () =>
   await waitFor(() => {
     expect(
       fetchMock.mock.calls.some(
-        (c) => c[0] === `/api/entries/${entry.id}` && (c[1] as RequestInit | undefined)?.method === 'PUT',
+        (c) => requestPath(c[0]) === `/api/entries/${entry.id}` && (c[0] as Request).method === 'PUT',
       ),
     ).toBe(true)
   })
 
-  const resolveCall = fetchMock.mock.calls.find((c) => c[0] === '/api/products/resolve')
-  expect(putBody(resolveCall?.[1] as RequestInit)).toEqual({
+  const resolveCall = fetchMock.mock.calls.find((c) => requestPath(c[0]) === '/api/products/resolve')
+  expect(await putBody(resolveCall?.[0])).toEqual({
     type: 'game', igdb_game_id: 1000, platform_igdb_id: 6, pc_product_id: 7042,
   })
 
   const putCall = fetchMock.mock.calls.find(
-    (c) => c[0] === `/api/entries/${entry.id}` && (c[1] as RequestInit | undefined)?.method === 'PUT',
+    (c) => requestPath(c[0]) === `/api/entries/${entry.id}` && (c[0] as Request).method === 'PUT',
   )
-  const body = putBody<{ product_id?: string; pricing_mode?: string }>(putCall?.[1] as RequestInit)
+  const body = await putBody<{ product_id?: string; pricing_mode?: string }>(putCall?.[0])
   expect(body.product_id).toBe('m7')
   expect(body.pricing_mode).toBe('auto')
 })
@@ -389,8 +389,8 @@ it('resolves the picked listing and PUTs the entry onto the member', async () =>
 it('surfaces a failed match', async () => {
   const entry = entryFixture({ pricing_mode: 'auto' })
   const member = { id: 'm7', type: 'game', name: 'Chrono Trigger', created_at: 'x', updated_at: 'x' }
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u === '/api/products/resolve') return Promise.resolve(jsonResponse(200, member))
     if (u.startsWith('/api/search')) {
       return Promise.resolve(jsonResponse(200, {
@@ -401,7 +401,7 @@ it('surfaces a failed match', async () => {
         }],
       }))
     }
-    if (u === `/api/entries/${entry.id}` && init?.method === 'PUT') {
+    if (u === `/api/entries/${entry.id}` && (url as Request).method === 'PUT') {
       return Promise.resolve(jsonResponse(400, { code: 'invalid_product_change', detail: 'not eligible' }))
     }
     if (u.startsWith('/api/products/')) return Promise.resolve(jsonResponse(200, unmatchedGameProduct))

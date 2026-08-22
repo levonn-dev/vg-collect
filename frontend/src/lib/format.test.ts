@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import { centsToDollars, dollarsToCents, enteredCentsToUsdCents, formatCents, formatMajor, isStaleRateDate, releaseYear, usdCentsToMajor } from './format'
+import { centsToDollars, dollarsToCents, enteredCentsToUsdCents, formatCents, formatDate, formatMajor, isStaleRateDate, releaseYear, usdCentsToMajor } from './format'
 
 it('formatCents renders currency and passes null through', () => {
   expect(formatCents(4200)).toBe('$42.00')
@@ -52,6 +52,12 @@ it('isStaleRateDate flags a snapshot only once a full week has elapsed', () => {
   expect(isStaleRateDate('2026-01-01', justOver)).toBe(true)
   expect(isStaleRateDate('not-a-date', oneWeekLater)).toBe(false)
   expect(isStaleRateDate('', oneWeekLater)).toBe(false)
+})
+
+it('formatDate renders an ISO timestamp through the given locale', () => {
+  // Noon UTC sidesteps local-timezone date-shifting around midnight.
+  expect(formatDate('1995-03-11T12:00:00Z', 'en-US')).toBe('3/11/1995')
+  expect(formatDate('1995-03-11T12:00:00Z', 'de-DE')).toBe('11.3.1995')
 })
 
 it('releaseYear extracts the year', () => {

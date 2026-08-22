@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { Comment, ProfileCard } from '../../api/social'
-import { jsonResponse, meFixture } from '../../test/fixtures'
+import { jsonResponse, meFixture, requestPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import CommentList from './CommentList'
 
@@ -15,11 +15,11 @@ import CommentList from './CommentList'
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
   const counts: Record<string, number> = {}
-  const impl = vi.fn().mockImplementation((url: string) => {
-    const hit = Object.entries(routes).find(([prefix]) => String(url).startsWith(prefix))
+  const impl = vi.fn().mockImplementation((url: unknown) => {
+    const hit = Object.entries(routes).find(([prefix]) => requestPath(url).startsWith(prefix))
     if (!hit) {
-      unstubbed.push(String(url))
-      return Promise.reject(new Error(`unstubbed fetch: ${String(url)}`))
+      unstubbed.push(requestPath(url))
+      return Promise.reject(new Error(`unstubbed fetch: ${requestPath(url)}`))
     }
     const [prefix, entry] = hit
     const sequence = Array.isArray(entry) ? entry : [entry]
@@ -172,12 +172,12 @@ it('self-delete hides the row behind an undo toast with no immediate DELETE, and
 
   expect(screen.queryByText('My own comment')).not.toBeInTheDocument()
   expect(screen.getByRole('status')).toHaveTextContent('Comment deleted - Undo')
-  expect(fetchMock.mock.calls.some(([url]) => String(url) === '/api/comments/c1')).toBe(false)
+  expect(fetchMock.mock.calls.some(([url]) => requestPath(url) === '/api/comments/c1')).toBe(false)
 
   await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
   expect(await screen.findByText('My own comment')).toBeInTheDocument()
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
-  expect(fetchMock.mock.calls.some(([url]) => String(url) === '/api/comments/c1')).toBe(false)
+  expect(fetchMock.mock.calls.some(([url]) => requestPath(url) === '/api/comments/c1')).toBe(false)
 })
 
 it('lets the shelf owner remove someone elses comment immediately, after confirming', async () => {
@@ -192,7 +192,9 @@ it('lets the shelf owner remove someone elses comment immediately, after confirm
   await userEvent.click(screen.getByRole('button', { name: 'Remove comment: Spam' }))
 
   expect(confirmSpy).toHaveBeenCalledWith('Remove this comment? The author will not be able to restore it.')
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/comments/c1', { method: 'DELETE' }))
+  await waitFor(() => expect(fetchMock.mock.calls.some(
+    (c) => requestPath(c[0]) === '/api/comments/c1' && (c[0] as Request).method === 'DELETE',
+  )).toBe(true))
   confirmSpy.mockRestore()
 })
 
@@ -207,7 +209,7 @@ it('does nothing when the owner cancels the confirm', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Remove comment: Spam' }))
 
   expect(confirmSpy).toHaveBeenCalled()
-  expect(fetchMock.mock.calls.some(([url]) => String(url) === '/api/comments/c1')).toBe(false)
+  expect(fetchMock.mock.calls.some(([url]) => requestPath(url) === '/api/comments/c1')).toBe(false)
   expect(screen.getByText('Spam')).toBeInTheDocument()
   confirmSpy.mockRestore()
 })
@@ -221,5 +223,5 @@ it('loads the next comment page via Load more and appends it', async () => {
   expect(screen.queryByText('Second')).not.toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
   expect(await screen.findByText('Second')).toBeInTheDocument()
-  expect(fetchMock.mock.calls.map((c) => String(c[0]))).toContain('/api/shelves/s1/comments?cursor=cur1')
+  expect(fetchMock.mock.calls.map((c) => requestPath(c[0]))).toContain('/api/shelves/s1/comments?cursor=cur1')
 })

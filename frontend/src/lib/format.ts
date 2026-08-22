@@ -58,6 +58,14 @@ export function releaseYear(date: string | null | undefined): string | null {
   return date.slice(0, 4)
 }
 
+// formatDate renders an ISO timestamp as a locale date string - the
+// one idiom every "when did this happen" byline shares (admin table
+// cells, account and pricing timestamps, shelf published dates), in
+// place of each site parsing and formatting the timestamp on its own.
+export function formatDate(iso: string, locale: string | undefined = formatLocale()): string {
+  return new Date(iso).toLocaleDateString(locale)
+}
+
 // dollarsToCents parses a money text input ("59.99") into integer
 // cents; empty or invalid input is undefined (field unset).
 export function dollarsToCents(text: string): number | undefined {

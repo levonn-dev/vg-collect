@@ -4,6 +4,7 @@ import { deleteComment, fetchShelfComments } from '../../api/social'
 import { confirmThen } from '../../lib/confirm'
 import { renderQueryState } from '../../lib/queryBoundary'
 import { relativeTime } from '../../lib/relativeTime'
+import { invalidateShelfSocial } from '../../lib/shelfQueries'
 import { useMe } from '../../lib/useMe'
 import LoadMoreButton from '../LoadMoreButton'
 import SectionLabel from '../SectionLabel'
@@ -84,10 +85,7 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
   })
   const ownerRemove = useMutation({
     mutationFn: (id: string) => deleteComment(id),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['shelfComments', shelfId] })
-      void qc.invalidateQueries({ queryKey: ['shelfSummary', shelfId] })
-    },
+    onSuccess: () => invalidateShelfSocial(qc, shelfId),
   })
 
   const comments = list.data?.pages.flatMap((p) => p.comments) ?? []

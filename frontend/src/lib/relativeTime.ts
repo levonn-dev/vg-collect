@@ -1,6 +1,6 @@
 import { i18n } from '@lingui/core'
 import { t } from '@lingui/core/macro'
-import { formatLocale } from './locale'
+import { formatDate } from './format'
 
 // relativeTime buckets a timestamp for a byline - comments and feed
 // rows both use it. now defaults to the real clock; tests pin it
@@ -15,5 +15,5 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
   if (hours < 24) return t(i18n)`${hours}h ago`
   const days = Math.floor(hours / 24)
   if (days < 7) return t(i18n)`${days}d ago`
-  return new Date(iso).toLocaleDateString(formatLocale())
+  return formatDate(iso)
 }
