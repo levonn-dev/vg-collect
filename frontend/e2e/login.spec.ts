@@ -1,4 +1,8 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
+
+// The login page itself is under test here - the one place the suite
+// drives the rendered fixture links instead of the programmatic login.
+test.use({ storageState: { cookies: [], origins: [] } })
 
 test('dev fixture login round-trip through the gateway', async ({ page }) => {
   await page.goto('/')

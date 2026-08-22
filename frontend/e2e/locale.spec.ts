@@ -1,21 +1,17 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 // Runs against the live dev stack through the gateway port-forward
 // (task run, then task e2e). The switcher sits in the footer, which
 // renders with or without a session; what this spec asserts is the
-// signed-in chrome translating, so it logs in once via the dev
-// provider (one /api/auth hit; the gateway caps that bucket at 20/min
-// per IP). A fresh context starts with no stored locale and the config
-// pins the browser to en-US, so every run begins in English.
-async function login(page: Page) {
-  await page.goto('/api/auth/login?provider=dev&user=alice')
-  await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
-}
+// signed-in chrome translating. The worker fixture is already logged
+// in via storageState, so this test spends no extra /api/auth hit. A
+// fresh context starts with no stored locale and the config pins the
+// browser to en-US, so every run begins in English.
 
 test('the language switcher translates the app and the choice survives a reload', async ({
   page,
 }) => {
-  await login(page)
+  await page.goto('/')
   const html = page.locator('html')
   await expect(html).toHaveAttribute('lang', 'en')
 

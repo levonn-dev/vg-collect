@@ -1,15 +1,14 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, loginAs, test } from './fixtures'
 
 // Runs against the live dev stack through the gateway port-forward
-// (task run, then task e2e). The public pages need no session; the
-// help leg logs in once via the dev provider (one /api/auth hit;
-// the gateway caps that bucket at 20/min per IP).
+// (task run, then task e2e). The public pages need no session, so the
+// file opts every test out of the worker's storageState; the help leg
+// logs in with the worker identity via the dev provider (one
+// /api/auth hit; the gateway caps that bucket at 120/min per IP on
+// this dev stack, far tighter in production).
 // Credit lines are not asserted here on purpose: their presence
 // varies with the operator's .env, and unit tests own that logic.
-async function login(page: Page) {
-  await page.goto('/api/auth/login?provider=dev&user=alice')
-  await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
-}
+test.use({ storageState: { cookies: [], origins: [] } })
 
 test('about, terms, and privacy render logged out with the footer', async ({ page }) => {
   await page.goto('/about')
@@ -28,10 +27,10 @@ test('an unknown path renders the not-found page', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible()
 })
 
-test('help requires login, then renders the shelves walkthrough', async ({ page }) => {
+test('help requires login, then renders the shelves walkthrough', async ({ page, user }) => {
   await page.goto('/help')
   await expect(page).toHaveURL(/\/login\?next=%2Fhelp/)
-  await login(page)
+  await loginAs(page, user.name)
   await page.goto('/help')
   await expect(page.getByRole('heading', { name: 'Shelves from tags' })).toBeVisible()
 })

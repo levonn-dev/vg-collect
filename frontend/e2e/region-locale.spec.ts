@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { entryIdFromURL, expect, test } from './fixtures'
+import { deleteEntry } from './seed'
 
 // Region-localized add journey against the real IGDB catalog: search
 // "Seiken Densetsu 3" (the romaji query), pick the SNES platform chip
@@ -35,25 +36,15 @@ import { expect, test, type Page } from '@playwright/test'
 // step too - no submit, so no teardown either.
 const stamp = `e2e-region-${Date.now()}`
 
-async function login(page: Page) {
-  await page.goto('/api/auth/login?provider=dev&user=bob')
-  await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
-}
-
-// Accept the next native dialog (the delete-entry confirm) once.
-function acceptNext(page: Page) {
-  page.once('dialog', (d) => void d.accept())
-}
-
 // The footer switcher's own accessible name is rendered in the active
 // locale - "Language" in English, its own Japanese name once switched
 // (the literal below) - so match whichever one is live right now
 // rather than assuming which locale the page is still in.
 const localeComboName = /^(Language|言語)$/
 
-test('region-localized add: matched_region search card, wizard region default, locale-switched entry title', async ({ page }) => {
+test('region-localized add: matched_region search card, wizard region default, locale-switched entry title', async ({ page, api }) => {
   test.setTimeout(60_000)
-  await login(page)
+  await page.goto('/')
 
   // Set once the add succeeds, below; the finally block below only
   // attempts a delete when this is non-empty, so a failure before the
@@ -150,10 +141,7 @@ test('region-localized add: matched_region search card, wizard region default, l
     }
     if (entryUrl) {
       try {
-        await page.goto(entryUrl)
-        acceptNext(page)
-        await page.getByRole('button', { name: 'Delete entry' }).click()
-        await expect(page).toHaveURL(/\/collection$/)
+        await deleteEntry(api, entryIdFromURL(entryUrl))
       } catch (err) {
         console.log(`teardown: entry delete at ${entryUrl} failed:`, err)
       }
@@ -163,7 +151,7 @@ test('region-localized add: matched_region search card, wizard region default, l
 
 test('native-script search: a pure Japanese-script query finds the SNES release through the real IGDB localization leg', async ({ page }) => {
   test.setTimeout(30_000)
-  await login(page)
+  await page.goto('/')
 
   // Unlike the romaji query above (pure Latin), this is the raw
   // native-script title: only the SearchLocalizations leg can surface
@@ -182,7 +170,7 @@ test('native-script search: a pure Japanese-script query finds the SNES release 
 
 test('region picker chips: canonical-name search lists Puyo Puyo SUN Sega Saturn NTSC-J, seeds the platform-first default', async ({ page }) => {
   test.setTimeout(30_000)
-  await login(page)
+  await page.goto('/')
 
   // Puyo Puyo SUN (igdb_game_id 3578, the 1997 Sega Saturn/Nintendo 64/PC
   // original) matches this query on its canonical name, so the result
@@ -221,7 +209,7 @@ test('region picker chips: canonical-name search lists Puyo Puyo SUN Sega Saturn
 
 test('hardware add defaults the region from the listing console axis', async ({ page }) => {
   test.setTimeout(30_000)
-  await login(page)
+  await page.goto('/')
 
   // Super Famicom Console (a PriceCharting hardware listing) prices
   // under its JP-market console name only, so consoleRegionFor seeds

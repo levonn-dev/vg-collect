@@ -1,9 +1,12 @@
-import { expect, test } from '@playwright/test'
-import type { Page } from '@playwright/test'
+import { acceptNext, expect, loginAs, test } from './fixtures'
 
-// Admin console journey as the dev fixture admin. task e2e grants the
-// admin role before Playwright starts, and the login below is fresh,
-// which is what puts the role in the JWT.
+// Admin console coverage across three tests. The worker's own family
+// fixture carries no admin role, so the first test needs no login of
+// its own - it proves the admin surface stays hidden from the default
+// session. The other two switch to the fixed admin fixture via
+// loginAs, which logs in fresh each time; task e2e grants the admin
+// role before Playwright starts, and a fresh login is what puts the
+// role in the JWT.
 //
 // Determinism note: the add wizard does not carry the "Edition or
 // variant" text into the PRODUCT. Console resolve keys identity on
@@ -18,22 +21,8 @@ import type { Page } from '@playwright/test'
 // variant the live search actually returns rather than assuming one.
 const stamp = `e2e-admin-${Date.now()}`
 
-// Programmatic dev-provider login: one GET seals the session cookie and
-// redirects home, a single /api/auth/* hit (the old /login UI helper cost
-// two). The gateway caps /api/auth/* at 20 per 60s per IP across the
-// shared serial suite; one hit per login keeps every window well under it.
-async function login(page: Page, fixture: string) {
-  await page.goto(`/api/auth/login?provider=dev&user=${fixture}`)
-  await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
-}
-
-// Accept the next native confirm dialog once (clear and delete both ask).
-function acceptNext(page: Page) {
-  page.once('dialog', (d) => void d.accept())
-}
-
 test('non-admin never sees the admin surface', async ({ page }) => {
-  await login(page, 'bob')
+  await page.goto('/')
   await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0)
   // A deep link renders nothing admin-shaped either: the page guard
   // redirects home (the server would answer 403 regardless), which
@@ -45,7 +34,7 @@ test('non-admin never sees the admin surface', async ({ page }) => {
 test('admin fixes a cleared mapping end to end', async ({ page }) => {
   test.setTimeout(120_000)
 
-  await login(page, 'admin')
+  await loginAs(page, 'admin')
   await expect(page.getByRole('link', { name: 'Admin' })).toBeVisible()
 
   // --- Create the fixture hardware entry through the add wizard,
@@ -131,4 +120,35 @@ test('admin fixes a cleared mapping end to end', async ({ page }) => {
   acceptNext(page)
   await page.getByRole('button', { name: 'Delete entry' }).click()
   await expect(page).toHaveURL(/\/collection$/)
+})
+
+test('the maintenance grid offers every lever', async ({ page }) => {
+  await loginAs(page, 'admin')
+  await page.goto('/admin')
+  await expect(page.getByRole('heading', { name: 'Admin' })).toBeVisible()
+
+  // Render-only: this test asserts that every lever card is on the
+  // page, it never clicks one. Entry resnapshot rewrites every
+  // game-backed entry's release date, localized presentation trio, and
+  // credits from its product's current data; the three normalizers
+  // rewrite platform/region tags catalog-wide; entry rematch resets
+  // mapping state the same way the mapping-fix journey above depends
+  // on. Any of those firing mid-suite would rewrite state that
+  // parallel tests are reading their own captured values from, making
+  // them flaky depending on run order - so their firing stays out of
+  // this suite. Catalog refresh's own firing is already covered by the
+  // candidate-sweep test in submissions.spec.ts, so nothing is lost by
+  // leaving all six cards unfired here.
+  const maintenance = page.getByRole('region', { name: 'Maintenance' })
+  const leverTitles = [
+    'Catalog refresh',
+    'Entry rematch',
+    'Entry resnapshot',
+    'Normalize platforms',
+    'Normalize regions',
+    'Normalize community regions',
+  ]
+  for (const title of leverTitles) {
+    await expect(maintenance.getByRole('heading', { name: title, level: 4, exact: true })).toBeVisible()
+  }
 })

@@ -1,119 +1,133 @@
-import { expect, test, type Page } from '@playwright/test'
+import { acceptNext, expect, loginAs, logout, test } from './fixtures'
+import { setProfile } from './seed'
 
-// One serial journey: the scenarios share dev-fixture identity state
-// (who owns dev-bob changes mid-test), so ordering is the test.
-// The journey is self-restoring: it ends by deleting bob's account,
-// which unbinds dev-bob for the next run.
+// Three independent tests covering the self-service account surface:
+// a profile edit surviving re-login, one linking journey, and account
+// deletion. Each test mints exactly the identities it needs and never
+// shares state with another test - the old throttleAuth machinery,
+// its authHits counter, and the delete-bob-first determinism dance
+// are gone along with the fixed alice/bob accounts they existed to
+// protect; a freshUser is unbound by construction, so no test here
+// has anything to steal from another. UI logout coverage already
+// lives in login.spec.ts's own round trip; nothing here repeats it.
+//
+// The linking journey folds what would otherwise be three tests (link,
+// unlink, conflict) into one: each of those needs its own real login
+// or two to observe, and this file has no budget left to spend minting
+// and re-authenticating three separate scenarios on top of the profile
+// and deletion tests below. It is this suite's one sanctioned
+// exception to independent-per-behavior tests, made for that reason -
+// see the journey test's own comments for why each step still needs
+// the auth hit it spends.
+//
+// Every test here drives at least one full-page auth navigation, and
+// the gateway budgets /api/auth/* per IP per minute (240 on this dev
+// stack; production keeps it far tighter). The file opts out of the
+// worker's shared session below (every test authenticates its own
+// identities via loginAs, so the worker fixture's own login would
+// spend budget for nothing) and runs its tests in declared order on a
+// single worker rather than Playwright's default full parallelism, so
+// the file's own auth hits land in one predictable, budget-sized
+// window instead of several tests firing their bursts at once.
+test.use({ storageState: { cookies: [], origins: [] } })
+test.describe.configure({ mode: 'default' })
 
-// The gateway rate-limits /api/auth/* to 20 requests per 60s per IP.
-// Logins here take the programmatic 1-request form, but this journey
-// still drives many auth navigations - the account-link clicks and the
-// logouts each redirect through /login or /account, which refetches
-// /api/auth/providers (a full-page auth redirect wipes the react-query
-// cache) - so the auth request count still bursts. Pace it by counting
-// real /api/auth/* requests and waiting before an action would breach a
-// safe budget; the margin below 20 absorbs those refetch bursts.
-const AUTH_BUDGET = 15
-const authHits: number[] = []
+const stamp = Date.now().toString(36)
 
-async function throttleAuth(page: Page) {
-  for (;;) {
-    const cutoff = Date.now() - 60_000
-    const inWindow = authHits.filter((t) => t > cutoff)
-    if (inWindow.length < AUTH_BUDGET) return
-    const waitMs = inWindow[0] + 60_000 - Date.now() + 750
-    await page.waitForTimeout(Math.max(waitMs, 1000))
-  }
-}
+test('profile edits persist across re-login', async ({ page, freshUser }) => {
+  const a = await freshUser()
+  const handle = `A_${stamp}`
 
-// Programmatic dev-provider login: one GET seals the session cookie and
-// redirects home, a single /api/auth/* hit (the old /login UI helper cost
-// two). throttleAuth still gates it - the account-link clicks below are
-// UI auth navigations that also hit /api/auth/*, so the budget still
-// earns its keep - and the 1-request login leaves it more headroom.
-async function login(page: Page, user: string) {
-  await throttleAuth(page)
-  await page.goto(`/api/auth/login?provider=dev&user=${user}`)
-  await expect(page).toHaveURL(/\/feed$/)
-}
-
-async function logout(page: Page) {
-  await throttleAuth(page)
-  await page.getByRole('button', { name: 'Log out' }).click()
-  await expect(page).toHaveURL(/\/login/)
-}
-
-async function openAccount(page: Page) {
-  await throttleAuth(page)
-  await page.getByRole('link', { name: 'Account' }).click()
-  await expect(page).toHaveURL(/\/account$/)
-}
-
-test('profile edits, login linking, conflicts, and account deletion', async ({ page }) => {
-  test.setTimeout(420_000)
-  authHits.length = 0
-  page.on('request', (req) => {
-    if (req.url().includes('/api/auth/')) authHits.push(Date.now())
+  await loginAs(page, a.name)
+  await page.getByRole('link', { name: 'Account', exact: true }).click()
+  // One Save click sends exactly one PATCH /api/me; the count is
+  // pinned so a regression toward duplicate fires shows up here as a
+  // failed assertion instead of as stray gateway traffic that someone
+  // has to attribute from access logs.
+  let patches = 0
+  page.on('request', (r) => {
+    if (r.method() === 'PATCH' && new URL(r.url()).pathname === '/api/me') patches += 1
   })
-
-  // Determinism: unbind dev-bob before the linking section. A login can
-  // only land in its own account or a fresh one, never someone else's,
-  // so deleting bob's account here leaves dev-bob unbound and alice's
-  // link below succeeds instead of conflicting. The journey's final
-  // section deletes bob again, so every later run starts here the same.
-  await login(page, 'bob')
-  await openAccount(page)
-  await throttleAuth(page)
-  page.once('dialog', (d) => void d.accept())
-  await page.getByRole('button', { name: 'Delete account' }).click()
-  await expect(page).toHaveURL(/\/login\?deleted=1$/)
-
-  // Profile edit survives a re-login: provider claims fill only at creation.
-  await login(page, 'alice')
-  await openAccount(page)
-  await page.getByLabel('Handle').fill('Alice_Prime')
+  await page.getByLabel('Handle').fill(handle)
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByText('Saved.')).toBeVisible()
-  await logout(page)
-  await login(page, 'alice')
-  await expect(page.getByText('@Alice_Prime')).toBeVisible()
+  expect(patches, 'one Save click sends exactly one PATCH /api/me').toBe(1)
 
-  // Link dev-bob to alice's account; bob's login now lands there.
-  await openAccount(page)
-  await throttleAuth(page)
-  await page.getByRole('link', { name: 'bob', exact: true }).click()
+  // Provider claims only fill the profile at account creation, so the
+  // edit has to come back from storage, not from the dev provider.
+  await logout(page)
+  await loginAs(page, a.name)
+  await expect(page.getByText(`@${handle}`)).toBeVisible()
+})
+
+test('linking moves a login into the account, unlink restores it, and a bound login conflicts', async ({
+  page,
+  freshUser,
+}) => {
+  const a = await freshUser()
+  const b = await freshUser()
+  const aHandle = `A2_${stamp}`
+  await setProfile(a.api, { handle: aHandle })
+  // freshUser mints b by logging it in once, which provisions b's own
+  // account as a side effect; linking requires the login to be free,
+  // so drop that account before it is used as a login to link.
+  const dropB = await b.api.delete('/api/me')
+  expect(dropB.ok(), `delete ${b.name}: ${dropB.status()}`).toBeTruthy()
+
+  await loginAs(page, a.name)
+  // The Account page renders a link button only for the fixed
+  // alice/bob/admin trio; a minted identity links through the same
+  // URL those buttons carry.
+  await page.goto(`/api/auth/link?provider=dev&user=${b.name}`)
   await expect(page).toHaveURL(/\/account\?linked=dev$/)
-  await expect(page.getByText('bob@example.com')).toBeVisible()
-  await logout(page)
-  await login(page, 'bob')
-  await expect(page.getByText('@Alice_Prime')).toBeVisible()
+  await expect(page.getByText(`${b.name}@example.com`)).toBeVisible()
 
-  // Unlink bob (from the shared account); bob then gets his own account.
-  await openAccount(page)
-  page.once('dialog', (d) => void d.accept())
+  // b's login now lands in a's account.
+  await logout(page)
+  await loginAs(page, b.name)
+  await expect(page.getByText(`@${aHandle}`)).toBeVisible()
+
+  await page.getByRole('link', { name: 'Account', exact: true }).click()
+  acceptNext(page)
   await page
     .getByRole('listitem')
-    .filter({ hasText: 'bob@example.com' })
+    .filter({ hasText: `${b.name}@example.com` })
     .getByRole('button', { name: 'Unlink' })
     .click()
-  await expect(page.getByText('bob@example.com')).toBeHidden()
-  await logout(page)
-  await login(page, 'bob')
-  await expect(page.getByText('@Bob_Fixture')).toBeVisible()
+  await expect(page.getByText(`${b.name}@example.com`)).toBeHidden()
 
-  // Conflict: dev-alice already belongs to alice's account.
-  await openAccount(page)
-  await throttleAuth(page)
-  await page.getByRole('link', { name: 'alice', exact: true }).click()
+  // Unlinked, b's login provisions its own account again instead of
+  // landing back in a's.
+  await logout(page)
+  await loginAs(page, b.name)
+  await expect(page.getByText(`@${aHandle}`)).not.toBeVisible()
+
+  // Still signed in as b, no switch back to a: a's login is bound to
+  // a's own account (freshUser minted it the same way b's was, before
+  // b got unbound above), so linking it here conflicts instead of
+  // moving it - the same rule that made unbinding b necessary above,
+  // seen from the other side, and three fewer auth hits than standing
+  // this scenario up as its own test would cost.
+  await page.goto(`/api/auth/link?provider=dev&user=${a.name}`)
   await expect(page).toHaveURL(/\/account\?link_error=conflict$/)
   await expect(page.getByRole('alert')).toContainText(/already belongs/i)
+})
 
-  // Deletion: bob's account goes away; logging in again starts fresh.
-  await throttleAuth(page)
-  page.once('dialog', (d) => void d.accept())
+test('account deletion round trip', async ({ page, freshUser }) => {
+  const c = await freshUser()
+  // Stamp a handle before deleting so the reset is observable: a
+  // fresh account's default handle only proves the reset happened if
+  // it differs from something known to have been there before.
+  const handle = `C_${stamp}`
+  await setProfile(c.api, { handle })
+
+  await loginAs(page, c.name)
+  await page.getByRole('link', { name: 'Account', exact: true }).click()
+  acceptNext(page)
   await page.getByRole('button', { name: 'Delete account' }).click()
   await expect(page).toHaveURL(/\/login\?deleted=1$/)
   await expect(page.getByRole('status')).toContainText(/deleted/i)
-  await login(page, 'bob')
-  await expect(page.getByText('@Bob_Fixture')).toBeVisible()
+
+  await loginAs(page, c.name)
+  await expect(page.getByText(`@${handle}`)).not.toBeVisible()
 })
