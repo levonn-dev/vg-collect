@@ -3,6 +3,7 @@ module github.com/levonn-dev/vgkeep/libs/go/mongotest
 go 1.26.2
 
 require (
+	github.com/testcontainers/testcontainers-go v0.35.0
 	github.com/testcontainers/testcontainers-go/modules/mongodb v0.35.0
 	go.mongodb.org/mongo-driver v1.17.9
 )
@@ -50,7 +51,6 @@ require (
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
-	github.com/testcontainers/testcontainers-go v0.35.0 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect

@@ -20,7 +20,9 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/testcontainers/testcontainers-go"
 	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
+	"github.com/testcontainers/testcontainers-go/wait"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -42,7 +44,9 @@ func TestGetBytes_HitAndMiss(t *testing.T) {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
-	vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine")
+	vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine",
+		testcontainers.WithWaitStrategyAndDeadline(180*time.Second,
+			wait.ForLog("* Ready to accept connections").WithStartupTimeout(180*time.Second)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +89,9 @@ func TestPutBytes_SetsWithTTL(t *testing.T) {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
-	vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine")
+	vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine",
+		testcontainers.WithWaitStrategyAndDeadline(180*time.Second,
+			wait.ForLog("* Ready to accept connections").WithStartupTimeout(180*time.Second)))
 	if err != nil {
 		t.Fatal(err)
 	}

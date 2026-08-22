@@ -50,12 +50,16 @@ var shared container
 // package replaces. No Terminate: the testcontainers reaper collects
 // the container when the test process exits.
 func bootPostgres(ctx context.Context) (string, error) {
+	// The 180s deadlines (outer and per-strategy: WithWaitStrategy alone
+	// silently caps the whole wait at 60s) outlast the multi-minute
+	// freezes a loaded dev-host Docker daemon can hit, so a frozen
+	// daemon costs a slow container start instead of a failed suite.
 	pg, err := tcpostgres.Run(ctx, "postgres:17-alpine",
 		tcpostgres.WithDatabase("pgtest"), tcpostgres.WithUsername("pgtest"), tcpostgres.WithPassword("pgtest"),
-		testcontainers.WithWaitStrategy(
+		testcontainers.WithWaitStrategyAndDeadline(180*time.Second,
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(60*time.Second),
-			wait.ForListeningPort("5432/tcp")))
+				WithOccurrence(2).WithStartupTimeout(180*time.Second),
+			wait.ForListeningPort("5432/tcp").WithStartupTimeout(180*time.Second)))
 	if err != nil {
 		return "", err
 	}

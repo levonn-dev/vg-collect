@@ -8,11 +8,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/testcontainers/testcontainers-go"
 	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
+	"github.com/testcontainers/testcontainers-go/wait"
 	"go.mongodb.org/mongo-driver/bson"
 
 	"github.com/levonn-dev/vgkeep/libs/go/mongokit"
 )
+
+// mongoWait raises every container-start deadline from the 60s
+// defaults to 180s, outlasting dev-host Docker daemon freezes.
+func mongoWait() testcontainers.CustomizeRequestOption {
+	return testcontainers.WithWaitStrategyAndDeadline(180*time.Second,
+		wait.ForLog("Waiting for connections").WithStartupTimeout(180*time.Second),
+		wait.ForListeningPort("27017/tcp").WithStartupTimeout(180*time.Second))
+}
 
 //go:embed testdata/migrations/*.json
 var testMigrations embed.FS
@@ -86,7 +96,7 @@ func newTestMongoURL(t *testing.T) string {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
-	mc, err := tcmongo.Run(ctx, "mongo:8")
+	mc, err := tcmongo.Run(ctx, "mongo:8", mongoWait())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +216,7 @@ func TestConnect_ReservedCharPasswordViaComposedURL(t *testing.T) {
 		password = `p@ss:w/rd?#` //nolint:gosec // G101: synthetic test fixture, not a real credential
 	)
 	ctx := context.Background()
-	mc, err := tcmongo.Run(ctx, "mongo:8", tcmongo.WithUsername(username), tcmongo.WithPassword(password))
+	mc, err := tcmongo.Run(ctx, "mongo:8", tcmongo.WithUsername(username), tcmongo.WithPassword(password), mongoWait())
 	if err != nil {
 		t.Fatal(err)
 	}

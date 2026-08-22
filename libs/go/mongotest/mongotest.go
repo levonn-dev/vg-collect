@@ -9,8 +9,11 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/testcontainers/testcontainers-go"
 	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 // container boots at most once and remembers either its URL or its
@@ -37,13 +40,24 @@ func (c *container) resolve(boot func(context.Context) (string, error)) (string,
 
 var shared container
 
+// WaitOption is the module's own readiness strategy (log line plus
+// listening port) with every deadline raised from the 60s defaults to
+// 180s: long enough to outlast the multi-minute freezes a loaded
+// dev-host Docker daemon can hit, so a frozen daemon costs a slow
+// container start instead of a failed suite. Exported for callers
+// that boot their own dedicated Mongo (migration scenarios) so every
+// boot in the repo rides freezes out the same way.
+func WaitOption() testcontainers.CustomizeRequestOption {
+	return testcontainers.WithWaitStrategyAndDeadline(180*time.Second,
+		wait.ForLog("Waiting for connections").WithStartupTimeout(180*time.Second),
+		wait.ForListeningPort("27017/tcp").WithStartupTimeout(180*time.Second))
+}
+
 // bootMongo starts a mongo:8 container and returns its connection
-// URL. No custom wait strategy: both call sites this package replaces
-// already ran tcmongo.Run with its default wait, and neither flaked on
-// it. No Terminate: the testcontainers reaper collects the container
+// URL. No Terminate: the testcontainers reaper collects the container
 // when the test process exits.
 func bootMongo(ctx context.Context) (string, error) {
-	mc, err := tcmongo.Run(ctx, "mongo:8")
+	mc, err := tcmongo.Run(ctx, "mongo:8", WaitOption())
 	if err != nil {
 		return "", err
 	}

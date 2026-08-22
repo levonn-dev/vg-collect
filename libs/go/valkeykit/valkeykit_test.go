@@ -205,7 +205,8 @@ func TestConnectTLSAgainstPrivateCA(t *testing.T) {
 			"--tls-cert-file", "/tls/tls.crt", "--tls-key-file", "/tls/tls.key",
 			"--tls-ca-cert-file", "/tls/ca.crt", "--tls-auth-clients", "no",
 		},
-		WaitingFor: wait.ForListeningPort("6379/tcp"),
+		// 180s outlasts dev-host Docker daemon freezes (default 60s).
+		WaitingFor: wait.ForListeningPort("6379/tcp").WithStartupTimeout(180 * time.Second),
 	}
 	ctr, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req, Started: true,

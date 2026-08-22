@@ -28,12 +28,14 @@ func TestConnectMigrateHealth(t *testing.T) {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
+	// 180s deadlines outlast dev-host Docker daemon freezes; the outer
+	// deadline matters too - WithWaitStrategy alone caps the wait at 60s.
 	pg, err := tcpostgres.Run(ctx, "postgres:17-alpine",
 		tcpostgres.WithDatabase("t"), tcpostgres.WithUsername("t"), tcpostgres.WithPassword("t"),
-		testcontainers.WithWaitStrategy(
+		testcontainers.WithWaitStrategyAndDeadline(180*time.Second,
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(60*time.Second),
-			wait.ForListeningPort("5432/tcp")))
+				WithOccurrence(2).WithStartupTimeout(180*time.Second),
+			wait.ForListeningPort("5432/tcp").WithStartupTimeout(180*time.Second)))
 	if err != nil {
 		t.Fatal(err)
 	}

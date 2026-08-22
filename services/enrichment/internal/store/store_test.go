@@ -739,7 +739,7 @@ func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
-	mc, err := tcmongo.Run(ctx, "mongo:8")
+	mc, err := tcmongo.Run(ctx, "mongo:8", mongotest.WaitOption())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -844,7 +844,7 @@ func TestMigration_CommunityRegionMovesIntoBlock(t *testing.T) {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
-	mc, err := tcmongo.Run(ctx, "mongo:8")
+	mc, err := tcmongo.Run(ctx, "mongo:8", mongotest.WaitOption())
 	if err != nil {
 		t.Fatal(err)
 	}

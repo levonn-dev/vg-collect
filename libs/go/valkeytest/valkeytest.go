@@ -9,8 +9,11 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/testcontainers/testcontainers-go"
 	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 // container boots at most once and remembers either its URL or its
@@ -38,13 +41,16 @@ func (c *container) resolve(boot func(context.Context) (string, error)) (string,
 var shared container
 
 // bootValkey starts a valkey/valkey:8-alpine container and returns its
-// connection URL. No custom wait strategy: unlike postgres's
-// restart-after-initdb quirk (see pgtest), every call site this
-// package replaces already ran tcvalkey.Run with its default wait, and
-// none of them flaked on it. No Terminate: the testcontainers reaper
-// collects the container when the test process exits.
+// connection URL. The wait is the module's own readiness log line with
+// every deadline raised from the 60s defaults to 180s: long enough to
+// outlast the multi-minute freezes a loaded dev-host Docker daemon can
+// hit, so a frozen daemon costs a slow container start instead of a
+// failed suite. No Terminate: the testcontainers reaper collects the
+// container when the test process exits.
 func bootValkey(ctx context.Context) (string, error) {
-	vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine")
+	vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine",
+		testcontainers.WithWaitStrategyAndDeadline(180*time.Second,
+			wait.ForLog("* Ready to accept connections").WithStartupTimeout(180*time.Second)))
 	if err != nil {
 		return "", err
 	}
