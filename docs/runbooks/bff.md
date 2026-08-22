@@ -27,6 +27,12 @@ What it does, as an operator sees it:
   verdicts, catalog refresh trigger, entry rematch trigger, entry resnapshot,
   and the three normalization sweeps (platforms, regions, community regions).
   Role enforcement lives downstream; the bff holds no role logic.
+- Request validation: every relay's body and query parameters are checked
+  against the bff's own copy of the OpenAPI contract before any upstream
+  call; a schema violation 400s right here (`invalid_param` or
+  `invalid_body`) and the downstream service is never dialed. Once past that
+  check, a semantically invalid request still gets whatever problem body the
+  downstream service answers with, relayed unchanged.
 - Browser telemetry relay: `POST /api/otlp/v1/traces`, session-gated, capped at
   1 MiB, forwarded to the otel-agent so one trace stitches browser to backend.
 - SPA serving: embedded Vite bundle; content-hashed assets are immutable,
@@ -44,6 +50,7 @@ graph LR
     BFF -->|http :8080| USER[user]
     BFF -->|http :8080| COLL[collection]
     BFF -->|http :8080| ENR[enrichment]
+    BFF -->|http :8080| SOC[social]
     BFF -->|rediss :6379| VK[(bff-valkey)]
     BFF -->|OTLP relay + own OTLP| OA[otel-agent]
     ESO[ExternalSecret bff-secrets] -.->|COOKIE_KEY| BFF
@@ -117,12 +124,14 @@ them (the `internal-probes` rule in the bff ApisixRoute), so probing the
 deployed bff means `kubectl`, not `curl :8090/healthz`.
 
 Task targets: `task run` / `task down` for the stack, `task bff:gen` (or root
-`task gen`) to regenerate server stubs and the four typed clients from
-`api/bff.yaml` and the downstream contracts, `task lint`, `task build`,
-`task test:short`, `task test:cover`, `task check` as the pre-commit gate, and
-`task e2e` for the Playwright browser smoke against the running stack. Bruno
-flows live in `bruno/bff/` (user journeys) and `bruno/bff/admin/` (admin
-journeys), both pointed at the gateway origin.
+`task gen`) to regenerate server stubs from `api/bff.yaml` (the typed
+upstream clients regenerate once, covering every service, via the shared
+`libs/go/contract` module inside the same root `task gen`), `task lint`,
+`task build`, `task test:short`, `task test:cover`, `task check` as the
+pre-commit gate, and `task e2e` for the parallel Playwright browser suite
+against the running stack. Bruno flows live in `bruno/bff/` (user
+journeys) and `bruno/bff/admin/` (admin journeys), both pointed at the
+gateway origin.
 
 ## Configuration
 
@@ -611,9 +620,32 @@ the pipeline healthy point here first: [frontend.md](frontend.md).
 
 ### 8. Rate limiting at the gateway
 
-429s never reach the bff; APISIX rejects them at the edge (20/min per client
-IP on `/api/auth/*`, 300/min on `/api/*`, unlimited static). Confirm on the
-"Rate-limited (429)" panel of the APISIX Edge dashboard (vg-apisix-edge):
+A 429 at the gateway has two distinct origins, and the access log's
+upstream_status field tells them apart. Edge rejections come from the
+limit-count plugin and never reach the bff (no upstream address on the
+log line). Application 429s are proxied straight through with
+upstream_status 429 - today that is exactly one endpoint, the handle
+cooldown on `PATCH /api/me` (contract code `handle_cooldown`, relayed
+from the user service) - and both kinds land in the same
+`apisix_http_status` counter below.
+
+Edge budgets are per client IP per minute: 1800 on `/api/*` and 240 on
+`/api/auth/*` on this dev stack, unlimited static. Both are sized
+against the busiest legitimate client the stack has - the parallel
+browser-test suite, whose full run measures about 900 API requests and
+85 auth requests in under a minute from one address, with consecutive
+runs sharing one fixed window when a developer iterates - so a green
+`task e2e` produces zero edge rejections (its one expected 429 is the
+application's own cooldown answer, asserted by a test) while hot
+client request loops (thousands per minute) and credential stuffing
+(hundreds) still trip the limits. Production traffic is human-shaped: keep the
+tighter 300/min API and 20/min auth budgets there. Once real users
+share NAT'd addresses, key the API budget per authenticated user
+rather than per IP (per-IP stays as the coarse outer guard on the
+anonymous auth surface, where credential stuffing arrives before any
+user identity exists).
+Confirm on the "Rate-limited (429)" panel of the APISIX Edge dashboard
+(vg-apisix-edge):
 
 ```promql
 sum(rate(apisix_http_status{code="429"}[$__rate_interval]))

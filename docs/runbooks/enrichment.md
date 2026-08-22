@@ -52,6 +52,10 @@ Features as an operator sees them:
 - Admin moderation (JWT role `admin`): mapping fix, community product
   mint / promote / delete, unmatched and community worklists,
   promote-candidate review and dismiss, immediate refresh trigger.
+  Worklist paging (`limit`, 1-500, default 200) rejects an
+  out-of-range value with 400 `invalid_param` instead of clamping it
+  into bounds; operators see the same code-plus-detail error body
+  every other validation failure already answers with.
 
 ## Architecture
 

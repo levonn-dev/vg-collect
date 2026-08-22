@@ -17,7 +17,43 @@ there by design.
     npm run test:cover   vitest + 80% coverage gate
     npm run lint         eslint
     npm run build        tsc + vite build
-    npm run gen          regenerate src/api/schema.d.ts from api/bff.yaml
+    npm run gen          regenerate src/api/schema.ts from api/bundled/bff.yaml
+
+## API client
+
+`src/api/client.ts` wraps `openapi-fetch` (the `api` client, typed
+against `src/api/schema.ts`) with `unwrap`, which turns its
+`{ data, error, response }` result into a throw-on-problem contract:
+a parsed RFC 9457 problem body rejects with `ApiError` (fields
+`status` and `code`; the detail text becomes its `.message`), any
+other non-ok response rejects with a bare `ApiError(status)`, and a
+204 resolves `undefined`. `fetch` resolves through `globalThis` on
+every call instead of being captured at module init, so OTel's
+`window.fetch` patch, which lands after this module loads, still
+wraps every request.
+
+Domain modules under `src/api/` (`me`, `catalog`, `collection`,
+`social`, `submissions`, `admin`, `platforms`, `fx`) hold the actual
+calls - things like `api.GET('/api/products/{productId}', ...)` - as
+path literals checked at compile time against `schema.ts`: a path or
+parameter that drifts from `api/bff.yaml` fails the build instead of
+the request.
+
+Three files regenerate from the OpenAPI contracts and are committed
+like any other source file: `src/api/schema.ts` from
+`api/bundled/bff.yaml` (`npm run gen`, openapi-typescript with
+`--enum-values`), and `src/gen/domain.ts` plus `src/gen/facets.ts`
+from `api/domain.yaml` and `api/bundled/bff.yaml` respectively
+(`task gen:domain`, the Go tool `tools/domaingen`). Constraint values
+split by kind, not by file role: every enum's value list - the option
+arrays a form or a filter reads - comes from `schema.ts`'s generated
+`*Values` exports (one per named vocabulary schema or inline enum,
+e.g. `itemTypeValues`); every OTHER constraint - caps, numeric bounds,
+defaults, the handle pattern - comes from `facets.ts` instead,
+mirrored straight out of the bundle's schemas and parameters rather
+than a hand-maintained constants module. The root `task gen` runs
+both generators, and a stale output fails CI's drift check the same
+way a stale locale catalog does.
 
 ## Translations
 

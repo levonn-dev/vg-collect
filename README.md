@@ -18,7 +18,7 @@ Postgres/MongoDB/Valkey datastores, full observability.
 - tilt >=0.33
 - task >=3.38
 - golangci-lint >=2.1
-- node 22+ (with npm); for the browser smoke, `npx playwright install chromium`
+- node 22+ (with npm); for the browser suite, `npx playwright install chromium`
 
 ## Quickstart
 
@@ -45,11 +45,11 @@ Note: the fixture's handle is literally `admin` on dev databases created before 
 | `task lint`              | golangci-lint every Go module + helm lint every chart + eslint the frontend + obsgen dashboard and alert lint                                                                                     |
 | `task test`              | go test every module (testcontainers need Docker) + frontend vitest                                                                                                                               |
 | `task test:cover`        | tests + the 80% coverage gate (generated code and cmd/ wiring excluded)                                                                                                                           |
-| `task gen`               | regenerate region/platform tables from `api/domain.yaml` + OpenAPI server stubs/types + the frontend's typed API client + Grafana alert rules and golden dashboards from `deploy/observability/`  |
+| `task gen`               | bundle the authored `api/*.yaml`/`api/common.yaml` contracts into self-contained `api/bundled/` files (redocly) + region/platform tables from `api/domain.yaml` and the frontend's constraint-value facets (`frontend/src/gen/facets.ts`) from that bundle, both via `tools/domaingen` + the shared Go contract module and every service's OpenAPI server stubs/types + Grafana alert rules and golden dashboards from `deploy/observability/` + the frontend's typed API client, including its generated per-enum value arrays (`frontend/src/api/schema.ts`)  |
 | `task tidy`              | go mod tidy every module                                                                                                                                                                          |
 | `task migrate`           | run db:migrate for every migrate-capable service (auth, collection, enrichment, social, user)                                                                                                     |
 | `task build`             | compile every module + the frontend bundle                                                                                                                                                        |
-| `task e2e`               | Playwright smoke suite against the running stack (login, collection journey, currency, account, admin, social, submissions)                                                                       |
+| `task e2e`               | Parallel Playwright browser suite against the running stack; per-run minted dev fixtures; isolation-first                                                                                         |
 | `task run` / `task down` | tilt up / down                                                                                                                                                                                    |
 | `task nuke`              | full app-stack reset: tilt down + the vgkeep namespace (see Teardown)                                                                                                                             |
 

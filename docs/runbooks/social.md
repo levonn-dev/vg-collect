@@ -105,8 +105,10 @@ until collection and user are both ready.
 Task targets that touch this module:
 
 - `task social:gen` regenerates the server stubs from `api/social.yaml`
-  plus the collection and user typed clients (also runs inside root
-  `task gen`; CI fails on drift).
+  (also runs inside root `task gen`; CI fails on drift). The collection
+  and user typed clients it calls through come from the shared
+  `libs/go/contract` module, generated once, covering every service, by
+  that same root `task gen`, not by `social:gen` itself.
 - `task social:db:migrate` runs `go run ./cmd/social migrate` against
   `DATABASE_URL` (also runs under root `task migrate`, alongside every
   other migrate-capable service).

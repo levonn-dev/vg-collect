@@ -16,9 +16,9 @@ What it serves, as an operator sees it:
   verifies the ID token (RS256, issuer, audience, expiry, nonce), and
   requires a verified email before any account is touched.
 - Dev fixture login: `POST /oauth/dev/token` mints a session for
-  `alice`, `bob`, or `admin` (answers 404 unless `DEV_PROVIDER_ENABLED`).
-  Fixtures are the only identities it can mint for; real accounts always
-  go through a real provider.
+  `alice`, `bob`, `admin`, or any `e2e-*` test fixture (answers 404
+  unless `DEV_PROVIDER_ENABLED`). Fixtures are the only identities it
+  can mint for; real accounts always go through a real provider.
 - Access tokens: EdDSA JWTs, `iss vgkeep-auth`, `aud vgkeep`,
   5 minute TTL, `roles` claim read from the user service at mint time.
 - Refresh tokens: opaque, single-use, rotated on every
@@ -131,9 +131,11 @@ Locally: `task auth:db:migrate`.
 
 Task targets that touch this service:
 
-- `task auth:gen` regenerates the server stubs from `api/auth.yaml` and
-  the user-service client from `api/user.yaml` (also runs under root
-  `task gen`).
+- `task auth:gen` regenerates the server stubs from `api/auth.yaml` (also
+  runs under root `task gen`); the typed user-service client it calls
+  through is generated once, covering every service, by the shared
+  `libs/go/contract` module inside that same root `task gen`, not by
+  `auth:gen` itself.
 - `task auth:db:migrate` applies migrations to `DATABASE_URL` (also
   runs under root `task migrate`, alongside every other migrate-capable
   service).
@@ -595,11 +597,15 @@ Restart churn on auth-pg-0:
 
 Symptom: users report login failures, but "Request rate by route" and
 "4xx and 5xx by route and status" show nothing.
-APISIX rate-limits `/api/auth/*` at 20 requests per minute per client
-IP (rejected at the edge with 429, never reaching bff or auth), against
-300 per minute for the rest of `/api/*`. Confirm on the vg-apisix-edge
-dashboard. A shared office NAT can trip this legitimately; the knob is
-`rateLimit.authPerMinute` in the bff chart values.
+APISIX rate-limits `/api/auth/*` per client IP (rejected at the edge
+with 429, never reaching bff or auth): 240 per minute on this dev
+stack, sized for the browser suite's login traffic (including two
+runs landing back to back in one window), with 20 the
+production recommendation; the rest of `/api/*` budgets 1800 here with
+300 recommended for production. Confirm on the vg-apisix-edge
+dashboard. A shared office NAT can trip the tight production auth
+budget legitimately; the knob is `rateLimit.authPerMinute` in the bff
+chart values.
 
 ### 6. Platform-wide 401s: JWKS trouble
 
@@ -642,9 +648,11 @@ Symptom check, any environment that should be locked down:
 `curl -s http://localhost:8082/providers` must not list `dev`, and
 `POST /oauth/dev/token` must answer 404. If `dev` appears, the values
 file shipped `devProviderEnabled: true`; fix the values and roll. The
-blast radius is bounded to the three fixture accounts (alice, bob,
-admin at example.com) because `DevClaims` is a closed literal, but
-treat it as a misconfiguration incident anyway.
+blast radius is bounded to fixture accounts (alice, bob, admin at
+example.com) plus per-run `e2e-*` test users the browser tests create
+and delete, since the provider answers only for that fixed trio plus
+the `e2e-*` pattern, but treat it as a misconfiguration incident
+anyway.
 
 ## Admin levers
 

@@ -122,7 +122,9 @@ Task targets:
 
 - Root: `task lint`, `task build`, `task test`, `task test:short`,
   `task test:cover`, `task tidy`, `task gen` (regenerates collection's
-  server stubs and enrichment client), `task run` / `task down`,
+  server stubs; the enrichment client it calls through comes from the
+  shared `libs/go/contract` module, generated once, covering every
+  service, in the same run), `task run` / `task down`,
   `task grant-fixture-admin` (grants the dev admin fixture the admin
   role; needed before admin routes answer 200 in dev).
 - Module (`services/collection/Taskfile.yml`): `task collection:gen`,
