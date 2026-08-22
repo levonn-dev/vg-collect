@@ -120,8 +120,8 @@ sequence with the `local` environment selected:
 ## Fixture users only
 
 The dev token endpoint resolves fixture handles only: `alice`, `bob`,
-`admin`. It can never mint for a real account; that is a deliberate
-property of the dev provider, not a missing feature.
+`admin`, and `e2e-*` test fixtures. It can never mint for a real account;
+that is a deliberate property of the dev provider, not a missing feature.
 
 The `admin` fixture starts with the plain `user` role. The user service
 has no role-grant endpoint (roles are data it owns), so granting admin

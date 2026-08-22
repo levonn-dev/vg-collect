@@ -37,11 +37,19 @@ valkey:
     limits: { memory: 128Mi }
 
 # Per-minute, per-client-IP budgets enforced at the gateway: tight on
-# the credential-adjacent auth surface, loose on the rest of the API,
-# none on static assets.
+# the credential-adjacent auth surface, looser on the rest of the API,
+# none on static assets. Dev budgets are sized against the busiest
+# legitimate client this stack has - the parallel browser-test suite,
+# whose full run measures about 900 /api/* requests and 85 auth
+# requests in under a minute from one address, and whose runs land
+# back to back inside one fixed window when a developer iterates - so
+# legitimate traffic clears the limits with room while the failure
+# modes they exist for (hot client request loops at thousands per
+# minute, credential stuffing at hundreds) still trip them. Production
+# traffic is human-shaped and keeps far tighter budgets.
 rateLimit:
-  authPerMinute: 20
-  apiPerMinute: 300
+  authPerMinute: 240       # the prod-path seam: production stays far tighter (20/min); see the auth runbook for the recommendation
+  apiPerMinute: 1800       # the prod-path seam: production stays far tighter (300/min); see the bff runbook for the recommendation
 
 gateway:
   # Where APISIX runs; the NetworkPolicy admits ingress from there.

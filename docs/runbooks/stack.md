@@ -330,9 +330,20 @@ against Prometheus:
    to see which exporter (otlp, prometheusremotewrite) is failing.
 2. Check whether the matching backend pod (kps-prometheus, loki,
    jaeger) is down or unreachable; that is the most common cause.
-3. If every exporter is affected at once, check the otel-gateway pod
+3. For prometheusremotewrite failures with "400 out of order sample"
+   in the gateway log (prometheus-kps names the series): browser
+   telemetry relayed by the bff collapses every concurrent browser
+   session into one series set stamped with the bff pod's identity,
+   so their independent client clocks interleave under parallel
+   browser load. Two settings absorb this and both live in the
+   platform values: the exporter's remote_write_queue runs one
+   consumer (in-order delivery), and Prometheus keeps a 30m
+   tsdb.outOfOrderTimeWindow (multi-producer tolerance). If it fires
+   anyway, read the rejected series names from the prometheus-kps log
+   before touching either knob.
+4. If every exporter is affected at once, check the otel-gateway pod
    for a memory_limiter processor refusing data under memory pressure.
-4. Check the Pod details dashboard (vg-pod-details) for the
+5. Check the Pod details dashboard (vg-pod-details) for the
    otel-gateway and otel-agent pods in vg-platform: a collector starved
    of CPU or memory drops data before any backend is even involved.
 
@@ -490,6 +501,20 @@ sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{names
    dashboard (vg-pod-details) for the same namespace and pod to
    correlate CPU and memory with the restarts, then read the container
    logs for the panic or fatal error.
+4. The OOM leg of the rule is sticky by construction:
+   last_terminated_reason stays "OOMKilled" for as long as that is the
+   pod's most recent termination, so the alert keeps firing on a
+   healthy pod until the cause is fixed and the pod is replaced
+   (`kubectl -n <namespace> rollout restart deployment/<name>`). That
+   is deliberate - an OOM stays visible until someone acts on it.
+
+Known instance: jaeger stores traces in memory, and its image-default
+cap (100000 traces) holds far more than its 512Mi limit, so heavy
+trace volume (a browser-suite burn-in, a long bruno session) ended in
+OOM kills that dropped every stored trace. The platform chart now
+overrides the cap to 25000 via jaeger.userconfig so the store evicts
+oldest-first inside the limit instead; if jaeger OOMs again, re-check
+that the cap times typical trace size still fits the limit.
 
 ### 5. Node under memory, disk or PID pressure
 
@@ -643,12 +668,15 @@ case entirely instead of alerting on it.
 
 ## Smoke surfaces
 
-- `task e2e` runs the Playwright browser smoke against the running
-  stack: login, collection journey (incl. bulk edit), display currency,
-  account, admin, social journey, and catalog submissions - 15 tests
-  across 7 specs. It
-  runs `task grant-fixture-admin` first, and needs
-  `npx playwright install chromium` once.
+- `task e2e` runs a parallel Playwright browser suite against the
+  running stack using per-run minted dev fixtures with isolation-first
+  design. Set E2E_WORKERS to override the default worker count. It runs
+  `task grant-fixture-admin` first and needs `npx playwright install
+  chromium` once. The suite cleans up after itself: fixtures delete
+  their accounts (cascading collection, submission, and social data)
+  at teardown, and a pre-run sweep finishes the job for any earlier
+  run that died before its teardowns, including the e2e-named
+  community products such a run can strand.
 - `task grant-fixture-admin` logs the dev `admin` fixture in (so its
   user row exists) and inserts the admin role into user-pg.
   Idempotent, fixture-scoped, dev stacks only.
