@@ -1,6 +1,6 @@
 import { fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, requestPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import { renderWithMoney } from '../../test/money'
 import DetailsStep, { defaultDetails, detailsToCreate } from './DetailsStep'
@@ -91,8 +91,8 @@ it('renders no listing-match row without the callback (custom and hardware paths
 })
 
 it('opens the listing dialog, stores the pick, and clears it', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    String(url).startsWith('/api/search')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    requestPath(url).startsWith('/api/search')
       ? Promise.resolve(jsonResponse(200, {
           degraded: false,
           results: [{ type: 'pc_listing', name: 'Chrono Trigger [PAL]', pc_product_id: 7042, console_name: 'PAL Super Nintendo', loose_cents: 9800 }],
@@ -179,6 +179,13 @@ it('known options render labels not wire values', () => {
   renderWithI18n(<DetailsStep product={{ name: 'X' }} currency="USD" onBack={() => {}} onNext={() => {}} />)
   expect(screen.getByRole('option', { name: 'Region free' })).toBeInTheDocument()
   expect(screen.queryByRole('option', { name: 'REGION-FREE' })).not.toBeInTheDocument()
+})
+
+it('condition options render translated labels not wire values', () => {
+  renderWithI18n(<DetailsStep product={{ name: 'X' }} currency="USD" onBack={() => {}} onNext={() => {}} />)
+  const condition = screen.getByLabelText('Item condition')
+  expect(within(condition).getByRole('option', { name: 'Near mint' })).toBeInTheDocument()
+  expect(within(condition).queryByRole('option', { name: 'near mint' })).not.toBeInTheDocument()
 })
 
 it('derives the heading from the selected region and follows a region change live', async () => {

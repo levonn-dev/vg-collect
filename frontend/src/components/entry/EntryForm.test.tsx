@@ -1,7 +1,7 @@
 import { act, fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { EntryUpdate } from '../../api/collection'
-import { entryFixture, fxRatesFixture, jsonResponse, meFixture } from '../../test/fixtures'
+import { entryFixture, fxRatesFixture, jsonResponse, meFixture, requestPath } from '../../test/fixtures'
 import { renderWithMoney } from '../../test/money'
 import EntryForm from './EntryForm'
 
@@ -15,8 +15,8 @@ function renderForm(
   // and - once a price-source picker opens - SearchPicker's auto-fired
   // search), each needing its own shape and its own Response instance (a
   // shared instance can only have its body read once).
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     if (u === '/api/platforms') return Promise.resolve(jsonResponse(200, { platforms: [] }))
     return Promise.resolve(jsonResponse(200, { tags: [] }))
@@ -169,8 +169,8 @@ it('preserves the stored paid currency on edit and shows it on the label', async
 it('carries edits from every remaining field control into the payload', async () => {
   const tags = [{ id: 't1', name: 'rpg', entry_count: 1 }]
   const platforms = { platforms: [{ igdb_id: 99, name: 'Famicom', aliases: [] }] }
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    if (String(url) === '/api/platforms') return Promise.resolve(jsonResponse(200, platforms))
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url) === '/api/platforms') return Promise.resolve(jsonResponse(200, platforms))
     return Promise.resolve(jsonResponse(200, { tags }))
   }))
   const onSave = vi.fn()

@@ -1,43 +1,25 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { msg } from '@lingui/core/macro'
-import type { MessageDescriptor } from '@lingui/core'
 import { useState } from 'react'
 import type { Entry, EntryUpdate } from '../../api/collection'
 import { entryToUpdate } from '../../lib/entryUpdate'
 import { centsToDollars, dollarsToCents, enteredCentsToUsdCents, usdCentsToMajor } from '../../lib/format'
-import { inputClass, labelClass } from '../../lib/formStyles'
-import { CONDITIONS, PACKAGINGS, STATUSES } from '../../lib/listParams'
+import { btnPrimary, inputClass, labelClass } from '../../lib/formStyles'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import PlatformPicker from '../catalog/PlatformPicker'
-import RegionPicker from '../catalog/RegionPicker'
+import type { CopyDetailsValues } from './CopyDetailsFields'
+import { CopyDetailsFields } from './CopyDetailsFields'
 import type { PricingValue } from './PricingPanel'
 import PricingPanel from './PricingPanel'
 import TagPicker from './TagPicker'
 
-type Condition = NonNullable<Entry['item_condition']>
-
-interface FormValues {
+// The shared copy-details cluster plus what only the editor collects:
+// the custom-entry display fields, tags, and the pricing draft.
+interface FormValues extends CopyDetailsValues {
   displayName: string
   platformName: string
   platformIgdbId?: number
   firstReleaseDate: string
   coverUrl: string
-  region: Entry['region']
-  edition: string
-  packaging: Entry['packaging']
-  hasBox: boolean
-  hasManual: boolean
-  boxCondition: Condition | ''
-  manualCondition: Condition | ''
-  itemCondition: Condition | ''
-  pricePaid: string
-  purchasedAt: string
-  purchasedFrom: string
-  status: Entry['status']
-  rating: string
-  notes: string
-  storageLocation: string
-  pinned: boolean
   tagIds: string[]
   pricing: PricingValue
 }
@@ -135,37 +117,6 @@ function toUpdate(e: Entry, v: FormValues, inputCurrency: string, rate: number |
   return u
 }
 
-// Same source text as FilterBar.tsx's chipLabels condition/region
-// entries (a filter chip and a form field can both need the same
-// word); duplicate msgids merge into one catalog entry.
-const conditionLabels: Record<Condition, MessageDescriptor> = {
-  mint: msg`Mint`,
-  near_mint: msg`Near mint`,
-  very_good: msg`Very good`,
-  good: msg`Good`,
-  acceptable: msg`Acceptable`,
-  poor: msg`Poor`,
-}
-
-// Identity-preserving: these two selects have never been prettified,
-// so the option text stays the raw wire value (unlike condition/region
-// above). The table only exists so the value enters the catalog; an
-// unknown future wire value falls back to rendering itself raw.
-const packagingLabels: Record<string, MessageDescriptor> = {
-  sealed: msg`sealed`,
-  cib: msg`cib`,
-  loose: msg`loose`,
-}
-
-const statusLabels: Record<string, MessageDescriptor> = {
-  backlog: msg`backlog`,
-  playing: msg`playing`,
-  beaten: msg`beaten`,
-  completed: msg`completed`,
-  dropped: msg`dropped`,
-  shelved: msg`shelved`,
-}
-
 interface EntryFormProps {
   entry: Entry
   onSave: (update: EntryUpdate) => void
@@ -175,7 +126,7 @@ interface EntryFormProps {
 }
 
 export default function EntryForm({ entry, onSave, saving, saved, error }: EntryFormProps) {
-  const { t, i18n } = useLingui()
+  const { t } = useLingui()
   const money = useDisplayMoney()
   // The input currency freezes per mount: a rate snapshot arriving
   // mid-edit must not silently reinterpret typed text.
@@ -192,37 +143,15 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
     setPricingError(null)
     setV((prev) => ({ ...prev, [key]: value }))
   }
-  // Packaging implies the flags: loose is by definition unboxed, while
-  // cib and sealed come boxed with a manual. The gated condition
-  // selects follow the flags; either can still be corrected by hand.
-  const setPackaging = (packaging: Entry['packaging']) => {
+  // The shared cluster hands back one full next value; the same
+  // drift bookkeeping applies before it lands over the host fields.
+  const setDetails = (next: CopyDetailsValues) => {
     setEditedSinceSave(true)
     setPricingError(null)
-    setV((prev) =>
-      packaging === 'loose'
-        ? { ...prev, packaging, hasBox: false, hasManual: false }
-        : { ...prev, packaging, hasBox: true, hasManual: true },
-    )
+    setV((prev) => ({ ...prev, ...next }))
   }
   const custom = !entry.product_id
   const currency = entry.currency
-
-  const conditionSelect = (
-    label: string,
-    key: 'boxCondition' | 'manualCondition' | 'itemCondition',
-  ) => (
-    <label className={labelClass}>
-      {label}
-      <select value={v[key]} onChange={(e) => set(key, e.target.value as FormValues[typeof key])} className={inputClass}>
-        <option value="">{t`Not graded`}</option>
-        {CONDITIONS.map((c) => (
-          <option key={c} value={c}>
-            {i18n._(conditionLabels[c])}
-          </option>
-        ))}
-      </select>
-    </label>
-  )
 
   return (
     <>
@@ -285,86 +214,13 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
         </section>
       )}
 
-      <section aria-label={t`Physical details`} className="flex flex-wrap gap-3">
-        <RegionPicker value={v.region} onChange={(region) => set('region', region)} required />
-        <label className={labelClass}>
-          <Trans>Edition</Trans>
-          <input value={v.edition} onChange={(e) => set('edition', e.target.value)} placeholder={t`first print, black label...`} className={inputClass} />
-        </label>
-        <label className={labelClass}>
-          <Trans>Packaging</Trans>
-          <select value={v.packaging} onChange={(e) => setPackaging(e.target.value as Entry['packaging'])} className={inputClass}>
-            {PACKAGINGS.map((p) => (
-              <option key={p} value={p}>
-                {packagingLabels[p] ? i18n._(packagingLabels[p]) : p}
-              </option>
-            ))}
-          </select>
-        </label>
-        {conditionSelect(t`Item condition`, 'itemCondition')}
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <input type="checkbox" checked={v.hasBox} onChange={(e) => set('hasBox', e.target.checked)} />
-          <Trans>Has box</Trans>
-        </label>
-        {v.hasBox && conditionSelect(t`Box condition`, 'boxCondition')}
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <input type="checkbox" checked={v.hasManual} onChange={(e) => set('hasManual', e.target.checked)} />
-          <Trans>Has manual</Trans>
-        </label>
-        {v.hasManual && conditionSelect(t`Manual condition`, 'manualCondition')}
-      </section>
-
-      <section aria-label={t`Acquisition`} className="flex flex-wrap gap-3">
-        <label className={labelClass}>
-          <Trans>Price paid ({currency})</Trans>
-          <input inputMode="decimal" value={v.pricePaid} onChange={(e) => set('pricePaid', e.target.value)} placeholder={t`59.99`} className={inputClass} />
-        </label>
-        <label className={labelClass}>
-          <Trans>Purchased on</Trans>
-          <input type="date" value={v.purchasedAt} onChange={(e) => set('purchasedAt', e.target.value)} className={inputClass} />
-        </label>
-        <label className={labelClass}>
-          <Trans>Purchased from</Trans>
-          <input value={v.purchasedFrom} onChange={(e) => set('purchasedFrom', e.target.value)} className={inputClass} />
-        </label>
-      </section>
-
-      <section aria-label={t`Personal`} className="flex flex-wrap gap-3">
-        <label className={labelClass}>
-          <Trans>Status</Trans>
-          <select value={v.status} onChange={(e) => set('status', e.target.value as Entry['status'])} className={inputClass}>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {statusLabels[s] ? i18n._(statusLabels[s]) : s}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={labelClass}>
-          <Trans>Rating</Trans>
-          <select value={v.rating} onChange={(e) => set('rating', e.target.value)} className={inputClass}>
-            <option value="">{t`Unrated`}</option>
-            {Array.from({ length: 10 }, (_, i) => String(i + 1)).map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={labelClass}>
-          <Trans>Storage location</Trans>
-          <input value={v.storageLocation} onChange={(e) => set('storageLocation', e.target.value)} className={inputClass} />
-        </label>
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <input type="checkbox" checked={v.pinned} onChange={(e) => set('pinned', e.target.checked)} />
-          <Trans>Pinned</Trans>
-        </label>
-      </section>
-
-      <label className={labelClass}>
-        <Trans>Notes</Trans>
-        <textarea value={v.notes} onChange={(e) => set('notes', e.target.value)} rows={3} className={inputClass} />
-      </label>
+      <CopyDetailsFields
+        value={v}
+        onChange={setDetails}
+        currencyLabel={currency}
+        editionLabel={t`Edition`}
+        editionPlaceholder={t`first print, black label...`}
+      />
 
       <TagPicker value={v.tagIds} onChange={(ids) => set('tagIds', ids)} />
 
@@ -374,7 +230,7 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
         </p>
       )}
       <div className="flex items-center gap-3">
-        <button type="submit" disabled={saving} className="rounded bg-gray-900 px-4 py-2 text-sm text-white enabled:hover:bg-gray-700 disabled:opacity-50">
+        <button type="submit" disabled={saving} className={btnPrimary}>
           <Trans>Save changes</Trans>
         </button>
         <span aria-live="polite" className="text-sm text-green-800">
