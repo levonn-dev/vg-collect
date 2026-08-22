@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse, problemResponse } from '../../test/fixtures'
+import { calledPath, jsonResponse, problemResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import CatalogSubmission from './CatalogSubmission'
 
@@ -28,8 +28,8 @@ it('never-submitted offers Submit and posts', async () => {
   vi.stubGlobal('fetch', fetchMock)
   renderBlock()
   await userEvent.click(await screen.findByRole('button', { name: 'Submit to catalog' }))
-  expect(fetchMock.mock.calls[1][0]).toBe('/api/entries/e1/submission')
-  expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'POST' })
+  expect(calledPath(fetchMock, 1)).toBe('/api/entries/e1/submission')
+  expect((fetchMock.mock.calls[1][0] as Request).method).toBe('POST')
   expect(await screen.findByRole('button', { name: 'Cancel submission' })).toBeInTheDocument()
 })
 
@@ -42,7 +42,7 @@ it('pending shows the wait and cancels', async () => {
   vi.stubGlobal('fetch', fetchMock)
   renderBlock()
   await userEvent.click(await screen.findByRole('button', { name: 'Cancel submission' }))
-  expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'DELETE' })
+  expect((fetchMock.mock.calls[1][0] as Request).method).toBe('DELETE')
   expect(await screen.findByRole('button', { name: 'Submit to catalog' })).toBeInTheDocument()
 })
 

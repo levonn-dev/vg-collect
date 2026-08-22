@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse, problemResponse } from '../../test/fixtures'
+import { jsonResponse, problemResponse, requestPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import ProductLookup from './ProductLookup'
 
@@ -83,8 +83,8 @@ it('resets the promote panel state when the lookup target changes', async () => 
     }],
     total_count: 1,
   })
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) {
       // Only the listing-attach picker (pc_listing) surfaces the listing;
       // the game picker's own auto-fired search stays empty so the "Use"
@@ -132,8 +132,8 @@ it('resets the promote panel state when the lookup target changes', async () => 
 
 it('shows the community badge and the promote panel for a community product', async () => {
   const user = userEvent.setup()
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/admin/products/promote-candidates'))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/admin/products/promote-candidates'))
       return Promise.resolve(jsonResponse(200, {
         products: [{
           product: {

@@ -1,4 +1,5 @@
 import { Trans, useLingui } from '@lingui/react/macro'
+import { btnSecondary } from '../../lib/formStyles'
 import { PAGE_SIZE } from '../../lib/listParams'
 
 interface PagerProps {
@@ -20,7 +21,7 @@ export default function Pager({ page, totalCount, onPage }: PagerProps) {
       <button
         onClick={() => onPage(page - 1)}
         disabled={page === 0}
-        className="rounded border border-gray-300 px-2 py-1 enabled:hover:bg-gray-50 disabled:opacity-40"
+        className={btnSecondary}
       >
         <Trans>Previous</Trans>
       </button>
@@ -30,7 +31,7 @@ export default function Pager({ page, totalCount, onPage }: PagerProps) {
       <button
         onClick={() => onPage(page + 1)}
         disabled={page >= lastPage}
-        className="rounded border border-gray-300 px-2 py-1 enabled:hover:bg-gray-50 disabled:opacity-40"
+        className={btnSecondary}
       >
         <Trans>Next</Trans>
       </button>

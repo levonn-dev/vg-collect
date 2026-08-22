@@ -2,6 +2,8 @@ import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { fetchPromoteCandidates } from '../../api/admin'
+import { formatDate } from '../../lib/format'
+import { btnSecondaryXs } from '../../lib/formStyles'
 import { offsetNextPageParam } from '../../lib/pagination'
 import { renderQueryState } from '../../lib/queryBoundary'
 import LoadMoreButton from '../LoadMoreButton'
@@ -77,12 +79,12 @@ export default function PromoteCandidates() {
               <td className="py-1 pr-2">
                 {row.candidates[0] ? `${row.candidates[0].name} (${row.candidates[0].score.toFixed(2)})` : ''}
               </td>
-              <td className="py-1 pr-2">{row.candidates[0]?.found_at.slice(0, 10) ?? ''}</td>
+              <td className="py-1 pr-2">{row.candidates[0] ? formatDate(row.candidates[0].found_at) : ''}</td>
               <td className="py-1">
                 <button
                   type="button"
                   onClick={() => setReviewingId(row.product.id)}
-                  className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
+                  className={btnSecondaryXs}
                 >
                   <Trans>Review</Trans>
                 </button>

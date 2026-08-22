@@ -1,6 +1,7 @@
 import { Trans } from '@lingui/react/macro'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { follow, unfollow } from '../../api/social'
+import { btnSecondary } from '../../lib/formStyles'
 import { foldHandle } from '../../lib/handle'
 
 interface FollowButtonProps {
@@ -28,9 +29,13 @@ export default function FollowButton({ userId, handle, viewerFollows }: FollowBu
       onClick={() => toggle.mutate()}
       disabled={toggle.isPending}
       aria-pressed={viewerFollows}
+      // The "Follow" branch stays hand-rolled at btnSecondary's own
+      // px-3 py-1 footprint rather than adopting btnPrimary (px-4
+      // py-2): the two branches must render at the same size, or the
+      // button visibly grows/shrinks on every follow/unfollow click.
       className={
         viewerFollows
-          ? 'rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50'
+          ? btnSecondary
           : 'rounded bg-gray-900 px-3 py-1 text-sm text-white hover:bg-gray-700 disabled:opacity-50'
       }
     >

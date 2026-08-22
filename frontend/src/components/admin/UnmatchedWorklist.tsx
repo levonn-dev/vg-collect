@@ -3,6 +3,8 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { fetchUnmatchedProducts } from '../../api/admin'
 import type { Product } from '../../api/catalog'
+import { formatDate } from '../../lib/format'
+import { btnSecondaryXs } from '../../lib/formStyles'
 import { offsetNextPageParam } from '../../lib/pagination'
 import { renderQueryState } from '../../lib/queryBoundary'
 import LoadMoreButton from '../LoadMoreButton'
@@ -69,12 +71,12 @@ export default function UnmatchedWorklist() {
               <td className="py-1 pr-2">{p.type}</td>
               <td className="py-1 pr-2">{p.platform?.name ?? ''}</td>
               <td className="py-1 pr-2">{[p.region, p.edition, p.variant].filter(Boolean).join(' / ')}</td>
-              <td className="py-1 pr-2">{p.updated_at.slice(0, 10)}</td>
+              <td className="py-1 pr-2">{formatDate(p.updated_at)}</td>
               <td className="py-1">
                 <button
                   type="button"
                   onClick={() => setFixing(p)}
-                  className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
+                  className={btnSecondaryXs}
                 >
                   <Trans>Fix mapping</Trans>
                 </button>

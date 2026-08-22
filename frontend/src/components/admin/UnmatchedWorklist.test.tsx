@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../test/fixtures'
+import { calledPath, jsonResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import UnmatchedWorklist from './UnmatchedWorklist'
 
@@ -47,7 +47,7 @@ it('loads the next page and appends', async () => {
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: 'Load more' }))
   expect(await screen.findByText('Game 200')).toBeInTheDocument()
-  expect(fetchMock.mock.calls[1][0]).toBe('/api/admin/products/unmatched?offset=200')
+  expect(calledPath(fetchMock, 1)).toBe('/api/admin/products/unmatched?offset=200')
 })
 
 it('opens the fix panel for a row', async () => {

@@ -4,7 +4,8 @@ import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { deleteProduct, fetchCommunityProducts } from '../../api/admin'
-import { releaseYear } from '../../lib/format'
+import { formatDate, releaseYear } from '../../lib/format'
+import { btnSecondaryXs } from '../../lib/formStyles'
 import { offsetNextPageParam } from '../../lib/pagination'
 import { renderQueryState } from '../../lib/queryBoundary'
 import { regionLabelText } from '../../lib/regionLabels'
@@ -113,13 +114,13 @@ export default function CommunityProducts() {
               <td className="py-1 pr-2">{p.community?.platform_name ?? ''}</td>
               <td className="py-1 pr-2">{p.community?.region ? regionLabelText(i18n, p.community.region) : ''}</td>
               <td className="py-1 pr-2">{releaseYear(p.community?.first_release_date) ?? ''}</td>
-              <td className="py-1 pr-2">{p.updated_at.slice(0, 10)}</td>
+              <td className="py-1 pr-2">{formatDate(p.updated_at)}</td>
               <td className="py-1">
                 <button
                   type="button"
                   onClick={() => remove(p.id)}
                   disabled={del.isPending && del.variables === p.id}
-                  className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50 disabled:opacity-50"
+                  className={btnSecondaryXs}
                 >
                   <Trans>Delete</Trans>
                 </button>

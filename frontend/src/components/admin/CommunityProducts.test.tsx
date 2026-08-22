@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse, problemResponse } from '../../test/fixtures'
+import { jsonResponse, problemResponse, requestPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import CommunityProducts from './CommunityProducts'
 
@@ -72,9 +72,9 @@ it('shows a Region column, labeled for a known value and raw for an open-world o
 
 it('delete success removes the row via the DELETE call and list invalidation', async () => {
   let listCalls = 0
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    const u = String(url)
-    if (u === '/api/admin/products/c1' && init?.method === 'DELETE') {
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
+    if (u === '/api/admin/products/c1' && (url as Request).method === 'DELETE') {
       return Promise.resolve(new Response(null, { status: 204 }))
     }
     listCalls++
@@ -89,15 +89,15 @@ it('delete success removes the row via the DELETE call and list invalidation', a
   await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
   await waitFor(() => expect(screen.queryByText('Repro Alpha')).not.toBeInTheDocument())
   const del = fetchMock.mock.calls.find(
-    ([u, i]) => u === '/api/admin/products/c1' && (i as RequestInit | undefined)?.method === 'DELETE',
+    ([input]) => requestPath(input) === '/api/admin/products/c1' && (input as Request).method === 'DELETE',
   )
   expect(del).toBeDefined()
 })
 
 it('delete 409 product_referenced shows the inline per-row message and keeps the row', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    const u = String(url)
-    if (u === '/api/admin/products/c1' && init?.method === 'DELETE') {
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
+    if (u === '/api/admin/products/c1' && (url as Request).method === 'DELETE') {
       return Promise.resolve(problemResponse(409, 'product_referenced', '2 entries reference this product'))
     }
     return Promise.resolve(jsonResponse(200, {

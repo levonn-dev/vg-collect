@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { fetchPromoteCandidates } from '../../api/admin'
 import { fetchProduct } from '../../api/catalog'
 import { ApiError } from '../../api/client'
+import { btnSecondary } from '../../lib/formStyles'
 import { regionLabelText } from '../../lib/regionLabels'
 import MappingFix from './MappingFix'
 import PromotePanel from './PromotePanel'
@@ -66,7 +67,7 @@ export default function ProductLookup() {
         <button
           type="submit"
           disabled={input.trim() === ''}
-          className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+          className={btnSecondary}
         >
           <Trans>Look up</Trans>
         </button>

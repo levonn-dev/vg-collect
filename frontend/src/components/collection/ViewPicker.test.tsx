@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse, problemResponse, putBody } from '../../test/fixtures'
+import { jsonResponse, problemResponse, putBody, requestPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import { defaultListState, toViewParams } from '../../lib/listParams'
 import ViewPicker from './ViewPicker'
@@ -49,38 +49,38 @@ it('saves the current state under a prompted name', async () => {
   const onApply = renderPicker(savedState)
   await userEvent.click(await screen.findByRole('button', { name: /save shelf/i }))
   const post = fetchMock.mock.calls[1]
-  expect(post[0]).toBe('/api/views')
-  const body = putBody<{ name: string; params: unknown }>(post[1] as RequestInit)
+  expect(requestPath(post[0])).toBe('/api/views')
+  const body = await putBody<{ name: string; params: unknown }>(post[0])
   expect(body.name).toBe('New view')
   expect(body.params).toEqual(toViewParams(savedState))
   expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ viewId: 'v2' }))
 })
 
 it('updates the active shelf with the current state', async () => {
-  const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
-    Promise.resolve(init?.method === 'PUT'
+  const fetchMock = vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve((url as Request).method === 'PUT'
       ? jsonResponse(200, view)
       : jsonResponse(200, { views: [view] })))
   vi.stubGlobal('fetch', fetchMock)
   const current = { ...savedState, viewId: 'v1', packaging: ['cib' as const] }
   renderPicker(current)
   await userEvent.click(await screen.findByRole('button', { name: /update shelf/i }))
-  const put = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'PUT')
-  expect(put?.[0]).toBe('/api/views/v1')
-  const body = putBody<{ params: Record<string, unknown> }>(put?.[1] as RequestInit)
+  const put = fetchMock.mock.calls.find((c) => (c[0] as Request).method === 'PUT')
+  expect(requestPath(put?.[0])).toBe('/api/views/v1')
+  const body = await putBody<{ params: Record<string, unknown> }>(put?.[0])
   expect(body.params.packaging).toEqual(['cib'])
 })
 
 it('deletes the active shelf and resets the applied id', async () => {
-  const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
-    Promise.resolve(init?.method === 'DELETE'
+  const fetchMock = vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve((url as Request).method === 'DELETE'
       ? new Response(null, { status: 204 })
       : jsonResponse(200, { views: [view] })))
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   const onApply = renderPicker({ ...savedState, viewId: 'v1' })
   await userEvent.click(await screen.findByRole('button', { name: /delete shelf/i }))
-  expect(fetchMock.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === 'DELETE')).toBe(true)
+  expect(fetchMock.mock.calls.some((c) => (c[0] as Request).method === 'DELETE')).toBe(true)
   expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ viewId: undefined }))
 })
 
@@ -96,11 +96,11 @@ it('surfaces a name conflict on save', async () => {
 })
 
 it('clears a stale save error once a later, different action succeeds', async () => {
-  const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
-    if (init?.method === 'POST') {
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if ((url as Request).method === 'POST') {
       return Promise.resolve(problemResponse(409, 'name_taken', 'view name already in use'))
     }
-    if (init?.method === 'PUT') return Promise.resolve(jsonResponse(200, view))
+    if ((url as Request).method === 'PUT') return Promise.resolve(jsonResponse(200, view))
     return Promise.resolve(jsonResponse(200, { views: [view] }))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -116,13 +116,13 @@ it('clears a stale save error once a later, different action succeeds', async ()
 
 it('the plain Update shelf button round-trips the active shelf\'s own visibility instead of resetting it', async () => {
   const listed = { ...view, visibility: 'listed' as const }
-  const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
-    Promise.resolve(init?.method === 'PUT'
+  const fetchMock = vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve((url as Request).method === 'PUT'
       ? jsonResponse(200, listed)
       : jsonResponse(200, { views: [listed] })))
   vi.stubGlobal('fetch', fetchMock)
   renderPicker({ ...savedState, viewId: listed.id })
   await userEvent.click(await screen.findByRole('button', { name: /update shelf/i }))
-  const put = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'PUT')
-  expect(putBody<{ visibility: string }>(put?.[1] as RequestInit).visibility).toBe('listed')
+  const put = fetchMock.mock.calls.find((c) => (c[0] as Request).method === 'PUT')
+  expect((await putBody<{ visibility: string }>(put?.[0])).visibility).toBe('listed')
 })

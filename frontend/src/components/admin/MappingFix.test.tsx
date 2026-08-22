@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Product } from '../../api/catalog'
-import { jsonResponse, problemResponse, putBody } from '../../test/fixtures'
+import { calledPath, jsonResponse, problemResponse, putBody, requestPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import MappingFix from './MappingFix'
 
@@ -45,8 +45,8 @@ it('states the unmatched status and the held badge', () => {
 
 it('picks a listing and PUTs the mapping', async () => {
   const user = userEvent.setup()
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    if (url.startsWith('/api/search')) {
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/search')) {
       return Promise.resolve(jsonResponse(200, {
         degraded: false,
         results: [{ type: 'pc_listing', name: 'Super Mario 64', pc_product_id: 5005, console_name: 'Nintendo 64', loose_cents: 4000, cib_cents: 9000, new_cents: 30000 }],
@@ -63,9 +63,9 @@ it('picks a listing and PUTs the mapping', async () => {
   await user.click(screen.getByRole('button', { name: 'Search' }))
   await user.click(await screen.findByRole('button', { name: /Use Super Mario 64/ }))
 
-  const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')
-  expect(put?.[0]).toBe('/api/admin/products/p1/pricecharting')
-  expect(putBody(put?.[1] as RequestInit)).toEqual({ pc_product_id: 5005 })
+  const put = fetchMock.mock.calls.find(([input]) => (input as Request).method === 'PUT')
+  expect(requestPath(put?.[0])).toBe('/api/admin/products/p1/pricecharting')
+  expect(await putBody(put?.[0])).toEqual({ pc_product_id: 5005 })
   expect(onDone).toHaveBeenCalled()
 })
 
@@ -78,8 +78,8 @@ it('clears the mapping behind a confirmation', async () => {
 
   await user.click(screen.getByRole('button', { name: 'Clear mapping' }))
   expect(window.confirm).toHaveBeenCalled()
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/products/p2/pricecharting')
-  expect(putBody(fetchMock.mock.calls[0][1] as RequestInit)).toEqual({ pc_product_id: null })
+  expect(calledPath(fetchMock, 0)).toBe('/api/admin/products/p2/pricecharting')
+  expect(await putBody(fetchMock.mock.calls[0][0])).toEqual({ pc_product_id: null })
   expect(onDone).toHaveBeenCalled()
 })
 
@@ -131,8 +131,8 @@ it('offers Hold on an unmatched, unheld product and parks it behind a confirmati
 
   await user.click(screen.getByRole('button', { name: 'Hold' }))
   expect(window.confirm).toHaveBeenCalled()
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/products/p1/pricecharting')
-  expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBe(JSON.stringify({ pc_product_id: null }))
+  expect(calledPath(fetchMock, 0)).toBe('/api/admin/products/p1/pricecharting')
+  expect(await (fetchMock.mock.calls[0][0] as Request).clone().text()).toBe(JSON.stringify({ pc_product_id: null }))
   expect(onDone).toHaveBeenCalled()
 })
 
@@ -154,8 +154,8 @@ it('deletes an unmatched product behind a confirmation', async () => {
 
   await user.click(screen.getByRole('button', { name: 'Delete' }))
   expect(window.confirm).toHaveBeenCalled()
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/products/p1')
-  expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'DELETE' })
+  expect(calledPath(fetchMock, 0)).toBe('/api/admin/products/p1')
+  expect((fetchMock.mock.calls[0][0] as Request).method).toBe('DELETE')
   expect(onDone).toHaveBeenCalled()
 })
 

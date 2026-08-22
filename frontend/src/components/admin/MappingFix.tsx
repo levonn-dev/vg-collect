@@ -7,8 +7,9 @@ import { deleteProduct, setProductMapping } from '../../api/admin'
 import type { Product } from '../../api/catalog'
 import { ApiError } from '../../api/client'
 import { confirmThen } from '../../lib/confirm'
+import { btnSecondary } from '../../lib/formStyles'
 import { resolveApiError } from '../../lib/resolveApiError'
-import ManualMatchPicker from '../wizard/ManualMatchPicker'
+import ManualMatchPicker from '../catalog/ManualMatchPicker'
 
 interface MappingFixProps {
   product: Product
@@ -99,7 +100,7 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
           type="button"
           onClick={() => setPickerOpen(true)}
           disabled={fix.isPending}
-          className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+          className={btnSecondary}
         >
           <Trans>Choose listing</Trans>
         </button>
@@ -108,7 +109,7 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
             type="button"
             onClick={clear}
             disabled={fix.isPending}
-            className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+            className={btnSecondary}
           >
             <Trans>Clear mapping</Trans>
           </button>
@@ -118,7 +119,7 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
             type="button"
             onClick={hold}
             disabled={fix.isPending}
-            className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+            className={btnSecondary}
           >
             <Trans>Hold</Trans>
           </button>
@@ -128,7 +129,7 @@ export default function MappingFix({ product, onDone }: MappingFixProps) {
             type="button"
             onClick={remove}
             disabled={fix.isPending || del.isPending}
-            className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+            className={btnSecondary}
           >
             <Trans>Delete</Trans>
           </button>

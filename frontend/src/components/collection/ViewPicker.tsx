@@ -2,6 +2,7 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createView, deleteView, fetchViews, updateView } from '../../api/collection'
 import { confirmThen } from '../../lib/confirm'
+import { btnSecondary } from '../../lib/formStyles'
 import type { ListState } from '../../lib/listParams'
 import { fromViewParams, toViewParams } from '../../lib/listParams'
 
@@ -98,7 +99,7 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
             }
           }}
           disabled={save.isPending}
-          className="rounded border border-gray-300 px-2 py-1 text-sm enabled:hover:bg-gray-50 disabled:opacity-50"
+          className={btnSecondary}
         >
           <Trans>Save shelf...</Trans>
         </button>
@@ -111,7 +112,7 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
                 update.mutate()
               }}
               disabled={update.isPending}
-              className="rounded border border-gray-300 px-2 py-1 text-sm enabled:hover:bg-gray-50 disabled:opacity-50"
+              className={btnSecondary}
             >
               <Trans>Update shelf</Trans>
             </button>
@@ -124,7 +125,7 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
                 })
               }
               disabled={remove.isPending}
-              className="rounded border border-gray-300 px-2 py-1 text-sm text-red-700 enabled:hover:bg-red-50 disabled:opacity-50"
+              className="rounded border border-gray-300 px-3 py-1 text-sm text-red-700 enabled:hover:bg-red-50 disabled:opacity-50"
             >
               <Trans>Delete shelf</Trans>
             </button>

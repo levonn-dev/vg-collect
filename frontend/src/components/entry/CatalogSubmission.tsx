@@ -1,6 +1,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { cancelSubmission, createSubmission } from '../../api/submissions'
+import { btnSecondary } from '../../lib/formStyles'
 import { useSubmission } from './useSubmission'
 
 // CatalogSubmission is the custom-entry block for the shared-catalog
@@ -33,7 +34,7 @@ export default function CatalogSubmission({ entryId }: { entryId: string }) {
           type="button"
           onClick={() => cancel.mutate()}
           disabled={cancel.isPending}
-          className="mt-2 rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+          className={`${btnSecondary} mt-2`}
         >
           <Trans>Cancel submission</Trans>
         </button>
@@ -63,7 +64,7 @@ export default function CatalogSubmission({ entryId }: { entryId: string }) {
         type="button"
         onClick={() => submit.mutate()}
         disabled={submit.isPending}
-        className="mt-2 rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+        className={`${btnSecondary} mt-2`}
       >
         {rejected ? <Trans>Resubmit to catalog</Trans> : <Trans>Submit to catalog</Trans>}
       </button>

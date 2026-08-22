@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { btnSecondary } from '../../lib/formStyles'
 
 interface Props {
   title: string
@@ -21,7 +22,7 @@ export default function LeverCard({ title, actionLabel, onRun, pending, success,
         type="button"
         onClick={onRun}
         disabled={pending}
-        className="mt-2 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+        className={`${btnSecondary} mt-2`}
       >
         {actionLabel}
       </button>

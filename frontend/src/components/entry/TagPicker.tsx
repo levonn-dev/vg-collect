@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ApiError } from '../../api/client'
 import { createTag, fetchTags } from '../../api/collection'
+import { btnSecondary } from '../../lib/formStyles'
 
 interface TagPickerProps {
   value: string[]
@@ -58,7 +59,7 @@ export default function TagPicker({ value, onChange }: TagPickerProps) {
           type="button"
           onClick={() => name.trim() && create.mutate(name.trim())}
           disabled={create.isPending || name.trim() === ''}
-          className="rounded border border-gray-300 px-2 py-1 text-sm enabled:hover:bg-gray-50 disabled:opacity-50"
+          className={btnSecondary}
         >
           <Trans>Add tag</Trans>
         </button>

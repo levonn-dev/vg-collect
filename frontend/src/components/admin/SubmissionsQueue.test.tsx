@@ -4,7 +4,7 @@ import { act, cleanup, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { messages as jaMessages } from '../../locales/ja.po'
-import { jsonResponse, problemResponse } from '../../test/fixtures'
+import { jsonResponse, problemResponse, requestPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import SubmissionsQueue from './SubmissionsQueue'
 
@@ -42,11 +42,11 @@ function renderQueue() {
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
   const counts: Record<string, number> = {}
-  const impl = vi.fn().mockImplementation((url: string) => {
-    const hit = Object.entries(routes).find(([prefix]) => String(url).startsWith(prefix))
+  const impl = vi.fn().mockImplementation((url: unknown) => {
+    const hit = Object.entries(routes).find(([prefix]) => requestPath(url).startsWith(prefix))
     if (!hit) {
-      unstubbed.push(String(url))
-      return Promise.reject(new Error(`unstubbed fetch: ${String(url)}`))
+      unstubbed.push(requestPath(url))
+      return Promise.reject(new Error(`unstubbed fetch: ${requestPath(url)}`))
     }
     const [prefix, entry] = hit
     const sequence = Array.isArray(entry) ? entry : [entry]

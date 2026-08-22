@@ -3,6 +3,7 @@ import { I18nProvider } from '@lingui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { calledPath } from '../../test/fixtures'
 import FollowButton from './FollowButton'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -28,7 +29,8 @@ it('PUTs to follow, then DELETEs to unfollow once the caller re-renders with the
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const { rerender } = renderButton(qc, false)
   await userEvent.click(screen.getByRole('button', { name: 'Follow' }))
-  expect(fetchMock).toHaveBeenLastCalledWith('/api/social/follows/u1', { method: 'PUT' })
+  expect(calledPath(fetchMock)).toBe('/api/social/follows/u1')
+  expect((fetchMock.mock.calls.at(-1)?.[0] as Request).method).toBe('PUT')
 
   rerender(
     <I18nProvider i18n={i18n}>
@@ -38,7 +40,8 @@ it('PUTs to follow, then DELETEs to unfollow once the caller re-renders with the
     </I18nProvider>,
   )
   await userEvent.click(screen.getByRole('button', { name: 'Following' }))
-  expect(fetchMock).toHaveBeenLastCalledWith('/api/social/follows/u1', { method: 'DELETE' })
+  expect(calledPath(fetchMock)).toBe('/api/social/follows/u1')
+  expect((fetchMock.mock.calls.at(-1)?.[0] as Request).method).toBe('DELETE')
 })
 
 it('invalidates the folded profile query key on success', async () => {

@@ -1,4 +1,5 @@
 import { Trans } from '@lingui/react/macro'
+import { btnSecondary } from '../lib/formStyles'
 
 // The shape every useInfiniteQuery result satisfies structurally - no
 // TData/TError generics needed since this button never touches the
@@ -28,7 +29,7 @@ export default function LoadMoreButton({ query, className }: LoadMoreButtonProps
       type="button"
       onClick={() => void query.fetchNextPage()}
       disabled={query.isFetchingNextPage}
-      className={`${className} rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50`}
+      className={`${className} ${btnSecondary}`}
     >
       <Trans>Load more</Trans>
     </button>

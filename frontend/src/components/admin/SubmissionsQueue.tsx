@@ -5,6 +5,8 @@ import { Link } from 'react-router'
 import { fetchProfileCards, fetchSubmissions } from '../../api/admin'
 import type { AdminSubmission, ProfileCard } from '../../api/admin'
 import type { ApiError } from '../../api/client'
+import { formatDate } from '../../lib/format'
+import { btnSecondaryXs } from '../../lib/formStyles'
 import { offsetNextPageParam } from '../../lib/pagination'
 import { renderQueryState } from '../../lib/queryBoundary'
 import { regionLabelText } from '../../lib/regionLabels'
@@ -108,7 +110,7 @@ export default function SubmissionsQueue() {
               <td className="py-1 pr-2">
                 <SubmitterCell card={cardsById.get(s.user_id)} userId={s.user_id} />
               </td>
-              <td className="py-1 pr-2">{s.created_at.slice(0, 10)}</td>
+              <td className="py-1 pr-2">{formatDate(s.created_at)}</td>
               <td className="py-1">
                 <button
                   type="button"
@@ -116,7 +118,7 @@ export default function SubmissionsQueue() {
                     setReviewing(s)
                     setNotice(null)
                   }}
-                  className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
+                  className={btnSecondaryXs}
                 >
                   <Trans>Review</Trans>
                 </button>

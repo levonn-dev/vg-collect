@@ -1,5 +1,6 @@
 import { Trans } from '@lingui/react/macro'
 import type { ReactNode } from 'react'
+import { btnPrimary, btnSecondary } from '../../lib/formStyles'
 
 interface ConfirmShellProps {
   ariaLabel: string
@@ -33,13 +34,13 @@ export default function ConfirmShell({
         </p>
       )}
       <div className="flex gap-2">
-        <button onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
+        <button onClick={onBack} className={btnSecondary}>
           <Trans>Back</Trans>
         </button>
         <button
           onClick={onSubmit}
           disabled={submitPending}
-          className="rounded bg-gray-900 px-4 py-1 text-sm text-white enabled:hover:bg-gray-700 disabled:opacity-50"
+          className={btnPrimary}
         >
           <Trans>Add to collection</Trans>
         </button>
