@@ -6,38 +6,22 @@
 package api
 
 import (
+	"bytes"
+	"compress/flate"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"path"
+	"strings"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
+	externalRef0 "github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
-
-// Defines values for ActivityEventVerb.
-const (
-	CommentedShelf ActivityEventVerb = "commented_shelf"
-	FollowedUser   ActivityEventVerb = "followed_user"
-	LikedShelf     ActivityEventVerb = "liked_shelf"
-	PublishedShelf ActivityEventVerb = "published_shelf"
-)
-
-// Valid indicates whether the value is a known member of the ActivityEventVerb enum.
-func (e ActivityEventVerb) Valid() bool {
-	switch e {
-	case CommentedShelf:
-		return true
-	case FollowedUser:
-		return true
-	case LikedShelf:
-		return true
-	case PublishedShelf:
-		return true
-	default:
-		return false
-	}
-}
 
 // Defines values for GetFeedParamsTab.
 const (
@@ -59,17 +43,14 @@ func (e GetFeedParamsTab) Valid() bool {
 
 // ActivityEvent defines model for ActivityEvent.
 type ActivityEvent struct {
-	ActorId         openapi_types.UUID  `json:"actor_id"`
-	CreatedAt       time.Time           `json:"created_at"`
-	Id              openapi_types.UUID  `json:"id"`
-	ObjectCommentId *openapi_types.UUID `json:"object_comment_id,omitempty"`
-	ObjectShelfId   *openapi_types.UUID `json:"object_shelf_id,omitempty"`
-	TargetUserId    openapi_types.UUID  `json:"target_user_id"`
-	Verb            ActivityEventVerb   `json:"verb"`
+	ActorId         openapi_types.UUID        `json:"actor_id"`
+	CreatedAt       time.Time                 `json:"created_at"`
+	Id              openapi_types.UUID        `json:"id"`
+	ObjectCommentId *openapi_types.UUID       `json:"object_comment_id,omitempty"`
+	ObjectShelfId   *openapi_types.UUID       `json:"object_shelf_id,omitempty"`
+	TargetUserId    openapi_types.UUID        `json:"target_user_id"`
+	Verb            externalRef0.ActivityVerb `json:"verb"`
 }
-
-// ActivityEventVerb defines model for ActivityEvent.Verb.
-type ActivityEventVerb string
 
 // Comment A live comment; tombstones never serialize.
 type Comment struct {
@@ -80,37 +61,29 @@ type Comment struct {
 	ShelfId   openapi_types.UUID `json:"shelf_id"`
 }
 
-// Problem defines model for Problem.
-type Problem struct {
-	Code     *string `json:"code,omitempty"`
-	Detail   *string `json:"detail,omitempty"`
-	Instance *string `json:"instance,omitempty"`
-	Status   int     `json:"status"`
-	Title    string  `json:"title"`
-	Type     string  `json:"type"`
-}
-
 // ProfileSocialSummary defines model for ProfileSocialSummary.
-type ProfileSocialSummary struct {
-	FollowerCount  int  `json:"follower_count"`
-	FollowingCount int  `json:"following_count"`
-	ViewerFollows  bool `json:"viewer_follows"`
-}
+type ProfileSocialSummary = externalRef0.ProfileSocialSummary
 
 // ShelfSocialSummary defines model for ShelfSocialSummary.
-type ShelfSocialSummary struct {
-	// CommentCount Live comments only.
-	CommentCount int                `json:"comment_count"`
-	LikeCount    int                `json:"like_count"`
-	ShelfId      openapi_types.UUID `json:"shelf_id"`
-	ViewerLikes  bool               `json:"viewer_likes"`
-}
+type ShelfSocialSummary = externalRef0.ShelfSocialSummary
+
+// BadRequest defines model for BadRequest.
+type BadRequest = externalRef0.Problem
+
+// Forbidden defines model for Forbidden.
+type Forbidden = externalRef0.Problem
+
+// NotFound defines model for NotFound.
+type NotFound = externalRef0.Problem
+
+// TooManyRequests defines model for TooManyRequests.
+type TooManyRequests = externalRef0.Problem
 
 // Unauthorized defines model for Unauthorized.
-type Unauthorized = Problem
+type Unauthorized = externalRef0.Problem
 
 // UpstreamError defines model for UpstreamError.
-type UpstreamError = Problem
+type UpstreamError = externalRef0.Problem
 
 // GetCommentsByIdsParams defines parameters for GetCommentsByIds.
 type GetCommentsByIdsParams struct {
@@ -129,9 +102,9 @@ type GetTopShelvesParams struct {
 
 // GetFeedParams defines parameters for GetFeed.
 type GetFeedParams struct {
-	Tab    GetFeedParamsTab `form:"tab" json:"tab"`
-	Cursor *string          `form:"cursor,omitempty" json:"cursor,omitempty"`
-	Limit  *int             `form:"limit,omitempty" json:"limit,omitempty"`
+	Tab    GetFeedParamsTab     `form:"tab" json:"tab"`
+	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int                 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetFeedParamsTab defines parameters for GetFeed.
@@ -144,8 +117,8 @@ type GetShelvesSocialSummaryParams struct {
 
 // ListShelfCommentsParams defines parameters for ListShelfComments.
 type ListShelfCommentsParams struct {
-	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
-	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int                 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // CreateShelfCommentJSONBody defines parameters for CreateShelfComment.
@@ -773,4 +746,149 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/user-data", wrapper.PurgeUserData)
 
 	return m
+}
+
+// Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
+// Stored as a slice of fixed-width chunks rather than one concatenated
+// const string: with thousands of chunks the chained `+` fold is several
+// times slower for the Go compiler than parsing a slice literal.
+var swaggerSpec = []string{
+	"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",
+}
+
+// decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
+// after base64-decoding and flate-decompressing the embedded blob.
+func decodeSpec() ([]byte, error) {
+	encoded := strings.Join(swaggerSpec, "")
+	compressed, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("error base64 decoding spec: %w", err)
+	}
+	zr := flate.NewReader(bytes.NewReader(compressed))
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(zr); err != nil {
+		return nil, fmt.Errorf("read flate: %w", err)
+	}
+	if err := zr.Close(); err != nil {
+		return nil, fmt.Errorf("close flate reader: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+var rawSpec = decodeSpecCached()
+
+// a naive cache of the decoded OpenAPI spec
+func decodeSpecCached() func() ([]byte, error) {
+	data, err := decodeSpec()
+	return func() ([]byte, error) {
+		return data, err
+	}
+}
+
+// Constructs a synthetic filesystem for resolving external references when loading openapi specifications.
+func PathToRawSpec(pathToFile string) map[string]func() ([]byte, error) {
+	res := make(map[string]func() ([]byte, error))
+	if len(pathToFile) > 0 {
+		res[pathToFile] = rawSpec
+	}
+
+	for rawPath, rawFunc := range externalRef0.PathToRawSpec(path.Join(path.Dir(pathToFile), "./common.yaml")) {
+		if _, ok := res[rawPath]; ok {
+			// it is not possible to compare functions in golang, so always overwrite the old value
+		}
+		res[rawPath] = rawFunc
+	}
+	return res
+}
+
+// GetSpec returns the OpenAPI specification corresponding to the generated
+// code in this file. External references in the spec are resolved through
+// PathToRawSpec; externally-referenced files must be embedded in their
+// corresponding Go packages (via the import-mapping feature). URL-based
+// external refs are not supported.
+func GetSpec() (swagger *openapi3.T, err error) {
+	resolvePath := PathToRawSpec("")
+
+	loader := openapi3.NewLoader()
+	loader.IsExternalRefsAllowed = true
+	loader.ReadFromURIFunc = func(loader *openapi3.Loader, url *url.URL) ([]byte, error) {
+		pathToFile := url.String()
+		pathToFile = path.Clean(pathToFile)
+		getSpec, ok := resolvePath[pathToFile]
+		if !ok {
+			err1 := fmt.Errorf("path not found: %s", pathToFile)
+			return nil, err1
+		}
+		return getSpec()
+	}
+	var specData []byte
+	specData, err = rawSpec()
+	if err != nil {
+		return
+	}
+	swagger, err = loader.LoadFromData(specData)
+	if err != nil {
+		return
+	}
+	return
+}
+
+// GetSpecJSON returns the raw JSON bytes of the embedded OpenAPI
+// specification: decompressed but not unmarshaled. External references
+// are not resolved here; the bytes are the spec exactly as embedded by
+// codegen. The result is cached at package init time, so repeated calls
+// are cheap.
+func GetSpecJSON() ([]byte, error) {
+	return rawSpec()
+}
+
+// GetSwagger returns the OpenAPI specification corresponding to the
+// generated code in this file.
+//
+// Deprecated: GetSwagger predates kin-openapi renaming openapi3.Swagger
+// to openapi3.T. Use [GetSpec] instead. This wrapper is retained for
+// backwards compatibility.
+func GetSwagger() (*openapi3.T, error) {
+	return GetSpec()
 }

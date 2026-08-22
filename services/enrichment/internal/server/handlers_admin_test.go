@@ -48,7 +48,10 @@ func serveInternal(t *testing.T, h *Handlers, env *authEnv, bearer string) *http
 	t.Helper()
 	req := reqtest.NewJSONRequest(t, http.MethodPost, "/internal/refresh", bearer, nil)
 	rec := httptest.NewRecorder()
-	router := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil })
+	router, err := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
 	router.ServeHTTP(rec, req)
 	return rec
 }

@@ -8,9 +8,9 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
 )
 
 // SearchCatalog proxies catalog discovery search to the enrichment
@@ -97,7 +97,7 @@ func (h *Handlers) GetRecommendations(w http.ResponseWriter, r *http.Request) {
 	}
 	req := enrichapi.ScoreRequest{Library: make([]enrichapi.LibraryEntry, len(lib.Library))}
 	for i, g := range lib.Library {
-		req.Library[i] = enrichapi.LibraryEntry{IgdbGameId: g.IgdbGameId, Rating: g.Rating, Status: g.Status}
+		req.Library[i] = enrichapi.LibraryEntry(g)
 	}
 	body, degraded, err := h.enrichment.Score(r.Context(), sess.AccessToken, req)
 	if err != nil {

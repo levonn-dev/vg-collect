@@ -11,8 +11,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/authapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/authapi"
 )
 
 var (
@@ -80,7 +81,7 @@ func New(baseURL string) (*Client, error) {
 // Start begins a real-provider login and returns the authorize URL.
 func (c *Client) Start(ctx context.Context, provider string) (string, error) {
 	resp, err := c.api.OauthStartWithResponse(ctx, authapi.StartRequest{
-		Provider: authapi.StartRequestProvider(provider),
+		Provider: authapi.OAuthProvider(provider),
 	})
 	if err != nil {
 		return "", fmt.Errorf("authclient: start: %w", err)
@@ -211,7 +212,7 @@ func toPair(p authapi.TokenPair) TokenPair {
 // LinkStart begins linking a real provider to the session's account.
 func (c *Client) LinkStart(ctx context.Context, provider, bearer string) (string, error) {
 	resp, err := c.api.OauthLinkStartWithResponse(ctx, authapi.LinkStartRequest{
-		Provider: authapi.LinkStartRequestProvider(provider),
+		Provider: authapi.OAuthProvider(provider),
 	}, httpkit.BearerEditor(bearer))
 	if err != nil {
 		return "", fmt.Errorf("authclient: link start: %w", err)
@@ -247,7 +248,7 @@ func (c *Client) DevLink(ctx context.Context, user, bearer string) (TokenPair, e
 }
 
 // ListIdentities fetches the linked logins for the account page.
-func (c *Client) ListIdentities(ctx context.Context, userID, bearer string) ([]authapi.Identity, error) {
+func (c *Client) ListIdentities(ctx context.Context, userID, bearer string) ([]common.Identity, error) {
 	uid, err := parseUserID(userID)
 	if err != nil {
 		return nil, err

@@ -114,7 +114,10 @@ func run() error {
 	if cfg.ServeStatic {
 		staticHandler = static.Handler()
 	}
-	router := server.NewRouter(h, staticHandler, slog.Default())
+	router, err := server.NewRouter(h, staticHandler, slog.Default())
+	if err != nil {
+		return err
+	}
 
 	srv := httpkit.NewServer(cfg.HTTPAddr, router)
 	defer func() { _ = srv.Close() }() // idempotent after Run; closes on every exit path

@@ -10,21 +10,10 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/collectionapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
 )
-
-func castSlice[T ~string, U ~string](in *[]T) *[]U {
-	if in == nil {
-		return nil
-	}
-	out := make([]U, len(*in))
-	for i, v := range *in {
-		out[i] = U(v)
-	}
-	return &out
-}
 
 func castVal[T ~string, U ~string](in *T) *U {
 	if in == nil {
@@ -39,13 +28,13 @@ func castVal[T ~string, U ~string](in *T) *U {
 // only the Go package differs).
 func collectionListParams(p api.ListEntriesParams) *collectionapi.ListEntriesParams {
 	return &collectionapi.ListEntriesParams{
-		ItemType:      castSlice[api.ListEntriesParamsItemType, collectionapi.ListEntriesParamsItemType](p.ItemType),
-		Status:        castSlice[api.ListEntriesParamsStatus, collectionapi.ListEntriesParamsStatus](p.Status),
-		Packaging:     castSlice[api.ListEntriesParamsPackaging, collectionapi.ListEntriesParamsPackaging](p.Packaging),
+		ItemType:      p.ItemType,
+		Status:        p.Status,
+		Packaging:     p.Packaging,
 		Region:        p.Region,
 		Developer:     p.Developer,
 		Publisher:     p.Publisher,
-		ItemCondition: castSlice[api.ListEntriesParamsItemCondition, collectionapi.ListEntriesParamsItemCondition](p.ItemCondition),
+		ItemCondition: p.ItemCondition,
 		PlatformId:    p.PlatformId,
 		TagId:         p.TagId,
 		Sort:          castVal[api.ListEntriesParamsSort, collectionapi.ListEntriesParamsSort](p.Sort),
@@ -296,13 +285,13 @@ func (h *Handlers) DeleteView(w http.ResponseWriter, r *http.Request, viewId ope
 // contracts; only the Go package differs).
 func collectionDashboardParams(p api.GetDashboardParams) *collectionapi.GetDashboardParams {
 	return &collectionapi.GetDashboardParams{
-		ItemType:      castSlice[api.GetDashboardParamsItemType, collectionapi.GetDashboardParamsItemType](p.ItemType),
-		Status:        castSlice[api.GetDashboardParamsStatus, collectionapi.GetDashboardParamsStatus](p.Status),
-		Packaging:     castSlice[api.GetDashboardParamsPackaging, collectionapi.GetDashboardParamsPackaging](p.Packaging),
+		ItemType:      p.ItemType,
+		Status:        p.Status,
+		Packaging:     p.Packaging,
 		Region:        p.Region,
 		Developer:     p.Developer,
 		Publisher:     p.Publisher,
-		ItemCondition: castSlice[api.GetDashboardParamsItemCondition, collectionapi.GetDashboardParamsItemCondition](p.ItemCondition),
+		ItemCondition: p.ItemCondition,
 		PlatformId:    p.PlatformId,
 		TagId:         p.TagId,
 	}

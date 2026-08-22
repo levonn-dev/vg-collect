@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/userapi"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
-	"github.com/levonn-dev/vgkeep/services/social/internal/gen/userapi"
 )
 
 // Card mirrors the user service's ProfileCard.

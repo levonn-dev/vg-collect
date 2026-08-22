@@ -69,8 +69,11 @@ func run() error {
 		CapFollows:  cfg.CapFollows24h,
 		CapLikes:    cfg.CapLikes24h,
 	})
-	router := server.NewRouter(h, v, slog.Default(),
+	router, err := server.NewRouter(h, v, slog.Default(),
 		func(c context.Context) error { return pgkit.Health(c, pool) })
+	if err != nil {
+		return err
+	}
 
 	srv := httpkit.NewServer(cfg.HTTPAddr, router)
 	defer func() { _ = srv.Close() }() // idempotent after Run; closes on every exit path

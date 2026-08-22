@@ -14,7 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 )
 
 // stubEnrichment answers the two consumed endpoints with contract

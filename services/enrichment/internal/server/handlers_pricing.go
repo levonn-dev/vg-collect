@@ -12,21 +12,15 @@ import (
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 )
 
-// idsToStrings enforces the request cap on product_ids (the schema's
-// maxItems is documentation; the generated models do not validate it)
-// and converts to the string form the store layer takes - the shared
-// tail of BatchPrices and BatchPriceHistory. A false return means the
-// 400 was already written.
-func idsToStrings(w http.ResponseWriter, r *http.Request, ids []openapi_types.UUID) ([]string, bool) {
-	if len(ids) > 500 {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "at most 500 product_ids per call")
-		return nil, false
-	}
+// idsToStrings converts product_ids to the string form the store
+// layer takes - the shared tail of BatchPrices and BatchPriceHistory.
+// product_ids' maxItems (500, the request cap) is specval's job.
+func idsToStrings(ids []openapi_types.UUID) []string {
 	out := make([]string, len(ids))
 	for i, id := range ids {
 		out[i] = id.String()
 	}
-	return out, true
+	return out
 }
 
 // GetFxLatest serves the provider's cached rate snapshot. Rates power
@@ -50,10 +44,7 @@ func (h *Handlers) BatchPrices(w http.ResponseWriter, r *http.Request) {
 	if !httpkit.DecodeBody(w, r, 64*1024, &req) {
 		return
 	}
-	ids, ok := idsToStrings(w, r, req.ProductIds)
-	if !ok {
-		return
-	}
+	ids := idsToStrings(req.ProductIds)
 	prods, err := h.store.ProductsByIDs(ctx, ids)
 	if err != nil {
 		h.internalError(w, r, "batch_prices", "price lookup failed", err)
@@ -84,17 +75,14 @@ func (h *Handlers) BatchPriceHistory(w http.ResponseWriter, r *http.Request) {
 	if !httpkit.DecodeBody(w, r, 64*1024, &req) {
 		return
 	}
-	ids, ok := idsToStrings(w, r, req.ProductIds)
-	if !ok {
-		return
-	}
+	ids := idsToStrings(req.ProductIds)
+	// days' range (1-365) is specval's job; only the default-when-absent
+	// case needs handling here (the contract's default:90 is documentation
+	// - the request validator does not rewrite an absent field into the
+	// body, so an omitted days still reaches here as nil).
 	days := 90
 	if req.Days != nil {
 		days = *req.Days
-	}
-	if days < 1 || days > 365 {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "days must be between 1 and 365")
-		return
 	}
 	snaps, err := h.store.SnapshotsSince(ctx, ids, h.now().UTC().AddDate(0, 0, -days))
 	if err != nil {

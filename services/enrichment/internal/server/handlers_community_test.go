@@ -78,18 +78,14 @@ func TestAdminUnmatchedWorklist(t *testing.T) {
 		t.Fatalf("paged: total=%d %+v", paged.TotalCount, paged.Products)
 	}
 
-	// Out-of-bounds limits clamp instead of erroring: 0 clamps to the
-	// minimum page (one row), an oversized value clamps to the max and
-	// still answers.
-	clampedLow := decodeBody[api.UnmatchedProductsPage](t,
-		s.do(http.MethodGet, "/admin/products/unmatched?limit=0", s.adminToken(), nil))
-	if len(clampedLow.Products) != 1 || clampedLow.TotalCount != 2 {
-		t.Fatalf("limit=0 must clamp to 1: %+v", clampedLow)
+	// Out-of-bounds limits reject rather than clamping: the contract's
+	// bound (1-500) is specval's job now, a deliberate reversal from
+	// the silent clamp this endpoint used to do.
+	if resp := s.do(http.MethodGet, "/admin/products/unmatched?limit=0", s.adminToken(), nil); resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("limit=0 must be rejected: %d", resp.StatusCode)
 	}
-	clampedHigh := decodeBody[api.UnmatchedProductsPage](t,
-		s.do(http.MethodGet, "/admin/products/unmatched?limit=9999", s.adminToken(), nil))
-	if len(clampedHigh.Products) != 2 {
-		t.Fatalf("limit=9999 must clamp and answer: %+v", clampedHigh)
+	if resp := s.do(http.MethodGet, "/admin/products/unmatched?limit=9999", s.adminToken(), nil); resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("limit=9999 must be rejected: %d", resp.StatusCode)
 	}
 }
 
@@ -148,18 +144,16 @@ func TestAdminCommunityWorklist(t *testing.T) {
 		t.Fatalf("paged: total=%d %+v", paged.TotalCount, paged.Products)
 	}
 
-	// Out-of-bounds limits clamp instead of erroring: 0 clamps to the
-	// minimum page (one row), an oversized value clamps to the max and
-	// still answers.
-	clampedLow := decodeBody[api.CommunityProductsPage](t,
-		s.do(http.MethodGet, "/admin/products/community?limit=0", s.adminToken(), nil))
-	if len(clampedLow.Products) != 1 || clampedLow.TotalCount != 2 {
-		t.Fatalf("limit=0 must clamp to 1: %+v", clampedLow)
+	// Out-of-bounds limits reject rather than clamping: the contract's
+	// bound (1-500) is specval's job now, the same deliberate clamp
+	// reversal as the unmatched list's (TestValidatorPath_
+	// ListCommunityProducts_LimitOverMax_ClampReversal in
+	// validator_pins_test.go pins it directly).
+	if resp := s.do(http.MethodGet, "/admin/products/community?limit=0", s.adminToken(), nil); resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("limit=0 must be rejected: %d", resp.StatusCode)
 	}
-	clampedHighComm := decodeBody[api.CommunityProductsPage](t,
-		s.do(http.MethodGet, "/admin/products/community?limit=9999", s.adminToken(), nil))
-	if len(clampedHighComm.Products) != 2 {
-		t.Fatalf("limit=9999 must clamp and answer: %+v", clampedHighComm)
+	if resp := s.do(http.MethodGet, "/admin/products/community?limit=9999", s.adminToken(), nil); resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("limit=9999 must be rejected: %d", resp.StatusCode)
 	}
 }
 
@@ -470,7 +464,11 @@ func TestUnitCreateCommunityProduct_MalformedBodyIs400(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/admin/products", bytes.NewReader([]byte("{not json")))
 	req.Header.Set("Authorization", "Bearer "+admin)
 	rec := httptest.NewRecorder()
-	NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil }).ServeHTTP(rec, req)
+	router, err := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("malformed body: %d %s", rec.Code, rec.Body.String())
 	}
@@ -559,11 +557,10 @@ func TestUnitCreateCommunityProduct_CoverOnlyMint(t *testing.T) {
 	}
 }
 
-// TestUnitCreateCommunityProduct_CoverLengthBoundary pins
-// catalogval.ValidCoverURL's 512-char boundary through the handler
-// (catalogval carries its own direct-unit boundary tests; this one
-// additionally pins that CreateCommunityProduct wires a false result
-// through to a 400).
+// TestUnitCreateCommunityProduct_CoverLengthBoundary pins the
+// contract's cover_url maxLength:512 boundary through the full
+// handler stack (specval owns this check now; catalogval.ValidCoverURL,
+// the hand check this superseded, is gone).
 func TestUnitCreateCommunityProduct_CoverLengthBoundary(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})

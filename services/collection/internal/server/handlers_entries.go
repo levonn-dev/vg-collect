@@ -8,40 +8,34 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/levonn-dev/vgkeep/libs/go/catalogval"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
-	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-var currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
-
-// validPackaging, validCondition, validStatus, validPricingMode, and
-// validItemType check enum membership for fields that reach this
-// package already narrowed to a plain string (entryInput and the
-// stored-view filter doc in handlers_shelves.go both erase the wire
-// type before validation runs, and one shared check covers box/manual
-// item condition alike). Each wraps a generated Valid() method instead
-// of hand-retyping the allow list; the flavor picked is byte-identical
-// in membership to every Create/Update/params sibling it stands in
-// for, so which one answers is not a behavior choice. Call sites that
-// still hold the precise generated type (params, BulkUpdateRequest)
-// call Valid() on it directly instead of routing through here.
-func validPackaging(s string) bool   { return api.EntryPackaging(s).Valid() }
-func validCondition(s string) bool   { return api.EntryItemCondition(s).Valid() }
-func validStatus(s string) bool      { return api.EntryStatus(s).Valid() }
-func validPricingMode(s string) bool { return api.EntryPricingMode(s).Valid() }
-func validItemType(s string) bool    { return api.EntryItemType(s).Valid() }
+// validPackaging, validCondition, validStatus, and validItemType check
+// enum membership for the stored-view filter doc in
+// handlers_shelves.go, which erases the wire type before its tolerant
+// parse runs (specval's request-schema validation owns enum
+// membership on every live request field; this is the ONE place that
+// still needs a plain-string check, since a stored view's params blob
+// predates today's contract and is never itself request input). Each
+// wraps the shared vocabulary type's generated Valid() method instead
+// of hand-retyping the allow list.
+func validPackaging(s string) bool { return common.Packaging(s).Valid() }
+func validCondition(s string) bool { return common.ItemCondition(s).Valid() }
+func validStatus(s string) bool    { return common.EntryStatus(s).Valid() }
+func validItemType(s string) bool  { return common.ItemType(s).Valid() }
 
 // entryInput is the shared mutable field set of the create and update
 // bodies, unwrapped to plain values (defaults applied) so one
@@ -154,30 +148,21 @@ func updateInput(b api.EntryUpdate) entryInput {
 	}
 }
 
-// validateEntryInput enforces the body rules the generated layer does
-// not; a non-empty return is the 400 detail.
+// validateEntryInput enforces the cross-field and conditional-
+// requirement rules the contract cannot express as flat request
+// schema (specval owns every single-field keyword check on the live
+// request: required, enum, maxLength/maxItems, numeric range, and the
+// currency pattern); a non-empty return is the 400 detail.
+//
+// region's blank-after-trim guard is the one exception: the spec
+// declares region's maxLength but not a minLength (there is no plain
+// JSON Schema keyword for "not just whitespace"), so a whitespace-only
+// region would otherwise pass validation untouched. Tag names, view
+// names, and the community product name have the identical gap
+// (minLength:1 catches a literal empty string but not "   ").
 func validateEntryInput(in entryInput) string {
 	if strings.TrimSpace(in.Region) == "" {
 		return "region must not be empty"
-	}
-	if utf8.RuneCountInString(in.Region) > 32 {
-		return "region must be at most 32 characters"
-	}
-	if !validPackaging(in.Packaging) {
-		return "packaging must be one of sealed, cib, loose"
-	}
-	if !validStatus(in.Status) {
-		return "status is not a known value"
-	}
-	if !validPricingMode(in.PricingMode) {
-		return "pricing_mode must be one of auto, proxy, custom, disabled"
-	}
-	for name, c := range map[string]*string{
-		"box_condition": in.BoxCondition, "manual_condition": in.ManualCondition, "item_condition": in.ItemCondition,
-	} {
-		if c != nil && !validCondition(*c) {
-			return name + " is not a known grade"
-		}
 	}
 	if in.BoxCondition != nil && !in.HasBox {
 		return "box_condition requires has_box"
@@ -185,23 +170,8 @@ func validateEntryInput(in entryInput) string {
 	if in.ManualCondition != nil && !in.HasManual {
 		return "manual_condition requires has_manual"
 	}
-	if !currencyRe.MatchString(in.Currency) {
-		return "currency must be a three-letter uppercase code"
-	}
-	if in.PricePaidCents != nil && *in.PricePaidCents < 0 {
-		return "price_paid_cents must not be negative"
-	}
-	if in.Rating != nil && (*in.Rating < 1 || *in.Rating > 10) {
-		return "rating must be between 1 and 10"
-	}
 	if in.PricingMode == "proxy" && in.PricingProductID == nil {
 		return "pricing_mode proxy requires pricing_product_id"
-	}
-	if in.CustomValueCents != nil && *in.CustomValueCents < 0 {
-		return "custom_value_cents must not be negative"
-	}
-	if in.CustomValueCents != nil && *in.CustomValueCents > 1000000000 {
-		return "custom_value_cents must not exceed 1000000000"
 	}
 	if in.PricingMode == "custom" && in.CustomValueCents == nil {
 		return "pricing_mode custom requires custom_value_cents"
@@ -209,35 +179,8 @@ func validateEntryInput(in entryInput) string {
 	if (in.CustomValueEnteredCents == nil) != (in.CustomValueEnteredCurrency == nil) {
 		return "custom_value_entered_cents and custom_value_entered_currency must be provided together"
 	}
-	if in.CustomValueEnteredCents != nil {
-		if in.CustomValueCents == nil {
-			return "custom_value_entered requires custom_value_cents"
-		}
-		if *in.CustomValueEnteredCents < 0 {
-			return "custom_value_entered_cents must not be negative"
-		}
-		if *in.CustomValueEnteredCents > 1000000000 {
-			return "custom_value_entered_cents must not exceed 1000000000"
-		}
-		if !currencyRe.MatchString(*in.CustomValueEnteredCurrency) {
-			return "custom_value_entered_currency must be a 3-letter uppercase code"
-		}
-	}
-	for name, lim := range map[string]struct {
-		v   *string
-		max int
-	}{
-		"edition":          {in.Edition, 200},
-		"purchased_from":   {in.PurchasedFrom, 200},
-		"storage_location": {in.StorageLocation, 200},
-		"notes":            {in.Notes, 10000},
-	} {
-		if lim.v != nil && utf8.RuneCountInString(*lim.v) > lim.max {
-			return name + " is too long"
-		}
-	}
-	if len(in.TagIDs) > 50 {
-		return "at most 50 tags per entry"
+	if in.CustomValueEnteredCents != nil && in.CustomValueCents == nil {
+		return "custom_value_entered requires custom_value_cents"
 	}
 	return ""
 }
@@ -304,8 +247,8 @@ func toAPIEntry(e store.Entry, valueCents *int64) api.Entry {
 	out := api.Entry{
 		Id:                         e.ID,
 		ProductId:                  e.ProductID,
-		ItemType:                   api.EntryItemType(e.ItemType),
-		MediaType:                  api.EntryMediaType(e.MediaType),
+		ItemType:                   common.ItemType(e.ItemType),
+		MediaType:                  common.MediaType(e.MediaType),
 		DisplayName:                e.DisplayName,
 		CoverUrl:                   e.CoverURL,
 		LocalizedName:              e.LocalizedName,
@@ -314,36 +257,36 @@ func toAPIEntry(e store.Entry, valueCents *int64) api.Entry {
 		IgdbGameId:                 e.IGDBGameID,
 		Region:                     e.Region,
 		Edition:                    e.Edition,
-		Packaging:                  api.EntryPackaging(e.Packaging),
+		Packaging:                  common.Packaging(e.Packaging),
 		HasBox:                     e.HasBox,
 		HasManual:                  e.HasManual,
-		BoxCondition:               (*api.EntryBoxCondition)(e.BoxCondition),
-		ManualCondition:            (*api.EntryManualCondition)(e.ManualCondition),
-		ItemCondition:              (*api.EntryItemCondition)(e.ItemCondition),
+		BoxCondition:               (*common.ItemCondition)(e.BoxCondition),
+		ManualCondition:            (*common.ItemCondition)(e.ManualCondition),
+		ItemCondition:              (*common.ItemCondition)(e.ItemCondition),
 		PricePaidCents:             e.PricePaidCents,
 		Currency:                   e.Currency,
 		PurchasedFrom:              e.PurchasedFrom,
-		PricingMode:                api.EntryPricingMode(e.PricingMode),
+		PricingMode:                common.PricingMode(e.PricingMode),
 		PricingProductId:           e.PricingProductID,
 		CustomValueCents:           e.CustomValueCents,
 		CustomValueSetAt:           e.CustomValueSetAt,
 		CustomValueEnteredCents:    e.CustomValueEnteredCents,
 		CustomValueEnteredCurrency: e.CustomValueEnteredCurrency,
 		RegionMismatchAckAt:        e.RegionMismatchAckAt,
-		Status:                     api.EntryStatus(e.Status),
+		Status:                     common.EntryStatus(e.Status),
 		Rating:                     e.Rating,
 		Notes:                      e.Notes,
 		StorageLocation:            e.StorageLocation,
 		Pinned:                     e.Pinned,
 		BacklogRank:                e.BacklogRank,
-		Source:                     api.EntrySource(e.Source),
+		Source:                     common.EntrySource(e.Source),
 		ExternalRef:                e.ExternalRef,
 		ValueCents:                 valueCents,
 		CreatedAt:                  e.CreatedAt,
 		UpdatedAt:                  e.UpdatedAt,
 	}
 	if e.PlatformName != nil {
-		out.Platform = &api.EntryPlatform{IgdbPlatformId: e.PlatformIGDBID, Name: *e.PlatformName}
+		out.Platform = &common.EntryPlatform{IgdbPlatformId: e.PlatformIGDBID, Name: *e.PlatformName}
 	}
 	if e.FirstReleaseDate != nil {
 		out.FirstReleaseDate = &openapi_types.Date{Time: *e.FirstReleaseDate}
@@ -357,9 +300,9 @@ func toAPIEntry(e store.Entry, valueCents *int64) api.Entry {
 	if len(e.Publishers) > 0 {
 		out.Publishers = &e.Publishers
 	}
-	tags := make([]api.TagRef, len(e.Tags))
+	tags := make([]common.TagRef, len(e.Tags))
 	for i, t := range e.Tags {
-		tags[i] = api.TagRef{Id: t.ID, Name: t.Name}
+		tags[i] = common.TagRef{Id: t.ID, Name: t.Name}
 	}
 	out.Tags = tags
 	return out
@@ -392,7 +335,13 @@ func (h *Handlers) invalidateDashboard(ctx context.Context, userID uuid.UUID) {
 }
 
 // validateCustomFields enforces the either/or between product-backed
-// and custom creation bodies; a non-empty return is the 400 detail.
+// and custom creation bodies, and custom's own conditional
+// requirements; a non-empty return is the 400 detail. The length/enum
+// keyword checks these fields used to duplicate (display_name
+// maxLength, item_type enum, platform_name maxLength, cover_url
+// shape) are the contract's job now; display_name and platform_name
+// keep their blank-after-trim guard (see validateEntryInput's region
+// comment - minLength alone cannot catch a whitespace-only value).
 func validateCustomFields(body api.EntryCreate) string {
 	if body.ProductId != nil {
 		if body.DisplayName != nil || body.ItemType != nil || body.PlatformName != nil ||
@@ -404,20 +353,14 @@ func validateCustomFields(body api.EntryCreate) string {
 	if body.DisplayName == nil || strings.TrimSpace(*body.DisplayName) == "" {
 		return "custom entries (no product_id) require display_name"
 	}
-	if utf8.RuneCountInString(*body.DisplayName) > 200 {
-		return "display_name is too long"
-	}
-	if body.ItemType == nil || !body.ItemType.Valid() {
+	if body.ItemType == nil {
 		return "custom entries (no product_id) require item_type (game, console, or accessory)"
 	}
-	if body.PlatformName != nil && (strings.TrimSpace(*body.PlatformName) == "" || utf8.RuneCountInString(*body.PlatformName) > 100) {
-		return "platform_name must be 1-100 characters"
+	if body.PlatformName != nil && strings.TrimSpace(*body.PlatformName) == "" {
+		return "platform_name must not be blank"
 	}
 	if body.PlatformIgdbId != nil && (body.PlatformName == nil || strings.TrimSpace(*body.PlatformName) == "") {
 		return "platform_igdb_id requires platform_name"
-	}
-	if body.CoverUrl != nil && *body.CoverUrl != "" && !catalogval.ValidCoverURL(*body.CoverUrl) {
-		return "cover_url must be an https URL up to 512 characters"
 	}
 	return ""
 }
@@ -448,7 +391,7 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 	custom := body.ProductId == nil
 	in := createInput(body)
 	in.MatchProvenance = strDeref((*string)(body.MatchProvenance), "auto")
-	if !api.EntryCreateMatchProvenance(in.MatchProvenance).Valid() {
+	if !common.EntryCreateMatchProvenance(in.MatchProvenance).Valid() {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "match_provenance must be one of auto, user")
 		return
 	}
@@ -478,17 +421,8 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		e.PlatformIGDBID = body.PlatformIgdbId
 		e.CoverURL = body.CoverUrl
 		e.MatchProvenance = in.MatchProvenance
-		devs, detail := catalogval.NormalizeCredits("developers", body.Developers)
-		if detail != "" {
-			problem(w, r, http.StatusBadRequest, "invalid_body", detail)
-			return
-		}
-		pubs, detail := catalogval.NormalizeCredits("publishers", body.Publishers)
-		if detail != "" {
-			problem(w, r, http.StatusBadRequest, "invalid_body", detail)
-			return
-		}
-		e.Developers, e.Publishers = devs, pubs
+		e.Developers = catalogval.NormalizeCredits(body.Developers)
+		e.Publishers = catalogval.NormalizeCredits(body.Publishers)
 	} else {
 		product, err := h.enrichment.GetProduct(r.Context(), bearer, *body.ProductId)
 		if errors.Is(err, enrichmentclient.ErrUnknownProduct) {
@@ -605,12 +539,12 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		return
 	}
 	if custom {
-		if body.DisplayName == nil || strings.TrimSpace(*body.DisplayName) == "" || utf8.RuneCountInString(*body.DisplayName) > 200 {
-			problem(w, r, http.StatusBadRequest, "invalid_body", "custom entries require display_name (1-200 characters)")
+		if body.DisplayName == nil || strings.TrimSpace(*body.DisplayName) == "" {
+			problem(w, r, http.StatusBadRequest, "invalid_body", "custom entries require display_name")
 			return
 		}
-		if body.PlatformName != nil && (strings.TrimSpace(*body.PlatformName) == "" || utf8.RuneCountInString(*body.PlatformName) > 100) {
-			problem(w, r, http.StatusBadRequest, "invalid_body", "platform_name must be 1-100 characters")
+		if body.PlatformName != nil && strings.TrimSpace(*body.PlatformName) == "" {
+			problem(w, r, http.StatusBadRequest, "invalid_body", "platform_name must not be blank")
 			return
 		}
 		// Full replacement: platform_igdb_id with no usable
@@ -620,10 +554,6 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		// CHECK.
 		if body.PlatformIgdbId != nil && (body.PlatformName == nil || strings.TrimSpace(*body.PlatformName) == "") {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "platform_igdb_id requires platform_name")
-			return
-		}
-		if body.CoverUrl != nil && *body.CoverUrl != "" && !catalogval.ValidCoverURL(*body.CoverUrl) {
-			problem(w, r, http.StatusBadRequest, "invalid_body", "cover_url must be an https URL up to 512 characters")
 			return
 		}
 		if in.PricingMode == "auto" {
@@ -781,19 +711,10 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		e.FirstReleaseDate = dateToTime(body.FirstReleaseDate)
 		e.PlatformIGDBID = body.PlatformIgdbId
 		e.CoverURL = body.CoverUrl
-		devs, detail := catalogval.NormalizeCredits("developers", body.Developers)
-		if detail != "" {
-			problem(w, r, http.StatusBadRequest, "invalid_body", detail)
-			return
-		}
-		pubs, detail := catalogval.NormalizeCredits("publishers", body.Publishers)
-		if detail != "" {
-			problem(w, r, http.StatusBadRequest, "invalid_body", detail)
-			return
-		}
 		// Full replacement, like every custom display fact: an absent
 		// field clears.
-		e.Developers, e.Publishers = devs, pubs
+		e.Developers = catalogval.NormalizeCredits(body.Developers)
+		e.Publishers = catalogval.NormalizeCredits(body.Publishers)
 		// The recommendation identity follows the pricing proxy:
 		// re-snapshot on a new target, keep it while the target is
 		// unchanged, clear it when the proxy is removed.
@@ -904,32 +825,19 @@ func (h *Handlers) ReorderEntry(w http.ResponseWriter, r *http.Request, entryId 
 	h.respondEntry(w, r, bearer, moved, http.StatusOK)
 }
 
-// bulkTagArrayCap bounds add_tag_ids/remove_tag_ids and mirrors the
-// per-entry tag ceiling store.BulkUpdateEntries enforces after the
-// write (store's own entryTagCap) - the same number by design,
-// referenced here for the guard and the cap-exceeded message.
+// bulkTagArrayCap mirrors the per-entry tag ceiling
+// store.BulkUpdateEntries enforces after the write (store's own
+// entryTagCap) - the same number as add_tag_ids/remove_tag_ids'
+// contract maxItems by design, referenced here for the
+// tag_cap_exceeded message.
 const bulkTagArrayCap = 50
 
-// validateBulkUpdate enforces the contract's bulk-update body rules
-// the generated layer does not (array bounds, enum membership, the
-// at-least-one-action requirement); a non-empty return is the 400
+// validateBulkUpdate enforces the one rule the contract cannot: at
+// least one action must be present (array bounds, enum membership,
+// and storage_location's length are specval's job, since they are
+// flat request-schema keywords); a non-empty return is the 400
 // detail.
 func validateBulkUpdate(body api.BulkUpdateRequest) string {
-	if len(body.EntryIds) < 1 || len(body.EntryIds) > 200 {
-		return "entry_ids must contain between 1 and 200 entries"
-	}
-	if body.AddTagIds != nil && len(*body.AddTagIds) > bulkTagArrayCap {
-		return "add_tag_ids must contain at most 50 entries"
-	}
-	if body.RemoveTagIds != nil && len(*body.RemoveTagIds) > bulkTagArrayCap {
-		return "remove_tag_ids must contain at most 50 entries"
-	}
-	if body.Status != nil && !body.Status.Valid() {
-		return "status is not a known value"
-	}
-	if body.StorageLocation != nil && utf8.RuneCountInString(*body.StorageLocation) > 200 {
-		return "storage_location is too long"
-	}
 	if body.AddTagIds == nil && body.RemoveTagIds == nil && body.Status == nil && body.StorageLocation == nil {
 		return "at least one of add_tag_ids, remove_tag_ids, status, storage_location is required"
 	}

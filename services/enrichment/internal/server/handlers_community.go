@@ -11,6 +11,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/levonn-dev/vgkeep/libs/go/catalogval"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
@@ -26,35 +27,23 @@ func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request
 	if !h.requireAdmin(w, r) {
 		return
 	}
-	var req api.CommunityProductCreate
+	var req api.CommunityProductSpec
 	if !httpkit.DecodeBody(w, r, 16*1024, &req) {
 		return
 	}
-	switch string(req.Type) {
-	case "game", "console", "accessory":
-	default:
-		problem(w, r, http.StatusBadRequest, "invalid_body", "type must be game, console or accessory")
-		return
-	}
+	// type's enum, developers/publishers' maxItems/maxLength, and
+	// cover_url's https-shape pattern are specval's job now (the
+	// contract carries all three). name keeps its blank-after-trim
+	// guard: the contract's minLength:1 catches a literal empty string
+	// but not "   " - see collection's validateEntryInput comment for
+	// the identical gap on region.
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "name must not be empty")
 		return
 	}
-	if req.CoverUrl != nil && *req.CoverUrl != "" && !catalogval.ValidCoverURL(*req.CoverUrl) {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "cover_url must be an https URL up to 512 chars")
-		return
-	}
-	devs, detail := catalogval.NormalizeCredits("developers", req.Developers)
-	if detail != "" {
-		problem(w, r, http.StatusBadRequest, "invalid_body", detail)
-		return
-	}
-	pubs, detail := catalogval.NormalizeCredits("publishers", req.Publishers)
-	if detail != "" {
-		problem(w, r, http.StatusBadRequest, "invalid_body", detail)
-		return
-	}
+	devs := catalogval.NormalizeCredits(req.Developers)
+	pubs := catalogval.NormalizeCredits(req.Publishers)
 	p := store.Product{Type: string(req.Type), Name: name, Origin: "community"}
 	if req.Edition != nil {
 		p.Edition = *req.Edition
@@ -101,8 +90,19 @@ func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request,
 	if !h.requireAdmin(w, r) {
 		return
 	}
-	limit := httpkit.ClampSilent(params.Limit, 200, 1, 500)
-	offset := httpkit.ClampSilent(params.Offset, 0, 0)
+	// limit/offset are already known within the contract's 1-500/>=0
+	// bounds by the time this runs (specval rejects out-of-bounds
+	// values; a deliberate reversal from the silent clamp this
+	// endpoint used to do). Only the default-when-absent case needs
+	// handling here.
+	limit := 200
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+	offset := 0
+	if params.Offset != nil {
+		offset = *params.Offset
+	}
 	prods, total, err := h.store.ListUnmatchedProducts(r.Context(), limit, offset)
 	if err != nil {
 		h.internalError(w, r, "unmatched_products_list", "list failed", err)
@@ -124,8 +124,17 @@ func (h *Handlers) ListCommunityProducts(w http.ResponseWriter, r *http.Request,
 	if !h.requireAdmin(w, r) {
 		return
 	}
-	limit := httpkit.ClampSilent(params.Limit, 200, 1, 500)
-	offset := httpkit.ClampSilent(params.Offset, 0, 0)
+	// See ListUnmatchedProducts: bounds are specval's job (the
+	// deliberate clamp reversal); only the default-when-absent case is
+	// left.
+	limit := 200
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+	offset := 0
+	if params.Offset != nil {
+		offset = *params.Offset
+	}
 	prods, total, err := h.store.ListCommunityProductsPage(r.Context(), limit, offset)
 	if err != nil {
 		h.internalError(w, r, "community_products_list", "list failed", err)
@@ -144,8 +153,17 @@ func (h *Handlers) ListPromoteCandidates(w http.ResponseWriter, r *http.Request,
 	if !h.requireAdmin(w, r) {
 		return
 	}
-	limit := httpkit.ClampSilent(params.Limit, 200, 1, 500)
-	offset := httpkit.ClampSilent(params.Offset, 0, 0)
+	// See ListUnmatchedProducts: bounds are specval's job (the
+	// deliberate clamp reversal); only the default-when-absent case is
+	// left.
+	limit := 200
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+	offset := 0
+	if params.Offset != nil {
+		offset = *params.Offset
+	}
 	productID := ""
 	if params.ProductId != nil {
 		productID = params.ProductId.String()
@@ -155,12 +173,12 @@ func (h *Handlers) ListPromoteCandidates(w http.ResponseWriter, r *http.Request,
 		h.internalError(w, r, "promote_candidates_list", "list failed", err)
 		return
 	}
-	page := api.PromoteCandidatesPage{Products: make([]api.PromoteCandidateProduct, 0, len(prods)), TotalCount: total}
+	page := api.PromoteCandidatesPage{Products: make([]common.PromoteCandidateProduct, 0, len(prods)), TotalCount: total}
 	for _, p := range prods {
-		row := api.PromoteCandidateProduct{Product: toAPIProduct(p), Candidates: make([]api.PromoteCandidate, 0, len(p.PromoteCandidates))}
+		row := common.PromoteCandidateProduct{Product: toAPIProduct(p), Candidates: make([]common.PromoteCandidate, 0, len(p.PromoteCandidates))}
 		for _, c := range p.PromoteCandidates {
-			row.Candidates = append(row.Candidates, api.PromoteCandidate{
-				Provider: api.PromoteCandidateProvider(c.Provider), ProviderId: c.ProviderID,
+			row.Candidates = append(row.Candidates, common.PromoteCandidate{
+				Provider: common.CatalogProvider(c.Provider), ProviderId: c.ProviderID,
 				Name: c.Name, Score: c.Score, FoundAt: c.FoundAt,
 			})
 		}
@@ -178,12 +196,7 @@ func (h *Handlers) DismissPromoteCandidate(w http.ResponseWriter, r *http.Reques
 	if !httpkit.DecodeBody(w, r, 16*1024, &req) {
 		return
 	}
-	switch string(req.Provider) {
-	case "igdb", "pricecharting":
-	default:
-		problem(w, r, http.StatusBadRequest, "invalid_body", "provider must be igdb or pricecharting")
-		return
-	}
+	// provider's enum is specval's job now.
 	err := h.store.DismissPromoteCandidate(r.Context(), productId.String(), string(req.Provider), req.ProviderId)
 	if errors.Is(err, store.ErrNotFound) {
 		problem(w, r, http.StatusNotFound, "product_not_found", "no such product")

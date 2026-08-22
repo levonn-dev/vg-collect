@@ -17,9 +17,10 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
-	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
@@ -67,9 +68,9 @@ func gameProductWithDates(id uuid.UUID, scalar time.Time, perRegion map[string]t
 	sc := openapi_types.Date{Time: scalar}
 	p.Igdb.FirstReleaseDate = &sc
 	if len(perRegion) > 0 {
-		rows := make([]enrichapi.ReleaseDate, 0, len(perRegion))
+		rows := make([]common.ReleaseDate, 0, len(perRegion))
 		for region, when := range perRegion {
-			rows = append(rows, enrichapi.ReleaseDate{Region: enrichapi.ReleaseDateRegion(region), Date: openapi_types.Date{Time: when}})
+			rows = append(rows, common.ReleaseDate{Region: common.ReleaseRegion(region), Date: openapi_types.Date{Time: when}})
 		}
 		p.Igdb.ReleaseDates = &rows
 	}
@@ -129,7 +130,7 @@ func TestUnitInternalResnapshot_HappyPath(t *testing.T) {
 			case productA:
 				p := gameProductWithDates(id, time.Date(1998, time.January, 1, 0, 0, 0, 0, time.UTC),
 					map[string]time.Time{"north_america": naDate, "europe": euDate})
-				p.Igdb.Companies = []enrichapi.CompanyCredit{{Name: "Square", Developer: true, Publisher: true}}
+				p.Igdb.Companies = []common.CompanyCredit{{Name: "Square", Developer: true, Publisher: true}}
 				return p, nil
 			case productB:
 				return gameProductWithDates(id, scalarB, nil), nil
@@ -306,7 +307,7 @@ func TestUnitInternalResnapshot_LocalizedTrio(t *testing.T) {
 
 	prod := gameProduct(productF)
 	jaName, jaTranslit, jaCover := "クロノ・トリガー", "Kurono Torigaa", "https://x/ja-cover.jpg"
-	prod.Igdb.Localizations = &[]enrichapi.Localization{
+	prod.Igdb.Localizations = &[]common.Localization{
 		{Region: "ja-JP", Name: &jaName, Translit: &jaTranslit, CoverUrl: &jaCover},
 	}
 

@@ -14,13 +14,14 @@ import (
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeytest"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/cache"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
-	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/server"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 	"github.com/levonn-dev/vgkeep/services/collection/migrations"
@@ -573,13 +574,13 @@ func gameProduct(id uuid.UUID) enrichapi.Product {
 		Id:   id,
 		Type: "game",
 		Name: "Chrono Trigger",
-		Platform: &enrichapi.PlatformRef{
+		Platform: &common.PlatformRef{
 			IgdbPlatformId: 6, Name: "SNES",
 		},
-		Igdb: &enrichapi.IgdbMeta{
+		Igdb: &common.IgdbMeta{
 			GameId: 1000, Name: "Chrono Trigger", Genres: []string{"RPG"},
 			Themes: []string{}, Franchises: []string{}, SimilarGames: []int64{},
-			Companies: []enrichapi.CompanyCredit{}, FirstReleaseDate: &released,
+			Companies: []common.CompanyCredit{}, FirstReleaseDate: &released,
 		},
 	}
 }
@@ -588,7 +589,7 @@ func gameProduct(id uuid.UUID) enrichapi.Product {
 // consoleName, for the region-repoint arm's console-class guard.
 func pricedGameProduct(id uuid.UUID, consoleName string) enrichapi.Product {
 	p := gameProduct(id)
-	p.Pricecharting = &enrichapi.PricechartingMeta{ConsoleName: consoleName, PcProductId: 5000}
+	p.Pricecharting = &common.PricechartingMeta{ConsoleName: consoleName, PcProductId: 5000}
 	return p
 }
 
@@ -598,7 +599,7 @@ func pricedGameProduct(id uuid.UUID, consoleName string) enrichapi.Product {
 // the sparse shapes the provider actually serves.
 func localizedGameProduct(id uuid.UUID) enrichapi.Product {
 	p := gameProduct(id)
-	p.Igdb.Localizations = &[]enrichapi.Localization{
+	p.Igdb.Localizations = &[]common.Localization{
 		{
 			Region:   "ja-JP",
 			Name:     new("聖剣伝説3"),
@@ -819,8 +820,11 @@ func newStack(t *testing.T) *stack {
 		DashboardCacheTTL: 5 * time.Minute,
 		Logger:            testLogger(),
 	})
-	router := server.NewRouter(h, a.v, testLogger(),
+	router, err := server.NewRouter(h, a.v, testLogger(),
 		func(ctx context.Context) error { return pgkit.Health(ctx, pool) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 

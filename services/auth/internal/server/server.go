@@ -242,3 +242,7 @@ func (h *Handlers) requireUser(w http.ResponseWriter, r *http.Request) (uuid.UUI
 	}
 	return userID, claims, true
 }
+
+// maxBodyBytes caps request bodies; every auth-service body is a
+// small OAuth/token fragment, far under this.
+const maxBodyBytes = 64 << 10

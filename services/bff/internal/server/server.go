@@ -15,17 +15,17 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/collectionapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/socialapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/userapi"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/enrichmentclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/authapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/socialapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/socialclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
@@ -59,7 +59,7 @@ type AuthAPI interface {
 	Providers(ctx context.Context) ([]string, error)
 	LinkStart(ctx context.Context, provider, bearer string) (string, error)
 	DevLink(ctx context.Context, user, bearer string) (authclient.TokenPair, error)
-	ListIdentities(ctx context.Context, userID, bearer string) ([]authapi.Identity, error)
+	ListIdentities(ctx context.Context, userID, bearer string) ([]common.Identity, error)
 	DeleteIdentity(ctx context.Context, identityID uuid.UUID, bearer string) error
 	DeleteUserAuth(ctx context.Context, userID, bearer string) error
 }

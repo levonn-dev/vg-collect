@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/services/user/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/user/internal/store"
 )
@@ -11,26 +12,21 @@ import (
 // The /shared handlers serve any authenticated caller: no sub-scoping,
 // visibility-filtered, ProfileCard projection only (never email or
 // roles). Unknown and private answer the same 404 so resolution is
-// not an existence oracle.
+// not an existence oracle. GetSharedProfilesByIds' ids (maxItems: 100)
+// and SearchSharedProfiles' q (maxLength: 64) size limits api/user.yaml
+// declares are contract constraints now enforced by specval's
+// request-validation middleware ahead of these handlers; neither
+// handler checks them directly any more (both were mechanical
+// duplicates of the contract bound once specval started enforcing it).
 
 const searchLimit = 20
-
-// maxIDsBatch and maxQueryLength enforce the size limits api/user.yaml
-// declares (maxItems: 100 on GetSharedProfilesByIds' ids, maxLength: 64
-// on SearchSharedProfiles' q). This service has no schema-validation
-// middleware -- only the generated param binder runs, and it does not
-// check these bounds -- so the handlers enforce them directly.
-const (
-	maxIDsBatch    = 100
-	maxQueryLength = 64
-)
 
 func toCard(u store.User) api.ProfileCard {
 	return api.ProfileCard{
 		UserId:            u.ID,
 		Handle:            u.Handle,
 		AvatarUrl:         u.AvatarURL,
-		ProfileVisibility: api.ProfileCardProfileVisibility(u.ProfileVisibility),
+		ProfileVisibility: common.Visibility(u.ProfileVisibility),
 	}
 }
 
@@ -48,10 +44,6 @@ func (h *Handlers) GetSharedProfile(w http.ResponseWriter, r *http.Request, hand
 }
 
 func (h *Handlers) GetSharedProfilesByIds(w http.ResponseWriter, r *http.Request, params api.GetSharedProfilesByIdsParams) {
-	if len(params.Ids) > maxIDsBatch {
-		problem(w, r, http.StatusBadRequest, "too_many_ids", "ids must contain at most 100 entries")
-		return
-	}
 	users, err := h.store.GetByIDs(r.Context(), params.Ids)
 	if err != nil {
 		problem(w, r, http.StatusInternalServerError, "internal", "profile batch failed")
@@ -65,10 +57,6 @@ func (h *Handlers) GetSharedProfilesByIds(w http.ResponseWriter, r *http.Request
 }
 
 func (h *Handlers) SearchSharedProfiles(w http.ResponseWriter, r *http.Request, params api.SearchSharedProfilesParams) {
-	if len(params.Q) > maxQueryLength {
-		problem(w, r, http.StatusBadRequest, "query_too_long", "q must be at most 64 characters")
-		return
-	}
 	folded := store.NormalizeHandle(params.Q)
 	if folded == "" {
 		writeJSON(w, http.StatusOK, map[string][]api.ProfileCard{"profiles": {}})

@@ -5,11 +5,11 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/social/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/social/internal/gen/api"
@@ -18,16 +18,11 @@ import (
 
 var _ api.ServerInterface = (*Handlers)(nil)
 
-// maxCommentIDsBatch and maxShelfIDsBatch enforce the size limits
-// api/social.yaml declares (maxItems: 100 on GetCommentsByIds' ids,
-// maxItems: 100 on GetShelvesSocialSummary's ids). The generated param
-// binder does not check these bounds, so the handlers enforce them
-// directly - the same gap class the user and collection /shared
-// endpoints closed for their own ids params.
-const (
-	maxCommentIDsBatch = 100
-	maxShelfIDsBatch   = 100
-)
+// GetCommentsByIds' and GetShelvesSocialSummary's ids params both
+// declare maxItems: 100 in api/social.yaml; that bound is now a
+// contract constraint specval's request-validation middleware
+// enforces ahead of these handlers (the former handler-layer
+// maxCommentIDsBatch/maxShelfIDsBatch duplicates are gone).
 
 func (h *Handlers) Follow(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID) {
 	me, bearer, ok := h.caller(w, r)
@@ -150,10 +145,6 @@ func (h *Handlers) GetShelvesSocialSummary(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	if len(params.Ids) > maxShelfIDsBatch {
-		problem(w, r, http.StatusBadRequest, "too_many_ids", "ids must contain at most 100 entries")
-		return
-	}
 	ids := make([]uuid.UUID, len(params.Ids))
 	copy(ids, params.Ids)
 	sums, err := h.store.ShelfSummaries(r.Context(), ids, me)
@@ -199,10 +190,12 @@ func (h *Handlers) ListShelfComments(w http.ResponseWriter, r *http.Request, she
 	if !ok {
 		return
 	}
-	limit, ok := httpkit.ClampOrReject(params.Limit, 20, 1, 50)
-	if !ok {
-		problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 50")
-		return
+	// Bounds (minimum 1, maximum 50) are now specval's job; only the
+	// default-when-absent fill (the generated param binder does not
+	// apply schema defaults) stays here.
+	limit := 20
+	if params.Limit != nil {
+		limit = *params.Limit
 	}
 	comments, err := h.store.ListLiveComments(r.Context(), shelfId, cur, limit)
 	if err != nil {
@@ -228,15 +221,23 @@ func (h *Handlers) CreateShelfComment(w http.ResponseWriter, r *http.Request, sh
 	if !ok {
 		return
 	}
-	var req struct {
-		Body string `json:"body"`
-	}
-	if !httpkit.DecodeBody(w, r, 64*1024, &req) {
+	// The generated type for the contract's inline requestBody schema
+	// (required: [body], minLength: 1, maxLength: 2000) replaces the
+	// former anonymous struct.
+	var req api.CreateShelfCommentJSONRequestBody
+	if !httpkit.DecodeBody(w, r, maxBodyBytes, &req) {
 		return
 	}
+	// minLength(1) is specval's job for a literal empty string, but it
+	// cannot reject a whitespace-only body (minLength counts raw
+	// characters); this trim-then-check guard is what actually does,
+	// and stays for that reason - semantic, not a mechanical duplicate
+	// of anything specval already covers. maxLength(2000)'s rune-count
+	// half is gone (specval enforces it ahead of this handler now), so
+	// this check only ever fires on the blank-after-trim case.
 	body := strings.TrimSpace(req.Body)
-	if body == "" || utf8.RuneCountInString(body) > 2000 {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "body must be 1-2000 characters")
+	if body == "" {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "body must not be blank")
 		return
 	}
 	shelf, err := h.col.SharedShelf(r.Context(), bearer, shelfId)
@@ -288,10 +289,6 @@ func (h *Handlers) GetCommentsByIds(w http.ResponseWriter, r *http.Request, para
 	if !ok {
 		return
 	}
-	if len(params.Ids) > maxCommentIDsBatch {
-		problem(w, r, http.StatusBadRequest, "too_many_ids", "ids must contain at most 100 entries")
-		return
-	}
 	ids := make([]uuid.UUID, len(params.Ids))
 	copy(ids, params.Ids)
 	comments, err := h.store.LiveCommentsByIDs(r.Context(), ids)
@@ -311,18 +308,17 @@ func (h *Handlers) GetFeed(w http.ResponseWriter, r *http.Request, params api.Ge
 	if !ok {
 		return
 	}
-	if params.Tab != api.Following && params.Tab != api.You {
-		problem(w, r, http.StatusBadRequest, "invalid_param", "tab must be following or you")
-		return
-	}
+	// tab's enum membership (common.yaml's shared tab parameter:
+	// [following, you]) is now specval's job.
 	cur, ok := parseCursorParam(w, r, params.Cursor)
 	if !ok {
 		return
 	}
-	limit, ok := httpkit.ClampOrReject(params.Limit, 20, 1, 50)
-	if !ok {
-		problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 50")
-		return
+	// Bounds are now specval's job; only the default-when-absent fill
+	// stays (see ListShelfComments).
+	limit := 20
+	if params.Limit != nil {
+		limit = *params.Limit
 	}
 	events, err := h.store.Feed(r.Context(), me, string(params.Tab), cur, limit)
 	if err != nil {
@@ -336,7 +332,7 @@ func (h *Handlers) GetFeed(w http.ResponseWriter, r *http.Request, params api.Ge
 	}{Events: make([]api.ActivityEvent, len(events))}
 	for i, e := range events {
 		out.Events[i] = api.ActivityEvent{
-			Id: e.ID, ActorId: e.ActorID, Verb: api.ActivityEventVerb(e.Verb),
+			Id: e.ID, ActorId: e.ActorID, Verb: common.ActivityVerb(e.Verb),
 			ObjectShelfId: e.ObjectShelfID, ObjectCommentId: e.ObjectCommentID,
 			TargetUserId: e.TargetUserID, CreatedAt: e.CreatedAt,
 		}
@@ -402,10 +398,11 @@ func (h *Handlers) GetTopShelves(w http.ResponseWriter, r *http.Request, params 
 	if !ok {
 		return
 	}
-	limit, ok := httpkit.ClampOrReject(params.Limit, 50, 1, 50)
-	if !ok {
-		problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 50")
-		return
+	// Bounds are now specval's job; only the default-when-absent fill
+	// stays (see ListShelfComments).
+	limit := 50
+	if params.Limit != nil {
+		limit = *params.Limit
 	}
 	ids, err := h.store.TopShelves(r.Context(), limit)
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"unicode/utf8"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -20,9 +19,13 @@ func toAPITag(t store.Tag) api.Tag {
 	return api.Tag{Id: t.ID, Name: t.Name, EntryCount: t.EntryCount}
 }
 
+// validateTagName guards the one thing the contract cannot: a
+// whitespace-only name. TagCreate.name declares minLength:1 and
+// maxLength:50 (specval's job), but minLength alone does not catch
+// "   " - only a literal empty string.
 func validateTagName(name string) string {
-	if strings.TrimSpace(name) == "" || utf8.RuneCountInString(name) > 50 {
-		return "name must be 1-50 characters"
+	if strings.TrimSpace(name) == "" {
+		return "name must not be blank"
 	}
 	return ""
 }

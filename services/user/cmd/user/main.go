@@ -52,8 +52,11 @@ func run() error {
 	defer pool.Close()
 
 	v := jwtauth.NewValidator(cfg.JWKSURL, cfg.JWTIssuer, cfg.JWTAudience)
-	router := server.NewRouter(server.New(store.New(pool), cfg.HandleChangeCooldown), v, slog.Default(),
+	router, err := server.NewRouter(server.New(store.New(pool), cfg.HandleChangeCooldown), v, slog.Default(),
 		func(c context.Context) error { return pgkit.Health(c, pool) })
+	if err != nil {
+		return err
+	}
 
 	srv := httpkit.NewServer(cfg.HTTPAddr, router)
 	defer func() { _ = srv.Close() }() // idempotent after Run; closes on every exit path

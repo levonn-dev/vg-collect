@@ -6,1614 +6,53 @@
 package api
 
 import (
+	"bytes"
+	"compress/flate"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"path"
+	"strings"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
+	externalRef0 "github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// Defines values for AdminSubmissionItemType.
-const (
-	AdminSubmissionItemTypeAccessory AdminSubmissionItemType = "accessory"
-	AdminSubmissionItemTypeConsole   AdminSubmissionItemType = "console"
-	AdminSubmissionItemTypeGame      AdminSubmissionItemType = "game"
-)
-
-// Valid indicates whether the value is a known member of the AdminSubmissionItemType enum.
-func (e AdminSubmissionItemType) Valid() bool {
-	switch e {
-	case AdminSubmissionItemTypeAccessory:
-		return true
-	case AdminSubmissionItemTypeConsole:
-		return true
-	case AdminSubmissionItemTypeGame:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for AdminSubmissionStatus.
-const (
-	AdminSubmissionStatusApproved  AdminSubmissionStatus = "approved"
-	AdminSubmissionStatusCancelled AdminSubmissionStatus = "cancelled"
-	AdminSubmissionStatusPending   AdminSubmissionStatus = "pending"
-	AdminSubmissionStatusRejected  AdminSubmissionStatus = "rejected"
-)
-
-// Valid indicates whether the value is a known member of the AdminSubmissionStatus enum.
-func (e AdminSubmissionStatus) Valid() bool {
-	switch e {
-	case AdminSubmissionStatusApproved:
-		return true
-	case AdminSubmissionStatusCancelled:
-		return true
-	case AdminSubmissionStatusPending:
-		return true
-	case AdminSubmissionStatusRejected:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BulkUpdateRequestStatus.
-const (
-	BulkUpdateRequestStatusBacklog   BulkUpdateRequestStatus = "backlog"
-	BulkUpdateRequestStatusBeaten    BulkUpdateRequestStatus = "beaten"
-	BulkUpdateRequestStatusCompleted BulkUpdateRequestStatus = "completed"
-	BulkUpdateRequestStatusDropped   BulkUpdateRequestStatus = "dropped"
-	BulkUpdateRequestStatusPlaying   BulkUpdateRequestStatus = "playing"
-	BulkUpdateRequestStatusShelved   BulkUpdateRequestStatus = "shelved"
-)
-
-// Valid indicates whether the value is a known member of the BulkUpdateRequestStatus enum.
-func (e BulkUpdateRequestStatus) Valid() bool {
-	switch e {
-	case BulkUpdateRequestStatusBacklog:
-		return true
-	case BulkUpdateRequestStatusBeaten:
-		return true
-	case BulkUpdateRequestStatusCompleted:
-		return true
-	case BulkUpdateRequestStatusDropped:
-		return true
-	case BulkUpdateRequestStatusPlaying:
-		return true
-	case BulkUpdateRequestStatusShelved:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for CommunityProductCreateType.
-const (
-	CommunityProductCreateTypeAccessory CommunityProductCreateType = "accessory"
-	CommunityProductCreateTypeConsole   CommunityProductCreateType = "console"
-	CommunityProductCreateTypeGame      CommunityProductCreateType = "game"
-)
-
-// Valid indicates whether the value is a known member of the CommunityProductCreateType enum.
-func (e CommunityProductCreateType) Valid() bool {
-	switch e {
-	case CommunityProductCreateTypeAccessory:
-		return true
-	case CommunityProductCreateTypeConsole:
-		return true
-	case CommunityProductCreateTypeGame:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for CommunityProductSpecType.
-const (
-	CommunityProductSpecTypeAccessory CommunityProductSpecType = "accessory"
-	CommunityProductSpecTypeConsole   CommunityProductSpecType = "console"
-	CommunityProductSpecTypeGame      CommunityProductSpecType = "game"
-)
-
-// Valid indicates whether the value is a known member of the CommunityProductSpecType enum.
-func (e CommunityProductSpecType) Valid() bool {
-	switch e {
-	case CommunityProductSpecTypeAccessory:
-		return true
-	case CommunityProductSpecTypeConsole:
-		return true
-	case CommunityProductSpecTypeGame:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for DismissCandidateRequestProvider.
-const (
-	DismissCandidateRequestProviderIgdb          DismissCandidateRequestProvider = "igdb"
-	DismissCandidateRequestProviderPricecharting DismissCandidateRequestProvider = "pricecharting"
-)
-
-// Valid indicates whether the value is a known member of the DismissCandidateRequestProvider enum.
-func (e DismissCandidateRequestProvider) Valid() bool {
-	switch e {
-	case DismissCandidateRequestProviderIgdb:
-		return true
-	case DismissCandidateRequestProviderPricecharting:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryBoxCondition.
-const (
-	EntryBoxConditionAcceptable EntryBoxCondition = "acceptable"
-	EntryBoxConditionGood       EntryBoxCondition = "good"
-	EntryBoxConditionMint       EntryBoxCondition = "mint"
-	EntryBoxConditionNearMint   EntryBoxCondition = "near_mint"
-	EntryBoxConditionPoor       EntryBoxCondition = "poor"
-	EntryBoxConditionVeryGood   EntryBoxCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the EntryBoxCondition enum.
-func (e EntryBoxCondition) Valid() bool {
-	switch e {
-	case EntryBoxConditionAcceptable:
-		return true
-	case EntryBoxConditionGood:
-		return true
-	case EntryBoxConditionMint:
-		return true
-	case EntryBoxConditionNearMint:
-		return true
-	case EntryBoxConditionPoor:
-		return true
-	case EntryBoxConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryItemCondition.
-const (
-	EntryItemConditionAcceptable EntryItemCondition = "acceptable"
-	EntryItemConditionGood       EntryItemCondition = "good"
-	EntryItemConditionMint       EntryItemCondition = "mint"
-	EntryItemConditionNearMint   EntryItemCondition = "near_mint"
-	EntryItemConditionPoor       EntryItemCondition = "poor"
-	EntryItemConditionVeryGood   EntryItemCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the EntryItemCondition enum.
-func (e EntryItemCondition) Valid() bool {
-	switch e {
-	case EntryItemConditionAcceptable:
-		return true
-	case EntryItemConditionGood:
-		return true
-	case EntryItemConditionMint:
-		return true
-	case EntryItemConditionNearMint:
-		return true
-	case EntryItemConditionPoor:
-		return true
-	case EntryItemConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryItemType.
-const (
-	EntryItemTypeAccessory EntryItemType = "accessory"
-	EntryItemTypeConsole   EntryItemType = "console"
-	EntryItemTypeGame      EntryItemType = "game"
-)
-
-// Valid indicates whether the value is a known member of the EntryItemType enum.
-func (e EntryItemType) Valid() bool {
-	switch e {
-	case EntryItemTypeAccessory:
-		return true
-	case EntryItemTypeConsole:
-		return true
-	case EntryItemTypeGame:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryManualCondition.
-const (
-	EntryManualConditionAcceptable EntryManualCondition = "acceptable"
-	EntryManualConditionGood       EntryManualCondition = "good"
-	EntryManualConditionMint       EntryManualCondition = "mint"
-	EntryManualConditionNearMint   EntryManualCondition = "near_mint"
-	EntryManualConditionPoor       EntryManualCondition = "poor"
-	EntryManualConditionVeryGood   EntryManualCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the EntryManualCondition enum.
-func (e EntryManualCondition) Valid() bool {
-	switch e {
-	case EntryManualConditionAcceptable:
-		return true
-	case EntryManualConditionGood:
-		return true
-	case EntryManualConditionMint:
-		return true
-	case EntryManualConditionNearMint:
-		return true
-	case EntryManualConditionPoor:
-		return true
-	case EntryManualConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryMediaType.
-const (
-	EntryMediaTypeDigital  EntryMediaType = "digital"
-	EntryMediaTypePhysical EntryMediaType = "physical"
-)
-
-// Valid indicates whether the value is a known member of the EntryMediaType enum.
-func (e EntryMediaType) Valid() bool {
-	switch e {
-	case EntryMediaTypeDigital:
-		return true
-	case EntryMediaTypePhysical:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryPackaging.
-const (
-	EntryPackagingCib    EntryPackaging = "cib"
-	EntryPackagingLoose  EntryPackaging = "loose"
-	EntryPackagingSealed EntryPackaging = "sealed"
-)
-
-// Valid indicates whether the value is a known member of the EntryPackaging enum.
-func (e EntryPackaging) Valid() bool {
-	switch e {
-	case EntryPackagingCib:
-		return true
-	case EntryPackagingLoose:
-		return true
-	case EntryPackagingSealed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryPricingMode.
-const (
-	EntryPricingModeAuto     EntryPricingMode = "auto"
-	EntryPricingModeCustom   EntryPricingMode = "custom"
-	EntryPricingModeDisabled EntryPricingMode = "disabled"
-	EntryPricingModeProxy    EntryPricingMode = "proxy"
-)
-
-// Valid indicates whether the value is a known member of the EntryPricingMode enum.
-func (e EntryPricingMode) Valid() bool {
-	switch e {
-	case EntryPricingModeAuto:
-		return true
-	case EntryPricingModeCustom:
-		return true
-	case EntryPricingModeDisabled:
-		return true
-	case EntryPricingModeProxy:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntrySource.
-const (
-	Epic   EntrySource = "epic"
-	Manual EntrySource = "manual"
-	Psn    EntrySource = "psn"
-	Steam  EntrySource = "steam"
-)
-
-// Valid indicates whether the value is a known member of the EntrySource enum.
-func (e EntrySource) Valid() bool {
-	switch e {
-	case Epic:
-		return true
-	case Manual:
-		return true
-	case Psn:
-		return true
-	case Steam:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryStatus.
-const (
-	EntryStatusBacklog   EntryStatus = "backlog"
-	EntryStatusBeaten    EntryStatus = "beaten"
-	EntryStatusCompleted EntryStatus = "completed"
-	EntryStatusDropped   EntryStatus = "dropped"
-	EntryStatusPlaying   EntryStatus = "playing"
-	EntryStatusShelved   EntryStatus = "shelved"
-)
-
-// Valid indicates whether the value is a known member of the EntryStatus enum.
-func (e EntryStatus) Valid() bool {
-	switch e {
-	case EntryStatusBacklog:
-		return true
-	case EntryStatusBeaten:
-		return true
-	case EntryStatusCompleted:
-		return true
-	case EntryStatusDropped:
-		return true
-	case EntryStatusPlaying:
-		return true
-	case EntryStatusShelved:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryCreateBoxCondition.
-const (
-	EntryCreateBoxConditionAcceptable EntryCreateBoxCondition = "acceptable"
-	EntryCreateBoxConditionGood       EntryCreateBoxCondition = "good"
-	EntryCreateBoxConditionMint       EntryCreateBoxCondition = "mint"
-	EntryCreateBoxConditionNearMint   EntryCreateBoxCondition = "near_mint"
-	EntryCreateBoxConditionPoor       EntryCreateBoxCondition = "poor"
-	EntryCreateBoxConditionVeryGood   EntryCreateBoxCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the EntryCreateBoxCondition enum.
-func (e EntryCreateBoxCondition) Valid() bool {
-	switch e {
-	case EntryCreateBoxConditionAcceptable:
-		return true
-	case EntryCreateBoxConditionGood:
-		return true
-	case EntryCreateBoxConditionMint:
-		return true
-	case EntryCreateBoxConditionNearMint:
-		return true
-	case EntryCreateBoxConditionPoor:
-		return true
-	case EntryCreateBoxConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryCreateItemCondition.
-const (
-	EntryCreateItemConditionAcceptable EntryCreateItemCondition = "acceptable"
-	EntryCreateItemConditionGood       EntryCreateItemCondition = "good"
-	EntryCreateItemConditionMint       EntryCreateItemCondition = "mint"
-	EntryCreateItemConditionNearMint   EntryCreateItemCondition = "near_mint"
-	EntryCreateItemConditionPoor       EntryCreateItemCondition = "poor"
-	EntryCreateItemConditionVeryGood   EntryCreateItemCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the EntryCreateItemCondition enum.
-func (e EntryCreateItemCondition) Valid() bool {
-	switch e {
-	case EntryCreateItemConditionAcceptable:
-		return true
-	case EntryCreateItemConditionGood:
-		return true
-	case EntryCreateItemConditionMint:
-		return true
-	case EntryCreateItemConditionNearMint:
-		return true
-	case EntryCreateItemConditionPoor:
-		return true
-	case EntryCreateItemConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryCreateItemType.
-const (
-	EntryCreateItemTypeAccessory EntryCreateItemType = "accessory"
-	EntryCreateItemTypeConsole   EntryCreateItemType = "console"
-	EntryCreateItemTypeGame      EntryCreateItemType = "game"
-)
-
-// Valid indicates whether the value is a known member of the EntryCreateItemType enum.
-func (e EntryCreateItemType) Valid() bool {
-	switch e {
-	case EntryCreateItemTypeAccessory:
-		return true
-	case EntryCreateItemTypeConsole:
-		return true
-	case EntryCreateItemTypeGame:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryCreateManualCondition.
-const (
-	EntryCreateManualConditionAcceptable EntryCreateManualCondition = "acceptable"
-	EntryCreateManualConditionGood       EntryCreateManualCondition = "good"
-	EntryCreateManualConditionMint       EntryCreateManualCondition = "mint"
-	EntryCreateManualConditionNearMint   EntryCreateManualCondition = "near_mint"
-	EntryCreateManualConditionPoor       EntryCreateManualCondition = "poor"
-	EntryCreateManualConditionVeryGood   EntryCreateManualCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the EntryCreateManualCondition enum.
-func (e EntryCreateManualCondition) Valid() bool {
-	switch e {
-	case EntryCreateManualConditionAcceptable:
-		return true
-	case EntryCreateManualConditionGood:
-		return true
-	case EntryCreateManualConditionMint:
-		return true
-	case EntryCreateManualConditionNearMint:
-		return true
-	case EntryCreateManualConditionPoor:
-		return true
-	case EntryCreateManualConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryCreateMatchProvenance.
-const (
-	EntryCreateMatchProvenanceAuto EntryCreateMatchProvenance = "auto"
-	EntryCreateMatchProvenanceUser EntryCreateMatchProvenance = "user"
-)
-
-// Valid indicates whether the value is a known member of the EntryCreateMatchProvenance enum.
-func (e EntryCreateMatchProvenance) Valid() bool {
-	switch e {
-	case EntryCreateMatchProvenanceAuto:
-		return true
-	case EntryCreateMatchProvenanceUser:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryCreateMediaType.
-const (
-	EntryCreateMediaTypePhysical EntryCreateMediaType = "physical"
-)
-
-// Valid indicates whether the value is a known member of the EntryCreateMediaType enum.
-func (e EntryCreateMediaType) Valid() bool {
-	switch e {
-	case EntryCreateMediaTypePhysical:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryCreatePackaging.
-const (
-	EntryCreatePackagingCib    EntryCreatePackaging = "cib"
-	EntryCreatePackagingLoose  EntryCreatePackaging = "loose"
-	EntryCreatePackagingSealed EntryCreatePackaging = "sealed"
-)
-
-// Valid indicates whether the value is a known member of the EntryCreatePackaging enum.
-func (e EntryCreatePackaging) Valid() bool {
-	switch e {
-	case EntryCreatePackagingCib:
-		return true
-	case EntryCreatePackagingLoose:
-		return true
-	case EntryCreatePackagingSealed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryCreatePricingMode.
-const (
-	EntryCreatePricingModeAuto     EntryCreatePricingMode = "auto"
-	EntryCreatePricingModeCustom   EntryCreatePricingMode = "custom"
-	EntryCreatePricingModeDisabled EntryCreatePricingMode = "disabled"
-	EntryCreatePricingModeProxy    EntryCreatePricingMode = "proxy"
-)
-
-// Valid indicates whether the value is a known member of the EntryCreatePricingMode enum.
-func (e EntryCreatePricingMode) Valid() bool {
-	switch e {
-	case EntryCreatePricingModeAuto:
-		return true
-	case EntryCreatePricingModeCustom:
-		return true
-	case EntryCreatePricingModeDisabled:
-		return true
-	case EntryCreatePricingModeProxy:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryCreateStatus.
-const (
-	EntryCreateStatusBacklog   EntryCreateStatus = "backlog"
-	EntryCreateStatusBeaten    EntryCreateStatus = "beaten"
-	EntryCreateStatusCompleted EntryCreateStatus = "completed"
-	EntryCreateStatusDropped   EntryCreateStatus = "dropped"
-	EntryCreateStatusPlaying   EntryCreateStatus = "playing"
-	EntryCreateStatusShelved   EntryCreateStatus = "shelved"
-)
-
-// Valid indicates whether the value is a known member of the EntryCreateStatus enum.
-func (e EntryCreateStatus) Valid() bool {
-	switch e {
-	case EntryCreateStatusBacklog:
-		return true
-	case EntryCreateStatusBeaten:
-		return true
-	case EntryCreateStatusCompleted:
-		return true
-	case EntryCreateStatusDropped:
-		return true
-	case EntryCreateStatusPlaying:
-		return true
-	case EntryCreateStatusShelved:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryUpdateBoxCondition.
-const (
-	EntryUpdateBoxConditionAcceptable EntryUpdateBoxCondition = "acceptable"
-	EntryUpdateBoxConditionGood       EntryUpdateBoxCondition = "good"
-	EntryUpdateBoxConditionMint       EntryUpdateBoxCondition = "mint"
-	EntryUpdateBoxConditionNearMint   EntryUpdateBoxCondition = "near_mint"
-	EntryUpdateBoxConditionPoor       EntryUpdateBoxCondition = "poor"
-	EntryUpdateBoxConditionVeryGood   EntryUpdateBoxCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the EntryUpdateBoxCondition enum.
-func (e EntryUpdateBoxCondition) Valid() bool {
-	switch e {
-	case EntryUpdateBoxConditionAcceptable:
-		return true
-	case EntryUpdateBoxConditionGood:
-		return true
-	case EntryUpdateBoxConditionMint:
-		return true
-	case EntryUpdateBoxConditionNearMint:
-		return true
-	case EntryUpdateBoxConditionPoor:
-		return true
-	case EntryUpdateBoxConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryUpdateItemCondition.
-const (
-	EntryUpdateItemConditionAcceptable EntryUpdateItemCondition = "acceptable"
-	EntryUpdateItemConditionGood       EntryUpdateItemCondition = "good"
-	EntryUpdateItemConditionMint       EntryUpdateItemCondition = "mint"
-	EntryUpdateItemConditionNearMint   EntryUpdateItemCondition = "near_mint"
-	EntryUpdateItemConditionPoor       EntryUpdateItemCondition = "poor"
-	EntryUpdateItemConditionVeryGood   EntryUpdateItemCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the EntryUpdateItemCondition enum.
-func (e EntryUpdateItemCondition) Valid() bool {
-	switch e {
-	case EntryUpdateItemConditionAcceptable:
-		return true
-	case EntryUpdateItemConditionGood:
-		return true
-	case EntryUpdateItemConditionMint:
-		return true
-	case EntryUpdateItemConditionNearMint:
-		return true
-	case EntryUpdateItemConditionPoor:
-		return true
-	case EntryUpdateItemConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryUpdateManualCondition.
-const (
-	EntryUpdateManualConditionAcceptable EntryUpdateManualCondition = "acceptable"
-	EntryUpdateManualConditionGood       EntryUpdateManualCondition = "good"
-	EntryUpdateManualConditionMint       EntryUpdateManualCondition = "mint"
-	EntryUpdateManualConditionNearMint   EntryUpdateManualCondition = "near_mint"
-	EntryUpdateManualConditionPoor       EntryUpdateManualCondition = "poor"
-	EntryUpdateManualConditionVeryGood   EntryUpdateManualCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the EntryUpdateManualCondition enum.
-func (e EntryUpdateManualCondition) Valid() bool {
-	switch e {
-	case EntryUpdateManualConditionAcceptable:
-		return true
-	case EntryUpdateManualConditionGood:
-		return true
-	case EntryUpdateManualConditionMint:
-		return true
-	case EntryUpdateManualConditionNearMint:
-		return true
-	case EntryUpdateManualConditionPoor:
-		return true
-	case EntryUpdateManualConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryUpdatePackaging.
-const (
-	EntryUpdatePackagingCib    EntryUpdatePackaging = "cib"
-	EntryUpdatePackagingLoose  EntryUpdatePackaging = "loose"
-	EntryUpdatePackagingSealed EntryUpdatePackaging = "sealed"
-)
-
-// Valid indicates whether the value is a known member of the EntryUpdatePackaging enum.
-func (e EntryUpdatePackaging) Valid() bool {
-	switch e {
-	case EntryUpdatePackagingCib:
-		return true
-	case EntryUpdatePackagingLoose:
-		return true
-	case EntryUpdatePackagingSealed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryUpdatePricingMode.
-const (
-	EntryUpdatePricingModeAuto     EntryUpdatePricingMode = "auto"
-	EntryUpdatePricingModeCustom   EntryUpdatePricingMode = "custom"
-	EntryUpdatePricingModeDisabled EntryUpdatePricingMode = "disabled"
-	EntryUpdatePricingModeProxy    EntryUpdatePricingMode = "proxy"
-)
-
-// Valid indicates whether the value is a known member of the EntryUpdatePricingMode enum.
-func (e EntryUpdatePricingMode) Valid() bool {
-	switch e {
-	case EntryUpdatePricingModeAuto:
-		return true
-	case EntryUpdatePricingModeCustom:
-		return true
-	case EntryUpdatePricingModeDisabled:
-		return true
-	case EntryUpdatePricingModeProxy:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EntryUpdateStatus.
-const (
-	EntryUpdateStatusBacklog   EntryUpdateStatus = "backlog"
-	EntryUpdateStatusBeaten    EntryUpdateStatus = "beaten"
-	EntryUpdateStatusCompleted EntryUpdateStatus = "completed"
-	EntryUpdateStatusDropped   EntryUpdateStatus = "dropped"
-	EntryUpdateStatusPlaying   EntryUpdateStatus = "playing"
-	EntryUpdateStatusShelved   EntryUpdateStatus = "shelved"
-)
-
-// Valid indicates whether the value is a known member of the EntryUpdateStatus enum.
-func (e EntryUpdateStatus) Valid() bool {
-	switch e {
-	case EntryUpdateStatusBacklog:
-		return true
-	case EntryUpdateStatusBeaten:
-		return true
-	case EntryUpdateStatusCompleted:
-		return true
-	case EntryUpdateStatusDropped:
-		return true
-	case EntryUpdateStatusPlaying:
-		return true
-	case EntryUpdateStatusShelved:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for FeedItemVerb.
-const (
-	CommentedShelf FeedItemVerb = "commented_shelf"
-	FollowedUser   FeedItemVerb = "followed_user"
-	LikedShelf     FeedItemVerb = "liked_shelf"
-	PublishedShelf FeedItemVerb = "published_shelf"
-)
-
-// Valid indicates whether the value is a known member of the FeedItemVerb enum.
-func (e FeedItemVerb) Valid() bool {
-	switch e {
-	case CommentedShelf:
-		return true
-	case FollowedUser:
-		return true
-	case LikedShelf:
-		return true
-	case PublishedShelf:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for MeLandingPage.
-const (
-	MeLandingPageCollection MeLandingPage = "collection"
-	MeLandingPageExplore    MeLandingPage = "explore"
-	MeLandingPageFeed       MeLandingPage = "feed"
-)
-
-// Valid indicates whether the value is a known member of the MeLandingPage enum.
-func (e MeLandingPage) Valid() bool {
-	switch e {
-	case MeLandingPageCollection:
-		return true
-	case MeLandingPageExplore:
-		return true
-	case MeLandingPageFeed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for MeProfileVisibility.
-const (
-	MeProfileVisibilityListed   MeProfileVisibility = "listed"
-	MeProfileVisibilityPrivate  MeProfileVisibility = "private"
-	MeProfileVisibilityUnlisted MeProfileVisibility = "unlisted"
-)
-
-// Valid indicates whether the value is a known member of the MeProfileVisibility enum.
-func (e MeProfileVisibility) Valid() bool {
-	switch e {
-	case MeProfileVisibilityListed:
-		return true
-	case MeProfileVisibilityPrivate:
-		return true
-	case MeProfileVisibilityUnlisted:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PlatformRefReleaseRegions.
-const (
-	PlatformRefReleaseRegionsAsia         PlatformRefReleaseRegions = "asia"
-	PlatformRefReleaseRegionsAustralia    PlatformRefReleaseRegions = "australia"
-	PlatformRefReleaseRegionsBrazil       PlatformRefReleaseRegions = "brazil"
-	PlatformRefReleaseRegionsChina        PlatformRefReleaseRegions = "china"
-	PlatformRefReleaseRegionsEurope       PlatformRefReleaseRegions = "europe"
-	PlatformRefReleaseRegionsJapan        PlatformRefReleaseRegions = "japan"
-	PlatformRefReleaseRegionsKorea        PlatformRefReleaseRegions = "korea"
-	PlatformRefReleaseRegionsNewZealand   PlatformRefReleaseRegions = "new_zealand"
-	PlatformRefReleaseRegionsNorthAmerica PlatformRefReleaseRegions = "north_america"
-	PlatformRefReleaseRegionsWorldwide    PlatformRefReleaseRegions = "worldwide"
-)
-
-// Valid indicates whether the value is a known member of the PlatformRefReleaseRegions enum.
-func (e PlatformRefReleaseRegions) Valid() bool {
-	switch e {
-	case PlatformRefReleaseRegionsAsia:
-		return true
-	case PlatformRefReleaseRegionsAustralia:
-		return true
-	case PlatformRefReleaseRegionsBrazil:
-		return true
-	case PlatformRefReleaseRegionsChina:
-		return true
-	case PlatformRefReleaseRegionsEurope:
-		return true
-	case PlatformRefReleaseRegionsJapan:
-		return true
-	case PlatformRefReleaseRegionsKorea:
-		return true
-	case PlatformRefReleaseRegionsNewZealand:
-		return true
-	case PlatformRefReleaseRegionsNorthAmerica:
-		return true
-	case PlatformRefReleaseRegionsWorldwide:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ProductOrigin.
-const (
-	ProductOriginCommunity ProductOrigin = "community"
-)
-
-// Valid indicates whether the value is a known member of the ProductOrigin enum.
-func (e ProductOrigin) Valid() bool {
-	switch e {
-	case ProductOriginCommunity:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ProductType.
-const (
-	ProductTypeAccessory ProductType = "accessory"
-	ProductTypeConsole   ProductType = "console"
-	ProductTypeGame      ProductType = "game"
-	ProductTypePcListing ProductType = "pc_listing"
-)
-
-// Valid indicates whether the value is a known member of the ProductType enum.
-func (e ProductType) Valid() bool {
-	switch e {
-	case ProductTypeAccessory:
-		return true
-	case ProductTypeConsole:
-		return true
-	case ProductTypeGame:
-		return true
-	case ProductTypePcListing:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ProfileCardProfileVisibility.
-const (
-	ProfileCardProfileVisibilityListed   ProfileCardProfileVisibility = "listed"
-	ProfileCardProfileVisibilityPrivate  ProfileCardProfileVisibility = "private"
-	ProfileCardProfileVisibilityUnlisted ProfileCardProfileVisibility = "unlisted"
-)
-
-// Valid indicates whether the value is a known member of the ProfileCardProfileVisibility enum.
-func (e ProfileCardProfileVisibility) Valid() bool {
-	switch e {
-	case ProfileCardProfileVisibilityListed:
-		return true
-	case ProfileCardProfileVisibilityPrivate:
-		return true
-	case ProfileCardProfileVisibilityUnlisted:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PromoteCandidateProvider.
-const (
-	PromoteCandidateProviderIgdb          PromoteCandidateProvider = "igdb"
-	PromoteCandidateProviderPricecharting PromoteCandidateProvider = "pricecharting"
-)
-
-// Valid indicates whether the value is a known member of the PromoteCandidateProvider enum.
-func (e PromoteCandidateProvider) Valid() bool {
-	switch e {
-	case PromoteCandidateProviderIgdb:
-		return true
-	case PromoteCandidateProviderPricecharting:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for RefreshAcceptedStatus.
-const (
-	RefreshAcceptedStatusStarted RefreshAcceptedStatus = "started"
-)
-
-// Valid indicates whether the value is a known member of the RefreshAcceptedStatus enum.
-func (e RefreshAcceptedStatus) Valid() bool {
-	switch e {
-	case RefreshAcceptedStatusStarted:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ReleaseDateRegion.
-const (
-	ReleaseDateRegionAsia         ReleaseDateRegion = "asia"
-	ReleaseDateRegionAustralia    ReleaseDateRegion = "australia"
-	ReleaseDateRegionBrazil       ReleaseDateRegion = "brazil"
-	ReleaseDateRegionChina        ReleaseDateRegion = "china"
-	ReleaseDateRegionEurope       ReleaseDateRegion = "europe"
-	ReleaseDateRegionJapan        ReleaseDateRegion = "japan"
-	ReleaseDateRegionKorea        ReleaseDateRegion = "korea"
-	ReleaseDateRegionNewZealand   ReleaseDateRegion = "new_zealand"
-	ReleaseDateRegionNorthAmerica ReleaseDateRegion = "north_america"
-	ReleaseDateRegionWorldwide    ReleaseDateRegion = "worldwide"
-)
-
-// Valid indicates whether the value is a known member of the ReleaseDateRegion enum.
-func (e ReleaseDateRegion) Valid() bool {
-	switch e {
-	case ReleaseDateRegionAsia:
-		return true
-	case ReleaseDateRegionAustralia:
-		return true
-	case ReleaseDateRegionBrazil:
-		return true
-	case ReleaseDateRegionChina:
-		return true
-	case ReleaseDateRegionEurope:
-		return true
-	case ReleaseDateRegionJapan:
-		return true
-	case ReleaseDateRegionKorea:
-		return true
-	case ReleaseDateRegionNewZealand:
-		return true
-	case ReleaseDateRegionNorthAmerica:
-		return true
-	case ReleaseDateRegionWorldwide:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for RematchAcceptedStatus.
-const (
-	RematchAcceptedStatusStarted RematchAcceptedStatus = "started"
-)
-
-// Valid indicates whether the value is a known member of the RematchAcceptedStatus enum.
-func (e RematchAcceptedStatus) Valid() bool {
-	switch e {
-	case RematchAcceptedStatusStarted:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ResolveRequestType.
-const (
-	ResolveRequestTypeAccessory ResolveRequestType = "accessory"
-	ResolveRequestTypeConsole   ResolveRequestType = "console"
-	ResolveRequestTypeGame      ResolveRequestType = "game"
-	ResolveRequestTypePcListing ResolveRequestType = "pc_listing"
-)
-
-// Valid indicates whether the value is a known member of the ResolveRequestType enum.
-func (e ResolveRequestType) Valid() bool {
-	switch e {
-	case ResolveRequestTypeAccessory:
-		return true
-	case ResolveRequestTypeConsole:
-		return true
-	case ResolveRequestTypeGame:
-		return true
-	case ResolveRequestTypePcListing:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SavedViewVisibility.
-const (
-	SavedViewVisibilityListed   SavedViewVisibility = "listed"
-	SavedViewVisibilityPrivate  SavedViewVisibility = "private"
-	SavedViewVisibilityUnlisted SavedViewVisibility = "unlisted"
-)
-
-// Valid indicates whether the value is a known member of the SavedViewVisibility enum.
-func (e SavedViewVisibility) Valid() bool {
-	switch e {
-	case SavedViewVisibilityListed:
-		return true
-	case SavedViewVisibilityPrivate:
-		return true
-	case SavedViewVisibilityUnlisted:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SearchResultItemType.
-const (
-	SearchResultItemTypeAccessory SearchResultItemType = "accessory"
-	SearchResultItemTypeConsole   SearchResultItemType = "console"
-	SearchResultItemTypeGame      SearchResultItemType = "game"
-)
-
-// Valid indicates whether the value is a known member of the SearchResultItemType enum.
-func (e SearchResultItemType) Valid() bool {
-	switch e {
-	case SearchResultItemTypeAccessory:
-		return true
-	case SearchResultItemTypeConsole:
-		return true
-	case SearchResultItemTypeGame:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SearchResultOrigin.
-const (
-	SearchResultOriginCommunity SearchResultOrigin = "community"
-)
-
-// Valid indicates whether the value is a known member of the SearchResultOrigin enum.
-func (e SearchResultOrigin) Valid() bool {
-	switch e {
-	case SearchResultOriginCommunity:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SearchResultType.
-const (
-	SearchResultTypeGame      SearchResultType = "game"
-	SearchResultTypeHardware  SearchResultType = "hardware"
-	SearchResultTypePcListing SearchResultType = "pc_listing"
-)
-
-// Valid indicates whether the value is a known member of the SearchResultType enum.
-func (e SearchResultType) Valid() bool {
-	switch e {
-	case SearchResultTypeGame:
-		return true
-	case SearchResultTypeHardware:
-		return true
-	case SearchResultTypePcListing:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SharedEntryBoxCondition.
-const (
-	SharedEntryBoxConditionAcceptable SharedEntryBoxCondition = "acceptable"
-	SharedEntryBoxConditionGood       SharedEntryBoxCondition = "good"
-	SharedEntryBoxConditionMint       SharedEntryBoxCondition = "mint"
-	SharedEntryBoxConditionNearMint   SharedEntryBoxCondition = "near_mint"
-	SharedEntryBoxConditionPoor       SharedEntryBoxCondition = "poor"
-	SharedEntryBoxConditionVeryGood   SharedEntryBoxCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the SharedEntryBoxCondition enum.
-func (e SharedEntryBoxCondition) Valid() bool {
-	switch e {
-	case SharedEntryBoxConditionAcceptable:
-		return true
-	case SharedEntryBoxConditionGood:
-		return true
-	case SharedEntryBoxConditionMint:
-		return true
-	case SharedEntryBoxConditionNearMint:
-		return true
-	case SharedEntryBoxConditionPoor:
-		return true
-	case SharedEntryBoxConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SharedEntryItemCondition.
-const (
-	SharedEntryItemConditionAcceptable SharedEntryItemCondition = "acceptable"
-	SharedEntryItemConditionGood       SharedEntryItemCondition = "good"
-	SharedEntryItemConditionMint       SharedEntryItemCondition = "mint"
-	SharedEntryItemConditionNearMint   SharedEntryItemCondition = "near_mint"
-	SharedEntryItemConditionPoor       SharedEntryItemCondition = "poor"
-	SharedEntryItemConditionVeryGood   SharedEntryItemCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the SharedEntryItemCondition enum.
-func (e SharedEntryItemCondition) Valid() bool {
-	switch e {
-	case SharedEntryItemConditionAcceptable:
-		return true
-	case SharedEntryItemConditionGood:
-		return true
-	case SharedEntryItemConditionMint:
-		return true
-	case SharedEntryItemConditionNearMint:
-		return true
-	case SharedEntryItemConditionPoor:
-		return true
-	case SharedEntryItemConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SharedEntryItemType.
-const (
-	SharedEntryItemTypeAccessory SharedEntryItemType = "accessory"
-	SharedEntryItemTypeConsole   SharedEntryItemType = "console"
-	SharedEntryItemTypeGame      SharedEntryItemType = "game"
-)
-
-// Valid indicates whether the value is a known member of the SharedEntryItemType enum.
-func (e SharedEntryItemType) Valid() bool {
-	switch e {
-	case SharedEntryItemTypeAccessory:
-		return true
-	case SharedEntryItemTypeConsole:
-		return true
-	case SharedEntryItemTypeGame:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SharedEntryManualCondition.
-const (
-	SharedEntryManualConditionAcceptable SharedEntryManualCondition = "acceptable"
-	SharedEntryManualConditionGood       SharedEntryManualCondition = "good"
-	SharedEntryManualConditionMint       SharedEntryManualCondition = "mint"
-	SharedEntryManualConditionNearMint   SharedEntryManualCondition = "near_mint"
-	SharedEntryManualConditionPoor       SharedEntryManualCondition = "poor"
-	SharedEntryManualConditionVeryGood   SharedEntryManualCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the SharedEntryManualCondition enum.
-func (e SharedEntryManualCondition) Valid() bool {
-	switch e {
-	case SharedEntryManualConditionAcceptable:
-		return true
-	case SharedEntryManualConditionGood:
-		return true
-	case SharedEntryManualConditionMint:
-		return true
-	case SharedEntryManualConditionNearMint:
-		return true
-	case SharedEntryManualConditionPoor:
-		return true
-	case SharedEntryManualConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SharedEntryMediaType.
-const (
-	SharedEntryMediaTypeDigital  SharedEntryMediaType = "digital"
-	SharedEntryMediaTypePhysical SharedEntryMediaType = "physical"
-)
-
-// Valid indicates whether the value is a known member of the SharedEntryMediaType enum.
-func (e SharedEntryMediaType) Valid() bool {
-	switch e {
-	case SharedEntryMediaTypeDigital:
-		return true
-	case SharedEntryMediaTypePhysical:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SharedEntryPackaging.
-const (
-	SharedEntryPackagingCib    SharedEntryPackaging = "cib"
-	SharedEntryPackagingLoose  SharedEntryPackaging = "loose"
-	SharedEntryPackagingSealed SharedEntryPackaging = "sealed"
-)
-
-// Valid indicates whether the value is a known member of the SharedEntryPackaging enum.
-func (e SharedEntryPackaging) Valid() bool {
-	switch e {
-	case SharedEntryPackagingCib:
-		return true
-	case SharedEntryPackagingLoose:
-		return true
-	case SharedEntryPackagingSealed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SubmissionStatus.
-const (
-	SubmissionStatusApproved  SubmissionStatus = "approved"
-	SubmissionStatusCancelled SubmissionStatus = "cancelled"
-	SubmissionStatusPending   SubmissionStatus = "pending"
-	SubmissionStatusRejected  SubmissionStatus = "rejected"
-)
-
-// Valid indicates whether the value is a known member of the SubmissionStatus enum.
-func (e SubmissionStatus) Valid() bool {
-	switch e {
-	case SubmissionStatusApproved:
-		return true
-	case SubmissionStatusCancelled:
-		return true
-	case SubmissionStatusPending:
-		return true
-	case SubmissionStatusRejected:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for UpdateMeRequestLandingPage.
-const (
-	UpdateMeRequestLandingPageCollection UpdateMeRequestLandingPage = "collection"
-	UpdateMeRequestLandingPageExplore    UpdateMeRequestLandingPage = "explore"
-	UpdateMeRequestLandingPageFeed       UpdateMeRequestLandingPage = "feed"
-)
-
-// Valid indicates whether the value is a known member of the UpdateMeRequestLandingPage enum.
-func (e UpdateMeRequestLandingPage) Valid() bool {
-	switch e {
-	case UpdateMeRequestLandingPageCollection:
-		return true
-	case UpdateMeRequestLandingPageExplore:
-		return true
-	case UpdateMeRequestLandingPageFeed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for UpdateMeRequestProfileVisibility.
-const (
-	UpdateMeRequestProfileVisibilityListed   UpdateMeRequestProfileVisibility = "listed"
-	UpdateMeRequestProfileVisibilityPrivate  UpdateMeRequestProfileVisibility = "private"
-	UpdateMeRequestProfileVisibilityUnlisted UpdateMeRequestProfileVisibility = "unlisted"
-)
-
-// Valid indicates whether the value is a known member of the UpdateMeRequestProfileVisibility enum.
-func (e UpdateMeRequestProfileVisibility) Valid() bool {
-	switch e {
-	case UpdateMeRequestProfileVisibilityListed:
-		return true
-	case UpdateMeRequestProfileVisibilityPrivate:
-		return true
-	case UpdateMeRequestProfileVisibilityUnlisted:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for VerdictRequestAction.
-const (
-	ApproveExisting VerdictRequestAction = "approve_existing"
-	ApproveNew      VerdictRequestAction = "approve_new"
-	Reject          VerdictRequestAction = "reject"
-)
-
-// Valid indicates whether the value is a known member of the VerdictRequestAction enum.
-func (e VerdictRequestAction) Valid() bool {
-	switch e {
-	case ApproveExisting:
-		return true
-	case ApproveNew:
-		return true
-	case Reject:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ViewCreateVisibility.
-const (
-	ViewCreateVisibilityListed   ViewCreateVisibility = "listed"
-	ViewCreateVisibilityPrivate  ViewCreateVisibility = "private"
-	ViewCreateVisibilityUnlisted ViewCreateVisibility = "unlisted"
-)
-
-// Valid indicates whether the value is a known member of the ViewCreateVisibility enum.
-func (e ViewCreateVisibility) Valid() bool {
-	switch e {
-	case ViewCreateVisibilityListed:
-		return true
-	case ViewCreateVisibilityPrivate:
-		return true
-	case ViewCreateVisibilityUnlisted:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GetDashboardParamsItemType.
-const (
-	GetDashboardParamsItemTypeAccessory GetDashboardParamsItemType = "accessory"
-	GetDashboardParamsItemTypeConsole   GetDashboardParamsItemType = "console"
-	GetDashboardParamsItemTypeGame      GetDashboardParamsItemType = "game"
-)
-
-// Valid indicates whether the value is a known member of the GetDashboardParamsItemType enum.
-func (e GetDashboardParamsItemType) Valid() bool {
-	switch e {
-	case GetDashboardParamsItemTypeAccessory:
-		return true
-	case GetDashboardParamsItemTypeConsole:
-		return true
-	case GetDashboardParamsItemTypeGame:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GetDashboardParamsStatus.
-const (
-	GetDashboardParamsStatusBacklog   GetDashboardParamsStatus = "backlog"
-	GetDashboardParamsStatusBeaten    GetDashboardParamsStatus = "beaten"
-	GetDashboardParamsStatusCompleted GetDashboardParamsStatus = "completed"
-	GetDashboardParamsStatusDropped   GetDashboardParamsStatus = "dropped"
-	GetDashboardParamsStatusPlaying   GetDashboardParamsStatus = "playing"
-	GetDashboardParamsStatusShelved   GetDashboardParamsStatus = "shelved"
-)
-
-// Valid indicates whether the value is a known member of the GetDashboardParamsStatus enum.
-func (e GetDashboardParamsStatus) Valid() bool {
-	switch e {
-	case GetDashboardParamsStatusBacklog:
-		return true
-	case GetDashboardParamsStatusBeaten:
-		return true
-	case GetDashboardParamsStatusCompleted:
-		return true
-	case GetDashboardParamsStatusDropped:
-		return true
-	case GetDashboardParamsStatusPlaying:
-		return true
-	case GetDashboardParamsStatusShelved:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GetDashboardParamsPackaging.
-const (
-	GetDashboardParamsPackagingCib    GetDashboardParamsPackaging = "cib"
-	GetDashboardParamsPackagingLoose  GetDashboardParamsPackaging = "loose"
-	GetDashboardParamsPackagingSealed GetDashboardParamsPackaging = "sealed"
-)
-
-// Valid indicates whether the value is a known member of the GetDashboardParamsPackaging enum.
-func (e GetDashboardParamsPackaging) Valid() bool {
-	switch e {
-	case GetDashboardParamsPackagingCib:
-		return true
-	case GetDashboardParamsPackagingLoose:
-		return true
-	case GetDashboardParamsPackagingSealed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GetDashboardParamsItemCondition.
-const (
-	GetDashboardParamsItemConditionAcceptable GetDashboardParamsItemCondition = "acceptable"
-	GetDashboardParamsItemConditionGood       GetDashboardParamsItemCondition = "good"
-	GetDashboardParamsItemConditionMint       GetDashboardParamsItemCondition = "mint"
-	GetDashboardParamsItemConditionNearMint   GetDashboardParamsItemCondition = "near_mint"
-	GetDashboardParamsItemConditionPoor       GetDashboardParamsItemCondition = "poor"
-	GetDashboardParamsItemConditionVeryGood   GetDashboardParamsItemCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the GetDashboardParamsItemCondition enum.
-func (e GetDashboardParamsItemCondition) Valid() bool {
-	switch e {
-	case GetDashboardParamsItemConditionAcceptable:
-		return true
-	case GetDashboardParamsItemConditionGood:
-		return true
-	case GetDashboardParamsItemConditionMint:
-		return true
-	case GetDashboardParamsItemConditionNearMint:
-		return true
-	case GetDashboardParamsItemConditionPoor:
-		return true
-	case GetDashboardParamsItemConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ListEntriesParamsItemType.
-const (
-	ListEntriesParamsItemTypeAccessory ListEntriesParamsItemType = "accessory"
-	ListEntriesParamsItemTypeConsole   ListEntriesParamsItemType = "console"
-	ListEntriesParamsItemTypeGame      ListEntriesParamsItemType = "game"
-)
-
-// Valid indicates whether the value is a known member of the ListEntriesParamsItemType enum.
-func (e ListEntriesParamsItemType) Valid() bool {
-	switch e {
-	case ListEntriesParamsItemTypeAccessory:
-		return true
-	case ListEntriesParamsItemTypeConsole:
-		return true
-	case ListEntriesParamsItemTypeGame:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ListEntriesParamsStatus.
-const (
-	ListEntriesParamsStatusBacklog   ListEntriesParamsStatus = "backlog"
-	ListEntriesParamsStatusBeaten    ListEntriesParamsStatus = "beaten"
-	ListEntriesParamsStatusCompleted ListEntriesParamsStatus = "completed"
-	ListEntriesParamsStatusDropped   ListEntriesParamsStatus = "dropped"
-	ListEntriesParamsStatusPlaying   ListEntriesParamsStatus = "playing"
-	ListEntriesParamsStatusShelved   ListEntriesParamsStatus = "shelved"
-)
-
-// Valid indicates whether the value is a known member of the ListEntriesParamsStatus enum.
-func (e ListEntriesParamsStatus) Valid() bool {
-	switch e {
-	case ListEntriesParamsStatusBacklog:
-		return true
-	case ListEntriesParamsStatusBeaten:
-		return true
-	case ListEntriesParamsStatusCompleted:
-		return true
-	case ListEntriesParamsStatusDropped:
-		return true
-	case ListEntriesParamsStatusPlaying:
-		return true
-	case ListEntriesParamsStatusShelved:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ListEntriesParamsPackaging.
-const (
-	ListEntriesParamsPackagingCib    ListEntriesParamsPackaging = "cib"
-	ListEntriesParamsPackagingLoose  ListEntriesParamsPackaging = "loose"
-	ListEntriesParamsPackagingSealed ListEntriesParamsPackaging = "sealed"
-)
-
-// Valid indicates whether the value is a known member of the ListEntriesParamsPackaging enum.
-func (e ListEntriesParamsPackaging) Valid() bool {
-	switch e {
-	case ListEntriesParamsPackagingCib:
-		return true
-	case ListEntriesParamsPackagingLoose:
-		return true
-	case ListEntriesParamsPackagingSealed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ListEntriesParamsItemCondition.
-const (
-	ListEntriesParamsItemConditionAcceptable ListEntriesParamsItemCondition = "acceptable"
-	ListEntriesParamsItemConditionGood       ListEntriesParamsItemCondition = "good"
-	ListEntriesParamsItemConditionMint       ListEntriesParamsItemCondition = "mint"
-	ListEntriesParamsItemConditionNearMint   ListEntriesParamsItemCondition = "near_mint"
-	ListEntriesParamsItemConditionPoor       ListEntriesParamsItemCondition = "poor"
-	ListEntriesParamsItemConditionVeryGood   ListEntriesParamsItemCondition = "very_good"
-)
-
-// Valid indicates whether the value is a known member of the ListEntriesParamsItemCondition enum.
-func (e ListEntriesParamsItemCondition) Valid() bool {
-	switch e {
-	case ListEntriesParamsItemConditionAcceptable:
-		return true
-	case ListEntriesParamsItemConditionGood:
-		return true
-	case ListEntriesParamsItemConditionMint:
-		return true
-	case ListEntriesParamsItemConditionNearMint:
-		return true
-	case ListEntriesParamsItemConditionPoor:
-		return true
-	case ListEntriesParamsItemConditionVeryGood:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for ListEntriesParamsSort.
 const (
-	ListEntriesParamsSortBacklogRank ListEntriesParamsSort = "backlog_rank"
-	ListEntriesParamsSortCreatedAt   ListEntriesParamsSort = "created_at"
-	ListEntriesParamsSortName        ListEntriesParamsSort = "name"
-	ListEntriesParamsSortPaid        ListEntriesParamsSort = "paid"
-	ListEntriesParamsSortPurchasedAt ListEntriesParamsSort = "purchased_at"
-	ListEntriesParamsSortRating      ListEntriesParamsSort = "rating"
-	ListEntriesParamsSortReleaseDate ListEntriesParamsSort = "release_date"
-	ListEntriesParamsSortValue       ListEntriesParamsSort = "value"
+	BacklogRank ListEntriesParamsSort = "backlog_rank"
+	CreatedAt   ListEntriesParamsSort = "created_at"
+	Name        ListEntriesParamsSort = "name"
+	Paid        ListEntriesParamsSort = "paid"
+	PurchasedAt ListEntriesParamsSort = "purchased_at"
+	Rating      ListEntriesParamsSort = "rating"
+	ReleaseDate ListEntriesParamsSort = "release_date"
+	Value       ListEntriesParamsSort = "value"
 )
 
 // Valid indicates whether the value is a known member of the ListEntriesParamsSort enum.
 func (e ListEntriesParamsSort) Valid() bool {
 	switch e {
-	case ListEntriesParamsSortBacklogRank:
+	case BacklogRank:
 		return true
-	case ListEntriesParamsSortCreatedAt:
+	case CreatedAt:
 		return true
-	case ListEntriesParamsSortName:
+	case Name:
 		return true
-	case ListEntriesParamsSortPaid:
+	case Paid:
 		return true
-	case ListEntriesParamsSortPurchasedAt:
+	case PurchasedAt:
 		return true
-	case ListEntriesParamsSortRating:
+	case Rating:
 		return true
-	case ListEntriesParamsSortReleaseDate:
+	case ReleaseDate:
 		return true
-	case ListEntriesParamsSortValue:
+	case Value:
 		return true
 	default:
 		return false
@@ -1701,92 +140,14 @@ func (e GetFeedParamsTab) Valid() bool {
 	}
 }
 
-// Defines values for SearchCatalogParamsType.
-const (
-	SearchCatalogParamsTypeGame      SearchCatalogParamsType = "game"
-	SearchCatalogParamsTypeHardware  SearchCatalogParamsType = "hardware"
-	SearchCatalogParamsTypePcListing SearchCatalogParamsType = "pc_listing"
-)
-
-// Valid indicates whether the value is a known member of the SearchCatalogParamsType enum.
-func (e SearchCatalogParamsType) Valid() bool {
-	switch e {
-	case SearchCatalogParamsTypeGame:
-		return true
-	case SearchCatalogParamsTypeHardware:
-		return true
-	case SearchCatalogParamsTypePcListing:
-		return true
-	default:
-		return false
-	}
-}
-
-// AdminSubmission One queue row: the submission plus the live proposal from the entry join (display_name, item_type, platform_name, region, edition, first_release_date pre-fill the curation form; entries carry no variant - the single edition field is the idiom).
-type AdminSubmission struct {
-	// CoverUrl The entry's cover URL, live from the proposal join; prefills the curation cover field.
-	CoverUrl  *string   `json:"cover_url,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-
-	// Developers The entry's developer credit facts, live from the proposal join; prefill the curation form.
-	Developers       *[]string               `json:"developers,omitempty"`
-	DisplayName      string                  `json:"display_name"`
-	Edition          *string                 `json:"edition,omitempty"`
-	EntryId          openapi_types.UUID      `json:"entry_id"`
-	FirstReleaseDate *openapi_types.Date     `json:"first_release_date,omitempty"`
-	Id               openapi_types.UUID      `json:"id"`
-	ItemType         AdminSubmissionItemType `json:"item_type"`
-	PlatformName     *string                 `json:"platform_name,omitempty"`
-
-	// Publishers The entry's publisher credit facts, live from the proposal join; prefill the curation form.
-	Publishers *[]string             `json:"publishers,omitempty"`
-	Region     string                `json:"region"`
-	Status     AdminSubmissionStatus `json:"status"`
-	UpdatedAt  time.Time             `json:"updated_at"`
-	UserId     openapi_types.UUID    `json:"user_id"`
-}
-
-// AdminSubmissionItemType defines model for AdminSubmission.ItemType.
-type AdminSubmissionItemType string
-
-// AdminSubmissionStatus defines model for AdminSubmission.Status.
-type AdminSubmissionStatus string
-
 // AdminSubmissionsPage defines model for AdminSubmissionsPage.
-type AdminSubmissionsPage struct {
-	Submissions []AdminSubmission `json:"submissions"`
-
-	// TotalCount Full pending count, beyond this page.
-	TotalCount int64 `json:"total_count"`
-}
+type AdminSubmissionsPage = externalRef0.AdminSubmissionsPage
 
 // BulkUpdateRequest Delta applied across the caller's own entries among entry_ids (foreign or unknown ids are silently not counted, same ownership-filtering posture as tag attachment). At least one of add_tag_ids / remove_tag_ids / status / storage_location must be present, else 400. storage_location's clearing rule is the OPPOSITE of the full-replacement update's: here an ABSENT storage_location leaves the field untouched, and an explicit empty string clears it.
-type BulkUpdateRequest struct {
-	AddTagIds    *[]openapi_types.UUID    `json:"add_tag_ids,omitempty"`
-	EntryIds     []openapi_types.UUID     `json:"entry_ids"`
-	RemoveTagIds *[]openapi_types.UUID    `json:"remove_tag_ids,omitempty"`
-	Status       *BulkUpdateRequestStatus `json:"status,omitempty"`
-
-	// StorageLocation Empty string clears the field; an absent field leaves it untouched (see the operation description).
-	StorageLocation *string `json:"storage_location,omitempty"`
-}
-
-// BulkUpdateRequestStatus defines model for BulkUpdateRequest.Status.
-type BulkUpdateRequestStatus string
+type BulkUpdateRequest = externalRef0.BulkUpdateRequest
 
 // BulkUpdateResult defines model for BulkUpdateResult.
-type BulkUpdateResult struct {
-	// UpdatedCount Count of the caller's own entries among entry_ids, whether or not any targeted field actually changed.
-	UpdatedCount int `json:"updated_count"`
-}
-
-// CatalogPlatform One platform-catalog row with its known aliases.
-type CatalogPlatform struct {
-	// Aliases Alternate spellings and abbreviations (compare case-insensitively).
-	Aliases []string `json:"aliases"`
-	IgdbId  int64    `json:"igdb_id"`
-	Name    string   `json:"name"`
-}
+type BulkUpdateResult = externalRef0.BulkUpdateResult
 
 // Comment A live comment; tombstones never serialize. author_id is null for a purge-anonymized comment (the row survives with its body; only the account link is severed) and a uuid otherwise - the key is always present, only the value varies. author is the bff's batched ProfileCard hydration of author_id (the same composition FeedItem.actor uses): present on a GET list page when the author resolves, absent for an anonymized comment (there is no id left to hydrate) or when the hydration batch itself fails open; never populated on the POST response (a verbatim create relay).
 type Comment struct {
@@ -1805,422 +166,34 @@ type CommentList struct {
 	NextCursor *string   `json:"next_cursor,omitempty"`
 }
 
-// CommunityMeta Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present).
-type CommunityMeta struct {
-	// CoverUrl User-supplied cover image URL (https, never fetched server-side; the client renders it with a broken-image fallback). Served as the product cover when no provider cover is present; retained after promotion as gap-fill.
-	CoverUrl *string `json:"cover_url,omitempty"`
-
-	// Developers Curated developer company names, one per element; served into entry credit snapshots when the provider block carries no developer credits (per-field gap-fill).
-	Developers       *[]string           `json:"developers,omitempty"`
-	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
-	PlatformName     *string             `json:"platform_name,omitempty"`
-
-	// Publishers Curated publisher company names; same gap-fill posture as developers.
-	Publishers *[]string `json:"publishers,omitempty"`
-
-	// Region Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free, korea, brazil, china).
-	Region *string `json:"region,omitempty"`
-}
-
-// CommunityProductCreate defines model for CommunityProductCreate.
-type CommunityProductCreate struct {
-	// CoverUrl Optional https cover image URL (validated by shape only, never fetched).
-	CoverUrl *string `json:"cover_url,omitempty"`
-
-	// Developers Curated developer company names, one per element.
-	Developers *[]string `json:"developers,omitempty"`
-
-	// Edition The entry idiom's single "Edition or variant" note.
-	Edition          *string             `json:"edition,omitempty"`
-	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
-	Name             string              `json:"name"`
-	PlatformName     *string             `json:"platform_name,omitempty"`
-
-	// Publishers Curated publisher company names, one per element.
-	Publishers *[]string                  `json:"publishers,omitempty"`
-	Region     *string                    `json:"region,omitempty"`
-	Type       CommunityProductCreateType `json:"type"`
-}
-
-// CommunityProductCreateType defines model for CommunityProductCreate.Type.
-type CommunityProductCreateType string
-
 // CommunityProductSpec The curated fields for approve_new; mirrors the enrichment mint request (single edition field, no variant).
-type CommunityProductSpec struct {
-	// CoverUrl Optional https cover image URL for the minted community product.
-	CoverUrl *string `json:"cover_url,omitempty"`
-
-	// Developers Curated developer company names, one per element.
-	Developers       *[]string           `json:"developers,omitempty"`
-	Edition          *string             `json:"edition,omitempty"`
-	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
-	Name             string              `json:"name"`
-	PlatformName     *string             `json:"platform_name,omitempty"`
-
-	// Publishers Curated publisher company names, one per element.
-	Publishers *[]string                `json:"publishers,omitempty"`
-	Region     *string                  `json:"region,omitempty"`
-	Type       CommunityProductSpecType `json:"type"`
-}
-
-// CommunityProductSpecType defines model for CommunityProductSpec.Type.
-type CommunityProductSpecType string
+type CommunityProductSpec = externalRef0.CommunityProductSpec
 
 // CommunityProductsPage defines model for CommunityProductsPage.
-type CommunityProductsPage struct {
-	Products []Product `json:"products"`
-
-	// TotalCount Full count of community products, beyond this page.
-	TotalCount int64 `json:"total_count"`
-}
-
-// CompanyCredit defines model for CompanyCredit.
-type CompanyCredit struct {
-	Developer bool   `json:"developer"`
-	Name      string `json:"name"`
-	Publisher bool   `json:"publisher"`
-}
+type CommunityProductsPage = externalRef0.CommunityProductsPage
 
 // CreateCommentRequest defines model for CreateCommentRequest.
 type CreateCommentRequest struct {
 	Body string `json:"body"`
 }
 
-// CurrencySpend defines model for CurrencySpend.
-type CurrencySpend struct {
-	Currency   string `json:"currency"`
-	TotalCents int64  `json:"total_cents"`
-}
-
 // Dashboard defines model for Dashboard.
-type Dashboard struct {
-	ByItemType map[string]int   `json:"by_item_type"`
-	ByPlatform []PlatformCount  `json:"by_platform"`
-	ByStatus   map[string]int   `json:"by_status"`
-	Pricing    DashboardPricing `json:"pricing"`
-
-	// Spend Sum of price_paid_cents per currency, over entries that record a price.
-	Spend        []CurrencySpend `json:"spend"`
-	TotalEntries int             `json:"total_entries"`
-}
-
-// DashboardPricing defines model for DashboardPricing.
-type DashboardPricing struct {
-	// Available False when enrichment was unreachable; total_value_cents is then absent.
-	Available bool `json:"available"`
-
-	// ExcludedEntries Entries with pricing_mode disabled.
-	ExcludedEntries int    `json:"excluded_entries"`
-	PricedEntries   int    `json:"priced_entries"`
-	TotalValueCents *int64 `json:"total_value_cents,omitempty"`
-
-	// UnpricedEntries Entries whose effective product is unmatched or lacks a price for their packaging.
-	UnpricedEntries int `json:"unpriced_entries"`
-}
+type Dashboard = externalRef0.Dashboard
 
 // DismissCandidateRequest defines model for DismissCandidateRequest.
-type DismissCandidateRequest struct {
-	Provider   DismissCandidateRequestProvider `json:"provider"`
-	ProviderId int64                           `json:"provider_id"`
-}
-
-// DismissCandidateRequestProvider defines model for DismissCandidateRequest.Provider.
-type DismissCandidateRequestProvider string
+type DismissCandidateRequest = externalRef0.DismissCandidateRequest
 
 // Entry One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries the picked or normalized identity - name-only for escape-hatch free text - when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; (or, with pricing_mode custom, taken directly from custom_value_cents, packaging-independent); it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable.
-type Entry struct {
-	// BacklogRank Present exactly while status is backlog; server-generated.
-	BacklogRank  *string            `json:"backlog_rank,omitempty"`
-	BoxCondition *EntryBoxCondition `json:"box_condition,omitempty"`
-
-	// CoverUrl Cover art URL. For product-backed entries it is snapshotted from the product at creation (and refreshed on adoption). Custom entries may set their own (https, shape-validated). Absent on hardware and products without art (render a placeholder).
-	CoverUrl  *string   `json:"cover_url,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	Currency  string    `json:"currency"`
-
-	// CustomValueCents The user-set market value (USD cents). With pricing_mode custom it IS the entry's value; under any other mode it persists as "last custom price" memory.
-	CustomValueCents *int64 `json:"custom_value_cents,omitempty"`
-
-	// CustomValueEnteredCents The custom price exactly as the user typed it, in custom_value_entered_currency minor units (major units x 100, including zero-decimal currencies). Display metadata only: no aggregation reads it; custom_value_cents remains the USD value used everywhere.
-	CustomValueEnteredCents *int64 `json:"custom_value_entered_cents,omitempty"`
-
-	// CustomValueEnteredCurrency Currency of custom_value_entered_cents.
-	CustomValueEnteredCurrency *string `json:"custom_value_entered_currency,omitempty"`
-
-	// CustomValueSetAt Server-managed: stamped when custom_value_cents is first set or changes value, untouched otherwise. Read-only.
-	CustomValueSetAt *time.Time `json:"custom_value_set_at,omitempty"`
-
-	// Developers Developer company names snapshotted for the entry: IGDB credits where the product carries them, community curated lists as gap-fill, or the user's own facts on a custom entry. Absent when no credits are known.
-	Developers  *[]string `json:"developers,omitempty"`
-	DisplayName string    `json:"display_name"`
-
-	// Edition Per-copy variant note ("first print (glitched rev)", "black edition"): the idiom for variants of cataloged items is an entry on the base product with the variant recorded here.
-	Edition          *string             `json:"edition,omitempty"`
-	ExternalRef      *string             `json:"external_ref,omitempty"`
-	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
-	HasBox           bool                `json:"has_box"`
-	HasManual        bool                `json:"has_manual"`
-	Id               openapi_types.UUID  `json:"id"`
-
-	// IgdbGameId The recommendation identity: snapshotted from the entry's own product, or from the proxy target on custom game entries (owning a reproduction of X means playing X).
-	IgdbGameId    *int64              `json:"igdb_game_id,omitempty"`
-	ItemCondition *EntryItemCondition `json:"item_condition,omitempty"`
-	ItemType      EntryItemType       `json:"item_type"`
-
-	// LocalizedCoverUrl Region-picked box art URL (server-derived).
-	LocalizedCoverUrl *string `json:"localized_cover_url,omitempty"`
-
-	// LocalizedName Region-picked native-script title (server-derived from the entry's region; absent when the region has none).
-	LocalizedName *string `json:"localized_name,omitempty"`
-
-	// LocalizedNameTranslit Latin transliteration of localized_name's title (server-derived).
-	LocalizedNameTranslit *string               `json:"localized_name_translit,omitempty"`
-	ManualCondition       *EntryManualCondition `json:"manual_condition,omitempty"`
-	MediaType             EntryMediaType        `json:"media_type"`
-	Notes                 *string               `json:"notes,omitempty"`
-	Packaging             EntryPackaging        `json:"packaging"`
-	Pinned                bool                  `json:"pinned"`
-
-	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
-	Platform         *EntryPlatform      `json:"platform,omitempty"`
-	PricePaidCents   *int64              `json:"price_paid_cents,omitempty"`
-	PricingMode      EntryPricingMode    `json:"pricing_mode"`
-	PricingProductId *openapi_types.UUID `json:"pricing_product_id,omitempty"`
-
-	// ProductId Absent on custom entries.
-	ProductId *openapi_types.UUID `json:"product_id,omitempty"`
-
-	// Publishers Publisher company names; same sourcing as developers.
-	Publishers    *[]string           `json:"publishers,omitempty"`
-	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
-	PurchasedFrom *string             `json:"purchased_from,omitempty"`
-	Rating        *int                `json:"rating,omitempty"`
-	Region        string              `json:"region"`
-
-	// RegionMismatchAckAt Null until the owner dismisses the region-mismatch banner; cleared whenever region or product changes.
-	RegionMismatchAckAt *time.Time  `json:"region_mismatch_ack_at,omitempty"`
-	Source              EntrySource `json:"source"`
-	Status              EntryStatus `json:"status"`
-	StorageLocation     *string     `json:"storage_location,omitempty"`
-	Tags                []TagRef    `json:"tags"`
-	UpdatedAt           time.Time   `json:"updated_at"`
-	ValueCents          *int64      `json:"value_cents,omitempty"`
-}
-
-// EntryBoxCondition defines model for Entry.BoxCondition.
-type EntryBoxCondition string
-
-// EntryItemCondition defines model for Entry.ItemCondition.
-type EntryItemCondition string
-
-// EntryItemType defines model for Entry.ItemType.
-type EntryItemType string
-
-// EntryManualCondition defines model for Entry.ManualCondition.
-type EntryManualCondition string
-
-// EntryMediaType defines model for Entry.MediaType.
-type EntryMediaType string
-
-// EntryPackaging defines model for Entry.Packaging.
-type EntryPackaging string
-
-// EntryPricingMode defines model for Entry.PricingMode.
-type EntryPricingMode string
-
-// EntrySource defines model for Entry.Source.
-type EntrySource string
-
-// EntryStatus defines model for Entry.Status.
-type EntryStatus string
+type Entry = externalRef0.Entry
 
 // EntryCreate Product-backed: product_id comes from a prior enrichment resolve and the catalog fields are snapshotted server-side (display_name/item_type/platform_name/first_release_date must NOT be sent). Custom (no product_id): display_name and item_type are required, platform_name and first_release_date optional; pricing_mode defaults to disabled and must not be auto. media_type accepts only physical (the column already allows digital: the API widens when platform sync arrives). source is server-set manual. pricing_product_id is required when pricing_mode is proxy; box_condition requires has_box and manual_condition requires has_manual. custom_value_cents is required when pricing_mode is custom.
-type EntryCreate struct {
-	BoxCondition *EntryCreateBoxCondition `json:"box_condition,omitempty"`
-
-	// CoverUrl Custom entries only; an https cover image URL (validated by shape, never fetched).
-	CoverUrl                   *string `json:"cover_url,omitempty"`
-	Currency                   *string `json:"currency,omitempty"`
-	CustomValueCents           *int64  `json:"custom_value_cents,omitempty"`
-	CustomValueEnteredCents    *int64  `json:"custom_value_entered_cents,omitempty"`
-	CustomValueEnteredCurrency *string `json:"custom_value_entered_currency,omitempty"`
-
-	// Developers Custom entries only: developer company names, one per element. Ignored on product-backed creation, where the snapshot derives credits from the product.
-	Developers *[]string `json:"developers,omitempty"`
-
-	// DisplayName Custom entries only (required there).
-	DisplayName *string `json:"display_name,omitempty"`
-
-	// Edition Per-copy variant note; the idiom for variants of cataloged items.
-	Edition *string `json:"edition,omitempty"`
-
-	// FirstReleaseDate Custom entries only.
-	FirstReleaseDate *openapi_types.Date       `json:"first_release_date,omitempty"`
-	HasBox           *bool                     `json:"has_box,omitempty"`
-	HasManual        *bool                     `json:"has_manual,omitempty"`
-	ItemCondition    *EntryCreateItemCondition `json:"item_condition,omitempty"`
-
-	// ItemType Custom entries only (required there).
-	ItemType        *EntryCreateItemType        `json:"item_type,omitempty"`
-	ManualCondition *EntryCreateManualCondition `json:"manual_condition,omitempty"`
-
-	// MatchProvenance Whose choice the matched product is. Send user only when the add flow's manual match picked the price listing; automated repoints (region edits, the entry rematch) never touch user rows. Not accepted on update - the server stamps user when the narrow product_id re-match arm fires.
-	MatchProvenance *EntryCreateMatchProvenance `json:"match_provenance,omitempty"`
-	MediaType       *EntryCreateMediaType       `json:"media_type,omitempty"`
-	Notes           *string                     `json:"notes,omitempty"`
-	Packaging       EntryCreatePackaging        `json:"packaging"`
-	Pinned          *bool                       `json:"pinned,omitempty"`
-
-	// PlatformIgdbId Custom entries only; the canonical platform id from the picker (surfaces the entry in the platform filter).
-	PlatformIgdbId *int64 `json:"platform_igdb_id,omitempty"`
-
-	// PlatformName Custom entries only.
-	PlatformName     *string                 `json:"platform_name,omitempty"`
-	PricePaidCents   *int64                  `json:"price_paid_cents,omitempty"`
-	PricingMode      *EntryCreatePricingMode `json:"pricing_mode,omitempty"`
-	PricingProductId *openapi_types.UUID     `json:"pricing_product_id,omitempty"`
-
-	// ProductId Omit for a custom (off-catalog) entry.
-	ProductId *openapi_types.UUID `json:"product_id,omitempty"`
-
-	// Publishers Custom entries only; publisher company names, one per element.
-	Publishers    *[]string           `json:"publishers,omitempty"`
-	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
-	PurchasedFrom *string             `json:"purchased_from,omitempty"`
-	Rating        *int                `json:"rating,omitempty"`
-
-	// Region Entry region. Known values ntsc_u, ntsc_j, pal, region_free, korea, brazil and china are first-class: labeled in the UI, filterable, normalize-lever promotion targets, with release-date chains, availability rows, and localized display snapshots per region (ntsc_u and region_free render the canonical presentation by design). korea, brazil and china have no PriceCharting axis, so they price from base listings as their deliberate proxy. Any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set.
-	Region          string                `json:"region"`
-	Status          *EntryCreateStatus    `json:"status,omitempty"`
-	StorageLocation *string               `json:"storage_location,omitempty"`
-	TagIds          *[]openapi_types.UUID `json:"tag_ids,omitempty"`
-}
-
-// EntryCreateBoxCondition defines model for EntryCreate.BoxCondition.
-type EntryCreateBoxCondition string
-
-// EntryCreateItemCondition defines model for EntryCreate.ItemCondition.
-type EntryCreateItemCondition string
-
-// EntryCreateItemType Custom entries only (required there).
-type EntryCreateItemType string
-
-// EntryCreateManualCondition defines model for EntryCreate.ManualCondition.
-type EntryCreateManualCondition string
-
-// EntryCreateMatchProvenance Whose choice the matched product is. Send user only when the add flow's manual match picked the price listing; automated repoints (region edits, the entry rematch) never touch user rows. Not accepted on update - the server stamps user when the narrow product_id re-match arm fires.
-type EntryCreateMatchProvenance string
-
-// EntryCreateMediaType defines model for EntryCreate.MediaType.
-type EntryCreateMediaType string
-
-// EntryCreatePackaging defines model for EntryCreate.Packaging.
-type EntryCreatePackaging string
-
-// EntryCreatePricingMode defines model for EntryCreate.PricingMode.
-type EntryCreatePricingMode string
-
-// EntryCreateStatus defines model for EntryCreate.Status.
-type EntryCreateStatus string
-
-// EntryGroup defines model for EntryGroup.
-type EntryGroup struct {
-	Entries []Entry `json:"entries"`
-	Key     string  `json:"key"`
-	Label   string  `json:"label"`
-}
+type EntryCreate = externalRef0.EntryCreate
 
 // EntryList One page of the sorted, filtered sequence. Exactly one of entries/groups is present (groups when group_by was requested, partitioning this page only).
-type EntryList struct {
-	Entries *[]Entry      `json:"entries,omitempty"`
-	Groups  *[]EntryGroup `json:"groups,omitempty"`
-
-	// PricingAvailable False when enrichment was unreachable; every value_cents is null.
-	PricingAvailable bool `json:"pricing_available"`
-
-	// TotalCount Size of the full filtered set, before pagination.
-	TotalCount int `json:"total_count"`
-}
-
-// EntryPlatform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
-type EntryPlatform struct {
-	// IgdbPlatformId Absent on name-only custom entries.
-	IgdbPlatformId *int64 `json:"igdb_platform_id,omitempty"`
-	Name           string `json:"name"`
-}
+type EntryList = externalRef0.EntryList
 
 // EntryUpdate Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. That re-match stamps match_provenance=user; automated region repoints only ever run on match_provenance=auto entries. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
-type EntryUpdate struct {
-	BoxCondition *EntryUpdateBoxCondition `json:"box_condition,omitempty"`
-
-	// CoverUrl Custom entries only; an https cover image URL (validated by shape, never fetched).
-	CoverUrl                   *string `json:"cover_url,omitempty"`
-	Currency                   *string `json:"currency,omitempty"`
-	CustomValueCents           *int64  `json:"custom_value_cents,omitempty"`
-	CustomValueEnteredCents    *int64  `json:"custom_value_entered_cents,omitempty"`
-	CustomValueEnteredCurrency *string `json:"custom_value_entered_currency,omitempty"`
-
-	// Developers Custom entries only; developer company names, one per element (full replacement).
-	Developers *[]string `json:"developers,omitempty"`
-
-	// DisplayName Custom entries only (required there).
-	DisplayName *string `json:"display_name,omitempty"`
-
-	// Edition Per-copy variant note; the idiom for variants of cataloged items.
-	Edition *string `json:"edition,omitempty"`
-
-	// FirstReleaseDate Custom entries only.
-	FirstReleaseDate *openapi_types.Date         `json:"first_release_date,omitempty"`
-	HasBox           *bool                       `json:"has_box,omitempty"`
-	HasManual        *bool                       `json:"has_manual,omitempty"`
-	ItemCondition    *EntryUpdateItemCondition   `json:"item_condition,omitempty"`
-	ManualCondition  *EntryUpdateManualCondition `json:"manual_condition,omitempty"`
-	Notes            *string                     `json:"notes,omitempty"`
-	Packaging        EntryUpdatePackaging        `json:"packaging"`
-	Pinned           bool                        `json:"pinned"`
-
-	// PlatformIgdbId Custom entries only; the canonical platform id from the picker.
-	PlatformIgdbId *int64 `json:"platform_igdb_id,omitempty"`
-
-	// PlatformName Custom entries only.
-	PlatformName     *string                `json:"platform_name,omitempty"`
-	PricePaidCents   *int64                 `json:"price_paid_cents,omitempty"`
-	PricingMode      EntryUpdatePricingMode `json:"pricing_mode"`
-	PricingProductId *openapi_types.UUID    `json:"pricing_product_id,omitempty"`
-
-	// ProductId Narrow re-match. Accepted only when the entry is product-backed with pricing_mode auto, its current product is a game with no price mapping, and the new product is a game of the same family (same igdb game and platform); the same id as the entry already has is a no-op. Anything else answers 400 code invalid_product_change; enrichment unreachable answers 502 code enrichment_unavailable and leaves the entry unchanged. Snapshotted display fields stay as they are.
-	ProductId *openapi_types.UUID `json:"product_id,omitempty"`
-
-	// Publishers Custom entries only; publisher company names, one per element (full replacement).
-	Publishers    *[]string           `json:"publishers,omitempty"`
-	PurchasedAt   *openapi_types.Date `json:"purchased_at,omitempty"`
-	PurchasedFrom *string             `json:"purchased_from,omitempty"`
-	Rating        *int                `json:"rating,omitempty"`
-
-	// Region Entry region. Known values ntsc_u, ntsc_j, pal, region_free, korea, brazil and china are first-class: labeled in the UI, filterable, normalize-lever promotion targets, with release-date chains, availability rows, and localized display snapshots per region (ntsc_u and region_free render the canonical presentation by design). korea, brazil and china have no PriceCharting axis, so they price from base listings as their deliberate proxy. Any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set. On an auto-provenance game entry, a region change repoints the entry to the sibling catalog product whose listing prices that region; snapshotted display fields re-derive from it.
-	Region          string                `json:"region"`
-	Status          EntryUpdateStatus     `json:"status"`
-	StorageLocation *string               `json:"storage_location,omitempty"`
-	TagIds          *[]openapi_types.UUID `json:"tag_ids,omitempty"`
-}
-
-// EntryUpdateBoxCondition defines model for EntryUpdate.BoxCondition.
-type EntryUpdateBoxCondition string
-
-// EntryUpdateItemCondition defines model for EntryUpdate.ItemCondition.
-type EntryUpdateItemCondition string
-
-// EntryUpdateManualCondition defines model for EntryUpdate.ManualCondition.
-type EntryUpdateManualCondition string
-
-// EntryUpdatePackaging defines model for EntryUpdate.Packaging.
-type EntryUpdatePackaging string
-
-// EntryUpdatePricingMode defines model for EntryUpdate.PricingMode.
-type EntryUpdatePricingMode string
-
-// EntryUpdateStatus defines model for EntryUpdate.Status.
-type EntryUpdateStatus string
+type EntryUpdate = externalRef0.EntryUpdate
 
 // ExplorePage total_count is never sent: top is a fixed leaderboard with no deeper page to count, and recent supersedes it with next_offset (kept in the shape, never populated, for forward compatibility only).
 type ExplorePage struct {
@@ -2231,16 +204,7 @@ type ExplorePage struct {
 }
 
 // FXRates defines model for FXRates.
-type FXRates struct {
-	// Base Always USD.
-	Base string `json:"base"`
-
-	// Date Upstream snapshot date (YYYY-MM-DD).
-	Date string `json:"date"`
-
-	// Rates Target-units-per-USD by ISO 4217 code; USD omitted.
-	Rates map[string]float64 `json:"rates"`
-}
+type FXRates = externalRef0.FXRates
 
 // FeedItem One activity-feed row after the fill loop hydrates and gates it. actor always attaches (actions are signed, any visibility); shelf is present only for the three shelf verbs (liked_shelf, commented_shelf, published_shelf) whose object cleared the tab's gating rule; followed_user is present only for a surviving followed_user row and carries the followee's card; comment_excerpt is present only for a surviving commented_shelf row.
 type FeedItem struct {
@@ -2254,12 +218,9 @@ type FeedItem struct {
 	Id           openapi_types.UUID `json:"id"`
 
 	// Shelf A shelf card as shown in a profile's shelf list, an activity feed excerpt, or an Explore grid. owner is embedded so a card renders without a second round trip; like_count/comment_count/ viewer_likes are present exactly when the page's social composition succeeded (all three absent together when the page fell back to social_available: false).
-	Shelf *ShelfCard   `json:"shelf,omitempty"`
-	Verb  FeedItemVerb `json:"verb"`
+	Shelf *ShelfCard                `json:"shelf,omitempty"`
+	Verb  externalRef0.ActivityVerb `json:"verb"`
 }
-
-// FeedItemVerb defines model for FeedItem.Verb.
-type FeedItemVerb string
 
 // FeedPage defines model for FeedPage.
 type FeedPage struct {
@@ -2268,191 +229,38 @@ type FeedPage struct {
 }
 
 // Identities defines model for Identities.
-type Identities struct {
-	Identities []Identity `json:"identities"`
-}
-
-// Identity defines model for Identity.
-type Identity struct {
-	CreatedAt time.Time `json:"created_at"`
-
-	// Email Informational; the email this login last asserted.
-	Email    *string            `json:"email,omitempty"`
-	Id       openapi_types.UUID `json:"id"`
-	Provider string             `json:"provider"`
-}
-
-// IgdbMeta Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
-type IgdbMeta struct {
-	Companies []CompanyCredit `json:"companies"`
-	CoverUrl  *string         `json:"cover_url,omitempty"`
-	FetchedAt time.Time       `json:"fetched_at"`
-
-	// FirstReleaseDate Earliest date for the product's platform; the game-level first release when IGDB lists no dated rows for the platform.
-	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
-	Franchises       []string            `json:"franchises"`
-	GameId           int64               `json:"game_id"`
-	Genres           []string            `json:"genres"`
-
-	// Localizations Per-region presentations; absent both on projections predating the feature and on games with no localizations at all (an empty slice is omitted rather than sent).
-	Localizations *[]Localization `json:"localizations,omitempty"`
-	Name          string          `json:"name"`
-
-	// ReleaseDates Per-region release dates for the product's platform, the earliest concrete date per region. Region values are canonical IGDB names (europe, north_america, australia, new_zealand, japan, china, asia, worldwide, korea, brazil). JP twin platforms fold into their sibling (SNES/Super Famicom, NES/Famicom).
-	ReleaseDates *[]ReleaseDate `json:"release_dates,omitempty"`
-	SimilarGames []int64        `json:"similar_games"`
-	Themes       []string       `json:"themes"`
-}
-
-// Localization One region's presentation of the game, merged from IGDB game_localizations and tagged alternative names. region is an IGDB region identifier served verbatim (ja-JP, EU, ko-KR, zh-CN, zh-TW, pt-BR; open-world - new identifiers pass through). name is the native-script title, translit its latin transliteration, cover_url the region's own box art; each is independently optional (rows are sparse - readers fall back per field).
-type Localization struct {
-	CoverUrl *string `json:"cover_url,omitempty"`
-	Name     *string `json:"name,omitempty"`
-	Region   string  `json:"region"`
-	Translit *string `json:"translit,omitempty"`
-}
+type Identities = externalRef0.Identities
 
 // MappingRequest defines model for MappingRequest.
-type MappingRequest struct {
-	// PcProductId Null clears the mapping (the product becomes unmatched and held).
-	PcProductId *int64 `json:"pc_product_id"`
-}
+type MappingRequest = externalRef0.MappingRequest
 
 // Me Browser-facing projection of the user service's User. Timestamps are intentionally omitted; add fields only when the SPA has a concrete use for them.
 type Me struct {
-	AvatarUrl *string            `json:"avatar_url,omitempty"`
-	Email     string             `json:"email"`
-	Handle    string             `json:"handle"`
-	Id        openapi_types.UUID `json:"id"`
+	AvatarUrl *string             `json:"avatar_url,omitempty"`
+	Email     string              `json:"email"`
+	Handle    externalRef0.Handle `json:"handle"`
+	Id        openapi_types.UUID  `json:"id"`
 
 	// LandingPage Where the app opens after sign-in.
-	LandingPage MeLandingPage `json:"landing_page"`
+	LandingPage externalRef0.LandingPage `json:"landing_page"`
 
 	// PreferredCurrency Display currency for market values; USD until set.
-	PreferredCurrency string              `json:"preferred_currency"`
-	ProfileVisibility MeProfileVisibility `json:"profile_visibility"`
-	Roles             []string            `json:"roles"`
+	PreferredCurrency externalRef0.CurrencyCode `json:"preferred_currency"`
+	ProfileVisibility externalRef0.Visibility   `json:"profile_visibility"`
+	Roles             []externalRef0.Role       `json:"roles"`
 }
 
-// MeLandingPage Where the app opens after sign-in.
-type MeLandingPage string
-
-// MeProfileVisibility defines model for Me.ProfileVisibility.
-type MeProfileVisibility string
-
-// NormalizeCommunityRegionsResult defines model for NormalizeCommunityRegionsResult.
-type NormalizeCommunityRegionsResult struct {
-	Normalized int `json:"normalized"`
-	Scanned    int `json:"scanned"`
-	Skipped    int `json:"skipped"`
-}
-
-// NormalizePlatformsResult defines model for NormalizePlatformsResult.
-type NormalizePlatformsResult struct {
-	Normalized int `json:"normalized"`
-	Scanned    int `json:"scanned"`
-	Skipped    int `json:"skipped"`
-}
-
-// NormalizeRegionsResult defines model for NormalizeRegionsResult.
-type NormalizeRegionsResult struct {
-	Normalized int `json:"normalized"`
-	Scanned    int `json:"scanned"`
-	Skipped    int `json:"skipped"`
-}
+// NormalizeResult defines model for NormalizeResult.
+type NormalizeResult = externalRef0.NormalizeResult
 
 // PlatformCatalog defines model for PlatformCatalog.
-type PlatformCatalog struct {
-	Platforms []CatalogPlatform `json:"platforms"`
-}
-
-// PlatformCount defines model for PlatformCount.
-type PlatformCount struct {
-	Count int    `json:"count"`
-	Name  string `json:"name"`
-}
-
-// PlatformRef defines model for PlatformRef.
-type PlatformRef struct {
-	IgdbPlatformId int64 `json:"igdb_platform_id"`
-
-	// LogoUrl IGDB platform logo; the display fallback for products without cover art.
-	LogoUrl *string `json:"logo_url,omitempty"`
-	Name    string  `json:"name"`
-
-	// ReleaseRegions Distinct canonical IGDB release regions for this game on this platform (japan, north_america, europe, ...), ordered by that region's earliest release date on the platform (dateless rows last, then alphabetical). Platform-exact: JP twin platforms are NOT folded here (a Famicom row stays on Famicom), unlike the product projection's date fold - the physical release is platform-specific. Populated on game search results only; absent on product payloads and hardware results.
-	ReleaseRegions *[]PlatformRefReleaseRegions `json:"release_regions,omitempty"`
-}
-
-// PlatformRefReleaseRegions defines model for PlatformRef.ReleaseRegions.
-type PlatformRefReleaseRegions string
-
-// PricechartingMeta The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
-type PricechartingMeta struct {
-	AsOf            time.Time `json:"as_of"`
-	CibCents        *int64    `json:"cib_cents,omitempty"`
-	ConsoleName     string    `json:"console_name"`
-	LooseCents      *int64    `json:"loose_cents,omitempty"`
-	MatchConfidence float64   `json:"match_confidence"`
-	NewCents        *int64    `json:"new_cents,omitempty"`
-	PcName          string    `json:"pc_name"`
-	PcProductId     int64     `json:"pc_product_id"`
-	Verified        bool      `json:"verified"`
-}
-
-// Problem defines model for Problem.
-type Problem struct {
-	Code     *string `json:"code,omitempty"`
-	Detail   *string `json:"detail,omitempty"`
-	Instance *string `json:"instance,omitempty"`
-	Status   int     `json:"status"`
-	Title    string  `json:"title"`
-	Type     string  `json:"type"`
-}
+type PlatformCatalog = externalRef0.PlatformCatalog
 
 // Product defines model for Product.
-type Product struct {
-	// Community Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present).
-	Community *CommunityMeta     `json:"community,omitempty"`
-	CreatedAt time.Time          `json:"created_at"`
-	Edition   *string            `json:"edition,omitempty"`
-	Id        openapi_types.UUID `json:"id"`
-
-	// Igdb Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
-	Igdb *IgdbMeta `json:"igdb,omitempty"`
-
-	// MatchHold Present true when an admin clear holds this product's mapping against a future automated match (resolve, or the entry-side re-match).
-	MatchHold *bool  `json:"match_hold,omitempty"`
-	Name      string `json:"name"`
-
-	// Origin Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity.
-	Origin   *ProductOrigin `json:"origin,omitempty"`
-	Platform *PlatformRef   `json:"platform,omitempty"`
-
-	// Pricecharting The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
-	Pricecharting *PricechartingMeta `json:"pricecharting,omitempty"`
-	Region        *string            `json:"region,omitempty"`
-	Type          ProductType        `json:"type"`
-	UpdatedAt     time.Time          `json:"updated_at"`
-	Variant       *string            `json:"variant,omitempty"`
-}
-
-// ProductOrigin Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity.
-type ProductOrigin string
-
-// ProductType defines model for Product.Type.
-type ProductType string
+type Product = externalRef0.Product
 
 // ProfileCard The cross-user projection of a user. Never email, never roles.
-type ProfileCard struct {
-	AvatarUrl         *string                      `json:"avatar_url,omitempty"`
-	Handle            string                       `json:"handle"`
-	ProfileVisibility ProfileCardProfileVisibility `json:"profile_visibility"`
-	UserId            openapi_types.UUID           `json:"user_id"`
-}
-
-// ProfileCardProfileVisibility defines model for ProfileCard.ProfileVisibility.
-type ProfileCardProfileVisibility string
+type ProfileCard = externalRef0.ProfileCard
 
 // ProfilePage A profile's page composition: the profile card, social counts when the social service answered, and up to 50 of the owner's listed shelves (owners see exactly what visitors see). social is absent exactly when social_available is false (the social service degrades open; the page still renders).
 type ProfilePage struct {
@@ -2467,263 +275,43 @@ type ProfilePage struct {
 }
 
 // ProfileSocialSummary defines model for ProfileSocialSummary.
-type ProfileSocialSummary struct {
-	FollowerCount  int  `json:"follower_count"`
-	FollowingCount int  `json:"following_count"`
-	ViewerFollows  bool `json:"viewer_follows"`
-}
-
-// PromoteCandidate defines model for PromoteCandidate.
-type PromoteCandidate struct {
-	FoundAt    time.Time                `json:"found_at"`
-	Name       string                   `json:"name"`
-	Provider   PromoteCandidateProvider `json:"provider"`
-	ProviderId int64                    `json:"provider_id"`
-	Score      float64                  `json:"score"`
-}
-
-// PromoteCandidateProvider defines model for PromoteCandidate.Provider.
-type PromoteCandidateProvider string
-
-// PromoteCandidateProduct defines model for PromoteCandidateProduct.
-type PromoteCandidateProduct struct {
-	Candidates []PromoteCandidate `json:"candidates"`
-	Product    Product            `json:"product"`
-}
+type ProfileSocialSummary = externalRef0.ProfileSocialSummary
 
 // PromoteCandidatesPage defines model for PromoteCandidatesPage.
-type PromoteCandidatesPage struct {
-	Products []PromoteCandidateProduct `json:"products"`
-
-	// TotalCount Full count of flagged community products.
-	TotalCount int64 `json:"total_count"`
-}
+type PromoteCandidatesPage = externalRef0.PromoteCandidatesPage
 
 // PromoteRequest Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant.
-type PromoteRequest struct {
-	IgdbGameId     *int64 `json:"igdb_game_id,omitempty"`
-	PcProductId    *int64 `json:"pc_product_id,omitempty"`
-	PlatformIgdbId *int64 `json:"platform_igdb_id,omitempty"`
-}
+type PromoteRequest = externalRef0.PromoteRequest
 
 // Providers defines model for Providers.
-type Providers struct {
-	// Providers Subset of: google, twitch, dev
-	Providers []string `json:"providers"`
-}
-
-// Recommendation defines model for Recommendation.
-type Recommendation struct {
-	CoverUrl         *string             `json:"cover_url,omitempty"`
-	FirstReleaseDate *openapi_types.Date `json:"first_release_date,omitempty"`
-	Genres           []string            `json:"genres"`
-	IgdbGameId       int64               `json:"igdb_game_id"`
-	Name             string              `json:"name"`
-	Score            float64             `json:"score"`
-}
+type Providers = externalRef0.Providers
 
 // RefreshAccepted defines model for RefreshAccepted.
-type RefreshAccepted struct {
-	Status RefreshAcceptedStatus `json:"status"`
-}
-
-// RefreshAcceptedStatus defines model for RefreshAccepted.Status.
-type RefreshAcceptedStatus string
-
-// ReleaseDate defines model for ReleaseDate.
-type ReleaseDate struct {
-	Date   openapi_types.Date `json:"date"`
-	Region ReleaseDateRegion  `json:"region"`
-}
-
-// ReleaseDateRegion defines model for ReleaseDate.Region.
-type ReleaseDateRegion string
+type RefreshAccepted = externalRef0.RefreshAccepted
 
 // RematchAccepted defines model for RematchAccepted.
-type RematchAccepted struct {
-	Status RematchAcceptedStatus `json:"status"`
-}
-
-// RematchAcceptedStatus defines model for RematchAccepted.Status.
-type RematchAcceptedStatus string
+type RematchAccepted = externalRef0.RematchAccepted
 
 // ReorderRequest Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid.
-type ReorderRequest struct {
-	AfterId  *openapi_types.UUID `json:"after_id,omitempty"`
-	BeforeId *openapi_types.UUID `json:"before_id,omitempty"`
-}
+type ReorderRequest = externalRef0.ReorderRequest
 
 // ResnapshotResult defines model for ResnapshotResult.
-type ResnapshotResult struct {
-	EntriesUpdated int `json:"entries_updated"`
-	ProductsFailed int `json:"products_failed"`
-	ProductsSeen   int `json:"products_seen"`
-}
+type ResnapshotResult = externalRef0.ResnapshotResult
 
 // ResolveRequest type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so edition/variant on a game resolve are ignored (entry-level facts, like pc_listing); region is a matching input only (see the region property) and never joins identity. Without pc_product_id the resolve auto-matches by the game name (region-steered) through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
-type ResolveRequest struct {
-	Edition        *string `json:"edition,omitempty"`
-	IgdbGameId     *int64  `json:"igdb_game_id,omitempty"`
-	MatchHint      *string `json:"match_hint,omitempty"`
-	PcProductId    *int64  `json:"pc_product_id,omitempty"`
-	PlatformIgdbId *int64  `json:"platform_igdb_id,omitempty"`
-
-	// Region For console/accessory: part of hardware identity, distinguishing physical variants. For game: a matching input only - the entry region (ntsc_u, ntsc_j, pal, region_free, korea, brazil, china) steers which PriceCharting listing auto-match lands on (JP and PAL listings live under region-prefixed or JP-named console axes; korea, brazil and china have no provider axis and match like ntsc_u) and is never stored on the product; ignored when pc_product_id is present; unknown values behave like ntsc_u. Ignored for pc_listing.
-	Region  *string            `json:"region,omitempty"`
-	Type    ResolveRequestType `json:"type"`
-	Variant *string            `json:"variant,omitempty"`
-}
-
-// ResolveRequestType defines model for ResolveRequest.Type.
-type ResolveRequestType string
+type ResolveRequest = externalRef0.ResolveRequest
 
 // SavedView defines model for SavedView.
-type SavedView struct {
-	CreatedAt time.Time              `json:"created_at"`
-	Id        openapi_types.UUID     `json:"id"`
-	Name      string                 `json:"name"`
-	Params    map[string]interface{} `json:"params"`
-
-	// PublishedAt Stamped on each transition into listed.
-	PublishedAt *time.Time `json:"published_at,omitempty"`
-
-	// Slug URL slug derived from the name (underscore transform); unique per user on its folded key.
-	Slug       string              `json:"slug"`
-	UpdatedAt  time.Time           `json:"updated_at"`
-	Visibility SavedViewVisibility `json:"visibility"`
-}
-
-// SavedViewVisibility defines model for SavedView.Visibility.
-type SavedViewVisibility string
+type SavedView = externalRef0.SavedView
 
 // ScoreResponse defines model for ScoreResponse.
-type ScoreResponse struct {
-	// Degraded True when candidate metadata fetches failed and some candidates were skipped.
-	Degraded        bool             `json:"degraded"`
-	Recommendations []Recommendation `json:"recommendations"`
-}
-
-// SearchResult Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). pc_listing results carry the pc_* fields, the PriceCharting category (empty when the provider lists none), and the standard per-listing loose/cib/new prices so variant prints are tellable apart.
-type SearchResult struct {
-	Category    *string `json:"category,omitempty"`
-	CibCents    *int64  `json:"cib_cents,omitempty"`
-	ConsoleName *string `json:"console_name,omitempty"`
-	CoverUrl    *string `json:"cover_url,omitempty"`
-
-	// Developers Community rows only - the curated developer names, for based-add prefill.
-	Developers       *[]string             `json:"developers,omitempty"`
-	FirstReleaseDate *openapi_types.Date   `json:"first_release_date,omitempty"`
-	IgdbGameId       *int64                `json:"igdb_game_id,omitempty"`
-	ItemType         *SearchResultItemType `json:"item_type,omitempty"`
-
-	// Localizations Per-region presentations of a game result (games only).
-	Localizations *[]Localization `json:"localizations,omitempty"`
-	LooseCents    *int64          `json:"loose_cents,omitempty"`
-
-	// MatchedRegion Set when the query matched a region's localized name or transliteration rather than the canonical name: that bundle's region identifier. Clients may present the region's data and preselect a matching entry region. Absent on canonical-name matches, hardware, pc_listing, and community results.
-	MatchedRegion *string `json:"matched_region,omitempty"`
-	Name          string  `json:"name"`
-	NewCents      *int64  `json:"new_cents,omitempty"`
-
-	// Origin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick, community.cover_url as cover_url, and community.region as region. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
-	Origin       *SearchResultOrigin `json:"origin,omitempty"`
-	PcProductId  *int64              `json:"pc_product_id,omitempty"`
-	PlatformName *string             `json:"platform_name,omitempty"`
-	Platforms    *[]PlatformRef      `json:"platforms,omitempty"`
-	ProductId    *openapi_types.UUID `json:"product_id,omitempty"`
-
-	// Publishers Community rows only - the curated publisher names, for based-add prefill.
-	Publishers *[]string `json:"publishers,omitempty"`
-
-	// Region Community rows only - the community facts region, entry vocabulary.
-	Region *string          `json:"region,omitempty"`
-	Type   SearchResultType `json:"type"`
-}
-
-// SearchResultItemType defines model for SearchResult.ItemType.
-type SearchResultItemType string
-
-// SearchResultOrigin Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick, community.cover_url as cover_url, and community.region as region. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
-type SearchResultOrigin string
-
-// SearchResultType defines model for SearchResult.Type.
-type SearchResultType string
+type ScoreResponse = externalRef0.ScoreResponse
 
 // SearchResults defines model for SearchResults.
-type SearchResults struct {
-	// Degraded True when the provider was unreachable and the local catalog answered instead.
-	Degraded bool           `json:"degraded"`
-	Results  []SearchResult `json:"results"`
-}
-
-// SharedEntry The cross-user entry projection - a strict whitelist. No money fields (price paid, values, currency, purchase provenance, pricing mode) and no personal fields (status, rating, notes, location, backlog rank, external refs) may ever be added here without a deliberate privacy decision.
-type SharedEntry struct {
-	BoxCondition     *SharedEntryBoxCondition  `json:"box_condition,omitempty"`
-	CoverUrl         *string                   `json:"cover_url,omitempty"`
-	CreatedAt        time.Time                 `json:"created_at"`
-	Developers       *[]string                 `json:"developers,omitempty"`
-	DisplayName      string                    `json:"display_name"`
-	Edition          *string                   `json:"edition,omitempty"`
-	FirstReleaseDate *openapi_types.Date       `json:"first_release_date,omitempty"`
-	HasBox           bool                      `json:"has_box"`
-	HasManual        bool                      `json:"has_manual"`
-	Id               openapi_types.UUID        `json:"id"`
-	IgdbGameId       *int64                    `json:"igdb_game_id,omitempty"`
-	ItemCondition    *SharedEntryItemCondition `json:"item_condition,omitempty"`
-	ItemType         SharedEntryItemType       `json:"item_type"`
-
-	// LocalizedCoverUrl Region-picked box art URL (server-derived).
-	LocalizedCoverUrl *string `json:"localized_cover_url,omitempty"`
-
-	// LocalizedName Region-picked native-script title (server-derived from the entry's region; absent when the region has none).
-	LocalizedName *string `json:"localized_name,omitempty"`
-
-	// LocalizedNameTranslit Latin transliteration of localized_name's title (server-derived).
-	LocalizedNameTranslit *string                     `json:"localized_name_translit,omitempty"`
-	ManualCondition       *SharedEntryManualCondition `json:"manual_condition,omitempty"`
-	MediaType             SharedEntryMediaType        `json:"media_type"`
-	Packaging             SharedEntryPackaging        `json:"packaging"`
-	Pinned                bool                        `json:"pinned"`
-
-	// Platform The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
-	Platform   *EntryPlatform      `json:"platform,omitempty"`
-	ProductId  *openapi_types.UUID `json:"product_id,omitempty"`
-	Publishers *[]string           `json:"publishers,omitempty"`
-	Region     string              `json:"region"`
-	Tags       []TagRef            `json:"tags"`
-}
-
-// SharedEntryBoxCondition defines model for SharedEntry.BoxCondition.
-type SharedEntryBoxCondition string
-
-// SharedEntryItemCondition defines model for SharedEntry.ItemCondition.
-type SharedEntryItemCondition string
-
-// SharedEntryItemType defines model for SharedEntry.ItemType.
-type SharedEntryItemType string
-
-// SharedEntryManualCondition defines model for SharedEntry.ManualCondition.
-type SharedEntryManualCondition string
-
-// SharedEntryMediaType defines model for SharedEntry.MediaType.
-type SharedEntryMediaType string
-
-// SharedEntryPackaging defines model for SharedEntry.Packaging.
-type SharedEntryPackaging string
-
-// SharedEntryGroup defines model for SharedEntryGroup.
-type SharedEntryGroup struct {
-	Entries []SharedEntry `json:"entries"`
-	Key     string        `json:"key"`
-	Label   string        `json:"label"`
-}
+type SearchResults = externalRef0.SearchResults
 
 // SharedEntryList Exactly one of entries/groups is present (groups when the stored params group).
-type SharedEntryList struct {
-	Entries    *[]SharedEntry      `json:"entries,omitempty"`
-	Groups     *[]SharedEntryGroup `json:"groups,omitempty"`
-	TotalCount int                 `json:"total_count"`
-}
+type SharedEntryList = externalRef0.SharedEntryList
 
 // ShelfCard A shelf card as shown in a profile's shelf list, an activity feed excerpt, or an Explore grid. owner is embedded so a card renders without a second round trip; like_count/comment_count/ viewer_likes are present exactly when the page's social composition succeeded (all three absent together when the page fell back to social_available: false).
 type ShelfCard struct {
@@ -2762,143 +350,88 @@ type ShelfPage struct {
 }
 
 // ShelfSocialSummary defines model for ShelfSocialSummary.
-type ShelfSocialSummary struct {
-	// CommentCount Live comments only.
-	CommentCount int                `json:"comment_count"`
-	LikeCount    int                `json:"like_count"`
-	ShelfId      openapi_types.UUID `json:"shelf_id"`
-	ViewerLikes  bool               `json:"viewer_likes"`
-}
+type ShelfSocialSummary = externalRef0.ShelfSocialSummary
 
 // Submission One catalog-submission lifecycle row for an entry. Rows persist as history (rejected and cancelled included; the rolling creation cap counts every attempt); deleting the entry removes them with it. product_id is the verdict's resolved product - recorded before adoption so an approve_new retry never mints twice.
-type Submission struct {
-	CreatedAt    time.Time           `json:"created_at"`
-	EntryId      openapi_types.UUID  `json:"entry_id"`
-	Id           openapi_types.UUID  `json:"id"`
-	ProductId    *openapi_types.UUID `json:"product_id,omitempty"`
-	RejectReason *string             `json:"reject_reason,omitempty"`
-
-	// ResolutionAckAt When the submitter acknowledged an approved verdict (closed the approval banner). Absent until acknowledged.
-	ResolutionAckAt *time.Time       `json:"resolution_ack_at,omitempty"`
-	ReviewedAt      *time.Time       `json:"reviewed_at,omitempty"`
-	Status          SubmissionStatus `json:"status"`
-	UpdatedAt       time.Time        `json:"updated_at"`
-}
-
-// SubmissionStatus defines model for Submission.Status.
-type SubmissionStatus string
+type Submission = externalRef0.Submission
 
 // Tag defines model for Tag.
-type Tag struct {
-	EntryCount int                `json:"entry_count"`
-	Id         openapi_types.UUID `json:"id"`
-	Name       string             `json:"name"`
-}
+type Tag = externalRef0.Tag
 
 // TagCreate defines model for TagCreate.
-type TagCreate struct {
-	Name string `json:"name"`
-}
-
-// TagRef A tag as embedded on an entry (no usage count).
-type TagRef struct {
-	Id   openapi_types.UUID `json:"id"`
-	Name string             `json:"name"`
-}
+type TagCreate = externalRef0.TagCreate
 
 // UnmatchedProductsPage defines model for UnmatchedProductsPage.
-type UnmatchedProductsPage struct {
-	Products []Product `json:"products"`
-
-	// TotalCount Full count of unmatched products, beyond this page.
-	TotalCount int64 `json:"total_count"`
-}
+type UnmatchedProductsPage = externalRef0.UnmatchedProductsPage
 
 // UpdateMeRequest Absent fields keep their value; an empty avatar_url clears it.
 type UpdateMeRequest struct {
-	AvatarUrl         *string                           `json:"avatar_url,omitempty"`
-	Handle            *string                           `json:"handle,omitempty"`
-	LandingPage       *UpdateMeRequestLandingPage       `json:"landing_page,omitempty"`
-	PreferredCurrency *string                           `json:"preferred_currency,omitempty"`
-	ProfileVisibility *UpdateMeRequestProfileVisibility `json:"profile_visibility,omitempty"`
+	AvatarUrl         *string                    `json:"avatar_url,omitempty"`
+	Handle            *externalRef0.Handle       `json:"handle,omitempty"`
+	LandingPage       *externalRef0.LandingPage  `json:"landing_page,omitempty"`
+	PreferredCurrency *externalRef0.CurrencyCode `json:"preferred_currency,omitempty"`
+	ProfileVisibility *externalRef0.Visibility   `json:"profile_visibility,omitempty"`
 }
-
-// UpdateMeRequestLandingPage defines model for UpdateMeRequest.LandingPage.
-type UpdateMeRequestLandingPage string
-
-// UpdateMeRequestProfileVisibility defines model for UpdateMeRequest.ProfileVisibility.
-type UpdateMeRequestProfileVisibility string
 
 // ValueHistory defines model for ValueHistory.
-type ValueHistory struct {
-	// Available False when enrichment was unreachable; points is then empty.
-	Available bool         `json:"available"`
-	Points    []ValuePoint `json:"points"`
-}
-
-// ValuePoint defines model for ValuePoint.
-type ValuePoint struct {
-	Date       openapi_types.Date `json:"date"`
-	ValueCents int64              `json:"value_cents"`
-}
+type ValueHistory = externalRef0.ValueHistory
 
 // VerdictRequest One admin verdict. approve_new requires product; approve_existing requires product_id; reject requires reason.
-type VerdictRequest struct {
-	Action VerdictRequestAction `json:"action"`
-
-	// Product The curated fields for approve_new; mirrors the enrichment mint request (single edition field, no variant).
-	Product   *CommunityProductSpec `json:"product,omitempty"`
-	ProductId *openapi_types.UUID   `json:"product_id,omitempty"`
-	Reason    *string               `json:"reason,omitempty"`
-}
-
-// VerdictRequestAction defines model for VerdictRequest.Action.
-type VerdictRequestAction string
+type VerdictRequest = externalRef0.VerdictRequest
 
 // ViewCreate defines model for ViewCreate.
-type ViewCreate struct {
-	Name string `json:"name"`
+type ViewCreate = externalRef0.ViewCreate
 
-	// Params Opaque frontend view state; at most 8192 marshaled bytes.
-	Params     map[string]interface{} `json:"params"`
-	Visibility *ViewCreateVisibility  `json:"visibility,omitempty"`
-}
+// BadRequest defines model for BadRequest.
+type BadRequest = externalRef0.Problem
 
-// ViewCreateVisibility defines model for ViewCreate.Visibility.
-type ViewCreateVisibility string
+// Conflict defines model for Conflict.
+type Conflict = externalRef0.Problem
+
+// Forbidden defines model for Forbidden.
+type Forbidden = externalRef0.Problem
+
+// NotFound defines model for NotFound.
+type NotFound = externalRef0.Problem
 
 // OriginForbidden defines model for OriginForbidden.
-type OriginForbidden = Problem
+type OriginForbidden = externalRef0.Problem
+
+// ServiceUnavailable defines model for ServiceUnavailable.
+type ServiceUnavailable = externalRef0.Problem
+
+// TooManyRequests defines model for TooManyRequests.
+type TooManyRequests = externalRef0.Problem
 
 // Unauthenticated defines model for Unauthenticated.
-type Unauthenticated = Problem
+type Unauthenticated = externalRef0.Problem
 
 // UpstreamError defines model for UpstreamError.
-type UpstreamError = Problem
+type UpstreamError = externalRef0.Problem
 
 // ListCommunityProductsParams defines parameters for ListCommunityProducts.
 type ListCommunityProductsParams struct {
-	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+	Limit  *int                 `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *externalRef0.Offset `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListPromoteCandidatesParams defines parameters for ListPromoteCandidates.
 type ListPromoteCandidatesParams struct {
-	Limit     *int                `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset    *int                `form:"offset,omitempty" json:"offset,omitempty"`
-	ProductId *openapi_types.UUID `form:"product_id,omitempty" json:"product_id,omitempty"`
+	Limit     *int                 `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset    *externalRef0.Offset `form:"offset,omitempty" json:"offset,omitempty"`
+	ProductId *openapi_types.UUID  `form:"product_id,omitempty" json:"product_id,omitempty"`
 }
 
 // ListUnmatchedProductsParams defines parameters for ListUnmatchedProducts.
 type ListUnmatchedProductsParams struct {
-	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+	Limit  *int                 `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *externalRef0.Offset `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListSubmissionsParams defines parameters for ListSubmissions.
 type ListSubmissionsParams struct {
-	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+	Limit  *int                 `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *externalRef0.Offset `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // CallbackParams defines parameters for Callback.
@@ -2912,7 +445,7 @@ type LinkLoginParams struct {
 	// Provider google, twitch, or dev (when the dev provider is enabled)
 	Provider string `form:"provider" json:"provider"`
 
-	// User Dev provider only: fixture handle (alice, bob, admin)
+	// User Dev provider only: fixture handle (alice, bob, admin, or an e2e-* test fixture)
 	User *string `form:"user,omitempty" json:"user,omitempty"`
 }
 
@@ -2921,15 +454,15 @@ type LoginParams struct {
 	// Provider google, twitch, or dev (when the dev provider is enabled)
 	Provider string `form:"provider" json:"provider"`
 
-	// User Dev provider only: fixture handle (alice, bob, admin)
+	// User Dev provider only: fixture handle (alice, bob, admin, or an e2e-* test fixture)
 	User *string `form:"user,omitempty" json:"user,omitempty"`
 }
 
 // GetDashboardParams defines parameters for GetDashboard.
 type GetDashboardParams struct {
-	ItemType  *[]GetDashboardParamsItemType  `form:"item_type,omitempty" json:"item_type,omitempty"`
-	Status    *[]GetDashboardParamsStatus    `form:"status,omitempty" json:"status,omitempty"`
-	Packaging *[]GetDashboardParamsPackaging `form:"packaging,omitempty" json:"packaging,omitempty"`
+	ItemType  *[]externalRef0.ItemType   `form:"item_type,omitempty" json:"item_type,omitempty"`
+	Status    *externalRef0.StatusFilter `form:"status,omitempty" json:"status,omitempty"`
+	Packaging *[]externalRef0.Packaging  `form:"packaging,omitempty" json:"packaging,omitempty"`
 
 	// Region Known-value buckets; other stored strings only surface unfiltered.
 	Region *[]string `form:"region,omitempty" json:"region,omitempty"`
@@ -2938,33 +471,21 @@ type GetDashboardParams struct {
 	Developer *[]string `form:"developer,omitempty" json:"developer,omitempty"`
 
 	// Publisher Publisher names; same overlap matching as developer.
-	Publisher     *[]string                          `form:"publisher,omitempty" json:"publisher,omitempty"`
-	ItemCondition *[]GetDashboardParamsItemCondition `form:"item_condition,omitempty" json:"item_condition,omitempty"`
+	Publisher     *[]string                     `form:"publisher,omitempty" json:"publisher,omitempty"`
+	ItemCondition *[]externalRef0.ItemCondition `form:"item_condition,omitempty" json:"item_condition,omitempty"`
 
 	// PlatformId IGDB platform ids (matches the creation-time snapshot).
-	PlatformId *[]int64 `form:"platform_id,omitempty" json:"platform_id,omitempty"`
+	PlatformId *externalRef0.PlatformId `form:"platform_id,omitempty" json:"platform_id,omitempty"`
 
 	// TagId Entries carrying ALL listed tags.
 	TagId *[]openapi_types.UUID `form:"tag_id,omitempty" json:"tag_id,omitempty"`
 }
 
-// GetDashboardParamsItemType defines parameters for GetDashboard.
-type GetDashboardParamsItemType string
-
-// GetDashboardParamsStatus defines parameters for GetDashboard.
-type GetDashboardParamsStatus string
-
-// GetDashboardParamsPackaging defines parameters for GetDashboard.
-type GetDashboardParamsPackaging string
-
-// GetDashboardParamsItemCondition defines parameters for GetDashboard.
-type GetDashboardParamsItemCondition string
-
 // ListEntriesParams defines parameters for ListEntries.
 type ListEntriesParams struct {
-	ItemType  *[]ListEntriesParamsItemType  `form:"item_type,omitempty" json:"item_type,omitempty"`
-	Status    *[]ListEntriesParamsStatus    `form:"status,omitempty" json:"status,omitempty"`
-	Packaging *[]ListEntriesParamsPackaging `form:"packaging,omitempty" json:"packaging,omitempty"`
+	ItemType  *[]externalRef0.ItemType   `form:"item_type,omitempty" json:"item_type,omitempty"`
+	Status    *externalRef0.StatusFilter `form:"status,omitempty" json:"status,omitempty"`
+	Packaging *[]externalRef0.Packaging  `form:"packaging,omitempty" json:"packaging,omitempty"`
 
 	// Region Known-value buckets; other stored strings only surface unfiltered.
 	Region *[]string `form:"region,omitempty" json:"region,omitempty"`
@@ -2973,11 +494,11 @@ type ListEntriesParams struct {
 	Developer *[]string `form:"developer,omitempty" json:"developer,omitempty"`
 
 	// Publisher Publisher names; same overlap matching as developer.
-	Publisher     *[]string                         `form:"publisher,omitempty" json:"publisher,omitempty"`
-	ItemCondition *[]ListEntriesParamsItemCondition `form:"item_condition,omitempty" json:"item_condition,omitempty"`
+	Publisher     *[]string                     `form:"publisher,omitempty" json:"publisher,omitempty"`
+	ItemCondition *[]externalRef0.ItemCondition `form:"item_condition,omitempty" json:"item_condition,omitempty"`
 
 	// PlatformId IGDB platform ids (matches the creation-time snapshot).
-	PlatformId *[]int64 `form:"platform_id,omitempty" json:"platform_id,omitempty"`
+	PlatformId *externalRef0.PlatformId `form:"platform_id,omitempty" json:"platform_id,omitempty"`
 
 	// TagId Entries carrying ALL listed tags.
 	TagId   *[]openapi_types.UUID     `form:"tag_id,omitempty" json:"tag_id,omitempty"`
@@ -2985,20 +506,8 @@ type ListEntriesParams struct {
 	Order   *ListEntriesParamsOrder   `form:"order,omitempty" json:"order,omitempty"`
 	GroupBy *ListEntriesParamsGroupBy `form:"group_by,omitempty" json:"group_by,omitempty"`
 	Limit   *int                      `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset  *int                      `form:"offset,omitempty" json:"offset,omitempty"`
+	Offset  *externalRef0.Offset      `form:"offset,omitempty" json:"offset,omitempty"`
 }
-
-// ListEntriesParamsItemType defines parameters for ListEntries.
-type ListEntriesParamsItemType string
-
-// ListEntriesParamsStatus defines parameters for ListEntries.
-type ListEntriesParamsStatus string
-
-// ListEntriesParamsPackaging defines parameters for ListEntries.
-type ListEntriesParamsPackaging string
-
-// ListEntriesParamsItemCondition defines parameters for ListEntries.
-type ListEntriesParamsItemCondition string
 
 // ListEntriesParamsSort defines parameters for ListEntries.
 type ListEntriesParamsSort string
@@ -3013,7 +522,7 @@ type ListEntriesParamsGroupBy string
 type GetExploreParams struct {
 	Sort   GetExploreParamsSort `form:"sort" json:"sort"`
 	Limit  *int                 `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *int                 `form:"offset,omitempty" json:"offset,omitempty"`
+	Offset *externalRef0.Offset `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // GetExploreParamsSort defines parameters for GetExplore.
@@ -3021,9 +530,9 @@ type GetExploreParamsSort string
 
 // GetFeedParams defines parameters for GetFeed.
 type GetFeedParams struct {
-	Tab    GetFeedParamsTab `form:"tab" json:"tab"`
-	Cursor *string          `form:"cursor,omitempty" json:"cursor,omitempty"`
-	Limit  *int             `form:"limit,omitempty" json:"limit,omitempty"`
+	Tab    GetFeedParamsTab     `form:"tab" json:"tab"`
+	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int                 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetFeedParamsTab defines parameters for GetFeed.
@@ -3037,16 +546,13 @@ type ProxyTracesJSONBody = openapi_types.File
 
 // SearchCatalogParams defines parameters for SearchCatalog.
 type SearchCatalogParams struct {
-	Type SearchCatalogParamsType `form:"type" json:"type"`
-	Q    string                  `form:"q" json:"q"`
+	Type externalRef0.SearchResultType `form:"type" json:"type"`
+	Q    externalRef0.CatalogQ         `form:"q" json:"q"`
 }
-
-// SearchCatalogParamsType defines parameters for SearchCatalog.
-type SearchCatalogParamsType string
 
 // SearchUsersParams defines parameters for SearchUsers.
 type SearchUsersParams struct {
-	Q string `form:"q" json:"q"`
+	Q externalRef0.UserSearchQ `form:"q" json:"q"`
 }
 
 // GetSharedProfilesByIdsParams defines parameters for GetSharedProfilesByIds.
@@ -3056,18 +562,18 @@ type GetSharedProfilesByIdsParams struct {
 
 // ListShelfCommentsParams defines parameters for ListShelfComments.
 type ListShelfCommentsParams struct {
-	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
-	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int                 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListShelfEntriesParams defines parameters for ListShelfEntries.
 type ListShelfEntriesParams struct {
-	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+	Limit  *int                 `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *externalRef0.Offset `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // CreateCommunityProductJSONRequestBody defines body for CreateCommunityProduct for application/json ContentType.
-type CreateCommunityProductJSONRequestBody = CommunityProductCreate
+type CreateCommunityProductJSONRequestBody = CommunityProductSpec
 
 // SetProductMappingJSONRequestBody defines body for SetProductMapping for application/json ContentType.
 type SetProductMappingJSONRequestBody = MappingRequest
@@ -5680,4 +3186,556 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/explore", wrapper.GetExplore)
 
 	return m
+}
+
+// Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
+// Stored as a slice of fixed-width chunks rather than one concatenated
+// const string: with thousands of chunks the chained `+` fold is several
+// times slower for the Go compiler than parsing a slice literal.
+var swaggerSpec = []string{
+	"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",
+	"AP//",
+}
+
+// decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
+// after base64-decoding and flate-decompressing the embedded blob.
+func decodeSpec() ([]byte, error) {
+	encoded := strings.Join(swaggerSpec, "")
+	compressed, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("error base64 decoding spec: %w", err)
+	}
+	zr := flate.NewReader(bytes.NewReader(compressed))
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(zr); err != nil {
+		return nil, fmt.Errorf("read flate: %w", err)
+	}
+	if err := zr.Close(); err != nil {
+		return nil, fmt.Errorf("close flate reader: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+var rawSpec = decodeSpecCached()
+
+// a naive cache of the decoded OpenAPI spec
+func decodeSpecCached() func() ([]byte, error) {
+	data, err := decodeSpec()
+	return func() ([]byte, error) {
+		return data, err
+	}
+}
+
+// Constructs a synthetic filesystem for resolving external references when loading openapi specifications.
+func PathToRawSpec(pathToFile string) map[string]func() ([]byte, error) {
+	res := make(map[string]func() ([]byte, error))
+	if len(pathToFile) > 0 {
+		res[pathToFile] = rawSpec
+	}
+
+	for rawPath, rawFunc := range externalRef0.PathToRawSpec(path.Join(path.Dir(pathToFile), "./common.yaml")) {
+		if _, ok := res[rawPath]; ok {
+			// it is not possible to compare functions in golang, so always overwrite the old value
+		}
+		res[rawPath] = rawFunc
+	}
+	return res
+}
+
+// GetSpec returns the OpenAPI specification corresponding to the generated
+// code in this file. External references in the spec are resolved through
+// PathToRawSpec; externally-referenced files must be embedded in their
+// corresponding Go packages (via the import-mapping feature). URL-based
+// external refs are not supported.
+func GetSpec() (swagger *openapi3.T, err error) {
+	resolvePath := PathToRawSpec("")
+
+	loader := openapi3.NewLoader()
+	loader.IsExternalRefsAllowed = true
+	loader.ReadFromURIFunc = func(loader *openapi3.Loader, url *url.URL) ([]byte, error) {
+		pathToFile := url.String()
+		pathToFile = path.Clean(pathToFile)
+		getSpec, ok := resolvePath[pathToFile]
+		if !ok {
+			err1 := fmt.Errorf("path not found: %s", pathToFile)
+			return nil, err1
+		}
+		return getSpec()
+	}
+	var specData []byte
+	specData, err = rawSpec()
+	if err != nil {
+		return
+	}
+	swagger, err = loader.LoadFromData(specData)
+	if err != nil {
+		return
+	}
+	return
+}
+
+// GetSpecJSON returns the raw JSON bytes of the embedded OpenAPI
+// specification: decompressed but not unmarshaled. External references
+// are not resolved here; the bytes are the spec exactly as embedded by
+// codegen. The result is cached at package init time, so repeated calls
+// are cheap.
+func GetSpecJSON() ([]byte, error) {
+	return rawSpec()
+}
+
+// GetSwagger returns the OpenAPI specification corresponding to the
+// generated code in this file.
+//
+// Deprecated: GetSwagger predates kin-openapi renaming openapi3.Swagger
+// to openapi3.T. Use [GetSpec] instead. This wrapper is retained for
+// backwards compatibility.
+func GetSwagger() (*openapi3.T, error) {
+	return GetSpec()
 }

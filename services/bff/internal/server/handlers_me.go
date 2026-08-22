@@ -7,13 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/userapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
@@ -46,14 +48,11 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "user service unavailable")
 		return
 	}
-	roles := make([]string, len(u.Roles))
-	for i, role := range u.Roles {
-		roles[i] = string(role)
-	}
+	roles := slices.Clone(u.Roles)
 	me := api.Me{Id: u.Id, Email: u.Email, Handle: u.Handle, AvatarUrl: u.AvatarUrl,
 		Roles: roles, PreferredCurrency: u.PreferredCurrency,
-		ProfileVisibility: api.MeProfileVisibility(u.ProfileVisibility),
-		LandingPage:       api.MeLandingPage(u.LandingPage)}
+		ProfileVisibility: common.Visibility(u.ProfileVisibility),
+		LandingPage:       common.LandingPage(u.LandingPage)}
 	body, err := json.Marshal(me)
 	if err != nil {
 		writeProblem(w, r, http.StatusInternalServerError, "internal", "encoding failed")
@@ -93,14 +92,11 @@ func (h *Handlers) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, http.StatusInternalServerError, "internal", "user service answer unreadable")
 		return
 	}
-	roles := make([]string, len(u.Roles))
-	for i, role := range u.Roles {
-		roles[i] = string(role)
-	}
+	roles := slices.Clone(u.Roles)
 	writeJSON(w, http.StatusOK, api.Me{Id: u.Id, Email: u.Email, Handle: u.Handle, AvatarUrl: u.AvatarUrl,
 		Roles: roles, PreferredCurrency: u.PreferredCurrency,
-		ProfileVisibility: api.MeProfileVisibility(u.ProfileVisibility),
-		LandingPage:       api.MeLandingPage(u.LandingPage)})
+		ProfileVisibility: common.Visibility(u.ProfileVisibility),
+		LandingPage:       common.LandingPage(u.LandingPage)})
 }
 
 // GetMyIdentities lists the session account's linked logins. Uncached:
@@ -115,9 +111,9 @@ func (h *Handlers) GetMyIdentities(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "auth service unavailable")
 		return
 	}
-	out := api.Identities{Identities: make([]api.Identity, len(ids))}
+	out := api.Identities{Identities: make([]common.Identity, len(ids))}
 	for i, id := range ids {
-		out.Identities[i] = api.Identity{Id: id.Id, Provider: id.Provider, Email: id.Email, CreatedAt: id.CreatedAt}
+		out.Identities[i] = common.Identity{Id: id.Id, Provider: id.Provider, Email: id.Email, CreatedAt: id.CreatedAt}
 	}
 	writeJSON(w, http.StatusOK, out)
 }

@@ -12,12 +12,13 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/collectionapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/socialapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/userapi"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/socialapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/socialclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
@@ -59,7 +60,7 @@ func (h *Handlers) effectiveShelf(w http.ResponseWriter, r *http.Request, bearer
 func toProfileCard(c userapi.ProfileCard) api.ProfileCard {
 	return api.ProfileCard{
 		UserId: c.UserId, Handle: c.Handle, AvatarUrl: c.AvatarUrl,
-		ProfileVisibility: api.ProfileCardProfileVisibility(c.ProfileVisibility),
+		ProfileVisibility: common.Visibility(c.ProfileVisibility),
 	}
 }
 
@@ -73,11 +74,11 @@ func toShelfMeta(shelf collectionapi.SharedShelf) api.ShelfMeta {
 }
 
 func toShelfSocialSummary(s socialapi.ShelfSocialSummary) api.ShelfSocialSummary {
-	return api.ShelfSocialSummary{ShelfId: s.ShelfId, LikeCount: s.LikeCount, CommentCount: s.CommentCount, ViewerLikes: s.ViewerLikes}
+	return api.ShelfSocialSummary(s)
 }
 
 func toProfileSocialSummary(s socialapi.ProfileSocialSummary) api.ProfileSocialSummary {
-	return api.ProfileSocialSummary{FollowerCount: s.FollowerCount, FollowingCount: s.FollowingCount, ViewerFollows: s.ViewerFollows}
+	return api.ProfileSocialSummary(s)
 }
 
 // toShelfCard maps a shelf summary plus its resolved owner card and
@@ -150,7 +151,7 @@ func (h *Handlers) GetProfileShelfPage(w http.ResponseWriter, r *http.Request, h
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "user service unavailable")
 		return
 	}
-	if owner.ProfileVisibility == userapi.ProfileCardProfileVisibilityPrivate {
+	if owner.ProfileVisibility == common.Private {
 		writeProblem(w, r, http.StatusNotFound, "shelf_not_found", "no such shelf")
 		return
 	}
@@ -220,7 +221,7 @@ func (h *Handlers) GetProfilePage(w http.ResponseWriter, r *http.Request, handle
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "user service unavailable")
 		return
 	}
-	if owner.ProfileVisibility == userapi.ProfileCardProfileVisibilityPrivate {
+	if owner.ProfileVisibility == common.Private {
 		writeProblem(w, r, http.StatusNotFound, "profile_not_found", "no such profile")
 		return
 	}
@@ -530,41 +531,33 @@ func dedupedOwnerIDs(shelves []collectionapi.SharedShelfSummary) []uuid.UUID {
 }
 
 // feedFillRounds bounds how many raw pages GetFeed will fetch trying
-// to fill one response; feedPageMax bounds the caller's requested
-// page size (the same cap social itself enforces on its own limit
-// parameter).
-const (
-	feedFillRounds = 3
-	feedPageMax    = 50
-)
+// to fill one response.
+const feedFillRounds = 3
 
 // GetFeed runs the fill loop: fetch a raw page from social, hydrate
 // (shelf summaries, actor cards, comment excerpts), gate by tab rule,
 // repeat until limit survivors or the stream is exhausted, at most
 // feedFillRounds rounds. next_cursor is the raw cursor of the last
 // INCLUDED event, so a page boundary can re-scan a few dropped rows -
-// correct, and the cost is bounded by the drop rate. tab and a
-// present cursor are validated here, before social is ever called:
-// socialclient.Feed collapses every non-200 (including social's own
-// 400 on either input) into one generic error, so an unvalidated bad
-// tab or cursor would otherwise surface as a misleading 502.
+// correct, and the cost is bounded by the drop rate. tab's enum
+// membership and limit's 1-50 range are specval's job ahead of this
+// handler (api/bff.yaml declares both on the operation); a present
+// cursor still needs its own shape check here - the contract types it
+// as a bare string with no pattern, so only httpkit.ParseCursor knows
+// the <unixnano>.<uuid> shape a bad value must be rejected against,
+// same as before. socialclient.Feed collapses every non-200
+// (including social's own 400 on a cursor it would have rejected too)
+// into one generic error, so an unvalidated bad cursor would otherwise
+// surface as a misleading 502.
 func (h *Handlers) GetFeed(w http.ResponseWriter, r *http.Request, params api.GetFeedParams) {
 	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
 		return
 	}
-	switch params.Tab {
-	case api.Following, api.You:
-	default:
-		writeProblem(w, r, http.StatusBadRequest, "invalid_param", "tab must be following or you")
-		return
+	limit := 20
+	if params.Limit != nil {
+		limit = *params.Limit
 	}
-	limit, ok := httpkit.ClampOrReject(params.Limit, 20, 1)
-	if !ok {
-		writeProblem(w, r, http.StatusBadRequest, "invalid_param", "limit must be at least 1")
-		return
-	}
-	limit = min(limit, feedPageMax)
 	tab := string(params.Tab)
 	var cursor *string
 	if params.Cursor != nil && *params.Cursor != "" {
@@ -660,7 +653,7 @@ func (h *Handlers) hydrateFeed(ctx context.Context, bearer, _, tab string, event
 	}
 	for _, e := range events {
 		addPerson(e.ActorId)
-		if e.Verb == socialapi.FollowedUser {
+		if e.Verb == common.FollowedUser {
 			addPerson(e.TargetUserId)
 		}
 	}
@@ -708,13 +701,13 @@ func (h *Handlers) hydrateFeed(ctx context.Context, bearer, _, tab string, event
 			continue // actor account gone; nothing left to attribute the action to
 		}
 		item := &api.FeedItem{
-			Id: e.Id, Verb: api.FeedItemVerb(e.Verb), CreatedAt: e.CreatedAt,
+			Id: e.Id, Verb: e.Verb, CreatedAt: e.CreatedAt,
 			Actor: toProfileCard(actor),
 		}
 
-		if e.Verb == socialapi.FollowedUser {
+		if e.Verb == common.FollowedUser {
 			followee, ok := cardByID[e.TargetUserId]
-			if tab == "following" && (!ok || followee.ProfileVisibility != userapi.ProfileCardProfileVisibilityListed) {
+			if tab == "following" && (!ok || followee.ProfileVisibility != common.Listed) {
 				continue // followee not listed; gated out
 			}
 			if ok {
@@ -736,12 +729,12 @@ func (h *Handlers) hydrateFeed(ctx context.Context, bearer, _, tab string, event
 		if !ok {
 			continue
 		}
-		if tab == "following" && (summary.Visibility != collectionapi.SharedShelfSummaryVisibilityListed || owner.ProfileVisibility != userapi.ProfileCardProfileVisibilityListed) {
+		if tab == "following" && (summary.Visibility != collectionapi.Listed || owner.ProfileVisibility != common.Listed) {
 			continue // shelf or owner not listed; gated out
 		}
 		card := toShelfCard(summary, owner, summaryByID[summary.Id])
 		item.Shelf = &card
-		if e.Verb == socialapi.CommentedShelf && e.ObjectCommentId != nil {
+		if e.Verb == common.CommentedShelf && e.ObjectCommentId != nil {
 			if c, ok := commentByID[*e.ObjectCommentId]; ok {
 				item.CommentExcerpt = &c.Body
 			}
@@ -751,20 +744,21 @@ func (h *Handlers) hydrateFeed(ctx context.Context, bearer, _, tab string, event
 	return items, nil
 }
 
-// explorePageMax caps a caller-requested recent page; topShelvesLimit
-// is social's own fixed leaderboard size (top ignores limit/offset -
-// it is not a deep-paging surface); exploreFillRounds bounds how many
-// raw collection pages exploreRecent will fetch trying to fill one
-// response, mirroring feedFillRounds.
+// topShelvesLimit is social's own fixed leaderboard size (top ignores
+// limit/offset - it is not a deep-paging surface); exploreFillRounds
+// bounds how many raw collection pages exploreRecent will fetch
+// trying to fill one response, mirroring feedFillRounds.
 const (
-	explorePageMax    = 100
 	topShelvesLimit   = 50
 	exploreFillRounds = 3
 )
 
 // GetExplore browses shared shelves: recent (newest-published,
 // paged) or top (the fixed like-count leaderboard). Both surfaces are
-// listed-only by construction.
+// listed-only by construction. sort's enum membership and recent's
+// limit (1-100) and offset (>=0) ranges are specval's job ahead of
+// this handler (api/bff.yaml declares all three on the operation);
+// only the default-when-absent case needs handling here.
 func (h *Handlers) GetExplore(w http.ResponseWriter, r *http.Request, params api.GetExploreParams) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {
@@ -773,22 +767,17 @@ func (h *Handlers) GetExplore(w http.ResponseWriter, r *http.Request, params api
 	bearer := sess.AccessToken
 	switch params.Sort {
 	case api.Recent:
-		limit, ok := httpkit.ClampOrReject(params.Limit, 20, 1)
-		if !ok {
-			writeProblem(w, r, http.StatusBadRequest, "invalid_param", "limit must be at least 1")
-			return
+		limit := 20
+		if params.Limit != nil {
+			limit = *params.Limit
 		}
-		offset, ok := httpkit.ClampOrReject(params.Offset, 0, 0)
-		if !ok {
-			writeProblem(w, r, http.StatusBadRequest, "invalid_param", "offset must be at least 0")
-			return
+		offset := 0
+		if params.Offset != nil {
+			offset = *params.Offset
 		}
-		limit = min(limit, explorePageMax)
 		h.exploreRecent(w, r, bearer, limit, offset)
 	case api.Top:
 		h.exploreTop(w, r, bearer)
-	default:
-		writeProblem(w, r, http.StatusBadRequest, "invalid_param", "sort must be recent or top")
 	}
 }
 
@@ -828,10 +817,11 @@ func (h *Handlers) exploreRecent(w http.ResponseWriter, r *http.Request, bearer 
 
 		if consumed > 0 {
 			// dedupedOwnerIDs' input is one collection page, at most
-			// limit shelves (limit is already capped at explorePageMax
-			// = 100 by GetExplore) - within the user service's own
-			// by-ids batch cap (also 100), so this never needs batching
-			// across multiple calls.
+			// limit shelves (limit is already capped at 100 - the
+			// contract's own maximum on GetExplore's recent limit
+			// parameter, specval's job ahead of this handler) - within
+			// the user service's own by-ids batch cap (also 100), so
+			// this never needs batching across multiple calls.
 			owners, err := h.users.SharedCardsByIDs(r.Context(), bearer, dedupedOwnerIDs(shelves))
 			if err != nil {
 				writeProblem(w, r, http.StatusBadGateway, "upstream_error", "user service unavailable")
@@ -848,7 +838,7 @@ func (h *Handlers) exploreRecent(w http.ResponseWriter, r *http.Request, bearer 
 
 			for i, s := range shelves {
 				owner, ok := ownerByID[s.OwnerId]
-				if !ok || owner.ProfileVisibility != userapi.ProfileCardProfileVisibilityListed {
+				if !ok || owner.ProfileVisibility != common.Listed {
 					continue // owner unlisted or vanished between the listing and the card batch
 				}
 				cards = append(cards, toShelfCard(s, owner, summaryByID[s.Id]))
@@ -921,11 +911,11 @@ func (h *Handlers) exploreTop(w http.ResponseWriter, r *http.Request, bearer str
 	survivorIDs := make([]uuid.UUID, 0, len(leaderboard))
 	for _, id := range leaderboard {
 		summary, ok := shelfByID[id]
-		if !ok || summary.Visibility != collectionapi.SharedShelfSummaryVisibilityListed {
+		if !ok || summary.Visibility != collectionapi.Listed {
 			continue
 		}
 		owner, ok := ownerByID[summary.OwnerId]
-		if !ok || owner.ProfileVisibility != userapi.ProfileCardProfileVisibilityListed {
+		if !ok || owner.ProfileVisibility != common.Listed {
 			continue
 		}
 		survivors = append(survivors, survivor{summary: summary, owner: owner})

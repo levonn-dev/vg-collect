@@ -13,13 +13,13 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/collectionapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/userapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/enrichmentclient"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/authapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
@@ -33,7 +33,7 @@ type stubAuth struct {
 	providers      func(ctx context.Context) ([]string, error)
 	linkStart      func(ctx context.Context, provider, bearer string) (string, error)
 	devLink        func(ctx context.Context, user, bearer string) (authclient.TokenPair, error)
-	listIdentities func(ctx context.Context, userID, bearer string) ([]authapi.Identity, error)
+	listIdentities func(ctx context.Context, userID, bearer string) ([]common.Identity, error)
 	deleteIdentity func(ctx context.Context, identityID uuid.UUID, bearer string) error
 	deleteUserAuth func(ctx context.Context, userID, bearer string) error
 }
@@ -94,7 +94,7 @@ func (s *stubAuth) DevLink(ctx context.Context, user, bearer string) (authclient
 	return s.devLink(ctx, user, bearer)
 }
 
-func (s *stubAuth) ListIdentities(ctx context.Context, userID, bearer string) ([]authapi.Identity, error) {
+func (s *stubAuth) ListIdentities(ctx context.Context, userID, bearer string) ([]common.Identity, error) {
 	if s.listIdentities == nil {
 		panic("stubAuth: unexpected ListIdentities")
 	}

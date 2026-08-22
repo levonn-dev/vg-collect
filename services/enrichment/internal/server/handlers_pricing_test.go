@@ -71,7 +71,11 @@ func TestUnitBatchPrices_CapAndBadBody(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/products/prices:batch", bytes.NewReader([]byte("{not json")))
 	req.Header.Set("Authorization", "Bearer "+tok)
 	rec2 := httptest.NewRecorder()
-	NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil }).ServeHTTP(rec2, req)
+	router, err := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	router.ServeHTTP(rec2, req)
 	if rec2.Code != http.StatusBadRequest {
 		t.Fatalf("bad body: %d", rec2.Code)
 	}
@@ -126,7 +130,10 @@ func TestUnitBatchPriceHistoryRejectsBadInput(t *testing.T) {
 	tok := env.token(t, "u1", []string{"user"})
 	st := &stubStore{} // any store call would panic: rejection happens first
 	h := newUnitHandlers(st, nil, nil, newStubCache())
-	router := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil })
+	router, err := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// serveUnit marshals its body param through json.Marshal, which
 	// cannot produce a deliberately malformed payload or a pre-built

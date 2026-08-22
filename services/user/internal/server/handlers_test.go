@@ -79,7 +79,10 @@ func newTestServer(t *testing.T) (*httptest.Server, authEnv) {
 	st := newTestStore(t)
 	a := newAuthEnv(t)
 	h := server.New(st, time.Hour)
-	router := server.NewRouter(h, a.v, slog.Default(), func(context.Context) error { return nil })
+	router, err := server.NewRouter(h, a.v, slog.Default(), func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return srv, a
@@ -197,9 +200,12 @@ func TestUpsert_MalformedJSON(t *testing.T) {
 func TestReadyz_FailsWhenHealthcheckFails(t *testing.T) {
 	a := newAuthEnv(t)
 	h := server.New(nil, time.Hour) // store is nil; health check errors before any store call
-	router := server.NewRouter(h, a.v, slog.Default(), func(context.Context) error {
+	router, err := server.NewRouter(h, a.v, slog.Default(), func(context.Context) error {
 		return errors.New("db down")
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
@@ -285,9 +291,18 @@ func TestUpdateUser_SelfOnlyAndValidation(t *testing.T) {
 		wantUnitProblemDetail(t, resp, http.StatusBadRequest, "invalid_body", "avatar_url")
 	})
 
-	t.Run("trims handle, keeps avatar", func(t *testing.T) {
+	// Handle whitespace tightening: before specval wired in, an update
+	// trimmed a padded handle silently ("trims handle, keeps avatar" -
+	// " Neo  " -> "Neo", 200). common.yaml's Handle pattern
+	// (^[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?$) requires
+	// alnum first/last characters, and specval validates the RAW wire
+	// value before this handler's own (now-removed) trim ever runs -
+	// so a padded handle 400s instead of being silently cleaned up.
+	// Split into the still-passing clean-update case below and the new
+	// pinned rejection right after it.
+	t.Run("clean handle updates, keeps avatar", func(t *testing.T) {
 		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"),
-			map[string]string{"handle": " Neo  "})
+			map[string]string{"handle": "Neo"})
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("status = %d, want 200", resp.StatusCode)
 		}
@@ -304,6 +319,12 @@ func TestUpdateUser_SelfOnlyAndValidation(t *testing.T) {
 		if got.AvatarURL == nil || *got.AvatarURL != "https://img.example/neo.png" {
 			t.Fatalf("avatar_url = %v, want kept", got.AvatarURL)
 		}
+	})
+
+	t.Run("whitespace-padded handle is now rejected, not trimmed", func(t *testing.T) {
+		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"),
+			map[string]string{"handle": " Neo  "})
+		wantUnitProblemDetail(t, resp, http.StatusBadRequest, "invalid_body", "handle")
 	})
 
 	t.Run("empty avatar_url clears it", func(t *testing.T) {
@@ -482,7 +503,10 @@ func newUnitServer(t *testing.T, st server.Store) (*httptest.Server, authEnv) {
 	t.Helper()
 	a := newAuthEnv(t)
 	h := server.New(st, time.Hour)
-	router := server.NewRouter(h, a.v, slog.Default(), func(context.Context) error { return nil })
+	router, err := server.NewRouter(h, a.v, slog.Default(), func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return srv, a

@@ -4,11 +4,11 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
@@ -18,13 +18,9 @@ import (
 
 const (
 	recsDefaultLimit = 20
-	recsMaxLimit     = 50
 	// recsCandidateCap bounds the metadata-fetch budget per request.
 	recsCandidateCap = 200
 	recsTopGenres    = 3
-	// maxLibraryEntries mirrors the contract's maxItems on the score
-	// request; past it the request is rejected, not truncated.
-	maxLibraryEntries = 2500
 )
 
 // ScoreRecommendations scores unowned games against the caller's
@@ -36,11 +32,14 @@ func (h *Handlers) ScoreRecommendations(w http.ResponseWriter, r *http.Request) 
 	if !httpkit.DecodeBody(w, r, 256*1024, &req) {
 		return
 	}
-	if len(req.Library) > maxLibraryEntries {
-		problem(w, r, http.StatusBadRequest, "library_too_large", fmt.Sprintf("library exceeds %d entries", maxLibraryEntries))
-		return
+	// limit is already known within the contract's 1-50 bound by the
+	// time this runs (specval; ScoreRequest.limit carries minimum 1,
+	// maximum 50 in api/enrichment.yaml). Only the default-when-absent
+	// case needs handling here.
+	limit := recsDefaultLimit
+	if req.Limit != nil {
+		limit = *req.Limit
 	}
-	limit := httpkit.ClampSilent(req.Limit, recsDefaultLimit, 1, recsMaxLimit)
 
 	lib := make([]recs.LibraryGame, 0, len(req.Library))
 	owned := make([]int64, 0, len(req.Library))
@@ -53,7 +52,7 @@ func (h *Handlers) ScoreRecommendations(w http.ResponseWriter, r *http.Request) 
 		owned = append(owned, e.IgdbGameId)
 	}
 	if len(lib) == 0 {
-		writeJSON(w, http.StatusOK, api.ScoreResponse{Degraded: false, Recommendations: []api.Recommendation{}})
+		writeJSON(w, http.StatusOK, api.ScoreResponse{Degraded: false, Recommendations: []common.Recommendation{}})
 		return
 	}
 
@@ -106,7 +105,7 @@ func (h *Handlers) ScoreRecommendations(w http.ResponseWriter, r *http.Request) 
 	}
 
 	scored := recs.Score(lib, meta, cands)
-	out := make([]api.Recommendation, 0, limit)
+	out := make([]common.Recommendation, 0, limit)
 	for _, sc := range scored {
 		rg, ok := candRaw[sc.GameID]
 		if !ok {
@@ -114,7 +113,7 @@ func (h *Handlers) ScoreRecommendations(w http.ResponseWriter, r *http.Request) 
 			// reflected in degraded when a fetch failed).
 			continue
 		}
-		rec := api.Recommendation{
+		rec := common.Recommendation{
 			IgdbGameId: sc.GameID,
 			Name:       rg.Game.Name,
 			Genres:     genreNames(rg.Game),

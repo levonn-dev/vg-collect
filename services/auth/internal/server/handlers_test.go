@@ -361,7 +361,10 @@ func newEnv(t *testing.T, devEnabled bool) *env {
 	// sessions these tests log in with.
 	verifier := newJWKSValidator(t, m)
 	h := server.New(st, m, uc, providers, verifier, devEnabled, 30*24*time.Hour, []string{testInternalServiceToken})
-	router := server.NewRouter(h, slog.Default(), func(context.Context) error { return nil })
+	router, err := server.NewRouter(h, slog.Default(), func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return &env{srv: srv, pool: pool, minter: m, users: fu, idp: idp}
@@ -1237,17 +1240,23 @@ func TestListProviders(t *testing.T) {
 	}
 }
 
-// TestInternalServiceToken pins POST /internal/service-token's whole
-// guard, driven straight at the handler (params built by hand, the
-// same idiom InternalRefresh's retired X-Internal-Token check used):
-// a wrong or empty X-Internal-Token answers 401 invalid_internal_token
-// regardless of body; a service name outside the enum answers 400
-// invalid_body; the current AND previous accepted secrets (A/B
-// rotation) both mint a token the package's own jwtauth validator
-// accepts, carrying sub svc:<service>, no roles, and token_use=service
-// (the machine-caller signal requireService/requireAdminOrService key
-// off downstream), with expires_in fixed at 900 regardless of
-// ACCESS_TOKEN_TTL.
+// TestInternalServiceToken pins POST /internal/service-token's
+// internal-token guard and minting behavior, driven straight at the
+// handler (params built by hand, the same idiom InternalRefresh's
+// retired X-Internal-Token check used): a wrong or empty
+// X-Internal-Token answers 401 invalid_internal_token regardless of
+// body; the current AND previous accepted secrets (A/B rotation) both
+// mint a token the package's own jwtauth validator accepts, carrying
+// sub svc:<service>, no roles, and token_use=service (the
+// machine-caller signal requireService/requireAdminOrService key off
+// downstream), with expires_in fixed at 900 regardless of
+// ACCESS_TOKEN_TTL. service's enum membership (a service name outside
+// catalog-refresh/entry-rematch) is no longer this handler's own
+// check (the former req.Service.Valid() call is gone) - it is
+// specval's job at the router layer now, pinned by
+// TestValidatorPath_InternalServiceToken_BadServiceEnum instead,
+// which this direct-call harness cannot exercise (it bypasses the
+// router entirely).
 func TestInternalServiceToken(t *testing.T) {
 	m, err := token.NewMinter(testSeed, "vgkeep-auth", "vgkeep", 5*time.Minute)
 	if err != nil {
@@ -1268,8 +1277,6 @@ func TestInternalServiceToken(t *testing.T) {
 	for _, tok := range []string{"", "guessed-token"} {
 		wantProblemRec(t, call(t, tok, "catalog-refresh"), http.StatusUnauthorized, "invalid_internal_token")
 	}
-
-	wantProblemRec(t, call(t, "current-token", "not-a-real-service"), http.StatusBadRequest, "invalid_body")
 
 	for _, tok := range []string{"current-token", "previous-token"} {
 		for _, svc := range []string{"catalog-refresh", "entry-rematch"} {
@@ -1775,21 +1782,6 @@ func TestUnitOauthCallback_InvalidBody(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.OauthCallback(rec, jsonReq(t, http.MethodPost, "/oauth/callback", "{not json"))
 	wantProblemRec(t, rec, http.StatusBadRequest, "invalid_body")
-}
-
-func TestUnitOauthCallback_MissingCodeOrState(t *testing.T) {
-	cases := []api.CallbackRequest{
-		{Code: "", State: "s"},
-		{Code: "c", State: ""},
-		{Code: "", State: ""},
-	}
-	for _, body := range cases {
-		h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
-		rec := httptest.NewRecorder()
-		h.OauthCallback(rec, jsonReq(t, http.MethodPost, "/oauth/callback", body))
-		// Missing params never reach the store: ConsumeState would panic.
-		wantProblemRec(t, rec, http.StatusBadRequest, "invalid_body")
-	}
 }
 
 func TestUnitOauthCallback_StateNotFound(t *testing.T) {
@@ -2351,13 +2343,6 @@ func TestUnitRefresh_InvalidBody(t *testing.T) {
 	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, "{not json"))
-	wantProblemRec(t, rec, http.StatusBadRequest, "invalid_body")
-}
-
-func TestUnitRefresh_MissingToken(t *testing.T) {
-	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
-	rec := httptest.NewRecorder()
-	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: ""}))
 	wantProblemRec(t, rec, http.StatusBadRequest, "invalid_body")
 }
 

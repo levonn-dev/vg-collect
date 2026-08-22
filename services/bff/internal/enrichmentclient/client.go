@@ -15,8 +15,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
 )
 
 // ErrUpstream means the enrichment service answered outside its
@@ -43,7 +44,7 @@ func New(baseURL string) (*Client, error) {
 
 // Search relays GET /search.
 func (c *Client) Search(ctx context.Context, bearer, typ, q string) (Result, error) {
-	params := &enrichapi.SearchCatalogParams{Type: enrichapi.SearchCatalogParamsType(typ), Q: q}
+	params := &enrichapi.SearchCatalogParams{Type: common.SearchResultType(typ), Q: q}
 	resp, err := c.api.SearchCatalogWithResponse(ctx, params, httpkit.BearerEditor(bearer))
 	if err != nil {
 		return Result{}, fmt.Errorf("enrichmentclient: search: %w", err)

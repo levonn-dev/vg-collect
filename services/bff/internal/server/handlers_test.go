@@ -12,14 +12,18 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/userapi"
 )
 
 func testLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
 func newRouterFor(t *testing.T, h *Handlers) http.Handler {
 	t.Helper()
-	return NewRouter(h, nil, testLogger())
+	router, err := NewRouter(h, nil, testLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return router
 }
 
 // testEnv bundles the session cookie and the raw access token it seals,

@@ -14,7 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
@@ -32,7 +32,7 @@ func TestSharedEntryWhitelist(t *testing.T) {
 		"box_condition", "manual_condition", "item_condition",
 		"pinned", "tags", "created_at",
 	}
-	typ := reflect.TypeFor[api.SharedEntry]()
+	typ := reflect.TypeFor[common.SharedEntry]()
 	got := []string{}
 	for field := range typ.Fields() {
 		tag := field.Tag.Get("json")
@@ -257,8 +257,8 @@ func TestUnitSharedShelfEntries_PaginationAtLowerBoundSucceeds(t *testing.T) {
 		t.Fatalf("limit=1 (the yaml min) must be accepted: %d", resp.StatusCode)
 	}
 	var got struct {
-		TotalCount int                `json:"total_count"`
-		Entries    *[]api.SharedEntry `json:"entries"`
+		TotalCount int                   `json:"total_count"`
+		Entries    *[]common.SharedEntry `json:"entries"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
@@ -416,14 +416,16 @@ func TestUnitListSharedShelves(t *testing.T) {
 			resp := do(t, http.MethodGet, srv.URL+"/shared/shelves?"+q, tok, nil)
 			wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 		}
-		// owner_ids over its maxItems bound (5000) gets its own code -
-		// the generated param binder does not enforce maxItems.
+		// owner_ids over its maxItems bound (5000): specval's contract
+		// enforcement answers this before the handler ever sees the
+		// request (the same generic invalid_param every other bound in
+		// this list answers).
 		q := url.Values{}
 		for range 5001 {
 			q.Add("owner_ids", uuid.NewString())
 		}
 		resp := do(t, http.MethodGet, srv.URL+"/shared/shelves?"+q.Encode(), tok, nil)
-		wantProblem(t, resp, http.StatusBadRequest, "too_many_owner_ids")
+		wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 	})
 
 	// TestUnitListSharedShelves at-bound acceptance: the yaml's declared
@@ -520,7 +522,9 @@ func TestUnitGetSharedShelvesByIds(t *testing.T) {
 		}
 		srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 		resp := do(t, http.MethodGet, srv.URL+"/shared/shelves/by-ids?"+q.Encode(), a.token(t, "viewer"), nil)
-		wantProblem(t, resp, http.StatusBadRequest, "too_many_ids")
+		// specval's contract enforcement (ids maxItems: 100) answers
+		// this before the handler ever sees the request.
+		wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 	})
 
 	t.Run("exactly the max (100 ids) is accepted", func(t *testing.T) {

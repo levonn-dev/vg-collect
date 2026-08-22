@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/match"
@@ -51,7 +52,7 @@ func matchNamesFor(g igdb.Game, region string) []string {
 }
 
 // matchCandidates adapts provider search rows to scoring candidates.
-func matchCandidates(results []api.SearchResult) []match.Candidate {
+func matchCandidates(results []common.SearchResult) []match.Candidate {
 	cands := make([]match.Candidate, 0, len(results))
 	for _, r := range results {
 		if r.PcProductId == nil || r.ConsoleName == nil {
@@ -68,17 +69,16 @@ func matchCandidates(results []api.SearchResult) []match.Candidate {
 // match, flagged and uncached.
 func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params api.SearchCatalogParams) {
 	ctx := r.Context()
+	// q's blank-after-trim guard stays: the contract's minLength:1 on q
+	// catches a literal empty string but not a whitespace-only one (see
+	// collection's validateEntryInput comment for the identical gap on
+	// region). type's enum is specval's job now.
 	q := strings.TrimSpace(params.Q)
 	if q == "" {
 		problem(w, r, http.StatusBadRequest, "invalid_param", "q must not be empty")
 		return
 	}
-	// The generated binding checks presence, not enum membership.
 	kind := string(params.Type)
-	if kind != "game" && kind != "hardware" && kind != "pc_listing" {
-		problem(w, r, http.StatusBadRequest, "invalid_param", "type must be game, hardware or pc_listing")
-		return
-	}
 	nq := normQuery(q)
 
 	var out api.SearchResults
@@ -95,7 +95,7 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 	}
 
 	var (
-		results []api.SearchResult
+		results []common.SearchResult
 		perr    error
 	)
 	switch kind {
@@ -120,7 +120,7 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 		h.countSearch(ctx, kind, "provider")
 	}
 	if results == nil {
-		results = []api.SearchResult{}
+		results = []common.SearchResult{}
 	}
 
 	out = api.SearchResults{Degraded: degraded, Results: results}
@@ -144,19 +144,19 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 // vs hardware); item_type carries the finer community kind for the
 // pick, and origin marks the row so the SPA renders the community tag
 // and builds a CommunityPick.
-func communityResult(p store.Product) api.SearchResult {
-	res := api.SearchResult{Name: p.Name}
+func communityResult(p store.Product) common.SearchResult {
+	res := common.SearchResult{Name: p.Name}
 	if p.Type == "game" {
 		res.Type = "game"
 	} else {
 		res.Type = "hardware"
 	}
-	o := api.SearchResultOrigin("community")
+	o := common.ProductOrigin("community")
 	res.Origin = &o
 	if id, err := uuid.Parse(p.ID); err == nil {
 		res.ProductId = &id
 	}
-	it := api.SearchResultItemType(p.Type)
+	it := common.ItemType(p.Type)
 	res.ItemType = &it
 	if p.Community != nil {
 		if p.Community.PlatformName != "" {
@@ -222,7 +222,7 @@ func (h *Handlers) interleaveCommunityResults(ctx context.Context, w http.Respon
 		return
 	}
 	type scored struct {
-		res      api.SearchResult
+		res      common.SearchResult
 		score    float64
 		provider bool
 	}
@@ -242,7 +242,7 @@ func (h *Handlers) interleaveCommunityResults(ctx context.Context, w http.Respon
 		}
 		return merged[i].provider && !merged[j].provider
 	})
-	results := make([]api.SearchResult, 0, len(merged))
+	results := make([]common.SearchResult, 0, len(merged))
 	for _, m := range merged {
 		results = append(results, m.res)
 	}
@@ -250,7 +250,7 @@ func (h *Handlers) interleaveCommunityResults(ctx context.Context, w http.Respon
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (h *Handlers) searchGames(ctx context.Context, q string) ([]api.SearchResult, error) {
+func (h *Handlers) searchGames(ctx context.Context, q string) ([]common.SearchResult, error) {
 	games, err := h.games.SearchGames(ctx, q, searchLimit)
 	if err != nil {
 		return nil, err
@@ -296,7 +296,7 @@ func (h *Handlers) searchGames(ctx context.Context, q string) ([]api.SearchResul
 	if len(games) > searchLimit {
 		games = games[:searchLimit]
 	}
-	out := make([]api.SearchResult, 0, len(games))
+	out := make([]common.SearchResult, 0, len(games))
 	for _, g := range games {
 		res := gameResult(g)
 		if mr := matchedRegion(q, g); mr != "" {
@@ -448,21 +448,21 @@ func platformReleaseRegions(g igdb.Game, platformID int64) []string {
 	return order
 }
 
-func gameResult(g igdb.Game) api.SearchResult {
-	res := api.SearchResult{Type: api.SearchResultType("game"), Name: g.Name}
+func gameResult(g igdb.Game) common.SearchResult {
+	res := common.SearchResult{Type: common.SearchResultType("game"), Name: g.Name}
 	id := g.ID
 	res.IgdbGameId = &id
 	if len(g.Platforms) > 0 {
-		prs := make([]api.PlatformRef, 0, len(g.Platforms))
+		prs := make([]common.PlatformRef, 0, len(g.Platforms))
 		for _, p := range g.Platforms {
-			pr := api.PlatformRef{IgdbPlatformId: p.ID, Name: p.Name}
+			pr := common.PlatformRef{IgdbPlatformId: p.ID, Name: p.Name}
 			// platformReleaseRegions stays plain []string (a pure, wire-type-free
 			// helper covered by its own unit test below); the wire enum
-			// conversion happens only here, at the api.PlatformRef boundary.
+			// conversion happens only here, at the common.PlatformRef boundary.
 			if regions := platformReleaseRegions(g, p.ID); len(regions) > 0 {
-				wire := make([]api.PlatformRefReleaseRegions, len(regions))
+				wire := make([]common.ReleaseRegion, len(regions))
 				for i, r := range regions {
-					wire[i] = api.PlatformRefReleaseRegions(r)
+					wire[i] = common.ReleaseRegion(r)
 				}
 				pr.ReleaseRegions = &wire
 			}
@@ -478,9 +478,9 @@ func gameResult(g igdb.Game) api.SearchResult {
 		res.CoverUrl = &cu
 	}
 	if bundles := igdb.BundleLocalizations(g); len(bundles) > 0 {
-		locs := make([]api.Localization, 0, len(bundles))
+		locs := make([]common.Localization, 0, len(bundles))
 		for _, b := range bundles {
-			al := api.Localization{Region: b.Region}
+			al := common.Localization{Region: b.Region}
 			if b.Name != "" {
 				n := b.Name
 				al.Name = &n
@@ -508,18 +508,18 @@ func isHardwareCategory(genre string) bool {
 	return false
 }
 
-func (h *Handlers) searchHardware(ctx context.Context, q string) ([]api.SearchResult, error) {
+func (h *Handlers) searchHardware(ctx context.Context, q string) ([]common.SearchResult, error) {
 	prods, err := h.prices.Search(ctx, q)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]api.SearchResult, 0, len(prods))
+	out := make([]common.SearchResult, 0, len(prods))
 	for _, p := range prods {
 		if !isHardwareCategory(p.Genre) {
 			continue
 		}
 		id, console, cat := p.ID, p.ConsoleName, p.Genre
-		out = append(out, api.SearchResult{
+		out = append(out, common.SearchResult{
 			Type: "hardware", Name: p.Name,
 			PcProductId: &id, ConsoleName: &console, Category: &cat,
 		})
@@ -534,7 +534,7 @@ func (h *Handlers) searchHardware(ctx context.Context, q string) ([]api.SearchRe
 // proxy picker: no category filter (game listings included - the
 // point is variant rows IGDB does not separate), with the provider's
 // per-listing prices passed through so prints are tellable apart.
-func (h *Handlers) searchPCListings(ctx context.Context, q string) ([]api.SearchResult, error) {
+func (h *Handlers) searchPCListings(ctx context.Context, q string) ([]common.SearchResult, error) {
 	// The provider's tokenizer misses possessive-less listing names
 	// when the query keeps the possessive; the bare form returns the
 	// superset, so every pc_listing query drops it.
@@ -542,7 +542,7 @@ func (h *Handlers) searchPCListings(ctx context.Context, q string) ([]api.Search
 	if err != nil {
 		return nil, err
 	}
-	out := make([]api.SearchResult, 0, len(prods))
+	out := make([]common.SearchResult, 0, len(prods))
 	for _, p := range prods {
 		out = append(out, pcListingResult(p.ID, p.Name, p.ConsoleName, p.Genre, quoteOf(p)))
 		if len(out) == searchLimit {
@@ -555,9 +555,9 @@ func (h *Handlers) searchPCListings(ctx context.Context, q string) ([]api.Search
 // pcListingResult maps one PC listing - live (provider) or cached
 // (a product's stored mapping, on the degraded path) - onto the wire
 // shape.
-func pcListingResult(id int64, name, console, category string, q store.PriceQuote) api.SearchResult {
-	res := api.SearchResult{
-		Type: api.SearchResultType("pc_listing"), Name: name,
+func pcListingResult(id int64, name, console, category string, q store.PriceQuote) common.SearchResult {
+	res := common.SearchResult{
+		Type: common.SearchResultType("pc_listing"), Name: name,
 		PcProductId: &id, ConsoleName: &console,
 	}
 	if category != "" {
@@ -571,8 +571,8 @@ func pcListingResult(id int64, name, console, category string, q store.PriceQuot
 
 // localResults maps catalog products onto search results for the
 // degraded path.
-func localResults(kind string, prods []store.Product) []api.SearchResult {
-	out := make([]api.SearchResult, 0, len(prods))
+func localResults(kind string, prods []store.Product) []common.SearchResult {
+	out := make([]common.SearchResult, 0, len(prods))
 	if kind == "pc_listing" {
 		// Degraded: any product's stored mapping is a known listing. A
 		// resolved game/hardware product can carry the same
@@ -597,7 +597,7 @@ func localResults(kind string, prods []store.Product) []api.SearchResult {
 			continue
 		}
 		if isGame {
-			res := api.SearchResult{Type: api.SearchResultType("game"), Name: p.Name}
+			res := common.SearchResult{Type: common.SearchResultType("game"), Name: p.Name}
 			if p.IGDB != nil {
 				id := p.IGDB.GameID
 				res.IgdbGameId = &id
@@ -611,18 +611,18 @@ func localResults(kind string, prods []store.Product) []api.SearchResult {
 				}
 			}
 			if p.Platform != nil {
-				pr := api.PlatformRef{IgdbPlatformId: p.Platform.IGDBID, Name: p.Platform.Name}
+				pr := common.PlatformRef{IgdbPlatformId: p.Platform.IGDBID, Name: p.Platform.Name}
 				if p.Platform.LogoURL != "" {
 					lu := p.Platform.LogoURL
 					pr.LogoUrl = &lu
 				}
-				prs := []api.PlatformRef{pr}
+				prs := []common.PlatformRef{pr}
 				res.Platforms = &prs
 			}
 			out = append(out, res)
 			continue
 		}
-		res := api.SearchResult{Type: api.SearchResultType("hardware"), Name: p.Name}
+		res := common.SearchResult{Type: common.SearchResultType("hardware"), Name: p.Name}
 		if p.PriceCharting != nil {
 			id := p.PriceCharting.PCProductID
 			console := p.PriceCharting.ConsoleName
@@ -639,7 +639,7 @@ func localResults(kind string, prods []store.Product) []api.SearchResult {
 // degraded discipline (a provider failure answers the caller and is
 // never cached). Auto-match runs on every no-pick game resolve, so
 // repeat adds of a family are a cache hit instead of a provider call.
-func (h *Handlers) searchPCListingsCached(ctx context.Context, q string) ([]api.SearchResult, error) {
+func (h *Handlers) searchPCListingsCached(ctx context.Context, q string) ([]common.SearchResult, error) {
 	nq := normQuery(q)
 	if body, err := h.cache.GetSearch(ctx, "pc_listing", nq); err != nil {
 		h.failOpen(ctx, "search_get", err)
@@ -655,7 +655,7 @@ func (h *Handlers) searchPCListingsCached(ctx context.Context, q string) ([]api.
 		return nil, err
 	}
 	if results == nil {
-		results = []api.SearchResult{}
+		results = []common.SearchResult{}
 	}
 	body, err := json.Marshal(api.SearchResults{Degraded: false, Results: results})
 	if err != nil {

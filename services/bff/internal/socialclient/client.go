@@ -15,8 +15,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/socialapi"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/socialapi"
 )
 
 // ErrUpstream means the social service answered outside its relayed

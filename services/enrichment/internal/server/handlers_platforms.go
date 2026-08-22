@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sort"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/match"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
@@ -34,7 +35,7 @@ func (h *Handlers) ListPlatforms(w http.ResponseWriter, r *http.Request) {
 		problem(w, r, http.StatusBadGateway, "upstream_unavailable", "the platform catalog is unavailable")
 		return
 	}
-	out := api.PlatformCatalog{Platforms: make([]api.CatalogPlatform, 0, len(cats))}
+	out := api.PlatformCatalog{Platforms: make([]common.CatalogPlatform, 0, len(cats))}
 	for _, c := range cats {
 		// PlatformAliases returns nil for a platform with no known
 		// aliases; the contract types aliases a required string[], so
@@ -44,7 +45,7 @@ func (h *Handlers) ListPlatforms(w http.ResponseWriter, r *http.Request) {
 		if al == nil {
 			al = []string{}
 		}
-		out.Platforms = append(out.Platforms, api.CatalogPlatform{
+		out.Platforms = append(out.Platforms, common.CatalogPlatform{
 			IgdbId: c.ID, Name: c.Name, Aliases: al,
 		})
 	}

@@ -431,7 +431,10 @@ func serveUnit(t *testing.T, h *Handlers, env *authEnv, method, path, token stri
 	t.Helper()
 	req := reqtest.NewJSONRequest(t, method, path, token, body)
 	rec := httptest.NewRecorder()
-	router := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil })
+	router, err := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
 	router.ServeHTTP(rec, req)
 	return rec
 }
@@ -525,8 +528,11 @@ func newStack(t *testing.T) *stack {
 		IGDBRefreshAfter: 720 * time.Hour,
 		Logger:           slog.New(slog.DiscardHandler),
 	})
-	router := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler),
+	router, err := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler),
 		func(c context.Context) error { return mongokit.Health(c, mclient) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 

@@ -58,7 +58,10 @@ func newUnitServer(t *testing.T, st server.Store, col server.Collection, users s
 	h := server.New(st, col, users, server.Options{
 		Logger: testLogger(), CapComments: 50, CapFollows: 100, CapLikes: 200,
 	})
-	router := server.NewRouter(h, a.v, testLogger(), func(context.Context) error { return nil })
+	router, err := server.NewRouter(h, a.v, testLogger(), func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return srv, a
@@ -98,8 +101,11 @@ func TestUnitReadyzFailsWhenNotReady(t *testing.T) {
 	h := server.New(nil, nil, nil, server.Options{
 		Logger: testLogger(), CapComments: 50, CapFollows: 100, CapLikes: 200,
 	})
-	router := server.NewRouter(h, a.v, testLogger(),
+	router, err := server.NewRouter(h, a.v, testLogger(),
 		func(context.Context) error { return errors.New("not ready") })
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 

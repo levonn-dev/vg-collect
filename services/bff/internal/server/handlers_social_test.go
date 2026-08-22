@@ -13,11 +13,12 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/collectionapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/socialapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/userapi"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/socialapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/socialclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
@@ -738,19 +739,19 @@ func TestUnitFeed_FillLoopAndGating(t *testing.T) {
 	followee3 := uuid.New()
 
 	event1 := socialapi.ActivityEvent{ // listed shelf, listed owner: survives tab=following
-		Id: uuid.New(), ActorId: actor1, Verb: socialapi.LikedShelf,
+		Id: uuid.New(), ActorId: actor1, Verb: common.LikedShelf,
 		ObjectShelfId: &shelf1, TargetUserId: owner1, CreatedAt: base,
 	}
 	event2 := socialapi.ActivityEvent{ // unlisted shelf (listed owner): dropped on tab=following
-		Id: uuid.New(), ActorId: actor2, Verb: socialapi.LikedShelf,
+		Id: uuid.New(), ActorId: actor2, Verb: common.LikedShelf,
 		ObjectShelfId: &shelf2, TargetUserId: owner2, CreatedAt: base.Add(time.Second),
 	}
 	event3 := socialapi.ActivityEvent{ // followed_user, unlisted followee: dropped on tab=following
-		Id: uuid.New(), ActorId: actor3, Verb: socialapi.FollowedUser,
+		Id: uuid.New(), ActorId: actor3, Verb: common.FollowedUser,
 		TargetUserId: followee3, CreatedAt: base.Add(2 * time.Second),
 	}
 	event4 := socialapi.ActivityEvent{ // round 2's sole (surviving) event
-		Id: uuid.New(), ActorId: actor4, Verb: socialapi.LikedShelf,
+		Id: uuid.New(), ActorId: actor4, Verb: common.LikedShelf,
 		ObjectShelfId: &shelf4, TargetUserId: owner4, CreatedAt: base.Add(3 * time.Second),
 	}
 
@@ -948,7 +949,7 @@ func TestUnitFeed_FillLoopAndGating(t *testing.T) {
 func TestUnitFeed_UpstreamErrorsAreHard502s(t *testing.T) {
 	actorID, shelfID, ownerID := uuid.New(), uuid.New(), uuid.New()
 	event := socialapi.ActivityEvent{
-		Id: uuid.New(), ActorId: actorID, Verb: socialapi.LikedShelf,
+		Id: uuid.New(), ActorId: actorID, Verb: common.LikedShelf,
 		ObjectShelfId: &shelfID, TargetUserId: ownerID, CreatedAt: time.Now(),
 	}
 
@@ -1093,7 +1094,7 @@ func TestUnitFeed_ValidatesLimitMinimum(t *testing.T) {
 func TestUnitFeed_DropsListedShelfWithNonListedOwner(t *testing.T) {
 	actorID, ownerID, shelfID := uuid.New(), uuid.New(), uuid.New()
 	event := socialapi.ActivityEvent{
-		Id: uuid.New(), ActorId: actorID, Verb: socialapi.LikedShelf,
+		Id: uuid.New(), ActorId: actorID, Verb: common.LikedShelf,
 		ObjectShelfId: &shelfID, TargetUserId: ownerID, CreatedAt: time.Now(),
 	}
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
@@ -1141,7 +1142,7 @@ func TestUnitFeed_DropsListedShelfWithNonListedOwner(t *testing.T) {
 func TestUnitFeed_FollowedUserCard(t *testing.T) {
 	actorID, followeeID := uuid.New(), uuid.New()
 	event := socialapi.ActivityEvent{
-		Id: uuid.New(), ActorId: actorID, Verb: socialapi.FollowedUser,
+		Id: uuid.New(), ActorId: actorID, Verb: common.FollowedUser,
 		TargetUserId: followeeID, CreatedAt: time.Now(),
 	}
 	newUsers := func() *stubUsers {
@@ -1215,7 +1216,7 @@ func TestUnitFeed_ActorCardAttachesAtAnyVisibility(t *testing.T) {
 	t.Run("private actor liking a listed shelf: row survives, actor card still attached", func(t *testing.T) {
 		actorID, ownerID, shelfID := uuid.New(), uuid.New(), uuid.New()
 		event := socialapi.ActivityEvent{
-			Id: uuid.New(), ActorId: actorID, Verb: socialapi.LikedShelf,
+			Id: uuid.New(), ActorId: actorID, Verb: common.LikedShelf,
 			ObjectShelfId: &shelfID, TargetUserId: ownerID, CreatedAt: time.Now(),
 		}
 		h := newTestHandlers(t, newStubCache(), &stubAuth{})
@@ -1262,7 +1263,7 @@ func TestUnitFeed_CommentExcerpts(t *testing.T) {
 	actorID, ownerID := uuid.New(), uuid.New()
 	shelfID, commentID := uuid.New(), uuid.New()
 	event := socialapi.ActivityEvent{
-		Id: uuid.New(), ActorId: actorID, Verb: socialapi.CommentedShelf,
+		Id: uuid.New(), ActorId: actorID, Verb: common.CommentedShelf,
 		ObjectShelfId: &shelfID, ObjectCommentId: &commentID, TargetUserId: ownerID,
 		CreatedAt: time.Now(),
 	}

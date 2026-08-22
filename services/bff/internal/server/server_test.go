@@ -19,11 +19,12 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/embedded"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/collectionapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/userapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/enrichmentclient"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
@@ -656,7 +657,7 @@ func TestUnitCacheLookupMetric_MeAndRecs(t *testing.T) {
 		h := newTestHandlers(t, fc, &stubAuth{})
 		h.users = &stubUsers{get: func(context.Context, string, string) (userapi.User, error) {
 			return userapi.User{
-				Id: uid, Email: "alice@example.test", Handle: "alice", Roles: []userapi.UserRoles{"user"},
+				Id: uid, Email: "alice@example.test", Handle: "alice", Roles: []common.Role{"user"},
 			}, nil
 		}}
 		return h, uid.String()
@@ -701,7 +702,7 @@ func TestUnitCacheLookupMetric_MeAndRecs(t *testing.T) {
 		t.Helper()
 		h := newTestHandlers(t, fc, &stubAuth{})
 		h.collection = &stubCollection{library: func(context.Context, string) (collectionapi.LibrarySummary, error) {
-			return collectionapi.LibrarySummary{Library: []collectionapi.LibraryGame{}}, nil
+			return collectionapi.LibrarySummary{Library: []collectionapi.LibraryEntry{}}, nil
 		}}
 		h.enrichment = &stubEnrichment{score: func(context.Context, string, enrichapi.ScoreRequest) ([]byte, bool, error) {
 			return []byte(`{"degraded":false,"recommendations":[]}`), false, nil

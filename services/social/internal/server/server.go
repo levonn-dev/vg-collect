@@ -172,3 +172,7 @@ func (h *Handlers) capExceeded(w http.ResponseWriter, r *http.Request, kind stri
 	}
 	problem(w, r, http.StatusTooManyRequests, "cap_exceeded", detail)
 }
+
+// maxBodyBytes caps request bodies; every social-service body is a
+// small comment or event fragment, far under this.
+const maxBodyBytes = 64 << 10

@@ -9,10 +9,9 @@ tasks:
       - task --list
 
   gen:
-    desc: Regenerate server stubs from api/auth.yaml and the user-service client from api/user.yaml
+    desc: Regenerate server stubs from api/auth.yaml
     cmds:
       - go tool oapi-codegen -config oapi.server.yaml ../../api/auth.yaml
-      - go tool oapi-codegen -config oapi.userclient.yaml ../../api/user.yaml
 
   db:migrate:
     desc: Run migrations against DATABASE_URL

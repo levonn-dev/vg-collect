@@ -5,13 +5,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"regexp"
-	"strings"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 	"github.com/levonn-dev/vgkeep/services/user/internal/gen/api"
@@ -20,10 +19,6 @@ import (
 
 var _ api.ServerInterface = (*Handlers)(nil)
 
-const maxAvatarURL = 2048
-
-var preferredCurrencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
-
 func (h *Handlers) UpsertUser(w http.ResponseWriter, r *http.Request) {
 	claims, _ := jwtauth.FromContext(r.Context())
 	if !claims.HasRole("service") {
@@ -31,9 +26,16 @@ func (h *Handlers) UpsertUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req api.UpsertUserRequest
-	if !httpkit.DecodeBody(w, r, 64*1024, &req) { // internal endpoint; cap a buggy caller
+	if !httpkit.DecodeBody(w, r, maxBodyBytes, &req) { // internal endpoint; cap a buggy caller
 		return
 	}
+	// email/display_name are contract-required (api/user.yaml), but
+	// the schema's required keyword only checks key presence, not
+	// blankness: neither field carries a minLength, so a
+	// present-but-empty value passes specval untouched. This guard is
+	// what actually rejects "" and stays for that reason - it is
+	// semantic, not a mechanical duplicate of anything specval already
+	// covers.
 	if req.Email == "" || req.DisplayName == "" {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "email and display_name are required")
 		return
@@ -90,55 +92,52 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request, userId ope
 		return
 	}
 	var req api.UpdateUserRequest
-	if !httpkit.DecodeBody(w, r, 64*1024, &req) {
+	if !httpkit.DecodeBody(w, r, maxBodyBytes, &req) {
 		return
 	}
 	if req.Handle != nil {
-		trimmed := strings.TrimSpace(*req.Handle)
-		if !store.ValidHandle(trimmed) {
-			problem(w, r, http.StatusBadRequest, "invalid_body",
-				"handle must be 2-30 characters, alphanumeric plus interior underscores")
-			return
-		}
-		if store.ReservedHandles[store.NormalizeHandle(trimmed)] {
+		// Shape (length, character set) is now the contract's job:
+		// specval enforces common.yaml's Handle schema (minLength,
+		// maxLength, pattern) ahead of this handler, so the former
+		// store.ValidHandle handler-layer duplicate is gone.
+		// store.ValidHandle itself has no production caller left now
+		// (only its own unit test exercises it); the store's
+		// collision-avoidance path uses NormalizeHandle/ReservedHandles
+		// directly, not ValidHandle. The pattern already requires
+		// alnum first/last characters, so any request reaching here
+		// has no leading/trailing whitespace to trim - the old
+		// trim-then-validate step is a no-op past this point and is
+		// dropped with it: a handle padded with incidental whitespace,
+		// silently accepted before, now 400s instead of being
+		// trimmed, a deliberate tightening. Reserved-handle is a
+		// business rule the schema cannot express and stays.
+		if store.ReservedHandles[store.NormalizeHandle(*req.Handle)] {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "that handle is reserved")
 			return
 		}
-		req.Handle = &trimmed
 	}
-	visibility, ok := validEnum(w, r, req.ProfileVisibility,
-		[]api.UpdateUserRequestProfileVisibility{
-			api.UpdateUserRequestProfileVisibilityPrivate,
-			api.UpdateUserRequestProfileVisibilityUnlisted,
-			api.UpdateUserRequestProfileVisibilityListed,
-		}, "profile_visibility", "private, unlisted, listed")
-	if !ok {
-		return
-	}
-	landingPage, ok := validEnum(w, r, req.LandingPage,
-		[]api.UpdateUserRequestLandingPage{
-			api.UpdateUserRequestLandingPageCollection,
-			api.UpdateUserRequestLandingPageFeed,
-			api.UpdateUserRequestLandingPageExplore,
-		}, "landing_page", "collection, feed, explore")
-	if !ok {
-		return
-	}
+	// profile_visibility/landing_page's enum membership is now
+	// specval's job (common contract enum, no gap); these two lines
+	// only convert the generated enum-typed pointer to the plain
+	// *string store.Update expects, the same pointer-type-conversion
+	// idiom collection's UpdateEntry uses for its own optional enum
+	// fields.
+	visibility := (*string)(req.ProfileVisibility)
+	landingPage := (*string)(req.LandingPage)
+	// avatar_url's length cap is the contract's job (maxLength 2048,
+	// enforced by specval ahead of this handler). The scheme/host
+	// parse stays hand-written: it is a structural check the string
+	// schema cannot express. Empty stays exempt - the documented
+	// clear-the-field convention.
 	if req.AvatarUrl != nil && *req.AvatarUrl != "" {
-		if len(*req.AvatarUrl) > maxAvatarURL {
-			problem(w, r, http.StatusBadRequest, "invalid_body", "avatar_url must be at most 2048 characters")
-			return
-		}
 		parsed, err := url.Parse(*req.AvatarUrl)
 		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "avatar_url must be an http(s) URL")
 			return
 		}
 	}
-	if req.PreferredCurrency != nil && !preferredCurrencyRe.MatchString(*req.PreferredCurrency) {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "preferred_currency must be a 3-letter uppercase code")
-		return
-	}
+	// preferred_currency's pattern (^[A-Z]{3}$) is now specval's job:
+	// an exact mirror of CurrencyCode's contract pattern, no gap.
 	u, err := h.store.Update(r.Context(), userId, req.Handle, req.AvatarUrl, req.PreferredCurrency, visibility, landingPage, h.handleCooldown)
 	if errors.Is(err, store.ErrNotFound) {
 		problem(w, r, http.StatusNotFound, "user_not_found", "no such user")
@@ -186,18 +185,18 @@ func (h *Handlers) DeleteUser(w http.ResponseWriter, r *http.Request, userId ope
 }
 
 func toAPI(u store.User) api.User {
-	roles := make([]api.UserRoles, len(u.Roles))
+	roles := make([]common.Role, len(u.Roles))
 	for i, r := range u.Roles {
-		roles[i] = api.UserRoles(r)
+		roles[i] = common.Role(r)
 	}
 	return api.User{
 		Id:                u.ID,
 		Email:             u.Email,
 		Handle:            u.Handle,
 		AvatarUrl:         u.AvatarURL,
-		ProfileVisibility: api.UserProfileVisibility(u.ProfileVisibility),
+		ProfileVisibility: common.Visibility(u.ProfileVisibility),
 		PreferredCurrency: u.PreferredCurrency,
-		LandingPage:       api.UserLandingPage(u.LandingPage),
+		LandingPage:       common.LandingPage(u.LandingPage),
 		Roles:             roles,
 		CreatedAt:         u.CreatedAt,
 		UpdatedAt:         u.UpdatedAt,

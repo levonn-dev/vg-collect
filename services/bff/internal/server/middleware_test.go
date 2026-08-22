@@ -16,14 +16,14 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/collectionapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeytest"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/cache"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/enrichmentclient"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
@@ -580,7 +580,7 @@ func newStack(t *testing.T) *stack {
 	// TestUnitRecommendations_ComposesAndCaches already exercises.
 	fcol.library = func(context.Context, string) (collectionapi.LibrarySummary, error) {
 		rating := 8
-		return collectionapi.LibrarySummary{Library: []collectionapi.LibraryGame{{IgdbGameId: 9, Rating: &rating}}}, nil
+		return collectionapi.LibrarySummary{Library: []collectionapi.LibraryEntry{{IgdbGameId: 9, Rating: &rating}}}, nil
 	}
 
 	fo := newStubOtlpCollector(t)
@@ -604,7 +604,11 @@ func newStack(t *testing.T) *stack {
 	h.pollInterval = 5 * time.Millisecond
 	h.pollBudget = 250 * time.Millisecond
 
-	srv := httptest.NewServer(NewRouter(h, nil, slog.New(slog.DiscardHandler)))
+	router, err := NewRouter(h, nil, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
 	return &stack{
@@ -785,7 +789,7 @@ func (s *stack) recommendations(t *testing.T, cookie *http.Cookie) recommendatio
 // real server carrying cookie.
 func (s *stack) createEntry(t *testing.T, cookie *http.Cookie) int {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, s.baseURL+"/api/entries", strings.NewReader(`{"product_id":"x"}`))
+	req, err := http.NewRequest(http.MethodPost, s.baseURL+"/api/entries", strings.NewReader(`{"region":"ntsc_u","packaging":"loose"}`))
 	if err != nil {
 		t.Fatal(err)
 	}

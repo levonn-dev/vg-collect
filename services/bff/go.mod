@@ -4,23 +4,30 @@ go 1.26.2
 
 replace github.com/levonn-dev/vgkeep/libs/go/config => ../../libs/go/config
 
+replace github.com/levonn-dev/vgkeep/libs/go/contract => ../../libs/go/contract
+
 replace github.com/levonn-dev/vgkeep/libs/go/httpkit => ../../libs/go/httpkit
 
 replace github.com/levonn-dev/vgkeep/libs/go/otel => ../../libs/go/otel
 
 replace github.com/levonn-dev/vgkeep/libs/go/reqtest => ../../libs/go/reqtest
 
+replace github.com/levonn-dev/vgkeep/libs/go/specval => ../../libs/go/specval
+
 replace github.com/levonn-dev/vgkeep/libs/go/valkeykit => ../../libs/go/valkeykit
 
 replace github.com/levonn-dev/vgkeep/libs/go/valkeytest => ../../libs/go/valkeytest
 
 require (
+	github.com/getkin/kin-openapi v0.146.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/levonn-dev/vgkeep/libs/go/config v0.0.0-00010101000000-000000000000
-	github.com/levonn-dev/vgkeep/libs/go/httpkit v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/contract v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/httpkit v0.0.0
 	github.com/levonn-dev/vgkeep/libs/go/otel v0.0.0-00010101000000-000000000000
 	github.com/levonn-dev/vgkeep/libs/go/reqtest v0.0.0-00010101000000-000000000000
+	github.com/levonn-dev/vgkeep/libs/go/specval v0.0.0-00010101000000-000000000000
 	github.com/levonn-dev/vgkeep/libs/go/valkeykit v0.0.0-20260612004207-2005a308ef97
 	github.com/levonn-dev/vgkeep/libs/go/valkeytest v0.0.0-00010101000000-000000000000
 	github.com/oapi-codegen/runtime v1.6.0
@@ -50,13 +57,12 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/getkin/kin-openapi v0.146.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/go-openapi/jsonpointer v0.23.1 // indirect
-	github.com/go-openapi/swag/jsonname v0.26.0 // indirect
+	github.com/go-openapi/jsonpointer v1.0.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/lufia/plan9stats v0.0.0-20240513124658-fba389f38bae // indirect
@@ -68,6 +74,7 @@ require (
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
+	github.com/oapi-codegen/nethttp-middleware v1.2.0 // indirect
 	github.com/oapi-codegen/oapi-codegen/v2 v2.8.0 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect

@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/oidc"
@@ -71,10 +72,6 @@ func (h *Handlers) startDance(w http.ResponseWriter, r *http.Request, p oidc.Pro
 func (h *Handlers) OauthCallback(w http.ResponseWriter, r *http.Request) {
 	var req api.CallbackRequest
 	if !decodeBody(w, r, &req) {
-		return
-	}
-	if req.Code == "" || req.State == "" {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "code and state are required")
 		return
 	}
 	st, err := h.store.ConsumeState(r.Context(), req.State)
@@ -184,9 +181,9 @@ func (h *Handlers) ListIdentities(w http.ResponseWriter, r *http.Request, userId
 		problem(w, r, http.StatusInternalServerError, "internal", "identity list failed")
 		return
 	}
-	out := api.Identities{Identities: make([]api.Identity, len(ids))}
+	out := api.Identities{Identities: make([]common.Identity, len(ids))}
 	for i, id := range ids {
-		out.Identities[i] = api.Identity{Id: id.ID, Provider: id.Provider, Email: id.Email, CreatedAt: id.CreatedAt}
+		out.Identities[i] = common.Identity{Id: id.ID, Provider: id.Provider, Email: id.Email, CreatedAt: id.CreatedAt}
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -436,7 +433,7 @@ func tokenPairResponse(access, refresh string, accessTTL time.Duration, refreshE
 // on failure. All auth endpoints take tiny bodies; 64KB caps a buggy
 // caller.
 func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
-	return httpkit.DecodeBody(w, r, 64*1024, v)
+	return httpkit.DecodeBody(w, r, maxBodyBytes, v)
 }
 
 // RefreshToken rotates a refresh token. Ordering is deliberate: the
@@ -446,10 +443,6 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 func (h *Handlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	var req api.RefreshRequest
 	if !decodeBody(w, r, &req) {
-		return
-	}
-	if req.RefreshToken == "" {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "refresh_token is required")
 		return
 	}
 	hash := token.HashRefreshToken(req.RefreshToken)
@@ -595,10 +588,10 @@ func (h *Handlers) InternalServiceToken(w http.ResponseWriter, r *http.Request, 
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if !req.Service.Valid() {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "service must be catalog-refresh or entry-rematch")
-		return
-	}
+	// service's enum membership (catalog-refresh, entry-rematch) is
+	// now specval's job ahead of this handler; the former
+	// req.Service.Valid() call is gone (see
+	// TestValidatorPath_InternalServiceToken_BadServiceEnum).
 	access, err := h.minter.MintService("svc:"+string(req.Service), serviceTokenTTL)
 	if err != nil {
 		logStoreError(r.Context(), "mint_service_token", err)

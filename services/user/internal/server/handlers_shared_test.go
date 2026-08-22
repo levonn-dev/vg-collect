@@ -171,13 +171,13 @@ func TestUnitSharedSearch_StoreError_InternalServerError(t *testing.T) {
 }
 
 func TestUnitSharedSearch_QueryTooLong_BadRequest(t *testing.T) {
-	// api/user.yaml declares maxLength: 64 on q; the generated param
-	// binder does not enforce it, so the handler must reject 65+ bytes
-	// itself before the store is touched (the empty stubStore proves it).
+	// api/user.yaml declares maxLength: 64 on q; specval's request-
+	// validation middleware now rejects 65+ bytes ahead of this
+	// handler (the empty stubStore proves the store is never touched).
 	q := strings.Repeat("a", 65)
 	srv, a := newUnitServer(t, &stubStore{})
 	resp := do(t, "GET", srv.URL+"/shared/profiles/search?q="+q, a.token(t, "viewer"), nil)
-	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "query_too_long")
+	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_param")
 }
 
 func TestUnitSharedProfile_StoreError_InternalServerError(t *testing.T) {
@@ -201,14 +201,14 @@ func TestUnitSharedByIds_StoreError_InternalServerError(t *testing.T) {
 }
 
 func TestUnitSharedByIds_TooManyIds_BadRequest(t *testing.T) {
-	// api/user.yaml declares maxItems: 100 on ids; the generated param
-	// binder does not enforce it, so the handler must reject 101+ entries
-	// itself before the store is touched (the empty stubStore proves it).
+	// api/user.yaml declares maxItems: 100 on ids; specval's request-
+	// validation middleware now rejects 101+ entries ahead of this
+	// handler (the empty stubStore proves the store is never touched).
 	q := url.Values{}
 	for range 101 {
 		q.Add("ids", uuid.New().String())
 	}
 	srv, a := newUnitServer(t, &stubStore{})
 	resp := do(t, "GET", srv.URL+"/shared/profiles/by-ids?"+q.Encode(), a.token(t, "viewer"), nil)
-	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "too_many_ids")
+	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_param")
 }

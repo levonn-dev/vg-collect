@@ -63,8 +63,11 @@ func newUnitServer(t *testing.T, st server.Store, enrich server.Enrichment, c se
 		DashboardCacheTTL: 5 * time.Minute,
 		Logger:            testLogger(),
 	})
-	router := server.NewRouter(h, a.v, testLogger(),
+	router, err := server.NewRouter(h, a.v, testLogger(),
 		func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return srv, a
@@ -104,8 +107,11 @@ func TestUnitReadyzFailsWhenNotReady(t *testing.T) {
 		DashboardCacheTTL: 5 * time.Minute,
 		Logger:            testLogger(),
 	})
-	router := server.NewRouter(h, a.v, testLogger(),
+	router, err := server.NewRouter(h, a.v, testLogger(),
 		func(context.Context) error { return errors.New("not ready") })
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 

@@ -9,11 +9,6 @@ tasks:
       - task --list
 
   gen:
-    desc: Regenerate server stubs from api/bff.yaml and typed clients for the auth and user services
+    desc: Regenerate server stubs from api/bff.yaml
     cmds:
       - go tool oapi-codegen -config oapi.server.yaml ../../api/bff.yaml
-      - go tool oapi-codegen -config oapi.authclient.yaml ../../api/auth.yaml
-      - go tool oapi-codegen -config oapi.userclient.yaml ../../api/user.yaml
-      - go tool oapi-codegen -config oapi.enrichmentclient.yaml ../../api/enrichment.yaml
-      - go tool oapi-codegen -config oapi.collectionclient.yaml ../../api/collection.yaml
-      - go tool oapi-codegen -config oapi.socialclient.yaml ../../api/social.yaml

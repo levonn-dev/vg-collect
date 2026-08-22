@@ -17,11 +17,11 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/userapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/authclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/authapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/userapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/socialclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
@@ -35,7 +35,7 @@ func TestGetMe(t *testing.T) {
 	h.users = &stubUsers{get: func(context.Context, string, string) (userapi.User, error) {
 		return userapi.User{
 			Id: uid, Email: "alice@example.test", Handle: "alice",
-			AvatarUrl: &avatar, Roles: []userapi.UserRoles{"user"},
+			AvatarUrl: &avatar, Roles: []common.Role{"user"},
 		}, nil
 	}}
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
@@ -194,7 +194,7 @@ func TestUpdateMe_RelaysAndInvalidatesCache(t *testing.T) {
 			return userclient.Result{Status: http.StatusBadRequest, ContentType: "application/problem+json", Body: problemJSON}, nil
 		}}
 		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
-		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"handle":""}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"handle":"alice3"}`))
 		r.AddCookie(sealedCookie(t, h, access, "r1"))
 		r.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
@@ -214,7 +214,7 @@ func TestUpdateMe_RelaysAndInvalidatesCache(t *testing.T) {
 			return userclient.Result{}, errors.New("user service down")
 		}}
 		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
-		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"handle":"x"}`))
+		r := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"handle":"alice4"}`))
 		r.AddCookie(sealedCookie(t, h, access, "r1"))
 		r.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
@@ -233,7 +233,7 @@ func TestUnitGetMe_IncludesPreferredCurrency(t *testing.T) {
 	h.users = &stubUsers{get: func(context.Context, string, string) (userapi.User, error) {
 		return userapi.User{
 			Id: uid, Email: "alice@example.test", Handle: "alice",
-			Roles: []userapi.UserRoles{"user"}, PreferredCurrency: "EUR",
+			Roles: []common.Role{"user"}, PreferredCurrency: "EUR",
 		}, nil
 	}}
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
@@ -266,7 +266,7 @@ func TestUnitGetMe_IncludesProfileVisibility(t *testing.T) {
 		h.users = &stubUsers{get: func(context.Context, string, string) (userapi.User, error) {
 			return userapi.User{
 				Id: uid, Email: "alice@example.test", Handle: "alice",
-				Roles: []userapi.UserRoles{"user"}, ProfileVisibility: userapi.UserProfileVisibilityListed,
+				Roles: []common.Role{"user"}, ProfileVisibility: common.Listed,
 			}, nil
 		}}
 		access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
@@ -299,7 +299,7 @@ func TestUnitGetMe_IncludesLandingPage(t *testing.T) {
 	h.users = &stubUsers{get: func(context.Context, string, string) (userapi.User, error) {
 		return userapi.User{
 			Id: uid, Email: "alice@example.test", Handle: "alice",
-			Roles: []userapi.UserRoles{"user"}, LandingPage: userapi.UserLandingPageCollection,
+			Roles: []common.Role{"user"}, LandingPage: common.Collection,
 		}, nil
 	}}
 	access := mintAccess(t, uid.String(), "j1", time.Now().Add(5*time.Minute))
@@ -413,11 +413,11 @@ func TestGetMyIdentities(t *testing.T) {
 		t1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 		t2 := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 		h := newTestHandlers(t, newStubCache(), &stubAuth{
-			listIdentities: func(_ context.Context, userID, _ string) ([]authapi.Identity, error) {
+			listIdentities: func(_ context.Context, userID, _ string) ([]common.Identity, error) {
 				if userID != uid.String() {
 					t.Errorf("userID = %q", userID)
 				}
-				return []authapi.Identity{
+				return []common.Identity{
 					{Id: id1, Provider: "google", Email: &emailA, CreatedAt: t1},
 					{Id: id2, Provider: "dev", CreatedAt: t2},
 				}, nil
@@ -445,7 +445,7 @@ func TestGetMyIdentities(t *testing.T) {
 
 	t.Run("upstream_error_is_502", func(t *testing.T) {
 		h := newTestHandlers(t, newStubCache(), &stubAuth{
-			listIdentities: func(context.Context, string, string) ([]authapi.Identity, error) {
+			listIdentities: func(context.Context, string, string) ([]common.Identity, error) {
 				return nil, errors.New("auth down")
 			},
 		})

@@ -18,9 +18,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/collectionapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
 )
 
 // TestUnitViewPublish_FiresEventFailOpen pins publishIfListed: a
@@ -216,9 +216,10 @@ func TestUnitCollectionPassThroughs_RouteMatrix(t *testing.T) {
 		status           int
 	}{
 		{http.MethodGet, "/api/entries?status=backlog", "list_entries", "", 200},
-		{http.MethodPost, "/api/entries", "create_entry", `{"product_id":"x"}`, 201},
+		{http.MethodPost, "/api/entries", "create_entry", `{"region":"ntsc_u","packaging":"loose"}`, 201},
 		{http.MethodGet, "/api/entries/" + id, "get_entry", "", 200},
-		{http.MethodPut, "/api/entries/" + id, "update_entry", `{}`, 200},
+		{http.MethodPut, "/api/entries/" + id, "update_entry",
+			`{"region":"ntsc_u","packaging":"loose","pricing_mode":"disabled","status":"backlog","pinned":false}`, 200},
 		{http.MethodDelete, "/api/entries/" + id, "delete_entry", "", 204},
 		{http.MethodPost, "/api/entries/" + id + "/reorder", "reorder_entry", `{"after_id":null}`, 200},
 		{http.MethodPost, "/api/entries/" + id + "/region-mismatch-ack", "ack_region_mismatch", "", 204},
@@ -428,8 +429,8 @@ func populateEveryPointerField(v reflect.Value) {
 // param mapping function must keep: every source field must land on
 // its same-named destination field non-nil, so a future contract param
 // added to one generated package and forgotten in the hand-written
-// mapping fails a test instead of silently dropping a filter - exactly
-// this task's bug, for Developer/Publisher.
+// mapping fails a test instead of silently dropping a filter, the way
+// Developer/Publisher once did.
 func assertEveryFieldMapped(t *testing.T, src, dst reflect.Value) {
 	t.Helper()
 	st := src.Type()
@@ -467,7 +468,7 @@ func TestUnitDashboardParams_MapsEveryField(t *testing.T) {
 // is a pass-through like every other entry mutation.
 func TestUnitUpdateEntryPassThrough_CustomPricingRoundTrips(t *testing.T) {
 	id := uuid.New()
-	const sent = `{"pricing_mode":"custom","custom_value_cents":12345}`
+	const sent = `{"region":"ntsc_u","packaging":"loose","status":"backlog","pinned":false,"pricing_mode":"custom","custom_value_cents":12345}`
 	relayed := []byte(`{"id":"` + id.String() + `","pricing_mode":"custom","custom_value_cents":12345,"custom_value_set_at":"2026-07-09T00:00:00Z"}`)
 
 	col := &stubCollection{answer: func(op string) (collectionclient.Result, error) {
@@ -506,7 +507,7 @@ func TestUnitUpdateEntryPassThrough_CustomPricingRoundTrips(t *testing.T) {
 // verbatim. The bff neither validates nor reshapes it.
 func TestUnitUpdateEntryPassThrough_CustomPricingEnteredPairRoundTrips(t *testing.T) {
 	id := uuid.New()
-	const sent = `{"pricing_mode":"custom","custom_value_cents":5400,"custom_value_entered_cents":6000,"custom_value_entered_currency":"EUR"}`
+	const sent = `{"region":"ntsc_u","packaging":"loose","status":"backlog","pinned":false,"pricing_mode":"custom","custom_value_cents":5400,"custom_value_entered_cents":6000,"custom_value_entered_currency":"EUR"}`
 	const relayed = `{"id":"e1","custom_value_cents":5400,"custom_value_entered_cents":6000,"custom_value_entered_currency":"EUR","pricing_mode":"custom"}`
 
 	col := &stubCollection{answer: func(op string) (collectionclient.Result, error) {
@@ -586,7 +587,7 @@ func TestUnitEntryMutationInvalidatesRecs(t *testing.T) {
 	sub := subjectOf(t, env.sessionAccessToken)
 	sc.recs[sub] = []byte(`{"degraded":false,"recommendations":[]}`)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/entries", strings.NewReader(`{"product_id":"x"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/entries", strings.NewReader(`{"region":"ntsc_u","packaging":"loose"}`))
 	req.AddCookie(env.cookie)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", "http://localhost:8090")

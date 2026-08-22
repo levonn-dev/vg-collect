@@ -12,9 +12,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
-	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
@@ -218,7 +219,7 @@ func TestSubmitVerdict_ApproveNewMintRecordAdoptAndRetry(t *testing.T) {
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	platName := "SNES"
 	communityProduct := enrichapi.Product{Id: minted, Type: "game", Name: "Repro Alpha",
-		Community: &enrichapi.CommunityMeta{PlatformName: &platName,
+		Community: &common.CommunityMeta{PlatformName: &platName,
 			Developers: &[]string{"Garage Team"}, Publishers: &[]string{"Repro House"}}}
 
 	var mintedReq *enrichapi.CreateCommunityProductJSONRequestBody
@@ -450,11 +451,11 @@ func TestApproveNew_ForwardsCoverToMint(t *testing.T) {
 		createCommunityProduct: func(_ context.Context, _ string, req enrichapi.CreateCommunityProductJSONRequestBody) (enrichapi.Product, error) {
 			mintBody = req
 			cu := "https://img.example/sub.jpg"
-			return enrichapi.Product{Id: minted, Type: "game", Name: "Repro", Community: &enrichapi.CommunityMeta{CoverUrl: &cu}}, nil
+			return enrichapi.Product{Id: minted, Type: "game", Name: "Repro", Community: &common.CommunityMeta{CoverUrl: &cu}}, nil
 		},
 		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
 			cu := "https://img.example/sub.jpg"
-			return enrichapi.Product{Id: id, Type: "game", Name: "Repro", Community: &enrichapi.CommunityMeta{CoverUrl: &cu}}, nil
+			return enrichapi.Product{Id: id, Type: "game", Name: "Repro", Community: &common.CommunityMeta{CoverUrl: &cu}}, nil
 		},
 	}
 	srv, a := newUnitServer(t, st, enr, newStubCache())

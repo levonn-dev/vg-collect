@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/specval"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/gen/api"
 )
 
@@ -16,7 +17,16 @@ import (
 // these endpoints are where tokens come from, and the JWKS must be
 // readable by every service. The service is cluster-internal; network
 // reachability is the access control.
-func NewRouter(h *Handlers, logger *slog.Logger, ready func(context.Context) error) http.Handler {
+//
+// specval wraps only the generated API handler (the same subtree-only
+// rule the other services' jwtauth+specval chain follows), mounted
+// directly into auth's hand-rolled chain in its place; /healthz and
+// /readyz stay outside it, same as every other service.
+func NewRouter(h *Handlers, logger *slog.Logger, ready func(context.Context) error) (http.Handler, error) {
+	spec, err := api.GetSpec()
+	if err != nil {
+		return nil, err
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -38,9 +48,10 @@ func NewRouter(h *Handlers, logger *slog.Logger, ready func(context.Context) err
 			problem(w, r, http.StatusBadRequest, "invalid_param", err.Error())
 		},
 	})
-	mux.Handle("/", apiRoutes)
+	validate := specval.Middleware(specval.Options{Spec: spec, MaxBodyBytes: maxBodyBytes})
+	mux.Handle("/", validate(apiRoutes))
 
 	handler := httpkit.RequestLogger(logger)(mux)
 	handler = otelhttp.NewHandler(httpkit.RouteLabel(handler, apiMux, mux), "auth")
-	return httpkit.Recover(logger)(handler)
+	return httpkit.Recover(logger)(handler), nil
 }

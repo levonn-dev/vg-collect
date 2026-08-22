@@ -1,5 +1,0 @@
-package: collectionapi
-generate:
-  models: true
-  client: true
-output: internal/gen/collectionapi/client.gen.go

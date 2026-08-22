@@ -6,7 +6,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -90,27 +89,6 @@ func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, op, det
 	problem(w, r, http.StatusInternalServerError, "internal", detail)
 }
 
-// validEnum checks a hand-decoded enum field against its allowed
-// members, collapsing UpdateUser's ProfileVisibility/LandingPage
-// switches into one generic. val == nil (the field was absent from
-// the request) is valid and resolves to a nil result, leaving that
-// dimension untouched; a present val outside allowed writes the
-// contract's 400 and reports false. field and allowedList build the
-// message text ("<field> must be one of <allowedList>"), matching
-// each call site's original wording exactly. The generated enum types
-// are plain strings with no UnmarshalJSON validation of their own,
-// and UpdateUser hand-decodes its body rather than routing through
-// the generated param binder, so an invalid value must be rejected
-// here - otherwise it reaches the store and only the DB CHECK
-// constraint catches it, surfacing as a 500 instead of a 400.
-func validEnum[T ~string](w http.ResponseWriter, r *http.Request, val *T, allowed []T, field, allowedList string) (*string, bool) {
-	if val == nil {
-		return nil, true
-	}
-	if !slices.Contains(allowed, *val) {
-		problem(w, r, http.StatusBadRequest, "invalid_body", field+" must be one of "+allowedList)
-		return nil, false
-	}
-	v := string(*val)
-	return &v, true
-}
+// maxBodyBytes caps request bodies; every user-service body is a
+// small profile fragment, far under this.
+const maxBodyBytes = 64 << 10

@@ -17,8 +17,9 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
-	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
@@ -160,7 +161,7 @@ func TestUnitCreateEntry_CoverFallsBackToPlatformLogo(t *testing.T) {
 		getProduct: func(_ context.Context, _ string, id uuid.UUID) (enrichapi.Product, error) {
 			return enrichapi.Product{
 				Id: id, Type: "console", Name: "Gamecube System",
-				Platform: &enrichapi.PlatformRef{IgdbPlatformId: 21, Name: "Nintendo GameCube", LogoUrl: &logo},
+				Platform: &common.PlatformRef{IgdbPlatformId: 21, Name: "Nintendo GameCube", LogoUrl: &logo},
 			}, nil
 		},
 		batchPrices: pricedAs(1500, 4200, 9900),
@@ -397,9 +398,11 @@ func TestCreateEntry_CustomCredits(t *testing.T) {
 	}
 }
 
-// TestCreateEntry_CreditCaps pins the manual validation: more than 10
-// names or a name over 120 runes is a 400, matching the contract caps
-// the router does not enforce on its own.
+// TestCreateEntry_CreditCaps pins the contract's caps on developers/
+// publishers (maxItems 10, maxLength 120 per name): more than 10 names
+// or a name over 120 runes is a 400, enforced by specval's request-
+// validation middleware ahead of the handler (libs/go/catalogval's
+// NormalizeCredits no longer checks either bound itself).
 func TestCreateEntry_CreditCaps(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 	base := func(devs []string) io.Reader {
@@ -694,7 +697,7 @@ func TestUnitCreateEntry_SnapshotsRegionScopedReleaseDate(t *testing.T) {
 		// accident on a row's date instead.
 		scalar := openapi_types.Date{Time: time.Date(1994, time.December, 25, 0, 0, 0, 0, time.UTC)}
 		p.Igdb.FirstReleaseDate = &scalar
-		p.Igdb.ReleaseDates = &[]enrichapi.ReleaseDate{
+		p.Igdb.ReleaseDates = &[]common.ReleaseDate{
 			{Region: "japan", Date: openapi_types.Date{Time: time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC)}},
 			{Region: "north_america", Date: openapi_types.Date{Time: time.Date(1995, time.August, 22, 0, 0, 0, 0, time.UTC)}},
 		}
@@ -1354,10 +1357,10 @@ func TestUnitUpdateEntry(t *testing.T) {
 	t.Run("narrow product re-match", func(t *testing.T) {
 		gameProd := func(id uuid.UUID, gameID, platformID int64, matched bool) enrichapi.Product {
 			p := enrichapi.Product{Id: id, Type: "game",
-				Igdb:     &enrichapi.IgdbMeta{GameId: gameID},
-				Platform: &enrichapi.PlatformRef{IgdbPlatformId: platformID, Name: "SNES"}}
+				Igdb:     &common.IgdbMeta{GameId: gameID},
+				Platform: &common.PlatformRef{IgdbPlatformId: platformID, Name: "SNES"}}
 			if matched {
-				p.Pricecharting = &enrichapi.PricechartingMeta{PcProductId: 5011}
+				p.Pricecharting = &common.PricechartingMeta{PcProductId: 5011}
 			}
 			return p
 		}
@@ -1416,7 +1419,7 @@ func TestUnitUpdateEntry(t *testing.T) {
 			// A repoint always re-fetches the new product (needed for
 			// the family check); the date pick reuses that same fetch
 			// rather than triggering a second GetProduct call.
-			releaseDates := []enrichapi.ReleaseDate{
+			releaseDates := []common.ReleaseDate{
 				{Region: "japan", Date: openapi_types.Date{Time: time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC)}},
 				{Region: "north_america", Date: openapi_types.Date{Time: time.Date(1995, time.August, 22, 0, 0, 0, 0, time.UTC)}},
 			}
@@ -1473,7 +1476,7 @@ func TestUnitUpdateEntry(t *testing.T) {
 					}
 					if id == target {
 						p := gameProd(target, 1011, 19, true)
-						p.Igdb.Localizations = &[]enrichapi.Localization{
+						p.Igdb.Localizations = &[]common.Localization{
 							{Region: "EU", CoverUrl: new("https://images.igdb.example/eu.jpg")},
 						}
 						return p, nil
@@ -1559,12 +1562,12 @@ func TestUpdateEntry_NarrowRematchStampsUser(t *testing.T) {
 	e := storedGameEntry(user)
 	target := uuid.New()
 	curProd := enrichapi.Product{Id: *e.ProductID, Type: "game",
-		Igdb:     &enrichapi.IgdbMeta{GameId: 1011},
-		Platform: &enrichapi.PlatformRef{IgdbPlatformId: 19, Name: "SNES"}} // unmatched: required for re-match eligibility
+		Igdb:     &common.IgdbMeta{GameId: 1011},
+		Platform: &common.PlatformRef{IgdbPlatformId: 19, Name: "SNES"}} // unmatched: required for re-match eligibility
 	newProd := enrichapi.Product{Id: target, Type: "game",
-		Igdb:          &enrichapi.IgdbMeta{GameId: 1011},
-		Platform:      &enrichapi.PlatformRef{IgdbPlatformId: 19, Name: "SNES"},
-		Pricecharting: &enrichapi.PricechartingMeta{PcProductId: 5011}}
+		Igdb:          &common.IgdbMeta{GameId: 1011},
+		Platform:      &common.PlatformRef{IgdbPlatformId: 19, Name: "SNES"},
+		Pricecharting: &common.PricechartingMeta{PcProductId: 5011}}
 	var updated store.Entry
 	st := &stubStore{
 		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return e, nil },
@@ -1645,7 +1648,7 @@ func TestUnitUpdateEntry_RegionScopedReleaseDate(t *testing.T) {
 	euDate := time.Date(1995, time.November, 24, 0, 0, 0, 0, time.UTC)
 	dated := func(id uuid.UUID) enrichapi.Product {
 		p := gameProduct(id)
-		p.Igdb.ReleaseDates = &[]enrichapi.ReleaseDate{
+		p.Igdb.ReleaseDates = &[]common.ReleaseDate{
 			{Region: "north_america", Date: openapi_types.Date{Time: naDate}},
 			{Region: "europe", Date: openapi_types.Date{Time: euDate}},
 		}
@@ -2088,8 +2091,8 @@ func TestReorderThroughTheStack(t *testing.T) {
 }
 
 // manyUUIDStrings builds n distinct uuid strings for maxItems guard
-// tests (the request bounds this task adds have no existing
-// generator to reuse).
+// tests (the contract's maxItems bounds on entry_ids, add_tag_ids, and
+// remove_tag_ids have no existing generator to reuse).
 func manyUUIDStrings(n int) []string {
 	out := make([]string, n)
 	for i := range out {
@@ -2178,10 +2181,10 @@ func TestUnitBulkUpdateEntries_Success(t *testing.T) {
 	}
 }
 
-// TestUnitBulkUpdateEntries_TagCapExceededMapsTo400 pins this task's
-// delegated status/code choice for the bulk per-entry tag cap: 400,
-// code tag_cap_exceeded (distinct from the generic invalid_body every
-// other bulk-update guard answers).
+// TestUnitBulkUpdateEntries_TagCapExceededMapsTo400 pins the delegated
+// status/code choice for the bulk per-entry tag cap: 400, code
+// tag_cap_exceeded (distinct from the generic invalid_body every other
+// bulk-update guard answers).
 func TestUnitBulkUpdateEntries_TagCapExceededMapsTo400(t *testing.T) {
 	st := &stubStore{bulkUpdateEntries: func(context.Context, uuid.UUID, []uuid.UUID, store.BulkActions) (int, error) {
 		return 0, store.ErrTagCapExceeded
@@ -2207,11 +2210,11 @@ func TestUnitCustomPricing_ValidationMatrix(t *testing.T) {
 		{"negative custom value", func(m map[string]any) {
 			m["pricing_mode"] = "custom"
 			m["custom_value_cents"] = -5
-		}, "custom_value_cents must not be negative"},
+		}, "custom_value_cents is invalid"},
 		{"custom value over cap", func(m map[string]any) {
 			m["pricing_mode"] = "custom"
 			m["custom_value_cents"] = 1000000001
-		}, "custom_value_cents must not exceed 1000000000"},
+		}, "custom_value_cents is invalid"},
 		{"unknown pricing mode", func(m map[string]any) {
 			m["pricing_mode"] = "bogus"
 		}, "pricing_mode must be one of auto, proxy, custom, disabled"},
@@ -2234,19 +2237,19 @@ func TestUnitCustomPricing_ValidationMatrix(t *testing.T) {
 			m["custom_value_cents"] = 5400
 			m["custom_value_entered_cents"] = -1
 			m["custom_value_entered_currency"] = "EUR"
-		}, "custom_value_entered_cents must not be negative"},
+		}, "custom_value_entered_cents is invalid"},
 		{"entered cents over cap", func(m map[string]any) {
 			m["pricing_mode"] = "custom"
 			m["custom_value_cents"] = 5400
 			m["custom_value_entered_cents"] = 1000000001
 			m["custom_value_entered_currency"] = "EUR"
-		}, "custom_value_entered_cents must not exceed 1000000000"},
+		}, "custom_value_entered_cents is invalid"},
 		{"entered currency malformed", func(m map[string]any) {
 			m["pricing_mode"] = "custom"
 			m["custom_value_cents"] = 5400
 			m["custom_value_entered_cents"] = 6000
 			m["custom_value_entered_currency"] = "eur"
-		}, "custom_value_entered_currency must be a 3-letter uppercase code"},
+		}, "custom_value_entered_currency is invalid"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2549,7 +2552,7 @@ func TestCreateEntry_CommunityProductSnapshotFallbacks(t *testing.T) {
 	rd := openapi_types.Date{Time: time.Date(1995, 10, 9, 0, 0, 0, 0, time.UTC)}
 	community := enrichapi.Product{
 		Id: productID, Type: "game", Name: "Repro Alpha",
-		Community: &enrichapi.CommunityMeta{PlatformName: &platName, FirstReleaseDate: &rd},
+		Community: &common.CommunityMeta{PlatformName: &platName, FirstReleaseDate: &rd},
 	}
 	var stored store.Entry
 	st := &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
@@ -2952,11 +2955,11 @@ func TestUpdateEntry_RegionChangeNonAutoAndExplicitRepointPrecedence(t *testing.
 		// creation snapshot and the ntsc_j region-arm re-pick below must
 		// land different field values, proving the re-pick used the NEW
 		// region rather than just replaying the creation-time snapshot.
-		baseMember.Igdb.ReleaseDates = &[]enrichapi.ReleaseDate{
+		baseMember.Igdb.ReleaseDates = &[]common.ReleaseDate{
 			{Region: "north_america", Date: openapi_types.Date{Time: time.Date(1991, time.August, 23, 0, 0, 0, 0, time.UTC)}},
 			{Region: "japan", Date: openapi_types.Date{Time: time.Date(1990, time.January, 11, 0, 0, 0, 0, time.UTC)}},
 		}
-		baseMember.Igdb.Localizations = &[]enrichapi.Localization{
+		baseMember.Igdb.Localizations = &[]common.Localization{
 			{Region: "ja-JP", Name: new("聖剣伝説3"), Translit: new("Seiken Densetsu 3"), CoverUrl: new("https://images.igdb.example/jp.jpg")},
 		}
 		var created store.Entry

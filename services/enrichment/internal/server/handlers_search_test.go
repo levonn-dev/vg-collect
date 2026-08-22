@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
@@ -82,7 +83,7 @@ func TestSearch_GameResultCarriesReleaseRegions(t *testing.T) {
 	if n64.ReleaseRegions == nil {
 		t.Fatal("want release_regions populated on a game platform ref")
 	}
-	want := []api.PlatformRefReleaseRegions{"japan", "north_america", "europe"}
+	want := []common.ReleaseRegion{"japan", "north_america", "europe"}
 	if !slices.Equal(*n64.ReleaseRegions, want) {
 		t.Fatalf("release_regions order: got %v, want %v", *n64.ReleaseRegions, want)
 	}
@@ -613,9 +614,10 @@ func TestUnitSearch_BadParams(t *testing.T) {
 		}
 	}
 
-	// The accepted-kinds message must list all three wire kinds.
+	// The accepted-kinds message must list all three wire kinds (now in
+	// specval's canonical "must be one of" voice).
 	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=amiibo&q=zelda", tok, nil)
-	if !strings.Contains(rec.Body.String(), "type must be game, hardware or pc_listing") {
+	if !strings.Contains(rec.Body.String(), "type must be one of game, hardware, pc_listing") {
 		t.Fatalf("accepted-kinds message stale: %s", rec.Body.String())
 	}
 }

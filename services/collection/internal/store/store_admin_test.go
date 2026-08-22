@@ -28,11 +28,13 @@ func TestListGameBackedRefs(t *testing.T) {
 	ctx := context.Background()
 	userA, userB := uuid.New(), uuid.New()
 
-	// seedTrio mirrors the brief's (a)/(b)/(c) shapes for one user and
-	// returns the (a) game entry so the assertions below can key off it.
-	// name/translit/cover seed the (a) entry's stored localized trio
-	// (nil for callers that don't care), exercising both the non-nil
-	// and nil round trip through ListGameBackedRefs.
+	// seedTrio creates one product-backed game entry (a), one
+	// product-backed hardware entry (b), and one custom entry (c, no
+	// product_id) for one user, returning the game entry so the
+	// assertions below can key off it. name/translit/cover seed the
+	// game entry's stored localized trio (nil for callers that don't
+	// care), exercising both the non-nil and nil round trip through
+	// ListGameBackedRefs.
 	seedTrio := func(user uuid.UUID, released time.Time, name, translit, cover *string) store.Entry {
 		game := baseEntry(user)
 		game.IGDBGameID = new(int64(1000))

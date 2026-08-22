@@ -115,8 +115,11 @@ func run() error {
 	})
 	// Readiness = Mongo only: the catalog is a hard dependency, the
 	// cache fails open per-request.
-	router := server.NewRouter(h, v, slog.Default(),
+	router, err := server.NewRouter(h, v, slog.Default(),
 		func(c context.Context) error { return mongokit.Health(c, client) })
+	if err != nil {
+		return err
+	}
 
 	srv := httpkit.NewServer(cfg.HTTPAddr, router)
 	defer func() { _ = srv.Close() }() // idempotent after Run; closes on every exit path

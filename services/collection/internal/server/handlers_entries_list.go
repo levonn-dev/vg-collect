@@ -10,38 +10,31 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-// listParams validates and converts the generated query params (the
-// generated layer binds but does not enforce enum membership or
-// ranges). Returns filters, groupBy, limit, offset, and the 400
-// detail (empty means valid).
-func listParams(params api.ListEntriesParams) (store.Filters, string, int, int, string) {
+// listParams converts the generated, already-validated query params
+// into the store's filter shape (enum membership, item_type/status/
+// packaging/item_condition per-element and sort/order/group_by, and
+// the limit/offset bounds are specval's job now - every value here is
+// already known-good by the time this runs). Returns filters,
+// groupBy, limit, and offset.
+func listParams(params api.ListEntriesParams) (store.Filters, string, int, int) {
 	f := store.Filters{Sort: "created_at", Order: "desc"}
 	if params.ItemType != nil {
 		for _, v := range *params.ItemType {
-			if !v.Valid() {
-				return f, "", 0, 0, "item_type contains an unknown value"
-			}
 			f.ItemTypes = append(f.ItemTypes, string(v))
 		}
 	}
 	if params.Status != nil {
 		for _, v := range *params.Status {
-			if !v.Valid() {
-				return f, "", 0, 0, "status contains an unknown value"
-			}
 			f.Statuses = append(f.Statuses, string(v))
 		}
 	}
 	if params.Packaging != nil {
 		for _, v := range *params.Packaging {
-			if !v.Valid() {
-				return f, "", 0, 0, "packaging contains an unknown value"
-			}
 			f.Packagings = append(f.Packagings, string(v))
 		}
 	}
@@ -60,9 +53,6 @@ func listParams(params api.ListEntriesParams) (store.Filters, string, int, int, 
 	}
 	if params.ItemCondition != nil {
 		for _, v := range *params.ItemCondition {
-			if !v.Valid() {
-				return f, "", 0, 0, "item_condition contains an unknown value"
-			}
 			f.ItemConditions = append(f.ItemConditions, string(v))
 		}
 	}
@@ -73,33 +63,24 @@ func listParams(params api.ListEntriesParams) (store.Filters, string, int, int, 
 		f.TagIDs = *params.TagId
 	}
 	if params.Sort != nil {
-		if !params.Sort.Valid() {
-			return f, "", 0, 0, "sort is not a known value"
-		}
 		f.Sort = string(*params.Sort)
 	}
 	if params.Order != nil {
-		if !params.Order.Valid() {
-			return f, "", 0, 0, "order must be asc or desc"
-		}
 		f.Order = string(*params.Order)
 	}
 	groupBy := ""
 	if params.GroupBy != nil {
-		if !params.GroupBy.Valid() {
-			return f, "", 0, 0, "group_by is not a known value"
-		}
 		groupBy = string(*params.GroupBy)
 	}
-	limit, ok := httpkit.ClampOrReject(params.Limit, 200, 1, 500)
-	if !ok {
-		return f, "", 0, 0, "limit must be between 1 and 500"
+	limit := 200
+	if params.Limit != nil {
+		limit = *params.Limit
 	}
-	offset, ok := httpkit.ClampOrReject(params.Offset, 0, 0)
-	if !ok {
-		return f, "", 0, 0, "offset must not be negative"
+	offset := 0
+	if params.Offset != nil {
+		offset = *params.Offset
 	}
-	return f, groupBy, limit, offset, ""
+	return f, groupBy, limit, offset
 }
 
 // sortEntriesByValue re-sorts in memory after price composition:
@@ -165,7 +146,7 @@ var catchAllLabels = map[string]bool{"Unknown": true, "Unassigned": true, "Untag
 
 // buildGroups partitions the sorted entries, preserving order within
 // each group; groups sort by label ascending with the catch-all last.
-func buildGroups(entries []store.Entry, apiEntries []api.Entry, groupBy string) []api.EntryGroup {
+func buildGroups(entries []store.Entry, apiEntries []api.Entry, groupBy string) []common.EntryGroup {
 	byLabel := map[string][]api.Entry{}
 	for i, e := range entries {
 		for _, label := range groupLabels(e, groupBy) {
@@ -183,9 +164,9 @@ func buildGroups(entries []store.Entry, apiEntries []api.Entry, groupBy string) 
 		}
 		return strings.ToLower(labels[i]) < strings.ToLower(labels[j])
 	})
-	groups := make([]api.EntryGroup, len(labels))
+	groups := make([]common.EntryGroup, len(labels))
 	for i, label := range labels {
-		groups[i] = api.EntryGroup{Key: label, Label: label, Entries: byLabel[label]}
+		groups[i] = common.EntryGroup{Key: label, Label: label, Entries: byLabel[label]}
 	}
 	return groups
 }
@@ -202,11 +183,7 @@ func (h *Handlers) ListEntries(w http.ResponseWriter, r *http.Request, params ap
 	if !ok {
 		return
 	}
-	f, groupBy, limit, offset, detail := listParams(params)
-	if detail != "" {
-		problem(w, r, http.StatusBadRequest, "invalid_param", detail)
-		return
-	}
+	f, groupBy, limit, offset := listParams(params)
 	entries, err := h.store.ListEntries(r.Context(), userID, f)
 	if err != nil {
 		h.internalError(w, r, "list failed", err)

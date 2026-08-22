@@ -6,8 +6,9 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
-	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 )
 
 func TestPickReleaseDate(t *testing.T) {
@@ -19,18 +20,18 @@ func TestPickReleaseDate(t *testing.T) {
 		return d
 	}
 	date := func(s string) openapi_types.Date { return openapi_types.Date{Time: day(s)} }
-	rd := func(region, s string) enrichapi.ReleaseDate {
-		return enrichapi.ReleaseDate{Region: enrichapi.ReleaseDateRegion(region), Date: date(s)}
+	rd := func(region, s string) common.ReleaseDate {
+		return common.ReleaseDate{Region: common.ReleaseRegion(region), Date: date(s)}
 	}
 	scalar := date("1995-03-11")
-	meta := func(rows ...enrichapi.ReleaseDate) *enrichapi.IgdbMeta {
-		return &enrichapi.IgdbMeta{FirstReleaseDate: &scalar, ReleaseDates: &rows}
+	meta := func(rows ...common.ReleaseDate) *common.IgdbMeta {
+		return &common.IgdbMeta{FirstReleaseDate: &scalar, ReleaseDates: &rows}
 	}
 	ptr := func(tt time.Time) *time.Time { return &tt }
 
 	cases := []struct {
 		name   string
-		meta   *enrichapi.IgdbMeta
+		meta   *common.IgdbMeta
 		region string
 		want   *time.Time
 	}{
@@ -48,8 +49,8 @@ func TestPickReleaseDate(t *testing.T) {
 		{"no chain hit falls back to scalar", meta(rd("brazil", "1996-01-01")), "pal", ptr(day("1995-03-11"))},
 		{"unknown payload region ignored", meta(rd("moon", "1990-01-01"), rd("europe", "1995-12-01")), "pal", ptr(day("1995-12-01"))},
 		{"nil meta", nil, "pal", nil},
-		{"nil rows falls back to scalar", &enrichapi.IgdbMeta{FirstReleaseDate: &scalar}, "pal", ptr(day("1995-03-11"))},
-		{"nothing known", &enrichapi.IgdbMeta{}, "pal", nil},
+		{"nil rows falls back to scalar", &common.IgdbMeta{FirstReleaseDate: &scalar}, "pal", ptr(day("1995-03-11"))},
+		{"nothing known", &common.IgdbMeta{}, "pal", nil},
 		{"duplicate region rows keep the earliest", meta(rd("north_america", "1995-08-22"), rd("north_america", "2000-01-01")), "ntsc_u", ptr(day("1995-08-22"))},
 	}
 	for _, tc := range cases {
@@ -69,29 +70,29 @@ func TestPickReleaseDate(t *testing.T) {
 // string is "no localized form", never a stored empty.
 func TestPickLocalization(t *testing.T) {
 	name, translit, cover := "聖剣伝説3", "Seiken Densetsu 3", "https://x/jp.jpg"
-	meta := &enrichapi.IgdbMeta{Localizations: &[]enrichapi.Localization{
+	meta := &common.IgdbMeta{Localizations: &[]common.Localization{
 		{Region: "ja-JP", Name: &name, Translit: &translit, CoverUrl: &cover},
 		{Region: "EU", CoverUrl: new("https://x/eu.jpg")},
 		{Region: "ko-KR", Name: new("성검전설 3")},
 	}}
-	empty := &enrichapi.IgdbMeta{Localizations: &[]enrichapi.Localization{
+	empty := &common.IgdbMeta{Localizations: &[]common.Localization{
 		{Region: "ja-JP", Name: new(""), Translit: new(""), CoverUrl: new("")},
 	}}
 
-	zhMeta := &enrichapi.IgdbMeta{Localizations: &[]enrichapi.Localization{
+	zhMeta := &common.IgdbMeta{Localizations: &[]common.Localization{
 		{Region: "zh-TW", Name: new("黑神話：悟空")},
 		{Region: "zh-CN", Name: new("黑神话：悟空")},
 	}}
-	zhTWOnly := &enrichapi.IgdbMeta{Localizations: &[]enrichapi.Localization{
+	zhTWOnly := &common.IgdbMeta{Localizations: &[]common.Localization{
 		{Region: "zh-TW", Name: new("黑神話：悟空")},
 	}}
-	ptMeta := &enrichapi.IgdbMeta{Localizations: &[]enrichapi.Localization{
+	ptMeta := &common.IgdbMeta{Localizations: &[]common.Localization{
 		{Region: "pt-BR", Name: new("Mônica no Castelo do Dragão")},
 	}}
 
 	cases := []struct {
 		name                      string
-		meta                      *enrichapi.IgdbMeta
+		meta                      *common.IgdbMeta
 		region                    string
 		wantName, wantTr, wantCov *string
 	}{
@@ -105,8 +106,8 @@ func TestPickLocalization(t *testing.T) {
 		{"brazil takes the pt-BR bundle", ptMeta, "brazil", new("Mônica no Castelo do Dragão"), nil, nil},
 		{"ko-KR is in no chain", meta, "ko-KR", nil, nil, nil},
 		{"nil meta", nil, "ntsc_j", nil, nil, nil},
-		{"nil localizations", &enrichapi.IgdbMeta{}, "ntsc_j", nil, nil, nil},
-		{"empty localizations", &enrichapi.IgdbMeta{Localizations: &[]enrichapi.Localization{}}, "ntsc_j", nil, nil, nil},
+		{"nil localizations", &common.IgdbMeta{}, "ntsc_j", nil, nil, nil},
+		{"empty localizations", &common.IgdbMeta{Localizations: &[]common.Localization{}}, "ntsc_j", nil, nil, nil},
 		{"empty strings never store", empty, "ntsc_j", nil, nil, nil},
 	}
 	strEq := func(got, want *string) bool {
@@ -141,9 +142,9 @@ func TestUnitCatalogSnapshot_CoverPrecedence(t *testing.T) {
 		return enrichapi.Product{
 			Type:      "game",
 			Name:      "Chrono Trigger",
-			Platform:  &enrichapi.PlatformRef{IgdbPlatformId: 6, Name: "SNES", LogoUrl: &logoCover},
-			Igdb:      &enrichapi.IgdbMeta{GameId: 1010, CoverUrl: &igdbCover},
-			Community: &enrichapi.CommunityMeta{CoverUrl: &communityCover},
+			Platform:  &common.PlatformRef{IgdbPlatformId: 6, Name: "SNES", LogoUrl: &logoCover},
+			Igdb:      &common.IgdbMeta{GameId: 1010, CoverUrl: &igdbCover},
+			Community: &common.CommunityMeta{CoverUrl: &communityCover},
 		}
 	}
 
@@ -193,7 +194,7 @@ func TestUnitCatalogSnapshot_CoverPrecedence(t *testing.T) {
 func TestUnitCatalogSnapshot_Credits(t *testing.T) {
 	igdbProduct := enrichapi.Product{
 		Type: "game", Name: "Metroid Prime",
-		Igdb: &enrichapi.IgdbMeta{GameId: 99, Companies: []enrichapi.CompanyCredit{
+		Igdb: &common.IgdbMeta{GameId: 99, Companies: []common.CompanyCredit{
 			{Name: "Retro Studios", Developer: true},
 			{Name: "Nintendo", Developer: true, Publisher: true},
 		}},
@@ -208,7 +209,7 @@ func TestUnitCatalogSnapshot_Credits(t *testing.T) {
 
 	community := enrichapi.Product{
 		Type: "game", Name: "Repro Alpha",
-		Community: &enrichapi.CommunityMeta{
+		Community: &common.CommunityMeta{
 			Developers: &[]string{"Garage Team"},
 			Publishers: &[]string{"Repro House"},
 		},
@@ -224,8 +225,8 @@ func TestUnitCatalogSnapshot_Credits(t *testing.T) {
 	// empty (same rule as the cover chain).
 	mixed := enrichapi.Product{
 		Type: "game", Name: "Repro Beta",
-		Igdb:      &enrichapi.IgdbMeta{GameId: 99, Companies: []enrichapi.CompanyCredit{{Name: "Nintendo", Publisher: true}}},
-		Community: &enrichapi.CommunityMeta{Developers: &[]string{"Garage Team"}, Publishers: &[]string{"Repro House"}},
+		Igdb:      &common.IgdbMeta{GameId: 99, Companies: []common.CompanyCredit{{Name: "Nintendo", Publisher: true}}},
+		Community: &common.CommunityMeta{Developers: &[]string{"Garage Team"}, Publishers: &[]string{"Repro House"}},
 	}
 	snap = catalogSnapshot(mixed, "ntsc_u")
 	if len(snap.Developers) != 1 || snap.Developers[0] != "Garage Team" {
@@ -248,10 +249,7 @@ func TestUnitCatalogSnapshot_Credits(t *testing.T) {
 func TestUnitListParams_CreditFilters(t *testing.T) {
 	dev := []string{"Nintendo", "Square"}
 	pub := []string{"Capcom"}
-	f, _, _, _, detail := listParams(api.ListEntriesParams{Developer: &dev, Publisher: &pub})
-	if detail != "" {
-		t.Fatalf("detail = %q, want none", detail)
-	}
+	f, _, _, _ := listParams(api.ListEntriesParams{Developer: &dev, Publisher: &pub})
 	if len(f.Developers) != 2 || f.Developers[0] != "Nintendo" || f.Developers[1] != "Square" {
 		t.Fatalf("developers filter = %v", f.Developers)
 	}
@@ -297,7 +295,7 @@ func TestConsoleRegionClassification(t *testing.T) {
 		{"Someday Console", "ntsc_j", false}, // unknown JP name classifies base: stale-safe, triggers a no-op re-resolve
 	}
 	for _, tc := range cases {
-		prod := &enrichapi.Product{Pricecharting: &enrichapi.PricechartingMeta{ConsoleName: tc.console}}
+		prod := &enrichapi.Product{Pricecharting: &common.PricechartingMeta{ConsoleName: tc.console}}
 		if got := regionCorrectMember(prod, tc.region); got != tc.correct {
 			t.Errorf("regionCorrectMember(%q, %q) = %v, want %v", tc.console, tc.region, got, tc.correct)
 		}

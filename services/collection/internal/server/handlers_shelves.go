@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
@@ -22,17 +22,6 @@ import (
 // effective-visibility rule.
 
 const coverStripLimit = 4
-
-// maxSharedShelfIDsBatch and maxOwnerIDsBatch enforce the size limits
-// api/collection.yaml declares (maxItems: 100 on GetSharedShelvesByIds'
-// ids, maxItems: 5000 on ListSharedShelves' owner_ids). The generated
-// param binder does not check these bounds, so the handlers enforce
-// them directly - the same gap class the user service's
-// GetSharedProfilesByIds closed for its own ids param.
-const (
-	maxSharedShelfIDsBatch = 100
-	maxOwnerIDsBatch       = 5000
-)
 
 // filtersFromViewParams tolerantly parses the frontend's stored view
 // vocabulary ({v:1, item_type, status, packaging, region,
@@ -117,12 +106,12 @@ func toSharedShelf(v store.View) (api.SharedShelf, error) {
 // per-field conversions mirror toAPIEntry's exactly (same
 // expressions, substituting SharedEntry's generated enum types) -
 // no new conversion helpers.
-func toSharedEntry(e store.Entry) api.SharedEntry {
-	out := api.SharedEntry{
+func toSharedEntry(e store.Entry) common.SharedEntry {
+	out := common.SharedEntry{
 		Id:                    e.ID,
 		ProductId:             e.ProductID,
-		ItemType:              api.SharedEntryItemType(e.ItemType),
-		MediaType:             api.SharedEntryMediaType(e.MediaType),
+		ItemType:              common.ItemType(e.ItemType),
+		MediaType:             common.MediaType(e.MediaType),
 		DisplayName:           e.DisplayName,
 		CoverUrl:              e.CoverURL,
 		LocalizedName:         e.LocalizedName,
@@ -131,12 +120,12 @@ func toSharedEntry(e store.Entry) api.SharedEntry {
 		IgdbGameId:            e.IGDBGameID,
 		Region:                e.Region,
 		Edition:               e.Edition,
-		Packaging:             api.SharedEntryPackaging(e.Packaging),
+		Packaging:             common.Packaging(e.Packaging),
 		HasBox:                e.HasBox,
 		HasManual:             e.HasManual,
-		BoxCondition:          (*api.SharedEntryBoxCondition)(e.BoxCondition),
-		ManualCondition:       (*api.SharedEntryManualCondition)(e.ManualCondition),
-		ItemCondition:         (*api.SharedEntryItemCondition)(e.ItemCondition),
+		BoxCondition:          (*common.ItemCondition)(e.BoxCondition),
+		ManualCondition:       (*common.ItemCondition)(e.ManualCondition),
+		ItemCondition:         (*common.ItemCondition)(e.ItemCondition),
 		Pinned:                e.Pinned,
 		CreatedAt:             e.CreatedAt,
 	}
@@ -147,14 +136,14 @@ func toSharedEntry(e store.Entry) api.SharedEntry {
 		out.Publishers = &e.Publishers
 	}
 	if e.PlatformName != nil {
-		out.Platform = &api.EntryPlatform{IgdbPlatformId: e.PlatformIGDBID, Name: *e.PlatformName}
+		out.Platform = &common.EntryPlatform{IgdbPlatformId: e.PlatformIGDBID, Name: *e.PlatformName}
 	}
 	if e.FirstReleaseDate != nil {
 		out.FirstReleaseDate = &openapi_types.Date{Time: *e.FirstReleaseDate}
 	}
-	tags := make([]api.TagRef, len(e.Tags))
+	tags := make([]common.TagRef, len(e.Tags))
 	for i, t := range e.Tags {
-		tags[i] = api.TagRef{Id: t.ID, Name: t.Name}
+		tags[i] = common.TagRef{Id: t.ID, Name: t.Name}
 	}
 	out.Tags = tags
 	return out
@@ -207,18 +196,16 @@ func (h *Handlers) GetSharedShelfBySlug(w http.ResponseWriter, r *http.Request, 
 }
 
 func (h *Handlers) ListSharedShelfEntries(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID, params api.ListSharedShelfEntriesParams) {
-	// Pagination is validated before any store call (including the
-	// shelf lookup) or slicing - an unvalidated negative offset or
-	// out-of-range limit panics on the page slice below.
-	limit, ok := httpkit.ClampOrReject(params.Limit, 100, 1, 200)
-	if !ok {
-		problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 200")
-		return
+	// limit/offset are already known within bounds (specval enforces
+	// the contract's 1-200/>=0) by the time this runs; only the
+	// default-when-absent case needs handling here.
+	limit := 100
+	if params.Limit != nil {
+		limit = *params.Limit
 	}
-	offset, ok := httpkit.ClampOrReject(params.Offset, 0, 0)
-	if !ok {
-		problem(w, r, http.StatusBadRequest, "invalid_param", "offset must not be negative")
-		return
+	offset := 0
+	if params.Offset != nil {
+		offset = *params.Offset
 	}
 	v, ok := h.sharedShelfOr404(w, r, shelfId)
 	if !ok {
@@ -233,7 +220,7 @@ func (h *Handlers) ListSharedShelfEntries(w http.ResponseWriter, r *http.Request
 	total := len(entries)
 	start := min(offset, total)
 	page := entries[start:min(start+limit, total)]
-	apiEntries := make([]api.SharedEntry, len(page))
+	apiEntries := make([]common.SharedEntry, len(page))
 	for i, e := range page {
 		apiEntries[i] = toSharedEntry(e)
 	}
@@ -250,24 +237,20 @@ func (h *Handlers) ListSharedShelfEntries(w http.ResponseWriter, r *http.Request
 // ListSharedShelves pages listed shelves, optionally scoped to a
 // caller-given owner set. owner_ids absent or empty means unfiltered
 // (Explore-recent's read, every listed owner); present, it scopes the
-// page to just those owners (the profile page's read) and the
-// maxOwnerIDsBatch guard applies. Either way owners is nil when
-// owner_ids is absent, so store.ListListedShelves' own nil-slice
-// contract (nil = no filter) does the rest.
+// page to just those owners (the profile page's read). Either way
+// owners is nil when owner_ids is absent, so store.ListListedShelves'
+// own nil-slice contract (nil = no filter) does the rest. owner_ids'
+// maxItems and limit/offset's bounds are specval's job (contract
+// maxItems: 5000 and 1-100/>=0 respectively); only the
+// default-when-absent case needs handling here.
 func (h *Handlers) ListSharedShelves(w http.ResponseWriter, r *http.Request, params api.ListSharedShelvesParams) {
-	if params.OwnerIds != nil && len(*params.OwnerIds) > maxOwnerIDsBatch {
-		problem(w, r, http.StatusBadRequest, "too_many_owner_ids", "owner_ids must contain at most 5000 entries")
-		return
+	limit := 20
+	if params.Limit != nil {
+		limit = *params.Limit
 	}
-	limit, ok := httpkit.ClampOrReject(params.Limit, 20, 1, 100)
-	if !ok {
-		problem(w, r, http.StatusBadRequest, "invalid_param", "limit must be between 1 and 100")
-		return
-	}
-	offset, ok := httpkit.ClampOrReject(params.Offset, 0, 0)
-	if !ok {
-		problem(w, r, http.StatusBadRequest, "invalid_param", "offset must not be negative")
-		return
+	offset := 0
+	if params.Offset != nil {
+		offset = *params.Offset
 	}
 	var owners []uuid.UUID
 	if params.OwnerIds != nil {
@@ -287,11 +270,9 @@ func (h *Handlers) ListSharedShelves(w http.ResponseWriter, r *http.Request, par
 	writeJSON(w, http.StatusOK, map[string]any{"total_count": total, "shelves": summaries})
 }
 
+// GetSharedShelvesByIds batch-hydrates shelf summaries; ids' maxItems
+// (contract: 100) is specval's job.
 func (h *Handlers) GetSharedShelvesByIds(w http.ResponseWriter, r *http.Request, params api.GetSharedShelvesByIdsParams) {
-	if len(params.Ids) > maxSharedShelfIDsBatch {
-		problem(w, r, http.StatusBadRequest, "too_many_ids", "ids must contain at most 100 entries")
-		return
-	}
 	ids := make([]uuid.UUID, len(params.Ids))
 	copy(ids, params.Ids)
 	views, err := h.store.SharedShelvesByIDs(r.Context(), ids)
@@ -333,7 +314,7 @@ func (h *Handlers) shelfSummaries(r *http.Request, views []store.View) ([]api.Sh
 		}
 		out = append(out, api.SharedShelfSummary{
 			Id: v.ID, Name: v.Name, Slug: v.Slug, OwnerId: v.UserID,
-			Visibility:  api.SharedShelfSummaryVisibility(v.Visibility),
+			Visibility:  api.SharedShelfVisibility(v.Visibility),
 			PublishedAt: v.PublishedAt, EntryCount: count, CoverUrls: covers,
 		})
 	}
@@ -344,8 +325,8 @@ func (h *Handlers) shelfSummaries(r *http.Request, views []store.View) ([]api.Sh
 // SharedEntry projection: same partition/sort/catch-all-last rules,
 // reusing groupLabels and catchAllLabels since both read the store
 // entries, not the API projection.
-func buildSharedGroups(entries []store.Entry, apiEntries []api.SharedEntry, groupBy string) []api.SharedEntryGroup {
-	byLabel := map[string][]api.SharedEntry{}
+func buildSharedGroups(entries []store.Entry, apiEntries []common.SharedEntry, groupBy string) []common.SharedEntryGroup {
+	byLabel := map[string][]common.SharedEntry{}
 	for i, e := range entries {
 		for _, label := range groupLabels(e, groupBy) {
 			byLabel[label] = append(byLabel[label], apiEntries[i])
@@ -362,9 +343,9 @@ func buildSharedGroups(entries []store.Entry, apiEntries []api.SharedEntry, grou
 		}
 		return strings.ToLower(labels[i]) < strings.ToLower(labels[j])
 	})
-	groups := make([]api.SharedEntryGroup, len(labels))
+	groups := make([]common.SharedEntryGroup, len(labels))
 	for i, label := range labels {
-		groups[i] = api.SharedEntryGroup{Key: label, Label: label, Entries: byLabel[label]}
+		groups[i] = common.SharedEntryGroup{Key: label, Label: label, Entries: byLabel[label]}
 	}
 	return groups
 }

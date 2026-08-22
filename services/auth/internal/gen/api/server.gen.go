@@ -6,44 +6,33 @@
 package api
 
 import (
+	"bytes"
+	"compress/flate"
+	"encoding/base64"
 	"fmt"
 	"net/http"
-	"time"
+	"net/url"
+	"path"
+	"strings"
 
+	"github.com/getkin/kin-openapi/openapi3"
+	externalRef0 "github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// Defines values for LinkStartRequestProvider.
+// Defines values for OAuthProvider.
 const (
-	LinkStartRequestProviderGoogle LinkStartRequestProvider = "google"
-	LinkStartRequestProviderTwitch LinkStartRequestProvider = "twitch"
+	Google OAuthProvider = "google"
+	Twitch OAuthProvider = "twitch"
 )
 
-// Valid indicates whether the value is a known member of the LinkStartRequestProvider enum.
-func (e LinkStartRequestProvider) Valid() bool {
+// Valid indicates whether the value is a known member of the OAuthProvider enum.
+func (e OAuthProvider) Valid() bool {
 	switch e {
-	case LinkStartRequestProviderGoogle:
+	case Google:
 		return true
-	case LinkStartRequestProviderTwitch:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for StartRequestProvider.
-const (
-	StartRequestProviderGoogle StartRequestProvider = "google"
-	StartRequestProviderTwitch StartRequestProvider = "twitch"
-)
-
-// Valid indicates whether the value is a known member of the StartRequestProvider enum.
-func (e StartRequestProvider) Valid() bool {
-	switch e {
-	case StartRequestProviderGoogle:
-		return true
-	case StartRequestProviderTwitch:
+	case Twitch:
 		return true
 	default:
 		return false
@@ -112,30 +101,18 @@ type CallbackResponse struct {
 
 // DevLinkRequest defines model for DevLinkRequest.
 type DevLinkRequest struct {
-	// User Fixture handle (alice, bob, admin); never a real account
+	// User Fixture handle (alice, bob, admin, or an e2e-* test fixture); never a real account
 	User string `json:"user"`
 }
 
 // DevTokenRequest defines model for DevTokenRequest.
 type DevTokenRequest struct {
-	// User Fixture handle (alice, bob, admin); never a real account
+	// User Fixture handle (alice, bob, admin, or an e2e-* test fixture); never a real account
 	User string `json:"user"`
 }
 
 // Identities defines model for Identities.
-type Identities struct {
-	Identities []Identity `json:"identities"`
-}
-
-// Identity defines model for Identity.
-type Identity struct {
-	CreatedAt time.Time `json:"created_at"`
-
-	// Email Informational; the email the provider asserted when this identity last signed in.
-	Email    *string            `json:"email,omitempty"`
-	Id       openapi_types.UUID `json:"id"`
-	Provider string             `json:"provider"`
-}
+type Identities = externalRef0.Identities
 
 // Jwk OKP key (RFC 8037). use and alg are omitted; every key here is an Ed25519 signing key.
 type Jwk struct {
@@ -154,27 +131,14 @@ type Jwks struct {
 
 // LinkStartRequest defines model for LinkStartRequest.
 type LinkStartRequest struct {
-	Provider LinkStartRequestProvider `json:"provider"`
+	Provider OAuthProvider `json:"provider"`
 }
 
-// LinkStartRequestProvider defines model for LinkStartRequest.Provider.
-type LinkStartRequestProvider string
-
-// Problem defines model for Problem.
-type Problem struct {
-	Code     *string `json:"code,omitempty"`
-	Detail   *string `json:"detail,omitempty"`
-	Instance *string `json:"instance,omitempty"`
-	Status   int     `json:"status"`
-	Title    string  `json:"title"`
-	Type     string  `json:"type"`
-}
+// OAuthProvider defines model for OAuthProvider.
+type OAuthProvider string
 
 // Providers defines model for Providers.
-type Providers struct {
-	// Providers Subset of: google, twitch, dev
-	Providers []string `json:"providers"`
-}
+type Providers = externalRef0.Providers
 
 // RefreshProblem defines model for RefreshProblem.
 type RefreshProblem struct {
@@ -201,11 +165,8 @@ type RevokeRequest struct {
 
 // StartRequest defines model for StartRequest.
 type StartRequest struct {
-	Provider StartRequestProvider `json:"provider"`
+	Provider OAuthProvider `json:"provider"`
 }
-
-// StartRequestProvider defines model for StartRequest.Provider.
-type StartRequestProvider string
 
 // StartResponse defines model for StartResponse.
 type StartResponse struct {
@@ -231,16 +192,31 @@ type TokenPair struct {
 }
 
 // BadRequest defines model for BadRequest.
-type BadRequest = Problem
+type BadRequest = externalRef0.Problem
+
+// Conflict defines model for Conflict.
+type Conflict = externalRef0.Problem
+
+// Forbidden defines model for Forbidden.
+type Forbidden = externalRef0.Problem
 
 // InternalError defines model for InternalError.
-type InternalError = Problem
+type InternalError = externalRef0.Problem
+
+// NotFound defines model for NotFound.
+type NotFound = externalRef0.Problem
+
+// RefreshUnauthorized defines model for RefreshUnauthorized.
+type RefreshUnauthorized = RefreshProblem
+
+// ServiceUnavailable defines model for ServiceUnavailable.
+type ServiceUnavailable = externalRef0.Problem
 
 // Unauthorized defines model for Unauthorized.
-type Unauthorized = Problem
+type Unauthorized = externalRef0.Problem
 
 // UpstreamError defines model for UpstreamError.
-type UpstreamError = Problem
+type UpstreamError = externalRef0.Problem
 
 // InternalServiceTokenJSONBody defines parameters for InternalServiceToken.
 type InternalServiceTokenJSONBody struct {
@@ -718,4 +694,164 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/internal/service-token", wrapper.InternalServiceToken)
 
 	return m
+}
+
+// Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
+// Stored as a slice of fixed-width chunks rather than one concatenated
+// const string: with thousands of chunks the chained `+` fold is several
+// times slower for the Go compiler than parsing a slice literal.
+var swaggerSpec = []string{
+	"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",
+}
+
+// decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
+// after base64-decoding and flate-decompressing the embedded blob.
+func decodeSpec() ([]byte, error) {
+	encoded := strings.Join(swaggerSpec, "")
+	compressed, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("error base64 decoding spec: %w", err)
+	}
+	zr := flate.NewReader(bytes.NewReader(compressed))
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(zr); err != nil {
+		return nil, fmt.Errorf("read flate: %w", err)
+	}
+	if err := zr.Close(); err != nil {
+		return nil, fmt.Errorf("close flate reader: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+var rawSpec = decodeSpecCached()
+
+// a naive cache of the decoded OpenAPI spec
+func decodeSpecCached() func() ([]byte, error) {
+	data, err := decodeSpec()
+	return func() ([]byte, error) {
+		return data, err
+	}
+}
+
+// Constructs a synthetic filesystem for resolving external references when loading openapi specifications.
+func PathToRawSpec(pathToFile string) map[string]func() ([]byte, error) {
+	res := make(map[string]func() ([]byte, error))
+	if len(pathToFile) > 0 {
+		res[pathToFile] = rawSpec
+	}
+
+	for rawPath, rawFunc := range externalRef0.PathToRawSpec(path.Join(path.Dir(pathToFile), "./common.yaml")) {
+		if _, ok := res[rawPath]; ok {
+			// it is not possible to compare functions in golang, so always overwrite the old value
+		}
+		res[rawPath] = rawFunc
+	}
+	return res
+}
+
+// GetSpec returns the OpenAPI specification corresponding to the generated
+// code in this file. External references in the spec are resolved through
+// PathToRawSpec; externally-referenced files must be embedded in their
+// corresponding Go packages (via the import-mapping feature). URL-based
+// external refs are not supported.
+func GetSpec() (swagger *openapi3.T, err error) {
+	resolvePath := PathToRawSpec("")
+
+	loader := openapi3.NewLoader()
+	loader.IsExternalRefsAllowed = true
+	loader.ReadFromURIFunc = func(loader *openapi3.Loader, url *url.URL) ([]byte, error) {
+		pathToFile := url.String()
+		pathToFile = path.Clean(pathToFile)
+		getSpec, ok := resolvePath[pathToFile]
+		if !ok {
+			err1 := fmt.Errorf("path not found: %s", pathToFile)
+			return nil, err1
+		}
+		return getSpec()
+	}
+	var specData []byte
+	specData, err = rawSpec()
+	if err != nil {
+		return
+	}
+	swagger, err = loader.LoadFromData(specData)
+	if err != nil {
+		return
+	}
+	return
+}
+
+// GetSpecJSON returns the raw JSON bytes of the embedded OpenAPI
+// specification: decompressed but not unmarshaled. External references
+// are not resolved here; the bytes are the spec exactly as embedded by
+// codegen. The result is cached at package init time, so repeated calls
+// are cheap.
+func GetSpecJSON() ([]byte, error) {
+	return rawSpec()
+}
+
+// GetSwagger returns the OpenAPI specification corresponding to the
+// generated code in this file.
+//
+// Deprecated: GetSwagger predates kin-openapi renaming openapi3.Swagger
+// to openapi3.T. Use [GetSpec] instead. This wrapper is retained for
+// backwards compatibility.
+func GetSwagger() (*openapi3.T, error) {
+	return GetSpec()
 }

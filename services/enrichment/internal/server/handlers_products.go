@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
@@ -96,7 +97,7 @@ func (h *Handlers) writeProduct(ctx context.Context, w http.ResponseWriter, r *h
 func toAPIProduct(p store.Product) api.Product {
 	pid, _ := uuid.Parse(p.ID)
 	out := api.Product{
-		Id: pid, Type: api.ProductType(p.Type), Name: p.Name,
+		Id: pid, Type: common.ProductType(p.Type), Name: p.Name,
 		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
 	if p.Region != "" {
@@ -113,11 +114,11 @@ func toAPIProduct(p store.Product) api.Product {
 		out.MatchHold = &held
 	}
 	if p.Origin == "community" {
-		o := api.ProductOrigin("community")
+		o := common.ProductOrigin("community")
 		out.Origin = &o
 	}
 	if p.Community != nil {
-		cm := api.CommunityMeta{}
+		cm := common.CommunityMeta{}
 		if p.Community.PlatformName != "" {
 			pn := p.Community.PlatformName
 			cm.PlatformName = &pn
@@ -145,28 +146,28 @@ func toAPIProduct(p store.Product) api.Product {
 		out.Community = &cm
 	}
 	if p.Platform != nil {
-		out.Platform = &api.PlatformRef{IgdbPlatformId: p.Platform.IGDBID, Name: p.Platform.Name}
+		out.Platform = &common.PlatformRef{IgdbPlatformId: p.Platform.IGDBID, Name: p.Platform.Name}
 		if p.Platform.LogoURL != "" {
 			lu := p.Platform.LogoURL
 			out.Platform.LogoUrl = &lu
 		}
 	}
 	if p.IGDB != nil {
-		m := api.IgdbMeta{
+		m := common.IgdbMeta{
 			GameId:       p.IGDB.GameID,
 			Name:         p.IGDB.Name,
 			Genres:       make([]string, 0, len(p.IGDB.Genres)),
 			Themes:       append([]string{}, p.IGDB.Themes...),
 			Franchises:   append([]string{}, p.IGDB.Franchises...),
 			SimilarGames: append([]int64{}, p.IGDB.SimilarGames...),
-			Companies:    make([]api.CompanyCredit, 0, len(p.IGDB.Companies)),
+			Companies:    make([]common.CompanyCredit, 0, len(p.IGDB.Companies)),
 			FetchedAt:    p.IGDB.FetchedAt,
 		}
 		for _, g := range p.IGDB.Genres {
 			m.Genres = append(m.Genres, g.Name)
 		}
 		for _, c := range p.IGDB.Companies {
-			m.Companies = append(m.Companies, api.CompanyCredit{Name: c.Name, Developer: c.Developer, Publisher: c.Publisher})
+			m.Companies = append(m.Companies, common.CompanyCredit{Name: c.Name, Developer: c.Developer, Publisher: c.Publisher})
 		}
 		if p.IGDB.CoverURL != "" {
 			cu := p.IGDB.CoverURL
@@ -177,16 +178,16 @@ func toAPIProduct(p store.Product) api.Product {
 			m.FirstReleaseDate = &fd
 		}
 		if len(p.IGDB.ReleaseDates) > 0 {
-			rds := make([]api.ReleaseDate, 0, len(p.IGDB.ReleaseDates))
+			rds := make([]common.ReleaseDate, 0, len(p.IGDB.ReleaseDates))
 			for _, rd := range p.IGDB.ReleaseDates {
-				rds = append(rds, api.ReleaseDate{Region: api.ReleaseDateRegion(rd.Region), Date: openapi_types.Date{Time: rd.Date}})
+				rds = append(rds, common.ReleaseDate{Region: common.ReleaseRegion(rd.Region), Date: openapi_types.Date{Time: rd.Date}})
 			}
 			m.ReleaseDates = &rds
 		}
 		if len(p.IGDB.Localizations) > 0 {
-			locs := make([]api.Localization, 0, len(p.IGDB.Localizations))
+			locs := make([]common.Localization, 0, len(p.IGDB.Localizations))
 			for _, l := range p.IGDB.Localizations {
-				al := api.Localization{Region: l.Region}
+				al := common.Localization{Region: l.Region}
 				if l.Name != "" {
 					n := l.Name
 					al.Name = &n
@@ -206,7 +207,7 @@ func toAPIProduct(p store.Product) api.Product {
 		out.Igdb = &m
 	}
 	if p.PriceCharting != nil {
-		pc := api.PricechartingMeta{
+		pc := common.PricechartingMeta{
 			PcProductId:     p.PriceCharting.PCProductID,
 			PcName:          p.PriceCharting.PCName,
 			ConsoleName:     p.PriceCharting.ConsoleName,
@@ -256,6 +257,11 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 	}
 	typ := string(req.Type)
 
+	// type's enum (game, console, accessory, pc_listing) is specval's
+	// job; no default arm needed below (specval guarantees typ is one
+	// of the four before this handler ever runs). Each arm's own
+	// pc_product_id requirement is a cross-field rule the flat request
+	// schema cannot express, so it stays.
 	var key store.ProductKey
 	switch typ {
 	case "game":
@@ -276,9 +282,6 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 		// Stray igdb/region/edition/variant fields are ignored, like the
 		// console/accessory path ignores stray igdb fields.
 		key = store.ProductKey{Type: typ, PCProductID: *req.PcProductId}
-	default:
-		problem(w, r, http.StatusBadRequest, "invalid_body", "type must be game, console, accessory or pc_listing")
-		return
 	}
 
 	existing, err := h.store.FindProduct(ctx, key)

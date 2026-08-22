@@ -6,8 +6,9 @@ package server
 import (
 	"time"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/libs/go/regionkit"
-	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
@@ -15,7 +16,7 @@ import (
 // chain hit for its region among the product's per-region dates, else
 // the platform-level scalar. nil (nothing known) stores NULL, exactly
 // today's no-date behavior.
-func pickReleaseDate(meta *enrichapi.IgdbMeta, region string) *time.Time {
+func pickReleaseDate(meta *common.IgdbMeta, region string) *time.Time {
 	if meta == nil {
 		return nil
 	}
@@ -44,11 +45,11 @@ func pickReleaseDate(meta *enrichapi.IgdbMeta, region string) *time.Time {
 // pickLocalization resolves an entry's region-picked presentation
 // from the product's localization bundles: nil fields mean "no
 // localized form" and display falls back to the canonical snapshot.
-func pickLocalization(meta *enrichapi.IgdbMeta, region string) (name, translit, cover *string) {
+func pickLocalization(meta *common.IgdbMeta, region string) (name, translit, cover *string) {
 	if meta == nil || meta.Localizations == nil {
 		return nil, nil, nil
 	}
-	byRegion := make(map[string]enrichapi.Localization, len(*meta.Localizations))
+	byRegion := make(map[string]common.Localization, len(*meta.Localizations))
 	for _, l := range *meta.Localizations {
 		byRegion[l.Region] = l
 	}

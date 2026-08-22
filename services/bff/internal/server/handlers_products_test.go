@@ -12,9 +12,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/enrichmentclient"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
 )
 
 func TestUnitAdminWorklist_RelaysAndForwardsParams(t *testing.T) {

@@ -16,8 +16,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/collectionapi"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
 )
 
 // ErrUpstream means the collection service answered outside its

@@ -519,16 +519,16 @@ func TestUnitSummaries(t *testing.T) {
 	})
 
 	t.Run("too many ids is a 400 before the store is touched", func(t *testing.T) {
-		// api/social.yaml declares maxItems: 100 on ids; the generated
-		// param binder does not enforce it, so the handler must reject
-		// 101+ entries itself (the empty stubStore proves it).
+		// api/social.yaml declares maxItems: 100 on ids; specval's
+		// request-validation middleware now rejects 101+ entries ahead
+		// of this handler (the empty stubStore proves it).
 		q := url.Values{}
 		for range 101 {
 			q.Add("ids", uuid.New().String())
 		}
 		srv, a := newUnitServer(t, &stubStore{}, &stubCollection{}, &stubUsers{})
 		resp := do(t, http.MethodGet, srv.URL+"/shelves/summary?"+q.Encode(), a.token(t, me.String()), nil)
-		wantProblem(t, resp, http.StatusBadRequest, "too_many_ids")
+		wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 	})
 
 	t.Run("exactly the max (100 ids) is accepted", func(t *testing.T) {
@@ -661,10 +661,10 @@ func TestUnitComments(t *testing.T) {
 	})
 
 	t.Run("list limit is clamped by the api bounds", func(t *testing.T) {
-		// api/social.yaml declares minimum:1 maximum:50 on limit; the
-		// generated param binder is type-only, so the handler must
-		// enforce the bound itself before the store is touched (the
-		// empty stubStore proves it for the out-of-range cases).
+		// api/social.yaml declares minimum:1 maximum:50 on limit;
+		// specval's request-validation middleware enforces the bound
+		// ahead of this handler now (the empty stubStore proves it for
+		// the out-of-range cases).
 		srv, a := newUnitServer(t, &stubStore{}, &stubCollection{}, &stubUsers{})
 		for _, limit := range []string{"0", "51"} {
 			resp := do(t, http.MethodGet, srv.URL+"/shelves/"+shelf.String()+"/comments?limit="+limit,
@@ -816,16 +816,16 @@ func TestUnitCommentsByIds(t *testing.T) {
 	})
 
 	t.Run("too many ids is a 400 before the store is touched", func(t *testing.T) {
-		// api/social.yaml declares maxItems: 100 on ids; the generated
-		// param binder does not enforce it, so the handler must reject
-		// 101+ entries itself (the empty stubStore proves it).
+		// api/social.yaml declares maxItems: 100 on ids; specval's
+		// request-validation middleware now rejects 101+ entries ahead
+		// of this handler (the empty stubStore proves it).
 		q := url.Values{}
 		for range 101 {
 			q.Add("ids", uuid.New().String())
 		}
 		srv, a := newUnitServer(t, &stubStore{}, &stubCollection{}, &stubUsers{})
 		resp := do(t, http.MethodGet, srv.URL+"/comments/by-ids?"+q.Encode(), a.token(t, me.String()), nil)
-		wantProblem(t, resp, http.StatusBadRequest, "too_many_ids")
+		wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 	})
 
 	t.Run("exactly the max (100 ids) is accepted", func(t *testing.T) {
@@ -950,20 +950,21 @@ func TestUnitFeedAndPublish(t *testing.T) {
 	})
 
 	t.Run("feed rejects a tab outside the enum", func(t *testing.T) {
-		// api/social.yaml enums tab to [following, you]; the generated
-		// param binder is a bare string, so the handler must enforce
-		// the enum itself before the store is touched.
+		// api/social.yaml enums tab to [following, you]; specval's
+		// request-validation middleware enforces the enum ahead of
+		// this handler now.
 		srv, a := newUnitServer(t, &stubStore{}, &stubCollection{}, &stubUsers{})
 		resp := do(t, http.MethodGet, srv.URL+"/feed?tab=everything", a.token(t, me.String()), nil)
 		wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 	})
 
 	t.Run("feed rejects a wrong-case tab", func(t *testing.T) {
-		// "Following" is the correct word with the wrong case: the
-		// enum check (params.Tab != api.Following && ...) is a plain Go
-		// string comparison, not case-folded, so this must be rejected
-		// exactly like a nonsense tab value is - a case-insensitive
-		// match would silently accept it.
+		// "Following" is the correct word with the wrong case: enum
+		// matching is case-sensitive (specval's request-validation
+		// middleware, which owns this check now, compares the raw
+		// string against the schema's exact enum values), so this must
+		// be rejected exactly like a nonsense tab value is - a
+		// case-insensitive match would silently accept it.
 		srv, a := newUnitServer(t, &stubStore{}, &stubCollection{}, &stubUsers{})
 		resp := do(t, http.MethodGet, srv.URL+"/feed?tab=Following", a.token(t, me.String()), nil)
 		wantProblem(t, resp, http.StatusBadRequest, "invalid_param")

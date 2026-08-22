@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
@@ -59,7 +60,7 @@ func TestUnitListPlatforms_JoinsAliasesSortsAndCaches(t *testing.T) {
 	if len(out.Platforms) != 3 || out.Platforms[0].Name != "Dreamcast" {
 		t.Fatalf("sort by name failed: %+v", out.Platforms)
 	}
-	var snes *api.CatalogPlatform
+	var snes *common.CatalogPlatform
 	for i := range out.Platforms {
 		if out.Platforms[i].IgdbId == 19 {
 			snes = &out.Platforms[i]

@@ -13,11 +13,12 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
-	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
@@ -32,7 +33,7 @@ const (
 
 func toAPISubmission(s store.Submission) api.Submission {
 	out := api.Submission{
-		Id: s.ID, EntryId: s.EntryID, Status: api.SubmissionStatus(s.Status),
+		Id: s.ID, EntryId: s.EntryID, Status: common.SubmissionStatus(s.Status),
 		CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 	}
 	out.RejectReason = s.RejectReason
@@ -185,19 +186,29 @@ func (h *Handlers) ListSubmissions(w http.ResponseWriter, r *http.Request, param
 		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
 		return
 	}
-	limit := httpkit.ClampSilent(params.Limit, 200, 1, 500)
-	offset := httpkit.ClampSilent(params.Offset, 0, 0)
+	// limit/offset are already known within the contract's 1-500/>=0
+	// bounds by the time this runs (specval; api/collection.yaml
+	// declares both on ListSubmissions). Only the default-when-absent
+	// case needs handling here.
+	limit := 200
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+	offset := 0
+	if params.Offset != nil {
+		offset = *params.Offset
+	}
 	rows, total, err := h.store.ListPendingSubmissions(r.Context(), limit, offset)
 	if err != nil {
 		h.internalError(w, r, "list failed", err)
 		return
 	}
-	page := api.AdminSubmissionsPage{Submissions: make([]api.AdminSubmission, 0, len(rows)), TotalCount: total}
+	page := api.AdminSubmissionsPage{Submissions: make([]common.AdminSubmission, 0, len(rows)), TotalCount: total}
 	for _, row := range rows {
-		as := api.AdminSubmission{
+		as := common.AdminSubmission{
 			Id: row.ID, EntryId: row.EntryID, UserId: row.UserID,
-			Status:      api.AdminSubmissionStatus(row.Status),
-			DisplayName: row.DisplayName, ItemType: api.AdminSubmissionItemType(row.ItemType),
+			Status:      common.SubmissionStatus(row.Status),
+			DisplayName: row.DisplayName, ItemType: common.ItemType(row.ItemType),
 			Region:    row.Region,
 			CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		}
@@ -352,9 +363,9 @@ func (h *Handlers) adoptAndApprove(w http.ResponseWriter, r *http.Request, beare
 
 // mintRequest maps the verdict's curated fields onto enrichment's
 // mint request.
-func mintRequest(p api.CommunityProductSpec) enrichapi.CreateCommunityProductJSONRequestBody {
+func mintRequest(p common.CommunityProductSpec) enrichapi.CreateCommunityProductJSONRequestBody {
 	out := enrichapi.CreateCommunityProductJSONRequestBody{
-		Type: enrichapi.CommunityProductCreateType(p.Type),
+		Type: p.Type,
 		Name: p.Name,
 	}
 	out.PlatformName = p.PlatformName

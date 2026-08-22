@@ -28,7 +28,11 @@ func newBareRouter(t *testing.T, ready func(context.Context) error) (http.Handle
 	if ready == nil {
 		ready = func(context.Context) error { return nil }
 	}
-	return NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), ready), env
+	router, err := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler), ready)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return router, env
 }
 
 func TestRoutes_HealthOutsideAuth(t *testing.T) {

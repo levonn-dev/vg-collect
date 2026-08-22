@@ -11,28 +11,29 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
-	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
 // dashboardFilters funnels the dashboard's filter params through the
-// entries-list validator (same dimensions, same 400 details); sort,
-// order, grouping, and paging ride the validator's defaults and are
-// ignored by the aggregates.
-func dashboardFilters(p api.GetDashboardParams) (store.Filters, string) {
-	f, _, _, _, detail := listParams(api.ListEntriesParams{
-		ItemType:      castSlice[api.ListEntriesParamsItemType](p.ItemType),
-		Status:        castSlice[api.ListEntriesParamsStatus](p.Status),
-		Packaging:     castSlice[api.ListEntriesParamsPackaging](p.Packaging),
+// entries-list converter (same dimensions; enum membership is
+// specval's job on both operations alike); sort, order, grouping, and
+// paging ride listParams' defaults and are ignored by the aggregates.
+func dashboardFilters(p api.GetDashboardParams) store.Filters {
+	f, _, _, _ := listParams(api.ListEntriesParams{
+		ItemType:      p.ItemType,
+		Status:        p.Status,
+		Packaging:     p.Packaging,
 		Region:        p.Region,
 		Developer:     p.Developer,
 		Publisher:     p.Publisher,
-		ItemCondition: castSlice[api.ListEntriesParamsItemCondition](p.ItemCondition),
+		ItemCondition: p.ItemCondition,
 		PlatformId:    p.PlatformId,
 		TagId:         p.TagId,
 	})
-	return f, detail
+	return f
 }
 
 // GetDashboard composes SQL aggregates with one batched enrichment
@@ -46,11 +47,7 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params a
 	if !ok {
 		return
 	}
-	f, detail := dashboardFilters(params)
-	if detail != "" {
-		problem(w, r, http.StatusBadRequest, "invalid_param", detail)
-		return
-	}
+	f := dashboardFilters(params)
 	sub := userID.String()
 	if !f.Filtered() {
 		body, err := h.cache.GetDashboard(r.Context(), sub)
@@ -75,7 +72,7 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params a
 		return
 	}
 
-	pricing := api.DashboardPricing{Available: true}
+	pricing := common.DashboardPricing{Available: true}
 	var ids []uuid.UUID
 	var customTotal int64
 	customPriced := 0
@@ -127,17 +124,17 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params a
 		pricing.TotalValueCents = &customTotal
 	}
 
-	byPlatform := make([]api.PlatformCount, len(counts.ByPlatform))
+	byPlatform := make([]common.PlatformCount, len(counts.ByPlatform))
 	for i, p := range counts.ByPlatform {
 		name := p.Name
 		if name == "" {
 			name = "Unknown"
 		}
-		byPlatform[i] = api.PlatformCount{Name: name, Count: p.Count}
+		byPlatform[i] = common.PlatformCount{Name: name, Count: p.Count}
 	}
-	spend := make([]api.CurrencySpend, len(counts.Spend))
+	spend := make([]common.CurrencySpend, len(counts.Spend))
 	for i, s := range counts.Spend {
-		spend[i] = api.CurrencySpend{Currency: s.Currency, TotalCents: s.TotalCents}
+		spend[i] = common.CurrencySpend{Currency: s.Currency, TotalCents: s.TotalCents}
 	}
 	dash := api.Dashboard{
 		TotalEntries: counts.Total,
@@ -186,7 +183,7 @@ func pointForPackaging(packaging string, p enrichapi.PricePoint) *int64 {
 // contribute nothing that day. Each product's points are sorted
 // oldest-first internally, regardless of the order series arrives in.
 // Exported for tests.
-func ComposeValueSeries(rows []store.PricingRow, series map[string][]enrichapi.PricePoint, windowStart time.Time) []api.ValuePoint {
+func ComposeValueSeries(rows []store.PricingRow, series map[string][]enrichapi.PricePoint, windowStart time.Time) []common.ValuePoint {
 	for _, points := range series {
 		sort.SliceStable(points, func(i, j int) bool { return points[i].CapturedAt.Before(points[j].CapturedAt) })
 	}
@@ -215,7 +212,7 @@ func ComposeValueSeries(rows []store.PricingRow, series map[string][]enrichapi.P
 	}
 	sort.Slice(days, func(i, j int) bool { return days[i].Before(days[j]) })
 
-	out := make([]api.ValuePoint, 0, len(days))
+	out := make([]common.ValuePoint, 0, len(days))
 	for _, day := range days {
 		var total int64
 		for _, row := range rows {
@@ -244,7 +241,7 @@ func ComposeValueSeries(rows []store.PricingRow, series map[string][]enrichapi.P
 				total += *v
 			}
 		}
-		out = append(out, api.ValuePoint{Date: openapi_types.Date{Time: day}, ValueCents: total})
+		out = append(out, common.ValuePoint{Date: openapi_types.Date{Time: day}, ValueCents: total})
 	}
 	return out
 }
@@ -286,7 +283,7 @@ func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 			ids = append(ids, *id)
 		}
 	}
-	vh := api.ValueHistory{Available: true, Points: []api.ValuePoint{}}
+	vh := api.ValueHistory{Available: true, Points: []common.ValuePoint{}}
 	series := map[string][]enrichapi.PricePoint{}
 	if len(ids) > 0 {
 		var err error
@@ -326,27 +323,13 @@ func (h *Handlers) GetLibrarySummary(w http.ResponseWriter, r *http.Request) {
 		h.internalError(w, r, "summary failed", err)
 		return
 	}
-	games := make([]api.LibraryGame, len(lib))
+	games := make([]common.LibraryEntry, len(lib))
 	for i, g := range lib {
-		games[i] = api.LibraryGame{IgdbGameId: g.IGDBGameID, Rating: g.Rating}
+		games[i] = common.LibraryEntry{IgdbGameId: g.IGDBGameID, Rating: g.Rating}
 		if g.AllDropped {
 			dropped := "dropped"
 			games[i].Status = &dropped
 		}
 	}
 	writeJSON(w, http.StatusOK, api.LibrarySummary{Library: games})
-}
-
-// castSlice re-types a generated enum slice onto its mirror from
-// another operation; the dashboard params repeat the entries-list
-// contract, only the generated Go types differ.
-func castSlice[Dst ~string, Src ~string](src *[]Src) *[]Dst {
-	if src == nil {
-		return nil
-	}
-	out := make([]Dst, len(*src))
-	for i, v := range *src {
-		out[i] = Dst(v)
-	}
-	return &out
 }

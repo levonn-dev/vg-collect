@@ -9,10 +9,9 @@ tasks:
       - task --list
 
   gen:
-    desc: Regenerate server stubs from api/collection.yaml and the enrichment typed client
+    desc: Regenerate server stubs from api/collection.yaml
     cmds:
       - go tool oapi-codegen -config oapi.server.yaml ../../api/collection.yaml
-      - go tool oapi-codegen -config oapi.enrichmentclient.yaml ../../api/enrichment.yaml
 
   db:migrate:
     desc: Run migrations against DATABASE_URL

@@ -12,10 +12,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/collectionapi"
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/enrichmentclient"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/enrichapi"
 )
 
 func TestUnitSearchPassThrough_RelaysAndForwardsBearer(t *testing.T) {
@@ -167,7 +167,7 @@ func TestUnitRecommendations_ComposesAndCaches(t *testing.T) {
 	var gotReq enrichapi.ScoreRequest
 	col := &stubCollection{library: func(_ context.Context, bearer string) (collectionapi.LibrarySummary, error) {
 		dropped := "dropped"
-		return collectionapi.LibrarySummary{Library: []collectionapi.LibraryGame{
+		return collectionapi.LibrarySummary{Library: []collectionapi.LibraryEntry{
 			{IgdbGameId: 1000, Rating: &rating},
 			{IgdbGameId: 1001, Status: &dropped},
 		}}, nil
@@ -197,7 +197,7 @@ func TestUnitRecommendations_ComposesAndCaches(t *testing.T) {
 
 func TestUnitRecommendations_DegradedIsNotCached(t *testing.T) {
 	col := &stubCollection{library: func(context.Context, string) (collectionapi.LibrarySummary, error) {
-		return collectionapi.LibrarySummary{Library: []collectionapi.LibraryGame{}}, nil
+		return collectionapi.LibrarySummary{Library: []collectionapi.LibraryEntry{}}, nil
 	}}
 	var scoreCalls int
 	h, env := newTestHandlersWithCollection(t, col)
@@ -224,7 +224,7 @@ func TestUnitRecommendations_UpstreamFailures(t *testing.T) {
 	})
 	t.Run("enrichment down", func(t *testing.T) {
 		col := &stubCollection{library: func(context.Context, string) (collectionapi.LibrarySummary, error) {
-			return collectionapi.LibrarySummary{Library: []collectionapi.LibraryGame{}}, nil
+			return collectionapi.LibrarySummary{Library: []collectionapi.LibraryEntry{}}, nil
 		}}
 		h, env := newTestHandlersWithCollection(t, col)
 		h.enrichment = &stubEnrichment{score: func(context.Context, string, enrichapi.ScoreRequest) ([]byte, bool, error) {

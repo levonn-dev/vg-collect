@@ -29,10 +29,10 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/libs/go/metrictest"
 	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
-	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/enrichapi"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/server"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
@@ -910,7 +910,10 @@ func newLoggedServer(t *testing.T, st server.Store, enrich server.Enrichment, c 
 	logger := slog.New(slog.NewJSONHandler(buf, nil))
 	a := newAuthEnv(t)
 	h := server.New(st, enrich, c, server.Options{DashboardCacheTTL: 5 * time.Minute, Logger: logger})
-	router := server.NewRouter(h, a.v, logger, func(context.Context) error { return nil })
+	router, err := server.NewRouter(h, a.v, logger, func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return srv, a, buf

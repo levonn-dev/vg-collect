@@ -91,7 +91,10 @@ func newLoggedServer(t *testing.T, st server.Store, col server.Collection, users
 	h := server.New(st, col, users, server.Options{
 		Logger: logger, CapComments: 50, CapFollows: 100, CapLikes: 200,
 	})
-	router := server.NewRouter(h, a.v, logger, func(context.Context) error { return nil })
+	router, err := server.NewRouter(h, a.v, logger, func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return srv, a, buf

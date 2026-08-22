@@ -6,175 +6,36 @@
 package api
 
 import (
+	"bytes"
+	"compress/flate"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"path"
+	"strings"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
+	externalRef0 "github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// Defines values for ProfileCardProfileVisibility.
-const (
-	ProfileCardProfileVisibilityListed   ProfileCardProfileVisibility = "listed"
-	ProfileCardProfileVisibilityPrivate  ProfileCardProfileVisibility = "private"
-	ProfileCardProfileVisibilityUnlisted ProfileCardProfileVisibility = "unlisted"
-)
-
-// Valid indicates whether the value is a known member of the ProfileCardProfileVisibility enum.
-func (e ProfileCardProfileVisibility) Valid() bool {
-	switch e {
-	case ProfileCardProfileVisibilityListed:
-		return true
-	case ProfileCardProfileVisibilityPrivate:
-		return true
-	case ProfileCardProfileVisibilityUnlisted:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for UpdateUserRequestLandingPage.
-const (
-	UpdateUserRequestLandingPageCollection UpdateUserRequestLandingPage = "collection"
-	UpdateUserRequestLandingPageExplore    UpdateUserRequestLandingPage = "explore"
-	UpdateUserRequestLandingPageFeed       UpdateUserRequestLandingPage = "feed"
-)
-
-// Valid indicates whether the value is a known member of the UpdateUserRequestLandingPage enum.
-func (e UpdateUserRequestLandingPage) Valid() bool {
-	switch e {
-	case UpdateUserRequestLandingPageCollection:
-		return true
-	case UpdateUserRequestLandingPageExplore:
-		return true
-	case UpdateUserRequestLandingPageFeed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for UpdateUserRequestProfileVisibility.
-const (
-	UpdateUserRequestProfileVisibilityListed   UpdateUserRequestProfileVisibility = "listed"
-	UpdateUserRequestProfileVisibilityPrivate  UpdateUserRequestProfileVisibility = "private"
-	UpdateUserRequestProfileVisibilityUnlisted UpdateUserRequestProfileVisibility = "unlisted"
-)
-
-// Valid indicates whether the value is a known member of the UpdateUserRequestProfileVisibility enum.
-func (e UpdateUserRequestProfileVisibility) Valid() bool {
-	switch e {
-	case UpdateUserRequestProfileVisibilityListed:
-		return true
-	case UpdateUserRequestProfileVisibilityPrivate:
-		return true
-	case UpdateUserRequestProfileVisibilityUnlisted:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for UserLandingPage.
-const (
-	UserLandingPageCollection UserLandingPage = "collection"
-	UserLandingPageExplore    UserLandingPage = "explore"
-	UserLandingPageFeed       UserLandingPage = "feed"
-)
-
-// Valid indicates whether the value is a known member of the UserLandingPage enum.
-func (e UserLandingPage) Valid() bool {
-	switch e {
-	case UserLandingPageCollection:
-		return true
-	case UserLandingPageExplore:
-		return true
-	case UserLandingPageFeed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for UserProfileVisibility.
-const (
-	UserProfileVisibilityListed   UserProfileVisibility = "listed"
-	UserProfileVisibilityPrivate  UserProfileVisibility = "private"
-	UserProfileVisibilityUnlisted UserProfileVisibility = "unlisted"
-)
-
-// Valid indicates whether the value is a known member of the UserProfileVisibility enum.
-func (e UserProfileVisibility) Valid() bool {
-	switch e {
-	case UserProfileVisibilityListed:
-		return true
-	case UserProfileVisibilityPrivate:
-		return true
-	case UserProfileVisibilityUnlisted:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for UserRoles.
-const (
-	UserRolesAdmin UserRoles = "admin"
-	UserRolesUser  UserRoles = "user"
-)
-
-// Valid indicates whether the value is a known member of the UserRoles enum.
-func (e UserRoles) Valid() bool {
-	switch e {
-	case UserRolesAdmin:
-		return true
-	case UserRolesUser:
-		return true
-	default:
-		return false
-	}
-}
-
-// Problem defines model for Problem.
-type Problem struct {
-	Code     *string `json:"code,omitempty"`
-	Detail   *string `json:"detail,omitempty"`
-	Instance *string `json:"instance,omitempty"`
-	Status   int     `json:"status"`
-	Title    string  `json:"title"`
-	Type     string  `json:"type"`
-}
-
 // ProfileCard The cross-user projection of a user. Never email, never roles.
-type ProfileCard struct {
-	AvatarUrl         *string                      `json:"avatar_url,omitempty"`
-	Handle            string                       `json:"handle"`
-	ProfileVisibility ProfileCardProfileVisibility `json:"profile_visibility"`
-	UserId            openapi_types.UUID           `json:"user_id"`
-}
-
-// ProfileCardProfileVisibility defines model for ProfileCard.ProfileVisibility.
-type ProfileCardProfileVisibility string
+type ProfileCard = externalRef0.ProfileCard
 
 // UpdateUserRequest Absent fields keep their value; an empty avatar_url clears it.
 type UpdateUserRequest struct {
 	AvatarUrl *string `json:"avatar_url,omitempty"`
 
 	// Handle New typed form. Decoration-only changes are free renames; one change per cooldown window (429 handle_cooldown); folded-key collisions answer 409 handle_taken.
-	Handle            *string                             `json:"handle,omitempty"`
-	LandingPage       *UpdateUserRequestLandingPage       `json:"landing_page,omitempty"`
-	PreferredCurrency *string                             `json:"preferred_currency,omitempty"`
-	ProfileVisibility *UpdateUserRequestProfileVisibility `json:"profile_visibility,omitempty"`
+	Handle            *externalRef0.Handle       `json:"handle,omitempty"`
+	LandingPage       *externalRef0.LandingPage  `json:"landing_page,omitempty"`
+	PreferredCurrency *externalRef0.CurrencyCode `json:"preferred_currency,omitempty"`
+	ProfileVisibility *externalRef0.Visibility   `json:"profile_visibility,omitempty"`
 }
-
-// UpdateUserRequestLandingPage defines model for UpdateUserRequest.LandingPage.
-type UpdateUserRequestLandingPage string
-
-// UpdateUserRequestProfileVisibility defines model for UpdateUserRequest.ProfileVisibility.
-type UpdateUserRequestProfileVisibility string
 
 // UpsertUserRequest defines model for UpsertUserRequest.
 type UpsertUserRequest struct {
@@ -195,33 +56,36 @@ type User struct {
 	Email     string    `json:"email"`
 
 	// Handle The user's single identity. 2-30 chars, alphanumeric plus interior underscores; case and underscores are decoration (uniqueness folds them).
-	Handle string             `json:"handle"`
-	Id     openapi_types.UUID `json:"id"`
+	Handle externalRef0.Handle `json:"handle"`
+	Id     openapi_types.UUID  `json:"id"`
 
 	// LandingPage Where the app opens after sign-in. Private preference, defaulted to feed for every account; never on ProfileCard.
-	LandingPage UserLandingPage `json:"landing_page"`
+	LandingPage externalRef0.LandingPage `json:"landing_page"`
 
 	// PreferredCurrency The display currency the SPA converts market values into. Defaulted from locale_hint at account creation, USD when no hint maps.
-	PreferredCurrency string                `json:"preferred_currency"`
-	ProfileVisibility UserProfileVisibility `json:"profile_visibility"`
-	Roles             []UserRoles           `json:"roles"`
-	UpdatedAt         time.Time             `json:"updated_at"`
+	PreferredCurrency externalRef0.CurrencyCode `json:"preferred_currency"`
+	ProfileVisibility externalRef0.Visibility   `json:"profile_visibility"`
+	Roles             []externalRef0.Role       `json:"roles"`
+	UpdatedAt         time.Time                 `json:"updated_at"`
 }
 
-// UserLandingPage Where the app opens after sign-in. Private preference, defaulted to feed for every account; never on ProfileCard.
-type UserLandingPage string
+// BadRequest defines model for BadRequest.
+type BadRequest = externalRef0.Problem
 
-// UserProfileVisibility defines model for User.ProfileVisibility.
-type UserProfileVisibility string
-
-// UserRoles defines model for User.Roles.
-type UserRoles string
+// Conflict defines model for Conflict.
+type Conflict = externalRef0.Problem
 
 // Forbidden defines model for Forbidden.
-type Forbidden = Problem
+type Forbidden = externalRef0.Problem
+
+// NotFound defines model for NotFound.
+type NotFound = externalRef0.Problem
+
+// TooManyRequests defines model for TooManyRequests.
+type TooManyRequests = externalRef0.Problem
 
 // Unauthorized defines model for Unauthorized.
-type Unauthorized = Problem
+type Unauthorized = externalRef0.Problem
 
 // GetSharedProfilesByIdsParams defines parameters for GetSharedProfilesByIds.
 type GetSharedProfilesByIdsParams struct {
@@ -230,7 +94,7 @@ type GetSharedProfilesByIdsParams struct {
 
 // SearchSharedProfilesParams defines parameters for SearchSharedProfiles.
 type SearchSharedProfilesParams struct {
-	Q string `form:"q" json:"q"`
+	Q externalRef0.UserSearchQ `form:"q" json:"q"`
 }
 
 // UpsertUserJSONRequestBody defines body for UpsertUser for application/json ContentType.
@@ -586,4 +450,146 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/shared/profiles/search", wrapper.SearchSharedProfiles)
 
 	return m
+}
+
+// Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
+// Stored as a slice of fixed-width chunks rather than one concatenated
+// const string: with thousands of chunks the chained `+` fold is several
+// times slower for the Go compiler than parsing a slice literal.
+var swaggerSpec = []string{
+	"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",
+	"8wPa2438+4vlxfK/AQAA//8=",
+}
+
+// decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
+// after base64-decoding and flate-decompressing the embedded blob.
+func decodeSpec() ([]byte, error) {
+	encoded := strings.Join(swaggerSpec, "")
+	compressed, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("error base64 decoding spec: %w", err)
+	}
+	zr := flate.NewReader(bytes.NewReader(compressed))
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(zr); err != nil {
+		return nil, fmt.Errorf("read flate: %w", err)
+	}
+	if err := zr.Close(); err != nil {
+		return nil, fmt.Errorf("close flate reader: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+var rawSpec = decodeSpecCached()
+
+// a naive cache of the decoded OpenAPI spec
+func decodeSpecCached() func() ([]byte, error) {
+	data, err := decodeSpec()
+	return func() ([]byte, error) {
+		return data, err
+	}
+}
+
+// Constructs a synthetic filesystem for resolving external references when loading openapi specifications.
+func PathToRawSpec(pathToFile string) map[string]func() ([]byte, error) {
+	res := make(map[string]func() ([]byte, error))
+	if len(pathToFile) > 0 {
+		res[pathToFile] = rawSpec
+	}
+
+	for rawPath, rawFunc := range externalRef0.PathToRawSpec(path.Join(path.Dir(pathToFile), "./common.yaml")) {
+		if _, ok := res[rawPath]; ok {
+			// it is not possible to compare functions in golang, so always overwrite the old value
+		}
+		res[rawPath] = rawFunc
+	}
+	return res
+}
+
+// GetSpec returns the OpenAPI specification corresponding to the generated
+// code in this file. External references in the spec are resolved through
+// PathToRawSpec; externally-referenced files must be embedded in their
+// corresponding Go packages (via the import-mapping feature). URL-based
+// external refs are not supported.
+func GetSpec() (swagger *openapi3.T, err error) {
+	resolvePath := PathToRawSpec("")
+
+	loader := openapi3.NewLoader()
+	loader.IsExternalRefsAllowed = true
+	loader.ReadFromURIFunc = func(loader *openapi3.Loader, url *url.URL) ([]byte, error) {
+		pathToFile := url.String()
+		pathToFile = path.Clean(pathToFile)
+		getSpec, ok := resolvePath[pathToFile]
+		if !ok {
+			err1 := fmt.Errorf("path not found: %s", pathToFile)
+			return nil, err1
+		}
+		return getSpec()
+	}
+	var specData []byte
+	specData, err = rawSpec()
+	if err != nil {
+		return
+	}
+	swagger, err = loader.LoadFromData(specData)
+	if err != nil {
+		return
+	}
+	return
+}
+
+// GetSpecJSON returns the raw JSON bytes of the embedded OpenAPI
+// specification: decompressed but not unmarshaled. External references
+// are not resolved here; the bytes are the spec exactly as embedded by
+// codegen. The result is cached at package init time, so repeated calls
+// are cheap.
+func GetSpecJSON() ([]byte, error) {
+	return rawSpec()
+}
+
+// GetSwagger returns the OpenAPI specification corresponding to the
+// generated code in this file.
+//
+// Deprecated: GetSwagger predates kin-openapi renaming openapi3.Swagger
+// to openapi3.T. Use [GetSpec] instead. This wrapper is retained for
+// backwards compatibility.
+func GetSwagger() (*openapi3.T, error) {
+	return GetSpec()
 }

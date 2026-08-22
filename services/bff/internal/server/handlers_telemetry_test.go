@@ -15,10 +15,14 @@ import (
 )
 
 // assertOversizeBodyProblem checks the 400 problem an over-cap OTLP
-// body answers with, detail text included - the wording mentions the
-// 1MiB cap by name rather than httpkit.ReadCapped's generic default,
-// so a future refactor silently losing it fails a test instead of
-// only a reviewer's eye.
+// body answers with, detail text included. specval's own MaxBodyBytes
+// (1MiB, the same bound proxyOTLP's own httpkit.ReadCapped call
+// enforces) now catches an over-cap body first, at the request-
+// validation layer ahead of the handler: the body read fails during
+// specval's own schema check, so the answer carries the encoder's
+// generic house wording, not proxyOTLP's own detail text - that
+// handler-level check is unreachable for this exact cap but stays in
+// place as a second line of defense.
 func assertOversizeBodyProblem(t *testing.T, rec *httptest.ResponseRecorder) {
 	t.Helper()
 	if rec.Code != http.StatusBadRequest {
@@ -31,8 +35,8 @@ func assertOversizeBodyProblem(t *testing.T, rec *httptest.ResponseRecorder) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
 		t.Fatal(err)
 	}
-	if p.Code != "invalid_body" || p.Detail != "request body unreadable or over 1MiB" {
-		t.Fatalf("problem = %+v, want code=invalid_body detail=%q", p, "request body unreadable or over 1MiB")
+	if p.Code != "invalid_body" || p.Detail != "malformed JSON body" {
+		t.Fatalf("problem = %+v, want code=invalid_body detail=%q", p, "malformed JSON body")
 	}
 }
 

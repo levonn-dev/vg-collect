@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
@@ -42,7 +43,7 @@ func TestRecommendations_EndToEndOverFixtures(t *testing.T) {
 		t.Fatal("no recommendations")
 	}
 	seen := map[int64]float64{}
-	var linkToPast *api.Recommendation
+	var linkToPast *common.Recommendation
 	for i, rec := range out.Recommendations {
 		if rec.IgdbGameId == 1001 || rec.IgdbGameId == 1042 || rec.IgdbGameId == 1012 {
 			t.Fatalf("owned id recommended: %d", rec.IgdbGameId)
@@ -103,8 +104,12 @@ func TestRecommendations_SparseLibraryUsesGenreFallback(t *testing.T) {
 }
 
 // TestUnitRecommendations_LibraryTooLargeRejected pins the contract's
-// maxItems bound: one entry past it answers 400 before any store or
-// provider call (the zero-field stubs would panic if reached).
+// maxItems bound: one entry past the 2500-item cap answers 400 before
+// any store or provider call (the zero-field stubs would panic if
+// reached). The validation middleware (libs/go/specval, wired into
+// every route on this router) enforces the cap in its generic
+// invalid_body voice; the handler performs no library-size check of
+// its own.
 func TestUnitRecommendations_LibraryTooLargeRejected(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
@@ -118,8 +123,8 @@ func TestUnitRecommendations_LibraryTooLargeRejected(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400, got %d %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "library_too_large") {
-		t.Fatalf("want library_too_large problem, got %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "invalid_body") || !strings.Contains(rec.Body.String(), "library") {
+		t.Fatalf("want an invalid_body problem naming library, got %s", rec.Body.String())
 	}
 }
 
@@ -192,36 +197,22 @@ func TestUnitRecommendations_DegradedOnGenreFallbackFailure(t *testing.T) {
 	}
 }
 
-func TestUnitRecommendations_LimitClamped(t *testing.T) {
+// TestUnitRecommendations_LimitOverMaxRejected pins the contract's
+// bound on limit (1-50): specval (wired into every route on this
+// router) rejects an out-of-range limit before the handler ever
+// computes an effective limit - the same deliberate reversal the
+// community list's limit went through, from a silent clamp to a
+// rejection.
+func TestUnitRecommendations_LimitOverMaxRejected(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
-	// 60 candidates via one owned game; limit asks for 999 -> clamps to 50.
-	similar := make([]int64, 60)
-	for i := range similar {
-		similar[i] = int64(2000 + i)
-	}
-	rawOwned := store.RawGame{GameID: 1, Game: igdb.Game{ID: 1, Name: "Owned", SimilarGames: similar}}
-	st := &stubStore{
-		rawByIDs: func(_ context.Context, ids []int64) ([]store.RawGame, error) {
-			out := make([]store.RawGame, 0, len(ids))
-			for _, id := range ids {
-				if id == 1 {
-					out = append(out, rawOwned)
-					continue
-				}
-				out = append(out, store.RawGame{GameID: id, Game: igdb.Game{ID: id, Name: "Candidate", Genres: []igdb.Named{{ID: 12, Name: "Role-playing (RPG)"}}}})
-			}
-			return out, nil
-		},
-	}
-	h := newUnitHandlers(st, nil, nil, newStubCache())
+	h := newUnitHandlers(&stubStore{}, &stubGames{}, nil, newStubCache())
 	rec := serveUnit(t, h, env, http.MethodPost, "/recommendations:score", tok,
 		map[string]any{"library": []map[string]any{{"igdb_game_id": 1}}, "limit": 999})
-	var out api.ScoreResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-		t.Fatal(err)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d %s", rec.Code, rec.Body.String())
 	}
-	if len(out.Recommendations) != 50 {
-		t.Fatalf("limit clamp: %d", len(out.Recommendations))
+	if !strings.Contains(rec.Body.String(), "invalid_body") {
+		t.Fatalf("want an invalid_body problem, got %s", rec.Body.String())
 	}
 }

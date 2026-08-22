@@ -7,10 +7,10 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"unicode/utf8"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
@@ -24,7 +24,7 @@ func toAPIView(v store.View) (api.SavedView, error) {
 	}
 	return api.SavedView{
 		Id: v.ID, Name: v.Name, Slug: v.Slug,
-		Visibility:  api.SavedViewVisibility(v.Visibility),
+		Visibility:  common.Visibility(v.Visibility),
 		PublishedAt: v.PublishedAt,
 		Params:      params,
 		CreatedAt:   v.CreatedAt, UpdatedAt: v.UpdatedAt,
@@ -36,14 +36,17 @@ const maxViewParamsBytes = 8192
 
 // viewBody decodes and validates a ViewCreate; the marshaled params
 // come back for storage, along with the resolved visibility (default
-// private).
+// private). name's minLength/maxLength, and visibility's enum, are
+// specval's job now; name keeps its blank-after-trim guard (minLength
+// alone does not catch "   ", only a literal empty string - see
+// validateTagName's comment for the sibling gap on tag names).
 func viewBody(w http.ResponseWriter, r *http.Request) (api.ViewCreate, []byte, string, bool) {
 	var body api.ViewCreate
 	if !httpkit.DecodeBody(w, r, maxBodyBytes, &body) {
 		return body, nil, "", false
 	}
-	if strings.TrimSpace(body.Name) == "" || utf8.RuneCountInString(body.Name) > 100 {
-		problem(w, r, http.StatusBadRequest, "invalid_body", "name must be 1-100 characters")
+	if strings.TrimSpace(body.Name) == "" {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "name must not be blank")
 		return body, nil, "", false
 	}
 	params, err := json.Marshal(body.Params)
@@ -57,18 +60,7 @@ func viewBody(w http.ResponseWriter, r *http.Request) (api.ViewCreate, []byte, s
 	}
 	visibility := "private"
 	if body.Visibility != nil {
-		// The generated enum type is a plain string underneath (no
-		// UnmarshalJSON validation), so an invalid value must be
-		// rejected here -- otherwise it reaches the store and only
-		// the DB CHECK constraint catches it, surfacing as a 500
-		// instead of a 400.
-		switch *body.Visibility {
-		case api.ViewCreateVisibilityPrivate, api.ViewCreateVisibilityUnlisted, api.ViewCreateVisibilityListed:
-			visibility = string(*body.Visibility)
-		default:
-			problem(w, r, http.StatusBadRequest, "invalid_body", "visibility must be one of private, unlisted, listed")
-			return body, nil, "", false
-		}
+		visibility = string(*body.Visibility)
 	}
 	return body, params, visibility, true
 }

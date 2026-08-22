@@ -391,3 +391,9 @@ func (h *Handlers) countNormalizeCommunityRegions(ctx context.Context, outcome s
 }
 
 var _ api.ServerInterface = (*Handlers)(nil)
+
+// maxBodyBytes caps request bodies at the router's specval layer; the
+// largest legitimate body is a recommendations-scoring request
+// carrying the caller's full owned library (handlers_recommendations.go's
+// own DecodeBody call uses the same 256KiB cap directly).
+const maxBodyBytes = 256 << 10

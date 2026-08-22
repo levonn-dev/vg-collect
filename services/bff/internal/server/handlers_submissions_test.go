@@ -10,8 +10,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/contract/collectionapi"
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
-	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/collectionapi"
 )
 
 // TestUnitSubmissionRelays_FidelityAndNoSession covers the three user
