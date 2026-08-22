@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react'
 import { renderWithI18n } from './test/i18n'
-import { jsonResponse, problemResponse } from './test/fixtures'
+import { jsonResponse, problemResponse, requestPath } from './test/fixtures'
 import App from './App'
 
 afterEach(() => {
@@ -13,8 +13,8 @@ it('boots into the app shell', async () => {
   // Logged-out boot: the shell's session probe must get a 401, not a
   // providers-shaped body - the singleton QueryClient would cache it
   // as a Me and poison every later test in this file.
-  vi.stubGlobal('fetch', vi.fn((input: string) => {
-    const url = String(input)
+  vi.stubGlobal('fetch', vi.fn((input: unknown) => {
+    const url = requestPath(input)
     if (url === '/api/auth/providers') return Promise.resolve(jsonResponse(200, { providers: [] }))
     return Promise.resolve(jsonResponse(401, { title: 'unauthenticated' }))
   }))
@@ -32,7 +32,7 @@ it('does not retry a 401 and routes to login', async () => {
   // 401 must not be retried: each shell probes /api/me exactly once
   // (Layout's gate, then PublicShell's header probe after the
   // redirect). Retries would push this past two.
-  const meCalls = fetchMock.mock.calls.filter((c) => c[0] === '/api/me')
+  const meCalls = fetchMock.mock.calls.filter((c) => requestPath(c[0]) === '/api/me')
   expect(meCalls).toHaveLength(2)
 })
 
@@ -47,8 +47,8 @@ const fxRates = { base: 'USD', date: '2026-01-01', rates: { EUR: 0.9 } }
 
 it('renders the account page inside the shell', async () => {
   window.history.pushState({}, '', '/account')
-  vi.stubGlobal('fetch', vi.fn((input: string) => {
-    const url = String(input)
+  vi.stubGlobal('fetch', vi.fn((input: unknown) => {
+    const url = requestPath(input)
     if (url === '/api/me/identities') return Promise.resolve(jsonResponse(200, { identities: [] }))
     if (url === '/api/auth/providers') return Promise.resolve(jsonResponse(200, { providers: [] }))
     if (url === '/api/fx') return Promise.resolve(jsonResponse(200, fxRates))
@@ -62,8 +62,8 @@ it('renders the account page inside the shell', async () => {
 
 it('renders the explore page inside the shell', async () => {
   window.history.pushState({}, '', '/explore')
-  vi.stubGlobal('fetch', vi.fn((input: string) => {
-    const url = String(input)
+  vi.stubGlobal('fetch', vi.fn((input: unknown) => {
+    const url = requestPath(input)
     if (url.startsWith('/api/explore')) return Promise.resolve(jsonResponse(200, { shelves: [], total_count: 0 }))
     if (url === '/api/fx') return Promise.resolve(jsonResponse(200, fxRates))
     return Promise.resolve(jsonResponse(200, {
@@ -76,8 +76,8 @@ it('renders the explore page inside the shell', async () => {
 
 it('renders the profile page inside the shell', async () => {
   window.history.pushState({}, '', '/u/Alice_Prime')
-  vi.stubGlobal('fetch', vi.fn((input: string) => {
-    const url = String(input)
+  vi.stubGlobal('fetch', vi.fn((input: unknown) => {
+    const url = requestPath(input)
     if (url.startsWith('/api/profiles/')) {
       return Promise.resolve(jsonResponse(200, {
         profile: { user_id: 'u2', handle: 'Alice_Prime', profile_visibility: 'listed' },
@@ -98,8 +98,8 @@ it('renders the profile page inside the shell', async () => {
 
 it('renders the shared shelf page inside the shell', async () => {
   window.history.pushState({}, '', '/u/Alice_Prime/shelves/backlog-wall')
-  vi.stubGlobal('fetch', vi.fn((input: string) => {
-    const url = String(input)
+  vi.stubGlobal('fetch', vi.fn((input: unknown) => {
+    const url = requestPath(input)
     if (url.startsWith('/api/profiles/Alice_Prime/shelves/backlog-wall')) {
       return Promise.resolve(jsonResponse(200, {
         shelf: { id: 'shelf1', name: 'Backlog Wall', slug: 'backlog-wall', params: { mode: 'table' } },
@@ -125,8 +125,8 @@ it('renders the shared shelf page inside the shell', async () => {
 
 it('renders the feed page inside the shell', async () => {
   window.history.pushState({}, '', '/feed')
-  vi.stubGlobal('fetch', vi.fn((input: string) => {
-    const url = String(input)
+  vi.stubGlobal('fetch', vi.fn((input: unknown) => {
+    const url = requestPath(input)
     if (url.startsWith('/api/feed')) return Promise.resolve(jsonResponse(200, { items: [] }))
     if (url === '/api/fx') return Promise.resolve(jsonResponse(200, fxRates))
     return Promise.resolve(jsonResponse(200, {

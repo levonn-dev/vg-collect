@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { triggerRefresh, triggerRematch } from '../../api/admin'
-import { jsonResponse, problemResponse } from '../../test/fixtures'
+import { calledPath, jsonResponse, problemResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import NormalizeTrigger, { normalizeSuccessMessage } from './NormalizeTrigger'
 
@@ -71,7 +71,7 @@ it('starts a catalog refresh', async () => {
   renderRefresh()
   await user.click(screen.getByRole('button', { name: 'Trigger catalog refresh' }))
   expect(await screen.findByText('Refresh started.')).toBeInTheDocument()
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/refresh')
+  expect(calledPath(fetchMock, 0)).toBe('/api/admin/refresh')
 })
 
 it('reports an already-running refresh', async () => {
@@ -116,7 +116,7 @@ it('starts an entry rematch', async () => {
   renderRematch()
   await user.click(screen.getByRole('button', { name: 'Trigger entry rematch' }))
   expect(await screen.findByText('Rematch started.')).toBeInTheDocument()
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/rematch')
+  expect(calledPath(fetchMock, 0)).toBe('/api/admin/rematch')
 })
 
 it('reports an already-running rematch', async () => {

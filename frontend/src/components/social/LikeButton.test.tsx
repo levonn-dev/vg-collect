@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { calledPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import LikeButton from './LikeButton'
 
@@ -21,7 +22,8 @@ it('renders the given count and PUTs to like', async () => {
   renderButton(qc, false, 3)
   expect(screen.getByText('3')).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Like' }))
-  expect(fetchMock).toHaveBeenLastCalledWith('/api/social/likes/s1', { method: 'PUT' })
+  expect(calledPath(fetchMock)).toBe('/api/social/likes/s1')
+  expect((fetchMock.mock.calls.at(-1)?.[0] as Request).method).toBe('PUT')
 })
 
 it('DELETEs to unlike when the viewer already likes it, without moving the count itself', async () => {
@@ -30,7 +32,8 @@ it('DELETEs to unlike when the viewer already likes it, without moving the count
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   renderButton(qc, true, 4)
   await userEvent.click(screen.getByRole('button', { name: 'Unlike' }))
-  expect(fetchMock).toHaveBeenLastCalledWith('/api/social/likes/s1', { method: 'DELETE' })
+  expect(calledPath(fetchMock)).toBe('/api/social/likes/s1')
+  expect((fetchMock.mock.calls.at(-1)?.[0] as Request).method).toBe('DELETE')
   // optimistic-free: the prop-driven count does not move on its own,
   // only once the invalidated query re-fetches with a real one.
   expect(screen.getByText('4')).toBeInTheDocument()

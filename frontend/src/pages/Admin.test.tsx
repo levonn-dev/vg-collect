@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { jsonResponse } from '../test/fixtures'
+import { jsonResponse, requestPath } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Admin from './Admin'
 
@@ -25,11 +25,11 @@ function renderAdmin() {
 // is recorded and fails the test in afterEach.
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
-  const impl = vi.fn().mockImplementation((url: string) => {
-    const hit = Object.entries(routes).find(([prefix]) => String(url).startsWith(prefix))
+  const impl = vi.fn().mockImplementation((url: unknown) => {
+    const hit = Object.entries(routes).find(([prefix]) => requestPath(url).startsWith(prefix))
     if (!hit) {
-      unstubbed.push(String(url))
-      return Promise.reject(new Error(`unstubbed fetch: ${String(url)}`))
+      unstubbed.push(requestPath(url))
+      return Promise.reject(new Error(`unstubbed fetch: ${requestPath(url)}`))
     }
     return Promise.resolve(jsonResponse(200, hit[1]))
   })

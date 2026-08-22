@@ -3,7 +3,7 @@ import { fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import Home from '../pages/Home'
-import { fxRatesFixture, jsonResponse, meFixture, problemResponse } from '../test/fixtures'
+import { fxRatesFixture, jsonResponse, meFixture, problemResponse, requestPath } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Layout from './Layout'
 
@@ -123,8 +123,8 @@ it('consumes a stashed next path once the profile resolves', async () => {
   // /api/fx alongside /api/me, and a shared mockResolvedValue Response
   // cannot have its body read twice.
   sessionStorage.setItem('vg_next', '/entries/abc')
-  vi.stubGlobal('fetch', vi.fn((path: string) => {
-    if (path === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
+  vi.stubGlobal('fetch', vi.fn((path: unknown) => {
+    if (requestPath(path) === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
     return Promise.resolve(jsonResponse(200, me))
   }))
   renderLayout()
@@ -159,8 +159,8 @@ function renderLayoutWithHome() {
 
 it('lets a stashed next path win over the Home landing redirect', async () => {
   sessionStorage.setItem('vg_next', '/account')
-  vi.stubGlobal('fetch', vi.fn((path: string) => {
-    if (path === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
+  vi.stubGlobal('fetch', vi.fn((path: unknown) => {
+    if (requestPath(path) === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
     return Promise.resolve(jsonResponse(200, meFixture({ landing_page: 'collection' })))
   }))
   renderLayoutWithHome()
@@ -169,8 +169,8 @@ it('lets a stashed next path win over the Home landing redirect', async () => {
 })
 
 it('falls through to the Home landing redirect with no stash present', async () => {
-  vi.stubGlobal('fetch', vi.fn((path: string) => {
-    if (path === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
+  vi.stubGlobal('fetch', vi.fn((path: unknown) => {
+    if (requestPath(path) === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
     return Promise.resolve(jsonResponse(200, meFixture({ landing_page: 'collection' })))
   }))
   renderLayoutWithHome()
@@ -189,16 +189,18 @@ it('logs out and navigates to login', async () => {
   // this client's default staleTime is 0, its own /api/me observer
   // triggers a background refetch too - so /api/me must tolerate
   // being called more than once.
-  const fetchMock = vi.fn((path: string) => {
-    if (path === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
-    if (path === '/api/auth/logout') return Promise.resolve(new Response(null, { status: 204 }))
+  const fetchMock = vi.fn((path: unknown) => {
+    if (requestPath(path) === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
+    if (requestPath(path) === '/api/auth/logout') return Promise.resolve(new Response(null, { status: 204 }))
     return Promise.resolve(jsonResponse(200, me))
   })
   vi.stubGlobal('fetch', fetchMock)
   renderLayout()
   await userEvent.click(await screen.findByRole('button', { name: 'Log out' }))
   expect(await screen.findByText('login-page')).toBeInTheDocument()
-  expect(fetchMock).toHaveBeenCalledWith('/api/auth/logout', { method: 'POST' })
+  expect(fetchMock.mock.calls.some(
+    (c) => requestPath(c[0]) === '/api/auth/logout' && (c[0] as Request).method === 'POST',
+  )).toBe(true)
 })
 
 it('shows the Admin nav link only for the admin role', async () => {

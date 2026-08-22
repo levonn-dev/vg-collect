@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
-import { dashboardFixture, entryFixture, jsonResponse, listFixture, meFixture, putBody } from '../test/fixtures'
+import { dashboardFixture, entryFixture, jsonResponse, listFixture, meFixture, putBody, requestPath } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import { defaultListState, toViewParams } from '../lib/listParams'
 import Collection from './Collection'
@@ -19,8 +19,8 @@ function renderCollection(path = '/') {
 }
 
 function stubApi(list: unknown) {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/me')) return Promise.resolve(jsonResponse(200, meFixture()))
     if (u.startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
     if (u.startsWith('/api/views')) return Promise.resolve(jsonResponse(200, { views: [] }))
@@ -74,7 +74,7 @@ it('pages forward with an offset request', async () => {
   stubApi(listFixture([entryFixture()], { total_count: 450 }))
   renderCollection()
   await userEvent.click(await screen.findByRole('button', { name: 'Next' }))
-  const urls = vi.mocked(fetch).mock.calls.map((c) => String(c[0] as string))
+  const urls = vi.mocked(fetch).mock.calls.map((c) => requestPath(c[0]))
   expect(urls.some((u) => u.includes('offset=200'))).toBe(true)
 })
 
@@ -106,7 +106,7 @@ it('drives filters into the URL and the request', async () => {
   await userEvent.click(screen.getByRole('checkbox', { name: 'Backlog' }))
   await screen.findByRole('checkbox', { name: 'Backlog', checked: true })
   const fetchMock = vi.mocked(fetch)
-  const urls = fetchMock.mock.calls.map((c) => String(c[0] as string))
+  const urls = fetchMock.mock.calls.map((c) => requestPath(c[0]))
   expect(urls.some((u) => u.includes('/api/entries?') && u.includes('status=backlog'))).toBe(true)
 })
 
@@ -117,7 +117,7 @@ it('shows the stats strip and re-requests it for the active filters', async () =
   expect(await screen.findByRole('region', { name: 'Totals' })).toBeInTheDocument()
   expect(screen.getByText('$3,842.00')).toBeInTheDocument()
   // ...scoped to the same filters as the list.
-  const urls = vi.mocked(fetch).mock.calls.map((c) => String(c[0] as string))
+  const urls = vi.mocked(fetch).mock.calls.map((c) => requestPath(c[0]))
   expect(urls.some((u) => u.startsWith('/api/dashboard?') && u.includes('status=playing'))).toBe(true)
 })
 
@@ -147,7 +147,7 @@ it('restores state from the URL on load', async () => {
   expect(screen.queryByRole('checkbox', { name: 'Beaten' })).not.toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Filters (1)' }))
   await screen.findByRole('checkbox', { name: 'Beaten', checked: true })
-  const urls = vi.mocked(fetch).mock.calls.map((c) => String(c[0] as string))
+  const urls = vi.mocked(fetch).mock.calls.map((c) => requestPath(c[0]))
   expect(urls.some((u) => u.includes('sort=rating') && u.includes('order=asc'))).toBe(true)
 })
 
@@ -193,7 +193,7 @@ it('renders the drag board for the backlog-order sort and requests order=asc', a
   stubApi(listFixture([entryFixture({ status: 'backlog', backlog_rank: 'b' })]))
   renderCollection('/?status=backlog&sort=backlog_rank')
   expect(await screen.findByRole('region', { name: 'Backlog order' })).toBeInTheDocument()
-  const urls = vi.mocked(fetch).mock.calls.map((c) => String(c[0] as string))
+  const urls = vi.mocked(fetch).mock.calls.map((c) => requestPath(c[0]))
   expect(urls.some((u) => u.includes('sort=backlog_rank') && u.includes('order=asc'))).toBe(true)
 })
 
@@ -206,8 +206,8 @@ it('hides the Bulk edit toggle entirely while the backlog board is on screen', a
 
 it('applying a shelf rewrites the URL state', async () => {
   const savedParams = toViewParams({ ...defaultListState(), status: ['backlog'], mode: 'grid' })
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/views')) {
       return Promise.resolve(jsonResponse(200, { views: [{ id: 'v1', name: 'Wall', params: savedParams, created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' }] }))
     }
@@ -244,8 +244,8 @@ it('switching to Shelves shows the management list and hides the Items content',
     params: toViewParams(defaultListState()),
     created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
   }
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/me')) return Promise.resolve(jsonResponse(200, meFixture()))
     if (u.startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
     if (u.startsWith('/api/views')) return Promise.resolve(jsonResponse(200, { views: [view] }))
@@ -303,8 +303,8 @@ it('switching to grid exits bulk mode and drops the selection instead of leaving
 
 it('applies a bulk change end to end: request body, success announcement, and exiting the bar', async () => {
   const entries = [entryFixture({ display_name: 'Chrono Trigger' }), entryFixture({ display_name: 'Repro Cart' })]
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u === '/api/entries/bulk-update') return Promise.resolve(jsonResponse(200, { updated_count: 2 }))
     if (u.startsWith('/api/me')) return Promise.resolve(jsonResponse(200, meFixture()))
     if (u.startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
@@ -325,8 +325,8 @@ it('applies a bulk change end to end: request body, success announcement, and ex
   expect(screen.queryByRole('region', { name: 'Bulk edit' })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Bulk edit' })).toHaveAttribute('aria-pressed', 'false')
 
-  const post = fetchMock.mock.calls.find((c) => c[0] === '/api/entries/bulk-update')
-  const body = putBody<{ entry_ids: string[]; status: string }>(post?.[1] as RequestInit)
+  const post = fetchMock.mock.calls.find((c) => requestPath(c[0]) === '/api/entries/bulk-update')
+  const body = await putBody<{ entry_ids: string[]; status: string }>(post?.[0])
   expect(body.status).toBe('shelved')
   expect(body.entry_ids).toHaveLength(2)
 })

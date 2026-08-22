@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { fetchEntries } from '../../api/collection'
-import { entryFixture, jsonResponse, listFixture, problemResponse, putBody } from '../../test/fixtures'
+import { calledPath, entryFixture, jsonResponse, listFixture, problemResponse, putBody } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import BacklogBoard from './BacklogBoard'
 
@@ -41,9 +41,8 @@ it('Move down posts the visual-neighbor pair', async () => {
   renderBoard()
   await userEvent.click(screen.getByRole('button', { name: 'Move First down' }))
   expect(fetchMock).toHaveBeenCalledTimes(1)
-  const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-  expect(url).toBe(`/api/entries/${entries[0].id}/reorder`)
-  expect(putBody(init)).toEqual({
+  expect(calledPath(fetchMock, 0)).toBe(`/api/entries/${entries[0].id}/reorder`)
+  expect(await putBody(fetchMock.mock.calls[0][0])).toEqual({
     after_id: entries[1].id,
     before_id: entries[2].id,
   })
@@ -55,9 +54,8 @@ it('Move up posts the visual-neighbor pair', async () => {
   renderBoard()
   await userEvent.click(screen.getByRole('button', { name: 'Move Third up' }))
   expect(fetchMock).toHaveBeenCalledTimes(1)
-  const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-  expect(url).toBe(`/api/entries/${entries[2].id}/reorder`)
-  expect(putBody(init)).toEqual({
+  expect(calledPath(fetchMock, 0)).toBe(`/api/entries/${entries[2].id}/reorder`)
+  expect(await putBody(fetchMock.mock.calls[0][0])).toEqual({
     after_id: entries[0].id,
     before_id: entries[1].id,
   })
@@ -92,8 +90,8 @@ function BoardFromCache() {
 it('a move reorders the rendered rows and locks the buttons before the server answers', async () => {
   // The reorder POST never settles, so an order change can only be the
   // optimistic cache apply, never an invalidation refetch.
-  const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
-    init?.method === 'POST'
+  const fetchMock = vi.fn().mockImplementation((url: unknown) =>
+    (url as Request).method === 'POST'
       ? new Promise<Response>(() => {})
       : Promise.resolve(jsonResponse(200, listFixture(entries))),
   )

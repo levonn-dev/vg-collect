@@ -1,5 +1,5 @@
 import { ackSubmissionResolution, cancelSubmission, createSubmission, fetchSubmission } from './submissions'
-import { jsonResponse } from '../test/fixtures'
+import { calledPath, jsonResponse } from '../test/fixtures'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -9,28 +9,28 @@ it('fetchSubmission reads the entry submission', async () => {
   const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, sub))
   vi.stubGlobal('fetch', fetchMock)
   await fetchSubmission('e1')
-  expect(fetchMock).toHaveBeenCalledWith('/api/entries/e1/submission')
+  expect(calledPath(fetchMock)).toBe('/api/entries/e1/submission')
 })
 
 it('createSubmission posts without a body', async () => {
   const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, sub))
   vi.stubGlobal('fetch', fetchMock)
   await createSubmission('e1')
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/entries/e1/submission')
-  expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' })
+  expect(calledPath(fetchMock, 0)).toBe('/api/entries/e1/submission')
+  expect((fetchMock.mock.calls[0][0] as Request).method).toBe('POST')
 })
 
 it('cancelSubmission deletes and resolves on 204', async () => {
   const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
   vi.stubGlobal('fetch', fetchMock)
   await cancelSubmission('e1')
-  expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'DELETE' })
+  expect((fetchMock.mock.calls[0][0] as Request).method).toBe('DELETE')
 })
 
 it('ackSubmissionResolution posts to the ack path', async () => {
   const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
   vi.stubGlobal('fetch', fetchMock)
   await ackSubmissionResolution('e1')
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/entries/e1/submission/ack')
-  expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' })
+  expect(calledPath(fetchMock, 0)).toBe('/api/entries/e1/submission/ack')
+  expect((fetchMock.mock.calls[0][0] as Request).method).toBe('POST')
 })

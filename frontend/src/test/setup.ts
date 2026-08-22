@@ -39,6 +39,25 @@ window.matchMedia ??= ((query: string) => ({
   dispatchEvent: () => false,
 })) as unknown as typeof window.matchMedia
 
+// openapi-fetch constructs a Request for every call; browsers resolve
+// its relative /api URL against the page origin, but Node's Request
+// (undici) rejects relative URLs outright. Resolve them against the
+// same placeholder base the fixtures' calledPath uses, so transport
+// code runs under jsdom exactly as written. Plain assignment (not
+// vi.stubGlobal) so vi.unstubAllGlobals() cannot remove it mid-file.
+const NativeRequest = globalThis.Request
+class RelativeUrlRequest extends NativeRequest {
+  constructor(input: RequestInfo | URL, init?: RequestInit) {
+    super(
+      typeof input === 'string' && input.startsWith('/')
+        ? new URL(input, 'http://test.local')
+        : input,
+      init,
+    )
+  }
+}
+globalThis.Request = RelativeUrlRequest
+
 // The OTel fetch instrumentation watches resource timings; jsdom has
 // no PerformanceObserver.
 class PerformanceObserverStub {

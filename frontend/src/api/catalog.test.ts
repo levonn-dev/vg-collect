@@ -1,5 +1,5 @@
 import { fetchRecommendations, resolveProduct, searchCatalog } from './catalog'
-import { jsonResponse } from '../test/fixtures'
+import { calledPath, jsonResponse } from '../test/fixtures'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -7,7 +7,7 @@ it('searchCatalog encodes the query', async () => {
   const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { degraded: false, results: [] }))
   vi.stubGlobal('fetch', fetchMock)
   await searchCatalog('game', 'chrono & co')
-  expect(fetchMock).toHaveBeenCalledWith('/api/search?type=game&q=chrono+%26+co')
+  expect(calledPath(fetchMock)).toBe('/api/search?type=game&q=chrono+%26+co')
 })
 
 it('resolveProduct posts the selection', async () => {
@@ -15,12 +15,12 @@ it('resolveProduct posts the selection', async () => {
   vi.stubGlobal('fetch', fetchMock)
   const p = await resolveProduct({ type: 'game', igdb_game_id: 1000, platform_igdb_id: 6 })
   expect(p.id).toBe('p1')
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/products/resolve')
+  expect(calledPath(fetchMock, 0)).toBe('/api/products/resolve')
 })
 
 it('fetchRecommendations reads the composed endpoint', async () => {
   const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { degraded: false, recommendations: [] }))
   vi.stubGlobal('fetch', fetchMock)
   await fetchRecommendations()
-  expect(fetchMock).toHaveBeenCalledWith('/api/recommendations')
+  expect(calledPath(fetchMock)).toBe('/api/recommendations')
 })

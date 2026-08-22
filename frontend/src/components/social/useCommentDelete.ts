@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { sendJSON } from '../../api/client'
+import { deleteComment } from '../../api/social'
+import { invalidateShelfSocial } from '../../lib/shelfQueries'
 
 export const UNDO_WINDOW_MS = 7000
 
@@ -23,12 +24,11 @@ export function useCommentDelete(shelfId: string) {
   // staying gone.
   const commit = useCallback((id: string, keepalive = false) => {
     timers.current.delete(id)
-    void sendJSON<void>('DELETE', `/api/comments/${id}`, undefined, { keepalive })
+    void deleteComment(id, { keepalive })
       .catch(() => {})
       .finally(() => {
         setPendingIds(prev => { const next = new Set(prev); next.delete(id); return next })
-        void qc.invalidateQueries({ queryKey: ['shelfComments', shelfId] })
-        void qc.invalidateQueries({ queryKey: ['shelfSummary', shelfId] })
+        invalidateShelfSocial(qc, shelfId)
       })
   }, [qc, shelfId])
 

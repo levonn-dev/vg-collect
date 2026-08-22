@@ -1,5 +1,5 @@
-import type { components } from './schema'
-import { getJSON, sendJSON } from './client'
+import type { components, paths } from './schema'
+import { api, unwrap } from './client'
 
 export type SearchResults = components['schemas']['SearchResults']
 export type SearchResult = components['schemas']['SearchResult']
@@ -8,21 +8,26 @@ export type ResolveRequest = components['schemas']['ResolveRequest']
 export type ScoreResponse = components['schemas']['ScoreResponse']
 export type Recommendation = components['schemas']['Recommendation']
 
-export type SearchKind = 'game' | 'hardware' | 'pc_listing'
+export type SearchKind = paths['/api/search']['get']['parameters']['query']['type']
 
-export function searchCatalog(type: SearchKind, q: string): Promise<SearchResults> {
+export async function searchCatalog(type: SearchKind, q: string): Promise<SearchResults> {
   const params = new URLSearchParams({ type, q })
-  return getJSON<SearchResults>(`/api/search?${params.toString()}`)
+  return unwrap(
+    await api.GET('/api/search', {
+      params: { query: { type, q } },
+      querySerializer: () => params.toString(),
+    }),
+  )
 }
 
-export function resolveProduct(body: ResolveRequest): Promise<Product> {
-  return sendJSON<Product>('POST', '/api/products/resolve', body)
+export async function resolveProduct(body: ResolveRequest): Promise<Product> {
+  return unwrap(await api.POST('/api/products/resolve', { body }))
 }
 
-export function fetchProduct(id: string): Promise<Product> {
-  return getJSON<Product>(`/api/products/${id}`)
+export async function fetchProduct(id: string): Promise<Product> {
+  return unwrap(await api.GET('/api/products/{productId}', { params: { path: { productId: id } } }))
 }
 
-export function fetchRecommendations(): Promise<ScoreResponse> {
-  return getJSON<ScoreResponse>('/api/recommendations')
+export async function fetchRecommendations(): Promise<ScoreResponse> {
+  return unwrap(await api.GET('/api/recommendations'))
 }

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
-import { jsonResponse, problemResponse } from '../../test/fixtures'
+import { calledPath, jsonResponse, problemResponse } from '../../test/fixtures'
 import { useSubmission } from './useSubmission'
 
 // Plain .ts (no JSX): the wrapper below uses createElement instead.
@@ -21,7 +21,7 @@ it('resolves the submission on a normal 200', async () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const { result } = renderHook(() => useSubmission('e1'), { wrapper: wrapper(qc) })
   await waitFor(() => expect(result.current.data?.status).toBe('pending'))
-  expect(fetchMock).toHaveBeenCalledWith('/api/entries/e1/submission')
+  expect(calledPath(fetchMock, 0)).toBe('/api/entries/e1/submission')
 })
 
 it('resolves null, not an error, on a 404 (never submitted)', async () => {

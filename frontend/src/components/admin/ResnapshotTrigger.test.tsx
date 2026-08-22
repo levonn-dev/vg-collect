@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse, problemResponse } from '../../test/fixtures'
+import { calledPath, jsonResponse, problemResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import ResnapshotTrigger from './ResnapshotTrigger'
 
@@ -25,7 +25,7 @@ it('runs the sweep and renders counts', async () => {
   renderResnapshot()
   await user.click(screen.getByRole('button', { name: 'Run entry resnapshot' }))
   expect(await screen.findByText('Products seen 3, failed 1, entries updated 2.')).toBeInTheDocument()
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/resnapshot')
+  expect(calledPath(fetchMock, 0)).toBe('/api/admin/resnapshot')
 })
 
 it('failure renders the alert', async () => {

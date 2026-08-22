@@ -1,5 +1,5 @@
-import type { components } from './schema'
-import { getJSON, sendJSON } from './client'
+import type { components, paths } from './schema'
+import { api, unwrap } from './client'
 
 export type ProfileCard = components['schemas']['ProfileCard']
 export type ShelfCard = components['schemas']['ShelfCard']
@@ -13,68 +13,111 @@ type CommentList = components['schemas']['CommentList']
 type FeedPage = components['schemas']['FeedPage']
 type ExplorePage = components['schemas']['ExplorePage']
 
-export type FeedTab = 'following' | 'you'
-export type ExploreSort = 'recent' | 'top'
+export type FeedTab = paths['/api/feed']['get']['parameters']['query']['tab']
+export type ExploreSort = paths['/api/explore']['get']['parameters']['query']['sort']
 
-export function fetchProfilePage(handle: string): Promise<ProfilePage> {
-  return getJSON<ProfilePage>(`/api/profiles/${handle}`)
+export async function fetchProfilePage(handle: string): Promise<ProfilePage> {
+  return unwrap(await api.GET('/api/profiles/{handle}', { params: { path: { handle } } }))
 }
 
-export function fetchShelfPage(handle: string, slug: string): Promise<ShelfPage> {
-  return getJSON<ShelfPage>(`/api/profiles/${handle}/shelves/${slug}`)
+export async function fetchShelfPage(handle: string, slug: string): Promise<ShelfPage> {
+  return unwrap(
+    await api.GET('/api/profiles/{handle}/shelves/{slug}', { params: { path: { handle, slug } } }),
+  )
 }
 
-export function fetchShelfEntries(shelfId: string, offset = 0): Promise<SharedEntryList> {
+export async function fetchShelfEntries(shelfId: string, offset = 0): Promise<SharedEntryList> {
   const params = new URLSearchParams({ offset: String(offset) })
-  return getJSON<SharedEntryList>(`/api/shelves/${shelfId}/entries?${params.toString()}`)
+  return unwrap(
+    await api.GET('/api/shelves/{shelfId}/entries', {
+      params: { path: { shelfId } },
+      querySerializer: () => params.toString(),
+    }),
+  )
 }
 
-export function fetchShelfComments(shelfId: string, cursor?: string): Promise<CommentList> {
+export async function fetchShelfComments(shelfId: string, cursor?: string): Promise<CommentList> {
   const params = new URLSearchParams()
   if (cursor) params.set('cursor', cursor)
-  const qs = params.toString()
-  return getJSON<CommentList>(`/api/shelves/${shelfId}/comments${qs ? `?${qs}` : ''}`)
+  return unwrap(
+    await api.GET('/api/shelves/{shelfId}/comments', {
+      params: { path: { shelfId } },
+      querySerializer: () => params.toString(),
+    }),
+  )
 }
 
-export function postComment(shelfId: string, body: string): Promise<Comment> {
-  return sendJSON<Comment>('POST', `/api/shelves/${shelfId}/comments`, { body })
+export async function postComment(shelfId: string, body: string): Promise<Comment> {
+  return unwrap(
+    await api.POST('/api/shelves/{shelfId}/comments', {
+      params: { path: { shelfId } },
+      body: { body },
+    }),
+  )
 }
 
-export function deleteComment(id: string): Promise<undefined> {
-  return sendJSON<undefined>('DELETE', `/api/comments/${id}`)
+// opts is an optional trailing bag (currently just keepalive, for
+// callers that must survive the tab closing mid-request, e.g. a
+// beacon-style commit on pagehide/unmount) - additive so every
+// existing call site keeps compiling unchanged.
+export async function deleteComment(
+  id: string,
+  opts?: { keepalive?: boolean },
+): Promise<undefined> {
+  return unwrap<undefined>(
+    await api.DELETE('/api/comments/{commentId}', {
+      params: { path: { commentId: id } },
+      ...(opts?.keepalive === undefined ? {} : { keepalive: opts.keepalive }),
+    }),
+  )
 }
 
-export function follow(userId: string): Promise<void> {
-  return sendJSON<void>('PUT', `/api/social/follows/${userId}`)
+export async function follow(userId: string): Promise<void> {
+  return unwrap<void>(await api.PUT('/api/social/follows/{userId}', { params: { path: { userId } } }))
 }
 
-export function unfollow(userId: string): Promise<void> {
-  return sendJSON<void>('DELETE', `/api/social/follows/${userId}`)
+export async function unfollow(userId: string): Promise<void> {
+  return unwrap<void>(await api.DELETE('/api/social/follows/{userId}', { params: { path: { userId } } }))
 }
 
-export function like(shelfId: string): Promise<void> {
-  return sendJSON<void>('PUT', `/api/social/likes/${shelfId}`)
+export async function like(shelfId: string): Promise<void> {
+  return unwrap<void>(await api.PUT('/api/social/likes/{shelfId}', { params: { path: { shelfId } } }))
 }
 
-export function unlike(shelfId: string): Promise<void> {
-  return sendJSON<void>('DELETE', `/api/social/likes/${shelfId}`)
+export async function unlike(shelfId: string): Promise<void> {
+  return unwrap<void>(await api.DELETE('/api/social/likes/{shelfId}', { params: { path: { shelfId } } }))
 }
 
 // fetchFeed appends &cursor= only when the caller supplies one, so
 // the first page of a tab never carries a stale or empty cursor.
-export function fetchFeed(tab: FeedTab, cursor?: string): Promise<FeedPage> {
+export async function fetchFeed(tab: FeedTab, cursor?: string): Promise<FeedPage> {
   const params = new URLSearchParams({ tab })
   if (cursor) params.set('cursor', cursor)
-  return getJSON<FeedPage>(`/api/feed?${params.toString()}`)
+  return unwrap(
+    await api.GET('/api/feed', {
+      params: { query: { tab, cursor } },
+      querySerializer: () => params.toString(),
+    }),
+  )
 }
 
-export function fetchExplore(sort: ExploreSort, offset = 0): Promise<ExplorePage> {
+export async function fetchExplore(sort: ExploreSort, offset = 0): Promise<ExplorePage> {
   const params = new URLSearchParams({ sort, offset: String(offset) })
-  return getJSON<ExplorePage>(`/api/explore?${params.toString()}`)
+  return unwrap(
+    await api.GET('/api/explore', {
+      params: { query: { sort, offset } },
+      querySerializer: () => params.toString(),
+    }),
+  )
 }
 
 export async function searchUsers(q: string): Promise<ProfileCard[]> {
   const params = new URLSearchParams({ q })
-  const body = await getJSON<{ profiles: ProfileCard[] }>(`/api/search/users?${params.toString()}`)
+  const body = await unwrap(
+    await api.GET('/api/search/users', {
+      params: { query: { q } },
+      querySerializer: () => params.toString(),
+    }),
+  )
   return body.profiles
 }

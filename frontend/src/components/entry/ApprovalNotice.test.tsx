@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse, problemResponse } from '../../test/fixtures'
+import { calledPath, jsonResponse, problemResponse } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import ApprovalNotice from './ApprovalNotice'
 
@@ -33,8 +33,8 @@ it('shows the banner for an approved, un-acked submission and acks on dismiss', 
   renderNotice()
   const dismiss = await screen.findByRole('button', { name: 'Dismiss approval notice' })
   await userEvent.click(dismiss)
-  expect(fetchMock.mock.calls[1][0]).toBe('/api/entries/e1/submission/ack')
-  expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'POST' })
+  expect(calledPath(fetchMock, 1)).toBe('/api/entries/e1/submission/ack')
+  expect((fetchMock.mock.calls[1][0] as Request).method).toBe('POST')
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
 })
 

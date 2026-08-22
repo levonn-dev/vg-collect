@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ProfilePage } from '../api/social'
-import { jsonResponse, problemResponse } from '../test/fixtures'
+import { jsonResponse, problemResponse, requestPath } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Profile from './Profile'
 
@@ -25,11 +25,11 @@ function renderProfile(handle = 'Alice_Prime') {
 // Response for an explicit status (the 404/502 tests).
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
-  const impl = vi.fn().mockImplementation((url: string) => {
-    const hit = Object.entries(routes).find(([prefix]) => String(url).startsWith(prefix))
+  const impl = vi.fn().mockImplementation((url: unknown) => {
+    const hit = Object.entries(routes).find(([prefix]) => requestPath(url).startsWith(prefix))
     if (!hit) {
-      unstubbed.push(String(url))
-      return Promise.reject(new Error(`unstubbed fetch: ${String(url)}`))
+      unstubbed.push(requestPath(url))
+      return Promise.reject(new Error(`unstubbed fetch: ${requestPath(url)}`))
     }
     const value = hit[1]
     return Promise.resolve(value instanceof Response ? value : jsonResponse(200, value))
@@ -95,8 +95,8 @@ it('hides the follow button while the viewer identity is still resolving, not ju
   // defaults to true (hidden) until me.data proves otherwise, so a
   // visitor's Follow button never flashes on before the owner check
   // catches up.
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    String(url).startsWith('/api/profiles/')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    requestPath(url).startsWith('/api/profiles/')
       ? Promise.resolve(jsonResponse(200, profilePage()))
       : new Promise(() => {}),
   ))

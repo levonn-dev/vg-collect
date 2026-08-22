@@ -1,4 +1,4 @@
-import type { Me } from '../api/client'
+import type { Me } from '../api/me'
 import type { Dashboard, Entry, EntryList } from '../api/collection'
 import type { FXRates } from '../api/fx'
 import type { SharedEntry } from '../components/collection/rowMeta'
@@ -126,8 +126,31 @@ export const problemResponse = (status: number, code?: string, detail?: string) 
   })
 
 // putBody parses the JSON body recorded on a fetch mock call - the
-// cast-and-parse step every mutation-body assertion in this suite
-// needs before comparing the object a component actually sent.
-export function putBody<T = unknown>(init: RequestInit | undefined): T {
-  return JSON.parse(init?.body as string) as T
+// parse step every mutation-body assertion in this suite needs before
+// comparing the object a component actually sent. Takes the call's
+// first argument (the transport always records a Request) and clones
+// before reading, because a body is consumed on read and a test may
+// parse the same call twice.
+export async function putBody<T = unknown>(input: unknown): Promise<T> {
+  return (await (input as Request).clone().json()) as T
+}
+
+// calledPath reads the wire path+query out of a stubbed fetch call,
+// whether the caller passed a string URL or a Request (openapi-fetch
+// always constructs a Request).
+export function calledPath(fetchMock: { mock: { calls: unknown[][] } }, n?: number): string {
+  const calls = fetchMock.mock.calls
+  const input = calls[n ?? calls.length - 1][0]
+  const url = input instanceof Request ? input.url : String(input)
+  const u = new URL(url, 'http://test.local')
+  return u.pathname + u.search
+}
+
+// requestPath is calledPath's router-side twin: it normalizes a single
+// fetch argument (string URL or Request) to path+query, for
+// mockImplementation handlers that branch on the requested path.
+export function requestPath(input: unknown): string {
+  const url = input instanceof Request ? input.url : String(input)
+  const u = new URL(url, 'http://test.local')
+  return u.pathname + u.search
 }

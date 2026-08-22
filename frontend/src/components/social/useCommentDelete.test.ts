@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
 import { UNDO_WINDOW_MS, useCommentDelete } from './useCommentDelete'
+import { calledPath, requestPath } from '../../test/fixtures'
 
 // Kept as a plain .ts file (the hook itself has no JSX either); the
 // provider wrapper below uses createElement instead of JSX since a
@@ -37,8 +38,9 @@ afterEach(() => {
 // afterEach in the hook chain - by the time it fires, fetch is
 // already unstubbed, and the hook's unmount-triggered flush (any
 // still-pending delete commits on unmount, same as a pagehide) would
-// hit the real fetch and reject on a relative URL. Unmounting here
-// keeps the flush inside the still-mocked window.
+// hit the real fetch and reject against the unreachable placeholder
+// host. Unmounting here keeps the flush inside the still-mocked
+// window.
 function teardown(hook: ReturnType<typeof setup>['hook']) {
   act(() => hook.unmount())
 }
@@ -67,7 +69,10 @@ it('two requestDelete calls for the same id clear the stale timer, firing exactl
     await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS)
   })
   expect(fetchMock).toHaveBeenCalledTimes(1)
-  expect(fetchMock).toHaveBeenCalledWith('/api/comments/c1', { method: 'DELETE', keepalive: false })
+  expect(calledPath(fetchMock, 0)).toBe('/api/comments/c1')
+  const req = fetchMock.mock.calls[0][0] as Request
+  expect(req.method).toBe('DELETE')
+  expect(req.keepalive).toBe(false)
   expect(hook.result.current.pendingIds.has('c1')).toBe(false)
   teardown(hook)
 })
@@ -123,7 +128,10 @@ it('fires exactly one DELETE at expiry, invalidates the comment queries, and cle
     await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS)
   })
   expect(fetchMock).toHaveBeenCalledTimes(1)
-  expect(fetchMock).toHaveBeenCalledWith('/api/comments/c1', { method: 'DELETE', keepalive: false })
+  expect(calledPath(fetchMock, 0)).toBe('/api/comments/c1')
+  const req = fetchMock.mock.calls[0][0] as Request
+  expect(req.method).toBe('DELETE')
+  expect(req.keepalive).toBe(false)
   expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['shelfComments', 's1'] })
   expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['shelfSummary', 's1'] })
   expect(hook.result.current.pendingIds.has('c1')).toBe(false)
@@ -201,14 +209,16 @@ it('two pending deletes expire independently', async () => {
     await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS - 3000)
   })
   expect(fetchMock).toHaveBeenCalledTimes(1)
-  expect(fetchMock).toHaveBeenCalledWith('/api/comments/c1', { method: 'DELETE', keepalive: false })
+  expect(calledPath(fetchMock, 0)).toBe('/api/comments/c1')
+  expect((fetchMock.mock.calls[0][0] as Request).keepalive).toBe(false)
   expect(hook.result.current.pendingIds.has('c1')).toBe(false)
   expect(hook.result.current.pendingIds.has('c2')).toBe(true)
   await act(async () => {
     await vi.advanceTimersByTimeAsync(3000)
   })
   expect(fetchMock).toHaveBeenCalledTimes(2)
-  expect(fetchMock).toHaveBeenCalledWith('/api/comments/c2', { method: 'DELETE', keepalive: false })
+  expect(calledPath(fetchMock, 1)).toBe('/api/comments/c2')
+  expect((fetchMock.mock.calls[1][0] as Request).keepalive).toBe(false)
   expect(hook.result.current.pendingIds.has('c2')).toBe(false)
   teardown(hook)
 })
@@ -224,8 +234,12 @@ it('pagehide flushes every pending id immediately via a keepalive fetch and clea
     await Promise.resolve()
   })
   expect(fetchMock).toHaveBeenCalledTimes(2)
-  expect(fetchMock).toHaveBeenCalledWith('/api/comments/c1', { method: 'DELETE', keepalive: true })
-  expect(fetchMock).toHaveBeenCalledWith('/api/comments/c2', { method: 'DELETE', keepalive: true })
+  const flushed = fetchMock.mock.calls.map((c) => {
+    const req = c[0] as Request
+    return { path: requestPath(req), method: req.method, keepalive: req.keepalive }
+  })
+  expect(flushed).toContainEqual({ path: '/api/comments/c1', method: 'DELETE', keepalive: true })
+  expect(flushed).toContainEqual({ path: '/api/comments/c2', method: 'DELETE', keepalive: true })
   // timers cleared: letting the original window elapse fires nothing new
   await act(async () => {
     await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS)
@@ -248,7 +262,10 @@ it('unmount before expiry flushes the pending delete via a keepalive commit exac
 
   act(() => hook.unmount())
   expect(fetchMock).toHaveBeenCalledTimes(1)
-  expect(fetchMock).toHaveBeenCalledWith('/api/comments/c1', { method: 'DELETE', keepalive: true })
+  expect(calledPath(fetchMock, 0)).toBe('/api/comments/c1')
+  const req = fetchMock.mock.calls[0][0] as Request
+  expect(req.method).toBe('DELETE')
+  expect(req.keepalive).toBe(true)
 
   // The original expiry timer must not also fire: that would double-commit.
   await act(async () => {

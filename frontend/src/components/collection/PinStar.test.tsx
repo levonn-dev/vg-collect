@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { entryFixture, jsonResponse, putBody } from '../../test/fixtures'
+import { calledPath, entryFixture, jsonResponse, putBody } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import PinStar from './PinStar'
 
@@ -22,9 +22,8 @@ it('PUTs the full baseline with pinned flipped', async () => {
   )
   await userEvent.click(screen.getByRole('button', { name: 'Pin' }))
   expect(fetchMock).toHaveBeenCalledTimes(1)
-  const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-  expect(url).toBe(`/api/entries/${e.id}`)
-  const body = putBody<Record<string, unknown>>(init)
+  expect(calledPath(fetchMock, 0)).toBe(`/api/entries/${e.id}`)
+  const body = await putBody<Record<string, unknown>>(fetchMock.mock.calls[0][0])
   expect(body.pinned).toBe(true)
   // The one-field toggle must not strip the rest of the entry.
   expect(body.notes).toBe('keep me')

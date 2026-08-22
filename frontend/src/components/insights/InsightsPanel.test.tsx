@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { ListState } from '../../lib/listParams'
 import { defaultListState } from '../../lib/listParams'
-import { dashboardFixture, jsonResponse } from '../../test/fixtures'
+import { dashboardFixture, jsonResponse, requestPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import InsightsPanel from './InsightsPanel'
 
@@ -20,8 +20,8 @@ const recs = {
 }
 
 function stubApi(overrides: Partial<Record<'dashboard' | 'history' | 'recs', unknown>> = {}) {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/dashboard/value-history')) {
       return Promise.resolve(jsonResponse(200, overrides.history ?? history))
     }
@@ -61,7 +61,7 @@ it('requests the dashboard for the active filters only', async () => {
   stubApi()
   renderPanel({ ...defaultListState(), status: ['backlog'], platformId: [6], sort: 'value', page: 3 })
   await screen.findByText('42')
-  const urls = vi.mocked(fetch).mock.calls.map((c) => String(c[0] as string))
+  const urls = vi.mocked(fetch).mock.calls.map((c) => requestPath(c[0]))
   const dash = urls.find((u) => u.startsWith('/api/dashboard') && !u.includes('value-history'))
   // Filter dimensions ride along; sort and paging must not.
   expect(dash).toContain('status=backlog')
@@ -75,7 +75,7 @@ it('expands to the breakdowns, value history, and recommendations on demand', as
   renderPanel()
   await screen.findByText('42')
   // Collapsed: the heavier reads have not fired.
-  let urls = vi.mocked(fetch).mock.calls.map((c) => String(c[0] as string))
+  let urls = vi.mocked(fetch).mock.calls.map((c) => requestPath(c[0]))
   expect(urls.some((u) => u.includes('value-history'))).toBe(false)
   expect(urls.some((u) => u.includes('/api/recommendations'))).toBe(false)
 
@@ -84,7 +84,7 @@ it('expands to the breakdowns, value history, and recommendations on demand', as
   expect(await screen.findByText('Secret of Mana')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /see all recommendations/i })).toHaveAttribute('href', '/recommendations')
   expect(await screen.findByRole('region', { name: 'Collection value over time' })).toBeInTheDocument()
-  urls = vi.mocked(fetch).mock.calls.map((c) => String(c[0] as string))
+  urls = vi.mocked(fetch).mock.calls.map((c) => requestPath(c[0]))
   expect(urls.some((u) => u.includes('value-history'))).toBe(true)
 })
 
@@ -105,8 +105,8 @@ it('reports when stats cannot be loaded without blocking the page', async () => 
 })
 
 it('reports when the value history fails to load without hiding the rest', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/dashboard/value-history')) return Promise.resolve(jsonResponse(500, {}))
     if (u.startsWith('/api/dashboard')) return Promise.resolve(jsonResponse(200, dashboardFixture()))
     if (u.startsWith('/api/recommendations')) return Promise.resolve(jsonResponse(200, recs))
