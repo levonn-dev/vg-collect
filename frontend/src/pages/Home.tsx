@@ -1,8 +1,10 @@
 import { Navigate } from 'react-router'
-import type { Me } from '../api/client'
+import { landingPageValues } from '../api/schema'
 import { useMe } from '../lib/useMe'
 
-const targets: Record<Me['landing_page'], string> = {
+type LandingPage = (typeof landingPageValues)[number]
+
+const targets: Record<LandingPage, string> = {
   collection: '/collection',
   feed: '/feed',
   explore: '/explore',

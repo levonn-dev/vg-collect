@@ -3,8 +3,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ApiError } from '../../api/client'
 import { postComment } from '../../api/social'
+import { CreateCommentRequest } from '../../gen/facets'
+import { btnPrimary } from '../../lib/formStyles'
+import { invalidateShelfSocial } from '../../lib/shelfQueries'
 
-const MAX_LENGTH = 2000
+const MAX_LENGTH = CreateCommentRequest.properties.body.maxLength
 
 // CommentComposer posts a top-level comment onto a shared shelf. body
 // keeps the raw typed text (so the counter tracks exactly what is on
@@ -21,8 +24,7 @@ export default function CommentComposer({ shelfId }: { shelfId: string }) {
     mutationFn: () => postComment(shelfId, body.trim()),
     onSuccess: () => {
       setBody('')
-      void qc.invalidateQueries({ queryKey: ['shelfComments', shelfId] })
-      void qc.invalidateQueries({ queryKey: ['shelfSummary', shelfId] })
+      invalidateShelfSocial(qc, shelfId)
     },
   })
   const rateLimited = post.isError && post.error instanceof ApiError && post.error.status === 429
@@ -50,7 +52,7 @@ export default function CommentComposer({ shelfId }: { shelfId: string }) {
         <button
           type="submit"
           disabled={!canPost || post.isPending}
-          className="rounded bg-gray-900 px-3 py-1 text-sm text-white hover:bg-gray-700 disabled:opacity-50"
+          className={btnPrimary}
         >
           <Trans>Post</Trans>
         </button>

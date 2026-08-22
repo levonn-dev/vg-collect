@@ -1,4 +1,8 @@
 import { Trans, useLingui } from '@lingui/react/macro'
+import { EntryCreate } from '../gen/facets'
+
+const CREDIT_NAME_MAX = EntryCreate.properties.developers.items.maxLength
+const CREDITS_MAX = EntryCreate.properties.developers.maxItems
 
 // StringListInput edits an ordered list of short text values (credit
 // company names): one text input per element with its own remove
@@ -23,7 +27,7 @@ export default function StringListInput({ label, addLabel, values, onChange }: {
             <input
               aria-label={`${label} ${n}`}
               value={v}
-              maxLength={120}
+              maxLength={CREDIT_NAME_MAX}
               onChange={(e) => onChange(values.map((x, j) => (j === i ? e.target.value : x)))}
               className="rounded border border-gray-300 px-2 py-1 text-sm"
             />
@@ -38,7 +42,7 @@ export default function StringListInput({ label, addLabel, values, onChange }: {
           </div>
         )
       })}
-      {values.length < 10 && (
+      {values.length < CREDITS_MAX && (
         <button type="button" onClick={() => onChange([...values, ''])} className="self-start text-xs text-gray-500 underline">
           {addLabel}
         </button>

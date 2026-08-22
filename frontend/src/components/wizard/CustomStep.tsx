@@ -1,13 +1,17 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useState } from 'react'
 import type { EntryCreate } from '../../api/collection'
-import { inputClass, labelClass, linkButtonClass } from '../../lib/formStyles'
+import { itemTypeValues } from '../../api/schema'
+import { itemTypeWireLabels } from '../../lib/enumLabels'
+import { btnPrimary, btnSecondary, inputClass, labelClass, linkButtonClass } from '../../lib/formStyles'
 import { REGION_PLATFORMS } from '../../lib/productTitle'
 import StringListInput from '../StringListInput'
 import PlatformPicker from '../catalog/PlatformPicker'
 import RegionPicker from '../catalog/RegionPicker'
-import type { CatalogPick } from '../catalog/SearchPicker'
+import type { CatalogPick } from '../../lib/catalogPicks'
 import SearchPicker from '../catalog/SearchPicker'
+
+const ITEM_TYPE_VALUES = itemTypeValues
 
 export interface CustomValues {
   displayName: string
@@ -38,7 +42,7 @@ interface CustomStepProps {
 // CustomStep collects the display facts for an item no provider lists.
 // These stay user-owned and editable, unlike catalog snapshots.
 export default function CustomStep({ initialValues, seed, onBack, onNext }: CustomStepProps) {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const [v, setV] = useState<CustomValues>(() => initialValues ?? {
     displayName: seed?.displayName ?? '', itemType: seed?.itemType ?? 'game', platformName: '',
     platformIgdbId: undefined, region: '', firstReleaseDate: '', coverUrl: '',
@@ -156,9 +160,9 @@ export default function CustomStep({ initialValues, seed, onBack, onNext }: Cust
             onChange={(e) => setV({ ...v, itemType: e.target.value as CustomValues['itemType'] })}
             className={inputClass}
           >
-            <option value="game">game</option>
-            <option value="console">console</option>
-            <option value="accessory">accessory</option>
+            {ITEM_TYPE_VALUES.map((itemType) => (
+              <option key={itemType} value={itemType}>{i18n._(itemTypeWireLabels[itemType])}</option>
+            ))}
           </select>
         </label>
         <PlatformPicker
@@ -191,10 +195,10 @@ export default function CustomStep({ initialValues, seed, onBack, onNext }: Cust
           />
         </label>
         <div className="flex gap-2">
-          <button type="button" onClick={onBack} className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50">
+          <button type="button" onClick={onBack} className={btnSecondary}>
             <Trans>Back</Trans>
           </button>
-          <button type="submit" className="rounded bg-gray-900 px-4 py-1 text-sm text-white hover:bg-gray-700">
+          <button type="submit" className={btnPrimary}>
             <Trans>Continue</Trans>
           </button>
         </div>

@@ -10,6 +10,7 @@ import EmptyState from '../components/EmptyState'
 import LoadMoreButton from '../components/LoadMoreButton'
 import Tabs, { type Tab } from '../components/Tabs'
 import UserChip from '../components/social/UserChip'
+import { componentsParametersTabValues } from '../api/schema'
 import { renderQueryState } from '../lib/queryBoundary'
 import { relativeTime } from '../lib/relativeTime'
 
@@ -17,11 +18,15 @@ import { relativeTime } from '../lib/relativeTime'
 // i18n awareness of its own - see components/Tabs.tsx); the table
 // stays msg descriptors at module scope (same shape as Explore's
 // SORT_TABS) and gets resolved into the plain strings Tab<T> expects
-// down in the component body, where i18n is available.
-const FEED_TABS: { key: FeedTab; label: MessageDescriptor }[] = [
-  { key: 'following', label: msg`Following` },
-  { key: 'you', label: msg`You` },
-]
+// down in the component body, where i18n is available. Labels keyed
+// by the generated schema's tab values rather than a second hand-typed
+// key list; this file's own FEED_TABS name (the rendered tab list, not
+// the wire values) predates the generator and stays put.
+const tabLabels: Record<FeedTab, MessageDescriptor> = {
+  following: msg`Following`,
+  you: msg`You`,
+}
+const FEED_TABS: { key: FeedTab; label: MessageDescriptor }[] = componentsParametersTabValues.map((key) => ({ key, label: tabLabels[key] }))
 
 function shelfHref(shelf: ShelfCardData): string {
   return `/u/${shelf.owner.handle}/shelves/${shelf.slug}`

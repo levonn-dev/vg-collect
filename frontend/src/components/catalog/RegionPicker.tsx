@@ -1,9 +1,12 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useState } from 'react'
+import { EntryCreate } from '../../gen/facets'
 import { inputClass, labelClass, linkButtonClass } from '../../lib/formStyles'
 import { REGIONS } from '../../lib/listParams'
 import type { EntryRegion } from '../../lib/productTitle'
 import { regionLabels } from '../../lib/regionLabels'
+
+const REGION_MAX = EntryCreate.properties.region.maxLength
 
 // RegionPicker is PlatformPicker's sibling for the open-world region:
 // the known values as a labeled select, free text behind an
@@ -29,7 +32,7 @@ export default function RegionPicker({ value, onChange, regionGroup, required }:
       <div className="flex flex-col gap-1">
         <label className={labelClass}>
           <Trans>Region</Trans>
-          <input aria-label={t`Region`} value={value} maxLength={32} required={required}
+          <input aria-label={t`Region`} value={value} maxLength={REGION_MAX} required={required}
             onChange={(e) => onChange(e.target.value)} className={inputClass} />
         </label>
         <button type="button" className={linkButtonClass}

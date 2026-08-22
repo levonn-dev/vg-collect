@@ -1,8 +1,12 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
+import { parameters } from '../../gen/facets'
+import { btnSecondary } from '../../lib/formStyles'
 import type { GroupBy, ListState, Sort } from '../../lib/listParams'
 import { canBacklogSort, defaultListState, GROUPS, SORTS } from '../../lib/listParams'
+
+const DEFAULT_SORT = parameters.entriesSort.default
 
 const sortLabels: Record<Sort, MessageDescriptor> = {
   name: msg`Name`,
@@ -13,6 +17,17 @@ const sortLabels: Record<Sort, MessageDescriptor> = {
   paid: msg`Price paid`,
   rating: msg`Rating`,
   backlog_rank: msg`Backlog order`,
+}
+
+// defaultSortLabels: the "(default)" - suffixed sibling of sortLabels
+// for the blank/no-sort option below, which mirrors whatever the
+// server falls back to when sort is left off the request. Keyed by
+// DEFAULT_SORT rather than assuming created_at by hand, so a generated
+// default change lands here instead of silently going stale; a
+// default with no dedicated phrasing yet falls back to its plain
+// sortLabels entry.
+const defaultSortLabels: Partial<Record<Sort, MessageDescriptor>> = {
+  created_at: msg`Date added (default)`,
 }
 
 const groupLabels: Record<GroupBy, MessageDescriptor> = {
@@ -111,7 +126,7 @@ export default function ListControls({
           }
           className="rounded border border-gray-300 px-2 py-1 text-sm"
         >
-          <option value="">{t`Date added (default)`}</option>
+          <option value="">{i18n._(defaultSortLabels[DEFAULT_SORT] ?? sortLabels[DEFAULT_SORT])}</option>
           {sorts.map((s) => (
             <option key={s} value={s}>
               {i18n._(sortLabels[s])}
@@ -122,7 +137,7 @@ export default function ListControls({
       <button
         type="button"
         onClick={() => onChange({ ...state, order: state.order === 'asc' ? 'desc' : 'asc' })}
-        className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
+        className={btnSecondary}
       >
         <Trans>Order: {direction}</Trans>
       </button>
@@ -147,7 +162,7 @@ export default function ListControls({
         type="button"
         onClick={onToggleFilters}
         aria-expanded={filtersOpen}
-        className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
+        className={btnSecondary}
       >
         {filterCount > 0 ? t`Filters (${filterCount})` : t`Filters`}
       </button>
@@ -155,7 +170,7 @@ export default function ListControls({
         <button
           type="button"
           onClick={() => onChange({ ...defaultListState(), mode: state.mode })}
-          className="ml-auto rounded border border-gray-300 px-2 py-1 text-sm text-gray-600 hover:bg-gray-50"
+          className={`${btnSecondary} text-gray-600 ml-auto`}
         >
           <Trans>Clear filters</Trans>
         </button>

@@ -29,7 +29,7 @@ msgstr "{dataType}は<0>{label}</0>の提供です"
 msgid "{days}d ago"
 msgstr "{days}日前"
 
-#: src/pages/Account.tsx
+#: src/components/account/LinkedLogins.tsx
 msgid "{email} - linked {linkedDate}"
 msgstr "{email}（{linkedDate}に連携）"
 
@@ -48,6 +48,10 @@ msgstr "フォロー中{followingCount}人"
 #: src/components/collection/Pager.tsx
 msgid "{from}-{to} of {totalCount}"
 msgstr "{totalCount}件中 {from}-{to}"
+
+#: src/components/account/ProfileForm.tsx
+msgid "{HANDLE_MIN}-{HANDLE_MAX} characters, letters/digits, underscores inside only"
+msgstr "{HANDLE_MIN}-{HANDLE_MAX}文字の英数字（アンダースコアは中間のみ）"
 
 #: src/lib/relativeTime.ts
 msgid "{hours}h ago"
@@ -69,11 +73,11 @@ msgstr "{name}の運営者は{operator}です"
 msgid "{name} is run by {operator} (<0>{contact}</0>)"
 msgstr "{name}の運営者は{operator}です（<0>{contact}</0>）"
 
-#: src/components/catalog/SearchPicker.tsx
+#: src/components/catalog/SearchResultRow.tsx
 msgid "{name} on {platformName}"
 msgstr "{name}（{platformName}）"
 
-#: src/components/catalog/SearchPicker.tsx
+#: src/components/catalog/SearchResultRow.tsx
 msgid "{name} on {platformName} ({regionText})"
 msgstr "{name}（{platformName}）（{regionText}）"
 
@@ -125,13 +129,8 @@ msgstr "<0/>が<1>{shelfName}</1>をいいねしました"
 msgid "<0/> published <1>{shelfName}</1>"
 msgstr "<0/>が<1>{shelfName}</1>を公開しました"
 
-#: src/pages/Account.tsx
-msgid "2-30 characters, letters/digits, underscores inside only"
-msgstr "2-30文字の英数字（アンダースコアは中間のみ）"
-
-#: src/components/entry/EntryForm.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 #: src/components/entry/PricingPanel.tsx
-#: src/components/wizard/DetailsStep.tsx
 msgid "59.99"
 msgstr "59.99"
 
@@ -155,8 +154,7 @@ msgstr "このサイトについて"
 msgid "About this translation"
 msgstr "この翻訳について"
 
-#: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "Acceptable"
 msgstr "並品"
 
@@ -164,8 +162,7 @@ msgstr "並品"
 msgid "Accessories"
 msgstr "周辺機器"
 
-#: src/components/insights/BreakdownCharts.tsx
-#: src/pages/EntryDetail.tsx
+#: src/lib/enumLabels.ts
 msgid "accessory"
 msgstr "周辺機器"
 
@@ -174,7 +171,7 @@ msgstr "周辺機器"
 msgid "Account"
 msgstr "アカウント"
 
-#: src/components/entry/EntryForm.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Acquisition"
 msgstr "入手情報"
 
@@ -182,7 +179,7 @@ msgstr "入手情報"
 msgid "Add"
 msgstr "追加"
 
-#: src/components/catalog/SearchPicker.tsx
+#: src/components/catalog/SearchResultRow.tsx
 msgid "Add {name}"
 msgstr "{name}を追加"
 
@@ -207,7 +204,7 @@ msgstr "ゲームをいくつか追加して評価すると、おすすめが表
 msgid "Add developer"
 msgstr "開発元を追加"
 
-#: src/components/catalog/SearchPicker.tsx
+#: src/components/catalog/SearchResultRow.tsx
 msgid "Add on:"
 msgstr "追加先："
 
@@ -292,7 +289,7 @@ msgstr "価格リスティングを添付（任意）"
 msgid "auto (this item's own price listing)"
 msgstr "自動（このアイテム自身の価格リスティング）"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Avatar image URL"
 msgstr "アバター画像URL"
 
@@ -303,13 +300,11 @@ msgstr "アバター画像URL"
 msgid "Back"
 msgstr "戻る"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/insights/BreakdownCharts.tsx
+#: src/lib/enumLabels.ts
 msgid "backlog"
 msgstr "積みゲー"
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Backlog"
 msgstr "積みゲー"
 
@@ -322,22 +317,18 @@ msgstr "積みゲー順"
 msgid "Base on an existing item"
 msgstr "既存のアイテムをもとにする"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/insights/BreakdownCharts.tsx
+#: src/lib/enumLabels.ts
 msgid "beaten"
 msgstr "クリア済み"
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Beaten"
 msgstr "クリア済み"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Box condition"
 msgstr "箱の状態"
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "Brazil"
 msgstr "ブラジル"
@@ -404,7 +395,6 @@ msgstr "価格ソースを変更"
 msgid "Checking the price match..."
 msgstr "価格の照合状況を確認しています..."
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "China"
 msgstr "中国"
@@ -430,12 +420,11 @@ msgstr "価格ソースを選択"
 msgid "Choose..."
 msgstr "選択..."
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "cib"
 msgstr "完品"
 
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "CIB"
 msgstr "完品"
 
@@ -460,8 +449,8 @@ msgstr "このマッピングをクリアしますか？商品は未マッピン
 msgid "Close"
 msgstr "閉じる"
 
+#: src/components/account/ProfileForm.tsx
 #: src/components/AppBar.tsx
-#: src/pages/Account.tsx
 #: src/pages/Collection.tsx
 msgid "Collection"
 msgstr "コレクション"
@@ -504,7 +493,7 @@ msgstr "コメントを読み込めませんでした。もう一度お試しく
 
 #: src/components/admin/ProductLookup.tsx
 #: src/components/admin/ReviewPanel.tsx
-#: src/components/catalog/SearchPicker.tsx
+#: src/components/catalog/SearchResultRow.tsx
 msgid "community"
 msgstr "コミュニティ"
 
@@ -524,13 +513,11 @@ msgstr "コミュニティ商品を読み込めませんでした。"
 msgid "Compact"
 msgstr "コンパクト"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/insights/BreakdownCharts.tsx
+#: src/lib/enumLabels.ts
 msgid "completed"
 msgstr "コンプリート"
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Completed"
 msgstr "コンプリート"
 
@@ -550,8 +537,7 @@ msgstr "カスタムアイテムの確認"
 msgid "Confirm: {title}"
 msgstr "確認：{title}"
 
-#: src/components/insights/BreakdownCharts.tsx
-#: src/pages/EntryDetail.tsx
+#: src/lib/enumLabels.ts
 msgid "console"
 msgstr "ゲーム機"
 
@@ -592,7 +578,7 @@ msgstr "コピーできませんでした"
 msgid "Copy link"
 msgstr "リンクをコピー"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Copy profile link"
 msgstr "プロフィールリンクをコピー"
 
@@ -650,7 +636,7 @@ msgstr "追加日"
 msgid "Date added (default)"
 msgstr "追加日（デフォルト）"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Default page"
 msgstr "デフォルトページ"
 
@@ -755,13 +741,11 @@ msgstr "表示モード"
 msgid "Drag {displayName}"
 msgstr "{displayName}をドラッグ"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/insights/BreakdownCharts.tsx
+#: src/lib/enumLabels.ts
 msgid "dropped"
 msgstr "挫折"
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Dropped"
 msgstr "挫折"
 
@@ -830,8 +814,8 @@ msgstr "為替レートが利用できません。しばらくしてからもう
 msgid "Exchange rates are unavailable; values show in USD."
 msgstr "為替レートが利用できないため、金額はUSDで表示されます。"
 
+#: src/components/account/ProfileForm.tsx
 #: src/components/AppBar.tsx
-#: src/pages/Account.tsx
 #: src/pages/Explore.tsx
 msgid "Explore"
 msgstr "見つける"
@@ -840,8 +824,8 @@ msgstr "見つける"
 msgid "Explore sort"
 msgstr "並び順"
 
+#: src/components/account/ProfileForm.tsx
 #: src/components/AppBar.tsx
-#: src/pages/Account.tsx
 #: src/pages/Feed.tsx
 msgid "Feed"
 msgstr "フィード"
@@ -892,8 +876,7 @@ msgstr "フォロー中"
 msgid "For items search cannot find: reproductions, fan translations, homebrew, self-built hardware. A variant of a searchable item (a first print, a color variant) belongs on that item instead - pick it from search and note the variant in the edition field."
 msgstr "検索で見つからないアイテム（複製品、ファン翻訳、自主制作ソフト、自作ハードウェアなど）のための機能です。検索で見つかるアイテムのバリエーション（初版、カラーバリエーションなど）は、そのアイテム側に登録してください。検索から選び、エディション欄にバリエーションを記入します。"
 
-#: src/components/insights/BreakdownCharts.tsx
-#: src/pages/EntryDetail.tsx
+#: src/lib/enumLabels.ts
 msgid "game"
 msgstr "ゲーム"
 
@@ -914,8 +897,7 @@ msgstr "ゲーム"
 msgid "Games"
 msgstr "ゲーム"
 
-#: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "Good"
 msgstr "良品"
 
@@ -923,11 +905,11 @@ msgstr "良品"
 msgid "Group by"
 msgstr "グループ化"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Handle"
 msgstr "ハンドル"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Handle changed too recently - try again later."
 msgstr "ハンドルを変更してから間もないため、変更できません。しばらくしてからもう一度お試しください。"
 
@@ -939,13 +921,11 @@ msgstr "ハードウェア"
 msgid "Hardware"
 msgstr "ハードウェア"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Has box"
 msgstr "箱あり"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Has manual"
 msgstr "説明書あり"
 
@@ -983,8 +963,7 @@ msgstr "既存のアイテムで使用されているため、削除できませ
 msgid "Insights"
 msgstr "統計"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Item condition"
 msgstr "アイテムの状態"
 
@@ -1002,7 +981,6 @@ msgstr "アイテム"
 msgid "just now"
 msgstr "たった今"
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "Korea"
 msgstr "韓国"
@@ -1023,7 +1001,7 @@ msgstr "前回のカスタム価格：{lastCustomPrice}"
 msgid "Last price proxy: {proxyName}"
 msgstr "前回の価格ソース：{proxyName}"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Leave empty to use your initial instead."
 msgstr "空欄の場合はイニシャルが表示されます。"
 
@@ -1055,15 +1033,15 @@ msgstr "連携済みログインを読み込めませんでした。"
 msgid "Linking failed. Please try again."
 msgstr "連携できませんでした。もう一度お試しください。"
 
-#: src/components/collection/ShelfManager.tsx
+#: src/lib/enumLabels.ts
 msgid "listed"
 msgstr "公開"
 
-#: src/components/social/VisibilityControl.tsx
+#: src/lib/enumLabels.ts
 msgid "Listed"
 msgstr "公開"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Listed - appears in Explore and search"
 msgstr "公開 - 「見つける」と検索に表示されます"
 
@@ -1168,12 +1146,11 @@ msgstr "照会しています..."
 msgid "Looking up..."
 msgstr "照会しています..."
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "loose"
 msgstr "箱説なし"
 
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Loose"
 msgstr "箱説なし"
 
@@ -1189,8 +1166,7 @@ msgstr "メンテナンス"
 msgid "Manage shelves"
 msgstr "棚の管理"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Manual condition"
 msgstr "説明書の状態"
 
@@ -1214,7 +1190,7 @@ msgstr "相場情報は一時的に利用できないため、価値は非表示
 msgid "Market values are in USD."
 msgstr "相場はUSDで表示されます。"
 
-#: src/components/wizard/ManualMatchPicker.tsx
+#: src/components/catalog/ManualMatchPicker.tsx
 msgid "Match a price listing"
 msgstr "価格リスティングを照合"
 
@@ -1231,8 +1207,7 @@ msgstr "手動で照合"
 msgid "Member"
 msgstr "メンバー"
 
-#: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "Mint"
 msgstr "新品同様"
 
@@ -1267,8 +1242,7 @@ msgstr "名前"
 msgid "Name this shelf"
 msgstr "棚の名前を入力してください"
 
-#: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "Near mint"
 msgstr "極美品"
 
@@ -1297,7 +1271,7 @@ msgstr "確定した価格リスティングはまだありません。照合が
 msgid "No developers yet"
 msgstr "開発元はまだありません"
 
-#: src/pages/Account.tsx
+#: src/components/account/LinkedLogins.tsx
 msgid "no email recorded"
 msgstr "メールアドレス未登録"
 
@@ -1368,13 +1342,11 @@ msgstr "リージョンを正規化"
 msgid "Not found"
 msgstr "見つかりません"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Not graded"
 msgstr "指定なし"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Notes"
 msgstr "メモ"
 
@@ -1402,12 +1374,10 @@ msgstr "まだありません"
 msgid "Nothing yet. <0>Explore</0> people to follow."
 msgstr "まだ何もありません。<0>見つける</0>からフォローするユーザーを探しましょう。"
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "NTSC-J"
 msgstr "NTSC-J"
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "NTSC-U"
 msgstr "NTSC-U"
@@ -1426,8 +1396,7 @@ msgstr "指定しない場合は自動照合でリスティングが選ばれま
 
 #: src/components/collection/EntryTable.tsx
 #: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Packaging"
 msgstr "パッケージ"
 
@@ -1443,16 +1412,15 @@ msgstr "ページ送り"
 msgid "Paid"
 msgstr "購入価格"
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "PAL"
 msgstr "PAL"
 
-#: src/components/entry/EntryForm.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Personal"
 msgstr "パーソナル"
 
-#: src/components/entry/EntryForm.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Physical details"
 msgstr "現物の詳細"
 
@@ -1469,8 +1437,7 @@ msgid "Pin"
 msgstr "ピン留め"
 
 #: src/components/collection/rowMeta.tsx
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Pinned"
 msgstr "ピン留め"
 
@@ -1487,18 +1454,15 @@ msgstr "プラットフォーム"
 msgid "Platform / console"
 msgstr "プラットフォーム / ゲーム機"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/insights/BreakdownCharts.tsx
+#: src/lib/enumLabels.ts
 msgid "playing"
 msgstr "プレイ中"
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Playing"
 msgstr "プレイ中"
 
-#: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "Poor"
 msgstr "難あり"
 
@@ -1526,8 +1490,7 @@ msgstr "価格リスティングの照合（任意）"
 msgid "Price paid"
 msgstr "購入価格"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Price paid ({currency})"
 msgstr "購入価格（{currency}）"
 
@@ -1567,15 +1530,15 @@ msgstr "メイン"
 msgid "Privacy"
 msgstr "プライバシー"
 
-#: src/components/collection/ShelfManager.tsx
+#: src/lib/enumLabels.ts
 msgid "private"
 msgstr "非公開"
 
-#: src/components/social/VisibilityControl.tsx
+#: src/lib/enumLabels.ts
 msgid "Private"
 msgstr "非公開"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Private - only you"
 msgstr "非公開 - 自分のみ"
 
@@ -1602,7 +1565,7 @@ msgstr "{seen}件の商品を確認、{failed}件が失敗、{updated}件のエ�
 msgid "Profile"
 msgstr "プロフィール"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Profile visibility"
 msgstr "プロフィールの公開範囲"
 
@@ -1647,20 +1610,17 @@ msgstr "発売元"
 msgid "Purchase date"
 msgstr "購入日"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Purchased from"
 msgstr "購入先"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Purchased on"
 msgstr "購入日"
 
 #: src/components/collection/EntryTable.tsx
 #: src/components/collection/ListControls.tsx
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Rating"
 msgstr "評価"
 
@@ -1724,7 +1684,6 @@ msgstr "リージョン / エディション"
 msgid "Region / edition / variant"
 msgstr "リージョン / エディション / バリエーション"
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "Region free"
 msgstr "リージョンフリー"
@@ -1817,7 +1776,7 @@ msgstr "プラットフォームの正規化を実行"
 msgid "Run region normalization"
 msgstr "リージョンの正規化を実行"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Save"
 msgstr "保存"
 
@@ -1829,13 +1788,13 @@ msgstr "変更を保存"
 msgid "Save shelf..."
 msgstr "棚として保存..."
 
+#: src/components/account/ProfileForm.tsx
 #: src/components/entry/EntryForm.tsx
-#: src/pages/Account.tsx
 msgid "Saved."
 msgstr "保存しました。"
 
+#: src/components/account/ProfileForm.tsx
 #: src/components/CurrencySelect.tsx
-#: src/pages/Account.tsx
 msgid "Saving failed. Please try again."
 msgstr "保存できませんでした。もう一度お試しください。"
 
@@ -1856,12 +1815,11 @@ msgstr "スコア計算が完全には実行できず、一部の候補がスキ
 msgid "Scoring your library..."
 msgstr "コレクションを分析しています..."
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "sealed"
 msgstr "未開封"
 
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Sealed"
 msgstr "未開封"
 
@@ -1923,8 +1881,8 @@ msgid "Select all"
 msgstr "すべて選択"
 
 #: src/components/collection/BulkEditBar.tsx
-msgid "Selection is over the 200-entry limit."
-msgstr "選択数が上限の200件を超えています。"
+msgid "Selection is over the {cap}-entry limit."
+msgstr "選択数が上限の{cap}件を超えています。"
 
 #: src/components/collection/BulkEditBar.tsx
 msgid "Set storage location"
@@ -1942,13 +1900,11 @@ msgstr "棚"
 msgid "Shelf picker"
 msgstr "棚の選択"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/insights/BreakdownCharts.tsx
+#: src/lib/enumLabels.ts
 msgid "shelved"
 msgstr "中断"
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Shelved"
 msgstr "中断"
 
@@ -2009,14 +1965,12 @@ msgstr "統計を読み込めませんでした。"
 #: src/components/collection/EntryTable.tsx
 #: src/components/collection/FilterBar.tsx
 #: src/components/collection/ListControls.tsx
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Status"
 msgstr "ステータス"
 
 #: src/components/collection/BulkEditBar.tsx
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Storage location"
 msgstr "保管場所"
 
@@ -2084,7 +2038,7 @@ msgstr "利用規約"
 msgid "That account has no verified email address; verify it there and sign in again."
 msgstr "そのアカウントには確認済みのメールアドレスがありません。提供元で確認してから、もう一度ログインしてください。"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "That handle is taken."
 msgstr "そのハンドルはすでに使われています。"
 
@@ -2314,27 +2268,27 @@ msgstr "グループなし"
 msgid "Unlike"
 msgstr "いいねを取り消す"
 
-#: src/pages/Account.tsx
+#: src/components/account/LinkedLogins.tsx
 msgid "Unlink"
 msgstr "連携解除"
 
-#: src/pages/Account.tsx
+#: src/components/account/LinkedLogins.tsx
 msgid "Unlink this login? You will no longer be able to sign in with it."
 msgstr "このログインの連携を解除しますか？解除すると、この方法ではログインできなくなります。"
 
-#: src/pages/Account.tsx
+#: src/components/account/LinkedLogins.tsx
 msgid "Unlinking failed. Please try again."
 msgstr "連携を解除できませんでした。もう一度お試しください。"
 
-#: src/components/collection/ShelfManager.tsx
+#: src/lib/enumLabels.ts
 msgid "unlisted"
 msgstr "限定公開"
 
-#: src/components/social/VisibilityControl.tsx
+#: src/lib/enumLabels.ts
 msgid "Unlisted"
 msgstr "限定公開"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Unlisted - anyone signed in who has your link"
 msgstr "限定公開 - リンクを知っているログイン済みユーザー"
 
@@ -2354,8 +2308,7 @@ msgstr "所有・プレイ・評価の記録をもとに、未所有のゲーム
 msgid "Unpin"
 msgstr "ピン留め解除"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Unrated"
 msgstr "未評価"
 
@@ -2372,7 +2325,7 @@ msgstr "更新日"
 msgid "Updated {n} entries."
 msgstr "{n}件のアイテムを更新しました。"
 
-#: src/components/catalog/SearchPicker.tsx
+#: src/components/catalog/SearchResultRow.tsx
 msgid "Use {name}"
 msgstr "{name}を使用"
 
@@ -2405,12 +2358,11 @@ msgstr "価値の履歴は一時的に利用できません。しばらくして
 msgid "Value unavailable right now; try again shortly."
 msgstr "価値を現在表示できません。しばらくしてからもう一度お試しください。"
 
-#: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "Very good"
 msgstr "美品"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Where the app opens after you sign in."
 msgstr "ログイン後に最初に表示されるページです。"
 
@@ -2422,7 +2374,7 @@ msgstr "あなた"
 msgid "Your account has been deleted."
 msgstr "アカウントを削除しました。"
 
-#: src/pages/Account.tsx
+#: src/components/account/LinkedLogins.tsx
 msgid "Your account needs at least one login"
 msgstr "アカウントには少なくとも1つのログインが必要です"
 

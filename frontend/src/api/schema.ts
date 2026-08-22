@@ -1075,9 +1075,9 @@ export interface components {
         FXRates: {
             /** @description Always USD. */
             base: string;
-            /** @description Upstream snapshot date (YYYY-MM-DD). */
+            /** @description Upstream snapshot date (YYYY-MM-DD), not the fetch time. */
             date: string;
-            /** @description Target-units-per-USD by ISO 4217 code; USD omitted. */
+            /** @description Target-units-per-USD by ISO 4217 code. USD itself is omitted (it is the base; conversion short-circuits). */
             rates: {
                 [key: string]: number;
             };
@@ -1091,34 +1091,28 @@ export interface components {
             /** Format: uuid */
             id: string;
             email: string;
-            handle: string;
+            handle: components["schemas"]["Handle"];
             avatar_url?: string;
-            roles: string[];
+            roles: components["schemas"]["Role"][];
             /** @description Display currency for market values; USD until set. */
-            preferred_currency: string;
-            /** @enum {string} */
-            profile_visibility: "private" | "unlisted" | "listed";
-            /**
-             * @description Where the app opens after sign-in.
-             * @enum {string}
-             */
-            landing_page: "collection" | "feed" | "explore";
+            preferred_currency: components["schemas"]["CurrencyCode"];
+            profile_visibility: components["schemas"]["Visibility"];
+            /** @description Where the app opens after sign-in. */
+            landing_page: components["schemas"]["LandingPage"];
         };
         /** @description Absent fields keep their value; an empty avatar_url clears it. */
         UpdateMeRequest: {
-            handle?: string;
+            handle?: components["schemas"]["Handle"];
             avatar_url?: string;
-            preferred_currency?: string;
-            /** @enum {string} */
-            profile_visibility?: "private" | "unlisted" | "listed";
-            /** @enum {string} */
-            landing_page?: "collection" | "feed" | "explore";
+            preferred_currency?: components["schemas"]["CurrencyCode"];
+            profile_visibility?: components["schemas"]["Visibility"];
+            landing_page?: components["schemas"]["LandingPage"];
         };
         Identity: {
             /** Format: uuid */
             id: string;
             provider: string;
-            /** @description Informational; the email this login last asserted. */
+            /** @description Informational; the email the provider asserted when this identity last signed in. */
             email?: string;
             /** Format: date-time */
             created_at: string;
@@ -1133,7 +1127,7 @@ export interface components {
             /** @description IGDB platform logo; the display fallback for products without cover art. */
             logo_url?: string;
             /** @description Distinct canonical IGDB release regions for this game on this platform (japan, north_america, europe, ...), ordered by that region's earliest release date on the platform (dateless rows last, then alphabetical). Platform-exact: JP twin platforms are NOT folded here (a Famicom row stays on Famicom), unlike the product projection's date fold - the physical release is platform-specific. Populated on game search results only; absent on product payloads and hardware results. */
-            release_regions?: ("europe" | "north_america" | "australia" | "new_zealand" | "japan" | "china" | "asia" | "worldwide" | "korea" | "brazil")[];
+            release_regions?: components["schemas"]["ReleaseRegion"][];
         };
         /** @description One platform-catalog row with its known aliases. */
         CatalogPlatform: {
@@ -1148,8 +1142,7 @@ export interface components {
         };
         /** @description Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). pc_listing results carry the pc_* fields, the PriceCharting category (empty when the provider lists none), and the standard per-listing loose/cib/new prices so variant prints are tellable apart. */
         SearchResult: {
-            /** @enum {string} */
-            type: "game" | "hardware" | "pc_listing";
+            type: components["schemas"]["SearchResultType"];
             name: string;
             /** Format: int64 */
             igdb_game_id?: number;
@@ -1171,15 +1164,11 @@ export interface components {
             cib_cents?: number;
             /** Format: int64 */
             new_cents?: number;
-            /**
-             * @description Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick, community.cover_url as cover_url, and community.region as region. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
-             * @enum {string}
-             */
-            origin?: "community";
+            /** @description Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick, community.cover_url as cover_url, and community.region as region. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search. */
+            origin?: components["schemas"]["ProductOrigin"];
             /** Format: uuid */
             product_id?: string;
-            /** @enum {string} */
-            item_type?: "game" | "console" | "accessory";
+            item_type?: components["schemas"]["ItemType"];
             platform_name?: string;
             /** @description Community rows only - the community facts region, entry vocabulary. */
             region?: string;
@@ -1222,8 +1211,7 @@ export interface components {
             publisher: boolean;
         };
         ReleaseDate: {
-            /** @enum {string} */
-            region: "europe" | "north_america" | "australia" | "new_zealand" | "japan" | "china" | "asia" | "worldwide" | "korea" | "brazil";
+            region: components["schemas"]["ReleaseRegion"];
             /** Format: date */
             date: string;
         };
@@ -1255,10 +1243,10 @@ export interface components {
         Product: {
             /** Format: uuid */
             id: string;
-            /** @enum {string} */
-            type: "game" | "console" | "accessory" | "pc_listing";
+            type: components["schemas"]["ProductType"];
             name: string;
             platform?: components["schemas"]["PlatformRef"];
+            /** @description Provider hardware identity fact; community products carry their region under community.region instead. */
             region?: string;
             edition?: string;
             variant?: string;
@@ -1266,11 +1254,8 @@ export interface components {
             pricecharting?: components["schemas"]["PricechartingMeta"];
             /** @description Present true when an admin clear holds this product's mapping against a future automated match (resolve, or the entry-side re-match). */
             match_hold?: boolean;
-            /**
-             * @description Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity.
-             * @enum {string}
-             */
-            origin?: "community";
+            /** @description Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity. */
+            origin?: components["schemas"]["ProductOrigin"];
             community?: components["schemas"]["CommunityMeta"];
             /** Format: date-time */
             created_at: string;
@@ -1291,23 +1276,6 @@ export interface components {
             /** @description User-supplied cover image URL (https, never fetched server-side; the client renders it with a broken-image fallback). Served as the product cover when no provider cover is present; retained after promotion as gap-fill. */
             cover_url?: string;
         };
-        CommunityProductCreate: {
-            /** @enum {string} */
-            type: "game" | "console" | "accessory";
-            name: string;
-            platform_name?: string;
-            region?: string;
-            /** @description The entry idiom's single "Edition or variant" note. */
-            edition?: string;
-            /** Format: date */
-            first_release_date?: string;
-            /** @description Curated developer company names, one per element. */
-            developers?: string[];
-            /** @description Curated publisher company names, one per element. */
-            publishers?: string[];
-            /** @description Optional https cover image URL (validated by shape only, never fetched). */
-            cover_url?: string;
-        };
         /** @description Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant. */
         PromoteRequest: {
             /** Format: int64 */
@@ -1318,8 +1286,7 @@ export interface components {
             pc_product_id?: number;
         };
         PromoteCandidate: {
-            /** @enum {string} */
-            provider: "igdb" | "pricecharting";
+            provider: components["schemas"]["CatalogProvider"];
             /** Format: int64 */
             provider_id: number;
             name: string;
@@ -1341,15 +1308,13 @@ export interface components {
             candidates: components["schemas"]["PromoteCandidate"][];
         };
         DismissCandidateRequest: {
-            /** @enum {string} */
-            provider: "igdb" | "pricecharting";
+            provider: components["schemas"]["CatalogProvider"];
             /** Format: int64 */
             provider_id: number;
         };
         /** @description type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so edition/variant on a game resolve are ignored (entry-level facts, like pc_listing); region is a matching input only (see the region property) and never joins identity. Without pc_product_id the resolve auto-matches by the game name (region-steered) through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant). */
         ResolveRequest: {
-            /** @enum {string} */
-            type: "game" | "console" | "accessory" | "pc_listing";
+            type: components["schemas"]["ProductType"];
             /** Format: int64 */
             igdb_game_id?: number;
             /** Format: int64 */
@@ -1402,29 +1367,17 @@ export interface components {
             pc_product_id: number | null;
         };
         RefreshAccepted: {
-            /** @enum {string} */
-            status: "started";
+            status: components["schemas"]["AcceptedStatus"];
         };
         RematchAccepted: {
-            /** @enum {string} */
-            status: "started";
+            status: components["schemas"]["AcceptedStatus"];
         };
         ResnapshotResult: {
             products_seen: number;
             products_failed: number;
             entries_updated: number;
         };
-        NormalizePlatformsResult: {
-            scanned: number;
-            normalized: number;
-            skipped: number;
-        };
-        NormalizeRegionsResult: {
-            scanned: number;
-            normalized: number;
-            skipped: number;
-        };
-        NormalizeCommunityRegionsResult: {
+        NormalizeResult: {
             scanned: number;
             normalized: number;
             skipped: number;
@@ -1455,10 +1408,8 @@ export interface components {
              * @description Absent on custom entries.
              */
             product_id?: string;
-            /** @enum {string} */
-            item_type: "game" | "console" | "accessory";
-            /** @enum {string} */
-            media_type: "physical" | "digital";
+            item_type: components["schemas"]["ItemType"];
+            media_type: components["schemas"]["MediaType"];
             display_name: string;
             platform?: components["schemas"]["EntryPlatform"];
             /** Format: date */
@@ -1483,24 +1434,19 @@ export interface components {
             region: string;
             /** @description Per-copy variant note ("first print (glitched rev)", "black edition"): the idiom for variants of cataloged items is an entry on the base product with the variant recorded here. */
             edition?: string;
-            /** @enum {string} */
-            packaging: "sealed" | "cib" | "loose";
+            packaging: components["schemas"]["Packaging"];
             has_box: boolean;
             has_manual: boolean;
-            /** @enum {string} */
-            box_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
-            /** @enum {string} */
-            manual_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
-            /** @enum {string} */
-            item_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            box_condition?: components["schemas"]["ItemCondition"];
+            manual_condition?: components["schemas"]["ItemCondition"];
+            item_condition?: components["schemas"]["ItemCondition"];
             /** Format: int64 */
             price_paid_cents?: number;
             currency: string;
             /** Format: date */
             purchased_at?: string;
             purchased_from?: string;
-            /** @enum {string} */
-            pricing_mode: "auto" | "proxy" | "custom" | "disabled";
+            pricing_mode: components["schemas"]["PricingMode"];
             /** Format: uuid */
             pricing_product_id?: string;
             /**
@@ -1520,8 +1466,7 @@ export interface components {
             custom_value_entered_cents?: number;
             /** @description Currency of custom_value_entered_cents. */
             custom_value_entered_currency?: string;
-            /** @enum {string} */
-            status: "backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved";
+            status: components["schemas"]["EntryStatus"];
             rating?: number;
             notes?: string;
             storage_location?: string;
@@ -1550,8 +1495,7 @@ export interface components {
             id: string;
             /** Format: uuid */
             entry_id: string;
-            /** @enum {string} */
-            status: "pending" | "approved" | "rejected" | "cancelled";
+            status: components["schemas"]["SubmissionStatus"];
             reject_reason?: string;
             /** Format: uuid */
             product_id?: string;
@@ -1575,11 +1519,9 @@ export interface components {
             entry_id: string;
             /** Format: uuid */
             user_id: string;
-            /** @enum {string} */
-            status: "pending" | "approved" | "rejected" | "cancelled";
+            status: components["schemas"]["SubmissionStatus"];
             display_name: string;
-            /** @enum {string} */
-            item_type: "game" | "console" | "accessory";
+            item_type: components["schemas"]["ItemType"];
             platform_name?: string;
             region: string;
             edition?: string;
@@ -1606,11 +1548,12 @@ export interface components {
         };
         /** @description The curated fields for approve_new; mirrors the enrichment mint request (single edition field, no variant). */
         CommunityProductSpec: {
-            /** @enum {string} */
-            type: "game" | "console" | "accessory";
+            type: components["schemas"]["ItemType"];
             name: string;
             platform_name?: string;
+            /** @description Curated entry-vocabulary region fact; stored under the community facts block (community.region), not the product's top-level region field. */
             region?: string;
+            /** @description The entry idiom's single "Edition or variant" note. */
             edition?: string;
             /** Format: date */
             first_release_date?: string;
@@ -1618,7 +1561,7 @@ export interface components {
             developers?: string[];
             /** @description Curated publisher company names, one per element. */
             publishers?: string[];
-            /** @description Optional https cover image URL for the minted community product. */
+            /** @description Optional https cover image URL (validated by shape only, never fetched). */
             cover_url?: string;
         };
         /** @description One admin verdict. approve_new requires product; approve_existing requires product_id; reject requires reason. */
@@ -1639,11 +1582,8 @@ export interface components {
             product_id?: string;
             /** @description Custom entries only (required there). */
             display_name?: string;
-            /**
-             * @description Custom entries only (required there).
-             * @enum {string}
-             */
-            item_type?: "game" | "console" | "accessory";
+            /** @description Custom entries only (required there). */
+            item_type?: components["schemas"]["ItemType"];
             /** @description Custom entries only. */
             platform_name?: string;
             /**
@@ -1671,18 +1611,14 @@ export interface components {
             region: string;
             /** @description Per-copy variant note; the idiom for variants of cataloged items. */
             edition?: string;
-            /** @enum {string} */
-            packaging: "sealed" | "cib" | "loose";
+            packaging: components["schemas"]["Packaging"];
             /** @default false */
             has_box: boolean;
             /** @default false */
             has_manual: boolean;
-            /** @enum {string} */
-            box_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
-            /** @enum {string} */
-            manual_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
-            /** @enum {string} */
-            item_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            box_condition?: components["schemas"]["ItemCondition"];
+            manual_condition?: components["schemas"]["ItemCondition"];
+            item_condition?: components["schemas"]["ItemCondition"];
             /** Format: int64 */
             price_paid_cents?: number;
             /** @default USD */
@@ -1690,11 +1626,8 @@ export interface components {
             /** Format: date */
             purchased_at?: string;
             purchased_from?: string;
-            /**
-             * @default auto
-             * @enum {string}
-             */
-            pricing_mode: "auto" | "proxy" | "custom" | "disabled";
+            /** @default auto */
+            pricing_mode: components["schemas"]["PricingMode"];
             /** Format: uuid */
             pricing_product_id?: string;
             /** Format: int64 */
@@ -1708,11 +1641,8 @@ export interface components {
              * @enum {string}
              */
             match_provenance: "auto" | "user";
-            /**
-             * @default backlog
-             * @enum {string}
-             */
-            status: "backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved";
+            /** @default backlog */
+            status: components["schemas"]["EntryStatus"];
             rating?: number;
             notes?: string;
             storage_location?: string;
@@ -1751,18 +1681,14 @@ export interface components {
             region: string;
             /** @description Per-copy variant note; the idiom for variants of cataloged items. */
             edition?: string;
-            /** @enum {string} */
-            packaging: "sealed" | "cib" | "loose";
+            packaging: components["schemas"]["Packaging"];
             /** @default false */
             has_box: boolean;
             /** @default false */
             has_manual: boolean;
-            /** @enum {string} */
-            box_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
-            /** @enum {string} */
-            manual_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
-            /** @enum {string} */
-            item_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            box_condition?: components["schemas"]["ItemCondition"];
+            manual_condition?: components["schemas"]["ItemCondition"];
+            item_condition?: components["schemas"]["ItemCondition"];
             /** Format: int64 */
             price_paid_cents?: number;
             /** @default USD */
@@ -1770,8 +1696,7 @@ export interface components {
             /** Format: date */
             purchased_at?: string;
             purchased_from?: string;
-            /** @enum {string} */
-            pricing_mode: "auto" | "proxy" | "custom" | "disabled";
+            pricing_mode: components["schemas"]["PricingMode"];
             /** Format: uuid */
             pricing_product_id?: string;
             /** Format: int64 */
@@ -1779,8 +1704,7 @@ export interface components {
             /** Format: int64 */
             custom_value_entered_cents?: number;
             custom_value_entered_currency?: string;
-            /** @enum {string} */
-            status: "backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved";
+            status: components["schemas"]["EntryStatus"];
             rating?: number;
             notes?: string;
             storage_location?: string;
@@ -1806,8 +1730,7 @@ export interface components {
             entry_ids: string[];
             add_tag_ids?: string[];
             remove_tag_ids?: string[];
-            /** @enum {string} */
-            status?: "backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved";
+            status?: components["schemas"]["EntryStatus"];
             /** @description Empty string clears the field; an absent field leaves it untouched (see the operation description). */
             storage_location?: string;
         };
@@ -1843,8 +1766,7 @@ export interface components {
             name: string;
             /** @description URL slug derived from the name (underscore transform); unique per user on its folded key. */
             slug: string;
-            /** @enum {string} */
-            visibility: "private" | "unlisted" | "listed";
+            visibility: components["schemas"]["Visibility"];
             /**
              * Format: date-time
              * @description Stamped on each transition into listed.
@@ -1864,11 +1786,8 @@ export interface components {
             params: {
                 [key: string]: unknown;
             };
-            /**
-             * @default private
-             * @enum {string}
-             */
-            visibility: "private" | "unlisted" | "listed";
+            /** @default private */
+            visibility: components["schemas"]["Visibility"];
         };
         PlatformCount: {
             name: string;
@@ -1918,10 +1837,9 @@ export interface components {
         ProfileCard: {
             /** Format: uuid */
             user_id: string;
-            handle: string;
+            handle: components["schemas"]["Handle"];
             avatar_url?: string;
-            /** @enum {string} */
-            profile_visibility: "private" | "unlisted" | "listed";
+            profile_visibility: components["schemas"]["Visibility"];
         };
         ShelfSocialSummary: {
             /** Format: uuid */
@@ -2003,8 +1921,7 @@ export interface components {
         FeedItem: {
             /** Format: uuid */
             id: string;
-            /** @enum {string} */
-            verb: "followed_user" | "liked_shelf" | "commented_shelf" | "published_shelf";
+            verb: components["schemas"]["ActivityVerb"];
             /** Format: date-time */
             created_at: string;
             actor: components["schemas"]["ProfileCard"];
@@ -2029,10 +1946,8 @@ export interface components {
             id: string;
             /** Format: uuid */
             product_id?: string;
-            /** @enum {string} */
-            item_type: "game" | "console" | "accessory";
-            /** @enum {string} */
-            media_type: "physical" | "digital";
+            item_type: components["schemas"]["ItemType"];
+            media_type: components["schemas"]["MediaType"];
             display_name: string;
             platform?: components["schemas"]["EntryPlatform"];
             /** Format: date */
@@ -2050,16 +1965,12 @@ export interface components {
             igdb_game_id?: number;
             region: string;
             edition?: string;
-            /** @enum {string} */
-            packaging: "sealed" | "cib" | "loose";
+            packaging: components["schemas"]["Packaging"];
             has_box: boolean;
             has_manual: boolean;
-            /** @enum {string} */
-            box_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
-            /** @enum {string} */
-            manual_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
-            /** @enum {string} */
-            item_condition?: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+            box_condition?: components["schemas"]["ItemCondition"];
+            manual_condition?: components["schemas"]["ItemCondition"];
+            item_condition?: components["schemas"]["ItemCondition"];
             pinned: boolean;
             tags: components["schemas"]["TagRef"][];
             /** Format: date-time */
@@ -2076,6 +1987,42 @@ export interface components {
             entries?: components["schemas"]["SharedEntry"][];
             groups?: components["schemas"]["SharedEntryGroup"][];
         };
+        Handle: string;
+        /** @enum {string} */
+        Role: "user" | "admin";
+        CurrencyCode: string;
+        /** @enum {string} */
+        Visibility: "private" | "unlisted" | "listed";
+        /** @enum {string} */
+        LandingPage: "collection" | "feed" | "explore";
+        /** @enum {string} */
+        SearchResultType: "game" | "hardware" | "pc_listing";
+        /** @enum {string} */
+        ReleaseRegion: "europe" | "north_america" | "australia" | "new_zealand" | "japan" | "china" | "asia" | "worldwide" | "korea" | "brazil";
+        /** @enum {string} */
+        ProductOrigin: "community";
+        /** @enum {string} */
+        ItemType: "game" | "console" | "accessory";
+        /** @enum {string} */
+        ProductType: "game" | "console" | "accessory" | "pc_listing";
+        /** @enum {string} */
+        EntryStatus: "backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved";
+        /** @enum {string} */
+        Packaging: "sealed" | "cib" | "loose";
+        /** @enum {string} */
+        ItemCondition: "mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor";
+        /** @enum {string} */
+        MediaType: "physical" | "digital";
+        /** @enum {string} */
+        PricingMode: "auto" | "proxy" | "custom" | "disabled";
+        /** @enum {string} */
+        SubmissionStatus: "pending" | "approved" | "rejected" | "cancelled";
+        /** @enum {string} */
+        AcceptedStatus: "started";
+        /** @enum {string} */
+        CatalogProvider: "igdb" | "pricecharting";
+        /** @enum {string} */
+        ActivityVerb: "followed_user" | "liked_shelf" | "commented_shelf" | "published_shelf";
     };
     responses: {
         /** @description No valid session (cookie missing, malformed, expired, revoked, or denylisted) */
@@ -2105,8 +2052,74 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description Invalid body */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description Caller lacks the admin role (code forbidden) */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description Not found */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description Name already taken */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description Handle changed too recently (code handle_cooldown; relayed from the user service) */
+        TooManyRequests: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description Session refresh blocked on a dependency; retry (code user_unavailable) */
+        ServiceUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
     };
-    parameters: never;
+    parameters: {
+        catalogQ: string;
+        statusFilter: components["schemas"]["EntryStatus"][];
+        /** @description IGDB platform ids (matches the creation-time snapshot). */
+        platformId: number[];
+        entriesSort: "name" | "release_date" | "purchased_at" | "created_at" | "value" | "paid" | "rating" | "backlog_rank";
+        order: "asc" | "desc";
+        groupBy: "platform" | "status" | "item_type" | "location" | "tag";
+        offset: number;
+        cursor: string;
+        userSearchQ: string;
+        tab: "following" | "you";
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -2139,7 +2152,7 @@ export interface operations {
             query: {
                 /** @description google, twitch, or dev (when the dev provider is enabled) */
                 provider: string;
-                /** @description Dev provider only: fixture handle (alice, bob, admin) */
+                /** @description Dev provider only: fixture handle (alice, bob, admin, or an e2e-* test fixture) */
                 user?: string;
             };
             header?: never;
@@ -2148,7 +2161,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Location is the provider authorize URL; for the dev provider, / with the session cookie set; on failure, /login?error=<code>. */
+            /** @description Location is the provider authorize URL; for the dev provider, / with the session cookie set; on failure, /login?error=<email_unverified|provider_error|login_failed>. */
             302: {
                 headers: {
                     Location?: string;
@@ -2170,7 +2183,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description / with Set-Cookie on success, /login?error=<code> otherwise */
+            /** @description / with Set-Cookie on success, /login?error=<email_unverified|provider_error|login_failed> otherwise */
             302: {
                 headers: {
                     Location?: string;
@@ -2219,15 +2232,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
-            /** @description Session refresh blocked on a dependency; retry (code user_unavailable) */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     deleteMe: {
@@ -2274,43 +2279,14 @@ export interface operations {
                 };
             };
             /** @description Validation failure (code invalid_body; detail names the field) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["OriginForbidden"];
             /** @description The signed-in account no longer exists (relayed from the user service) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             /** @description Another account owns that handle's folded key (code handle_taken; relayed from the user service) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Handle changed too recently (code handle_cooldown; relayed from the user service) */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -2357,23 +2333,9 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["OriginForbidden"];
             /** @description No such linked login (code identity_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             /** @description Refusing to remove the last login (code last_identity) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -2382,7 +2344,7 @@ export interface operations {
             query: {
                 /** @description google, twitch, or dev (when the dev provider is enabled) */
                 provider: string;
-                /** @description Dev provider only: fixture handle (alice, bob, admin) */
+                /** @description Dev provider only: fixture handle (alice, bob, admin, or an e2e-* test fixture) */
                 user?: string;
             };
             header?: never;
@@ -2426,14 +2388,7 @@ export interface operations {
                 };
             };
             /** @description Body unreadable or over the size cap */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
         };
@@ -2462,14 +2417,7 @@ export interface operations {
                 };
             };
             /** @description Body unreadable or over the size cap */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
         };
@@ -2477,8 +2425,8 @@ export interface operations {
     searchCatalog: {
         parameters: {
             query: {
-                type: "game" | "hardware" | "pc_listing";
-                q: string;
+                type: components["schemas"]["SearchResultType"];
+                q: components["parameters"]["catalogQ"];
             };
             header?: never;
             path?: never;
@@ -2496,14 +2444,7 @@ export interface operations {
                 };
             };
             /** @description Invalid parameters */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
         };
@@ -2530,25 +2471,10 @@ export interface operations {
                     "application/json": components["schemas"]["Product"];
                 };
             };
-            /** @description Invalid body */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             /** @description The provider does not know the requested id */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -2573,40 +2499,32 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
     listEntries: {
         parameters: {
             query?: {
-                item_type?: ("game" | "console" | "accessory")[];
-                status?: ("backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved")[];
-                packaging?: ("sealed" | "cib" | "loose")[];
+                item_type?: components["schemas"]["ItemType"][];
+                status?: components["parameters"]["statusFilter"];
+                packaging?: components["schemas"]["Packaging"][];
                 /** @description Known-value buckets; other stored strings only surface unfiltered. */
                 region?: string[];
                 /** @description Developer names; an entry matches when any of its snapshotted developers is listed. */
                 developer?: string[];
                 /** @description Publisher names; same overlap matching as developer. */
                 publisher?: string[];
-                item_condition?: ("mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor")[];
+                item_condition?: components["schemas"]["ItemCondition"][];
                 /** @description IGDB platform ids (matches the creation-time snapshot). */
-                platform_id?: number[];
+                platform_id?: components["parameters"]["platformId"];
                 /** @description Entries carrying ALL listed tags. */
                 tag_id?: string[];
-                sort?: "name" | "release_date" | "purchased_at" | "created_at" | "value" | "paid" | "rating" | "backlog_rank";
-                order?: "asc" | "desc";
-                group_by?: "platform" | "status" | "item_type" | "location" | "tag";
+                sort?: components["parameters"]["entriesSort"];
+                order?: components["parameters"]["order"];
+                group_by?: components["parameters"]["groupBy"];
                 limit?: number;
-                offset?: number;
+                offset?: components["parameters"]["offset"];
             };
             header?: never;
             path?: never;
@@ -2624,14 +2542,7 @@ export interface operations {
                 };
             };
             /** @description Invalid parameters */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
         };
@@ -2658,25 +2569,10 @@ export interface operations {
                     "application/json": components["schemas"]["Entry"];
                 };
             };
-            /** @description Invalid body */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             /** @description A referenced product or tag does not exist */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -2703,14 +2599,7 @@ export interface operations {
                 };
             };
             /** @description Bounds violated, no action specified, or the per-entry tag cap exceeded (code invalid_body or tag_cap_exceeded) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
         };
@@ -2736,15 +2625,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -2772,25 +2653,10 @@ export interface operations {
                     "application/json": components["schemas"]["Entry"];
                 };
             };
-            /** @description Invalid body */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             /** @description No such entry, pricing product, or tag */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -2813,15 +2679,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -2849,34 +2707,11 @@ export interface operations {
                     "application/json": components["schemas"]["Entry"];
                 };
             };
-            /** @description Invalid body */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Not in the backlog, or the neighbors do not straddle */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
+            /** @description Not in the backlog, or the neighbors do not straddle (code conflicting_order) */
+            409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -2899,15 +2734,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -2933,14 +2760,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             /** @description Not found (code entry_not_found or submission_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -2965,42 +2785,14 @@ export interface operations {
                 };
             };
             /** @description The entry is not custom (code entry_not_custom) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             /** @description Not found (code entry_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             /** @description A submission is already pending (code submission_pending) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            409: components["responses"]["Conflict"];
             /** @description A submission cap is exceeded (code too_many_pending_submissions or submission_rate_limited) */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            429: components["responses"]["TooManyRequests"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3024,14 +2816,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             /** @description Nothing pending (code submission_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3055,14 +2840,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             /** @description Not found (code entry_not_found or submission_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3112,34 +2890,11 @@ export interface operations {
                     "application/json": components["schemas"]["Tag"];
                 };
             };
-            /** @description Invalid body */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description Name already taken */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            409: components["responses"]["Conflict"];
             /** @description Tag cap reached - at most 200 distinct tags per user (code cap_exceeded) */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            429: components["responses"]["TooManyRequests"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3167,34 +2922,10 @@ export interface operations {
                     "application/json": components["schemas"]["Tag"];
                 };
             };
-            /** @description Invalid body */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Name already taken */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3217,15 +2948,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3275,25 +2998,9 @@ export interface operations {
                     "application/json": components["schemas"]["SavedView"];
                 };
             };
-            /** @description Invalid body */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description Name already taken */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3321,34 +3028,10 @@ export interface operations {
                     "application/json": components["schemas"]["SavedView"];
                 };
             };
-            /** @description Invalid body */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Name already taken */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3371,33 +3054,25 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
     getDashboard: {
         parameters: {
             query?: {
-                item_type?: ("game" | "console" | "accessory")[];
-                status?: ("backlog" | "playing" | "beaten" | "completed" | "dropped" | "shelved")[];
-                packaging?: ("sealed" | "cib" | "loose")[];
+                item_type?: components["schemas"]["ItemType"][];
+                status?: components["parameters"]["statusFilter"];
+                packaging?: components["schemas"]["Packaging"][];
                 /** @description Known-value buckets; other stored strings only surface unfiltered. */
                 region?: string[];
                 /** @description Developer names; an entry matches when any of its snapshotted developers is listed. */
                 developer?: string[];
                 /** @description Publisher names; same overlap matching as developer. */
                 publisher?: string[];
-                item_condition?: ("mint" | "near_mint" | "very_good" | "good" | "acceptable" | "poor")[];
+                item_condition?: components["schemas"]["ItemCondition"][];
                 /** @description IGDB platform ids (matches the creation-time snapshot). */
-                platform_id?: number[];
+                platform_id?: components["parameters"]["platformId"];
                 /** @description Entries carrying ALL listed tags. */
                 tag_id?: string[];
             };
@@ -3417,14 +3092,7 @@ export interface operations {
                 };
             };
             /** @description Invalid parameters */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
         };
@@ -3521,7 +3189,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                offset?: number;
+                offset?: components["parameters"]["offset"];
             };
             header?: never;
             path?: never;
@@ -3539,15 +3207,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3555,7 +3215,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                offset?: number;
+                offset?: components["parameters"]["offset"];
             };
             header?: never;
             path?: never;
@@ -3573,15 +3233,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3604,33 +3256,11 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             /** @description No such product (code product_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             /** @description Entries reference the product (code product_referenced) or it carries a mapping (code product_matched) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3659,42 +3289,13 @@ export interface operations {
                 };
             };
             /** @description Invalid body (code invalid_body or invalid_param) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             /** @description No such product, or the provider does not know the mapping id */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             /** @description Another product already carries that identity (code identity_taken) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3717,24 +3318,9 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             /** @description A refresh is already running (code refresh_in_progress) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3757,24 +3343,9 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             /** @description An entry rematch is already running (code rematch_in_progress) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3797,15 +3368,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3824,19 +3387,11 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["NormalizePlatformsResult"];
+                    "application/json": components["schemas"]["NormalizeResult"];
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3855,19 +3410,11 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["NormalizeRegionsResult"];
+                    "application/json": components["schemas"]["NormalizeResult"];
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3886,19 +3433,11 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["NormalizeCommunityRegionsResult"];
+                    "application/json": components["schemas"]["NormalizeResult"];
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3906,7 +3445,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                offset?: number;
+                offset?: components["parameters"]["offset"];
             };
             header?: never;
             path?: never;
@@ -3924,15 +3463,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -3961,42 +3492,13 @@ export interface operations {
                 };
             };
             /** @description Invalid body (code invalid_body or invalid_param) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             /** @description No such submission, the adopt target does not exist, or the entry vanished mid-race (code submission_not_found, unknown_product, or entry_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             /** @description Another admin already resolved it (code submission_resolved) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -4009,7 +3511,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CommunityProductCreate"];
+                "application/json": components["schemas"]["CommunityProductSpec"];
             };
         };
         responses: {
@@ -4023,24 +3525,9 @@ export interface operations {
                 };
             };
             /** @description Invalid body (code invalid_body or invalid_param) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -4069,42 +3556,13 @@ export interface operations {
                 };
             };
             /** @description Invalid body (code invalid_body or invalid_param) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             /** @description No such product, or the provider does not know the requested id */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             /** @description Not community-origin (code product_not_community) or a provider twin holds the identity (code identity_taken) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -4112,7 +3570,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                offset?: number;
+                offset?: components["parameters"]["offset"];
                 product_id?: string;
             };
             header?: never;
@@ -4131,15 +3589,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -4166,33 +3616,11 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid body (code invalid_body or invalid_param) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
-            /** @description Caller lacks the admin role (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             /** @description No such product (code product_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -4218,14 +3646,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             /** @description Unknown or private (deliberately indistinguishable; code profile_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -4252,14 +3673,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -4285,14 +3699,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -4300,7 +3707,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                offset?: number;
+                offset?: components["parameters"]["offset"];
             };
             header?: never;
             path: {
@@ -4321,21 +3728,14 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
     listShelfComments: {
         parameters: {
             query?: {
-                cursor?: string;
+                cursor?: components["parameters"]["cursor"];
                 limit?: number;
             };
             header?: never;
@@ -4356,24 +3756,10 @@ export interface operations {
                 };
             };
             /** @description Malformed cursor (code invalid_param) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -4402,33 +3788,12 @@ export interface operations {
                 };
             };
             /** @description Invalid body (code invalid_body) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             /** @description Comment cap reached - tombstones count (code cap_exceeded) */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            429: components["responses"]["TooManyRequests"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -4452,23 +3817,9 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             /** @description Caller is neither author nor shelf owner (code forbidden) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            403: components["responses"]["Forbidden"];
             /** @description Unknown or already tombstoned (code comment_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -4491,33 +3842,12 @@ export interface operations {
                 content?: never;
             };
             /** @description Self-follow (code self_follow) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             /** @description Unknown or private (deliberately indistinguishable; code profile_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             /** @description Follow cap reached (code cap_exceeded) */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            429: components["responses"]["TooManyRequests"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -4563,23 +3893,9 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            404: components["responses"]["NotFound"];
             /** @description Like cap reached (code cap_exceeded) */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            429: components["responses"]["TooManyRequests"];
             502: components["responses"]["UpstreamError"];
         };
     };
@@ -4608,7 +3924,7 @@ export interface operations {
     searchUsers: {
         parameters: {
             query: {
-                q: string;
+                q: components["parameters"]["userSearchQ"];
             };
             header?: never;
             path?: never;
@@ -4660,8 +3976,8 @@ export interface operations {
     getFeed: {
         parameters: {
             query: {
-                tab: "following" | "you";
-                cursor?: string;
+                tab: components["parameters"]["tab"];
+                cursor?: components["parameters"]["cursor"];
                 limit?: number;
             };
             header?: never;
@@ -4680,14 +3996,7 @@ export interface operations {
                 };
             };
             /** @description Invalid tab or malformed cursor (code invalid_param) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
         };
@@ -4697,7 +4006,7 @@ export interface operations {
             query: {
                 sort: "recent" | "top";
                 limit?: number;
-                offset?: number;
+                offset?: components["parameters"]["offset"];
             };
             header?: never;
             path?: never;
@@ -4719,3 +4028,37 @@ export interface operations {
         };
     };
 }
+type FlattenedDeepRequired<T> = {
+    [K in keyof T]-?: FlattenedDeepRequired<T[K] extends unknown[] | undefined | null ? Extract<T[K], unknown[]>[number] : T[K]>;
+};
+type ReadonlyArray<T> = [
+    Exclude<T, undefined>
+] extends [
+    unknown[]
+] ? Readonly<Exclude<T, undefined>> : Readonly<Exclude<T, undefined>[]>;
+export const pathsApiExploreGetParametersQuerySortValues: ReadonlyArray<FlattenedDeepRequired<paths>["/api/explore"]["get"]["parameters"]["query"]["sort"]> = ["recent", "top"];
+export const entrySourceValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["Entry"]["source"]> = ["manual", "steam", "psn", "epic"];
+export const verdictRequestActionValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["VerdictRequest"]["action"]> = ["approve_new", "approve_existing", "reject"];
+export const entryCreateMedia_typeValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["EntryCreate"]["media_type"]> = ["physical"];
+export const entryCreateMatch_provenanceValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["EntryCreate"]["match_provenance"]> = ["auto", "user"];
+export const roleValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["Role"]> = ["user", "admin"];
+export const visibilityValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["Visibility"]> = ["private", "unlisted", "listed"];
+export const landingPageValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["LandingPage"]> = ["collection", "feed", "explore"];
+export const searchResultTypeValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["SearchResultType"]> = ["game", "hardware", "pc_listing"];
+export const releaseRegionValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["ReleaseRegion"]> = ["europe", "north_america", "australia", "new_zealand", "japan", "china", "asia", "worldwide", "korea", "brazil"];
+export const productOriginValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["ProductOrigin"]> = ["community"];
+export const itemTypeValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["ItemType"]> = ["game", "console", "accessory"];
+export const productTypeValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["ProductType"]> = ["game", "console", "accessory", "pc_listing"];
+export const entryStatusValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["EntryStatus"]> = ["backlog", "playing", "beaten", "completed", "dropped", "shelved"];
+export const packagingValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["Packaging"]> = ["sealed", "cib", "loose"];
+export const itemConditionValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["ItemCondition"]> = ["mint", "near_mint", "very_good", "good", "acceptable", "poor"];
+export const mediaTypeValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["MediaType"]> = ["physical", "digital"];
+export const pricingModeValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["PricingMode"]> = ["auto", "proxy", "custom", "disabled"];
+export const submissionStatusValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["SubmissionStatus"]> = ["pending", "approved", "rejected", "cancelled"];
+export const acceptedStatusValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["AcceptedStatus"]> = ["started"];
+export const catalogProviderValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["CatalogProvider"]> = ["igdb", "pricecharting"];
+export const activityVerbValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["ActivityVerb"]> = ["followed_user", "liked_shelf", "commented_shelf", "published_shelf"];
+export const componentsParametersEntriesSortValues: ReadonlyArray<FlattenedDeepRequired<components>["parameters"]["entriesSort"]> = ["name", "release_date", "purchased_at", "created_at", "value", "paid", "rating", "backlog_rank"];
+export const componentsParametersOrderValues: ReadonlyArray<FlattenedDeepRequired<components>["parameters"]["order"]> = ["asc", "desc"];
+export const componentsParametersGroupByValues: ReadonlyArray<FlattenedDeepRequired<components>["parameters"]["groupBy"]> = ["platform", "status", "item_type", "location", "tag"];
+export const componentsParametersTabValues: ReadonlyArray<FlattenedDeepRequired<components>["parameters"]["tab"]> = ["following", "you"];

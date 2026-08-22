@@ -1,11 +1,22 @@
 import type { paths } from '../api/schema'
+import { entryStatusValues, itemConditionValues, itemTypeValues, packagingValues } from '../api/schema'
 import { REGIONS } from '../gen/domain'
 
 type ListQuery = NonNullable<paths['/api/entries']['get']['parameters']['query']>
 
-export type ItemType = NonNullable<ListQuery['item_type']>[number]
-export type Status = NonNullable<ListQuery['status']>[number]
-export type Packaging = NonNullable<ListQuery['packaging']>[number]
+// ItemType/Status/Packaging/Condition are derived from the generated
+// API schema's enum value arrays (see ../api/schema) - the wire
+// enum's single source of truth, one named vocabulary schema per
+// value set - kept under their existing names here so every importer
+// below (and every consumer of this module) compiles unchanged.
+export const ITEM_TYPES = itemTypeValues
+export const STATUSES = entryStatusValues
+export const PACKAGINGS = packagingValues
+export const CONDITIONS = itemConditionValues
+export type ItemType = (typeof ITEM_TYPES)[number]
+export type Status = (typeof STATUSES)[number]
+export type Packaging = (typeof PACKAGINGS)[number]
+export type Condition = (typeof CONDITIONS)[number]
 // The known entry regions - the machinery key set (labels always;
 // pricing class and localization chains where a region has rows).
 // region itself is open-world on the wire; these are what the UI
@@ -13,19 +24,15 @@ export type Packaging = NonNullable<ListQuery['packaging']>[number]
 // from api/domain.yaml (see ../gen/domain); REGIONS re-exported below
 // for existing importers.
 export type Region = (typeof REGIONS)[number]
-export type Condition = NonNullable<ListQuery['item_condition']>[number]
 export type Sort = NonNullable<ListQuery['sort']>
 export type Order = NonNullable<ListQuery['order']>
 export type GroupBy = NonNullable<ListQuery['group_by']>
 export type ViewMode = 'table' | 'grid' | 'compact'
 
+// PAGE_SIZE is a product paging choice, hand-set well under the contract's entries-list limit maximum (500).
 export const PAGE_SIZE = 200
 
-export const ITEM_TYPES: ItemType[] = ['game', 'console', 'accessory']
-export const STATUSES: Status[] = ['backlog', 'playing', 'beaten', 'completed', 'dropped', 'shelved']
-export const PACKAGINGS: Packaging[] = ['sealed', 'cib', 'loose']
 export { REGIONS }
-export const CONDITIONS: Condition[] = ['mint', 'near_mint', 'very_good', 'good', 'acceptable', 'poor']
 export const SORTS: Sort[] = ['name', 'release_date', 'purchased_at', 'created_at', 'value', 'paid', 'rating', 'backlog_rank']
 export const GROUPS: GroupBy[] = ['platform', 'status', 'item_type', 'location', 'tag']
 

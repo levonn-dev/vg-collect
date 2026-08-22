@@ -4,14 +4,19 @@ import { useState } from 'react'
 import { ApiError } from '../../api/client'
 import type { BulkUpdateRequest, Entry, Tag } from '../../api/collection'
 import { bulkUpdateEntries } from '../../api/collection'
+import { BulkUpdateRequest as BulkUpdateRequestFacet } from '../../gen/facets'
+import { statusLabels } from '../../lib/enumLabels'
 import { invalidateEntryQueries } from '../../lib/entryQueries'
+import { btnSecondary } from '../../lib/formStyles'
 import SectionLabel from '../SectionLabel'
-import { statusLabels } from './EntryTable'
 
 // The server's own cap on entry_ids per request (api/bff.yaml); the
 // bar disables Apply and explains itself once the shared selection
-// grows past it rather than let the request fail server-side.
-const SELECTION_CAP = 200
+// grows past it rather than let the request fail server-side. `cap`
+// (not the constant's own name) is also the interpolation placeholder
+// the over-cap message below renders, so its msgid reads naturally.
+const cap = BulkUpdateRequestFacet.properties.entry_ids.maxItems
+const STORAGE_LOCATION_MAX = BulkUpdateRequestFacet.properties.storage_location.maxLength
 
 interface BulkEditBarProps {
   selected: ReadonlySet<string>
@@ -63,7 +68,7 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
     setRemoveTagIds((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]))
 
   const hasAction = addTagIds.length > 0 || removeTagIds.length > 0 || status !== '' || locationEnabled
-  const overCap = selected.size > SELECTION_CAP
+  const overCap = selected.size > cap
   const disabled = apply.isPending
 
   const submit = () => {
@@ -142,7 +147,7 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
                 aria-label={t`Storage location`}
                 value={location}
                 disabled={disabled}
-                maxLength={200}
+                maxLength={STORAGE_LOCATION_MAX}
                 onChange={(e) => setLocation(e.target.value)}
                 className="rounded border border-gray-300 px-2 py-1 text-sm"
               />
@@ -152,7 +157,7 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
         </div>
       </div>
       {overCap && (
-        <p className="text-sm text-amber-800"><Trans>Selection is over the 200-entry limit.</Trans></p>
+        <p className="text-sm text-amber-800"><Trans>Selection is over the {cap}-entry limit.</Trans></p>
       )}
       {apply.isError && (
         <p role="alert" className="text-sm text-red-700">
@@ -174,7 +179,7 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
           type="button"
           onClick={onCancel}
           disabled={disabled}
-          className="rounded border border-gray-300 px-3 py-1 text-sm enabled:hover:bg-gray-50 disabled:opacity-50"
+          className={btnSecondary}
         >
           <Trans>Cancel</Trans>
         </button>

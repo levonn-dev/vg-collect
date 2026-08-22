@@ -1,0 +1,81 @@
+openapi: 3.0.3
+info:
+  title: Domaingen Facets Fixture
+  version: "1.0.0"
+paths:
+  /widgets:
+    get:
+      operationId: listWidgets
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+        - name: kind
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Kind'
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/sort'
+      responses:
+        '200':
+          description: One page of widgets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Widget'
+    post:
+      operationId: createWidget
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Widget'
+components:
+  schemas:
+    Widget:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 40
+        tag:
+          $ref: '#/components/schemas/Tag'
+        status:
+          type: string
+          enum: [active, retired]
+    Tag:
+      type: string
+      minLength: 1
+      maxLength: 20
+      pattern: '^[a-z]+$'
+    Kind:
+      type: string
+      enum: [alpha, beta]
+  parameters:
+    cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+        maxLength: 100
+    sort:
+      name: sort
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [name, created_at]
+        default: created_at

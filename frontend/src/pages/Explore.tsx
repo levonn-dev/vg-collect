@@ -10,17 +10,25 @@ import LoadMoreButton from '../components/LoadMoreButton'
 import ShelfCard from '../components/social/ShelfCard'
 import UserChip from '../components/social/UserChip'
 import Tabs, { type Tab } from '../components/Tabs'
+import { parameters } from '../gen/facets'
+import { pathsApiExploreGetParametersQuerySortValues } from '../api/schema'
 import { renderQueryState } from '../lib/queryBoundary'
+
+const EXPLORE_SORTS = pathsApiExploreGetParametersQuerySortValues
+const USER_SEARCH_Q_MAX = parameters.userSearchQ.maxLength
 
 // Tabs.tsx renders whatever label string each caller hands it (no
 // i18n awareness of its own - see components/Tabs.tsx); the table
 // stays msg descriptors at module scope (same shape as SearchPicker's
 // kindLabels) and gets resolved into the plain strings Tab<T> expects
-// down in the component body, where i18n is available.
-const SORT_TABS: { key: ExploreSort; label: MessageDescriptor }[] = [
-  { key: 'recent', label: msg`Recent` },
-  { key: 'top', label: msg`Top` },
-]
+// down in the component body, where i18n is available. Labels keyed
+// by the generated EXPLORE_SORTS values rather than a second
+// hand-typed key list.
+const sortLabels: Record<ExploreSort, MessageDescriptor> = {
+  recent: msg`Recent`,
+  top: msg`Top`,
+}
+const SORT_TABS: { key: ExploreSort; label: MessageDescriptor }[] = EXPLORE_SORTS.map((key) => ({ key, label: sortLabels[key] }))
 
 // The pause after the last keystroke before /api/search/users fires -
 // long enough that ordinary typing never triggers a call per letter.
@@ -79,7 +87,7 @@ export default function Explore() {
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
           placeholder={t`Search for people...`}
-          maxLength={64}
+          maxLength={USER_SEARCH_Q_MAX}
           className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm"
         />
       </div>

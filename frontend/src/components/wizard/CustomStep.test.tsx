@@ -1,6 +1,8 @@
+import { i18n } from '@lingui/core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, screen } from '@testing-library/react'
+import { cleanup, fireEvent, screen } from '@testing-library/react'
 import type { ReactElement } from 'react'
+import { messages as jaMessages } from '../../locales/ja.po'
 import { fxRatesFixture, jsonResponse, meFixture } from '../../test/fixtures'
 import { renderWithI18n as renderI18n } from '../../test/i18n'
 import CustomStep from './CustomStep'
@@ -31,7 +33,13 @@ function renderWithI18n(ui: ReactElement) {
   return renderI18n(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  // Order matters: cleanup() before activate() - see EntryDetail.test.tsx's
+  // afterEach for why (I18nProvider update outside act otherwise).
+  cleanup()
+  i18n.activate('en')
+})
 
 test('region field present and free text allowed', () => {
   const onNext = vi.fn()
@@ -88,6 +96,25 @@ test('seed fills name and type when fresh', () => {
   renderWithI18n(<CustomStep seed={{ displayName: 'link cable', itemType: 'accessory' }} onBack={() => {}} onNext={() => {}} />)
   expect(screen.getByLabelText('Name')).toHaveValue('link cable')
   expect(screen.getByLabelText('Item type')).toHaveValue('accessory')
+})
+
+// Item type options used to be raw, untranslated text (a straight
+// "game"/"console"/"accessory" <option> literal) - this pins that they
+// now render through itemTypeWireLabels, so a ja reader sees ja text
+// rather than the English wire value. Options are found by their
+// locale-invariant value (not the label text, which is itself
+// translated under ja) so the query does not depend on the very
+// translation being pinned.
+test('item type options render the translated wire label under ja', () => {
+  i18n.load('ja', jaMessages)
+  i18n.activate('ja')
+  renderWithI18n(<CustomStep onBack={() => {}} onNext={() => {}} />)
+  // Found by the option's value attribute (locale-invariant) rather
+  // than getByDisplayValue, which matches a select's VISIBLE option
+  // text - itself translated under ja, so it cannot locate the node.
+  const select = document.querySelector('option[value="game"]')!.parentElement!
+  const texts = Array.from(select.querySelectorAll('option')).map((o) => o.textContent)
+  expect(texts).toEqual(['ゲーム', 'ゲーム機', '周辺機器'])
 })
 
 // The platform carries no release_regions of its own, so the chip's
@@ -173,10 +200,11 @@ test('base on an existing item fills the form from a hardware pick', async () =>
 })
 
 // Carries a platform_name, a release date, and cover art so all three
-// community-only fields (platformName plus the two GamePick/CommunityPick
-// fields this task added) are exercised in one fixture; itemType
-// 'accessory' (rather than 'game', already covered by the other two arms)
-// pins that itemType really rides the pick, not a hardcoded default.
+// community-only fields (platformName plus coverUrl and firstReleaseDate,
+// the based-add prefill fields GamePick and CommunityPick share) are
+// exercised in one fixture; itemType 'accessory' (rather than 'game',
+// already covered by the other two arms) pins that itemType really rides
+// the pick, not a hardcoded default.
 const reproGammaAnswer = {
   degraded: false,
   results: [{

@@ -8,16 +8,25 @@ import type { AdminSubmission, VerdictRequest } from '../../api/admin'
 import type { SearchKind, SearchResult } from '../../api/catalog'
 import { resolveProduct, searchCatalog } from '../../api/catalog'
 import { ApiError } from '../../api/client'
+import { CommunityProductSpec } from '../../gen/facets'
+import { itemTypeValues } from '../../api/schema'
 import { resolveRequestFor } from '../../lib/catalog'
 import { releaseYear } from '../../lib/format'
 import { cleanNames } from '../../lib/credits'
+import { itemTypeWireLabels } from '../../lib/enumLabels'
+import { btnSecondary } from '../../lib/formStyles'
 import { resolveApiError } from '../../lib/resolveApiError'
 import StringListInput from '../StringListInput'
 import PlatformPicker from '../catalog/PlatformPicker'
 import type { PlatformValue } from '../catalog/PlatformPicker'
 import RegionPicker from '../catalog/RegionPicker'
 import SearchPicker from '../catalog/SearchPicker'
-import type { CatalogPick } from '../catalog/SearchPicker'
+import type { CatalogPick } from '../../lib/catalogPicks'
+
+const ITEM_TYPE_VALUES = itemTypeValues
+const SUBMISSION_NAME_MAX = CommunityProductSpec.properties.name.maxLength
+const SUBMISSION_EDITION_MAX = CommunityProductSpec.properties.edition.maxLength
+const SUBMISSION_PLATFORM_MAX = CommunityProductSpec.properties.platform_name.maxLength
 
 interface ReviewPanelProps {
   submission: AdminSubmission
@@ -217,21 +226,21 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
       <div className="mt-2 grid max-w-xl grid-cols-2 gap-2 text-sm">
         <label className="col-span-2">
           <Trans>Name</Trans>
-          <input value={name} onChange={(e) => setName(e.target.value)} className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={SUBMISSION_NAME_MAX} className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />
         </label>
         <label>
           <Trans>Type</Trans>
           <select value={itemType} onChange={(e) => setItemType(e.target.value as AdminSubmission['item_type'])} className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1">
-            <option value="game">game</option>
-            <option value="console">console</option>
-            <option value="accessory">accessory</option>
+            {ITEM_TYPE_VALUES.map((v) => (
+              <option key={v} value={v}>{i18n._(itemTypeWireLabels[v])}</option>
+            ))}
           </select>
         </label>
-        <PlatformPicker value={platform} onChange={setPlatform} />
+        <PlatformPicker value={platform} onChange={setPlatform} maxLength={SUBMISSION_PLATFORM_MAX} />
         <RegionPicker value={region} onChange={setRegion} />
         <label>
           <Trans>Edition or variant</Trans>
-          <input value={edition} onChange={(e) => setEdition(e.target.value)} maxLength={128} className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />
+          <input value={edition} onChange={(e) => setEdition(e.target.value)} maxLength={SUBMISSION_EDITION_MAX} className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />
         </label>
         <label>
           <Trans>First release date</Trans>
@@ -262,14 +271,14 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
           type="button"
           onClick={approveNew}
           disabled={verdict.isPending || name.trim() === ''}
-          className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+          className={btnSecondary}
         >
           <Trans>Approve as new product</Trans>
         </button>
         <button
           type="button"
           onClick={() => setAdopting((v) => !v)}
-          className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50"
+          className={btnSecondary}
         >
           <Trans>Adopt existing product</Trans>
         </button>
@@ -284,7 +293,7 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
           type="button"
           onClick={() => verdict.mutate({ action: 'reject', reason: reason.trim() })}
           disabled={verdict.isPending || reason.trim() === ''}
-          className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+          className={btnSecondary}
         >
           <Trans>Reject</Trans>
         </button>
@@ -322,7 +331,7 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
             <button
               type="submit"
               disabled={adoptId.trim() === '' || verdict.isPending}
-              className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+              className={btnSecondary}
             >
               <Trans>Adopt by id</Trans>
             </button>

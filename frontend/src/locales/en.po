@@ -29,7 +29,7 @@ msgstr "{dataType} provided by <0>{label}</0>"
 msgid "{days}d ago"
 msgstr "{days}d ago"
 
-#: src/pages/Account.tsx
+#: src/components/account/LinkedLogins.tsx
 msgid "{email} - linked {linkedDate}"
 msgstr "{email} - linked {linkedDate}"
 
@@ -48,6 +48,10 @@ msgstr "{followingCount} following"
 #: src/components/collection/Pager.tsx
 msgid "{from}-{to} of {totalCount}"
 msgstr "{from}-{to} of {totalCount}"
+
+#: src/components/account/ProfileForm.tsx
+msgid "{HANDLE_MIN}-{HANDLE_MAX} characters, letters/digits, underscores inside only"
+msgstr "{HANDLE_MIN}-{HANDLE_MAX} characters, letters/digits, underscores inside only"
 
 #: src/lib/relativeTime.ts
 msgid "{hours}h ago"
@@ -69,11 +73,11 @@ msgstr "{name} is run by {operator}"
 msgid "{name} is run by {operator} (<0>{contact}</0>)"
 msgstr "{name} is run by {operator} (<0>{contact}</0>)"
 
-#: src/components/catalog/SearchPicker.tsx
+#: src/components/catalog/SearchResultRow.tsx
 msgid "{name} on {platformName}"
 msgstr "{name} on {platformName}"
 
-#: src/components/catalog/SearchPicker.tsx
+#: src/components/catalog/SearchResultRow.tsx
 msgid "{name} on {platformName} ({regionText})"
 msgstr "{name} on {platformName} ({regionText})"
 
@@ -125,13 +129,8 @@ msgstr "<0/> liked <1>{shelfName}</1>"
 msgid "<0/> published <1>{shelfName}</1>"
 msgstr "<0/> published <1>{shelfName}</1>"
 
-#: src/pages/Account.tsx
-msgid "2-30 characters, letters/digits, underscores inside only"
-msgstr "2-30 characters, letters/digits, underscores inside only"
-
-#: src/components/entry/EntryForm.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 #: src/components/entry/PricingPanel.tsx
-#: src/components/wizard/DetailsStep.tsx
 msgid "59.99"
 msgstr "59.99"
 
@@ -155,8 +154,7 @@ msgstr "About"
 msgid "About this translation"
 msgstr "About this translation"
 
-#: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "Acceptable"
 msgstr "Acceptable"
 
@@ -164,8 +162,7 @@ msgstr "Acceptable"
 msgid "Accessories"
 msgstr "Accessories"
 
-#: src/components/insights/BreakdownCharts.tsx
-#: src/pages/EntryDetail.tsx
+#: src/lib/enumLabels.ts
 msgid "accessory"
 msgstr "accessory"
 
@@ -174,7 +171,7 @@ msgstr "accessory"
 msgid "Account"
 msgstr "Account"
 
-#: src/components/entry/EntryForm.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Acquisition"
 msgstr "Acquisition"
 
@@ -182,7 +179,7 @@ msgstr "Acquisition"
 msgid "Add"
 msgstr "Add"
 
-#: src/components/catalog/SearchPicker.tsx
+#: src/components/catalog/SearchResultRow.tsx
 msgid "Add {name}"
 msgstr "Add {name}"
 
@@ -207,7 +204,7 @@ msgstr "Add and rate a few games to get suggestions."
 msgid "Add developer"
 msgstr "Add developer"
 
-#: src/components/catalog/SearchPicker.tsx
+#: src/components/catalog/SearchResultRow.tsx
 msgid "Add on:"
 msgstr "Add on:"
 
@@ -292,7 +289,7 @@ msgstr "Attach a price listing (optional)"
 msgid "auto (this item's own price listing)"
 msgstr "auto (this item's own price listing)"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Avatar image URL"
 msgstr "Avatar image URL"
 
@@ -303,13 +300,11 @@ msgstr "Avatar image URL"
 msgid "Back"
 msgstr "Back"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/insights/BreakdownCharts.tsx
+#: src/lib/enumLabels.ts
 msgid "backlog"
 msgstr "backlog"
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Backlog"
 msgstr "Backlog"
 
@@ -322,22 +317,18 @@ msgstr "Backlog order"
 msgid "Base on an existing item"
 msgstr "Base on an existing item"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/insights/BreakdownCharts.tsx
+#: src/lib/enumLabels.ts
 msgid "beaten"
 msgstr "beaten"
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Beaten"
 msgstr "Beaten"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Box condition"
 msgstr "Box condition"
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "Brazil"
 msgstr "Brazil"
@@ -404,7 +395,6 @@ msgstr "Change price source"
 msgid "Checking the price match..."
 msgstr "Checking the price match..."
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "China"
 msgstr "China"
@@ -430,12 +420,11 @@ msgstr "Choose price source"
 msgid "Choose..."
 msgstr "Choose..."
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "cib"
 msgstr "cib"
 
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "CIB"
 msgstr "CIB"
 
@@ -460,8 +449,8 @@ msgstr "Clear this mapping? The product becomes unmatched and is held out of the
 msgid "Close"
 msgstr "Close"
 
+#: src/components/account/ProfileForm.tsx
 #: src/components/AppBar.tsx
-#: src/pages/Account.tsx
 #: src/pages/Collection.tsx
 msgid "Collection"
 msgstr "Collection"
@@ -504,7 +493,7 @@ msgstr "Comments cannot be loaded right now. Please try again."
 
 #: src/components/admin/ProductLookup.tsx
 #: src/components/admin/ReviewPanel.tsx
-#: src/components/catalog/SearchPicker.tsx
+#: src/components/catalog/SearchResultRow.tsx
 msgid "community"
 msgstr "community"
 
@@ -524,13 +513,11 @@ msgstr "Community products could not be loaded."
 msgid "Compact"
 msgstr "Compact"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/insights/BreakdownCharts.tsx
+#: src/lib/enumLabels.ts
 msgid "completed"
 msgstr "completed"
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Completed"
 msgstr "Completed"
 
@@ -550,8 +537,7 @@ msgstr "Confirm custom item"
 msgid "Confirm: {title}"
 msgstr "Confirm: {title}"
 
-#: src/components/insights/BreakdownCharts.tsx
-#: src/pages/EntryDetail.tsx
+#: src/lib/enumLabels.ts
 msgid "console"
 msgstr "console"
 
@@ -592,7 +578,7 @@ msgstr "Copy failed"
 msgid "Copy link"
 msgstr "Copy link"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Copy profile link"
 msgstr "Copy profile link"
 
@@ -650,7 +636,7 @@ msgstr "Date added"
 msgid "Date added (default)"
 msgstr "Date added (default)"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Default page"
 msgstr "Default page"
 
@@ -755,13 +741,11 @@ msgstr "Display mode"
 msgid "Drag {displayName}"
 msgstr "Drag {displayName}"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/insights/BreakdownCharts.tsx
+#: src/lib/enumLabels.ts
 msgid "dropped"
 msgstr "dropped"
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Dropped"
 msgstr "Dropped"
 
@@ -830,8 +814,8 @@ msgstr "Exchange rates are unavailable; try saving again shortly."
 msgid "Exchange rates are unavailable; values show in USD."
 msgstr "Exchange rates are unavailable; values show in USD."
 
+#: src/components/account/ProfileForm.tsx
 #: src/components/AppBar.tsx
-#: src/pages/Account.tsx
 #: src/pages/Explore.tsx
 msgid "Explore"
 msgstr "Explore"
@@ -840,8 +824,8 @@ msgstr "Explore"
 msgid "Explore sort"
 msgstr "Explore sort"
 
+#: src/components/account/ProfileForm.tsx
 #: src/components/AppBar.tsx
-#: src/pages/Account.tsx
 #: src/pages/Feed.tsx
 msgid "Feed"
 msgstr "Feed"
@@ -892,8 +876,7 @@ msgstr "Following"
 msgid "For items search cannot find: reproductions, fan translations, homebrew, self-built hardware. A variant of a searchable item (a first print, a color variant) belongs on that item instead - pick it from search and note the variant in the edition field."
 msgstr "For items search cannot find: reproductions, fan translations, homebrew, self-built hardware. A variant of a searchable item (a first print, a color variant) belongs on that item instead - pick it from search and note the variant in the edition field."
 
-#: src/components/insights/BreakdownCharts.tsx
-#: src/pages/EntryDetail.tsx
+#: src/lib/enumLabels.ts
 msgid "game"
 msgstr "game"
 
@@ -914,8 +897,7 @@ msgstr "games"
 msgid "Games"
 msgstr "Games"
 
-#: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "Good"
 msgstr "Good"
 
@@ -923,11 +905,11 @@ msgstr "Good"
 msgid "Group by"
 msgstr "Group by"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Handle"
 msgstr "Handle"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Handle changed too recently - try again later."
 msgstr "Handle changed too recently - try again later."
 
@@ -939,13 +921,11 @@ msgstr "hardware"
 msgid "Hardware"
 msgstr "Hardware"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Has box"
 msgstr "Has box"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Has manual"
 msgstr "Has manual"
 
@@ -983,8 +963,7 @@ msgstr "In use by existing entries - cannot delete."
 msgid "Insights"
 msgstr "Insights"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Item condition"
 msgstr "Item condition"
 
@@ -1002,7 +981,6 @@ msgstr "Items"
 msgid "just now"
 msgstr "just now"
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "Korea"
 msgstr "Korea"
@@ -1023,7 +1001,7 @@ msgstr "Last custom price: {lastCustomPrice}"
 msgid "Last price proxy: {proxyName}"
 msgstr "Last price proxy: {proxyName}"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Leave empty to use your initial instead."
 msgstr "Leave empty to use your initial instead."
 
@@ -1055,15 +1033,15 @@ msgstr "Linked logins could not be loaded."
 msgid "Linking failed. Please try again."
 msgstr "Linking failed. Please try again."
 
-#: src/components/collection/ShelfManager.tsx
+#: src/lib/enumLabels.ts
 msgid "listed"
 msgstr "listed"
 
-#: src/components/social/VisibilityControl.tsx
+#: src/lib/enumLabels.ts
 msgid "Listed"
 msgstr "Listed"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Listed - appears in Explore and search"
 msgstr "Listed - appears in Explore and search"
 
@@ -1168,12 +1146,11 @@ msgstr "Looking it up..."
 msgid "Looking up..."
 msgstr "Looking up..."
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "loose"
 msgstr "loose"
 
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Loose"
 msgstr "Loose"
 
@@ -1189,8 +1166,7 @@ msgstr "Maintenance"
 msgid "Manage shelves"
 msgstr "Manage shelves"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Manual condition"
 msgstr "Manual condition"
 
@@ -1214,7 +1190,7 @@ msgstr "Market pricing is temporarily unavailable; values are hidden."
 msgid "Market values are in USD."
 msgstr "Market values are in USD."
 
-#: src/components/wizard/ManualMatchPicker.tsx
+#: src/components/catalog/ManualMatchPicker.tsx
 msgid "Match a price listing"
 msgstr "Match a price listing"
 
@@ -1231,8 +1207,7 @@ msgstr "Match manually"
 msgid "Member"
 msgstr "Member"
 
-#: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "Mint"
 msgstr "Mint"
 
@@ -1267,8 +1242,7 @@ msgstr "Name"
 msgid "Name this shelf"
 msgstr "Name this shelf"
 
-#: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "Near mint"
 msgstr "Near mint"
 
@@ -1297,7 +1271,7 @@ msgstr "No confirmed price listing yet - market value stays empty until a match 
 msgid "No developers yet"
 msgstr "No developers yet"
 
-#: src/pages/Account.tsx
+#: src/components/account/LinkedLogins.tsx
 msgid "no email recorded"
 msgstr "no email recorded"
 
@@ -1368,13 +1342,11 @@ msgstr "Normalize regions"
 msgid "Not found"
 msgstr "Not found"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Not graded"
 msgstr "Not graded"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Notes"
 msgstr "Notes"
 
@@ -1402,12 +1374,10 @@ msgstr "Nothing yet"
 msgid "Nothing yet. <0>Explore</0> people to follow."
 msgstr "Nothing yet. <0>Explore</0> people to follow."
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "NTSC-J"
 msgstr "NTSC-J"
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "NTSC-U"
 msgstr "NTSC-U"
@@ -1426,8 +1396,7 @@ msgstr "Otherwise auto-match picks the listing."
 
 #: src/components/collection/EntryTable.tsx
 #: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Packaging"
 msgstr "Packaging"
 
@@ -1443,16 +1412,15 @@ msgstr "Pagination"
 msgid "Paid"
 msgstr "Paid"
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "PAL"
 msgstr "PAL"
 
-#: src/components/entry/EntryForm.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Personal"
 msgstr "Personal"
 
-#: src/components/entry/EntryForm.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Physical details"
 msgstr "Physical details"
 
@@ -1469,8 +1437,7 @@ msgid "Pin"
 msgstr "Pin"
 
 #: src/components/collection/rowMeta.tsx
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Pinned"
 msgstr "Pinned"
 
@@ -1487,18 +1454,15 @@ msgstr "Platform"
 msgid "Platform / console"
 msgstr "Platform / console"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/insights/BreakdownCharts.tsx
+#: src/lib/enumLabels.ts
 msgid "playing"
 msgstr "playing"
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Playing"
 msgstr "Playing"
 
-#: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "Poor"
 msgstr "Poor"
 
@@ -1526,8 +1490,7 @@ msgstr "Price listing match (optional)"
 msgid "Price paid"
 msgstr "Price paid"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Price paid ({currency})"
 msgstr "Price paid ({currency})"
 
@@ -1567,15 +1530,15 @@ msgstr "Primary"
 msgid "Privacy"
 msgstr "Privacy"
 
-#: src/components/collection/ShelfManager.tsx
+#: src/lib/enumLabels.ts
 msgid "private"
 msgstr "private"
 
-#: src/components/social/VisibilityControl.tsx
+#: src/lib/enumLabels.ts
 msgid "Private"
 msgstr "Private"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Private - only you"
 msgstr "Private - only you"
 
@@ -1602,7 +1565,7 @@ msgstr "Products seen {seen}, failed {failed}, entries updated {updated}."
 msgid "Profile"
 msgstr "Profile"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Profile visibility"
 msgstr "Profile visibility"
 
@@ -1647,20 +1610,17 @@ msgstr "Publishers"
 msgid "Purchase date"
 msgstr "Purchase date"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Purchased from"
 msgstr "Purchased from"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Purchased on"
 msgstr "Purchased on"
 
 #: src/components/collection/EntryTable.tsx
 #: src/components/collection/ListControls.tsx
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Rating"
 msgstr "Rating"
 
@@ -1724,7 +1684,6 @@ msgstr "Region / edition"
 msgid "Region / edition / variant"
 msgstr "Region / edition / variant"
 
-#: src/components/collection/FilterBar.tsx
 #: src/lib/regionLabels.ts
 msgid "Region free"
 msgstr "Region free"
@@ -1817,7 +1776,7 @@ msgstr "Run platform normalization"
 msgid "Run region normalization"
 msgstr "Run region normalization"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Save"
 msgstr "Save"
 
@@ -1829,13 +1788,13 @@ msgstr "Save changes"
 msgid "Save shelf..."
 msgstr "Save shelf..."
 
+#: src/components/account/ProfileForm.tsx
 #: src/components/entry/EntryForm.tsx
-#: src/pages/Account.tsx
 msgid "Saved."
 msgstr "Saved."
 
+#: src/components/account/ProfileForm.tsx
 #: src/components/CurrencySelect.tsx
-#: src/pages/Account.tsx
 msgid "Saving failed. Please try again."
 msgstr "Saving failed. Please try again."
 
@@ -1856,12 +1815,11 @@ msgstr "Scoring ran degraded - some candidates were skipped. Try again later for
 msgid "Scoring your library..."
 msgstr "Scoring your library..."
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "sealed"
 msgstr "sealed"
 
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Sealed"
 msgstr "Sealed"
 
@@ -1923,8 +1881,8 @@ msgid "Select all"
 msgstr "Select all"
 
 #: src/components/collection/BulkEditBar.tsx
-msgid "Selection is over the 200-entry limit."
-msgstr "Selection is over the 200-entry limit."
+msgid "Selection is over the {cap}-entry limit."
+msgstr "Selection is over the {cap}-entry limit."
 
 #: src/components/collection/BulkEditBar.tsx
 msgid "Set storage location"
@@ -1942,13 +1900,11 @@ msgstr "Shelf"
 msgid "Shelf picker"
 msgstr "Shelf picker"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/insights/BreakdownCharts.tsx
+#: src/lib/enumLabels.ts
 msgid "shelved"
 msgstr "shelved"
 
-#: src/components/collection/EntryTable.tsx
-#: src/components/collection/FilterBar.tsx
+#: src/lib/enumLabels.ts
 msgid "Shelved"
 msgstr "Shelved"
 
@@ -2009,14 +1965,12 @@ msgstr "Stats cannot be loaded right now."
 #: src/components/collection/EntryTable.tsx
 #: src/components/collection/FilterBar.tsx
 #: src/components/collection/ListControls.tsx
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Status"
 msgstr "Status"
 
 #: src/components/collection/BulkEditBar.tsx
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Storage location"
 msgstr "Storage location"
 
@@ -2084,7 +2038,7 @@ msgstr "Terms"
 msgid "That account has no verified email address; verify it there and sign in again."
 msgstr "That account has no verified email address; verify it there and sign in again."
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "That handle is taken."
 msgstr "That handle is taken."
 
@@ -2314,27 +2268,27 @@ msgstr "Ungrouped"
 msgid "Unlike"
 msgstr "Unlike"
 
-#: src/pages/Account.tsx
+#: src/components/account/LinkedLogins.tsx
 msgid "Unlink"
 msgstr "Unlink"
 
-#: src/pages/Account.tsx
+#: src/components/account/LinkedLogins.tsx
 msgid "Unlink this login? You will no longer be able to sign in with it."
 msgstr "Unlink this login? You will no longer be able to sign in with it."
 
-#: src/pages/Account.tsx
+#: src/components/account/LinkedLogins.tsx
 msgid "Unlinking failed. Please try again."
 msgstr "Unlinking failed. Please try again."
 
-#: src/components/collection/ShelfManager.tsx
+#: src/lib/enumLabels.ts
 msgid "unlisted"
 msgstr "unlisted"
 
-#: src/components/social/VisibilityControl.tsx
+#: src/lib/enumLabels.ts
 msgid "Unlisted"
 msgstr "Unlisted"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Unlisted - anyone signed in who has your link"
 msgstr "Unlisted - anyone signed in who has your link"
 
@@ -2354,8 +2308,7 @@ msgstr "Unowned games scored against what you own, play, and rate."
 msgid "Unpin"
 msgstr "Unpin"
 
-#: src/components/entry/EntryForm.tsx
-#: src/components/wizard/DetailsStep.tsx
+#: src/components/entry/CopyDetailsFields.tsx
 msgid "Unrated"
 msgstr "Unrated"
 
@@ -2372,7 +2325,7 @@ msgstr "Updated"
 msgid "Updated {n} entries."
 msgstr "Updated {n} entries."
 
-#: src/components/catalog/SearchPicker.tsx
+#: src/components/catalog/SearchResultRow.tsx
 msgid "Use {name}"
 msgstr "Use {name}"
 
@@ -2405,12 +2358,11 @@ msgstr "Value history is temporarily unavailable; try again shortly."
 msgid "Value unavailable right now; try again shortly."
 msgstr "Value unavailable right now; try again shortly."
 
-#: src/components/collection/FilterBar.tsx
-#: src/components/entry/EntryForm.tsx
+#: src/lib/enumLabels.ts
 msgid "Very good"
 msgstr "Very good"
 
-#: src/pages/Account.tsx
+#: src/components/account/ProfileForm.tsx
 msgid "Where the app opens after you sign in."
 msgstr "Where the app opens after you sign in."
 
@@ -2422,7 +2374,7 @@ msgstr "You"
 msgid "Your account has been deleted."
 msgstr "Your account has been deleted."
 
-#: src/pages/Account.tsx
+#: src/components/account/LinkedLogins.tsx
 msgid "Your account needs at least one login"
 msgstr "Your account needs at least one login"
 
