@@ -4,7 +4,7 @@ import type { Product } from '../../api/catalog'
 import { fetchProduct, resolveProduct } from '../../api/catalog'
 import { resolveRequestFor } from '../../lib/catalog'
 import SearchPickerDialog from '../SearchPickerDialog'
-import type { CatalogPick } from '../catalog/SearchPicker'
+import type { CatalogPick } from '../../lib/catalogPicks'
 import SearchPicker from '../catalog/SearchPicker'
 
 interface ProxyPickerProps {

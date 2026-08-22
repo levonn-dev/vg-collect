@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { entryFixture, fxRatesFixture, jsonResponse, meFixture, putBody } from '../test/fixtures'
+import { entryFixture, fxRatesFixture, jsonResponse, meFixture, putBody, requestPath } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import AddWizard from './AddWizard'
 
@@ -69,11 +69,11 @@ afterEach(() => vi.unstubAllGlobals())
 
 it('walks search, details, and match confirmation to a created entry', async () => {
   const created = entryFixture({ display_name: 'Chrono Trigger' })
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, searchAnswer))
     if (u === '/api/products/resolve') return Promise.resolve(jsonResponse(200, product))
-    if (u === '/api/entries' && init?.method === 'POST') return Promise.resolve(jsonResponse(201, created))
+    if (u === '/api/entries' && (url as Request).method === 'POST') return Promise.resolve(jsonResponse(201, created))
     return Promise.resolve(jsonResponse(404, {}))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -93,8 +93,8 @@ it('walks search, details, and match confirmation to a created entry', async () 
   await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
   expect(await screen.findByText('entry-detail')).toBeInTheDocument()
 
-  const post = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST' && c[0] === '/api/entries')
-  const body = putBody<Record<string, unknown>>(post?.[1] as RequestInit)
+  const post = fetchMock.mock.calls.find((c) => (c[0] as Request).method === 'POST' && requestPath(c[0]) === '/api/entries')
+  const body = await putBody<Record<string, unknown>>(post?.[0])
   expect(body.product_id).toBe('p1')
   expect(body.status).toBe('beaten')
   expect(body.rating).toBe(9)
@@ -102,8 +102,8 @@ it('walks search, details, and match confirmation to a created entry', async () 
 })
 
 it('seeds the details region select from a matched-region game pick', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, jpMatchedSearchAnswer))
     return Promise.resolve(jsonResponse(404, {}))
   })
@@ -119,8 +119,8 @@ it('seeds the details region select from a matched-region game pick', async () =
 })
 
 it('defaults the details region select to ntsc_u when the pick carries no region suggestion', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, searchAnswer))
     return Promise.resolve(jsonResponse(404, {}))
   })
@@ -143,8 +143,8 @@ it('seeds the details region select from a hardware pick', async () => {
       console_name: 'Super Famicom', category: 'Systems',
     }],
   }
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, hardwareSearchAnswer))
     return Promise.resolve(jsonResponse(404, {}))
   })
@@ -169,8 +169,8 @@ it('seeds the details region select from a community pick with region', async ()
       platform_name: 'SNES', region: 'pal',
     }],
   }
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, communityRegionSearchAnswer))
     return Promise.resolve(jsonResponse(404, {}))
   })
@@ -187,11 +187,11 @@ it('seeds the details region select from a community pick with region', async ()
 
 it('stamps the created entry with the profile currency', async () => {
   const created = entryFixture({ display_name: 'Chrono Trigger', currency: 'EUR' })
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, searchAnswer))
     if (u === '/api/products/resolve') return Promise.resolve(jsonResponse(200, product))
-    if (u === '/api/entries' && init?.method === 'POST') return Promise.resolve(jsonResponse(201, created))
+    if (u === '/api/entries' && (url as Request).method === 'POST') return Promise.resolve(jsonResponse(201, created))
     return Promise.resolve(jsonResponse(404, {}))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -210,18 +210,18 @@ it('stamps the created entry with the profile currency', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
   expect(await screen.findByText('entry-detail')).toBeInTheDocument()
 
-  const post = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST' && c[0] === '/api/entries')
-  const body = putBody<Record<string, unknown>>(post?.[1] as RequestInit)
+  const post = fetchMock.mock.calls.find((c) => (c[0] as Request).method === 'POST' && requestPath(c[0]) === '/api/entries')
+  const body = await putBody<Record<string, unknown>>(post?.[0])
   expect(body.currency).toBe('EUR')
 })
 
 it('invalidates the dashboard and recommendations caches on create', async () => {
   const created = entryFixture({ display_name: 'Chrono Trigger' })
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, searchAnswer))
     if (u === '/api/products/resolve') return Promise.resolve(jsonResponse(200, product))
-    if (u === '/api/entries' && init?.method === 'POST') return Promise.resolve(jsonResponse(201, created))
+    if (u === '/api/entries' && (url as Request).method === 'POST') return Promise.resolve(jsonResponse(201, created))
     return Promise.resolve(jsonResponse(404, {}))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -244,8 +244,8 @@ it('invalidates the dashboard and recommendations caches on create', async () =>
 })
 
 it('keeps typed details across a Confirm Back, and each Back returns to the previous step', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, searchAnswer))
     if (u === '/api/products/resolve') return Promise.resolve(jsonResponse(200, product))
     return Promise.resolve(jsonResponse(404, {}))
@@ -282,8 +282,8 @@ it('keeps a manual match across Continue and Back', async () => {
     degraded: false,
     results: [{ type: 'pc_listing', name: 'Chrono Trigger [PAL]', pc_product_id: 7042, console_name: 'PAL Super Nintendo', loose_cents: 9800 }],
   }
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) {
       return Promise.resolve(jsonResponse(200, u.includes('type=pc_listing') ? listingAnswer : searchAnswer))
     }
@@ -311,8 +311,8 @@ it('keeps a manual match across Continue and Back', async () => {
 })
 
 it('shows the match-pending state for an unmatched product', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, searchAnswer))
     if (u === '/api/products/resolve') {
       return Promise.resolve(jsonResponse(200, { ...product, pricecharting: undefined }))
@@ -337,16 +337,16 @@ it('fills a missing match from the confirm step', async () => {
     ...product,
     pricecharting: { ...product.pricecharting, pc_product_id: 7042, pc_name: 'Chrono Trigger [PAL]', match_confidence: 1.0 },
   }
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation(async (url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) {
-      return Promise.resolve(jsonResponse(200, u.includes('type=pc_listing') ? listingAnswer : searchAnswer))
+      return jsonResponse(200, u.includes('type=pc_listing') ? listingAnswer : searchAnswer)
     }
     if (u === '/api/products/resolve') {
-      const body = putBody<{ pc_product_id?: number }>(init)
-      return Promise.resolve(jsonResponse(200, body.pc_product_id ? filled : unanchored))
+      const body = await putBody<{ pc_product_id?: number }>(url)
+      return jsonResponse(200, body.pc_product_id ? filled : unanchored)
     }
-    return Promise.resolve(jsonResponse(404, {}))
+    return jsonResponse(404, {})
   })
   vi.stubGlobal('fetch', fetchMock)
   renderWizard()
@@ -372,13 +372,13 @@ it('pre-runs the q parameter (the recommendations add path)', async () => {
   vi.stubGlobal('fetch', fetchMock)
   renderWizard('/add?q=chrono')
   expect(await screen.findByText('Chrono Trigger')).toBeInTheDocument()
-  expect(String(fetchMock.mock.calls[0][0])).toContain('q=chrono')
+  expect(requestPath(fetchMock.mock.calls[0][0])).toContain('q=chrono')
 })
 
 it('creates a custom entry with pricing disabled', async () => {
   const created = entryFixture({ display_name: 'Chrono Trigger Repro', product_id: undefined, pricing_mode: 'disabled' })
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    if (String(url) === '/api/entries' && init?.method === 'POST') {
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url) === '/api/entries' && (url as Request).method === 'POST') {
       return Promise.resolve(jsonResponse(201, created))
     }
     return Promise.resolve(jsonResponse(404, {}))
@@ -405,8 +405,8 @@ it('creates a custom entry with pricing disabled', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
   expect(await screen.findByText('entry-detail')).toBeInTheDocument()
 
-  const post = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')
-  const body = putBody<Record<string, unknown>>(post?.[1] as RequestInit)
+  const post = fetchMock.mock.calls.find((c) => (c[0] as Request).method === 'POST')
+  const body = await putBody<Record<string, unknown>>(post?.[0])
   expect(body.product_id).toBeUndefined()
   expect(body.display_name).toBe('Chrono Trigger Repro')
   expect(body.item_type).toBe('game')
@@ -426,8 +426,8 @@ it('sends a cover url on a custom create when the wizard cover input is filled',
     display_name: 'Chrono Trigger Repro', product_id: undefined, pricing_mode: 'disabled',
     cover_url: 'https://img.example/c.jpg',
   })
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    if (String(url) === '/api/entries' && init?.method === 'POST') {
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url) === '/api/entries' && (url as Request).method === 'POST') {
       return Promise.resolve(jsonResponse(201, created))
     }
     return Promise.resolve(jsonResponse(404, {}))
@@ -451,8 +451,8 @@ it('sends a cover url on a custom create when the wizard cover input is filled',
   await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
   expect(await screen.findByText('entry-detail')).toBeInTheDocument()
 
-  const post = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')
-  const body = putBody<Record<string, unknown>>(post?.[1] as RequestInit)
+  const post = fetchMock.mock.calls.find((c) => (c[0] as Request).method === 'POST')
+  const body = await putBody<Record<string, unknown>>(post?.[0])
   expect(body.cover_url).toBe('https://img.example/c.jpg')
   // Untouched credit lists send no keys at all.
   expect(body).not.toHaveProperty('developers')
@@ -463,8 +463,8 @@ it('stamps a custom-created entry with the profile currency', async () => {
   const created = entryFixture({
     display_name: 'Chrono Trigger Repro', product_id: undefined, pricing_mode: 'disabled', currency: 'EUR',
   })
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    if (String(url) === '/api/entries' && init?.method === 'POST') {
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url) === '/api/entries' && (url as Request).method === 'POST') {
       return Promise.resolve(jsonResponse(201, created))
     }
     return Promise.resolve(jsonResponse(404, {}))
@@ -485,15 +485,15 @@ it('stamps a custom-created entry with the profile currency', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
   expect(await screen.findByText('entry-detail')).toBeInTheDocument()
 
-  const post = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')
-  const body = putBody<Record<string, unknown>>(post?.[1] as RequestInit)
+  const post = fetchMock.mock.calls.find((c) => (c[0] as Request).method === 'POST')
+  const body = await putBody<Record<string, unknown>>(post?.[0])
   expect(body.currency).toBe('EUR')
 })
 
 it('invalidates the dashboard and recommendations caches on a custom create', async () => {
   const created = entryFixture({ display_name: 'Chrono Trigger Repro', product_id: undefined, pricing_mode: 'disabled' })
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    if (String(url) === '/api/entries' && init?.method === 'POST') {
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url) === '/api/entries' && (url as Request).method === 'POST') {
       return Promise.resolve(jsonResponse(201, created))
     }
     return Promise.resolve(jsonResponse(404, {}))
@@ -581,11 +581,11 @@ it('adds a community pick straight from fetchProduct, never posting a resolve', 
     ],
   }
   const created = entryFixture({ display_name: 'Repro Alpha' })
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, communitySearchAnswer))
     if (u === `/api/products/${communityProduct.id}`) return Promise.resolve(jsonResponse(200, communityProduct))
-    if (u === '/api/entries' && init?.method === 'POST') return Promise.resolve(jsonResponse(201, created))
+    if (u === '/api/entries' && (url as Request).method === 'POST') return Promise.resolve(jsonResponse(201, created))
     return Promise.resolve(jsonResponse(404, {}))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -604,10 +604,10 @@ it('adds a community pick straight from fetchProduct, never posting a resolve', 
   await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
   expect(await screen.findByText('entry-detail')).toBeInTheDocument()
 
-  const post = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST' && c[0] === '/api/entries')
-  const body = putBody<Record<string, unknown>>(post?.[1] as RequestInit)
+  const post = fetchMock.mock.calls.find((c) => (c[0] as Request).method === 'POST' && requestPath(c[0]) === '/api/entries')
+  const body = await putBody<Record<string, unknown>>(post?.[0])
   expect(body.product_id).toBe(communityProduct.id)
-  expect(fetchMock.mock.calls.some((c) => String(c[0]) === '/api/products/resolve')).toBe(false)
+  expect(fetchMock.mock.calls.some((c) => requestPath(c[0]) === '/api/products/resolve')).toBe(false)
 })
 
 it('groups the details region select from the picked chip and defaults platform-first', async () => {
@@ -620,8 +620,8 @@ it('groups the details region select from the picked chip and defaults platform-
       platforms: [{ igdb_platform_id: 6, name: 'SNES', release_regions: ['north_america', 'europe'] }],
     }],
   }
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, groupedAnswer))
     return Promise.resolve(jsonResponse(404, {}))
   })
@@ -641,8 +641,8 @@ it('groups the details region select from the picked chip and defaults platform-
 })
 
 it('restores the typed search when Back returns from the details step', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, searchAnswer))
     return Promise.resolve(jsonResponse(404, {}))
   })
@@ -680,8 +680,8 @@ it('prefers the wizard snapshot over the q deep link on Back', async () => {
 })
 
 it('seeds the custom step with an accessory item type and the typed text from a hardware-tab search', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(jsonResponse(404, {}))
   })

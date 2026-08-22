@@ -9,10 +9,11 @@ import type { Product } from '../../api/catalog'
 import { ApiError } from '../../api/client'
 import type { ManualMatch } from '../../lib/catalog'
 import { confirmThen } from '../../lib/confirm'
+import { btnSecondary, btnSecondaryXs } from '../../lib/formStyles'
 import { resolveApiError } from '../../lib/resolveApiError'
 import SearchPicker from '../catalog/SearchPicker'
-import type { CatalogPick } from '../catalog/SearchPicker'
-import ManualMatchPicker from '../wizard/ManualMatchPicker'
+import type { CatalogPick } from '../../lib/catalogPicks'
+import ManualMatchPicker from '../catalog/ManualMatchPicker'
 
 type Candidate = PromoteCandidatesPage['products'][number]['candidates'][number]
 
@@ -99,7 +100,7 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
                 type="button"
                 onClick={() => dismiss.mutate(c)}
                 disabled={dismiss.isPending}
-                className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50 disabled:opacity-50"
+                className={btnSecondaryXs}
               >
                 <Trans>Dismiss</Trans>
               </button>
@@ -110,7 +111,7 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
       <button
         type="button"
         onClick={() => setPicking(true)}
-        className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50"
+        className={btnSecondary}
       >
         <Trans>Promote to provider identity</Trans>
       </button>
@@ -127,7 +128,7 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
                 <button
                   type="button"
                   onClick={() => setListing(null)}
-                  className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
+                  className={btnSecondaryXs}
                 >
                   <Trans>Clear</Trans>
                 </button>
@@ -145,7 +146,7 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
               <button
                 type="button"
                 onClick={() => setAttaching(true)}
-                className="mt-2 rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
+                className={`${btnSecondary} mt-2`}
               >
                 <Trans>Attach a price listing (optional)</Trans>
               </button>

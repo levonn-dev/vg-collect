@@ -2,9 +2,9 @@ import { i18n } from '@lingui/core'
 import { cleanup, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { messages as jaMessages } from '../../locales/ja.po'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, requestPath } from '../../test/fixtures'
 import { renderWithMoney } from '../../test/money'
-import type { GamePick } from './SearchPicker'
+import type { GamePick } from '../../lib/catalogPicks'
 import SearchPicker from './SearchPicker'
 
 function renderPicker(
@@ -48,7 +48,7 @@ it('searches games and picks a platform', async () => {
   await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'chrono')
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
   expect(await screen.findByText('Chrono Trigger')).toBeInTheDocument()
-  expect(String(fetchMock.mock.calls[0][0])).toContain('type=game&q=chrono')
+  expect(requestPath(fetchMock.mock.calls[0][0])).toContain('type=game&q=chrono')
   await userEvent.click(screen.getByRole('button', { name: 'Chrono Trigger on SNES' }))
   expect(onPick).toHaveBeenCalledWith({
     kind: 'game', igdbGameId: 1000, name: 'Chrono Trigger', platformId: 6, platformName: 'SNES',
@@ -442,7 +442,7 @@ it('auto-runs an initial query', async () => {
   // The input starts prefilled, not just the query that fires.
   expect(screen.getByRole('searchbox', { name: /search/i })).toHaveValue('chrono')
   expect(await screen.findByText('Chrono Trigger')).toBeInTheDocument()
-  expect(String(fetchMock.mock.calls[0][0])).toContain('q=chrono')
+  expect(requestPath(fetchMock.mock.calls[0][0])).toContain('q=chrono')
 })
 
 it('hides the radio fieldset entirely when only one kind is offered', () => {
@@ -486,7 +486,7 @@ it('offers PriceCharting when included in kinds, and searches it', async () => {
   await userEvent.click(screen.getByRole('radio', { name: 'PriceCharting' }))
   await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'mario')
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
-  expect(String(fetchMock.mock.calls[0][0])).toContain('type=pc_listing&q=mario')
+  expect(requestPath(fetchMock.mock.calls[0][0])).toContain('type=pc_listing&q=mario')
 })
 
 it('renders a pc_listing price line, with - for a missing value', async () => {

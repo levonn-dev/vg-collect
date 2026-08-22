@@ -1,4 +1,4 @@
-import type { CatalogPick } from '../components/catalog/SearchPicker'
+import type { CatalogPick } from './catalogPicks'
 import { resolveRequestFor } from './catalog'
 
 it('builds a plain game resolve without a manual match', () => {

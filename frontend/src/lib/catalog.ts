@@ -1,5 +1,5 @@
 import type { ResolveRequest } from '../api/catalog'
-import type { CatalogPick, CommunityPick } from '../components/catalog/SearchPicker'
+import type { CatalogPick, CommunityPick } from './catalogPicks'
 
 // A manual match is the user's exact PriceCharting listing choice for
 // a game being added: it rides the resolve, and because game identity

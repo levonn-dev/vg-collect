@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse, putBody } from '../../test/fixtures'
+import { calledPath, jsonResponse, putBody, requestPath } from '../../test/fixtures'
 import { renderWithMoney } from '../../test/money'
 import ProxyPicker from './ProxyPicker'
 
@@ -8,8 +8,8 @@ afterEach(() => vi.unstubAllGlobals())
 
 it('search, platform pick, resolve, and hand back the product', async () => {
   const product = { id: 'p9', type: 'game', name: 'Chrono Trigger', created_at: 'x', updated_at: 'x' }
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) {
       return Promise.resolve(jsonResponse(200, {
         degraded: false,
@@ -30,8 +30,8 @@ it('search, platform pick, resolve, and hand back the product', async () => {
 
 it('offers PriceCharting and resolves a pc_listing pick to its product', async () => {
   const product = { id: 'p10', type: 'pc_listing', name: "Super Mario 64 [Player's Choice]", created_at: 'x', updated_at: 'x' }
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) {
       return Promise.resolve(jsonResponse(200, {
         degraded: false,
@@ -53,15 +53,14 @@ it('offers PriceCharting and resolves a pc_listing pick to its product', async (
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
   await userEvent.click(await screen.findByRole('button', { name: /use super mario 64/i }))
 
-  const [resolveUrl, resolveInit] = fetchMock.mock.calls[1] as [string, RequestInit]
-  expect(resolveUrl).toBe('/api/products/resolve')
-  expect(putBody(resolveInit)).toEqual({ type: 'pc_listing', pc_product_id: 5099 })
+  expect(calledPath(fetchMock, 1)).toBe('/api/products/resolve')
+  expect(await putBody(fetchMock.mock.calls[1][0])).toEqual({ type: 'pc_listing', pc_product_id: 5099 })
   expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'p10' }))
 })
 
 it('prefills the search box from an initialQuery prop', () => {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    String(url).startsWith('/api/search')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    requestPath(url).startsWith('/api/search')
       ? Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
       : Promise.resolve(jsonResponse(404, {})),
   ))
@@ -74,8 +73,8 @@ it('prefills the search box from an initialQuery prop', () => {
 })
 
 it('reports when the resolve fails', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search')) {
       return Promise.resolve(jsonResponse(200, {
         degraded: false,
@@ -94,8 +93,8 @@ it('reports when the resolve fails', async () => {
 })
 
 it('suppresses the community lane even when the response carries community results', async () => {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const u = String(url)
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
     if (u.startsWith('/api/search'))
       return Promise.resolve(jsonResponse(200, {
         degraded: false,
