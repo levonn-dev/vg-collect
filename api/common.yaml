@@ -1,0 +1,1430 @@
+openapi: 3.0.3
+info:
+  title: vgkeep shared API components
+  version: 0.1.0
+  description: >
+    Component library shared by the six service contracts in this
+    directory. Holds every schema that is part of more than one
+    service's wire contract, plus the bearer security scheme. Not an
+    API of its own (no paths); the service contracts reference it by
+    relative $ref, and `task gen` bundles each service contract with these
+    components inlined into api/bundled/.
+paths: {}
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    catalogQ:
+      name: q
+      in: query
+      required: true
+      schema: { type: string, minLength: 1 }
+    cursor:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string }
+    entriesSort:
+      name: sort
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [name, release_date, purchased_at, created_at, value, paid, rating, backlog_rank]
+        default: created_at
+    groupBy:
+      name: group_by
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [platform, status, item_type, location, tag]
+    offset:
+      name: offset
+      in: query
+      required: false
+      schema: { type: integer, minimum: 0, default: 0 }
+    order:
+      name: order
+      in: query
+      required: false
+      schema: { type: string, enum: [asc, desc], default: desc }
+    platformId:
+      name: platform_id
+      in: query
+      required: false
+      description: IGDB platform ids (matches the creation-time snapshot).
+      schema:
+        type: array
+        items: { type: integer, format: int64 }
+    statusFilter:
+      name: status
+      in: query
+      required: false
+      schema:
+        type: array
+        items: { $ref: "#/components/schemas/EntryStatus" }
+    tab:
+      name: tab
+      in: query
+      required: true
+      schema: { type: string, enum: [following, you] }
+    userSearchQ:
+      name: q
+      in: query
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 64 }
+  schemas:
+    AcceptedStatus:
+      type: string
+      enum: [started]
+    ActivityVerb:
+      type: string
+      enum: [followed_user, liked_shelf, commented_shelf, published_shelf]
+    AdminSubmission:
+      description: >
+        One queue row: the submission plus the live proposal from the
+        entry join (display_name, item_type, platform_name, region,
+        edition, first_release_date pre-fill the curation form;
+        entries carry no variant - the single edition field is the
+        idiom).
+      type: object
+      required: [id, entry_id, user_id, status, display_name, item_type, region, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        entry_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/SubmissionStatus" }
+        display_name: { type: string }
+        item_type: { $ref: "#/components/schemas/ItemType" }
+        platform_name: { type: string }
+        region: { type: string }
+        edition: { type: string }
+        first_release_date: { type: string, format: date }
+        developers:
+          type: array
+          items: { type: string }
+          description: The entry's developer credit facts, live from the proposal join; prefill the curation form.
+        publishers:
+          type: array
+          items: { type: string }
+          description: The entry's publisher credit facts, live from the proposal join; prefill the curation form.
+        cover_url:
+          type: string
+          description: The entry's cover URL, live from the proposal join; prefills the curation cover field.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AdminSubmissionsPage:
+      type: object
+      required: [submissions, total_count]
+      properties:
+        submissions:
+          type: array
+          items: { $ref: "#/components/schemas/AdminSubmission" }
+        total_count:
+          type: integer
+          format: int64
+          description: Full pending count, beyond this page.
+    BulkUpdateRequest:
+      description: >
+        Delta applied across the caller's own entries among entry_ids
+        (foreign or unknown ids are silently not counted, same
+        ownership-filtering posture as tag attachment). At least one
+        of add_tag_ids / remove_tag_ids / status / storage_location
+        must be present, else 400. storage_location's clearing rule is
+        the OPPOSITE of the full-replacement update's: here an ABSENT
+        storage_location leaves the field untouched, and an explicit
+        empty string clears it.
+      type: object
+      required: [entry_ids]
+      properties:
+        entry_ids:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items: { type: string, format: uuid }
+        add_tag_ids:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+        remove_tag_ids:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/EntryStatus" }
+        storage_location:
+          type: string
+          maxLength: 200
+          description: Empty string clears the field; an absent field leaves it untouched (see the operation description).
+    BulkUpdateResult:
+      type: object
+      required: [updated_count]
+      properties:
+        updated_count:
+          type: integer
+          description: Count of the caller's own entries among entry_ids, whether or not any targeted field actually changed.
+    CatalogPlatform:
+      description: One platform-catalog row with its known aliases.
+      type: object
+      required: [igdb_id, name, aliases]
+      properties:
+        igdb_id: { type: integer, format: int64 }
+        name: { type: string }
+        aliases:
+          description: Alternate spellings and abbreviations (compare case-insensitively).
+          type: array
+          items: { type: string }
+    CatalogProvider:
+      type: string
+      enum: [igdb, pricecharting]
+    CommunityMeta:
+      description: >
+        Facts curated at community mint time; retained after promotion
+        as gap-fill (provider blocks win per-field where present).
+      type: object
+      properties:
+        platform_name: { type: string }
+        region:
+          type: string
+          maxLength: 32
+          description: >
+            Curated entry-vocabulary region fact (open-world; known
+            values ntsc_u, ntsc_j, pal, region_free, korea, brazil,
+            china).
+        first_release_date: { type: string, format: date }
+        developers:
+          type: array
+          items: { type: string }
+          description: >
+            Curated developer company names, one per element; served
+            into entry credit snapshots when the provider block
+            carries no developer credits (per-field gap-fill).
+        publishers:
+          type: array
+          items: { type: string }
+          description: >
+            Curated publisher company names; same gap-fill posture as
+            developers.
+        cover_url:
+          type: string
+          description: >
+            User-supplied cover image URL (https, never fetched
+            server-side; the client renders it with a broken-image
+            fallback). Served as the product cover when no provider
+            cover is present; retained after promotion as gap-fill.
+    CommunityProductSpec:
+      description: >
+        The curated fields for approve_new; mirrors the enrichment
+        mint request (single edition field, no variant).
+      type: object
+      required: [type, name]
+      properties:
+        type: { $ref: "#/components/schemas/ItemType" }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        platform_name: { type: string, maxLength: 100 }
+        region:
+          type: string
+          maxLength: 32
+          description: >
+            Curated entry-vocabulary region fact; stored under the
+            community facts block (community.region), not the
+            product's top-level region field.
+        edition:
+          type: string
+          maxLength: 128
+          description: The entry idiom's single "Edition or variant" note.
+        first_release_date: { type: string, format: date }
+        developers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Curated developer company names, one per element.
+        publishers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Curated publisher company names, one per element.
+        cover_url:
+          type: string
+          maxLength: 512
+          pattern: "^https://"
+          description: Optional https cover image URL (validated by shape only, never fetched).
+    CommunityProductsPage:
+      type: object
+      required: [products, total_count]
+      properties:
+        products:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of community products, beyond this page.
+    CompanyCredit:
+      type: object
+      required: [name, developer, publisher]
+      properties:
+        name: { type: string }
+        developer: { type: boolean }
+        publisher: { type: boolean }
+    CurrencyCode:
+      type: string
+      pattern: "^[A-Z]{3}$"
+    CurrencySpend:
+      type: object
+      required: [currency, total_cents]
+      properties:
+        currency: { type: string }
+        total_cents: { type: integer, format: int64 }
+    Dashboard:
+      type: object
+      required: [total_entries, by_status, by_item_type, by_platform, spend, pricing]
+      properties:
+        total_entries: { type: integer }
+        by_status:
+          type: object
+          additionalProperties: { type: integer }
+        by_item_type:
+          type: object
+          additionalProperties: { type: integer }
+        by_platform:
+          type: array
+          items: { $ref: "#/components/schemas/PlatformCount" }
+        spend:
+          type: array
+          description: Sum of price_paid_cents per currency, over entries that record a price.
+          items: { $ref: "#/components/schemas/CurrencySpend" }
+        pricing: { $ref: "#/components/schemas/DashboardPricing" }
+    DashboardPricing:
+      type: object
+      required: [available, priced_entries, unpriced_entries, excluded_entries]
+      properties:
+        available:
+          type: boolean
+          description: False when enrichment was unreachable; total_value_cents is then absent.
+        total_value_cents: { type: integer, format: int64 }
+        priced_entries: { type: integer }
+        unpriced_entries:
+          type: integer
+          description: Entries whose effective product is unmatched or lacks a price for their packaging.
+        excluded_entries:
+          type: integer
+          description: Entries with pricing_mode disabled.
+    DismissCandidateRequest:
+      type: object
+      required: [provider, provider_id]
+      properties:
+        provider: { $ref: "#/components/schemas/CatalogProvider" }
+        provider_id: { type: integer, format: int64 }
+    Entry:
+      description: >
+        One physical copy. On product-backed entries the catalog
+        fields (item_type, display_name, platform, first_release_date,
+        igdb_game_id) are immutable creation-time snapshots from the
+        enrichment product and product_id remains the live join key
+        for prices. A CUSTOM entry has no product_id: its display
+        fields are user-owned and editable, platform carries the
+        picked or normalized identity - name-only for escape-hatch
+        free text - when supplied, and igdb_game_id is always absent.
+        value_cents is composed at read time from the
+        effective pricing product and the packaging-matched price
+        field; (or, with pricing_mode custom, taken directly from
+        custom_value_cents, packaging-independent); it is null when
+        pricing_mode is disabled, the product is unmatched, no price
+        exists for the packaging, or enrichment is temporarily
+        unreachable.
+      type: object
+      required: [id, item_type, media_type, display_name, region,
+                 packaging, has_box, has_manual, currency, pricing_mode, status,
+                 pinned, source, tags, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        product_id:
+          type: string
+          format: uuid
+          description: Absent on custom entries.
+        item_type: { $ref: "#/components/schemas/ItemType" }
+        media_type: { $ref: "#/components/schemas/MediaType" }
+        display_name: { type: string }
+        platform: { $ref: "#/components/schemas/EntryPlatform" }
+        first_release_date: { type: string, format: date }
+        cover_url:
+          type: string
+          description: >
+            Cover art URL. For product-backed entries it is snapshotted
+            from the product at creation (and refreshed on adoption).
+            Custom entries may set their own (https, shape-validated).
+            Absent on hardware and products without art (render a
+            placeholder).
+        localized_name:
+          type: string
+          description: Region-picked native-script title (server-derived from the entry's region; absent when the region has none).
+        localized_name_translit:
+          type: string
+          description: Latin transliteration of localized_name's title (server-derived).
+        localized_cover_url:
+          type: string
+          description: Region-picked box art URL (server-derived).
+        developers:
+          type: array
+          items: { type: string }
+          description: >-
+            Developer company names snapshotted for the entry: IGDB
+            credits where the product carries them, community curated
+            lists as gap-fill, or the user's own facts on a custom
+            entry. Absent when no credits are known.
+        publishers:
+          type: array
+          items: { type: string }
+          description: Publisher company names; same sourcing as developers.
+        igdb_game_id:
+          type: integer
+          format: int64
+          description: >
+            The recommendation identity: snapshotted from the entry's
+            own product, or from the proxy target on custom game
+            entries (owning a reproduction of X means playing X).
+        region: { type: string }
+        edition:
+          type: string
+          description: >
+            Per-copy variant note ("first print (glitched rev)",
+            "black edition"): the idiom for variants of cataloged
+            items is an entry on the base product with the variant
+            recorded here.
+        packaging: { $ref: "#/components/schemas/Packaging" }
+        has_box: { type: boolean }
+        has_manual: { type: boolean }
+        box_condition: { $ref: "#/components/schemas/ItemCondition" }
+        manual_condition: { $ref: "#/components/schemas/ItemCondition" }
+        item_condition: { $ref: "#/components/schemas/ItemCondition" }
+        price_paid_cents: { type: integer, format: int64 }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        purchased_at: { type: string, format: date }
+        purchased_from: { type: string }
+        pricing_mode: { $ref: "#/components/schemas/PricingMode" }
+        pricing_product_id: { type: string, format: uuid }
+        custom_value_cents:
+          type: integer
+          format: int64
+          description: >
+            The user-set market value (USD cents). With
+            pricing_mode custom it IS the entry's value; under any
+            other mode it persists as "last custom price" memory.
+        custom_value_set_at:
+          type: string
+          format: date-time
+          description: >
+            Server-managed: stamped when custom_value_cents is first
+            set or changes value, untouched otherwise. Read-only.
+        custom_value_entered_cents:
+          type: integer
+          format: int64
+          description: >
+            The custom price exactly as the user typed it, in
+            custom_value_entered_currency minor units (major units x
+            100, including zero-decimal currencies). Display metadata
+            only: no aggregation reads it; custom_value_cents remains
+            the USD value used everywhere.
+        custom_value_entered_currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          description: Currency of custom_value_entered_cents.
+        status: { $ref: "#/components/schemas/EntryStatus" }
+        rating: { type: integer, minimum: 1, maximum: 10 }
+        notes: { type: string }
+        storage_location: { type: string }
+        pinned: { type: boolean }
+        backlog_rank:
+          type: string
+          description: Present exactly while status is backlog; server-generated.
+        source: { type: string, enum: [manual, steam, psn, epic] }
+        external_ref: { type: string }
+        tags:
+          type: array
+          items: { $ref: "#/components/schemas/TagRef" }
+        value_cents: { type: integer, format: int64 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        region_mismatch_ack_at:
+          type: string
+          format: date-time
+          description: >
+            Null until the owner dismisses the region-mismatch banner;
+            cleared whenever region or product changes.
+    EntryCreate:
+      description: >
+        Product-backed: product_id comes from a prior enrichment
+        resolve and the catalog fields are snapshotted server-side
+        (display_name/item_type/platform_name/first_release_date must
+        NOT be sent). Custom (no product_id): display_name and
+        item_type are required, platform_name and first_release_date
+        optional; pricing_mode defaults to disabled and must not be
+        auto. media_type accepts only physical (the column already
+        allows digital: the API widens when platform sync arrives).
+        source is server-set manual. pricing_product_id is required
+        when pricing_mode is proxy; box_condition requires has_box and
+        manual_condition requires has_manual. custom_value_cents is
+        required when pricing_mode is custom.
+      type: object
+      required: [region, packaging]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          description: Omit for a custom (off-catalog) entry.
+        display_name:
+          type: string
+          maxLength: 200
+          description: Custom entries only (required there).
+        item_type:
+          description: Custom entries only (required there).
+          allOf:
+            - $ref: "#/components/schemas/ItemType"
+        platform_name:
+          type: string
+          maxLength: 100
+          description: Custom entries only.
+        platform_igdb_id:
+          type: integer
+          format: int64
+          description: Custom entries only; the canonical platform id from the picker (surfaces the entry in the platform filter).
+        cover_url:
+          type: string
+          maxLength: 512
+          pattern: "^https://"
+          description: Custom entries only; an https cover image URL (validated by shape, never fetched).
+        first_release_date:
+          type: string
+          format: date
+          description: Custom entries only.
+        developers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: >-
+            Custom entries only: developer company names, one per
+            element. Ignored on product-backed creation, where the
+            snapshot derives credits from the product.
+        publishers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Custom entries only; publisher company names, one per element.
+        media_type: { type: string, enum: [physical], default: physical }
+        region:
+          type: string
+          maxLength: 32
+          description: >-
+            Entry region. Known values ntsc_u, ntsc_j, pal,
+            region_free, korea, brazil and china are first-class:
+            labeled in the UI, filterable, normalize-lever promotion
+            targets, with release-date chains, availability rows, and
+            localized display snapshots per region (ntsc_u and
+            region_free render the canonical presentation by design).
+            korea, brazil and china have no PriceCharting axis, so
+            they price from base listings as their deliberate proxy.
+            Any other non-empty string is stored verbatim as a
+            display fact and prices like ntsc_u until the value
+            graduates to the known set.
+        edition:
+          type: string
+          maxLength: 200
+          description: Per-copy variant note; the idiom for variants of cataloged items.
+        packaging: { $ref: "#/components/schemas/Packaging" }
+        has_box: { type: boolean, default: false }
+        has_manual: { type: boolean, default: false }
+        box_condition: { $ref: "#/components/schemas/ItemCondition" }
+        manual_condition: { $ref: "#/components/schemas/ItemCondition" }
+        item_condition: { $ref: "#/components/schemas/ItemCondition" }
+        price_paid_cents: { type: integer, format: int64, minimum: 0 }
+        currency: { type: string, pattern: "^[A-Z]{3}$", default: USD }
+        purchased_at: { type: string, format: date }
+        purchased_from: { type: string, maxLength: 200 }
+        pricing_mode:
+          default: auto
+          allOf:
+            - $ref: "#/components/schemas/PricingMode"
+        pricing_product_id: { type: string, format: uuid }
+        custom_value_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        custom_value_entered_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        custom_value_entered_currency: { type: string, pattern: "^[A-Z]{3}$" }
+        match_provenance:
+          type: string
+          enum: [auto, user]
+          default: auto
+          description: >-
+            Whose choice the matched product is. Send user only when
+            the add flow's manual match picked the price listing;
+            automated repoints (region edits, the entry rematch)
+            never touch user rows. Not accepted on update - the
+            server stamps user when the narrow product_id re-match
+            arm fires.
+        status:
+          default: backlog
+          allOf:
+            - $ref: "#/components/schemas/EntryStatus"
+        rating: { type: integer, minimum: 1, maximum: 10 }
+        notes: { type: string, maxLength: 10000 }
+        storage_location: { type: string, maxLength: 200 }
+        pinned: { type: boolean, default: false }
+        tag_ids:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+    EntryGroup:
+      type: object
+      required: [key, label, entries]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/Entry" }
+    EntryList:
+      description: >
+        One page of the sorted, filtered sequence. Exactly one of
+        entries/groups is present (groups when group_by was requested,
+        partitioning this page only).
+      type: object
+      required: [pricing_available, total_count]
+      properties:
+        pricing_available:
+          type: boolean
+          description: False when enrichment was unreachable; every value_cents is null.
+        total_count:
+          type: integer
+          description: Size of the full filtered set, before pagination.
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/Entry" }
+        groups:
+          type: array
+          items: { $ref: "#/components/schemas/EntryGroup" }
+    EntryPlatform:
+      description: >
+        The entry's platform: a creation-time snapshot of the product's
+        platform (both fields) on product-backed entries, or a
+        user-supplied platform on custom entries - both fields when
+        picked from the catalog or normalized by the admin lever,
+        name-only for escape-hatch free text. Absent when neither
+        exists.
+      type: object
+      required: [name]
+      properties:
+        igdb_platform_id:
+          type: integer
+          format: int64
+          description: Absent on name-only custom entries.
+        name: { type: string }
+    EntryStatus:
+      type: string
+      enum: [backlog, playing, beaten, completed, dropped, shelved]
+    EntryUpdate:
+      description: >
+        Full replacement of the mutable state; an absent optional field
+        is cleared (the edit form holds the whole entry). media_type
+        and custom-ness are immutable. product_id accepts one narrow
+        change - re-matching an auto-priced entry off an unmatched
+        game product onto a product of the same game and platform
+        (see the field description); anything else answers 400 code
+        invalid_product_change. That re-match stamps
+        match_provenance=user; automated region repoints only ever run
+        on match_provenance=auto entries. On custom entries
+        display_name is required and platform_name/first_release_date
+        replace like any optional field; on product-backed entries all
+        three are rejected. tag_ids replaces the tag set; absent means
+        no tags. custom_value_cents is required when pricing_mode is
+        custom.
+      type: object
+      required: [region, packaging, pricing_mode, status, pinned]
+      properties:
+        display_name:
+          type: string
+          maxLength: 200
+          description: Custom entries only (required there).
+        platform_name:
+          type: string
+          maxLength: 100
+          description: Custom entries only.
+        platform_igdb_id:
+          type: integer
+          format: int64
+          description: Custom entries only; the canonical platform id from the picker.
+        cover_url:
+          type: string
+          maxLength: 512
+          pattern: "^https://"
+          description: Custom entries only; an https cover image URL (validated by shape, never fetched).
+        first_release_date:
+          type: string
+          format: date
+          description: Custom entries only.
+        developers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Custom entries only; developer company names, one per element (full replacement).
+        publishers:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 120 }
+          description: Custom entries only; publisher company names, one per element (full replacement).
+        product_id:
+          type: string
+          format: uuid
+          description: >
+            Narrow re-match. Accepted only when the entry is
+            product-backed with pricing_mode auto, its current product
+            is a game with no price mapping, and the new product is a
+            game of the same family (same igdb game and platform);
+            the same id as the entry already has is a no-op. Anything
+            else answers 400 code invalid_product_change; enrichment
+            unreachable answers 502 code enrichment_unavailable and
+            leaves the entry unchanged. Snapshotted display fields
+            stay as they are.
+        region:
+          type: string
+          maxLength: 32
+          description: >-
+            Entry region. Known values ntsc_u, ntsc_j, pal,
+            region_free, korea, brazil and china are first-class:
+            labeled in the UI, filterable, normalize-lever promotion
+            targets, with release-date chains, availability rows, and
+            localized display snapshots per region (ntsc_u and
+            region_free render the canonical presentation by design).
+            korea, brazil and china have no PriceCharting axis, so
+            they price from base listings as their deliberate proxy.
+            Any other non-empty string is stored verbatim as a
+            display fact and prices like ntsc_u until the value
+            graduates to the known set. On an auto-provenance game entry, a region
+            change repoints the entry to the sibling catalog product
+            whose listing prices that region; snapshotted display
+            fields re-derive from it.
+        edition:
+          type: string
+          maxLength: 200
+          description: Per-copy variant note; the idiom for variants of cataloged items.
+        packaging: { $ref: "#/components/schemas/Packaging" }
+        has_box: { type: boolean, default: false }
+        has_manual: { type: boolean, default: false }
+        box_condition: { $ref: "#/components/schemas/ItemCondition" }
+        manual_condition: { $ref: "#/components/schemas/ItemCondition" }
+        item_condition: { $ref: "#/components/schemas/ItemCondition" }
+        price_paid_cents: { type: integer, format: int64, minimum: 0 }
+        currency: { type: string, pattern: "^[A-Z]{3}$", default: USD }
+        purchased_at: { type: string, format: date }
+        purchased_from: { type: string, maxLength: 200 }
+        pricing_mode: { $ref: "#/components/schemas/PricingMode" }
+        pricing_product_id: { type: string, format: uuid }
+        custom_value_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        custom_value_entered_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        custom_value_entered_currency: { type: string, pattern: "^[A-Z]{3}$" }
+        status: { $ref: "#/components/schemas/EntryStatus" }
+        rating: { type: integer, minimum: 1, maximum: 10 }
+        notes: { type: string, maxLength: 10000 }
+        storage_location: { type: string, maxLength: 200 }
+        pinned: { type: boolean }
+        tag_ids:
+          type: array
+          maxItems: 50
+          items: { type: string, format: uuid }
+    FXRates:
+      type: object
+      required: [base, date, rates]
+      properties:
+        base:
+          type: string
+          description: Always USD.
+        date:
+          type: string
+          description: Upstream snapshot date (YYYY-MM-DD), not the fetch time.
+        rates:
+          type: object
+          description: >
+            Target-units-per-USD by ISO 4217 code. USD itself is
+            omitted (it is the base; conversion short-circuits).
+          additionalProperties: { type: number, format: double }
+    Handle:
+      type: string
+      minLength: 2
+      maxLength: 30
+      pattern: "^[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?$"
+    Identities:
+      type: object
+      required: [identities]
+      properties:
+        identities:
+          type: array
+          items: { $ref: "#/components/schemas/Identity" }
+    Identity:
+      type: object
+      required: [id, provider, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        provider: { type: string }
+        email:
+          type: string
+          description: Informational; the email the provider asserted when this identity last signed in.
+        created_at: { type: string, format: date-time }
+    IgdbMeta:
+      description: Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
+      type: object
+      required: [game_id, name, genres, themes, franchises, similar_games, companies, fetched_at]
+      properties:
+        game_id: { type: integer, format: int64 }
+        name: { type: string }
+        cover_url: { type: string }
+        genres:
+          type: array
+          items: { type: string }
+        themes:
+          type: array
+          items: { type: string }
+        franchises:
+          type: array
+          items: { type: string }
+        similar_games:
+          type: array
+          items: { type: integer, format: int64 }
+        companies:
+          type: array
+          items: { $ref: "#/components/schemas/CompanyCredit" }
+        first_release_date:
+          type: string
+          format: date
+          description: >
+            Earliest date for the product's platform; the game-level
+            first release when IGDB lists no dated rows for the
+            platform.
+        release_dates:
+          description: >
+            Per-region release dates for the product's platform, the
+            earliest concrete date per region. Region values are
+            canonical IGDB names (europe, north_america, australia,
+            new_zealand, japan, china, asia, worldwide, korea, brazil).
+            JP twin platforms fold into their sibling (SNES/Super Famicom,
+            NES/Famicom).
+          type: array
+          items: { $ref: "#/components/schemas/ReleaseDate" }
+        localizations:
+          description: >
+            Per-region presentations; absent both on projections
+            predating the feature and on games with no localizations at
+            all (an empty slice is omitted rather than sent).
+          type: array
+          items: { $ref: "#/components/schemas/Localization" }
+        fetched_at: { type: string, format: date-time }
+    ItemCondition:
+      type: string
+      enum: [mint, near_mint, very_good, good, acceptable, poor]
+    ItemType:
+      type: string
+      enum: [game, console, accessory]
+    LandingPage:
+      type: string
+      enum: [collection, feed, explore]
+    LibraryEntry:
+      type: object
+      required: [igdb_game_id]
+      properties:
+        igdb_game_id: { type: integer, format: int64 }
+        rating: { type: integer, minimum: 1, maximum: 10 }
+        status:
+          type: string
+          description: The caller's own status vocabulary; scoring only distinguishes "dropped".
+    Localization:
+      description: >
+        One region's presentation of the game, merged from IGDB
+        game_localizations and tagged alternative names. region is an
+        IGDB region identifier served verbatim (ja-JP, EU, ko-KR,
+        zh-CN, zh-TW, pt-BR;
+        open-world - new identifiers pass through). name is the
+        native-script title, translit its latin transliteration,
+        cover_url the region's own box art; each is independently
+        optional (rows are sparse - readers fall back per field).
+      type: object
+      required: [region]
+      properties:
+        region: { type: string }
+        name: { type: string }
+        translit: { type: string }
+        cover_url: { type: string }
+    MappingRequest:
+      type: object
+      required: [pc_product_id]
+      properties:
+        pc_product_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Null clears the mapping (the product becomes unmatched and held).
+    MediaType:
+      type: string
+      enum: [physical, digital]
+    NormalizeResult:
+      type: object
+      required: [scanned, normalized, skipped]
+      properties:
+        scanned: { type: integer }
+        normalized: { type: integer }
+        skipped: { type: integer }
+    Packaging:
+      type: string
+      enum: [sealed, cib, loose]
+    PlatformCatalog:
+      type: object
+      required: [platforms]
+      properties:
+        platforms:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogPlatform" }
+    PlatformCount:
+      type: object
+      required: [name, count]
+      properties:
+        name: { type: string }
+        count: { type: integer }
+    PlatformRef:
+      type: object
+      required: [igdb_platform_id, name]
+      properties:
+        igdb_platform_id: { type: integer, format: int64 }
+        name: { type: string }
+        logo_url:
+          type: string
+          description: IGDB platform logo; the display fallback for products without cover art.
+        release_regions:
+          description: >
+            Distinct canonical IGDB release regions for this game on this
+            platform (japan, north_america, europe, ...), ordered by that
+            region's earliest release date on the platform (dateless rows
+            last, then alphabetical). Platform-exact: JP twin platforms are
+            NOT folded here (a Famicom row stays on Famicom), unlike the
+            product projection's date fold - the physical release is
+            platform-specific. Populated on game search results only;
+            absent on product payloads and hardware results.
+          type: array
+          items: { $ref: "#/components/schemas/ReleaseRegion" }
+    PricechartingMeta:
+      description: >
+        The PriceCharting mapping and current prices; refreshed daily.
+        Absent from a product when no candidate cleared the match
+        confidence threshold (no guessing) and the mapping has not been
+        corrected by an admin.
+      type: object
+      required: [pc_product_id, pc_name, console_name, match_confidence, verified, as_of]
+      properties:
+        pc_product_id: { type: integer, format: int64 }
+        pc_name: { type: string }
+        console_name: { type: string }
+        match_confidence: { type: number, format: double }
+        verified: { type: boolean }
+        loose_cents: { type: integer, format: int64 }
+        cib_cents: { type: integer, format: int64 }
+        new_cents: { type: integer, format: int64 }
+        as_of: { type: string, format: date-time }
+    PricingMode:
+      type: string
+      enum: [auto, proxy, custom, disabled]
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        code: { type: string }
+    Product:
+      type: object
+      required: [id, type, name, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/ProductType" }
+        name: { type: string }
+        platform: { $ref: "#/components/schemas/PlatformRef" }
+        region:
+          type: string
+          description: >
+            Provider hardware identity fact; community products carry
+            their region under community.region instead.
+        edition: { type: string }
+        variant: { type: string }
+        igdb: { $ref: "#/components/schemas/IgdbMeta" }
+        pricecharting: { $ref: "#/components/schemas/PricechartingMeta" }
+        match_hold:
+          type: boolean
+          description: >
+            Present true when an admin clear holds this product's
+            mapping against a future automated match (resolve, or the
+            entry-side re-match).
+        origin:
+          description: >
+            Emitted only for admin-minted community products (absent
+            means provider-identified). Community products live
+            outside the provider identity indexes; their curated name
+            is their identity.
+          allOf:
+            - $ref: "#/components/schemas/ProductOrigin"
+        community: { $ref: "#/components/schemas/CommunityMeta" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ProductOrigin:
+      type: string
+      enum: [community]
+    ProductType:
+      type: string
+      enum: [game, console, accessory, pc_listing]
+    ProfileCard:
+      description: The cross-user projection of a user. Never email, never roles.
+      type: object
+      required: [user_id, handle, profile_visibility]
+      properties:
+        user_id: { type: string, format: uuid }
+        handle: { $ref: "#/components/schemas/Handle" }
+        avatar_url: { type: string }
+        profile_visibility: { $ref: "#/components/schemas/Visibility" }
+    ProfileSocialSummary:
+      type: object
+      required: [follower_count, following_count, viewer_follows]
+      properties:
+        follower_count: { type: integer }
+        following_count: { type: integer }
+        viewer_follows: { type: boolean }
+    PromoteCandidate:
+      type: object
+      required: [provider, provider_id, name, score, found_at]
+      properties:
+        provider: { $ref: "#/components/schemas/CatalogProvider" }
+        provider_id: { type: integer, format: int64 }
+        name: { type: string }
+        score: { type: number, format: double }
+        found_at: { type: string, format: date-time }
+    PromoteCandidateProduct:
+      type: object
+      required: [product, candidates]
+      properties:
+        product: { $ref: "#/components/schemas/Product" }
+        candidates:
+          type: array
+          items: { $ref: "#/components/schemas/PromoteCandidate" }
+    PromoteCandidatesPage:
+      type: object
+      required: [products, total_count]
+      properties:
+        products:
+          type: array
+          items: { $ref: "#/components/schemas/PromoteCandidateProduct" }
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of flagged community products.
+    PromoteRequest:
+      description: >
+        Provider identity for an in-place promotion. type game
+        products require igdb_game_id + platform_igdb_id and accept
+        an optional pc_product_id (the listing can also arrive later
+        via the mapping fix, once provider); console and accessory
+        products require pc_product_id. The
+        identity the product re-enters the index with completes with
+        the doc's stored region/edition/variant.
+      type: object
+      properties:
+        igdb_game_id: { type: integer, format: int64 }
+        platform_igdb_id: { type: integer, format: int64 }
+        pc_product_id: { type: integer, format: int64 }
+    Providers:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          description: "Subset of: google, twitch, dev"
+          items: { type: string }
+    Recommendation:
+      type: object
+      required: [igdb_game_id, name, genres, score]
+      properties:
+        igdb_game_id: { type: integer, format: int64 }
+        name: { type: string }
+        cover_url: { type: string }
+        genres:
+          type: array
+          items: { type: string }
+        first_release_date: { type: string, format: date }
+        score: { type: number, format: double }
+    RefreshAccepted:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: "#/components/schemas/AcceptedStatus" }
+    ReleaseDate:
+      type: object
+      required: [region, date]
+      properties:
+        region: { $ref: "#/components/schemas/ReleaseRegion" }
+        date: { type: string, format: date }
+    ReleaseRegion:
+      type: string
+      enum: [europe, north_america, australia, new_zealand, japan, china, asia, worldwide, korea, brazil]
+    RematchAccepted:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: "#/components/schemas/AcceptedStatus" }
+    ReorderRequest:
+      description: Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid.
+      type: object
+      properties:
+        after_id: { type: string, format: uuid, nullable: true }
+        before_id: { type: string, format: uuid, nullable: true }
+    ResnapshotResult:
+      type: object
+      required: [products_seen, products_failed, entries_updated]
+      properties:
+        products_seen: { type: integer }
+        products_failed: { type: integer }
+        entries_updated: { type: integer }
+    ResolveRequest:
+      description: >
+        type game requires igdb_game_id + platform_igdb_id (the
+        platform must be one the game released on). Game identity is
+        listing-keyed - (game, platform, PriceCharting listing) - so
+        edition/variant on a game resolve are ignored (entry-level
+        facts, like pc_listing); region is a matching input only (see
+        the region property) and never joins identity. Without
+        pc_product_id the resolve auto-matches by the game name
+        (region-steered) through the shared listing-search cache and
+        lands on the winning listing's product; below the
+        confidence threshold, or with the provider down, it lands on
+        the game+platform's single unmatched product instead - never
+        guessed. Optional match_hint (game only, ignored elsewhere)
+        reweights the scoring toward variant text without changing the
+        search query; a hint nothing matches makes the resolve
+        conservative (unmatched).
+        With pc_product_id (a manual match: the exact listing the user
+        chose) auto-match is skipped and the resolve finds or mints
+        the product carrying that listing (match_confidence 1.0,
+        verified false); unknown id answers 404 unknown_pc_product,
+        provider failure 502 upstream_unavailable. Resolves never
+        touch an existing product's mapping; corrections stay on the
+        admin mapping endpoint.
+        console/accessory require pc_product_id;
+        region/edition/variant distinguish physical variants and are
+        part of hardware identity. type pc_listing requires
+        pc_product_id and mints a price-anchor product for that exact
+        listing; region/edition/variant are ignored (the listing IS
+        the exact variant).
+      type: object
+      required: [type]
+      properties:
+        type: { $ref: "#/components/schemas/ProductType" }
+        igdb_game_id: { type: integer, format: int64 }
+        platform_igdb_id: { type: integer, format: int64 }
+        pc_product_id: { type: integer, format: int64 }
+        match_hint: { type: string, maxLength: 128 }
+        region:
+          type: string
+          maxLength: 32
+          description: >-
+            For console/accessory: part of hardware identity, distinguishing
+            physical variants. For game: a matching input only - the entry
+            region (ntsc_u, ntsc_j, pal, region_free, korea, brazil,
+            china) steers which PriceCharting listing auto-match lands
+            on (JP and PAL listings live under region-prefixed or
+            JP-named console axes; korea, brazil and china have no
+            provider axis and match like ntsc_u) and is
+            never stored on the product; ignored when pc_product_id is
+            present; unknown values behave like ntsc_u. Ignored for
+            pc_listing.
+        edition: { type: string, maxLength: 128 }
+        variant: { type: string, maxLength: 128 }
+    Role:
+      type: string
+      enum: [user, admin]
+    SavedView:
+      type: object
+      required: [id, name, slug, visibility, params, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug:
+          type: string
+          description: URL slug derived from the name (underscore transform); unique per user on its folded key.
+        visibility: { $ref: "#/components/schemas/Visibility" }
+        published_at:
+          type: string
+          format: date-time
+          description: Stamped on each transition into listed.
+        params:
+          type: object
+          additionalProperties: true
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ScoreResponse:
+      type: object
+      required: [degraded, recommendations]
+      properties:
+        degraded:
+          type: boolean
+          description: True when candidate metadata fetches failed and some candidates were skipped.
+        recommendations:
+          type: array
+          items: { $ref: "#/components/schemas/Recommendation" }
+    SearchResult:
+      description: >
+        Flat result with a type discriminator. Game results carry the
+        igdb_* fields; hardware results carry the pc_* fields plus the
+        PriceCharting category (Systems, Controllers, Accessories).
+        pc_listing results carry the pc_* fields, the PriceCharting
+        category (empty when the provider lists none), and the standard
+        per-listing loose/cib/new prices so variant prints are tellable
+        apart.
+      type: object
+      required: [type, name]
+      properties:
+        type: { $ref: "#/components/schemas/SearchResultType" }
+        name: { type: string }
+        igdb_game_id: { type: integer, format: int64 }
+        platforms:
+          type: array
+          items: { $ref: "#/components/schemas/PlatformRef" }
+        first_release_date: { type: string, format: date }
+        cover_url: { type: string }
+        localizations:
+          description: Per-region presentations of a game result (games only).
+          type: array
+          items: { $ref: "#/components/schemas/Localization" }
+        matched_region:
+          type: string
+          description: >
+            Set when the query matched a region's localized name or
+            transliteration rather than the canonical name: that
+            bundle's region identifier. Clients may present the region's
+            data and preselect a matching entry region. Absent on
+            canonical-name matches, hardware, pc_listing, and community
+            results.
+        pc_product_id: { type: integer, format: int64 }
+        console_name: { type: string }
+        category: { type: string }
+        loose_cents: { type: integer, format: int64 }
+        cib_cents: { type: integer, format: int64 }
+        new_cents: { type: integer, format: int64 }
+        origin:
+          description: >
+            Marks an interleaved community result (admin-minted,
+            anchor-less); absent on provider results. Community results
+            carry product_id + item_type + platform_name for the pick,
+            community.cover_url as cover_url, and community.region as region.
+            They are scored against the query by name similarity and merged into
+            results by descending score (a provider result precedes a community
+            result of equal score), capped at 10, for game and hardware
+            searches only (never pc_listing). The provider cache stores
+            provider results only - community items attach fresh on every
+            search.
+          allOf:
+            - $ref: "#/components/schemas/ProductOrigin"
+        product_id: { type: string, format: uuid }
+        item_type: { $ref: "#/components/schemas/ItemType" }
+        platform_name: { type: string }
+        region: { type: string, description: "Community rows only - the community facts region, entry vocabulary." }
+        developers:
+          type: array
+          items: { type: string }
+          description: Community rows only - the curated developer names, for based-add prefill.
+        publishers:
+          type: array
+          items: { type: string }
+          description: Community rows only - the curated publisher names, for based-add prefill.
+    SearchResultType:
+      type: string
+      enum: [game, hardware, pc_listing]
+    SearchResults:
+      type: object
+      required: [degraded, results]
+      properties:
+        degraded:
+          type: boolean
+          description: True when the provider was unreachable and the local catalog answered instead.
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/SearchResult" }
+    SharedEntry:
+      description: >
+        The cross-user entry projection - a strict whitelist. No money
+        fields (price paid, values, currency, purchase provenance,
+        pricing mode) and no personal fields (status, rating, notes,
+        location, backlog rank, external refs) may ever be added here
+        without a deliberate privacy decision.
+      type: object
+      required: [id, item_type, media_type, display_name, region, packaging, has_box, has_manual, pinned, tags, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        item_type: { $ref: "#/components/schemas/ItemType" }
+        media_type: { $ref: "#/components/schemas/MediaType" }
+        display_name: { type: string }
+        platform: { $ref: "#/components/schemas/EntryPlatform" }
+        first_release_date: { type: string, format: date }
+        cover_url: { type: string }
+        localized_name:
+          type: string
+          description: Region-picked native-script title (server-derived from the entry's region; absent when the region has none).
+        localized_name_translit:
+          type: string
+          description: Latin transliteration of localized_name's title (server-derived).
+        localized_cover_url:
+          type: string
+          description: Region-picked box art URL (server-derived).
+        developers:
+          type: array
+          items: { type: string }
+        publishers:
+          type: array
+          items: { type: string }
+        igdb_game_id: { type: integer, format: int64 }
+        region: { type: string }
+        edition: { type: string }
+        packaging: { $ref: "#/components/schemas/Packaging" }
+        has_box: { type: boolean }
+        has_manual: { type: boolean }
+        box_condition: { $ref: "#/components/schemas/ItemCondition" }
+        manual_condition: { $ref: "#/components/schemas/ItemCondition" }
+        item_condition: { $ref: "#/components/schemas/ItemCondition" }
+        pinned: { type: boolean }
+        tags:
+          type: array
+          items: { $ref: "#/components/schemas/TagRef" }
+        created_at: { type: string, format: date-time }
+    SharedEntryGroup:
+      type: object
+      required: [key, label, entries]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/SharedEntry" }
+    SharedEntryList:
+      description: Exactly one of entries/groups is present (groups when the stored params group).
+      type: object
+      required: [total_count]
+      properties:
+        total_count: { type: integer }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/SharedEntry" }
+        groups:
+          type: array
+          items: { $ref: "#/components/schemas/SharedEntryGroup" }
+    ShelfSocialSummary:
+      type: object
+      required: [shelf_id, like_count, comment_count, viewer_likes]
+      properties:
+        shelf_id: { type: string, format: uuid }
+        like_count: { type: integer }
+        comment_count: { type: integer, description: Live comments only. }
+        viewer_likes: { type: boolean }
+    Submission:
+      description: >
+        One catalog-submission lifecycle row for an entry. Rows
+        persist as history (rejected and cancelled included; the
+        rolling creation cap counts every attempt); deleting the entry
+        removes them with it. product_id is the verdict's resolved
+        product - recorded before adoption so an approve_new retry
+        never mints twice.
+      type: object
+      required: [id, entry_id, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        entry_id: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/SubmissionStatus" }
+        reject_reason: { type: string }
+        product_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        reviewed_at: { type: string, format: date-time }
+        resolution_ack_at:
+          type: string
+          format: date-time
+          description: >
+            When the submitter acknowledged an approved verdict (closed
+            the approval banner). Absent until acknowledged.
+    SubmissionStatus:
+      type: string
+      enum: [pending, approved, rejected, cancelled]
+    Tag:
+      type: object
+      required: [id, name, entry_count]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        entry_count: { type: integer }
+    TagCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 50 }
+    TagRef:
+      description: A tag as embedded on an entry (no usage count).
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+    UnmatchedProductsPage:
+      type: object
+      required: [products, total_count]
+      properties:
+        products:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of unmatched products, beyond this page.
+    ValueHistory:
+      type: object
+      required: [available, points]
+      properties:
+        available:
+          type: boolean
+          description: False when enrichment was unreachable; points is then empty.
+        points:
+          type: array
+          items: { $ref: "#/components/schemas/ValuePoint" }
+    ValuePoint:
+      type: object
+      required: [date, value_cents]
+      properties:
+        date: { type: string, format: date }
+        value_cents: { type: integer, format: int64 }
+    VerdictRequest:
+      description: >
+        One admin verdict. approve_new requires product;
+        approve_existing requires product_id; reject requires reason.
+      type: object
+      required: [action]
+      properties:
+        action: { type: string, enum: [approve_new, approve_existing, reject] }
+        product: { $ref: "#/components/schemas/CommunityProductSpec" }
+        product_id: { type: string, format: uuid }
+        reason: { type: string, maxLength: 1000 }
+    ViewCreate:
+      type: object
+      required: [name, params]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        params:
+          type: object
+          additionalProperties: true
+          description: Opaque frontend view state; at most 8192 marshaled bytes.
+        visibility:
+          default: private
+          allOf:
+            - $ref: "#/components/schemas/Visibility"
+    Visibility:
+      type: string
+      enum: [private, unlisted, listed]

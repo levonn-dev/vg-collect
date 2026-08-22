@@ -1,0 +1,1349 @@
+openapi: 3.0.3
+info:
+  title: vgkeep enrichment service
+  version: 0.1.0
+  description: |
+    Cluster-internal catalog and pricing service. All third-party data (IGDB metadata, PriceCharting prices) is quarantined behind this API; no other service talks to those providers. Every operation requires a Bearer access JWT validated against the auth service's JWKS; /admin/* operations additionally require the admin role. The daily catalog-refresh trigger used by the in-cluster CronJob (POST /internal/refresh) rides the same JWT boundary, gated to a service token (token_use=service, minted by auth's /internal/service-token) rather than the admin role - the CronJob has no human session, so it authenticates as a machine caller instead. The NetworkPolicy stays the outer layer.
+security:
+  - bearerAuth: []
+paths:
+  /search:
+    get:
+      operationId: searchCatalog
+      summary: Discovery search (game metadata via IGDB, hardware via PriceCharting)
+      description: |
+        Results come from a 24h per-query Valkey cache in front of the provider, never from the local catalog first (it is incomplete by construction). When the provider is down and the cache is cold, the local catalog answers a name match and the response is flagged degraded. type pc_listing searches ALL of PriceCharting (games, hardware, every category) and carries the provider's loose/cib/new prices per listing; it exists for picking exact variant listings as price sources.
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/SearchResultType'
+        - $ref: '#/components/parameters/catalogQ'
+      responses:
+        '200':
+          description: Search results (possibly degraded)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResults'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /products/resolve:
+    post:
+      operationId: resolveProduct
+      summary: Find-or-create the canonical product for a search selection
+      description: |
+        Idempotent: an existing product with the same identity is returned as-is. Game identity is (igdb game, platform, PriceCharting listing) - see ResolveRequest for the no-pick auto-match, the match_hint reweighting, and the manual-match pick. Creating a game product pulls the full IGDB payload into igdb_raw (reusing an already-cached payload without a provider call) and projects it onto the product. Creating a hardware product fetches the PriceCharting product and borrows IGDB platform metadata where a console mapping exists. Errors: 404 code unknown_game (IGDB id not found) or unknown_pc_product; 502 code upstream_unavailable when the needed provider cannot be reached.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveRequest'
+      responses:
+        '200':
+          description: The canonical product (found or created)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Provider does not know the requested id (code unknown_game or unknown_pc_product)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /products/{productId}:
+    get:
+      operationId: getProduct
+      summary: Fetch a product (read-through with per-type staleness)
+      description: |
+        Valkey (5m) in front of Mongo; an IGDB projection older than 30 days is refetched inline best-effort (stale data is served when the provider is down). Prices refresh on the daily cadence only, never per-read.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Not found (code product_not_found)
+  /products/prices:batch:
+    post:
+      operationId: batchPrices
+      summary: Current prices for a set of products (dashboard composition)
+      description: |
+        Reads straight from the catalog (the daily refresh keeps it current). Unknown product ids are absent from the response map; known-but-unmatched products appear with unmatched true and no price fields.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PricesBatchRequest'
+      responses:
+        '200':
+          description: Prices keyed by product id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricesBatchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /products/price-history:batch:
+    post:
+      operationId: batchPriceHistory
+      summary: Price snapshot series for a set of products (value-over-time composition)
+      description: |
+        Each requested product's snapshots inside the window, oldest first. Snapshots accumulate from the daily catalog refresh plus one initial point when a product is created or its mapping is corrected. Unknown ids and products with no points in the window are absent from the response map.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PriceHistoryRequest'
+      responses:
+        '200':
+          description: Snapshot series keyed by product id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceHistoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /recommendations:score:
+    post:
+      operationId: scoreRecommendations
+      summary: Score unowned games against a library summary (user-agnostic)
+      description: |
+        The caller supplies the library summary; this service stores no user data. Candidates come from owned games' similar_games edges (owner weights: dropped 0.5, rating >= 8 doubles to 2.0, otherwise 1.0) plus a genre-overlap bonus, with a genre-profile fallback when edges are sparse. Owned ids are excluded. Unknown candidate metadata is batch-fetched into igdb_raw (respecting the provider rate limiter). degraded is true when provider fetches failed and candidates were skipped.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScoreRequest'
+      responses:
+        '200':
+          description: Ranked recommendations with display metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /fx/latest:
+    get:
+      operationId: getFxLatest
+      summary: Latest USD-based exchange rates (cached daily snapshot)
+      description: |
+        Rates are target-units-per-USD from the ECB reference set via frankfurter.dev (embedded fixtures in stub mode). Snapshots refresh at most hourly; an upstream failure serves the last good snapshot, so only a cold cache answers 502. Rates power display-side conversion only; nothing stored depends on them.
+      responses:
+        '200':
+          description: Rate snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FXRates'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /platforms:
+    get:
+      operationId: listPlatforms
+      summary: The canonical platform catalog with alias knowledge
+      description: |
+        The IGDB platform catalog (igdb id + name) joined with the alias table - PriceCharting console spellings plus curated abbreviations (SNES, PSX, N64, ...) - sorted by name. Reference data for the custom-entry platform picker and the collection normalize-platforms lever: consumers filter and match against name + aliases and never hard-code aliases themselves. Cached 24h (the search-cache idiom); the catalog changes only when the platform sweep lands new rows. A cold catalog with the provider down is the only 502.
+      responses:
+        '200':
+          description: The platform catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformCatalog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /admin/refresh:
+    post:
+      operationId: triggerRefresh
+      summary: Trigger an immediate catalog refresh (role admin)
+      description: |
+        Starts the same refresh the daily CronJob triggers and returns 202 immediately (the refresh outlives the HTTP write timeout at polite provider rates); the runner logs its summary. 409 code refresh_in_progress when a refresh is already running.
+      responses:
+        '202':
+          description: Refresh started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshAccepted'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /internal/refresh:
+    post:
+      operationId: internalRefresh
+      tags:
+        - internal
+      summary: Catalog refresh trigger (CronJob)
+      description: |
+        Machine trigger for the nightly catalog refresh; the gateway never routes it. Guard: a service token (token_use=service) - operators use /admin/refresh. Answers 202 and detaches; one run at a time (409 refresh_in_progress).
+      responses:
+        '202':
+          description: Refresh started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshAccepted'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /internal/normalize-community-regions:
+    post:
+      operationId: internalNormalizeCommunityRegions
+      tags:
+        - internal
+      summary: Promote free-text community product regions into the known set
+      description: |
+        Maintenance operation; the gateway never routes it. Folds every community product's curated region outside the known set (lowercase, trim) against the known values and the reviewed synonyms table - exact or synonym, never fuzzy. A community product carries no provider identity, so promotion is a plain field rewrite with no fetch arm. Guard: admin role or service token (the nightly job runs it alongside collection's platform/region levers). Idempotent and re-runnable; promoted rows leave the selection set.
+      responses:
+        '200':
+          description: Sweep summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NormalizeResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /admin/products:
+    post:
+      operationId: createCommunityProduct
+      summary: Mint a community product from an approved submission (role admin)
+      description: |
+        Creates an anchor-less product: no IGDB, no PriceCharting, origin community. Community products live outside the provider identity indexes - their curated name is their identity, and the review panel's embedded search is the dedup check (deliberately no uniqueness machinery). They never join the unmatched worklist, and they surface to users through the community lane in search. The single edition field follows the entry idiom (one "Edition or variant" note); variant stays empty - the region/edition/variant split exists only for provider hardware identity, which community products are outside of. platform_name and first_release_date store as the community facts block, retained after promotion as gap-fill.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommunityProductSpec'
+      responses:
+        '201':
+          description: The minted community product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /admin/products/{productId}/pricecharting:
+    put:
+      operationId: setProductMapping
+      summary: Correct a product's PriceCharting mapping and mark it verified (role admin)
+      description: |
+        Shared-catalog truth is moderated: the new mapping is validated against the provider, current prices are fetched, a snapshot is appended, and the mapping is stored verified with confidence 1.0. A null pc_product_id clears the mapping (the product becomes unmatched) and sets match_hold, so a future automated match (resolve, or the entry-side re-match) never undoes a deliberate clear; setting any mapping lifts match_hold. Identity indexes make a mapping change an identity move: when another product of the same identity (for games, the same game and platform; for hardware, the same region/edition/variant) already carries the target listing, or a clear would collide with an existing unmatched product of that identity, the answer is 409 code identity_taken, whose detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it: match_hold is set, idempotently, which is the admin lever for silencing permanent worklist residue. Errors: 404 code product_not_found or unknown_pc_product; 409 code identity_taken; 502 code upstream_unavailable. 409 code product_not_provider for community products (their one path to a PriceCharting anchor is promote).
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MappingRequest'
+      responses:
+        '200':
+          description: The product with its corrected mapping
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: No such product, or the provider does not know the mapping id
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: Another product already carries that identity (code identity_taken), or the product is community-origin (code product_not_provider)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /admin/products/{productId}/promote:
+    post:
+      operationId: promoteProduct
+      summary: Promote a community product to provider identity in place (role admin)
+      description: |
+        Attaches the provider anchors and flips origin to provider atomically; the product id stays stable, so every adopter's entry upgrades through live reads with no repointing. The re-entry into the identity index adjudicates twins: when a provider product already holds the target identity the answer is 409 code identity_taken with the holder named in the detail, and the community product keeps working unpromoted (the true-merge case is deliberately not automated). The community facts block is retained as gap-fill. After the flip the product is a first-class provider citizen: a missing game listing leaves it on the unmatched worklist until the mapping fix attaches one. Errors: 404 code product_not_found, unknown_game or unknown_pc_product; 409 code product_not_community (already provider) or identity_taken; 502 code upstream_unavailable.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteRequest'
+      responses:
+        '200':
+          description: The promoted product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: No such product, or the provider does not know the requested id
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: Not community-origin (code product_not_community) or a provider twin holds the identity (code identity_taken)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /admin/products/promote-candidates:
+    get:
+      operationId: listPromoteCandidates
+      summary: Community products with plausible provider matches (role admin)
+      description: |
+        The promote worklist, fed by the nightly flag-never-act sweep (the refresh trigger also refreshes it): community products whose name matched a provider item at or above the never-guess threshold, strongest candidate first with _id as the tiebreak. Dismissed pairs never reappear; a different provider id for the same product still nags. product_id narrows to one product - the lookup panel's per-product view. Promotion is always a human verdict; nothing here attaches anything.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+        - $ref: '#/components/parameters/offset'
+        - name: product_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: One candidates page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoteCandidatesPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /admin/products/{productId}/promote-candidates/dismiss:
+    post:
+      operationId: dismissPromoteCandidate
+      summary: Dismiss one promote candidate permanently (role admin)
+      description: |
+        Records the (provider, provider_id) pair as dismissed and drops the matching candidate; the sweep never re-flags a dismissed pair. A different candidate for the same product still nags.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DismissCandidateRequest'
+      responses:
+        '204':
+          description: Dismissed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /admin/products/{productId}:
+    delete:
+      operationId: deleteProduct
+      summary: Delete an unmatched product and its snapshots (role admin)
+      description: |
+        The residue mop: permanently removes a product that no listing anchors, plus its price snapshots. Only unmatched products qualify - a matched product answers 409 code product_matched (clear the mapping first). This service cannot see entries; the bff verifies no entries reference the product before calling. A later resolve can re-mint the family's unmatched member - delete is cleanup, not prevention.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted (snapshots included)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: The product carries a mapping (code product_matched)
+  /admin/products/unmatched:
+    get:
+      operationId: listUnmatchedProducts
+      summary: List unmatched products, admin-held included (role admin)
+      description: |
+        The admin worklist: every product with no PriceCharting mapping, all types, INCLUDING products held by an admin clear (each held item carries match_hold true; a deliberate clear is exactly what an admin revisits). Ordered oldest updated_at first with _id as the tiebreak so offset pages are deterministic. limit defaults to 200 (max 500), offset slices the sequence, and total_count reports the full filtered count.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: One worklist page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnmatchedProductsPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /admin/products/community:
+    get:
+      operationId: listCommunityProducts
+      summary: List community products, un-promoted only (role admin)
+      description: |
+        Every admin-minted community product (origin community): the population promote can flip to a provider identity, and delete can remove once no entry references it. Ordered oldest updated_at first with _id as the tiebreak so offset pages are deterministic. limit defaults to 200 (max 500), offset slices the sequence, and total_count reports the full filtered count.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: One community listing page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunityProductsPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    BadRequest:
+      description: Invalid parameters or body
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Insufficient role
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UpstreamError:
+      description: A provider call failed (code upstream_unavailable)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: No such product (code product_not_found)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: A refresh is already running (code refresh_in_progress)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    PlatformRef:
+      type: object
+      required:
+        - igdb_platform_id
+        - name
+      properties:
+        igdb_platform_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        logo_url:
+          type: string
+          description: IGDB platform logo; the display fallback for products without cover art.
+        release_regions:
+          description: |
+            Distinct canonical IGDB release regions for this game on this platform (japan, north_america, europe, ...), ordered by that region's earliest release date on the platform (dateless rows last, then alphabetical). Platform-exact: JP twin platforms are NOT folded here (a Famicom row stays on Famicom), unlike the product projection's date fold - the physical release is platform-specific. Populated on game search results only; absent on product payloads and hardware results.
+          type: array
+          items:
+            $ref: '#/components/schemas/ReleaseRegion'
+    CatalogPlatform:
+      description: One platform-catalog row with its known aliases.
+      type: object
+      required:
+        - igdb_id
+        - name
+        - aliases
+      properties:
+        igdb_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        aliases:
+          description: Alternate spellings and abbreviations (compare case-insensitively).
+          type: array
+          items:
+            type: string
+    PlatformCatalog:
+      type: object
+      required:
+        - platforms
+      properties:
+        platforms:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogPlatform'
+    SearchResult:
+      description: |
+        Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). pc_listing results carry the pc_* fields, the PriceCharting category (empty when the provider lists none), and the standard per-listing loose/cib/new prices so variant prints are tellable apart.
+      type: object
+      required:
+        - type
+        - name
+      properties:
+        type:
+          $ref: '#/components/schemas/SearchResultType'
+        name:
+          type: string
+        igdb_game_id:
+          type: integer
+          format: int64
+        platforms:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformRef'
+        first_release_date:
+          type: string
+          format: date
+        cover_url:
+          type: string
+        localizations:
+          description: Per-region presentations of a game result (games only).
+          type: array
+          items:
+            $ref: '#/components/schemas/Localization'
+        matched_region:
+          type: string
+          description: |
+            Set when the query matched a region's localized name or transliteration rather than the canonical name: that bundle's region identifier. Clients may present the region's data and preselect a matching entry region. Absent on canonical-name matches, hardware, pc_listing, and community results.
+        pc_product_id:
+          type: integer
+          format: int64
+        console_name:
+          type: string
+        category:
+          type: string
+        loose_cents:
+          type: integer
+          format: int64
+        cib_cents:
+          type: integer
+          format: int64
+        new_cents:
+          type: integer
+          format: int64
+        origin:
+          description: |
+            Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick, community.cover_url as cover_url, and community.region as region. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
+          allOf:
+            - $ref: '#/components/schemas/ProductOrigin'
+        product_id:
+          type: string
+          format: uuid
+        item_type:
+          $ref: '#/components/schemas/ItemType'
+        platform_name:
+          type: string
+        region:
+          type: string
+          description: Community rows only - the community facts region, entry vocabulary.
+        developers:
+          type: array
+          items:
+            type: string
+          description: Community rows only - the curated developer names, for based-add prefill.
+        publishers:
+          type: array
+          items:
+            type: string
+          description: Community rows only - the curated publisher names, for based-add prefill.
+    SearchResults:
+      type: object
+      required:
+        - degraded
+        - results
+      properties:
+        degraded:
+          type: boolean
+          description: True when the provider was unreachable and the local catalog answered instead.
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+    FXRates:
+      type: object
+      required:
+        - base
+        - date
+        - rates
+      properties:
+        base:
+          type: string
+          description: Always USD.
+        date:
+          type: string
+          description: Upstream snapshot date (YYYY-MM-DD), not the fetch time.
+        rates:
+          type: object
+          description: |
+            Target-units-per-USD by ISO 4217 code. USD itself is omitted (it is the base; conversion short-circuits).
+          additionalProperties:
+            type: number
+            format: double
+    IgdbMeta:
+      description: Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
+      type: object
+      required:
+        - game_id
+        - name
+        - genres
+        - themes
+        - franchises
+        - similar_games
+        - companies
+        - fetched_at
+      properties:
+        game_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        cover_url:
+          type: string
+        genres:
+          type: array
+          items:
+            type: string
+        themes:
+          type: array
+          items:
+            type: string
+        franchises:
+          type: array
+          items:
+            type: string
+        similar_games:
+          type: array
+          items:
+            type: integer
+            format: int64
+        companies:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompanyCredit'
+        first_release_date:
+          type: string
+          format: date
+          description: |
+            Earliest date for the product's platform; the game-level first release when IGDB lists no dated rows for the platform.
+        release_dates:
+          description: |
+            Per-region release dates for the product's platform, the earliest concrete date per region. Region values are canonical IGDB names (europe, north_america, australia, new_zealand, japan, china, asia, worldwide, korea, brazil). JP twin platforms fold into their sibling (SNES/Super Famicom, NES/Famicom).
+          type: array
+          items:
+            $ref: '#/components/schemas/ReleaseDate'
+        localizations:
+          description: |
+            Per-region presentations; absent both on projections predating the feature and on games with no localizations at all (an empty slice is omitted rather than sent).
+          type: array
+          items:
+            $ref: '#/components/schemas/Localization'
+        fetched_at:
+          type: string
+          format: date-time
+    CompanyCredit:
+      type: object
+      required:
+        - name
+        - developer
+        - publisher
+      properties:
+        name:
+          type: string
+        developer:
+          type: boolean
+        publisher:
+          type: boolean
+    ReleaseDate:
+      type: object
+      required:
+        - region
+        - date
+      properties:
+        region:
+          $ref: '#/components/schemas/ReleaseRegion'
+        date:
+          type: string
+          format: date
+    Localization:
+      description: |
+        One region's presentation of the game, merged from IGDB game_localizations and tagged alternative names. region is an IGDB region identifier served verbatim (ja-JP, EU, ko-KR, zh-CN, zh-TW, pt-BR; open-world - new identifiers pass through). name is the native-script title, translit its latin transliteration, cover_url the region's own box art; each is independently optional (rows are sparse - readers fall back per field).
+      type: object
+      required:
+        - region
+      properties:
+        region:
+          type: string
+        name:
+          type: string
+        translit:
+          type: string
+        cover_url:
+          type: string
+    PricechartingMeta:
+      description: |
+        The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
+      type: object
+      required:
+        - pc_product_id
+        - pc_name
+        - console_name
+        - match_confidence
+        - verified
+        - as_of
+      properties:
+        pc_product_id:
+          type: integer
+          format: int64
+        pc_name:
+          type: string
+        console_name:
+          type: string
+        match_confidence:
+          type: number
+          format: double
+        verified:
+          type: boolean
+        loose_cents:
+          type: integer
+          format: int64
+        cib_cents:
+          type: integer
+          format: int64
+        new_cents:
+          type: integer
+          format: int64
+        as_of:
+          type: string
+          format: date-time
+    Product:
+      type: object
+      required:
+        - id
+        - type
+        - name
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/ProductType'
+        name:
+          type: string
+        platform:
+          $ref: '#/components/schemas/PlatformRef'
+        region:
+          type: string
+          description: |
+            Provider hardware identity fact; community products carry their region under community.region instead.
+        edition:
+          type: string
+        variant:
+          type: string
+        igdb:
+          $ref: '#/components/schemas/IgdbMeta'
+        pricecharting:
+          $ref: '#/components/schemas/PricechartingMeta'
+        match_hold:
+          type: boolean
+          description: |
+            Present true when an admin clear holds this product's mapping against a future automated match (resolve, or the entry-side re-match).
+        origin:
+          description: |
+            Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity.
+          allOf:
+            - $ref: '#/components/schemas/ProductOrigin'
+        community:
+          $ref: '#/components/schemas/CommunityMeta'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CommunityMeta:
+      description: |
+        Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present).
+      type: object
+      properties:
+        platform_name:
+          type: string
+        region:
+          type: string
+          maxLength: 32
+          description: |
+            Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free, korea, brazil, china).
+        first_release_date:
+          type: string
+          format: date
+        developers:
+          type: array
+          items:
+            type: string
+          description: |
+            Curated developer company names, one per element; served into entry credit snapshots when the provider block carries no developer credits (per-field gap-fill).
+        publishers:
+          type: array
+          items:
+            type: string
+          description: |
+            Curated publisher company names; same gap-fill posture as developers.
+        cover_url:
+          type: string
+          description: |
+            User-supplied cover image URL (https, never fetched server-side; the client renders it with a broken-image fallback). Served as the product cover when no provider cover is present; retained after promotion as gap-fill.
+    CommunityProductSpec:
+      description: |
+        The curated fields for approve_new; mirrors the enrichment mint request (single edition field, no variant).
+      type: object
+      required:
+        - type
+        - name
+      properties:
+        type:
+          $ref: '#/components/schemas/ItemType'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        platform_name:
+          type: string
+          maxLength: 100
+        region:
+          type: string
+          maxLength: 32
+          description: |
+            Curated entry-vocabulary region fact; stored under the community facts block (community.region), not the product's top-level region field.
+        edition:
+          type: string
+          maxLength: 128
+          description: The entry idiom's single "Edition or variant" note.
+        first_release_date:
+          type: string
+          format: date
+        developers:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 120
+          description: Curated developer company names, one per element.
+        publishers:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 120
+          description: Curated publisher company names, one per element.
+        cover_url:
+          type: string
+          maxLength: 512
+          pattern: ^https://
+          description: Optional https cover image URL (validated by shape only, never fetched).
+    PromoteRequest:
+      description: |
+        Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant.
+      type: object
+      properties:
+        igdb_game_id:
+          type: integer
+          format: int64
+        platform_igdb_id:
+          type: integer
+          format: int64
+        pc_product_id:
+          type: integer
+          format: int64
+    PromoteCandidate:
+      type: object
+      required:
+        - provider
+        - provider_id
+        - name
+        - score
+        - found_at
+      properties:
+        provider:
+          $ref: '#/components/schemas/CatalogProvider'
+        provider_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        score:
+          type: number
+          format: double
+        found_at:
+          type: string
+          format: date-time
+    PromoteCandidatesPage:
+      type: object
+      required:
+        - products
+        - total_count
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromoteCandidateProduct'
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of flagged community products.
+    PromoteCandidateProduct:
+      type: object
+      required:
+        - product
+        - candidates
+      properties:
+        product:
+          $ref: '#/components/schemas/Product'
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromoteCandidate'
+    DismissCandidateRequest:
+      type: object
+      required:
+        - provider
+        - provider_id
+      properties:
+        provider:
+          $ref: '#/components/schemas/CatalogProvider'
+        provider_id:
+          type: integer
+          format: int64
+    ResolveRequest:
+      description: |
+        type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so edition/variant on a game resolve are ignored (entry-level facts, like pc_listing); region is a matching input only (see the region property) and never joins identity. Without pc_product_id the resolve auto-matches by the game name (region-steered) through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          $ref: '#/components/schemas/ProductType'
+        igdb_game_id:
+          type: integer
+          format: int64
+        platform_igdb_id:
+          type: integer
+          format: int64
+        pc_product_id:
+          type: integer
+          format: int64
+        match_hint:
+          type: string
+          maxLength: 128
+        region:
+          type: string
+          maxLength: 32
+          description: 'For console/accessory: part of hardware identity, distinguishing physical variants. For game: a matching input only - the entry region (ntsc_u, ntsc_j, pal, region_free, korea, brazil, china) steers which PriceCharting listing auto-match lands on (JP and PAL listings live under region-prefixed or JP-named console axes; korea, brazil and china have no provider axis and match like ntsc_u) and is never stored on the product; ignored when pc_product_id is present; unknown values behave like ntsc_u. Ignored for pc_listing.'
+        edition:
+          type: string
+          maxLength: 128
+        variant:
+          type: string
+          maxLength: 128
+    PricesBatchRequest:
+      type: object
+      required:
+        - product_ids
+      properties:
+        product_ids:
+          type: array
+          maxItems: 500
+          items:
+            type: string
+            format: uuid
+    ProductPrices:
+      type: object
+      required:
+        - unmatched
+      properties:
+        unmatched:
+          type: boolean
+        loose_cents:
+          type: integer
+          format: int64
+        cib_cents:
+          type: integer
+          format: int64
+        new_cents:
+          type: integer
+          format: int64
+        as_of:
+          type: string
+          format: date-time
+    PricesBatchResponse:
+      type: object
+      required:
+        - prices
+      properties:
+        prices:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ProductPrices'
+    PriceHistoryRequest:
+      type: object
+      required:
+        - product_ids
+      properties:
+        product_ids:
+          type: array
+          maxItems: 500
+          items:
+            type: string
+            format: uuid
+        days:
+          type: integer
+          minimum: 1
+          maximum: 365
+          default: 90
+          description: Window size ending now.
+    PricePoint:
+      type: object
+      required:
+        - captured_at
+      properties:
+        captured_at:
+          type: string
+          format: date-time
+        loose_cents:
+          type: integer
+          format: int64
+        cib_cents:
+          type: integer
+          format: int64
+        new_cents:
+          type: integer
+          format: int64
+    PriceHistoryResponse:
+      type: object
+      required:
+        - series
+      properties:
+        series:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/PricePoint'
+    LibraryEntry:
+      type: object
+      required:
+        - igdb_game_id
+      properties:
+        igdb_game_id:
+          type: integer
+          format: int64
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 10
+        status:
+          type: string
+          description: The caller's own status vocabulary; scoring only distinguishes "dropped".
+    ScoreRequest:
+      type: object
+      required:
+        - library
+      properties:
+        library:
+          type: array
+          maxItems: 2500
+          items:
+            $ref: '#/components/schemas/LibraryEntry'
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+    Recommendation:
+      type: object
+      required:
+        - igdb_game_id
+        - name
+        - genres
+        - score
+      properties:
+        igdb_game_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        cover_url:
+          type: string
+        genres:
+          type: array
+          items:
+            type: string
+        first_release_date:
+          type: string
+          format: date
+        score:
+          type: number
+          format: double
+    ScoreResponse:
+      type: object
+      required:
+        - degraded
+        - recommendations
+      properties:
+        degraded:
+          type: boolean
+          description: True when candidate metadata fetches failed and some candidates were skipped.
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Recommendation'
+    RefreshAccepted:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/AcceptedStatus'
+    NormalizeResult:
+      type: object
+      required:
+        - scanned
+        - normalized
+        - skipped
+      properties:
+        scanned:
+          type: integer
+        normalized:
+          type: integer
+        skipped:
+          type: integer
+    UnmatchedProductsPage:
+      type: object
+      required:
+        - products
+        - total_count
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of unmatched products, beyond this page.
+    CommunityProductsPage:
+      type: object
+      required:
+        - products
+        - total_count
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of community products, beyond this page.
+    MappingRequest:
+      type: object
+      required:
+        - pc_product_id
+      properties:
+        pc_product_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Null clears the mapping (the product becomes unmatched and held).
+    Problem:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
+          type: string
+    SearchResultType:
+      type: string
+      enum:
+        - game
+        - hardware
+        - pc_listing
+    ReleaseRegion:
+      type: string
+      enum:
+        - europe
+        - north_america
+        - australia
+        - new_zealand
+        - japan
+        - china
+        - asia
+        - worldwide
+        - korea
+        - brazil
+    ProductOrigin:
+      type: string
+      enum:
+        - community
+    ItemType:
+      type: string
+      enum:
+        - game
+        - console
+        - accessory
+    ProductType:
+      type: string
+      enum:
+        - game
+        - console
+        - accessory
+        - pc_listing
+    AcceptedStatus:
+      type: string
+      enum:
+        - started
+    CatalogProvider:
+      type: string
+      enum:
+        - igdb
+        - pricecharting
+  parameters:
+    catalogQ:
+      name: q
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0

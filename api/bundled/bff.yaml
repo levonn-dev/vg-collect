@@ -1,0 +1,4153 @@
+openapi: 3.0.3
+info:
+  title: vgkeep bff
+  version: 0.1.0
+  description: |
+    The browser-facing API. Authentication is a sealed HttpOnly cookie, never a header: the SPA calls these endpoints same-origin. Errors are application/problem+json with stable machine-readable codes. The login and callback endpoints are navigations (they redirect), not XHR targets.
+paths:
+  /api/auth/providers:
+    get:
+      operationId: listProviders
+      summary: Login provider names currently enabled (drives the login page buttons)
+      responses:
+        '200':
+          description: 'Subset of: google, twitch, dev; display order'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Providers'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/auth/login:
+    get:
+      operationId: login
+      summary: Begin a login; redirects the browser to the provider (or straight back for dev)
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+          description: google, twitch, or dev (when the dev provider is enabled)
+        - name: user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 'Dev provider only: fixture handle (alice, bob, admin, or an e2e-* test fixture)'
+      responses:
+        '302':
+          description: |
+            Location is the provider authorize URL; for the dev provider, / with the session cookie set; on failure, /login?error=<email_unverified|provider_error|login_failed>.
+          headers:
+            Location:
+              schema:
+                type: string
+  /api/auth/callback:
+    get:
+      operationId: callback
+      summary: The provider redirect URI; completes login and seals the session cookie
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '302':
+          description: / with Set-Cookie on success, /login?error=<email_unverified|provider_error|login_failed> otherwise
+          headers:
+            Location:
+              schema:
+                type: string
+  /api/auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke the session (jti denylist + refresh chain) and clear the cookie; idempotent
+      responses:
+        '204':
+          description: Logged out (also when no session existed)
+        '403':
+          $ref: '#/components/responses/OriginForbidden'
+  /api/me:
+    get:
+      operationId: getMe
+      summary: The signed-in user's profile (composed from the user service; briefly cached)
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    patch:
+      operationId: updateMe
+      summary: Edit the signed-in user's profile (handle, avatar URL)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeRequest'
+      responses:
+        '200':
+          description: Updated profile (the /api/me cache is refreshed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Validation failure (code invalid_body; detail names the field)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/OriginForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: The signed-in account no longer exists (relayed from the user service)
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: Another account owns that handle's folded key (code handle_taken; relayed from the user service)
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    delete:
+      operationId: deleteMe
+      summary: Delete the account everywhere (collection, linked logins, profile) and end the session
+      description: |
+        Orchestrated in self-healing order: collection purge, then auth identities + refresh revocation, then the user row, then session teardown. A mid-sequence failure answers 502 with the session intact so the request can be retried; an abandoned partial deletion re-attaches to the surviving account on next login.
+      responses:
+        '204':
+          description: Account deleted; the session cookie is cleared
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/OriginForbidden'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/me/identities:
+    get:
+      operationId: getMyIdentities
+      summary: Provider logins linked to the signed-in account
+      responses:
+        '200':
+          description: Linked identities, oldest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Identities'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/me/identities/{identityId}:
+    delete:
+      operationId: deleteMyIdentity
+      summary: Unlink a provider login from the signed-in account
+      parameters:
+        - name: identityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Unlinked
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/OriginForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: No such linked login (code identity_not_found)
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: Refusing to remove the last login (code last_identity)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/auth/link:
+    get:
+      operationId: linkLogin
+      summary: Begin linking another login to the signed-in account; redirects like login
+      description: |
+        A browser navigation, session-guarded (unlike /api/auth/login). Real providers redirect to the provider authorize URL and come back through /api/auth/callback; the dev provider links in one hop. Outcomes land on /account as query params: ?linked=<p> or ?link_error=<conflict|email_unverified|link_failed>.
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+          description: google, twitch, or dev (when the dev provider is enabled)
+        - name: user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 'Dev provider only: fixture handle (alice, bob, admin, or an e2e-* test fixture)'
+      responses:
+        '302':
+          description: Provider authorize URL, or /account with the outcome params
+          headers:
+            Location:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /api/otlp/v1/traces:
+    post:
+      operationId: proxyTraces
+      summary: Relay browser OTLP trace batches to the in-cluster collector
+      description: Accepts an OTLP/HTTP ExportTraceServiceRequest (protobuf or JSON encoding) from the SPA and forwards it verbatim to the collector agent. The collector's status and body pass through unchanged. Requires the session cookie like every other /api route; never cached.
+      requestBody:
+        required: true
+        content:
+          application/x-protobuf:
+            schema:
+              type: string
+              format: binary
+          application/json:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Collector export response, relayed verbatim
+          content:
+            application/x-protobuf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Body unreadable or over the size cap
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/otlp/v1/metrics:
+    post:
+      operationId: proxyMetrics
+      summary: Relay browser OTLP metric batches to the in-cluster collector
+      description: Accepts an OTLP/HTTP ExportMetricsServiceRequest (protobuf or JSON encoding) from the SPA and forwards it verbatim to the collector agent. The collector's status and body pass through unchanged. Requires the session cookie like every other /api route; never cached.
+      requestBody:
+        required: true
+        content:
+          application/x-protobuf:
+            schema:
+              type: string
+              format: binary
+          application/json:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Collector export response, relayed verbatim
+          content:
+            application/x-protobuf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Body unreadable or over the size cap
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/search:
+    get:
+      operationId: searchCatalog
+      summary: Catalog discovery search (proxied to the enrichment service, uncached)
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/SearchResultType'
+        - $ref: '#/components/parameters/catalogQ'
+      responses:
+        '200':
+          description: Search results (possibly degraded)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResults'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Invalid parameters
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/products/resolve:
+    post:
+      operationId: resolveProduct
+      summary: Find-or-create the canonical product for a selection (proxied, uncached)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveRequest'
+      responses:
+        '200':
+          description: The canonical product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: The provider does not know the requested id
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/products/{productId}:
+    get:
+      operationId: getProduct
+      summary: Fetch a catalog product (proxied, uncached)
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/entries:
+    get:
+      operationId: listEntries
+      summary: List collection entries (proxied to the collection service, uncached)
+      parameters:
+        - name: item_type
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ItemType'
+        - $ref: '#/components/parameters/statusFilter'
+        - name: packaging
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/Packaging'
+        - name: region
+          in: query
+          required: false
+          description: Known-value buckets; other stored strings only surface unfiltered.
+          schema:
+            type: array
+            items:
+              type: string
+        - name: developer
+          in: query
+          required: false
+          description: Developer names; an entry matches when any of its snapshotted developers is listed.
+          schema:
+            type: array
+            items:
+              type: string
+        - name: publisher
+          in: query
+          required: false
+          description: Publisher names; same overlap matching as developer.
+          schema:
+            type: array
+            items:
+              type: string
+        - name: item_condition
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ItemCondition'
+        - $ref: '#/components/parameters/platformId'
+        - name: tag_id
+          in: query
+          required: false
+          description: Entries carrying ALL listed tags.
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - $ref: '#/components/parameters/entriesSort'
+        - $ref: '#/components/parameters/order'
+        - $ref: '#/components/parameters/groupBy'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: One page of the filtered entries, flat or grouped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntryList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Invalid parameters
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    post:
+      operationId: createEntry
+      summary: Add an entry (proxied, uncached)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntryCreate'
+      responses:
+        '201':
+          description: The created entry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: A referenced product or tag does not exist
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/entries/bulk-update:
+    post:
+      operationId: bulkUpdateEntries
+      summary: Apply tag/status/storage-location changes across a batch of entries (proxied, uncached)
+      description: |
+        One transaction, all-or-nothing, on the collection service: tag removal, tag addition, and whichever scalar fields are present all apply in the same transaction; tag ids apply ownership-scoped. A status change to backlog manages backlog_rank like the single-entry update (newly-entering entries append at the end, already-backlog entries keep their position, leaving backlog clears it). If any targeted entry would end up holding more than 50 tags, the WHOLE transaction rolls back (400 code tag_cap_exceeded).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkUpdateRequest'
+      responses:
+        '200':
+          description: The count of the caller's own entries among entry_ids
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkUpdateResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Bounds violated, no action specified, or the per-entry tag cap exceeded (code invalid_body or tag_cap_exceeded)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/entries/{entryId}:
+    get:
+      operationId: getEntry
+      summary: Fetch one entry (proxied, uncached)
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Entry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entry'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    put:
+      operationId: updateEntry
+      summary: Replace an entry's mutable state (proxied, uncached)
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntryUpdate'
+      responses:
+        '200':
+          description: The updated entry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: No such entry, pricing product, or tag
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    delete:
+      operationId: deleteEntry
+      summary: Delete an entry (proxied)
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/entries/{entryId}/reorder:
+    post:
+      operationId: reorderEntry
+      summary: Move a backlog entry between two neighbors (proxied)
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReorderRequest'
+      responses:
+        '200':
+          description: The entry at its new position
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: Not in the backlog, or the neighbors do not straddle (code conflicting_order)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/entries/{entryId}/region-mismatch-ack:
+    post:
+      operationId: ackEntryRegionMismatch
+      summary: Dismiss the region-mismatch banner for the entry's current choice (relay)
+      description: |
+        Relays collection verbatim: stamps region_mismatch_ack_at for the entry's current (region, product) choice. Idempotent (204 on every call while the choice stands).
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Acknowledged
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/entries/{entryId}/submission:
+    post:
+      operationId: createSubmission
+      summary: Submit a custom entry as a catalog candidate (relay)
+      description: |
+        Relays collection verbatim: custom entries only (400 entry_not_custom), one pending per entry (409 submission_pending), per-user caps (429 too_many_pending_submissions / submission_rate_limited).
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: The pending submission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: The entry is not custom (code entry_not_custom)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Not found (code entry_not_found)
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: A submission is already pending (code submission_pending)
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: A submission cap is exceeded (code too_many_pending_submissions or submission_rate_limited)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    get:
+      operationId: getSubmission
+      summary: The entry's latest submission (relay)
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The latest submission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Not found (code entry_not_found or submission_not_found)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    delete:
+      operationId: cancelSubmission
+      summary: Cancel the entry's pending submission (relay)
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Cancelled
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Nothing pending (code submission_not_found)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/entries/{entryId}/submission/ack:
+    post:
+      operationId: ackSubmissionResolution
+      summary: Acknowledge an approved submission (relay)
+      description: |
+        Relays collection verbatim: stamps the caller's approved submission for the entry so the approval banner does not reappear. Idempotent (204 on repeat).
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Acknowledged
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Not found (code entry_not_found or submission_not_found)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/tags:
+    get:
+      operationId: listTags
+      summary: List tags with usage counts (proxied, uncached)
+      responses:
+        '200':
+          description: Tags
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - tags
+                properties:
+                  tags:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tag'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    post:
+      operationId: createTag
+      summary: Create a tag (proxied)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TagCreate'
+      responses:
+        '201':
+          description: The created tag
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: Tag cap reached - at most 200 distinct tags per user (code cap_exceeded)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/tags/{tagId}:
+    put:
+      operationId: renameTag
+      summary: Rename a tag (proxied)
+      parameters:
+        - name: tagId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TagCreate'
+      responses:
+        '200':
+          description: The renamed tag
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    delete:
+      operationId: deleteTag
+      summary: Delete a tag (proxied)
+      parameters:
+        - name: tagId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/views:
+    get:
+      operationId: listViews
+      summary: List saved views (proxied, uncached)
+      responses:
+        '200':
+          description: Views
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - views
+                properties:
+                  views:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SavedView'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    post:
+      operationId: createView
+      summary: Save a view (proxied)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ViewCreate'
+      responses:
+        '201':
+          description: The saved view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/views/{viewId}:
+    put:
+      operationId: updateView
+      summary: Replace a saved view (proxied)
+      parameters:
+        - name: viewId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ViewCreate'
+      responses:
+        '200':
+          description: The updated view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    delete:
+      operationId: deleteView
+      summary: Delete a saved view (proxied)
+      parameters:
+        - name: viewId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/dashboard:
+    get:
+      operationId: getDashboard
+      summary: Collection dashboard (proxied; cached by the collection service, never here)
+      description: |
+        Accepts the entries-list filter dimensions and forwards them; the aggregates then cover exactly the filtered slice. Only the unfiltered dashboard is cached upstream.
+      parameters:
+        - name: item_type
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ItemType'
+        - $ref: '#/components/parameters/statusFilter'
+        - name: packaging
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/Packaging'
+        - name: region
+          in: query
+          required: false
+          description: Known-value buckets; other stored strings only surface unfiltered.
+          schema:
+            type: array
+            items:
+              type: string
+        - name: developer
+          in: query
+          required: false
+          description: Developer names; an entry matches when any of its snapshotted developers is listed.
+          schema:
+            type: array
+            items:
+              type: string
+        - name: publisher
+          in: query
+          required: false
+          description: Publisher names; same overlap matching as developer.
+          schema:
+            type: array
+            items:
+              type: string
+        - name: item_condition
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ItemCondition'
+        - $ref: '#/components/parameters/platformId'
+        - name: tag_id
+          in: query
+          required: false
+          description: Entries carrying ALL listed tags.
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+      responses:
+        '200':
+          description: The dashboard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Invalid parameters
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/dashboard/value-history:
+    get:
+      operationId: getValueHistory
+      summary: Collection value over time (proxied; cached by the collection service, never here)
+      responses:
+        '200':
+          description: The value series, oldest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValueHistory'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/fx:
+    get:
+      operationId: getFx
+      summary: Latest USD-based exchange rates (relayed from the enrichment service)
+      description: |
+        Rates are target-units-per-USD; USD is the base and omitted from the map. The SPA converts market values client-side with these; a failure only degrades display to USD.
+      responses:
+        '200':
+          description: Rate snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FXRates'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/platforms:
+    get:
+      operationId: listPlatforms
+      summary: The canonical platform catalog with aliases (relayed from enrichment)
+      description: |
+        Reference data for the custom-entry platform picker: igdb id + name + aliases, sorted by name.
+      responses:
+        '200':
+          description: The platform catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformCatalog'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/recommendations:
+    get:
+      operationId: getRecommendations
+      summary: Heuristic game recommendations for the signed-in user's library
+      description: |
+        Composed here (the bff caches only what it composes): the collection service's library summary is scored by the enrichment service, and the result is cached per user for about an hour. The caller's own entry mutations invalidate it immediately; degraded results (provider fetches skipped) are served but never cached.
+      responses:
+        '200':
+          description: Ranked recommendations with display metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/products/unmatched:
+    get:
+      operationId: listUnmatchedProducts
+      summary: Admin worklist of unmatched products (relay; enrichment enforces role admin)
+      description: |
+        Relays enrichment's admin worklist verbatim: every product with no PriceCharting mapping, held ones included and flagged with match_hold. The bff adds no role logic; a non-admin caller receives enrichment's 403 problem unchanged.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: One worklist page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnmatchedProductsPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/products/community:
+    get:
+      operationId: listCommunityProducts
+      summary: Admin listing of community products (relay; enrichment enforces role admin)
+      description: |
+        Relays enrichment's community listing verbatim: every admin-minted, un-promoted community product. The bff adds no role logic; a non-admin caller receives enrichment's 403 problem unchanged.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: One community listing page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunityProductsPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/products/{productId}:
+    delete:
+      operationId: deleteProduct
+      summary: Delete an unreferenced, unmatched product (orchestrated; enrichment enforces role admin)
+      description: |
+        The one orchestrated admin call: the bff first asks collection how many entries reference the product (collection enforces role admin on that read; its 403 relays verbatim). Any references answer 409 code product_referenced with the count in the detail - repoint or delete those entries first. Unreferenced products relay enrichment's guarded delete: 204 on success, 404 product_not_found, 409 product_matched for matched products (clear the mapping first). Small disclosed race: an entry created between the check and the delete is not re-checked; a later resolve re-mints the family slot regardless, so delete is cleanup, not prevention.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: No such product (code product_not_found)
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: Entries reference the product (code product_referenced) or it carries a mapping (code product_matched)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/products/{productId}/pricecharting:
+    put:
+      operationId: setProductMapping
+      summary: Correct or clear a product's PriceCharting mapping (relay; enrichment enforces role admin)
+      description: |
+        Relays enrichment's moderated correction verbatim. A null pc_product_id clears the mapping (the product becomes unmatched and held against a future automated match); setting any mapping stores it verified and lifts the hold. 409 code identity_taken when another product of the same identity already carries the target listing, or a clear would collide with an existing unmatched product of that identity; the 409 detail names the holding product (id and name) when the holder can be resolved. Clearing an already-unmatched product collides with nothing and simply parks it (sets match_hold, idempotently) - the admin lever for silencing permanent worklist residue.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MappingRequest'
+      responses:
+        '200':
+          description: The product with its corrected mapping
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Invalid body (code invalid_body or invalid_param)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: No such product, or the provider does not know the mapping id
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: Another product already carries that identity (code identity_taken)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/refresh:
+    post:
+      operationId: triggerRefresh
+      summary: Trigger an immediate catalog refresh (relay; enrichment enforces role admin)
+      responses:
+        '202':
+          description: Refresh started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshAccepted'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: A refresh is already running (code refresh_in_progress)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/rematch:
+    post:
+      operationId: triggerRematch
+      summary: Trigger an immediate entry rematch (relay; collection enforces role admin)
+      responses:
+        '202':
+          description: Rematch started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RematchAccepted'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: An entry rematch is already running (code rematch_in_progress)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/resnapshot:
+    post:
+      operationId: resnapshot
+      summary: Run the entry snapshot recompute sweep (relay; collection enforces admin or service)
+      responses:
+        '200':
+          description: Sweep summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResnapshotResult'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/normalize-platforms:
+    post:
+      operationId: normalizePlatforms
+      summary: Run the platform canonicalization sweep (relay; collection enforces admin or service)
+      responses:
+        '200':
+          description: Sweep summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NormalizeResult'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/normalize-regions:
+    post:
+      operationId: normalizeRegions
+      summary: Run the region normalization sweep (relay; collection enforces admin or service)
+      responses:
+        '200':
+          description: Sweep summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NormalizeResult'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/normalize-community-regions:
+    post:
+      operationId: normalizeCommunityRegions
+      summary: Run the community-product region normalization sweep (relay; enrichment enforces admin or service)
+      responses:
+        '200':
+          description: Sweep summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NormalizeResult'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/submissions:
+    get:
+      operationId: listSubmissions
+      summary: Pending catalog submissions with live proposals (relay; collection enforces role admin)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: One queue page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSubmissionsPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/submissions/{submissionId}/verdict:
+    post:
+      operationId: submitVerdict
+      summary: Resolve one pending submission (relay; collection enforces role admin and orchestrates approve_new)
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerdictRequest'
+      responses:
+        '200':
+          description: The resolved submission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Invalid body (code invalid_body or invalid_param)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: No such submission, the adopt target does not exist, or the entry vanished mid-race (code submission_not_found, unknown_product, or entry_not_found)
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: Another admin already resolved it (code submission_resolved)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/products:
+    post:
+      operationId: createCommunityProduct
+      summary: Mint a community product (relay; enrichment enforces role admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommunityProductSpec'
+      responses:
+        '201':
+          description: The minted community product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Invalid body (code invalid_body or invalid_param)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/products/{productId}/promote:
+    post:
+      operationId: promoteProduct
+      summary: Promote a community product to provider identity (relay; enrichment enforces role admin)
+      description: |
+        Relays enrichment's atomic attach+flip verbatim; a provider twin answers 409 identity_taken with the holder named, an already-provider product answers 409 product_not_community.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteRequest'
+      responses:
+        '200':
+          description: The promoted product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Invalid body (code invalid_body or invalid_param)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: No such product, or the provider does not know the requested id
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: Not community-origin (code product_not_community) or a provider twin holds the identity (code identity_taken)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/products/promote-candidates:
+    get:
+      operationId: listPromoteCandidates
+      summary: Community products with plausible provider matches (relay; enrichment enforces role admin)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+        - $ref: '#/components/parameters/offset'
+        - name: product_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: One candidates page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoteCandidatesPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/admin/products/{productId}/promote-candidates/dismiss:
+    post:
+      operationId: dismissPromoteCandidate
+      summary: Dismiss one promote candidate (relay; enrichment enforces role admin)
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DismissCandidateRequest'
+      responses:
+        '204':
+          description: Dismissed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Invalid body (code invalid_body or invalid_param)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: No such product (code product_not_found)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/profiles/{handle}:
+    get:
+      operationId: getProfilePage
+      summary: 'A user''s public profile: card, listed shelves, and social counts'
+      description: |
+        Composes the profile card with up to 50 of the owner's listed shelves and the social follower/like counts. Owners see exactly what visitors see (an honest preview of their own public page). social is absent exactly when social_available is false (the social service degrades open; the page still renders).
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Profile page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfilePage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Unknown or private (deliberately indistinguishable; code profile_not_found)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/profiles/{handle}/shelves/{slug}:
+    get:
+      operationId: getProfileShelfPage
+      summary: A shared shelf resolved by owner handle and slug
+      description: |
+        Resolves the handle to its owner, then the slug to a shelf under that owner, applying the two-sided effective-visibility rule (the stricter of profile visibility and shelf visibility: both must be non-private). Every miss on this route - unknown handle, private owner, unknown slug, private shelf - answers the same 404 so a probing request cannot tell them apart. The composed payload carries the shelf UUID for all subsequent calls (entries, comments, likes).
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Shelf page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShelfPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/shelves/{shelfId}:
+    get:
+      operationId: getShelfPage
+      summary: 'A shared shelf''s page: meta, owner card, and social counts'
+      description: |
+        Applies the two-sided effective-visibility rule (the stricter of profile visibility and shelf visibility: both must be non-private); unknown, private-shelf, and private-owner all answer the same 404. social is absent exactly when social_available is false.
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Shelf page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShelfPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/shelves/{shelfId}/entries:
+    get:
+      operationId: listShelfEntries
+      summary: A shelf's entries, whitelist-projected (proxied)
+      description: |
+        Applies the effective-visibility rule before relaying collection's whitelisted projection verbatim (money and personal fields never appear).
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: One page of the shelf's entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedEntryList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/shelves/{shelfId}/comments:
+    get:
+      operationId: listShelfComments
+      summary: A shelf's live comments, newest first, keyset-paged (composed with batched author cards)
+      description: |
+        Applies the effective-visibility rule, then composes social's page with a batched author ProfileCard per comment (mirrors the feed's actor hydration). A card-fetch failure fails open: the page still serves, just without any author. Anything other than social's 200 (its own 400 on a malformed cursor included) still relays verbatim, unchanged from before.
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/cursor'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: One page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Malformed cursor (code invalid_param)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    post:
+      operationId: createShelfComment
+      summary: Comment on a shelf (proxied)
+      description: Applies the effective-visibility rule before relaying the social service verbatim.
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: The comment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Invalid body (code invalid_body)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: Comment cap reached - tombstones count (code cap_exceeded)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/comments/{commentId}:
+    delete:
+      operationId: deleteComment
+      summary: Delete a comment; author tombstones body-NULL, shelf owner tombstones body-retained (proxied)
+      description: |
+        Relayed verbatim; the bff does not resolve the shelf for this call (social already knows the comment row's shelf and owner and authorizes by row).
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Tombstoned
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: Caller is neither author nor shelf owner (code forbidden)
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Unknown or already tombstoned (code comment_not_found)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/social/follows/{userId}:
+    put:
+      operationId: follow
+      summary: Follow a user (idempotent) (proxied)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Following (already or newly)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Self-follow (code self_follow)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Unknown or private (deliberately indistinguishable; code profile_not_found)
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: Follow cap reached (code cap_exceeded)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    delete:
+      operationId: unfollow
+      summary: Unfollow a user (idempotent) (proxied)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Not following (already or newly)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/social/likes/{shelfId}:
+    put:
+      operationId: like
+      summary: Like a shelf (idempotent) (proxied)
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Liked (already or newly)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: Like cap reached (code cap_exceeded)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    delete:
+      operationId: unlike
+      summary: Remove a like (idempotent) (proxied)
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Not liked (already or newly)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/search/users:
+    get:
+      operationId: searchUsers
+      summary: Substring search over listed profiles' handles (proxied)
+      parameters:
+        - $ref: '#/components/parameters/userSearchQ'
+      responses:
+        '200':
+          description: Up to 20 listed matches
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - profiles
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProfileCard'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/shared/profiles/by-ids:
+    get:
+      operationId: getSharedProfilesByIds
+      summary: Batch profile cards for hydration (relayed from the user service; visibility-independent - actions are signed)
+      description: |
+        Mirrors the user service's batch resolve verbatim: cards come back for the ids that exist regardless of visibility (page access is gated separately, per page). Backs the admin submissions queue's submitter-handle hydration.
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: array
+            maxItems: 100
+            items:
+              type: string
+              format: uuid
+      responses:
+        '200':
+          description: Cards for the ids that exist
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - profiles
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProfileCard'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/feed:
+    get:
+      operationId: getFeed
+      summary: The caller's two-tab activity feed (fill loop, hydrated and gated)
+      description: |
+        Runs a fill loop against the social service: fetch a raw page, hydrate it (actor cards, shelf cards, comment excerpts), gate it by the tab's visibility rule, and repeat until limit survivors accumulate or the raw stream exhausts, capped at feedFillRounds rounds (a rare shortfall yields a slightly short page). Actions are signed, objects are gated: actor cards attach at any visibility; on tab=following a row naming a shelf survives only when the shelf is listed and its owner is listed, and a followed_user row survives only when the followee is listed; tab=you shows every row (the objects are the caller's own shelves). next_cursor is the raw cursor of the last consumed row; absent when the raw stream is exhausted with nothing left to resume from.
+      parameters:
+        - $ref: '#/components/parameters/tab'
+        - $ref: '#/components/parameters/cursor'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: One filled page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Invalid tab or malformed cursor (code invalid_param)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /api/explore:
+    get:
+      operationId: getExplore
+      summary: Browse shared shelves - newest-published or top-liked, listed-only
+      description: |
+        recent pages collection's listed shelves directly (no owner filter), gates each page's owner for listed-ness at the bff, and fills short pages by re-paging collection, up to a fixed round cap; next_offset carries the raw collection-space resume position and is present only while more rows remain - top is the fixed all-time like-count leaderboard (leaderboard order preserved, no deep paging, no next_offset), dropping anything that is not effectively listed by the time it is read. limit and offset apply to recent only; top always answers its own fixed-size leaderboard.
+      parameters:
+        - name: sort
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - recent
+              - top
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: One page of shelf cards
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExplorePage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+components:
+  responses:
+    Unauthenticated:
+      description: No valid session (cookie missing, malformed, expired, revoked, or denylisted)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    OriginForbidden:
+      description: Mutating request from a foreign origin (code origin_forbidden)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UpstreamError:
+      description: A downstream service failed (code upstream_error)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    BadRequest:
+      description: Invalid body
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Caller lacks the admin role (code forbidden)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Name already taken
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    TooManyRequests:
+      description: Handle changed too recently (code handle_cooldown; relayed from the user service)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ServiceUnavailable:
+      description: Session refresh blocked on a dependency; retry (code user_unavailable)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    FXRates:
+      type: object
+      required:
+        - base
+        - date
+        - rates
+      properties:
+        base:
+          type: string
+          description: Always USD.
+        date:
+          type: string
+          description: Upstream snapshot date (YYYY-MM-DD), not the fetch time.
+        rates:
+          type: object
+          description: |
+            Target-units-per-USD by ISO 4217 code. USD itself is omitted (it is the base; conversion short-circuits).
+          additionalProperties:
+            type: number
+            format: double
+    Providers:
+      type: object
+      required:
+        - providers
+      properties:
+        providers:
+          type: array
+          description: 'Subset of: google, twitch, dev'
+          items:
+            type: string
+    Me:
+      description: |
+        Browser-facing projection of the user service's User. Timestamps are intentionally omitted; add fields only when the SPA has a concrete use for them.
+      type: object
+      required:
+        - id
+        - email
+        - handle
+        - roles
+        - preferred_currency
+        - profile_visibility
+        - landing_page
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        handle:
+          $ref: '#/components/schemas/Handle'
+        avatar_url:
+          type: string
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        preferred_currency:
+          description: Display currency for market values; USD until set.
+          allOf:
+            - $ref: '#/components/schemas/CurrencyCode'
+        profile_visibility:
+          $ref: '#/components/schemas/Visibility'
+        landing_page:
+          description: Where the app opens after sign-in.
+          allOf:
+            - $ref: '#/components/schemas/LandingPage'
+    UpdateMeRequest:
+      type: object
+      description: Absent fields keep their value; an empty avatar_url clears it.
+      properties:
+        handle:
+          $ref: '#/components/schemas/Handle'
+        avatar_url:
+          type: string
+          maxLength: 2048
+        preferred_currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        profile_visibility:
+          $ref: '#/components/schemas/Visibility'
+        landing_page:
+          $ref: '#/components/schemas/LandingPage'
+    Identity:
+      type: object
+      required:
+        - id
+        - provider
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider:
+          type: string
+        email:
+          type: string
+          description: Informational; the email the provider asserted when this identity last signed in.
+        created_at:
+          type: string
+          format: date-time
+    Identities:
+      type: object
+      required:
+        - identities
+      properties:
+        identities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Identity'
+    PlatformRef:
+      type: object
+      required:
+        - igdb_platform_id
+        - name
+      properties:
+        igdb_platform_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        logo_url:
+          type: string
+          description: IGDB platform logo; the display fallback for products without cover art.
+        release_regions:
+          description: |
+            Distinct canonical IGDB release regions for this game on this platform (japan, north_america, europe, ...), ordered by that region's earliest release date on the platform (dateless rows last, then alphabetical). Platform-exact: JP twin platforms are NOT folded here (a Famicom row stays on Famicom), unlike the product projection's date fold - the physical release is platform-specific. Populated on game search results only; absent on product payloads and hardware results.
+          type: array
+          items:
+            $ref: '#/components/schemas/ReleaseRegion'
+    CatalogPlatform:
+      description: One platform-catalog row with its known aliases.
+      type: object
+      required:
+        - igdb_id
+        - name
+        - aliases
+      properties:
+        igdb_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        aliases:
+          description: Alternate spellings and abbreviations (compare case-insensitively).
+          type: array
+          items:
+            type: string
+    PlatformCatalog:
+      type: object
+      required:
+        - platforms
+      properties:
+        platforms:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogPlatform'
+    SearchResult:
+      description: |
+        Flat result with a type discriminator. Game results carry the igdb_* fields; hardware results carry the pc_* fields plus the PriceCharting category (Systems, Controllers, Accessories). pc_listing results carry the pc_* fields, the PriceCharting category (empty when the provider lists none), and the standard per-listing loose/cib/new prices so variant prints are tellable apart.
+      type: object
+      required:
+        - type
+        - name
+      properties:
+        type:
+          $ref: '#/components/schemas/SearchResultType'
+        name:
+          type: string
+        igdb_game_id:
+          type: integer
+          format: int64
+        platforms:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformRef'
+        first_release_date:
+          type: string
+          format: date
+        cover_url:
+          type: string
+        localizations:
+          description: Per-region presentations of a game result (games only).
+          type: array
+          items:
+            $ref: '#/components/schemas/Localization'
+        matched_region:
+          type: string
+          description: |
+            Set when the query matched a region's localized name or transliteration rather than the canonical name: that bundle's region identifier. Clients may present the region's data and preselect a matching entry region. Absent on canonical-name matches, hardware, pc_listing, and community results.
+        pc_product_id:
+          type: integer
+          format: int64
+        console_name:
+          type: string
+        category:
+          type: string
+        loose_cents:
+          type: integer
+          format: int64
+        cib_cents:
+          type: integer
+          format: int64
+        new_cents:
+          type: integer
+          format: int64
+        origin:
+          description: |
+            Marks an interleaved community result (admin-minted, anchor-less); absent on provider results. Community results carry product_id + item_type + platform_name for the pick, community.cover_url as cover_url, and community.region as region. They are scored against the query by name similarity and merged into results by descending score (a provider result precedes a community result of equal score), capped at 10, for game and hardware searches only (never pc_listing). The provider cache stores provider results only - community items attach fresh on every search.
+          allOf:
+            - $ref: '#/components/schemas/ProductOrigin'
+        product_id:
+          type: string
+          format: uuid
+        item_type:
+          $ref: '#/components/schemas/ItemType'
+        platform_name:
+          type: string
+        region:
+          type: string
+          description: Community rows only - the community facts region, entry vocabulary.
+        developers:
+          type: array
+          items:
+            type: string
+          description: Community rows only - the curated developer names, for based-add prefill.
+        publishers:
+          type: array
+          items:
+            type: string
+          description: Community rows only - the curated publisher names, for based-add prefill.
+    SearchResults:
+      type: object
+      required:
+        - degraded
+        - results
+      properties:
+        degraded:
+          type: boolean
+          description: True when the provider was unreachable and the local catalog answered instead.
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+    IgdbMeta:
+      description: Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
+      type: object
+      required:
+        - game_id
+        - name
+        - genres
+        - themes
+        - franchises
+        - similar_games
+        - companies
+        - fetched_at
+      properties:
+        game_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        cover_url:
+          type: string
+        genres:
+          type: array
+          items:
+            type: string
+        themes:
+          type: array
+          items:
+            type: string
+        franchises:
+          type: array
+          items:
+            type: string
+        similar_games:
+          type: array
+          items:
+            type: integer
+            format: int64
+        companies:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompanyCredit'
+        first_release_date:
+          type: string
+          format: date
+          description: |
+            Earliest date for the product's platform; the game-level first release when IGDB lists no dated rows for the platform.
+        release_dates:
+          description: |
+            Per-region release dates for the product's platform, the earliest concrete date per region. Region values are canonical IGDB names (europe, north_america, australia, new_zealand, japan, china, asia, worldwide, korea, brazil). JP twin platforms fold into their sibling (SNES/Super Famicom, NES/Famicom).
+          type: array
+          items:
+            $ref: '#/components/schemas/ReleaseDate'
+        localizations:
+          description: |
+            Per-region presentations; absent both on projections predating the feature and on games with no localizations at all (an empty slice is omitted rather than sent).
+          type: array
+          items:
+            $ref: '#/components/schemas/Localization'
+        fetched_at:
+          type: string
+          format: date-time
+    CompanyCredit:
+      type: object
+      required:
+        - name
+        - developer
+        - publisher
+      properties:
+        name:
+          type: string
+        developer:
+          type: boolean
+        publisher:
+          type: boolean
+    ReleaseDate:
+      type: object
+      required:
+        - region
+        - date
+      properties:
+        region:
+          $ref: '#/components/schemas/ReleaseRegion'
+        date:
+          type: string
+          format: date
+    Localization:
+      description: |
+        One region's presentation of the game, merged from IGDB game_localizations and tagged alternative names. region is an IGDB region identifier served verbatim (ja-JP, EU, ko-KR, zh-CN, zh-TW, pt-BR; open-world - new identifiers pass through). name is the native-script title, translit its latin transliteration, cover_url the region's own box art; each is independently optional (rows are sparse - readers fall back per field).
+      type: object
+      required:
+        - region
+      properties:
+        region:
+          type: string
+        name:
+          type: string
+        translit:
+          type: string
+        cover_url:
+          type: string
+    PricechartingMeta:
+      description: |
+        The PriceCharting mapping and current prices; refreshed daily. Absent from a product when no candidate cleared the match confidence threshold (no guessing) and the mapping has not been corrected by an admin.
+      type: object
+      required:
+        - pc_product_id
+        - pc_name
+        - console_name
+        - match_confidence
+        - verified
+        - as_of
+      properties:
+        pc_product_id:
+          type: integer
+          format: int64
+        pc_name:
+          type: string
+        console_name:
+          type: string
+        match_confidence:
+          type: number
+          format: double
+        verified:
+          type: boolean
+        loose_cents:
+          type: integer
+          format: int64
+        cib_cents:
+          type: integer
+          format: int64
+        new_cents:
+          type: integer
+          format: int64
+        as_of:
+          type: string
+          format: date-time
+    Product:
+      type: object
+      required:
+        - id
+        - type
+        - name
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/ProductType'
+        name:
+          type: string
+        platform:
+          $ref: '#/components/schemas/PlatformRef'
+        region:
+          type: string
+          description: |
+            Provider hardware identity fact; community products carry their region under community.region instead.
+        edition:
+          type: string
+        variant:
+          type: string
+        igdb:
+          $ref: '#/components/schemas/IgdbMeta'
+        pricecharting:
+          $ref: '#/components/schemas/PricechartingMeta'
+        match_hold:
+          type: boolean
+          description: |
+            Present true when an admin clear holds this product's mapping against a future automated match (resolve, or the entry-side re-match).
+        origin:
+          description: |
+            Emitted only for admin-minted community products (absent means provider-identified). Community products live outside the provider identity indexes; their curated name is their identity.
+          allOf:
+            - $ref: '#/components/schemas/ProductOrigin'
+        community:
+          $ref: '#/components/schemas/CommunityMeta'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CommunityMeta:
+      description: |
+        Facts curated at community mint time; retained after promotion as gap-fill (provider blocks win per-field where present).
+      type: object
+      properties:
+        platform_name:
+          type: string
+        region:
+          type: string
+          maxLength: 32
+          description: |
+            Curated entry-vocabulary region fact (open-world; known values ntsc_u, ntsc_j, pal, region_free, korea, brazil, china).
+        first_release_date:
+          type: string
+          format: date
+        developers:
+          type: array
+          items:
+            type: string
+          description: |
+            Curated developer company names, one per element; served into entry credit snapshots when the provider block carries no developer credits (per-field gap-fill).
+        publishers:
+          type: array
+          items:
+            type: string
+          description: |
+            Curated publisher company names; same gap-fill posture as developers.
+        cover_url:
+          type: string
+          description: |
+            User-supplied cover image URL (https, never fetched server-side; the client renders it with a broken-image fallback). Served as the product cover when no provider cover is present; retained after promotion as gap-fill.
+    PromoteRequest:
+      description: |
+        Provider identity for an in-place promotion. type game products require igdb_game_id + platform_igdb_id and accept an optional pc_product_id (the listing can also arrive later via the mapping fix, once provider); console and accessory products require pc_product_id. The identity the product re-enters the index with completes with the doc's stored region/edition/variant.
+      type: object
+      properties:
+        igdb_game_id:
+          type: integer
+          format: int64
+        platform_igdb_id:
+          type: integer
+          format: int64
+        pc_product_id:
+          type: integer
+          format: int64
+    PromoteCandidate:
+      type: object
+      required:
+        - provider
+        - provider_id
+        - name
+        - score
+        - found_at
+      properties:
+        provider:
+          $ref: '#/components/schemas/CatalogProvider'
+        provider_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        score:
+          type: number
+          format: double
+        found_at:
+          type: string
+          format: date-time
+    PromoteCandidatesPage:
+      type: object
+      required:
+        - products
+        - total_count
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromoteCandidateProduct'
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of flagged community products.
+    PromoteCandidateProduct:
+      type: object
+      required:
+        - product
+        - candidates
+      properties:
+        product:
+          $ref: '#/components/schemas/Product'
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromoteCandidate'
+    DismissCandidateRequest:
+      type: object
+      required:
+        - provider
+        - provider_id
+      properties:
+        provider:
+          $ref: '#/components/schemas/CatalogProvider'
+        provider_id:
+          type: integer
+          format: int64
+    ResolveRequest:
+      description: |
+        type game requires igdb_game_id + platform_igdb_id (the platform must be one the game released on). Game identity is listing-keyed - (game, platform, PriceCharting listing) - so edition/variant on a game resolve are ignored (entry-level facts, like pc_listing); region is a matching input only (see the region property) and never joins identity. Without pc_product_id the resolve auto-matches by the game name (region-steered) through the shared listing-search cache and lands on the winning listing's product; below the confidence threshold, or with the provider down, it lands on the game+platform's single unmatched product instead - never guessed. Optional match_hint (game only, ignored elsewhere) reweights the scoring toward variant text without changing the search query; a hint nothing matches makes the resolve conservative (unmatched). With pc_product_id (a manual match: the exact listing the user chose) auto-match is skipped and the resolve finds or mints the product carrying that listing (match_confidence 1.0, verified false); unknown id answers 404 unknown_pc_product, provider failure 502 upstream_unavailable. Resolves never touch an existing product's mapping; corrections stay on the admin mapping endpoint. console/accessory require pc_product_id; region/edition/variant distinguish physical variants and are part of hardware identity. type pc_listing requires pc_product_id and mints a price-anchor product for that exact listing; region/edition/variant are ignored (the listing IS the exact variant).
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          $ref: '#/components/schemas/ProductType'
+        igdb_game_id:
+          type: integer
+          format: int64
+        platform_igdb_id:
+          type: integer
+          format: int64
+        pc_product_id:
+          type: integer
+          format: int64
+        match_hint:
+          type: string
+          maxLength: 128
+        region:
+          type: string
+          maxLength: 32
+          description: 'For console/accessory: part of hardware identity, distinguishing physical variants. For game: a matching input only - the entry region (ntsc_u, ntsc_j, pal, region_free, korea, brazil, china) steers which PriceCharting listing auto-match lands on (JP and PAL listings live under region-prefixed or JP-named console axes; korea, brazil and china have no provider axis and match like ntsc_u) and is never stored on the product; ignored when pc_product_id is present; unknown values behave like ntsc_u. Ignored for pc_listing.'
+        edition:
+          type: string
+          maxLength: 128
+        variant:
+          type: string
+          maxLength: 128
+    Recommendation:
+      type: object
+      required:
+        - igdb_game_id
+        - name
+        - genres
+        - score
+      properties:
+        igdb_game_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        cover_url:
+          type: string
+        genres:
+          type: array
+          items:
+            type: string
+        first_release_date:
+          type: string
+          format: date
+        score:
+          type: number
+          format: double
+    ScoreResponse:
+      type: object
+      required:
+        - degraded
+        - recommendations
+      properties:
+        degraded:
+          type: boolean
+          description: True when candidate metadata fetches failed and some candidates were skipped.
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Recommendation'
+    UnmatchedProductsPage:
+      type: object
+      required:
+        - products
+        - total_count
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of unmatched products, beyond this page.
+    CommunityProductsPage:
+      type: object
+      required:
+        - products
+        - total_count
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        total_count:
+          type: integer
+          format: int64
+          description: Full count of community products, beyond this page.
+    MappingRequest:
+      type: object
+      required:
+        - pc_product_id
+      properties:
+        pc_product_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Null clears the mapping (the product becomes unmatched and held).
+    RefreshAccepted:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/AcceptedStatus'
+    RematchAccepted:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/AcceptedStatus'
+    ResnapshotResult:
+      type: object
+      required:
+        - products_seen
+        - products_failed
+        - entries_updated
+      properties:
+        products_seen:
+          type: integer
+        products_failed:
+          type: integer
+        entries_updated:
+          type: integer
+    NormalizeResult:
+      type: object
+      required:
+        - scanned
+        - normalized
+        - skipped
+      properties:
+        scanned:
+          type: integer
+        normalized:
+          type: integer
+        skipped:
+          type: integer
+    Problem:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
+          type: string
+    EntryPlatform:
+      description: |
+        The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
+      type: object
+      required:
+        - name
+      properties:
+        igdb_platform_id:
+          type: integer
+          format: int64
+          description: Absent on name-only custom entries.
+        name:
+          type: string
+    Entry:
+      description: |
+        One physical copy. On product-backed entries the catalog fields (item_type, display_name, platform, first_release_date, igdb_game_id) are immutable creation-time snapshots from the enrichment product and product_id remains the live join key for prices. A CUSTOM entry has no product_id: its display fields are user-owned and editable, platform carries the picked or normalized identity - name-only for escape-hatch free text - when supplied, and igdb_game_id is always absent. value_cents is composed at read time from the effective pricing product and the packaging-matched price field; (or, with pricing_mode custom, taken directly from custom_value_cents, packaging-independent); it is null when pricing_mode is disabled, the product is unmatched, no price exists for the packaging, or enrichment is temporarily unreachable.
+      type: object
+      required:
+        - id
+        - item_type
+        - media_type
+        - display_name
+        - region
+        - packaging
+        - has_box
+        - has_manual
+        - currency
+        - pricing_mode
+        - status
+        - pinned
+        - source
+        - tags
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+          description: Absent on custom entries.
+        item_type:
+          $ref: '#/components/schemas/ItemType'
+        media_type:
+          $ref: '#/components/schemas/MediaType'
+        display_name:
+          type: string
+        platform:
+          $ref: '#/components/schemas/EntryPlatform'
+        first_release_date:
+          type: string
+          format: date
+        cover_url:
+          type: string
+          description: |
+            Cover art URL. For product-backed entries it is snapshotted from the product at creation (and refreshed on adoption). Custom entries may set their own (https, shape-validated). Absent on hardware and products without art (render a placeholder).
+        localized_name:
+          type: string
+          description: Region-picked native-script title (server-derived from the entry's region; absent when the region has none).
+        localized_name_translit:
+          type: string
+          description: Latin transliteration of localized_name's title (server-derived).
+        localized_cover_url:
+          type: string
+          description: Region-picked box art URL (server-derived).
+        developers:
+          type: array
+          items:
+            type: string
+          description: 'Developer company names snapshotted for the entry: IGDB credits where the product carries them, community curated lists as gap-fill, or the user''s own facts on a custom entry. Absent when no credits are known.'
+        publishers:
+          type: array
+          items:
+            type: string
+          description: Publisher company names; same sourcing as developers.
+        igdb_game_id:
+          type: integer
+          format: int64
+          description: |
+            The recommendation identity: snapshotted from the entry's own product, or from the proxy target on custom game entries (owning a reproduction of X means playing X).
+        region:
+          type: string
+        edition:
+          type: string
+          description: |
+            Per-copy variant note ("first print (glitched rev)", "black edition"): the idiom for variants of cataloged items is an entry on the base product with the variant recorded here.
+        packaging:
+          $ref: '#/components/schemas/Packaging'
+        has_box:
+          type: boolean
+        has_manual:
+          type: boolean
+        box_condition:
+          $ref: '#/components/schemas/ItemCondition'
+        manual_condition:
+          $ref: '#/components/schemas/ItemCondition'
+        item_condition:
+          $ref: '#/components/schemas/ItemCondition'
+        price_paid_cents:
+          type: integer
+          format: int64
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+        purchased_at:
+          type: string
+          format: date
+        purchased_from:
+          type: string
+        pricing_mode:
+          $ref: '#/components/schemas/PricingMode'
+        pricing_product_id:
+          type: string
+          format: uuid
+        custom_value_cents:
+          type: integer
+          format: int64
+          description: |
+            The user-set market value (USD cents). With pricing_mode custom it IS the entry's value; under any other mode it persists as "last custom price" memory.
+        custom_value_set_at:
+          type: string
+          format: date-time
+          description: |
+            Server-managed: stamped when custom_value_cents is first set or changes value, untouched otherwise. Read-only.
+        custom_value_entered_cents:
+          type: integer
+          format: int64
+          description: |
+            The custom price exactly as the user typed it, in custom_value_entered_currency minor units (major units x 100, including zero-decimal currencies). Display metadata only: no aggregation reads it; custom_value_cents remains the USD value used everywhere.
+        custom_value_entered_currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+          description: Currency of custom_value_entered_cents.
+        status:
+          $ref: '#/components/schemas/EntryStatus'
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 10
+        notes:
+          type: string
+        storage_location:
+          type: string
+        pinned:
+          type: boolean
+        backlog_rank:
+          type: string
+          description: Present exactly while status is backlog; server-generated.
+        source:
+          type: string
+          enum:
+            - manual
+            - steam
+            - psn
+            - epic
+        external_ref:
+          type: string
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagRef'
+        value_cents:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        region_mismatch_ack_at:
+          type: string
+          format: date-time
+          description: |
+            Null until the owner dismisses the region-mismatch banner; cleared whenever region or product changes.
+    Submission:
+      description: |
+        One catalog-submission lifecycle row for an entry. Rows persist as history (rejected and cancelled included; the rolling creation cap counts every attempt); deleting the entry removes them with it. product_id is the verdict's resolved product - recorded before adoption so an approve_new retry never mints twice.
+      type: object
+      required:
+        - id
+        - entry_id
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        entry_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/SubmissionStatus'
+        reject_reason:
+          type: string
+        product_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        reviewed_at:
+          type: string
+          format: date-time
+        resolution_ack_at:
+          type: string
+          format: date-time
+          description: |
+            When the submitter acknowledged an approved verdict (closed the approval banner). Absent until acknowledged.
+    AdminSubmission:
+      description: |
+        One queue row: the submission plus the live proposal from the entry join (display_name, item_type, platform_name, region, edition, first_release_date pre-fill the curation form; entries carry no variant - the single edition field is the idiom).
+      type: object
+      required:
+        - id
+        - entry_id
+        - user_id
+        - status
+        - display_name
+        - item_type
+        - region
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        entry_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/SubmissionStatus'
+        display_name:
+          type: string
+        item_type:
+          $ref: '#/components/schemas/ItemType'
+        platform_name:
+          type: string
+        region:
+          type: string
+        edition:
+          type: string
+        first_release_date:
+          type: string
+          format: date
+        developers:
+          type: array
+          items:
+            type: string
+          description: The entry's developer credit facts, live from the proposal join; prefill the curation form.
+        publishers:
+          type: array
+          items:
+            type: string
+          description: The entry's publisher credit facts, live from the proposal join; prefill the curation form.
+        cover_url:
+          type: string
+          description: The entry's cover URL, live from the proposal join; prefills the curation cover field.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AdminSubmissionsPage:
+      type: object
+      required:
+        - submissions
+        - total_count
+      properties:
+        submissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminSubmission'
+        total_count:
+          type: integer
+          format: int64
+          description: Full pending count, beyond this page.
+    CommunityProductSpec:
+      description: |
+        The curated fields for approve_new; mirrors the enrichment mint request (single edition field, no variant).
+      type: object
+      required:
+        - type
+        - name
+      properties:
+        type:
+          $ref: '#/components/schemas/ItemType'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        platform_name:
+          type: string
+          maxLength: 100
+        region:
+          type: string
+          maxLength: 32
+          description: |
+            Curated entry-vocabulary region fact; stored under the community facts block (community.region), not the product's top-level region field.
+        edition:
+          type: string
+          maxLength: 128
+          description: The entry idiom's single "Edition or variant" note.
+        first_release_date:
+          type: string
+          format: date
+        developers:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 120
+          description: Curated developer company names, one per element.
+        publishers:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 120
+          description: Curated publisher company names, one per element.
+        cover_url:
+          type: string
+          maxLength: 512
+          pattern: ^https://
+          description: Optional https cover image URL (validated by shape only, never fetched).
+    VerdictRequest:
+      description: |
+        One admin verdict. approve_new requires product; approve_existing requires product_id; reject requires reason.
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          enum:
+            - approve_new
+            - approve_existing
+            - reject
+        product:
+          $ref: '#/components/schemas/CommunityProductSpec'
+        product_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          maxLength: 1000
+    EntryCreate:
+      description: |
+        Product-backed: product_id comes from a prior enrichment resolve and the catalog fields are snapshotted server-side (display_name/item_type/platform_name/first_release_date must NOT be sent). Custom (no product_id): display_name and item_type are required, platform_name and first_release_date optional; pricing_mode defaults to disabled and must not be auto. media_type accepts only physical (the column already allows digital: the API widens when platform sync arrives). source is server-set manual. pricing_product_id is required when pricing_mode is proxy; box_condition requires has_box and manual_condition requires has_manual. custom_value_cents is required when pricing_mode is custom.
+      type: object
+      required:
+        - region
+        - packaging
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          description: Omit for a custom (off-catalog) entry.
+        display_name:
+          type: string
+          maxLength: 200
+          description: Custom entries only (required there).
+        item_type:
+          description: Custom entries only (required there).
+          allOf:
+            - $ref: '#/components/schemas/ItemType'
+        platform_name:
+          type: string
+          maxLength: 100
+          description: Custom entries only.
+        platform_igdb_id:
+          type: integer
+          format: int64
+          description: Custom entries only; the canonical platform id from the picker (surfaces the entry in the platform filter).
+        cover_url:
+          type: string
+          maxLength: 512
+          pattern: ^https://
+          description: Custom entries only; an https cover image URL (validated by shape, never fetched).
+        first_release_date:
+          type: string
+          format: date
+          description: Custom entries only.
+        developers:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 120
+          description: 'Custom entries only: developer company names, one per element. Ignored on product-backed creation, where the snapshot derives credits from the product.'
+        publishers:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 120
+          description: Custom entries only; publisher company names, one per element.
+        media_type:
+          type: string
+          enum:
+            - physical
+          default: physical
+        region:
+          type: string
+          maxLength: 32
+          description: 'Entry region. Known values ntsc_u, ntsc_j, pal, region_free, korea, brazil and china are first-class: labeled in the UI, filterable, normalize-lever promotion targets, with release-date chains, availability rows, and localized display snapshots per region (ntsc_u and region_free render the canonical presentation by design). korea, brazil and china have no PriceCharting axis, so they price from base listings as their deliberate proxy. Any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set.'
+        edition:
+          type: string
+          maxLength: 200
+          description: Per-copy variant note; the idiom for variants of cataloged items.
+        packaging:
+          $ref: '#/components/schemas/Packaging'
+        has_box:
+          type: boolean
+          default: false
+        has_manual:
+          type: boolean
+          default: false
+        box_condition:
+          $ref: '#/components/schemas/ItemCondition'
+        manual_condition:
+          $ref: '#/components/schemas/ItemCondition'
+        item_condition:
+          $ref: '#/components/schemas/ItemCondition'
+        price_paid_cents:
+          type: integer
+          format: int64
+          minimum: 0
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+          default: USD
+        purchased_at:
+          type: string
+          format: date
+        purchased_from:
+          type: string
+          maxLength: 200
+        pricing_mode:
+          default: auto
+          allOf:
+            - $ref: '#/components/schemas/PricingMode'
+        pricing_product_id:
+          type: string
+          format: uuid
+        custom_value_cents:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1000000000
+        custom_value_entered_cents:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1000000000
+        custom_value_entered_currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+        match_provenance:
+          type: string
+          enum:
+            - auto
+            - user
+          default: auto
+          description: Whose choice the matched product is. Send user only when the add flow's manual match picked the price listing; automated repoints (region edits, the entry rematch) never touch user rows. Not accepted on update - the server stamps user when the narrow product_id re-match arm fires.
+        status:
+          default: backlog
+          allOf:
+            - $ref: '#/components/schemas/EntryStatus'
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 10
+        notes:
+          type: string
+          maxLength: 10000
+        storage_location:
+          type: string
+          maxLength: 200
+        pinned:
+          type: boolean
+          default: false
+        tag_ids:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            format: uuid
+    EntryUpdate:
+      description: |
+        Full replacement of the mutable state; an absent optional field is cleared (the edit form holds the whole entry). media_type and custom-ness are immutable. product_id accepts one narrow change - re-matching an auto-priced entry off an unmatched game product onto a product of the same game and platform (see the field description); anything else answers 400 code invalid_product_change. That re-match stamps match_provenance=user; automated region repoints only ever run on match_provenance=auto entries. On custom entries display_name is required and platform_name/first_release_date replace like any optional field; on product-backed entries all three are rejected. tag_ids replaces the tag set; absent means no tags. custom_value_cents is required when pricing_mode is custom.
+      type: object
+      required:
+        - region
+        - packaging
+        - pricing_mode
+        - status
+        - pinned
+      properties:
+        display_name:
+          type: string
+          maxLength: 200
+          description: Custom entries only (required there).
+        platform_name:
+          type: string
+          maxLength: 100
+          description: Custom entries only.
+        platform_igdb_id:
+          type: integer
+          format: int64
+          description: Custom entries only; the canonical platform id from the picker.
+        cover_url:
+          type: string
+          maxLength: 512
+          pattern: ^https://
+          description: Custom entries only; an https cover image URL (validated by shape, never fetched).
+        first_release_date:
+          type: string
+          format: date
+          description: Custom entries only.
+        developers:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 120
+          description: Custom entries only; developer company names, one per element (full replacement).
+        publishers:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 120
+          description: Custom entries only; publisher company names, one per element (full replacement).
+        product_id:
+          type: string
+          format: uuid
+          description: |
+            Narrow re-match. Accepted only when the entry is product-backed with pricing_mode auto, its current product is a game with no price mapping, and the new product is a game of the same family (same igdb game and platform); the same id as the entry already has is a no-op. Anything else answers 400 code invalid_product_change; enrichment unreachable answers 502 code enrichment_unavailable and leaves the entry unchanged. Snapshotted display fields stay as they are.
+        region:
+          type: string
+          maxLength: 32
+          description: 'Entry region. Known values ntsc_u, ntsc_j, pal, region_free, korea, brazil and china are first-class: labeled in the UI, filterable, normalize-lever promotion targets, with release-date chains, availability rows, and localized display snapshots per region (ntsc_u and region_free render the canonical presentation by design). korea, brazil and china have no PriceCharting axis, so they price from base listings as their deliberate proxy. Any other non-empty string is stored verbatim as a display fact and prices like ntsc_u until the value graduates to the known set. On an auto-provenance game entry, a region change repoints the entry to the sibling catalog product whose listing prices that region; snapshotted display fields re-derive from it.'
+        edition:
+          type: string
+          maxLength: 200
+          description: Per-copy variant note; the idiom for variants of cataloged items.
+        packaging:
+          $ref: '#/components/schemas/Packaging'
+        has_box:
+          type: boolean
+          default: false
+        has_manual:
+          type: boolean
+          default: false
+        box_condition:
+          $ref: '#/components/schemas/ItemCondition'
+        manual_condition:
+          $ref: '#/components/schemas/ItemCondition'
+        item_condition:
+          $ref: '#/components/schemas/ItemCondition'
+        price_paid_cents:
+          type: integer
+          format: int64
+          minimum: 0
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+          default: USD
+        purchased_at:
+          type: string
+          format: date
+        purchased_from:
+          type: string
+          maxLength: 200
+        pricing_mode:
+          $ref: '#/components/schemas/PricingMode'
+        pricing_product_id:
+          type: string
+          format: uuid
+        custom_value_cents:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1000000000
+        custom_value_entered_cents:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1000000000
+        custom_value_entered_currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+        status:
+          $ref: '#/components/schemas/EntryStatus'
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 10
+        notes:
+          type: string
+          maxLength: 10000
+        storage_location:
+          type: string
+          maxLength: 200
+        pinned:
+          type: boolean
+        tag_ids:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            format: uuid
+    EntryList:
+      description: |
+        One page of the sorted, filtered sequence. Exactly one of entries/groups is present (groups when group_by was requested, partitioning this page only).
+      type: object
+      required:
+        - pricing_available
+        - total_count
+      properties:
+        pricing_available:
+          type: boolean
+          description: False when enrichment was unreachable; every value_cents is null.
+        total_count:
+          type: integer
+          description: Size of the full filtered set, before pagination.
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entry'
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntryGroup'
+    EntryGroup:
+      type: object
+      required:
+        - key
+        - label
+        - entries
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entry'
+    BulkUpdateRequest:
+      description: |
+        Delta applied across the caller's own entries among entry_ids (foreign or unknown ids are silently not counted, same ownership-filtering posture as tag attachment). At least one of add_tag_ids / remove_tag_ids / status / storage_location must be present, else 400. storage_location's clearing rule is the OPPOSITE of the full-replacement update's: here an ABSENT storage_location leaves the field untouched, and an explicit empty string clears it.
+      type: object
+      required:
+        - entry_ids
+      properties:
+        entry_ids:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: string
+            format: uuid
+        add_tag_ids:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            format: uuid
+        remove_tag_ids:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            format: uuid
+        status:
+          $ref: '#/components/schemas/EntryStatus'
+        storage_location:
+          type: string
+          maxLength: 200
+          description: Empty string clears the field; an absent field leaves it untouched (see the operation description).
+    BulkUpdateResult:
+      type: object
+      required:
+        - updated_count
+      properties:
+        updated_count:
+          type: integer
+          description: Count of the caller's own entries among entry_ids, whether or not any targeted field actually changed.
+    ReorderRequest:
+      description: Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid.
+      type: object
+      properties:
+        after_id:
+          type: string
+          format: uuid
+          nullable: true
+        before_id:
+          type: string
+          format: uuid
+          nullable: true
+    TagRef:
+      description: A tag as embedded on an entry (no usage count).
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    Tag:
+      type: object
+      required:
+        - id
+        - name
+        - entry_count
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        entry_count:
+          type: integer
+    TagCreate:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+    SavedView:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+        - visibility
+        - params
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+          description: URL slug derived from the name (underscore transform); unique per user on its folded key.
+        visibility:
+          $ref: '#/components/schemas/Visibility'
+        published_at:
+          type: string
+          format: date-time
+          description: Stamped on each transition into listed.
+        params:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ViewCreate:
+      type: object
+      required:
+        - name
+        - params
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        params:
+          type: object
+          additionalProperties: true
+          description: Opaque frontend view state; at most 8192 marshaled bytes.
+        visibility:
+          default: private
+          allOf:
+            - $ref: '#/components/schemas/Visibility'
+    PlatformCount:
+      type: object
+      required:
+        - name
+        - count
+      properties:
+        name:
+          type: string
+        count:
+          type: integer
+    CurrencySpend:
+      type: object
+      required:
+        - currency
+        - total_cents
+      properties:
+        currency:
+          type: string
+        total_cents:
+          type: integer
+          format: int64
+    DashboardPricing:
+      type: object
+      required:
+        - available
+        - priced_entries
+        - unpriced_entries
+        - excluded_entries
+      properties:
+        available:
+          type: boolean
+          description: False when enrichment was unreachable; total_value_cents is then absent.
+        total_value_cents:
+          type: integer
+          format: int64
+        priced_entries:
+          type: integer
+        unpriced_entries:
+          type: integer
+          description: Entries whose effective product is unmatched or lacks a price for their packaging.
+        excluded_entries:
+          type: integer
+          description: Entries with pricing_mode disabled.
+    Dashboard:
+      type: object
+      required:
+        - total_entries
+        - by_status
+        - by_item_type
+        - by_platform
+        - spend
+        - pricing
+      properties:
+        total_entries:
+          type: integer
+        by_status:
+          type: object
+          additionalProperties:
+            type: integer
+        by_item_type:
+          type: object
+          additionalProperties:
+            type: integer
+        by_platform:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformCount'
+        spend:
+          type: array
+          description: Sum of price_paid_cents per currency, over entries that record a price.
+          items:
+            $ref: '#/components/schemas/CurrencySpend'
+        pricing:
+          $ref: '#/components/schemas/DashboardPricing'
+    ValuePoint:
+      type: object
+      required:
+        - date
+        - value_cents
+      properties:
+        date:
+          type: string
+          format: date
+        value_cents:
+          type: integer
+          format: int64
+    ValueHistory:
+      type: object
+      required:
+        - available
+        - points
+      properties:
+        available:
+          type: boolean
+          description: False when enrichment was unreachable; points is then empty.
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValuePoint'
+    ProfileCard:
+      description: The cross-user projection of a user. Never email, never roles.
+      type: object
+      required:
+        - user_id
+        - handle
+        - profile_visibility
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        handle:
+          $ref: '#/components/schemas/Handle'
+        avatar_url:
+          type: string
+        profile_visibility:
+          $ref: '#/components/schemas/Visibility'
+    ShelfSocialSummary:
+      type: object
+      required:
+        - shelf_id
+        - like_count
+        - comment_count
+        - viewer_likes
+      properties:
+        shelf_id:
+          type: string
+          format: uuid
+        like_count:
+          type: integer
+        comment_count:
+          type: integer
+          description: Live comments only.
+        viewer_likes:
+          type: boolean
+    ProfileSocialSummary:
+      type: object
+      required:
+        - follower_count
+        - following_count
+        - viewer_follows
+      properties:
+        follower_count:
+          type: integer
+        following_count:
+          type: integer
+        viewer_follows:
+          type: boolean
+    ShelfCard:
+      description: |
+        A shelf card as shown in a profile's shelf list, an activity feed excerpt, or an Explore grid. owner is embedded so a card renders without a second round trip; like_count/comment_count/ viewer_likes are present exactly when the page's social composition succeeded (all three absent together when the page fell back to social_available: false).
+      type: object
+      required:
+        - id
+        - name
+        - slug
+        - owner
+        - entry_count
+        - cover_urls
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        owner:
+          $ref: '#/components/schemas/ProfileCard'
+        published_at:
+          type: string
+          format: date-time
+        entry_count:
+          type: integer
+        cover_urls:
+          type: array
+          items:
+            type: string
+        like_count:
+          type: integer
+        comment_count:
+          type: integer
+        viewer_likes:
+          type: boolean
+    ShelfMeta:
+      description: |
+        A shelf's own identity and stored view state, without the owner card or social counts (those are ShelfPage's sibling fields).
+      type: object
+      required:
+        - id
+        - name
+        - slug
+        - params
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+        published_at:
+          type: string
+          format: date-time
+    ShelfPage:
+      description: |
+        A single shared shelf's page composition: the shelf meta, its (non-private, by construction) owner card, and social counts when the social service answered. social is absent exactly when social_available is false (the social service degrades open; the page still renders).
+      type: object
+      required:
+        - shelf
+        - owner
+        - social_available
+      properties:
+        shelf:
+          $ref: '#/components/schemas/ShelfMeta'
+        owner:
+          $ref: '#/components/schemas/ProfileCard'
+        social_available:
+          type: boolean
+        social:
+          $ref: '#/components/schemas/ShelfSocialSummary'
+    ProfilePage:
+      description: |
+        A profile's page composition: the profile card, social counts when the social service answered, and up to 50 of the owner's listed shelves (owners see exactly what visitors see). social is absent exactly when social_available is false (the social service degrades open; the page still renders).
+      type: object
+      required:
+        - profile
+        - social_available
+        - shelves
+        - total_count
+      properties:
+        profile:
+          $ref: '#/components/schemas/ProfileCard'
+        social_available:
+          type: boolean
+        social:
+          $ref: '#/components/schemas/ProfileSocialSummary'
+        shelves:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShelfCard'
+        total_count:
+          type: integer
+          description: The owner's full listed-shelf count, beyond this page.
+    Comment:
+      description: |
+        A live comment; tombstones never serialize. author_id is null for a purge-anonymized comment (the row survives with its body; only the account link is severed) and a uuid otherwise - the key is always present, only the value varies. author is the bff's batched ProfileCard hydration of author_id (the same composition FeedItem.actor uses): present on a GET list page when the author resolves, absent for an anonymized comment (there is no id left to hydrate) or when the hydration batch itself fails open; never populated on the POST response (a verbatim create relay).
+      type: object
+      required:
+        - id
+        - shelf_id
+        - author_id
+        - body
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        shelf_id:
+          type: string
+          format: uuid
+        author_id:
+          type: string
+          format: uuid
+          nullable: true
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        author:
+          $ref: '#/components/schemas/ProfileCard'
+    CommentList:
+      type: object
+      required:
+        - comments
+      properties:
+        comments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Comment'
+        next_cursor:
+          type: string
+    CreateCommentRequest:
+      type: object
+      required:
+        - body
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    FeedItem:
+      description: |
+        One activity-feed row after the fill loop hydrates and gates it. actor always attaches (actions are signed, any visibility); shelf is present only for the three shelf verbs (liked_shelf, commented_shelf, published_shelf) whose object cleared the tab's gating rule; followed_user is present only for a surviving followed_user row and carries the followee's card; comment_excerpt is present only for a surviving commented_shelf row.
+      type: object
+      required:
+        - id
+        - verb
+        - created_at
+        - actor
+      properties:
+        id:
+          type: string
+          format: uuid
+        verb:
+          $ref: '#/components/schemas/ActivityVerb'
+        created_at:
+          type: string
+          format: date-time
+        actor:
+          $ref: '#/components/schemas/ProfileCard'
+        shelf:
+          $ref: '#/components/schemas/ShelfCard'
+        followed_user:
+          $ref: '#/components/schemas/ProfileCard'
+        comment_excerpt:
+          type: string
+    FeedPage:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeedItem'
+        next_cursor:
+          type: string
+    ExplorePage:
+      description: |
+        total_count is never sent: top is a fixed leaderboard with no deeper page to count, and recent supersedes it with next_offset (kept in the shape, never populated, for forward compatibility only).
+      type: object
+      required:
+        - shelves
+      properties:
+        total_count:
+          type: integer
+        next_offset:
+          type: integer
+          minimum: 0
+          description: |
+            Present when more listed shelves remain to page through - recent sort only. The raw collection-space offset to resume from; absent once the listed-shelf stream is exhausted.
+        shelves:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShelfCard'
+    SharedEntry:
+      description: |
+        The cross-user entry projection - a strict whitelist. No money fields (price paid, values, currency, purchase provenance, pricing mode) and no personal fields (status, rating, notes, location, backlog rank, external refs) may ever be added here without a deliberate privacy decision.
+      type: object
+      required:
+        - id
+        - item_type
+        - media_type
+        - display_name
+        - region
+        - packaging
+        - has_box
+        - has_manual
+        - pinned
+        - tags
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        item_type:
+          $ref: '#/components/schemas/ItemType'
+        media_type:
+          $ref: '#/components/schemas/MediaType'
+        display_name:
+          type: string
+        platform:
+          $ref: '#/components/schemas/EntryPlatform'
+        first_release_date:
+          type: string
+          format: date
+        cover_url:
+          type: string
+        localized_name:
+          type: string
+          description: Region-picked native-script title (server-derived from the entry's region; absent when the region has none).
+        localized_name_translit:
+          type: string
+          description: Latin transliteration of localized_name's title (server-derived).
+        localized_cover_url:
+          type: string
+          description: Region-picked box art URL (server-derived).
+        developers:
+          type: array
+          items:
+            type: string
+        publishers:
+          type: array
+          items:
+            type: string
+        igdb_game_id:
+          type: integer
+          format: int64
+        region:
+          type: string
+        edition:
+          type: string
+        packaging:
+          $ref: '#/components/schemas/Packaging'
+        has_box:
+          type: boolean
+        has_manual:
+          type: boolean
+        box_condition:
+          $ref: '#/components/schemas/ItemCondition'
+        manual_condition:
+          $ref: '#/components/schemas/ItemCondition'
+        item_condition:
+          $ref: '#/components/schemas/ItemCondition'
+        pinned:
+          type: boolean
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagRef'
+        created_at:
+          type: string
+          format: date-time
+    SharedEntryGroup:
+      type: object
+      required:
+        - key
+        - label
+        - entries
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharedEntry'
+    SharedEntryList:
+      description: Exactly one of entries/groups is present (groups when the stored params group).
+      type: object
+      required:
+        - total_count
+      properties:
+        total_count:
+          type: integer
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharedEntry'
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharedEntryGroup'
+    Handle:
+      type: string
+      minLength: 2
+      maxLength: 30
+      pattern: ^[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?$
+    Role:
+      type: string
+      enum:
+        - user
+        - admin
+    CurrencyCode:
+      type: string
+      pattern: ^[A-Z]{3}$
+    Visibility:
+      type: string
+      enum:
+        - private
+        - unlisted
+        - listed
+    LandingPage:
+      type: string
+      enum:
+        - collection
+        - feed
+        - explore
+    SearchResultType:
+      type: string
+      enum:
+        - game
+        - hardware
+        - pc_listing
+    ReleaseRegion:
+      type: string
+      enum:
+        - europe
+        - north_america
+        - australia
+        - new_zealand
+        - japan
+        - china
+        - asia
+        - worldwide
+        - korea
+        - brazil
+    ProductOrigin:
+      type: string
+      enum:
+        - community
+    ItemType:
+      type: string
+      enum:
+        - game
+        - console
+        - accessory
+    ProductType:
+      type: string
+      enum:
+        - game
+        - console
+        - accessory
+        - pc_listing
+    EntryStatus:
+      type: string
+      enum:
+        - backlog
+        - playing
+        - beaten
+        - completed
+        - dropped
+        - shelved
+    Packaging:
+      type: string
+      enum:
+        - sealed
+        - cib
+        - loose
+    ItemCondition:
+      type: string
+      enum:
+        - mint
+        - near_mint
+        - very_good
+        - good
+        - acceptable
+        - poor
+    MediaType:
+      type: string
+      enum:
+        - physical
+        - digital
+    PricingMode:
+      type: string
+      enum:
+        - auto
+        - proxy
+        - custom
+        - disabled
+    SubmissionStatus:
+      type: string
+      enum:
+        - pending
+        - approved
+        - rejected
+        - cancelled
+    AcceptedStatus:
+      type: string
+      enum:
+        - started
+    CatalogProvider:
+      type: string
+      enum:
+        - igdb
+        - pricecharting
+    ActivityVerb:
+      type: string
+      enum:
+        - followed_user
+        - liked_shelf
+        - commented_shelf
+        - published_shelf
+  parameters:
+    catalogQ:
+      name: q
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    statusFilter:
+      name: status
+      in: query
+      required: false
+      schema:
+        type: array
+        items:
+          $ref: '#/components/schemas/EntryStatus'
+    platformId:
+      name: platform_id
+      in: query
+      required: false
+      description: IGDB platform ids (matches the creation-time snapshot).
+      schema:
+        type: array
+        items:
+          type: integer
+          format: int64
+    entriesSort:
+      name: sort
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - name
+          - release_date
+          - purchased_at
+          - created_at
+          - value
+          - paid
+          - rating
+          - backlog_rank
+        default: created_at
+    order:
+      name: order
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - asc
+          - desc
+        default: desc
+    groupBy:
+      name: group_by
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - platform
+          - status
+          - item_type
+          - location
+          - tag
+    offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+    userSearchQ:
+      name: q
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+    tab:
+      name: tab
+      in: query
+      required: true
+      schema:
+        type: string
+        enum:
+          - following
+          - you

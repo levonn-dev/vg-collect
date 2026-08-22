@@ -42,12 +42,7 @@ paths:
                 $ref: "#/components/schemas/User"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404":
-          description: Not found
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
+        "404": { $ref: "#/components/responses/NotFound" }
     patch:
       operationId: updateUser
       summary: Self-service profile update (handle, avatar URL, currency, visibility)
@@ -69,29 +64,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
-        "400":
-          description: Validation failure (code invalid_body; detail names the field)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404":
-          description: Not found
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-        "409":
-          description: Another account owns that handle's folded key (code handle_taken)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
-        "429":
-          description: Handle changed too recently (code handle_cooldown)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
     delete:
       operationId: deleteUser
       summary: Delete a user account (self only); idempotent
@@ -122,10 +100,8 @@ paths:
               schema: { $ref: "#/components/schemas/ProfileCard" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Unknown or private (deliberately indistinguishable)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /shared/profiles/by-ids:
     get:
       operationId: getSharedProfilesByIds
@@ -156,10 +132,7 @@ paths:
       operationId: searchSharedProfiles
       summary: Substring search over listed profiles' folded handles
       parameters:
-        - name: q
-          in: query
-          required: true
-          schema: { type: string, minLength: 1, maxLength: 64 }
+        - $ref: './common.yaml#/components/parameters/userSearchQ'
       responses:
         "200":
           description: Up to 20 listed matches, folded-key order
@@ -175,18 +148,38 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   securitySchemes:
-    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    bearerAuth: { $ref: './common.yaml#/components/securitySchemes/bearerAuth' }
   responses:
     Unauthorized:
       description: Missing/invalid token
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
     Forbidden:
       description: Insufficient role
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    BadRequest:
+      description: Validation failure (code invalid_body; detail names the field)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    NotFound:
+      description: Not found
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    Conflict:
+      description: Another account owns that handle's folded key (code handle_taken)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    TooManyRequests:
+      description: Handle changed too recently (code handle_cooldown)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
   schemas:
     User:
       type: object
@@ -195,33 +188,30 @@ components:
         id: { type: string, format: uuid }
         email: { type: string }
         handle:
-          type: string
-          minLength: 2
-          maxLength: 30
-          pattern: "^[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?$"
           description: >
             The user's single identity. 2-30 chars, alphanumeric plus
             interior underscores; case and underscores are decoration
             (uniqueness folds them).
+          allOf:
+            - $ref: './common.yaml#/components/schemas/Handle'
         avatar_url: { type: string }
-        profile_visibility:
-          type: string
-          enum: [private, unlisted, listed]
+        profile_visibility: { $ref: './common.yaml#/components/schemas/Visibility' }
         roles:
           type: array
-          items: { type: string, enum: [user, admin] }
+          items: { $ref: './common.yaml#/components/schemas/Role' }
         preferred_currency:
-          type: string
           description: >
             The display currency the SPA converts market values into.
             Defaulted from locale_hint at account creation, USD when
             no hint maps.
+          allOf:
+            - $ref: './common.yaml#/components/schemas/CurrencyCode'
         landing_page:
-          type: string
-          enum: [collection, feed, explore]
           description: >
             Where the app opens after sign-in. Private preference,
             defaulted to feed for every account; never on ProfileCard.
+          allOf:
+            - $ref: './common.yaml#/components/schemas/LandingPage'
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     UpsertUserRequest:
@@ -235,7 +225,7 @@ components:
             The provider's display name. Used ONLY as the handle
             derivation seed when this upsert creates the account; it is
             not stored and never overwrites an existing handle.
-        avatar_url: { type: string }
+        avatar_url: { type: string, maxLength: 2048 }
         locale_hint:
           type: string
           maxLength: 64
@@ -249,42 +239,18 @@ components:
       description: Absent fields keep their value; an empty avatar_url clears it.
       properties:
         handle:
-          type: string
-          minLength: 2
-          maxLength: 30
-          pattern: "^[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?$"
           description: >
             New typed form. Decoration-only changes are free renames;
             one change per cooldown window (429 handle_cooldown);
             folded-key collisions answer 409 handle_taken.
-        avatar_url: { type: string }
+          allOf:
+            - $ref: './common.yaml#/components/schemas/Handle'
+        avatar_url: { type: string, maxLength: 2048 }
         preferred_currency:
-          type: string
-          pattern: "^[A-Z]{3}$"
-        profile_visibility:
-          type: string
-          enum: [private, unlisted, listed]
-        landing_page:
-          type: string
-          enum: [collection, feed, explore]
+          $ref: './common.yaml#/components/schemas/CurrencyCode'
+        profile_visibility: { $ref: './common.yaml#/components/schemas/Visibility' }
+        landing_page: { $ref: './common.yaml#/components/schemas/LandingPage' }
     ProfileCard:
-      type: object
-      description: The cross-user projection of a user. Never email, never roles.
-      required: [user_id, handle, profile_visibility]
-      properties:
-        user_id: { type: string, format: uuid }
-        handle: { type: string }
-        avatar_url: { type: string }
-        profile_visibility:
-          type: string
-          enum: [private, unlisted, listed]
+      $ref: './common.yaml#/components/schemas/ProfileCard'
     Problem:
-      type: object
-      required: [type, title, status]
-      properties:
-        type: { type: string }
-        title: { type: string }
-        status: { type: integer }
-        detail: { type: string }
-        instance: { type: string }
-        code: { type: string }
+      $ref: './common.yaml#/components/schemas/Problem'

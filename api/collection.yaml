@@ -45,19 +45,14 @@ paths:
           required: false
           schema:
             type: array
-            items: { type: string, enum: [game, console, accessory] }
-        - name: status
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
+            items: { $ref: './common.yaml#/components/schemas/ItemType' }
+        - $ref: './common.yaml#/components/parameters/statusFilter'
         - name: packaging
           in: query
           required: false
           schema:
             type: array
-            items: { type: string, enum: [sealed, cib, loose] }
+            items: { $ref: './common.yaml#/components/schemas/Packaging' }
         - name: region
           in: query
           required: false
@@ -84,14 +79,8 @@ paths:
           required: false
           schema:
             type: array
-            items: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        - name: platform_id
-          in: query
-          required: false
-          description: IGDB platform ids (matches the creation-time snapshot).
-          schema:
-            type: array
-            items: { type: integer, format: int64 }
+            items: { $ref: './common.yaml#/components/schemas/ItemCondition' }
+        - $ref: './common.yaml#/components/parameters/platformId'
         - name: tag_id
           in: query
           required: false
@@ -99,31 +88,14 @@ paths:
           schema:
             type: array
             items: { type: string, format: uuid }
-        - name: sort
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [name, release_date, purchased_at, created_at, value, paid, rating, backlog_rank]
-            default: created_at
-        - name: order
-          in: query
-          required: false
-          schema: { type: string, enum: [asc, desc], default: desc }
-        - name: group_by
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [platform, status, item_type, location, tag]
+        - $ref: './common.yaml#/components/parameters/entriesSort'
+        - $ref: './common.yaml#/components/parameters/order'
+        - $ref: './common.yaml#/components/parameters/groupBy'
         - name: limit
           in: query
           required: false
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
-        - name: offset
-          in: query
-          required: false
-          schema: { type: integer, minimum: 0, default: 0 }
+        - $ref: './common.yaml#/components/parameters/offset'
       responses:
         "200":
           description: The filtered entries, flat or grouped (exactly one of entries/groups is present)
@@ -168,10 +140,8 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: A referenced product or tag does not exist (code unknown_product, unknown_pricing_product, or tag_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /entries/bulk-update:
     post:
@@ -203,10 +173,8 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/BulkUpdateResult" }
         "400":
+          $ref: "#/components/responses/BadRequest"
           description: Bounds violated, no action specified, or the per-entry tag cap exceeded (code invalid_body or tag_cap_exceeded)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /entries/{entryId}:
     get:
@@ -225,10 +193,8 @@ paths:
               schema: { $ref: "#/components/schemas/Entry" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Not found (code entry_not_found; foreign entries answer identically)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
     put:
       operationId: updateEntry
       summary: Replace an entry's mutable state (the edit form submits everything)
@@ -267,10 +233,8 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: No such entry, or a referenced pricing product or tag does not exist
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
     delete:
       operationId: deleteEntry
@@ -284,11 +248,7 @@ paths:
         "204":
           description: Deleted
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404":
-          description: Not found (code entry_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /entries/{entryId}/reorder:
     post:
       operationId: reorderEntry
@@ -320,16 +280,10 @@ paths:
               schema: { $ref: "#/components/schemas/Entry" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404":
-          description: Not found (code entry_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "409":
+          $ref: "#/components/responses/Conflict"
           description: The entry or a neighbor is not in the backlog, or the neighbors do not straddle (code not_in_backlog or conflicting_order)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /entries/{entryId}/region-mismatch-ack:
     post:
       operationId: ackEntryRegionMismatch
@@ -349,10 +303,8 @@ paths:
           description: Acknowledged
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Not found (code entry_not_found; foreign entries answer identically)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /entries/{entryId}/submission:
     post:
       operationId: createSubmission
@@ -380,21 +332,11 @@ paths:
               schema: { $ref: "#/components/schemas/Submission" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404":
-          description: Not found (code entry_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "409":
+          $ref: "#/components/responses/Conflict"
           description: A submission is already pending for the entry (code submission_pending)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
-        "429":
-          description: A submission cap is exceeded (code too_many_pending_submissions or submission_rate_limited)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
     get:
       operationId: getSubmission
       summary: The entry's latest submission, any status
@@ -416,10 +358,8 @@ paths:
               schema: { $ref: "#/components/schemas/Submission" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Not found (code entry_not_found or submission_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
     delete:
       operationId: cancelSubmission
       summary: Cancel the entry's pending submission
@@ -438,10 +378,8 @@ paths:
           description: Cancelled
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Nothing pending (code submission_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /entries/{entryId}/submission/ack:
     post:
       operationId: ackSubmissionResolution
@@ -463,10 +401,8 @@ paths:
           description: Acknowledged (or already acknowledged)
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Not found (code entry_not_found or submission_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /tags:
     get:
       operationId: listTags
@@ -500,16 +436,10 @@ paths:
               schema: { $ref: "#/components/schemas/Tag" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "409":
-          description: Name already taken (code tag_exists)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "429":
+          $ref: "#/components/responses/TooManyRequests"
           description: Tag cap reached - at most 200 distinct tags per user (code cap_exceeded)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /tags/{tagId}:
     put:
       operationId: renameTag
@@ -533,15 +463,9 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Not found (code tag_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
-        "409":
-          description: Name already taken (code tag_exists)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "409": { $ref: "#/components/responses/Conflict" }
     delete:
       operationId: deleteTag
       summary: Delete a tag (entry links cascade; entries survive)
@@ -555,10 +479,8 @@ paths:
           description: Deleted
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Not found (code tag_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /views:
     get:
       operationId: listViews
@@ -598,10 +520,8 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409":
+          $ref: "#/components/responses/Conflict"
           description: Name already taken (code view_exists)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /views/{viewId}:
     put:
       operationId: updateView
@@ -625,15 +545,11 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Not found (code view_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "409":
+          $ref: "#/components/responses/Conflict"
           description: Name already taken (code view_exists)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
     delete:
       operationId: deleteView
       summary: Delete a saved view
@@ -647,10 +563,8 @@ paths:
           description: Deleted
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Not found (code view_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /shared/shelves:
     get:
       operationId: listSharedShelves
@@ -675,10 +589,7 @@ paths:
           in: query
           required: false
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
-        - name: offset
-          in: query
-          required: false
-          schema: { type: integer, minimum: 0, default: 0 }
+        - $ref: './common.yaml#/components/parameters/offset'
       responses:
         "200":
           description: One page of summaries plus the total
@@ -714,10 +625,8 @@ paths:
               schema: { $ref: "#/components/schemas/SharedShelf" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Unknown or private (indistinguishable; code shelf_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /shared/shelves/by-ids:
     get:
       operationId: getSharedShelvesByIds
@@ -760,10 +669,8 @@ paths:
               schema: { $ref: "#/components/schemas/SharedShelf" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Unknown or private (indistinguishable; code shelf_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /shared/shelves/{shelfId}/entries:
     get:
       operationId: listSharedShelfEntries
@@ -783,10 +690,7 @@ paths:
           in: query
           required: false
           schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
-        - name: offset
-          in: query
-          required: false
-          schema: { type: integer, minimum: 0, default: 0 }
+        - $ref: './common.yaml#/components/parameters/offset'
       responses:
         "200":
           description: One page of the shelf's entries
@@ -795,10 +699,8 @@ paths:
               schema: { $ref: "#/components/schemas/SharedEntryList" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Unknown or private (indistinguishable; code shelf_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /dashboard:
     get:
       operationId: getDashboard
@@ -822,19 +724,14 @@ paths:
           required: false
           schema:
             type: array
-            items: { type: string, enum: [game, console, accessory] }
-        - name: status
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
+            items: { $ref: './common.yaml#/components/schemas/ItemType' }
+        - $ref: './common.yaml#/components/parameters/statusFilter'
         - name: packaging
           in: query
           required: false
           schema:
             type: array
-            items: { type: string, enum: [sealed, cib, loose] }
+            items: { $ref: './common.yaml#/components/schemas/Packaging' }
         - name: region
           in: query
           required: false
@@ -861,14 +758,8 @@ paths:
           required: false
           schema:
             type: array
-            items: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        - name: platform_id
-          in: query
-          required: false
-          description: IGDB platform ids (matches the creation-time snapshot).
-          schema:
-            type: array
-            items: { type: integer, format: int64 }
+            items: { $ref: './common.yaml#/components/schemas/ItemCondition' }
+        - $ref: './common.yaml#/components/parameters/platformId'
         - name: tag_id
           in: query
           required: false
@@ -973,10 +864,7 @@ paths:
           in: query
           required: false
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
-        - name: offset
-          in: query
-          required: false
-          schema: { type: integer, minimum: 0, default: 0 }
+        - $ref: './common.yaml#/components/parameters/offset'
       responses:
         "200":
           description: One queue page
@@ -1026,15 +914,11 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: No such submission, the adopt target does not exist, or the entry vanished mid-race (code submission_not_found, unknown_product, or entry_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "409":
+          $ref: "#/components/responses/Conflict"
           description: Another admin already resolved it (code submission_resolved)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /internal/resnapshot:
     post:
@@ -1077,7 +961,7 @@ paths:
           description: Sweep summary
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/NormalizePlatformsResult" }
+              schema: { $ref: "#/components/schemas/NormalizeResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /internal/normalize-regions:
@@ -1101,7 +985,7 @@ paths:
           description: Sweep summary
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/NormalizeRegionsResult" }
+              schema: { $ref: "#/components/schemas/NormalizeResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /internal/rematch-entries:
@@ -1130,644 +1014,89 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409":
+          $ref: "#/components/responses/Conflict"
           description: An entry rematch is already running (code rematch_in_progress)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
 components:
   securitySchemes:
-    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    bearerAuth: { $ref: './common.yaml#/components/securitySchemes/bearerAuth' }
   responses:
     BadRequest:
       description: Invalid parameters or body
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
     Unauthorized:
       description: Missing/invalid token
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
     Forbidden:
       description: Insufficient role
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
     UpstreamError:
       description: The enrichment service could not be reached (code enrichment_unavailable)
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    NotFound:
+      description: Not found (code entry_not_found)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    Conflict:
+      description: Name already taken (code tag_exists)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    TooManyRequests:
+      description: A submission cap is exceeded (code too_many_pending_submissions or submission_rate_limited)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
   schemas:
     EntryPlatform:
-      description: >
-        The entry's platform: a creation-time snapshot of the product's
-        platform (both fields) on product-backed entries, or a
-        user-supplied platform on custom entries - both fields when
-        picked from the catalog or normalized by the admin lever,
-        name-only for escape-hatch free text. Absent when neither
-        exists.
-      type: object
-      required: [name]
-      properties:
-        igdb_platform_id:
-          type: integer
-          format: int64
-          description: Absent on name-only custom entries.
-        name: { type: string }
+      $ref: './common.yaml#/components/schemas/EntryPlatform'
     Entry:
-      description: >
-        One physical copy. On product-backed entries the catalog
-        fields (item_type, display_name, platform, first_release_date,
-        igdb_game_id) are immutable creation-time snapshots from the
-        enrichment product and product_id remains the live join key
-        for prices. A CUSTOM entry has no product_id: its display
-        fields are user-owned and editable, platform carries the
-        picked or normalized identity - name-only for escape-hatch
-        free text - when supplied, and igdb_game_id is always absent.
-        value_cents is composed at read time from the
-        effective pricing product and the packaging-matched price
-        field; (or, with pricing_mode custom, taken directly from
-        custom_value_cents, packaging-independent); it is null when
-        pricing_mode is disabled, the product is unmatched, no price
-        exists for the packaging, or enrichment is temporarily
-        unreachable.
-      type: object
-      required: [id, item_type, media_type, display_name, region,
-                 packaging, has_box, has_manual, currency, pricing_mode, status,
-                 pinned, source, tags, created_at, updated_at]
-      properties:
-        id: { type: string, format: uuid }
-        product_id:
-          type: string
-          format: uuid
-          description: Absent on custom entries.
-        item_type: { type: string, enum: [game, console, accessory] }
-        media_type: { type: string, enum: [physical, digital] }
-        display_name: { type: string }
-        platform: { $ref: "#/components/schemas/EntryPlatform" }
-        first_release_date: { type: string, format: date }
-        cover_url:
-          type: string
-          description: >
-            Cover art URL. For product-backed entries it is snapshotted
-            from the product at creation (and refreshed on adoption).
-            Custom entries may set their own (https, shape-validated).
-            Absent on hardware and products without art (render a
-            placeholder).
-        localized_name:
-          type: string
-          description: Region-picked native-script title (server-derived from the entry's region; absent when the region has none).
-        localized_name_translit:
-          type: string
-          description: Latin transliteration of localized_name's title (server-derived).
-        localized_cover_url:
-          type: string
-          description: Region-picked box art URL (server-derived).
-        developers:
-          type: array
-          items: { type: string }
-          description: >-
-            Developer company names snapshotted for the entry: IGDB
-            credits where the product carries them, community curated
-            lists as gap-fill, or the user's own facts on a custom
-            entry. Absent when no credits are known.
-        publishers:
-          type: array
-          items: { type: string }
-          description: Publisher company names; same sourcing as developers.
-        igdb_game_id:
-          type: integer
-          format: int64
-          description: >
-            The recommendation identity: snapshotted from the entry's
-            own product, or from the proxy target on custom game
-            entries (owning a reproduction of X means playing X).
-        region: { type: string }
-        edition:
-          type: string
-          description: >
-            Per-copy variant note ("first print (glitched rev)",
-            "black edition"): the idiom for variants of cataloged
-            items is an entry on the base product with the variant
-            recorded here.
-        packaging: { type: string, enum: [sealed, cib, loose] }
-        has_box: { type: boolean }
-        has_manual: { type: boolean }
-        box_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        manual_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        item_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        price_paid_cents: { type: integer, format: int64 }
-        currency: { type: string, pattern: "^[A-Z]{3}$" }
-        purchased_at: { type: string, format: date }
-        purchased_from: { type: string }
-        pricing_mode: { type: string, enum: [auto, proxy, custom, disabled] }
-        pricing_product_id: { type: string, format: uuid }
-        custom_value_cents:
-          type: integer
-          format: int64
-          description: >
-            The user-set market value (USD cents). With
-            pricing_mode custom it IS the entry's value; under any
-            other mode it persists as "last custom price" memory.
-        custom_value_set_at:
-          type: string
-          format: date-time
-          description: >
-            Server-managed: stamped when custom_value_cents is first
-            set or changes value, untouched otherwise. Read-only.
-        custom_value_entered_cents:
-          type: integer
-          format: int64
-          description: >
-            The custom price exactly as the user typed it, in
-            custom_value_entered_currency minor units (major units x
-            100, including zero-decimal currencies). Display metadata
-            only: no aggregation reads it; custom_value_cents remains
-            the USD value used everywhere.
-        custom_value_entered_currency:
-          type: string
-          pattern: "^[A-Z]{3}$"
-          description: Currency of custom_value_entered_cents.
-        status: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
-        rating: { type: integer, minimum: 1, maximum: 10 }
-        notes: { type: string }
-        storage_location: { type: string }
-        pinned: { type: boolean }
-        backlog_rank:
-          type: string
-          description: Present exactly while status is backlog; server-generated.
-        source: { type: string, enum: [manual, steam, psn, epic] }
-        external_ref: { type: string }
-        tags:
-          type: array
-          items: { $ref: "#/components/schemas/TagRef" }
-        value_cents: { type: integer, format: int64 }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-        region_mismatch_ack_at:
-          type: string
-          format: date-time
-          description: >
-            Null until the owner dismisses the region-mismatch banner;
-            cleared whenever region or product changes.
+      $ref: './common.yaml#/components/schemas/Entry'
     Submission:
-      description: >
-        One catalog-submission lifecycle row for an entry. Rows
-        persist as history (rejected and cancelled included; the
-        rolling creation cap counts every attempt); deleting the entry
-        removes them with it. product_id is the verdict's resolved
-        product - recorded before adoption so an approve_new retry
-        never mints twice.
-      type: object
-      required: [id, entry_id, status, created_at, updated_at]
-      properties:
-        id: { type: string, format: uuid }
-        entry_id: { type: string, format: uuid }
-        status: { type: string, enum: [pending, approved, rejected, cancelled] }
-        reject_reason: { type: string }
-        product_id: { type: string, format: uuid }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-        reviewed_at: { type: string, format: date-time }
-        resolution_ack_at:
-          type: string
-          format: date-time
-          description: >
-            When the submitter acknowledged an approved verdict (closed
-            the approval banner). Absent until acknowledged.
+      $ref: './common.yaml#/components/schemas/Submission'
     AdminSubmission:
-      description: >
-        One queue row: the submission plus the live proposal from the
-        entry join (display_name, item_type, platform_name, region,
-        edition, first_release_date pre-fill the curation form;
-        entries carry no variant - the single edition field is the
-        idiom).
-      type: object
-      required: [id, entry_id, user_id, status, display_name, item_type, region, created_at, updated_at]
-      properties:
-        id: { type: string, format: uuid }
-        entry_id: { type: string, format: uuid }
-        user_id: { type: string, format: uuid }
-        status: { type: string, enum: [pending, approved, rejected, cancelled] }
-        display_name: { type: string }
-        item_type: { type: string, enum: [game, console, accessory] }
-        platform_name: { type: string }
-        region: { type: string }
-        edition: { type: string }
-        first_release_date: { type: string, format: date }
-        developers:
-          type: array
-          items: { type: string }
-          description: The entry's developer credit facts, live from the proposal join; prefill the curation form.
-        publishers:
-          type: array
-          items: { type: string }
-          description: The entry's publisher credit facts, live from the proposal join; prefill the curation form.
-        cover_url:
-          type: string
-          description: The entry's cover URL, live from the proposal join; prefills the curation cover field.
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
+      $ref: './common.yaml#/components/schemas/AdminSubmission'
     AdminSubmissionsPage:
-      type: object
-      required: [submissions, total_count]
-      properties:
-        submissions:
-          type: array
-          items: { $ref: "#/components/schemas/AdminSubmission" }
-        total_count:
-          type: integer
-          format: int64
-          description: Full pending count, beyond this page.
+      $ref: './common.yaml#/components/schemas/AdminSubmissionsPage'
     CommunityProductSpec:
-      description: >
-        The curated fields for approve_new; mirrors the enrichment
-        mint request (single edition field, no variant).
-      type: object
-      required: [type, name]
-      properties:
-        type: { type: string, enum: [game, console, accessory] }
-        name: { type: string, minLength: 1, maxLength: 200 }
-        platform_name: { type: string, maxLength: 100 }
-        region: { type: string, maxLength: 32 }
-        edition: { type: string, maxLength: 128 }
-        first_release_date: { type: string, format: date }
-        developers:
-          type: array
-          maxItems: 10
-          items: { type: string, maxLength: 120 }
-          description: Curated developer company names, one per element.
-        publishers:
-          type: array
-          maxItems: 10
-          items: { type: string, maxLength: 120 }
-          description: Curated publisher company names, one per element.
-        cover_url:
-          type: string
-          maxLength: 512
-          description: Optional https cover image URL for the minted community product.
+      $ref: './common.yaml#/components/schemas/CommunityProductSpec'
     VerdictRequest:
-      description: >
-        One admin verdict. approve_new requires product;
-        approve_existing requires product_id; reject requires reason.
-      type: object
-      required: [action]
-      properties:
-        action: { type: string, enum: [approve_new, approve_existing, reject] }
-        product: { $ref: "#/components/schemas/CommunityProductSpec" }
-        product_id: { type: string, format: uuid }
-        reason: { type: string, maxLength: 1000 }
+      $ref: './common.yaml#/components/schemas/VerdictRequest'
     EntryCreate:
-      description: >
-        Product-backed: product_id comes from a prior enrichment
-        resolve and the catalog fields are snapshotted server-side
-        (display_name/item_type/platform_name/first_release_date must
-        NOT be sent). Custom (no product_id): display_name and
-        item_type are required, platform_name and first_release_date
-        optional; pricing_mode defaults to disabled and must not be
-        auto. media_type accepts only physical (the column already
-        allows digital: the API widens when platform sync arrives).
-        source is server-set manual. pricing_product_id is required
-        when pricing_mode is proxy; box_condition requires has_box and
-        manual_condition requires has_manual. custom_value_cents is
-        required when pricing_mode is custom.
-      type: object
-      required: [region, packaging]
-      properties:
-        product_id:
-          type: string
-          format: uuid
-          description: Omit for a custom (off-catalog) entry.
-        display_name:
-          type: string
-          maxLength: 200
-          description: Custom entries only (required there).
-        item_type:
-          type: string
-          enum: [game, console, accessory]
-          description: Custom entries only (required there).
-        platform_name:
-          type: string
-          maxLength: 100
-          description: Custom entries only.
-        platform_igdb_id:
-          type: integer
-          format: int64
-          description: Custom entries only; the canonical platform id from the picker (surfaces the entry in the platform filter).
-        cover_url:
-          type: string
-          maxLength: 512
-          description: Custom entries only; an https cover image URL (validated by shape, never fetched).
-        first_release_date:
-          type: string
-          format: date
-          description: Custom entries only.
-        developers:
-          type: array
-          maxItems: 10
-          items: { type: string, maxLength: 120 }
-          description: >-
-            Custom entries only: developer company names, one per
-            element. Ignored on product-backed creation, where the
-            snapshot derives credits from the product.
-        publishers:
-          type: array
-          maxItems: 10
-          items: { type: string, maxLength: 120 }
-          description: Custom entries only; publisher company names, one per element.
-        media_type: { type: string, enum: [physical], default: physical }
-        region:
-          type: string
-          maxLength: 32
-          description: >-
-            Entry region. Known values ntsc_u, ntsc_j, pal,
-            region_free, korea, brazil and china are first-class:
-            labeled in the UI, filterable, normalize-lever promotion
-            targets, with release-date chains, availability rows, and
-            localized display snapshots per region (ntsc_u and
-            region_free render the canonical presentation by design).
-            korea, brazil and china have no PriceCharting axis, so
-            they price from base listings as their deliberate proxy.
-            Any other non-empty string is stored verbatim as a
-            display fact and prices like ntsc_u until the value
-            graduates to the known set.
-        edition:
-          type: string
-          maxLength: 200
-          description: Per-copy variant note; the idiom for variants of cataloged items.
-        packaging: { type: string, enum: [sealed, cib, loose] }
-        has_box: { type: boolean, default: false }
-        has_manual: { type: boolean, default: false }
-        box_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        manual_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        item_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        price_paid_cents: { type: integer, format: int64, minimum: 0 }
-        currency: { type: string, pattern: "^[A-Z]{3}$", default: USD }
-        purchased_at: { type: string, format: date }
-        purchased_from: { type: string, maxLength: 200 }
-        pricing_mode: { type: string, enum: [auto, proxy, custom, disabled], default: auto }
-        pricing_product_id: { type: string, format: uuid }
-        custom_value_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
-        custom_value_entered_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
-        custom_value_entered_currency: { type: string, pattern: "^[A-Z]{3}$" }
-        match_provenance:
-          type: string
-          enum: [auto, user]
-          default: auto
-          description: >-
-            Whose choice the matched product is. Send user only when
-            the add flow's manual match picked the price listing;
-            automated repoints (region edits, the entry rematch)
-            never touch user rows. Not accepted on update - the
-            server stamps user when the narrow product_id re-match
-            arm fires.
-        status:
-          type: string
-          enum: [backlog, playing, beaten, completed, dropped, shelved]
-          default: backlog
-        rating: { type: integer, minimum: 1, maximum: 10 }
-        notes: { type: string, maxLength: 10000 }
-        storage_location: { type: string, maxLength: 200 }
-        pinned: { type: boolean, default: false }
-        tag_ids:
-          type: array
-          maxItems: 50
-          items: { type: string, format: uuid }
+      $ref: './common.yaml#/components/schemas/EntryCreate'
     EntryUpdate:
-      description: >
-        Full replacement of the mutable state; an absent optional field
-        is cleared (the edit form holds the whole entry). media_type
-        and custom-ness are immutable. product_id accepts one narrow
-        change - re-matching an auto-priced entry off an unmatched
-        game product onto a product of the same game and platform
-        (see the field description); anything else answers 400 code
-        invalid_product_change. That re-match stamps
-        match_provenance=user; automated region repoints only ever run
-        on match_provenance=auto entries. On custom entries
-        display_name is required and platform_name/first_release_date
-        replace like any optional field; on product-backed entries all
-        three are rejected. tag_ids replaces the tag set; absent means
-        no tags. custom_value_cents is required when pricing_mode is
-        custom.
-      type: object
-      required: [region, packaging, pricing_mode, status, pinned]
-      properties:
-        display_name:
-          type: string
-          maxLength: 200
-          description: Custom entries only (required there).
-        platform_name:
-          type: string
-          maxLength: 100
-          description: Custom entries only.
-        platform_igdb_id:
-          type: integer
-          format: int64
-          description: Custom entries only; the canonical platform id from the picker.
-        cover_url:
-          type: string
-          maxLength: 512
-          description: Custom entries only; an https cover image URL (validated by shape, never fetched).
-        first_release_date:
-          type: string
-          format: date
-          description: Custom entries only.
-        developers:
-          type: array
-          maxItems: 10
-          items: { type: string, maxLength: 120 }
-          description: Custom entries only; developer company names, one per element (full replacement).
-        publishers:
-          type: array
-          maxItems: 10
-          items: { type: string, maxLength: 120 }
-          description: Custom entries only; publisher company names, one per element (full replacement).
-        product_id:
-          type: string
-          format: uuid
-          description: >
-            Narrow re-match. Accepted only when the entry is
-            product-backed with pricing_mode auto, its current product
-            is a game with no price mapping, and the new product is a
-            game of the same family (same igdb game and platform);
-            the same id as the entry already has is a no-op. Anything
-            else answers 400 code invalid_product_change; enrichment
-            unreachable answers 502 code enrichment_unavailable and
-            leaves the entry unchanged. Snapshotted display fields
-            stay as they are.
-        region:
-          type: string
-          maxLength: 32
-          description: >-
-            Entry region. Known values ntsc_u, ntsc_j, pal,
-            region_free, korea, brazil and china are first-class:
-            labeled in the UI, filterable, normalize-lever promotion
-            targets, with release-date chains, availability rows, and
-            localized display snapshots per region (ntsc_u and
-            region_free render the canonical presentation by design).
-            korea, brazil and china have no PriceCharting axis, so
-            they price from base listings as their deliberate proxy.
-            Any other non-empty string is stored verbatim as a
-            display fact and prices like ntsc_u until the value
-            graduates to the known set. On an auto-provenance game entry, a region
-            change repoints the entry to the sibling catalog product
-            whose listing prices that region; snapshotted display
-            fields re-derive from it.
-        edition:
-          type: string
-          maxLength: 200
-          description: Per-copy variant note; the idiom for variants of cataloged items.
-        packaging: { type: string, enum: [sealed, cib, loose] }
-        has_box: { type: boolean, default: false }
-        has_manual: { type: boolean, default: false }
-        box_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        manual_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        item_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        price_paid_cents: { type: integer, format: int64, minimum: 0 }
-        currency: { type: string, pattern: "^[A-Z]{3}$", default: USD }
-        purchased_at: { type: string, format: date }
-        purchased_from: { type: string, maxLength: 200 }
-        pricing_mode: { type: string, enum: [auto, proxy, custom, disabled] }
-        pricing_product_id: { type: string, format: uuid }
-        custom_value_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
-        custom_value_entered_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
-        custom_value_entered_currency: { type: string, pattern: "^[A-Z]{3}$" }
-        status: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
-        rating: { type: integer, minimum: 1, maximum: 10 }
-        notes: { type: string, maxLength: 10000 }
-        storage_location: { type: string, maxLength: 200 }
-        pinned: { type: boolean }
-        tag_ids:
-          type: array
-          maxItems: 50
-          items: { type: string, format: uuid }
+      $ref: './common.yaml#/components/schemas/EntryUpdate'
     EntryList:
-      description: >
-        One page of the sorted, filtered sequence. Exactly one of
-        entries/groups is present (groups when group_by was requested,
-        partitioning this page only).
-      type: object
-      required: [pricing_available, total_count]
-      properties:
-        pricing_available:
-          type: boolean
-          description: False when enrichment was unreachable; every value_cents is null.
-        total_count:
-          type: integer
-          description: Size of the full filtered set, before pagination.
-        entries:
-          type: array
-          items: { $ref: "#/components/schemas/Entry" }
-        groups:
-          type: array
-          items: { $ref: "#/components/schemas/EntryGroup" }
+      $ref: './common.yaml#/components/schemas/EntryList'
     EntryGroup:
-      type: object
-      required: [key, label, entries]
-      properties:
-        key: { type: string }
-        label: { type: string }
-        entries:
-          type: array
-          items: { $ref: "#/components/schemas/Entry" }
+      $ref: './common.yaml#/components/schemas/EntryGroup'
     BulkUpdateRequest:
-      description: >
-        Delta applied across the caller's own entries among entry_ids
-        (foreign or unknown ids are silently not counted, same
-        ownership-filtering posture as tag attachment). At least one
-        of add_tag_ids / remove_tag_ids / status / storage_location
-        must be present, else 400. storage_location's clearing rule is
-        the OPPOSITE of the full-replacement update's: here an ABSENT
-        storage_location leaves the field untouched, and an explicit
-        empty string clears it.
-      type: object
-      required: [entry_ids]
-      properties:
-        entry_ids:
-          type: array
-          minItems: 1
-          maxItems: 200
-          items: { type: string, format: uuid }
-        add_tag_ids:
-          type: array
-          maxItems: 50
-          items: { type: string, format: uuid }
-        remove_tag_ids:
-          type: array
-          maxItems: 50
-          items: { type: string, format: uuid }
-        status: { type: string, enum: [backlog, playing, beaten, completed, dropped, shelved] }
-        storage_location:
-          type: string
-          maxLength: 200
-          description: Empty string clears the field; an absent field leaves it untouched (see the operation description).
+      $ref: './common.yaml#/components/schemas/BulkUpdateRequest'
     BulkUpdateResult:
-      type: object
-      required: [updated_count]
-      properties:
-        updated_count:
-          type: integer
-          description: Count of the caller's own entries among entry_ids, whether or not any targeted field actually changed.
+      $ref: './common.yaml#/components/schemas/BulkUpdateResult'
     ReorderRequest:
-      description: Neighbor entry ids around the drop slot; null marks a list edge. Both null is invalid.
-      type: object
-      properties:
-        after_id: { type: string, format: uuid, nullable: true }
-        before_id: { type: string, format: uuid, nullable: true }
+      $ref: './common.yaml#/components/schemas/ReorderRequest'
     TagRef:
-      description: A tag as embedded on an entry (no usage count).
-      type: object
-      required: [id, name]
-      properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
+      $ref: './common.yaml#/components/schemas/TagRef'
     Tag:
-      type: object
-      required: [id, name, entry_count]
-      properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
-        entry_count: { type: integer }
+      $ref: './common.yaml#/components/schemas/Tag'
     TagCreate:
-      type: object
-      required: [name]
-      properties:
-        name: { type: string, minLength: 1, maxLength: 50 }
+      $ref: './common.yaml#/components/schemas/TagCreate'
     SavedView:
-      type: object
-      required: [id, name, slug, visibility, params, created_at, updated_at]
-      properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
-        slug:
-          type: string
-          description: URL slug derived from the name (underscore transform); unique per user on its folded key.
-        visibility:
-          type: string
-          enum: [private, unlisted, listed]
-        published_at:
-          type: string
-          format: date-time
-          description: Stamped on each transition into listed.
-        params:
-          type: object
-          additionalProperties: true
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
+      $ref: './common.yaml#/components/schemas/SavedView'
     ViewCreate:
-      type: object
-      required: [name, params]
-      properties:
-        name: { type: string, minLength: 1, maxLength: 100 }
-        params:
-          type: object
-          additionalProperties: true
-          description: Opaque frontend view state; at most 8192 marshaled bytes.
-        visibility:
-          type: string
-          enum: [private, unlisted, listed]
-          default: private
+      $ref: './common.yaml#/components/schemas/ViewCreate'
+    SharedShelfVisibility:
+      type: string
+      enum: [unlisted, listed]
     SharedShelf:
       type: object
       required: [id, name, slug, owner_id, visibility, params]
@@ -1776,9 +1105,7 @@ components:
         name: { type: string }
         slug: { type: string }
         owner_id: { type: string, format: uuid }
-        visibility:
-          type: string
-          enum: [unlisted, listed]
+        visibility: { $ref: "#/components/schemas/SharedShelfVisibility" }
         published_at: { type: string, format: date-time }
         params:
           type: object
@@ -1792,9 +1119,9 @@ components:
         slug: { type: string }
         owner_id: { type: string, format: uuid }
         visibility:
-          type: string
-          enum: [unlisted, listed]
           description: The bff's Explore/feed gating reads this (listed-only surfaces).
+          allOf:
+            - $ref: "#/components/schemas/SharedShelfVisibility"
         published_at: { type: string, format: date-time }
         entry_count: { type: integer }
         cover_urls:
@@ -1802,185 +1129,37 @@ components:
           maxItems: 4
           items: { type: string }
     SharedEntry:
-      description: >
-        The cross-user entry projection - a strict whitelist. No money
-        fields (price paid, values, currency, purchase provenance,
-        pricing mode) and no personal fields (status, rating, notes,
-        location, backlog rank, external refs) may ever be added here
-        without a deliberate privacy decision.
-      type: object
-      required: [id, item_type, media_type, display_name, region, packaging, has_box, has_manual, pinned, tags, created_at]
-      properties:
-        id: { type: string, format: uuid }
-        product_id: { type: string, format: uuid }
-        item_type: { type: string, enum: [game, console, accessory] }
-        media_type: { type: string, enum: [physical, digital] }
-        display_name: { type: string }
-        platform: { $ref: "#/components/schemas/EntryPlatform" }
-        first_release_date: { type: string, format: date }
-        cover_url: { type: string }
-        localized_name:
-          type: string
-          description: Region-picked native-script title (server-derived from the entry's region; absent when the region has none).
-        localized_name_translit:
-          type: string
-          description: Latin transliteration of localized_name's title (server-derived).
-        localized_cover_url:
-          type: string
-          description: Region-picked box art URL (server-derived).
-        developers:
-          type: array
-          items: { type: string }
-        publishers:
-          type: array
-          items: { type: string }
-        igdb_game_id: { type: integer, format: int64 }
-        region: { type: string }
-        edition: { type: string }
-        packaging: { type: string, enum: [sealed, cib, loose] }
-        has_box: { type: boolean }
-        has_manual: { type: boolean }
-        box_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        manual_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        item_condition: { type: string, enum: [mint, near_mint, very_good, good, acceptable, poor] }
-        pinned: { type: boolean }
-        tags:
-          type: array
-          items: { $ref: "#/components/schemas/TagRef" }
-        created_at: { type: string, format: date-time }
+      $ref: './common.yaml#/components/schemas/SharedEntry'
     SharedEntryList:
-      description: Exactly one of entries/groups is present (groups when the stored params group).
-      type: object
-      required: [total_count]
-      properties:
-        total_count: { type: integer }
-        entries:
-          type: array
-          items: { $ref: "#/components/schemas/SharedEntry" }
-        groups:
-          type: array
-          items: { $ref: "#/components/schemas/SharedEntryGroup" }
+      $ref: './common.yaml#/components/schemas/SharedEntryList'
     SharedEntryGroup:
-      type: object
-      required: [key, label, entries]
-      properties:
-        key: { type: string }
-        label: { type: string }
-        entries:
-          type: array
-          items: { $ref: "#/components/schemas/SharedEntry" }
+      $ref: './common.yaml#/components/schemas/SharedEntryGroup'
     PlatformCount:
-      type: object
-      required: [name, count]
-      properties:
-        name: { type: string }
-        count: { type: integer }
+      $ref: './common.yaml#/components/schemas/PlatformCount'
     CurrencySpend:
-      type: object
-      required: [currency, total_cents]
-      properties:
-        currency: { type: string }
-        total_cents: { type: integer, format: int64 }
+      $ref: './common.yaml#/components/schemas/CurrencySpend'
     DashboardPricing:
-      type: object
-      required: [available, priced_entries, unpriced_entries, excluded_entries]
-      properties:
-        available:
-          type: boolean
-          description: False when enrichment was unreachable; total_value_cents is then absent.
-        total_value_cents: { type: integer, format: int64 }
-        priced_entries: { type: integer }
-        unpriced_entries:
-          type: integer
-          description: Entries whose effective product is unmatched or lacks a price for their packaging.
-        excluded_entries:
-          type: integer
-          description: Entries with pricing_mode disabled.
+      $ref: './common.yaml#/components/schemas/DashboardPricing'
     Dashboard:
-      type: object
-      required: [total_entries, by_status, by_item_type, by_platform, spend, pricing]
-      properties:
-        total_entries: { type: integer }
-        by_status:
-          type: object
-          additionalProperties: { type: integer }
-        by_item_type:
-          type: object
-          additionalProperties: { type: integer }
-        by_platform:
-          type: array
-          items: { $ref: "#/components/schemas/PlatformCount" }
-        spend:
-          type: array
-          description: Sum of price_paid_cents per currency, over entries that record a price.
-          items: { $ref: "#/components/schemas/CurrencySpend" }
-        pricing: { $ref: "#/components/schemas/DashboardPricing" }
+      $ref: './common.yaml#/components/schemas/Dashboard'
     ValuePoint:
-      type: object
-      required: [date, value_cents]
-      properties:
-        date: { type: string, format: date }
-        value_cents: { type: integer, format: int64 }
+      $ref: './common.yaml#/components/schemas/ValuePoint'
     ValueHistory:
-      type: object
-      required: [available, points]
-      properties:
-        available:
-          type: boolean
-          description: False when enrichment was unreachable; points is then empty.
-        points:
-          type: array
-          items: { $ref: "#/components/schemas/ValuePoint" }
-    LibraryGame:
-      description: Field-compatible with the enrichment scoring contract's LibraryEntry.
-      type: object
-      required: [igdb_game_id]
-      properties:
-        igdb_game_id: { type: integer, format: int64 }
-        rating: { type: integer, minimum: 1, maximum: 10 }
-        status:
-          type: string
-          description: Reported as dropped only when every copy is dropped; otherwise absent.
+      $ref: './common.yaml#/components/schemas/ValueHistory'
+    LibraryEntry:
+      $ref: './common.yaml#/components/schemas/LibraryEntry'
     LibrarySummary:
       type: object
       required: [library]
       properties:
         library:
           type: array
-          items: { $ref: "#/components/schemas/LibraryGame" }
+          items: { $ref: "#/components/schemas/LibraryEntry" }
     Problem:
-      type: object
-      required: [type, title, status]
-      properties:
-        type: { type: string }
-        title: { type: string }
-        status: { type: integer }
-        detail: { type: string }
-        instance: { type: string }
-        code: { type: string }
+      $ref: './common.yaml#/components/schemas/Problem'
     RematchAccepted:
-      type: object
-      required: [status]
-      properties:
-        status: { type: string, enum: [started] }
+      $ref: './common.yaml#/components/schemas/RematchAccepted'
     ResnapshotResult:
-      type: object
-      required: [products_seen, products_failed, entries_updated]
-      properties:
-        products_seen: { type: integer }
-        products_failed: { type: integer }
-        entries_updated: { type: integer }
-    NormalizePlatformsResult:
-      type: object
-      required: [scanned, normalized, skipped]
-      properties:
-        scanned: { type: integer }
-        normalized: { type: integer }
-        skipped: { type: integer }
-    NormalizeRegionsResult:
-      type: object
-      required: [scanned, normalized, skipped]
-      properties:
-        scanned: { type: integer }
-        normalized: { type: integer }
-        skipped: { type: integer }
+      $ref: './common.yaml#/components/schemas/ResnapshotResult'
+    NormalizeResult:
+      $ref: './common.yaml#/components/schemas/NormalizeResult'

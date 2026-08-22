@@ -35,11 +35,8 @@ paths:
         - name: type
           in: query
           required: true
-          schema: { type: string, enum: [game, hardware, pc_listing] }
-        - name: q
-          in: query
-          required: true
-          schema: { type: string, minLength: 1 }
+          schema: { $ref: './common.yaml#/components/schemas/SearchResultType' }
+        - $ref: './common.yaml#/components/parameters/catalogQ'
       responses:
         "200":
           description: Search results (possibly degraded)
@@ -79,10 +76,8 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Provider does not know the requested id (code unknown_game or unknown_pc_product)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /products/{productId}:
     get:
@@ -106,10 +101,8 @@ paths:
               schema: { $ref: "#/components/schemas/Product" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Not found (code product_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /products/prices:batch:
     post:
       operationId: batchPrices
@@ -238,11 +231,7 @@ paths:
               schema: { $ref: "#/components/schemas/RefreshAccepted" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "409":
-          description: A refresh is already running (code refresh_in_progress)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /internal/refresh:
     post:
       operationId: internalRefresh
@@ -261,11 +250,7 @@ paths:
               schema: { $ref: "#/components/schemas/RefreshAccepted" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "409":
-          description: A refresh is already running (code refresh_in_progress)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /internal/normalize-community-regions:
     post:
       operationId: internalNormalizeCommunityRegions
@@ -286,7 +271,7 @@ paths:
           description: Sweep summary
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/NormalizeCommunityRegionsResult" }
+              schema: { $ref: "#/components/schemas/NormalizeResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /admin/products:
@@ -311,7 +296,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/CommunityProductCreate" }
+            schema: { $ref: "#/components/schemas/CommunityProductSpec" }
       responses:
         "201":
           description: The minted community product
@@ -369,15 +354,11 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: No such product, or the provider does not know the mapping id
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "409":
+          $ref: "#/components/responses/Conflict"
           description: Another product already carries that identity (code identity_taken), or the product is community-origin (code product_not_provider)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /admin/products/{productId}/promote:
     post:
@@ -419,15 +400,11 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: No such product, or the provider does not know the requested id
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "409":
+          $ref: "#/components/responses/Conflict"
           description: Not community-origin (code product_not_community) or a provider twin holds the identity (code identity_taken)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /admin/products/promote-candidates:
     get:
@@ -447,10 +424,7 @@ paths:
           in: query
           required: false
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
-        - name: offset
-          in: query
-          required: false
-          schema: { type: integer, minimum: 0, default: 0 }
+        - $ref: './common.yaml#/components/parameters/offset'
         - name: product_id
           in: query
           required: false
@@ -488,11 +462,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404":
-          description: No such product (code product_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /admin/products/{productId}:
     delete:
       operationId: deleteProduct
@@ -515,16 +485,10 @@ paths:
           description: Deleted (snapshots included)
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404":
-          description: No such product (code product_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "409":
+          $ref: "#/components/responses/Conflict"
           description: The product carries a mapping (code product_matched)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /admin/products/unmatched:
     get:
       operationId: listUnmatchedProducts
@@ -542,10 +506,7 @@ paths:
           in: query
           required: false
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
-        - name: offset
-          in: query
-          required: false
-          schema: { type: integer, minimum: 0, default: 0 }
+        - $ref: './common.yaml#/components/parameters/offset'
       responses:
         "200":
           description: One worklist page
@@ -570,10 +531,7 @@ paths:
           in: query
           required: false
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
-        - name: offset
-          in: query
-          required: false
-          schema: { type: integer, minimum: 0, default: 0 }
+        - $ref: './common.yaml#/components/parameters/offset'
       responses:
         "200":
           description: One community listing page
@@ -584,463 +542,79 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
 components:
   securitySchemes:
-    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    bearerAuth: { $ref: './common.yaml#/components/securitySchemes/bearerAuth' }
   responses:
     BadRequest:
       description: Invalid parameters or body
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
     Unauthorized:
       description: Missing/invalid token
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
     Forbidden:
       description: Insufficient role
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
     UpstreamError:
       description: A provider call failed (code upstream_unavailable)
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    NotFound:
+      description: No such product (code product_not_found)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    Conflict:
+      description: A refresh is already running (code refresh_in_progress)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
   schemas:
     PlatformRef:
-      type: object
-      required: [igdb_platform_id, name]
-      properties:
-        igdb_platform_id: { type: integer, format: int64 }
-        name: { type: string }
-        logo_url:
-          type: string
-          description: IGDB platform logo; the display fallback for products without cover art.
-        release_regions:
-          description: >
-            Distinct canonical IGDB release regions for this game on this
-            platform (japan, north_america, europe, ...), ordered by that
-            region's earliest release date on the platform (dateless rows
-            last, then alphabetical). Platform-exact: JP twin platforms are
-            NOT folded here (a Famicom row stays on Famicom), unlike the
-            product projection's date fold - the physical release is
-            platform-specific. Populated on game search results only;
-            absent on product payloads and hardware results.
-          type: array
-          items:
-            type: string
-            enum: [europe, north_america, australia, new_zealand, japan, china, asia, worldwide, korea, brazil]
+      $ref: './common.yaml#/components/schemas/PlatformRef'
     CatalogPlatform:
-      description: One platform-catalog row with its known aliases.
-      type: object
-      required: [igdb_id, name, aliases]
-      properties:
-        igdb_id: { type: integer, format: int64 }
-        name: { type: string }
-        aliases:
-          description: Alternate spellings and abbreviations (compare case-insensitively).
-          type: array
-          items: { type: string }
+      $ref: './common.yaml#/components/schemas/CatalogPlatform'
     PlatformCatalog:
-      type: object
-      required: [platforms]
-      properties:
-        platforms:
-          type: array
-          items: { $ref: "#/components/schemas/CatalogPlatform" }
+      $ref: './common.yaml#/components/schemas/PlatformCatalog'
     SearchResult:
-      description: >
-        Flat result with a type discriminator. Game results carry the
-        igdb_* fields; hardware results carry the pc_* fields plus the
-        PriceCharting category (Systems, Controllers, Accessories).
-        pc_listing results carry the pc_* fields, the PriceCharting
-        category (empty when the provider lists none), and the standard
-        per-listing loose/cib/new prices so variant prints are tellable
-        apart.
-      type: object
-      required: [type, name]
-      properties:
-        type: { type: string, enum: [game, hardware, pc_listing] }
-        name: { type: string }
-        igdb_game_id: { type: integer, format: int64 }
-        platforms:
-          type: array
-          items: { $ref: "#/components/schemas/PlatformRef" }
-        first_release_date: { type: string, format: date }
-        cover_url: { type: string }
-        localizations:
-          description: Per-region presentations of a game result (games only).
-          type: array
-          items: { $ref: "#/components/schemas/Localization" }
-        matched_region:
-          type: string
-          description: >
-            Set when the query matched a region's localized name or
-            transliteration rather than the canonical name: that
-            bundle's region identifier. Clients may present the region's
-            data and preselect a matching entry region. Absent on
-            canonical-name matches, hardware, pc_listing, and community
-            results.
-        pc_product_id: { type: integer, format: int64 }
-        console_name: { type: string }
-        category: { type: string }
-        loose_cents: { type: integer, format: int64 }
-        cib_cents: { type: integer, format: int64 }
-        new_cents: { type: integer, format: int64 }
-        origin:
-          type: string
-          enum: [community]
-          description: >
-            Marks an interleaved community result (admin-minted,
-            anchor-less); absent on provider results. Community results
-            carry product_id + item_type + platform_name for the pick,
-            community.cover_url as cover_url, and community.region as region.
-            They are scored against the query by name similarity and merged into
-            results by descending score (a provider result precedes a community
-            result of equal score), capped at 10, for game and hardware
-            searches only (never pc_listing). The provider cache stores
-            provider results only - community items attach fresh on every
-            search.
-        product_id: { type: string, format: uuid }
-        item_type: { type: string, enum: [game, console, accessory] }
-        platform_name: { type: string }
-        region: { type: string, description: "Community rows only - the community facts region, entry vocabulary." }
-        developers:
-          type: array
-          items: { type: string }
-          description: Community rows only - the curated developer names, for based-add prefill.
-        publishers:
-          type: array
-          items: { type: string }
-          description: Community rows only - the curated publisher names, for based-add prefill.
+      $ref: './common.yaml#/components/schemas/SearchResult'
     SearchResults:
-      type: object
-      required: [degraded, results]
-      properties:
-        degraded:
-          type: boolean
-          description: True when the provider was unreachable and the local catalog answered instead.
-        results:
-          type: array
-          items: { $ref: "#/components/schemas/SearchResult" }
+      $ref: './common.yaml#/components/schemas/SearchResults'
     FXRates:
-      type: object
-      required: [base, date, rates]
-      properties:
-        base:
-          type: string
-          description: Always USD.
-        date:
-          type: string
-          description: Upstream snapshot date (YYYY-MM-DD), not the fetch time.
-        rates:
-          type: object
-          description: >
-            Target-units-per-USD by ISO 4217 code. USD itself is
-            omitted (it is the base; conversion short-circuits).
-          additionalProperties: { type: number, format: double }
+      $ref: './common.yaml#/components/schemas/FXRates'
     IgdbMeta:
-      description: Projection of the raw IGDB payload held in igdb_raw; refreshed on its own cadence.
-      type: object
-      required: [game_id, name, genres, themes, franchises, similar_games, companies, fetched_at]
-      properties:
-        game_id: { type: integer, format: int64 }
-        name: { type: string }
-        cover_url: { type: string }
-        genres:
-          type: array
-          items: { type: string }
-        themes:
-          type: array
-          items: { type: string }
-        franchises:
-          type: array
-          items: { type: string }
-        similar_games:
-          type: array
-          items: { type: integer, format: int64 }
-        companies:
-          type: array
-          items: { $ref: "#/components/schemas/CompanyCredit" }
-        first_release_date:
-          type: string
-          format: date
-          description: >
-            Earliest date for the product's platform; the game-level
-            first release when IGDB lists no dated rows for the
-            platform.
-        release_dates:
-          description: >
-            Per-region release dates for the product's platform, the
-            earliest concrete date per region. Region values are
-            canonical IGDB names (europe, north_america, australia,
-            new_zealand, japan, china, asia, worldwide, korea, brazil).
-            JP twin platforms fold into their sibling (SNES/Super Famicom,
-            NES/Famicom).
-          type: array
-          items: { $ref: "#/components/schemas/ReleaseDate" }
-        localizations:
-          description: >
-            Per-region presentations; absent both on projections
-            predating the feature and on games with no localizations at
-            all (an empty slice is omitted rather than sent).
-          type: array
-          items: { $ref: "#/components/schemas/Localization" }
-        fetched_at: { type: string, format: date-time }
+      $ref: './common.yaml#/components/schemas/IgdbMeta'
     CompanyCredit:
-      type: object
-      required: [name, developer, publisher]
-      properties:
-        name: { type: string }
-        developer: { type: boolean }
-        publisher: { type: boolean }
+      $ref: './common.yaml#/components/schemas/CompanyCredit'
     ReleaseDate:
-      type: object
-      required: [region, date]
-      properties:
-        region:
-          type: string
-          enum: [europe, north_america, australia, new_zealand, japan, china, asia, worldwide, korea, brazil]
-        date: { type: string, format: date }
+      $ref: './common.yaml#/components/schemas/ReleaseDate'
     Localization:
-      description: >
-        One region's presentation of the game, merged from IGDB
-        game_localizations and tagged alternative names. region is an
-        IGDB region identifier served verbatim (ja-JP, EU, ko-KR,
-        zh-CN, zh-TW, pt-BR;
-        open-world - new identifiers pass through). name is the
-        native-script title, translit its latin transliteration,
-        cover_url the region's own box art; each is independently
-        optional (rows are sparse - readers fall back per field).
-      type: object
-      required: [region]
-      properties:
-        region: { type: string }
-        name: { type: string }
-        translit: { type: string }
-        cover_url: { type: string }
+      $ref: './common.yaml#/components/schemas/Localization'
     PricechartingMeta:
-      description: >
-        The PriceCharting mapping and current prices; refreshed daily.
-        Absent from a product when no candidate cleared the match
-        confidence threshold (no guessing) and the mapping has not been
-        corrected by an admin.
-      type: object
-      required: [pc_product_id, pc_name, console_name, match_confidence, verified, as_of]
-      properties:
-        pc_product_id: { type: integer, format: int64 }
-        pc_name: { type: string }
-        console_name: { type: string }
-        match_confidence: { type: number, format: double }
-        verified: { type: boolean }
-        loose_cents: { type: integer, format: int64 }
-        cib_cents: { type: integer, format: int64 }
-        new_cents: { type: integer, format: int64 }
-        as_of: { type: string, format: date-time }
+      $ref: './common.yaml#/components/schemas/PricechartingMeta'
     Product:
-      type: object
-      required: [id, type, name, created_at, updated_at]
-      properties:
-        id: { type: string, format: uuid }
-        type: { type: string, enum: [game, console, accessory, pc_listing] }
-        name: { type: string }
-        platform: { $ref: "#/components/schemas/PlatformRef" }
-        region:
-          type: string
-          description: >
-            Provider hardware identity fact; community products carry
-            their region under community.region instead.
-        edition: { type: string }
-        variant: { type: string }
-        igdb: { $ref: "#/components/schemas/IgdbMeta" }
-        pricecharting: { $ref: "#/components/schemas/PricechartingMeta" }
-        match_hold:
-          type: boolean
-          description: >
-            Present true when an admin clear holds this product's
-            mapping against a future automated match (resolve, or the
-            entry-side re-match).
-        origin:
-          type: string
-          enum: [community]
-          description: >
-            Emitted only for admin-minted community products (absent
-            means provider-identified). Community products live
-            outside the provider identity indexes; their curated name
-            is their identity.
-        community: { $ref: "#/components/schemas/CommunityMeta" }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
+      $ref: './common.yaml#/components/schemas/Product'
     CommunityMeta:
-      description: >
-        Facts curated at community mint time; retained after promotion
-        as gap-fill (provider blocks win per-field where present).
-      type: object
-      properties:
-        platform_name: { type: string }
-        region:
-          type: string
-          maxLength: 32
-          description: >
-            Curated entry-vocabulary region fact (open-world; known
-            values ntsc_u, ntsc_j, pal, region_free, korea, brazil,
-            china).
-        first_release_date: { type: string, format: date }
-        developers:
-          type: array
-          items: { type: string }
-          description: >
-            Curated developer company names, one per element; served
-            into entry credit snapshots when the provider block
-            carries no developer credits (per-field gap-fill).
-        publishers:
-          type: array
-          items: { type: string }
-          description: >
-            Curated publisher company names; same gap-fill posture as
-            developers.
-        cover_url:
-          type: string
-          description: >
-            User-supplied cover image URL (https, never fetched
-            server-side; the client renders it with a broken-image
-            fallback). Served as the product cover when no provider
-            cover is present; retained after promotion as gap-fill.
-    CommunityProductCreate:
-      type: object
-      required: [type, name]
-      properties:
-        type: { type: string, enum: [game, console, accessory] }
-        name: { type: string, minLength: 1, maxLength: 200 }
-        platform_name: { type: string, maxLength: 100 }
-        region:
-          type: string
-          maxLength: 32
-          description: >
-            Curated entry-vocabulary region fact; stored under the
-            community facts block (community.region), not the
-            product's top-level region field.
-        edition:
-          type: string
-          maxLength: 128
-          description: The entry idiom's single "Edition or variant" note.
-        first_release_date: { type: string, format: date }
-        developers:
-          type: array
-          maxItems: 10
-          items: { type: string, maxLength: 120 }
-          description: Curated developer company names, one per element.
-        publishers:
-          type: array
-          maxItems: 10
-          items: { type: string, maxLength: 120 }
-          description: Curated publisher company names, one per element.
-        cover_url:
-          type: string
-          maxLength: 512
-          description: Optional https cover image URL (validated by shape only, never fetched).
+      $ref: './common.yaml#/components/schemas/CommunityMeta'
+    CommunityProductSpec:
+      $ref: './common.yaml#/components/schemas/CommunityProductSpec'
     PromoteRequest:
-      description: >
-        Provider identity for an in-place promotion. type game
-        products require igdb_game_id + platform_igdb_id and accept
-        an optional pc_product_id (the listing can also arrive later
-        via the mapping fix, once provider); console and accessory
-        products require pc_product_id. The
-        identity the product re-enters the index with completes with
-        the doc's stored region/edition/variant.
-      type: object
-      properties:
-        igdb_game_id: { type: integer, format: int64 }
-        platform_igdb_id: { type: integer, format: int64 }
-        pc_product_id: { type: integer, format: int64 }
+      $ref: './common.yaml#/components/schemas/PromoteRequest'
     PromoteCandidate:
-      type: object
-      required: [provider, provider_id, name, score, found_at]
-      properties:
-        provider: { type: string, enum: [igdb, pricecharting] }
-        provider_id: { type: integer, format: int64 }
-        name: { type: string }
-        score: { type: number, format: double }
-        found_at: { type: string, format: date-time }
+      $ref: './common.yaml#/components/schemas/PromoteCandidate'
     PromoteCandidatesPage:
-      type: object
-      required: [products, total_count]
-      properties:
-        products:
-          type: array
-          items: { $ref: "#/components/schemas/PromoteCandidateProduct" }
-        total_count:
-          type: integer
-          format: int64
-          description: Full count of flagged community products.
+      $ref: './common.yaml#/components/schemas/PromoteCandidatesPage'
     PromoteCandidateProduct:
-      type: object
-      required: [product, candidates]
-      properties:
-        product: { $ref: "#/components/schemas/Product" }
-        candidates:
-          type: array
-          items: { $ref: "#/components/schemas/PromoteCandidate" }
+      $ref: './common.yaml#/components/schemas/PromoteCandidateProduct'
     DismissCandidateRequest:
-      type: object
-      required: [provider, provider_id]
-      properties:
-        provider: { type: string, enum: [igdb, pricecharting] }
-        provider_id: { type: integer, format: int64 }
+      $ref: './common.yaml#/components/schemas/DismissCandidateRequest'
     ResolveRequest:
-      description: >
-        type game requires igdb_game_id + platform_igdb_id (the
-        platform must be one the game released on). Game identity is
-        listing-keyed - (game, platform, PriceCharting listing) - so
-        edition/variant on a game resolve are ignored (entry-level
-        facts, like pc_listing); region is a matching input only (see
-        the region property) and never joins identity. Without
-        pc_product_id the resolve auto-matches by the game name
-        (region-steered) through the shared listing-search cache and
-        lands on the winning listing's product; below the
-        confidence threshold, or with the provider down, it lands on
-        the game+platform's single unmatched product instead - never
-        guessed. Optional match_hint (game only, ignored elsewhere)
-        reweights the scoring toward variant text without changing the
-        search query; a hint nothing matches makes the resolve
-        conservative (unmatched).
-        With pc_product_id (a manual match: the exact listing the user
-        chose) auto-match is skipped and the resolve finds or mints
-        the product carrying that listing (match_confidence 1.0,
-        verified false); unknown id answers 404 unknown_pc_product,
-        provider failure 502 upstream_unavailable. Resolves never
-        touch an existing product's mapping; corrections stay on the
-        admin mapping endpoint.
-        console/accessory require pc_product_id;
-        region/edition/variant distinguish physical variants and are
-        part of hardware identity. type pc_listing requires
-        pc_product_id and mints a price-anchor product for that exact
-        listing; region/edition/variant are ignored (the listing IS
-        the exact variant).
-      type: object
-      required: [type]
-      properties:
-        type: { type: string, enum: [game, console, accessory, pc_listing] }
-        igdb_game_id: { type: integer, format: int64 }
-        platform_igdb_id: { type: integer, format: int64 }
-        pc_product_id: { type: integer, format: int64 }
-        match_hint: { type: string, maxLength: 128 }
-        region:
-          type: string
-          maxLength: 32
-          description: >-
-            For console/accessory: part of hardware identity, distinguishing
-            physical variants. For game: a matching input only - the entry
-            region (ntsc_u, ntsc_j, pal, region_free, korea, brazil,
-            china) steers which PriceCharting listing auto-match lands
-            on (JP and PAL listings live under region-prefixed or
-            JP-named console axes; korea, brazil and china have no
-            provider axis and match like ntsc_u) and is
-            never stored on the product; ignored when pc_product_id is
-            present; unknown values behave like ntsc_u. Ignored for
-            pc_listing.
-        edition: { type: string, maxLength: 128 }
-        variant: { type: string, maxLength: 128 }
+      $ref: './common.yaml#/components/schemas/ResolveRequest'
     PricesBatchRequest:
       type: object
       required: [product_ids]
@@ -1097,14 +671,7 @@ components:
             type: array
             items: { $ref: "#/components/schemas/PricePoint" }
     LibraryEntry:
-      type: object
-      required: [igdb_game_id]
-      properties:
-        igdb_game_id: { type: integer, format: int64 }
-        rating: { type: integer, minimum: 1, maximum: 10 }
-        status:
-          type: string
-          description: The caller's own status vocabulary; scoring only distinguishes "dropped".
+      $ref: './common.yaml#/components/schemas/LibraryEntry'
     ScoreRequest:
       type: object
       required: [library]
@@ -1115,77 +682,18 @@ components:
           items: { $ref: "#/components/schemas/LibraryEntry" }
         limit: { type: integer, minimum: 1, maximum: 50, default: 20 }
     Recommendation:
-      type: object
-      required: [igdb_game_id, name, genres, score]
-      properties:
-        igdb_game_id: { type: integer, format: int64 }
-        name: { type: string }
-        cover_url: { type: string }
-        genres:
-          type: array
-          items: { type: string }
-        first_release_date: { type: string, format: date }
-        score: { type: number, format: double }
+      $ref: './common.yaml#/components/schemas/Recommendation'
     ScoreResponse:
-      type: object
-      required: [degraded, recommendations]
-      properties:
-        degraded:
-          type: boolean
-          description: True when candidate metadata fetches failed and some candidates were skipped.
-        recommendations:
-          type: array
-          items: { $ref: "#/components/schemas/Recommendation" }
+      $ref: './common.yaml#/components/schemas/ScoreResponse'
     RefreshAccepted:
-      type: object
-      required: [status]
-      properties:
-        status: { type: string, enum: [started] }
-    NormalizeCommunityRegionsResult:
-      type: object
-      required: [scanned, normalized, skipped]
-      properties:
-        scanned: { type: integer }
-        normalized: { type: integer }
-        skipped: { type: integer }
+      $ref: './common.yaml#/components/schemas/RefreshAccepted'
+    NormalizeResult:
+      $ref: './common.yaml#/components/schemas/NormalizeResult'
     UnmatchedProductsPage:
-      type: object
-      required: [products, total_count]
-      properties:
-        products:
-          type: array
-          items: { $ref: "#/components/schemas/Product" }
-        total_count:
-          type: integer
-          format: int64
-          description: Full count of unmatched products, beyond this page.
+      $ref: './common.yaml#/components/schemas/UnmatchedProductsPage'
     CommunityProductsPage:
-      type: object
-      required: [products, total_count]
-      properties:
-        products:
-          type: array
-          items: { $ref: "#/components/schemas/Product" }
-        total_count:
-          type: integer
-          format: int64
-          description: Full count of community products, beyond this page.
+      $ref: './common.yaml#/components/schemas/CommunityProductsPage'
     MappingRequest:
-      type: object
-      required: [pc_product_id]
-      properties:
-        pc_product_id:
-          type: integer
-          format: int64
-          nullable: true
-          description: Null clears the mapping (the product becomes unmatched and held).
+      $ref: './common.yaml#/components/schemas/MappingRequest'
     Problem:
-      type: object
-      required: [type, title, status]
-      properties:
-        type: { type: string }
-        title: { type: string }
-        status: { type: integer }
-        detail: { type: string }
-        instance: { type: string }
-        code: { type: string }
+      $ref: './common.yaml#/components/schemas/Problem'

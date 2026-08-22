@@ -22,21 +22,13 @@ paths:
       responses:
         "204": { description: Following (already or newly) }
         "400":
+          $ref: "#/components/responses/BadRequest"
           description: Self-follow (code self_follow)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Followee unknown or private (code profile_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
-        "429":
-          description: Follow cap reached (code cap_exceeded)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "502": { $ref: "#/components/responses/UpstreamError" }
     delete:
       operationId: unfollow
@@ -77,16 +69,10 @@ paths:
       responses:
         "204": { description: Liked (already or newly) }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404":
-          description: Shelf unknown or private (code shelf_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429":
+          $ref: "#/components/responses/TooManyRequests"
           description: Like cap reached (code cap_exceeded)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
     delete:
       operationId: unlikeShelf
@@ -133,10 +119,7 @@ paths:
           in: path
           required: true
           schema: { type: string, format: uuid }
-        - name: cursor
-          in: query
-          required: false
-          schema: { type: string }
+        - $ref: './common.yaml#/components/parameters/cursor'
         - name: limit
           in: query
           required: false
@@ -154,11 +137,7 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Comment" }
                   next_cursor: { type: string }
-        "400":
-          description: Malformed cursor (code invalid_param)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       operationId: createShelfComment
@@ -184,21 +163,13 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Comment" }
         "400":
+          $ref: "#/components/responses/BadRequest"
           description: Invalid body (code invalid_body)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404":
-          description: Shelf unknown or private (code shelf_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429":
+          $ref: "#/components/responses/TooManyRequests"
           description: Comment cap reached - tombstones count (code cap_exceeded)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /comments/{commentId}:
     delete:
@@ -212,16 +183,10 @@ paths:
       responses:
         "204": { description: Tombstoned }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "403":
-          description: Caller is neither author nor shelf owner (code forbidden)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: Unknown or already tombstoned (code comment_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /comments/by-ids:
     get:
       operationId: getCommentsByIds
@@ -252,14 +217,8 @@ paths:
       operationId: getFeed
       summary: Raw activity events for the caller, keyset-paged
       parameters:
-        - name: tab
-          in: query
-          required: true
-          schema: { type: string, enum: [following, you] }
-        - name: cursor
-          in: query
-          required: false
-          schema: { type: string }
+        - $ref: './common.yaml#/components/parameters/tab'
+        - $ref: './common.yaml#/components/parameters/cursor'
         - name: limit
           in: query
           required: false
@@ -279,11 +238,7 @@ paths:
                   next_cursor:
                     type: string
                     description: Cursor of the last RAW row; absent when exhausted.
-        "400":
-          description: Malformed cursor (code invalid_param)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /events/shelf-published:
     post:
@@ -301,11 +256,7 @@ paths:
       responses:
         "204": { description: Recorded (created, refreshed, or throttled) }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404":
-          description: Shelf unknown or private (code shelf_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /explore/top-shelves:
     get:
@@ -345,34 +296,43 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   securitySchemes:
-    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    bearerAuth: { $ref: './common.yaml#/components/securitySchemes/bearerAuth' }
   responses:
     Unauthorized:
       description: Missing/invalid token
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
     UpstreamError:
       description: A downstream dependency failed (code upstream_error)
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    BadRequest:
+      description: Malformed cursor (code invalid_param)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    Forbidden:
+      description: Caller is neither author nor shelf owner (code forbidden)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    NotFound:
+      description: Shelf unknown or private (code shelf_not_found)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    TooManyRequests:
+      description: Follow cap reached (code cap_exceeded)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
   schemas:
     ProfileSocialSummary:
-      type: object
-      required: [follower_count, following_count, viewer_follows]
-      properties:
-        follower_count: { type: integer }
-        following_count: { type: integer }
-        viewer_follows: { type: boolean }
+      $ref: './common.yaml#/components/schemas/ProfileSocialSummary'
     ShelfSocialSummary:
-      type: object
-      required: [shelf_id, like_count, comment_count, viewer_likes]
-      properties:
-        shelf_id: { type: string, format: uuid }
-        like_count: { type: integer }
-        comment_count: { type: integer, description: Live comments only. }
-        viewer_likes: { type: boolean }
+      $ref: './common.yaml#/components/schemas/ShelfSocialSummary'
     Comment:
       description: A live comment; tombstones never serialize.
       type: object
@@ -389,20 +349,10 @@ components:
       properties:
         id: { type: string, format: uuid }
         actor_id: { type: string, format: uuid }
-        verb:
-          type: string
-          enum: [followed_user, liked_shelf, commented_shelf, published_shelf]
+        verb: { $ref: './common.yaml#/components/schemas/ActivityVerb' }
         object_shelf_id: { type: string, format: uuid }
         object_comment_id: { type: string, format: uuid }
         target_user_id: { type: string, format: uuid }
         created_at: { type: string, format: date-time }
     Problem:
-      type: object
-      required: [type, title, status]
-      properties:
-        type: { type: string }
-        title: { type: string }
-        status: { type: integer }
-        detail: { type: string }
-        instance: { type: string }
-        code: { type: string }
+      $ref: './common.yaml#/components/schemas/Problem'

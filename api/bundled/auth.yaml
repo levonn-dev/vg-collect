@@ -1,0 +1,573 @@
+openapi: 3.0.3
+info:
+  title: vgkeep auth service
+  version: 0.1.0
+  description: |
+    OIDC relying party and first-party token issuer. The login, refresh, revoke, and JWKS endpoints carry no bearerAuth security scheme on purpose: they are where tokens come from, or must stay readable by every service, and the service is cluster-internal, so network reachability is the access control. The self-service endpoints below (link start, dev link) do require bearerAuth: they act on "my account", which only a token this same service already issued can name.
+paths:
+  /oauth/start:
+    post:
+      operationId: oauthStart
+      summary: Begin a provider login; returns the URL to redirect the browser to
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartRequest'
+      responses:
+        '200':
+          description: Authorize URL with state, nonce, and PKCE challenge bound server-side
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /oauth/callback:
+    post:
+      operationId: oauthCallback
+      summary: Complete a provider login or account link (code exchange, ID-token verification)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallbackRequest'
+      responses:
+        '200':
+          description: |
+            First-party session tokens. linked_provider is present when the consumed state was an account link (the tokens then belong to the linking user).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallbackResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: |
+            Provider did not assert a verified email: code email_unverified on a login, link_email_unverified on a link.
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /oauth/link/start:
+    post:
+      operationId: oauthLinkStart
+      summary: Begin linking another provider login to the caller's account
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LinkStartRequest'
+      responses:
+        '200':
+          description: Authorize URL; the pending state is bound server-side to the caller's user id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /providers:
+    get:
+      operationId: listProviders
+      summary: Login provider names currently enabled, in display order
+      responses:
+        '200':
+          description: |
+            Always 200. Real providers with credentials configured, plus dev when gated on; empty array when nothing is enabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Providers'
+  /oauth/dev/token:
+    post:
+      operationId: devToken
+      summary: Mint a session for a dev fixture user (dev provider only; 404 unless enabled)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevTokenRequest'
+      responses:
+        '200':
+          description: First-party session tokens for the fixture
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Malformed body, or unknown fixture handle (code unknown_fixture)
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /oauth/dev/link:
+    post:
+      operationId: devLink
+      summary: Link a dev fixture identity to the caller's account (dev provider only; 404 unless enabled)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevLinkRequest'
+      responses:
+        '200':
+          description: Fresh session tokens for the caller, with linked_provider set to dev
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallbackResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Malformed body, or unknown fixture handle (code unknown_fixture)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: The fixture identity already belongs to another account (code identity_already_linked)
+  /users/{userId}/identities:
+    get:
+      operationId: listIdentities
+      summary: Provider logins linked to a user (self, or role service)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Linked identities, oldest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Identities'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /identities/{identityId}:
+    delete:
+      operationId: deleteIdentity
+      summary: Unlink a provider login from the caller's account
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: identityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Unlinked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: No such identity on the caller's account (code identity_not_found)
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: Refusing to remove the account's last login (code last_identity)
+  /users/{userId}/auth:
+    delete:
+      operationId: deleteUserAuth
+      summary: Delete all identities and revoke every refresh family for a user (self only; account deletion)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Auth footprint erased (idempotent)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /token/refresh:
+    post:
+      operationId: refreshToken
+      summary: Rotate a refresh token; reuse of a consumed token revokes its whole chain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: New token pair (old refresh token is consumed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/RefreshUnauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /token/revoke:
+    post:
+      operationId: revokeToken
+      summary: Revoke a refresh token's whole chain (logout); idempotent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeRequest'
+      responses:
+        '204':
+          description: Chain revoked (or token unknown; idempotent)
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /.well-known/jwks.json:
+    get:
+      operationId: getJwks
+      summary: Public signing keys (Ed25519) for access-JWT verification
+      responses:
+        '200':
+          description: JWKS document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Jwks'
+  /internal/service-token:
+    post:
+      operationId: internalServiceToken
+      tags:
+        - internal
+      summary: Mint a short-lived service JWT for cluster maintenance jobs
+      description: |
+        Machine-to-machine bootstrap; the gateway never routes it. Authenticates the static internal secret (X-Internal-Token, constant-time against a one-or-two-entry accept set for zero-downtime rotation) and mints a standard access token with a service subject and token_use=service, 15 minutes. A wrong secret answers 401 invalid_internal_token; a missing header answers a generated 400 (required parameter validation runs before this check). Consumers: the catalog-refresh and entry-rematch CronJobs.
+      parameters:
+        - name: X-Internal-Token
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - service
+              properties:
+                service:
+                  type: string
+                  enum:
+                    - catalog-refresh
+                    - entry-rematch
+      responses:
+        '200':
+          description: Minted service token
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - access_token
+                  - token_type
+                  - expires_in
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                    enum:
+                      - Bearer
+                  expires_in:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    BadRequest:
+      description: Malformed request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UpstreamError:
+      description: Identity provider or user service error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalError:
+      description: Unexpected server-side failure
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Not your account
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Dev provider disabled
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Link flows only; the identity already belongs to another account (code identity_already_linked)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ServiceUnavailable:
+      description: Role source (user service) unavailable; retry later, token not consumed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    RefreshUnauthorized:
+      description: |
+        Invalid, expired, revoked, or reused refresh token. On reuse (code refresh_reused) revoke_jtis lists access-token jtis from the revoked chain that may still be alive, for denylisting.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/RefreshProblem'
+  schemas:
+    OAuthProvider:
+      type: string
+      enum:
+        - google
+        - twitch
+    StartRequest:
+      type: object
+      required:
+        - provider
+      properties:
+        provider:
+          $ref: '#/components/schemas/OAuthProvider'
+    LinkStartRequest:
+      type: object
+      required:
+        - provider
+      properties:
+        provider:
+          $ref: '#/components/schemas/OAuthProvider'
+    StartResponse:
+      type: object
+      required:
+        - authorize_url
+      properties:
+        authorize_url:
+          type: string
+          format: uri
+    CallbackRequest:
+      type: object
+      required:
+        - code
+        - state
+      properties:
+        code:
+          type: string
+          minLength: 1
+        state:
+          type: string
+          minLength: 1
+    DevTokenRequest:
+      type: object
+      required:
+        - user
+      properties:
+        user:
+          type: string
+          description: Fixture handle (alice, bob, admin, or an e2e-* test fixture); never a real account
+    DevLinkRequest:
+      type: object
+      required:
+        - user
+      properties:
+        user:
+          type: string
+          description: Fixture handle (alice, bob, admin, or an e2e-* test fixture); never a real account
+    RefreshRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+          minLength: 1
+    RevokeRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+    TokenPair:
+      type: object
+      required:
+        - access_token
+        - token_type
+        - expires_in
+        - refresh_token
+        - refresh_expires_in
+      properties:
+        access_token:
+          type: string
+          description: Ed25519 JWT, ~5 min TTL
+        token_type:
+          type: string
+          description: Always Bearer
+        expires_in:
+          type: integer
+          format: int64
+          description: Access token lifetime, seconds
+        refresh_token:
+          type: string
+          description: Opaque, single-use; rotated on every refresh
+        refresh_expires_in:
+          type: integer
+          format: int64
+          description: Seconds until the session's absolute expiry
+    CallbackResponse:
+      allOf:
+        - $ref: '#/components/schemas/TokenPair'
+        - type: object
+          properties:
+            linked_provider:
+              type: string
+              description: Present only when the flow was an account link; names the linked provider.
+    Jwks:
+      type: object
+      required:
+        - keys
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/Jwk'
+    Jwk:
+      type: object
+      description: OKP key (RFC 8037). use and alg are omitted; every key here is an Ed25519 signing key.
+      required:
+        - kty
+        - crv
+        - kid
+        - x
+      properties:
+        kty:
+          type: string
+        crv:
+          type: string
+        kid:
+          type: string
+        x:
+          type: string
+          description: base64url raw Ed25519 public key
+    Providers:
+      type: object
+      required:
+        - providers
+      properties:
+        providers:
+          type: array
+          description: 'Subset of: google, twitch, dev'
+          items:
+            type: string
+    Identity:
+      type: object
+      required:
+        - id
+        - provider
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider:
+          type: string
+        email:
+          type: string
+          description: Informational; the email the provider asserted when this identity last signed in.
+        created_at:
+          type: string
+          format: date-time
+    Identities:
+      type: object
+      required:
+        - identities
+      properties:
+        identities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Identity'
+    Problem:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
+          type: string
+    RefreshProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            revoke_jtis:
+              type: array
+              items:
+                type: string
+              description: Present only with code refresh_reused

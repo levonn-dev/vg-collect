@@ -1,0 +1,377 @@
+openapi: 3.0.3
+info:
+  title: vgkeep user service
+  version: 0.1.0
+security:
+  - bearerAuth: []
+paths:
+  /internal/users/upsert:
+    post:
+      operationId: upsertUser
+      summary: Create-or-update a user at login time (auth service only; role `service`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertUserRequest'
+      responses:
+        '200':
+          description: Upserted user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /users/{userId}:
+    get:
+      operationId: getUser
+      summary: Fetch a user (self, or role `service`/`admin`)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateUser
+      summary: Self-service profile update (handle, avatar URL, currency, visibility)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    delete:
+      operationId: deleteUser
+      summary: Delete a user account (self only); idempotent
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted (or already gone)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /shared/profiles/{handle}:
+    get:
+      operationId: getSharedProfile
+      summary: Resolve a handle to its profile card (any authenticated caller; non-private only)
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Profile card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileCard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Unknown or private (deliberately indistinguishable)
+  /shared/profiles/by-ids:
+    get:
+      operationId: getSharedProfilesByIds
+      summary: Batch profile cards for hydration (returned regardless of visibility - actions are signed; page access stays gated)
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: array
+            maxItems: 100
+            items:
+              type: string
+              format: uuid
+      responses:
+        '200':
+          description: Cards for the ids that exist
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - profiles
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProfileCard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /shared/profiles/search:
+    get:
+      operationId: searchSharedProfiles
+      summary: Substring search over listed profiles' folded handles
+      parameters:
+        - $ref: '#/components/parameters/userSearchQ'
+      responses:
+        '200':
+          description: Up to 20 listed matches, folded-key order
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - profiles
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProfileCard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthorized:
+      description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Insufficient role
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    BadRequest:
+      description: Validation failure (code invalid_body; detail names the field)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Another account owns that handle's folded key (code handle_taken)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    TooManyRequests:
+      description: Handle changed too recently (code handle_cooldown)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - handle
+        - profile_visibility
+        - roles
+        - preferred_currency
+        - landing_page
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        handle:
+          description: |
+            The user's single identity. 2-30 chars, alphanumeric plus interior underscores; case and underscores are decoration (uniqueness folds them).
+          allOf:
+            - $ref: '#/components/schemas/Handle'
+        avatar_url:
+          type: string
+        profile_visibility:
+          $ref: '#/components/schemas/Visibility'
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        preferred_currency:
+          description: |
+            The display currency the SPA converts market values into. Defaulted from locale_hint at account creation, USD when no hint maps.
+          allOf:
+            - $ref: '#/components/schemas/CurrencyCode'
+        landing_page:
+          description: |
+            Where the app opens after sign-in. Private preference, defaulted to feed for every account; never on ProfileCard.
+          allOf:
+            - $ref: '#/components/schemas/LandingPage'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    UpsertUserRequest:
+      type: object
+      required:
+        - email
+        - display_name
+      properties:
+        email:
+          type: string
+        display_name:
+          type: string
+          description: |
+            The provider's display name. Used ONLY as the handle derivation seed when this upsert creates the account; it is not stored and never overwrites an existing handle.
+        avatar_url:
+          type: string
+          maxLength: 2048
+        locale_hint:
+          type: string
+          maxLength: 64
+          description: |
+            BCP 47 language tag from the login request's Accept-Language header. Applied only when this upsert creates the account: it seeds preferred_currency and never touches an existing user.
+    UpdateUserRequest:
+      type: object
+      description: Absent fields keep their value; an empty avatar_url clears it.
+      properties:
+        handle:
+          description: |
+            New typed form. Decoration-only changes are free renames; one change per cooldown window (429 handle_cooldown); folded-key collisions answer 409 handle_taken.
+          allOf:
+            - $ref: '#/components/schemas/Handle'
+        avatar_url:
+          type: string
+          maxLength: 2048
+        preferred_currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        profile_visibility:
+          $ref: '#/components/schemas/Visibility'
+        landing_page:
+          $ref: '#/components/schemas/LandingPage'
+    ProfileCard:
+      description: The cross-user projection of a user. Never email, never roles.
+      type: object
+      required:
+        - user_id
+        - handle
+        - profile_visibility
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        handle:
+          $ref: '#/components/schemas/Handle'
+        avatar_url:
+          type: string
+        profile_visibility:
+          $ref: '#/components/schemas/Visibility'
+    Problem:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
+          type: string
+    Handle:
+      type: string
+      minLength: 2
+      maxLength: 30
+      pattern: ^[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?$
+    Visibility:
+      type: string
+      enum:
+        - private
+        - unlisted
+        - listed
+    Role:
+      type: string
+      enum:
+        - user
+        - admin
+    CurrencyCode:
+      type: string
+      pattern: ^[A-Z]{3}$
+    LandingPage:
+      type: string
+      enum:
+        - collection
+        - feed
+        - explore
+  parameters:
+    userSearchQ:
+      name: q
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64

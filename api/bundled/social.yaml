@@ -1,0 +1,545 @@
+openapi: 3.0.3
+info:
+  title: vgkeep social service
+  version: 0.1.0
+  description: |
+    Follows, likes, comments, and the activity feed. Every endpoint requires an authenticated end-user bearer (the bff relays the caller's own token); authorization is per-handler. Shelf ids are saved-view ids seen through the social layer.
+security:
+  - bearerAuth: []
+paths:
+  /follows/{userId}:
+    put:
+      operationId: follow
+      summary: Follow a user (idempotent)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Following (already or newly)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Self-follow (code self_follow)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Followee unknown or private (code profile_not_found)
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    delete:
+      operationId: unfollow
+      summary: Unfollow a user (idempotent)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Not following (already or newly)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /profiles/{userId}/summary:
+    get:
+      operationId: getProfileSocialSummary
+      summary: Follower/following counts plus whether the caller follows this user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileSocialSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /likes/{shelfId}:
+    put:
+      operationId: likeShelf
+      summary: Like a shelf (idempotent; validates the shelf via collection)
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Liked (already or newly)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: Like cap reached (code cap_exceeded)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+    delete:
+      operationId: unlikeShelf
+      summary: Remove a like (idempotent)
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Not liked (already or newly)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /shelves/summary:
+    get:
+      operationId: getShelvesSocialSummary
+      summary: Batch like/comment counts + caller state for shelves
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: array
+            maxItems: 100
+            items:
+              type: string
+              format: uuid
+      responses:
+        '200':
+          description: Summaries (ids without social rows still answer, zeroed)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - summaries
+                properties:
+                  summaries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ShelfSocialSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /shelves/{shelfId}/comments:
+    get:
+      operationId: listShelfComments
+      summary: Live comments, newest first, keyset-paged
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/cursor'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: One page
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - comments
+                properties:
+                  comments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+                  next_cursor:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createShelfComment
+      summary: Comment on a shelf (validates the shelf via collection)
+      parameters:
+        - name: shelfId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body
+              properties:
+                body:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+      responses:
+        '201':
+          description: The comment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: Invalid body (code invalid_body)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: Comment cap reached - tombstones count (code cap_exceeded)
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /comments/{commentId}:
+    delete:
+      operationId: deleteComment
+      summary: Delete a comment (author tombstones body-NULL; shelf owner tombstones body-retained)
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Tombstoned
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: Unknown or already tombstoned (code comment_not_found)
+  /comments/by-ids:
+    get:
+      operationId: getCommentsByIds
+      summary: Batch live comments (feed excerpt hydration)
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: array
+            maxItems: 100
+            items:
+              type: string
+              format: uuid
+      responses:
+        '200':
+          description: Live comments among the ids
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - comments
+                properties:
+                  comments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /feed:
+    get:
+      operationId: getFeed
+      summary: Raw activity events for the caller, keyset-paged
+      parameters:
+        - $ref: '#/components/parameters/tab'
+        - $ref: '#/components/parameters/cursor'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: One raw page (the bff hydrates, gates, and fills)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - events
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActivityEvent'
+                  next_cursor:
+                    type: string
+                    description: Cursor of the last RAW row; absent when exhausted.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /events/shelf-published:
+    post:
+      operationId: recordShelfPublished
+      summary: Record a publish (bff-orchestrated; one live row per shelf, hourly refresh throttle)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - shelf_id
+              properties:
+                shelf_id:
+                  type: string
+                  format: uuid
+      responses:
+        '204':
+          description: Recorded (created
+          refreshed: null
+          or throttled): null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+  /explore/top-shelves:
+    get:
+      operationId: getTopShelves
+      summary: Shelf ids by live like count, all-time (leaderboard, no deep paging)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 50
+      responses:
+        '200':
+          description: Ids, most-liked first
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - shelf_ids
+                properties:
+                  shelf_ids:
+                    type: array
+                    items:
+                      type: string
+                      format: uuid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /user-data:
+    delete:
+      operationId: purgeUserData
+      summary: Account-deletion leg - purge the caller's social graph (idempotent)
+      description: |
+        Hard-deletes follows (both directions), likes by the caller and on the caller's shelves, activity where the caller is actor or target, and comments on the caller's own shelves. Comments the caller authored on other shelves are anonymized in place (author and body NULLed, tombstoned). deleted_by references to the caller are NULLed. Irreversible.
+      responses:
+        '204':
+          description: Purged
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthorized:
+      description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UpstreamError:
+      description: A downstream dependency failed (code upstream_error)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    BadRequest:
+      description: Malformed cursor (code invalid_param)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Caller is neither author nor shelf owner (code forbidden)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Shelf unknown or private (code shelf_not_found)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    TooManyRequests:
+      description: Follow cap reached (code cap_exceeded)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    ProfileSocialSummary:
+      type: object
+      required:
+        - follower_count
+        - following_count
+        - viewer_follows
+      properties:
+        follower_count:
+          type: integer
+        following_count:
+          type: integer
+        viewer_follows:
+          type: boolean
+    ShelfSocialSummary:
+      type: object
+      required:
+        - shelf_id
+        - like_count
+        - comment_count
+        - viewer_likes
+      properties:
+        shelf_id:
+          type: string
+          format: uuid
+        like_count:
+          type: integer
+        comment_count:
+          type: integer
+          description: Live comments only.
+        viewer_likes:
+          type: boolean
+    Comment:
+      description: A live comment; tombstones never serialize.
+      type: object
+      required:
+        - id
+        - shelf_id
+        - author_id
+        - body
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        shelf_id:
+          type: string
+          format: uuid
+        author_id:
+          type: string
+          format: uuid
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ActivityEvent:
+      type: object
+      required:
+        - id
+        - actor_id
+        - verb
+        - target_user_id
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        actor_id:
+          type: string
+          format: uuid
+        verb:
+          $ref: '#/components/schemas/ActivityVerb'
+        object_shelf_id:
+          type: string
+          format: uuid
+        object_comment_id:
+          type: string
+          format: uuid
+        target_user_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+    Problem:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
+          type: string
+    ActivityVerb:
+      type: string
+      enum:
+        - followed_user
+        - liked_shelf
+        - commented_shelf
+        - published_shelf
+  parameters:
+    cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+    tab:
+      name: tab
+      in: query
+      required: true
+      schema:
+        type: string
+        enum:
+          - following
+          - you

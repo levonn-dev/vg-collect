@@ -53,17 +53,11 @@ paths:
                 $ref: "#/components/schemas/CallbackResponse"
         "400": { $ref: "#/components/responses/BadRequest" }
         "403":
+          $ref: "#/components/responses/Forbidden"
           description: >
             Provider did not assert a verified email: code
             email_unverified on a login, link_email_unverified on a link.
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
-        "409":
-          description: Link flows only; the identity already belongs to another account (code identity_already_linked)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /oauth/link/start:
     post:
@@ -118,15 +112,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/TokenPair"
         "400":
+          $ref: "#/components/responses/BadRequest"
           description: Malformed body, or unknown fixture handle (code unknown_fixture)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
-        "404":
-          description: Dev provider disabled
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /oauth/dev/link:
     post:
       operationId: devLink
@@ -147,21 +135,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/CallbackResponse"
         "400":
+          $ref: "#/components/responses/BadRequest"
           description: Malformed body, or unknown fixture handle (code unknown_fixture)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404":
-          description: Dev provider disabled
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "409":
+          $ref: "#/components/responses/Conflict"
           description: The fixture identity already belongs to another account (code identity_already_linked)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /users/{userId}/identities:
     get:
       operationId: listIdentities
@@ -181,11 +161,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Identities"
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "403":
-          description: Not your account
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /identities/{identityId}:
     delete:
       operationId: deleteIdentity
@@ -202,15 +178,11 @@ paths:
           description: Unlinked
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
+          $ref: "#/components/responses/NotFound"
           description: No such identity on the caller's account (code identity_not_found)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
         "409":
+          $ref: "#/components/responses/Conflict"
           description: Refusing to remove the account's last login (code last_identity)
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
   /users/{userId}/auth:
     delete:
       operationId: deleteUserAuth
@@ -226,11 +198,7 @@ paths:
         "204":
           description: Auth footprint erased (idempotent)
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "403":
-          description: Not your account
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /token/refresh:
     post:
       operationId: refreshToken
@@ -248,21 +216,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenPair"
-        "401":
-          description: >
-            Invalid, expired, revoked, or reused refresh token. On reuse
-            (code refresh_reused) revoke_jtis lists access-token jtis from
-            the revoked chain that may still be alive, for denylisting.
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/RefreshProblem"
+        "401": { $ref: "#/components/responses/RefreshUnauthorized" }
         "500": { $ref: "#/components/responses/InternalError" }
-        "503":
-          description: Role source (user service) unavailable; retry later, token not consumed
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /token/revoke:
     post:
       operationId: revokeToken
@@ -333,39 +289,70 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   securitySchemes:
-    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    bearerAuth: { $ref: './common.yaml#/components/securitySchemes/bearerAuth' }
   responses:
     BadRequest:
       description: Malformed request
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
     UpstreamError:
       description: Identity provider or user service error
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
     Unauthorized:
       description: Missing/invalid token
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
     InternalError:
       description: Unexpected server-side failure
       content:
         application/problem+json:
-          schema: { $ref: "#/components/schemas/Problem" }
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    Forbidden:
+      description: Not your account
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    NotFound:
+      description: Dev provider disabled
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    Conflict:
+      description: Link flows only; the identity already belongs to another account (code identity_already_linked)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    ServiceUnavailable:
+      description: Role source (user service) unavailable; retry later, token not consumed
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    RefreshUnauthorized:
+      description: >
+        Invalid, expired, revoked, or reused refresh token. On reuse
+        (code refresh_reused) revoke_jtis lists access-token jtis from
+        the revoked chain that may still be alive, for denylisting.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/RefreshProblem' }
   schemas:
+    OAuthProvider:
+      type: string
+      enum: [google, twitch]
     StartRequest:
       type: object
       required: [provider]
       properties:
-        provider: { type: string, enum: [google, twitch] }
+        provider: { $ref: "#/components/schemas/OAuthProvider" }
     LinkStartRequest:
       type: object
       required: [provider]
       properties:
-        provider: { type: string, enum: [google, twitch] }
+        provider: { $ref: "#/components/schemas/OAuthProvider" }
     StartResponse:
       type: object
       required: [authorize_url]
@@ -375,23 +362,23 @@ components:
       type: object
       required: [code, state]
       properties:
-        code: { type: string }
-        state: { type: string }
+        code: { type: string, minLength: 1 }
+        state: { type: string, minLength: 1 }
     DevTokenRequest:
       type: object
       required: [user]
       properties:
-        user: { type: string, description: "Fixture handle (alice, bob, admin); never a real account" }
+        user: { type: string, description: "Fixture handle (alice, bob, admin, or an e2e-* test fixture); never a real account" }
     DevLinkRequest:
       type: object
       required: [user]
       properties:
-        user: { type: string, description: "Fixture handle (alice, bob, admin); never a real account" }
+        user: { type: string, description: "Fixture handle (alice, bob, admin, or an e2e-* test fixture); never a real account" }
     RefreshRequest:
       type: object
       required: [refresh_token]
       properties:
-        refresh_token: { type: string }
+        refresh_token: { type: string, minLength: 1 }
     RevokeRequest:
       type: object
       required: [refresh_token]
@@ -431,43 +418,16 @@ components:
         kid: { type: string }
         x: { type: string, description: "base64url raw Ed25519 public key" }
     Providers:
-      type: object
-      required: [providers]
-      properties:
-        providers:
-          type: array
-          description: "Subset of: google, twitch, dev"
-          items: { type: string }
+      $ref: './common.yaml#/components/schemas/Providers'
     Identity:
-      type: object
-      required: [id, provider, created_at]
-      properties:
-        id: { type: string, format: uuid }
-        provider: { type: string }
-        email:
-          type: string
-          description: Informational; the email the provider asserted when this identity last signed in.
-        created_at: { type: string, format: date-time }
+      $ref: './common.yaml#/components/schemas/Identity'
     Identities:
-      type: object
-      required: [identities]
-      properties:
-        identities:
-          type: array
-          items: { $ref: "#/components/schemas/Identity" }
+      $ref: './common.yaml#/components/schemas/Identities'
     Problem:
-      type: object
-      required: [type, title, status]
-      properties:
-        type: { type: string }
-        title: { type: string }
-        status: { type: integer }
-        detail: { type: string }
-        instance: { type: string }
-        code: { type: string }
+      $ref: './common.yaml#/components/schemas/Problem'
     RefreshProblem:
       allOf:
-        - $ref: "#/components/schemas/Problem"
+        - $ref: './common.yaml#/components/schemas/Problem'
         - type: object
           properties:
             revoke_jtis:
