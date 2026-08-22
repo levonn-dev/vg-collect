@@ -1,33 +1,12 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { msg } from '@lingui/core/macro'
-import type { MessageDescriptor } from '@lingui/core'
 import type { ReactNode } from 'react'
 import type { Entry } from '../../api/collection'
+import { packagingWireLabels, statusLabels } from '../../lib/enumLabels'
 import { formatCents, releaseYear } from '../../lib/format'
 import { entryTitle, entryTitleLang, titleFormFor } from '../../lib/productTitle'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import EntryLink from './EntryLink'
 import { isFullEntry, rowMeta, type EntryRow } from './rowMeta'
-
-// eslint-disable-next-line react-refresh/only-export-components -- shared label map, consumed by other collection views alongside this component.
-export const statusLabels: Record<Entry['status'], MessageDescriptor> = {
-  backlog: msg`Backlog`,
-  playing: msg`Playing`,
-  beaten: msg`Beaten`,
-  completed: msg`Completed`,
-  dropped: msg`Dropped`,
-  shelved: msg`Shelved`,
-}
-
-// Identity-preserving, unlike statusLabels above: the Packaging column
-// has never been prettified, so its cell text stays the raw wire
-// value. An unknown future wire value falls back to rendering itself
-// raw rather than crashing.
-const packagingLabels: Record<string, MessageDescriptor> = {
-  sealed: msg`sealed`,
-  cib: msg`cib`,
-  loose: msg`loose`,
-}
 
 interface EntryTableProps {
   entries: EntryRow[]
@@ -138,7 +117,7 @@ export default function EntryTable({
               </td>
               <td className="py-2 pr-3">{meta.platform}</td>
               {!shared && <td className="py-2 pr-3">{isFullEntry(e) ? i18n._(statusLabels[e.status]) : '-'}</td>}
-              <td className="py-2 pr-3">{packagingLabels[e.packaging] ? i18n._(packagingLabels[e.packaging]) : e.packaging}</td>
+              <td className="py-2 pr-3">{packagingWireLabels[e.packaging] ? i18n._(packagingWireLabels[e.packaging]) : e.packaging}</td>
               {!shared && <td className="py-2 pr-3">{isFullEntry(e) ? (e.rating ?? '-') : '-'}</td>}
               {!shared && (
                 <td className="py-2 pr-3 text-right">

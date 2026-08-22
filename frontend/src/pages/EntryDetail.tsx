@@ -1,6 +1,4 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { msg } from '@lingui/core/macro'
-import type { MessageDescriptor } from '@lingui/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
@@ -12,19 +10,11 @@ import CatalogSubmission from '../components/entry/CatalogSubmission'
 import EntryForm from '../components/entry/EntryForm'
 import RegionMismatchBanner from '../components/entry/RegionMismatchBanner'
 import { confirmThen } from '../lib/confirm'
+import { itemTypeWireLabels } from '../lib/enumLabels'
 import { invalidateEntryQueries } from '../lib/entryQueries'
 import { releaseYear } from '../lib/format'
 import { renderQueryState } from '../lib/queryBoundary'
 import { entryCover, entrySecondary, entrySecondaryLang, entryTitle, entryTitleLang, titleFormFor } from '../lib/productTitle'
-
-// Identity-preserving: the byline has never been prettified, so the
-// item-type word stays the raw wire value. An unknown future wire
-// value falls back to rendering itself raw.
-const itemTypeLabels: Record<string, MessageDescriptor> = {
-  game: msg`game`,
-  console: msg`console`,
-  accessory: msg`accessory`,
-}
 
 export default function EntryDetail() {
   const { t, i18n } = useLingui()
@@ -103,7 +93,7 @@ export default function EntryDetail() {
             {[
               e.platform?.name,
               releaseYear(e.first_release_date),
-              itemTypeLabels[e.item_type] ? i18n._(itemTypeLabels[e.item_type]) : e.item_type,
+              itemTypeWireLabels[e.item_type] ? i18n._(itemTypeWireLabels[e.item_type]) : e.item_type,
             ].filter(Boolean).join(' - ')}
             {!e.product_id && <Trans> - custom item</Trans>}
           </p>

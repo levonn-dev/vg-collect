@@ -1,20 +1,24 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
-import type { PlatformFacet, Tag } from '../../api/collection'
+import type { Tag } from '../../api/collection'
+import { conditionLabels, packagingChipLabels, statusLabels } from '../../lib/enumLabels'
+import type { PlatformFacet } from '../../lib/entryFacets'
 import type { ListState } from '../../lib/listParams'
 import { CONDITIONS, ITEM_TYPES, PACKAGINGS, REGIONS, STATUSES } from '../../lib/listParams'
+import { regionLabels } from '../../lib/regionLabels'
 import SectionLabel from '../SectionLabel'
 
+// item_type has no other chip-labeled site to share with (unlike
+// status/packaging/condition/region below), so its three entries stay
+// inlined here rather than moving to lib/enumLabels for an audience of
+// one.
 const chipLabels: Record<string, MessageDescriptor> = {
-  backlog: msg`Backlog`, playing: msg`Playing`, beaten: msg`Beaten`, completed: msg`Completed`,
-  dropped: msg`Dropped`, shelved: msg`Shelved`,
+  ...statusLabels,
   game: msg`Games`, console: msg`Consoles`, accessory: msg`Accessories`,
-  sealed: msg`Sealed`, cib: msg`CIB`, loose: msg`Loose`,
-  ntsc_u: msg`NTSC-U`, ntsc_j: msg`NTSC-J`, pal: msg`PAL`, korea: msg`Korea`,
-  brazil: msg`Brazil`, china: msg`China`, region_free: msg`Region free`,
-  mint: msg`Mint`, near_mint: msg`Near mint`, very_good: msg`Very good`, good: msg`Good`,
-  acceptable: msg`Acceptable`, poor: msg`Poor`,
+  ...packagingChipLabels,
+  ...regionLabels,
+  ...conditionLabels,
 }
 
 interface FilterBarProps {

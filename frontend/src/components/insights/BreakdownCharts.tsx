@@ -1,29 +1,10 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { Dashboard } from '../../api/collection'
+import { itemTypeWireLabels, statusWireLabels } from '../../lib/enumLabels'
 import SectionLabel from '../SectionLabel'
 import { CHART_TOOLTIP_STYLE } from './chartTooltipStyle'
-
-// Identity-preserving: by_status/by_item_type row labels have never
-// been prettified (the old key.replace('_', ' ') was a no-op for
-// every current key - none contain an underscore). An unknown future
-// wire value falls back to rendering itself raw.
-const statusCountLabels: Record<string, MessageDescriptor> = {
-  backlog: msg`backlog`,
-  playing: msg`playing`,
-  beaten: msg`beaten`,
-  completed: msg`completed`,
-  dropped: msg`dropped`,
-  shelved: msg`shelved`,
-}
-
-const itemTypeCountLabels: Record<string, MessageDescriptor> = {
-  game: msg`game`,
-  console: msg`console`,
-  accessory: msg`accessory`,
-}
 
 function CountList({
   title, counts, labels,
@@ -71,8 +52,8 @@ export default function BreakdownCharts({ dashboard }: { dashboard: Dashboard })
           </ResponsiveContainer>
         </div>
       </section>
-      <CountList title={t`By status`} counts={dashboard.by_status} labels={statusCountLabels} />
-      <CountList title={t`By item type`} counts={dashboard.by_item_type} labels={itemTypeCountLabels} />
+      <CountList title={t`By status`} counts={dashboard.by_status} labels={statusWireLabels} />
+      <CountList title={t`By item type`} counts={dashboard.by_item_type} labels={itemTypeWireLabels} />
     </div>
   )
 }

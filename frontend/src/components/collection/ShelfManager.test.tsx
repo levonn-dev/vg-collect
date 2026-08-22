@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
-import { jsonResponse, meFixture, problemResponse, putBody } from '../../test/fixtures'
+import { jsonResponse, meFixture, problemResponse, putBody, requestPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import { defaultListState, toViewParams } from '../../lib/listParams'
 import ShelfManager from './ShelfManager'
@@ -65,8 +65,8 @@ it('withholds the copy-link button for a non-private shelf until the signed-in h
   // No ['me'] seed here (unlike renderManager), and /api/me hangs - the
   // handle read is still pending, so there is nothing to build a share
   // link out of yet even though the shelf itself already qualifies.
-  vi.stubGlobal('fetch', vi.fn((path: string) =>
-    path === '/api/me' ? new Promise(() => {}) : Promise.resolve(jsonResponse(200, { views: [listed] }))))
+  vi.stubGlobal('fetch', vi.fn((path: unknown) =>
+    requestPath(path) === '/api/me' ? new Promise(() => {}) : Promise.resolve(jsonResponse(200, { views: [listed] }))))
   renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
@@ -79,24 +79,24 @@ it('withholds the copy-link button for a non-private shelf until the signed-in h
 })
 
 it('clicking a row visibility segment calls updateView with that shelf\'s own name, params, and the new visibility', async () => {
-  const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
-    Promise.resolve(init?.method === 'PUT'
+  const fetchMock = vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve((url as Request).method === 'PUT'
       ? jsonResponse(200, { ...view, visibility: 'listed' })
       : jsonResponse(200, { views: [view] })))
   vi.stubGlobal('fetch', fetchMock)
   renderManager()
   await screen.findByText(view.name)
   await userEvent.click(screen.getByRole('button', { name: 'Listed' }))
-  const put = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'PUT')
-  expect(put?.[0]).toBe(`/api/views/${view.id}`)
-  expect(putBody(put?.[1] as RequestInit)).toEqual({
+  const put = fetchMock.mock.calls.find((c) => (c[0] as Request).method === 'PUT')
+  expect(requestPath(put?.[0])).toBe(`/api/views/${view.id}`)
+  expect(await putBody(put?.[0])).toEqual({
     name: view.name, params: view.params, visibility: 'listed',
   })
 })
 
 it('surfaces a failed visibility change as an alert', async () => {
-  const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
-    Promise.resolve(init?.method === 'PUT'
+  const fetchMock = vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve((url as Request).method === 'PUT'
       ? problemResponse(500, 'internal', 'view visibility update failed')
       : jsonResponse(200, { views: [view] })))
   vi.stubGlobal('fetch', fetchMock)

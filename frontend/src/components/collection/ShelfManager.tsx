@@ -1,11 +1,10 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { msg } from '@lingui/core/macro'
-import type { MessageDescriptor } from '@lingui/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { SavedView } from '../../api/collection'
 import { fetchViews, updateView } from '../../api/collection'
+import { visibilityWireLabels } from '../../lib/enumLabels'
 import { useMe } from '../../lib/useMe'
 import CopyButton from '../CopyButton'
 import VisibilityControl from '../social/VisibilityControl'
@@ -17,12 +16,6 @@ const visibilityBadges: Record<SavedView['visibility'], string> = {
   private: 'bg-gray-100 text-gray-700',
   unlisted: 'bg-amber-50 text-amber-800',
   listed: 'bg-green-50 text-green-800',
-}
-
-const visibilityLabels: Record<SavedView['visibility'], MessageDescriptor> = {
-  private: msg`private`,
-  unlisted: msg`unlisted`,
-  listed: msg`listed`,
 }
 
 // ShelfManager is the Shelves tab's own content: the per-shelf
@@ -100,7 +93,7 @@ export default function ShelfManager() {
                 <span
                   className={`rounded px-1.5 py-0.5 text-xs font-semibold ${visibilityBadges[v.visibility]}`}
                 >
-                  {i18n._(visibilityLabels[v.visibility])}
+                  {i18n._(visibilityWireLabels[v.visibility])}
                 </span>
                 <VisibilityControl
                   value={v.visibility}

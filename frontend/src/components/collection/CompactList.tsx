@@ -1,10 +1,10 @@
 import { useLingui } from '@lingui/react/macro'
 import type { ReactNode } from 'react'
 import type { Entry } from '../../api/collection'
+import { statusLabels } from '../../lib/enumLabels'
 import { entryTitle, entryTitleLang, titleFormFor } from '../../lib/productTitle'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import EntryLink from './EntryLink'
-import { statusLabels } from './EntryTable'
 import { isFullEntry, rowMeta, type EntryRow } from './rowMeta'
 
 interface CompactListProps {

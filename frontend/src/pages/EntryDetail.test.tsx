@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { Entry } from '../api/collection'
 import { messages as jaMessages } from '../locales/ja.po'
-import { entryFixture, jsonResponse, problemResponse } from '../test/fixtures'
+import { entryFixture, jsonResponse, problemResponse, requestPath } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import EntryDetail from './EntryDetail'
 
@@ -57,10 +57,10 @@ const noSubmission = () => problemResponse(404, 'submission_not_found', 'x')
 
 it('renders the catalog header and the form for a product-backed entry', async () => {
   const e = entryFixture({ display_name: 'Chrono Trigger', value_cents: 4200 })
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    Promise.resolve(String(url).startsWith('/api/tags')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve(requestPath(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : String(url).endsWith('/submission')
+      : requestPath(url).endsWith('/submission')
         ? noSubmission()
         : jsonResponse(200, e))))
   renderDetail(e.id)
@@ -72,17 +72,17 @@ it('renders the catalog header and the form for a product-backed entry', async (
 it('saves through the form and shows the refreshed entry', async () => {
   const e = entryFixture({ notes: 'old' })
   const updated = { ...e, notes: 'new note' }
-  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
-    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
-    if (init?.method === 'PUT') return Promise.resolve(jsonResponse(200, updated))
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (requestPath(url).endsWith('/submission')) return Promise.resolve(noSubmission())
+    if ((url as Request).method === 'PUT') return Promise.resolve(jsonResponse(200, updated))
     return Promise.resolve(jsonResponse(200, e))
   })
   vi.stubGlobal('fetch', fetchMock)
   renderDetail(e.id)
   await userEvent.click(await screen.findByRole('button', { name: /save/i }))
-  const put = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'PUT')
-  expect(put?.[0]).toBe(`/api/entries/${e.id}`)
+  const put = fetchMock.mock.calls.find((c) => (c[0] as Request).method === 'PUT')
+  expect(requestPath(put?.[0])).toBe(`/api/entries/${e.id}`)
   // Success must be visible, and drifting from the saved state must
   // retract it.
   expect(await screen.findByText('Saved.')).toBeInTheDocument()
@@ -92,10 +92,10 @@ it('saves through the form and shows the refreshed entry', async () => {
 
 it('shows the just-added banner when arriving from the wizard', async () => {
   const e = entryFixture()
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    Promise.resolve(String(url).startsWith('/api/tags')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve(requestPath(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : String(url).endsWith('/submission')
+      : requestPath(url).endsWith('/submission')
         ? noSubmission()
         : jsonResponse(200, e))))
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -114,10 +114,10 @@ it('shows the just-added banner when arriving from the wizard', async () => {
 it('invalidates the dashboard and recommendations caches after a save', async () => {
   const e = entryFixture({ notes: 'old' })
   const updated = { ...e, notes: 'new note' }
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
-    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
-    if (init?.method === 'PUT') return Promise.resolve(jsonResponse(200, updated))
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (requestPath(url).endsWith('/submission')) return Promise.resolve(noSubmission())
+    if ((url as Request).method === 'PUT') return Promise.resolve(jsonResponse(200, updated))
     return Promise.resolve(jsonResponse(200, e))
   }))
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -131,10 +131,10 @@ it('invalidates the dashboard and recommendations caches after a save', async ()
 
 it('surfaces a 404 pricing problem from the save', async () => {
   const e = entryFixture()
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
-    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
-    if (init?.method === 'PUT') {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (requestPath(url).endsWith('/submission')) return Promise.resolve(noSubmission())
+    if ((url as Request).method === 'PUT') {
       return Promise.resolve(problemResponse(404, 'unknown_pricing_product', 'no such pricing product in the catalog'))
     }
     return Promise.resolve(jsonResponse(200, e))
@@ -146,10 +146,10 @@ it('surfaces a 404 pricing problem from the save', async () => {
 
 it('renders the pricing panel', async () => {
   const e = entryFixture()
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    Promise.resolve(String(url).startsWith('/api/tags')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve(requestPath(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : String(url).endsWith('/submission')
+      : requestPath(url).endsWith('/submission')
         ? noSubmission()
         : jsonResponse(200, e))))
   renderDetail(e.id)
@@ -159,10 +159,10 @@ it('renders the pricing panel', async () => {
 it('deletes after confirmation and navigates home', async () => {
   const e = entryFixture()
   vi.spyOn(window, 'confirm').mockReturnValue(true)
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
-    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
-    if (init?.method === 'DELETE') return Promise.resolve(new Response(null, { status: 204 }))
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (requestPath(url).endsWith('/submission')) return Promise.resolve(noSubmission())
+    if ((url as Request).method === 'DELETE') return Promise.resolve(new Response(null, { status: 204 }))
     return Promise.resolve(jsonResponse(200, e))
   }))
   renderDetail(e.id)
@@ -178,14 +178,14 @@ it('invalidates dashboard/recommendations and drops the entry cache on delete', 
   // a mock that kept serving the entry would let that refetch
   // repopulate the cache and flake the drop assertion below.
   let deleted = false
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    if (String(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
-    if (String(url).endsWith('/submission')) return Promise.resolve(noSubmission())
-    if (init?.method === 'DELETE') {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (requestPath(url).endsWith('/submission')) return Promise.resolve(noSubmission())
+    if ((url as Request).method === 'DELETE') {
       deleted = true
       return Promise.resolve(new Response(null, { status: 204 }))
     }
-    if (deleted && String(url) === `/api/entries/${e.id}`) {
+    if (deleted && requestPath(url) === `/api/entries/${e.id}`) {
       return Promise.resolve(problemResponse(404, 'entry_not_found', 'x'))
     }
     return Promise.resolve(jsonResponse(200, e))
@@ -208,10 +208,10 @@ it('renders developer and publisher credits from the entry snapshot', async () =
     display_name: 'Metroid Prime',
     developers: ['Retro Studios'], publishers: ['Nintendo'],
   })
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    Promise.resolve(String(url).startsWith('/api/tags')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve(requestPath(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : String(url).endsWith('/submission')
+      : requestPath(url).endsWith('/submission')
         ? noSubmission()
         : jsonResponse(200, e))))
   renderDetail(e.id)
@@ -224,10 +224,10 @@ it('joins multiple credited companies into one line', async () => {
     display_name: 'Metroid Prime',
     developers: ['Retro Studios', 'Nintendo'], publishers: ['Nintendo'],
   })
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    Promise.resolve(String(url).startsWith('/api/tags')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve(requestPath(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : String(url).endsWith('/submission')
+      : requestPath(url).endsWith('/submission')
         ? noSubmission()
         : jsonResponse(200, e))))
   renderDetail(e.id)
@@ -237,10 +237,10 @@ it('joins multiple credited companies into one line', async () => {
 
 it('omits the credits line when the entry carries no credits', async () => {
   const e = entryFixture({ display_name: 'Metroid Prime' })
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    Promise.resolve(String(url).startsWith('/api/tags')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve(requestPath(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : String(url).endsWith('/submission')
+      : requestPath(url).endsWith('/submission')
         ? noSubmission()
         : jsonResponse(200, e))))
   renderDetail(e.id)
@@ -251,24 +251,24 @@ it('omits the credits line when the entry carries no credits', async () => {
 
 it('never fetches a product for a custom entry', async () => {
   const e = entryFixture({ display_name: 'Homebrew Cart', product_id: undefined })
-  const fetchMock = vi.fn().mockImplementation((url: string) =>
-    Promise.resolve(String(url).startsWith('/api/tags')
+  const fetchMock = vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve(requestPath(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : String(url).endsWith('/submission')
+      : requestPath(url).endsWith('/submission')
         ? noSubmission()
         : jsonResponse(200, e)))
   vi.stubGlobal('fetch', fetchMock)
   renderDetail(e.id)
   await screen.findByRole('heading', { name: 'Homebrew Cart' })
-  expect(fetchMock.mock.calls.some((c) => String(c[0]).startsWith('/api/products/'))).toBe(false)
+  expect(fetchMock.mock.calls.some((c) => requestPath(c[0]).startsWith('/api/products/'))).toBe(false)
 })
 
 it('renders the romanized title, ja-Latn lang, the canonical secondary line, and the localized cover by default', async () => {
   const e = entryFixture(jp)
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    Promise.resolve(String(url).startsWith('/api/tags')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve(requestPath(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : String(url).endsWith('/submission')
+      : requestPath(url).endsWith('/submission')
         ? noSubmission()
         : jsonResponse(200, e))))
   renderDetail(e.id)
@@ -282,10 +282,10 @@ it('renders the romanized title, ja-Latn lang, the canonical secondary line, and
 
 it('renders the native title and ja lang under the ja locale', async () => {
   const e = entryFixture(jp)
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    Promise.resolve(String(url).startsWith('/api/tags')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve(requestPath(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : String(url).endsWith('/submission')
+      : requestPath(url).endsWith('/submission')
         ? noSubmission()
         : jsonResponse(200, e))))
   activateJa()
@@ -305,10 +305,10 @@ const kr: Partial<Entry> = {
 
 it('renders the canonical title with the native secondary for a name-only korea entry', async () => {
   const e = entryFixture(kr)
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    Promise.resolve(String(url).startsWith('/api/tags')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve(requestPath(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : String(url).endsWith('/submission')
+      : requestPath(url).endsWith('/submission')
         ? noSubmission()
         : jsonResponse(200, e))))
   renderDetail(e.id)
@@ -319,10 +319,10 @@ it('renders the canonical title with the native secondary for a name-only korea 
 
 it('renders the native korea title under the ja locale', async () => {
   const e = entryFixture(kr)
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    Promise.resolve(String(url).startsWith('/api/tags')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve(requestPath(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : String(url).endsWith('/submission')
+      : requestPath(url).endsWith('/submission')
         ? noSubmission()
         : jsonResponse(200, e))))
   activateJa()
@@ -333,10 +333,10 @@ it('renders the native korea title under the ja locale', async () => {
 
 it('omits the secondary line and the lang attribute for a canonical-only entry', async () => {
   const e = entryFixture({ display_name: 'Chrono Trigger' })
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
-    Promise.resolve(String(url).startsWith('/api/tags')
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
+    Promise.resolve(requestPath(url).startsWith('/api/tags')
       ? jsonResponse(200, { tags: [] })
-      : String(url).endsWith('/submission')
+      : requestPath(url).endsWith('/submission')
         ? noSubmission()
         : jsonResponse(200, e))))
   renderDetail(e.id)
