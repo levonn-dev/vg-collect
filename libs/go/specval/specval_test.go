@@ -138,7 +138,7 @@ func TestMiddleware_ValidRequestPassesAndBodyStaysReadable(t *testing.T) {
 // TestMiddleware_DefaultsAreNotInjectedIntoTheBody pins
 // SkipSettingDefaults: kin-openapi's own default (false) rewrites an
 // absent property in place with its schema default before the
-// handler ever decodes the body -- invisible to the handler, and
+// handler ever decodes the body - invisible to the handler, and
 // fatal to any caller logic that depends on telling "the field was
 // never sent" apart from "the field was sent with its default value"
 // (collection's CreateEntry does exactly this for pricing_mode).

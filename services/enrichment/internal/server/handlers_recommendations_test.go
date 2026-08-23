@@ -200,9 +200,7 @@ func TestUnitRecommendations_DegradedOnGenreFallbackFailure(t *testing.T) {
 // TestUnitRecommendations_LimitOverMaxRejected pins the contract's
 // bound on limit (1-50): specval (wired into every route on this
 // router) rejects an out-of-range limit before the handler ever
-// computes an effective limit - the same deliberate reversal the
-// community list's limit went through, from a silent clamp to a
-// rejection.
+// computes an effective limit.
 func TestUnitRecommendations_LimitOverMaxRejected(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})

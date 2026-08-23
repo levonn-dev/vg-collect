@@ -131,8 +131,8 @@ func TestPickLocalization(t *testing.T) {
 // catalogSnapshot's cover choice: provider (Igdb) cover wins where
 // present; absent that, the platform logo; absent both, the community
 // product's own cover fills. TestApproveNew_ForwardsCoverToMint
-// (handlers_test.go) discards the snapshot argument entirely, so this
-// precedence was inspection-only before this test.
+// (handlers_test.go) discards the snapshot argument entirely, so it
+// does not cover this precedence.
 func TestUnitCatalogSnapshot_CoverPrecedence(t *testing.T) {
 	igdbCover := "https://img.example/igdb.jpg"
 	logoCover := "https://img.example/logo.jpg"

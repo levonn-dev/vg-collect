@@ -141,9 +141,7 @@ func wantCapExceeded(t *testing.T, resp *http.Response, wantDetail string) {
 // saw, while the log line carries the op and cause that text never
 // could. Unfollow is the representative site (a single store call, no
 // collection/users collaborators to wire up). Mirrors collection's
-// TestUnitInternalErrorLogCarriesCause; social already logged this way
-// per call site before the extraction, so this pins the collapsed
-// shape stayed identical.
+// TestUnitInternalErrorLogCarriesCause.
 func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 	boom := errors.New("pg exploded")
 	st := &stubStore{unfollow: func(context.Context, uuid.UUID, uuid.UUID) error { return boom }}

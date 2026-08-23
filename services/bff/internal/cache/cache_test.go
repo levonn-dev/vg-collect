@@ -128,8 +128,8 @@ func TestMeCache(t *testing.T) {
 		t.Fatalf("PutMe must write the versioned key me:v4:<sub>: got=%q err=%v", versioned, err)
 	}
 
-	// A body left over from before versioning (the unversioned "me:"
-	// key) must not be served: it is the old, unversioned shape.
+	// A body left over from before versioning (a bare "me:" key, no
+	// version segment) must not be served.
 	if err := client.Set(ctx, "me:user-2", []byte(`{"legacy":true}`), time.Minute).Err(); err != nil {
 		t.Fatal(err)
 	}

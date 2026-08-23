@@ -60,8 +60,8 @@ test('region control is not required', () => {
 
 test('region-specific platform defaults a pristine region', async () => {
   renderWithI18n(<CustomStep onBack={() => {}} onNext={() => {}} />)
-  // pick Super Famicom through the PlatformPicker (its catalog is the
-  // stubbed /api/platforms fixture used by the existing picker tests)
+  // Its catalog is the stubbed /api/platforms fixture the existing
+  // picker tests use.
   fireEvent.change(screen.getByLabelText('Platform'), { target: { value: 'super fam' } })
   fireEvent.click(await screen.findByRole('button', { name: 'Super Famicom' }))
   expect(screen.getByLabelText('Region')).toHaveValue('ntsc_j')

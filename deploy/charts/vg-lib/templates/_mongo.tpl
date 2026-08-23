@@ -138,9 +138,9 @@ spec:
             - { name: mongo, containerPort: 27017 }
           readinessProbe:
             exec:
-              # The probe dials localhost, whose name is not in the
-              # cert SANs: hostname verification is relaxed probe-only,
-              # the chain still verifies against the CA.
+              # Chain verification against the CA only; the probe skips
+              # hostname checks (localhost is also in the cert SANs, so
+              # the skip is not load-bearing).
               command: ["mongosh", "--tls", "--tlsCAFile", "/tls/ca.crt", "--tlsAllowInvalidHostnames", "--quiet", "--eval", "db.adminCommand('ping').ok"]
             periodSeconds: 5
             timeoutSeconds: 5

@@ -6,7 +6,7 @@ import { createEntry, listViews, setProfile, setViewVisibility } from './seed'
 // switch between an owner identity and a viewer identity within the
 // same test - publish, discover, follow, like, and comment in one
 // continuous flow, then a separate visibility-and-guard flow - because
-// the gateway budgets /api/auth/* per IP per minute (120 on this dev
+// the gateway budgets /api/auth/* per IP per minute (240 on this dev
 // stack; production keeps it far tighter), shared across every test
 // in a run. Identity switching is not incidental overhead here: it is
 // the behavior under test (an owner acts, a viewer discovers and

@@ -4,14 +4,12 @@
 // specval's request-validation middleware answers with.
 //
 // newUnitRouterServer is this file's own harness, distinct from
-// newEnv: none of these three cases ever reach the store (each is
-// rejected before OauthCallback's ConsumeState, RefreshToken's
-// PeekSession, or InternalServiceToken's mint), so a stub Store (the
-// existing &stubStore{}, which panics loudly on any unexpected call)
-// proves that directly and skips newEnv's Postgres dependency - the
-// same fast, Docker-free posture the "fast unit layer" section below
-// in handlers_test.go already established for direct handler calls,
-// applied here through the real router instead.
+// newEnv: none of these cases reach the store (each is rejected
+// before OauthCallback's ConsumeState, RefreshToken's PeekSession, or
+// InternalServiceToken's mint), so a stub Store that panics on any
+// unexpected call proves that directly, skipping newEnv's Postgres
+// dependency. Same Docker-free posture as handlers_test.go's fast
+// unit layer, applied here through the real router.
 package server_test
 
 import (

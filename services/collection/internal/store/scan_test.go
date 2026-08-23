@@ -2,14 +2,13 @@ package store
 
 // White-box (package store, not store_test): scanAll is unexported,
 // so pinning its own contract directly - independent of any one
-// caller's query shape - needs a test inside the package. The
-// converted methods' own black-box tests in store_test.go and
-// sibling _test.go files already re-verify the same contract end to
-// end; this one isolates scanAll itself against a schema-free query
-// so a future change to its seed or op handling fails here first.
-// This package's callers disagree on both axes (unlike social,
-// user, and auth's single-axis packages), so every combination gets
-// its own case.
+// caller's query shape - needs a test inside the package. Its
+// callers' own black-box tests in store_test.go and sibling _test.go
+// files already re-verify the same contract end to end; this one
+// isolates scanAll itself against a schema-free query so a future
+// change to its seed or op handling fails here first. This package's
+// callers disagree on both axes (unlike social, user, and auth's
+// single-axis packages), so every combination gets its own case.
 
 import (
 	"context"
@@ -202,23 +201,20 @@ func TestScanAll_TrailingErrRespectsOp(t *testing.T) {
 	})
 }
 
-// TestScanAll_OpEmptyCallerDispatch pins the small dispatch
+// TestScanAll_OpEmptyCallerDispatch pins the small dispatch pattern
 // DashboardCounts's Spend tail (store_dashboard.go) and
-// ListListedShelves (store_views.go) both wrote around scanAll's
-// op="" contract to restore their exact pre-conversion per-branch
-// behavior: `out, err := scanAll(rows, []T{}, "", scan); if out ==
+// ListListedShelves (store_views.go) both wrap around scanAll's op=""
+// contract: `out, err := scanAll(rows, []T{}, "", scan); if out ==
 // nil && err != nil { return <the function's own zero-value shape>,
-// err }` (a scan error - discard everything, matching what both
-// functions did before conversion) `; <merge out into the success
-// value>; return <success value>, err` (a trailing rows.Err() - keep
-// whatever had already been scanned, matching what both functions
-// did before conversion, including leaving the error unwrapped). The
-// pattern is short and used at exactly 2 sites, below this package's
-// own 3-site/10-line duplication bar (see discovery-3's own stated
-// threshold), so it stays inline at both call sites rather than
-// becoming a third shared helper; this test pins the two sites'
-// shared REASONING (the dispatch condition genuinely distinguishes
-// the two original branches), not a shared function.
+// err }` (a scan error - discard everything) `; <merge out into the
+// success value>; return <success value>, err` (a trailing
+// rows.Err() - keep whatever had already been scanned, error left
+// unwrapped). The pattern is short and used at exactly 2 sites, below
+// this package's own 3-site/10-line duplication bar, so it stays
+// inline at both call sites rather than becoming a third shared
+// helper; this test pins the two sites' shared reasoning (the
+// dispatch condition genuinely distinguishes a scan error from a
+// trailing one), not a shared function.
 //
 // A live query cannot deterministically produce a trailing rows.Err()
 // on demand (it is a connection-level condition, not something a

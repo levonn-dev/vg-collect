@@ -70,11 +70,10 @@ func TestEnv_ServiceTokenValidatesAndCarriesNoRoles(t *testing.T) {
 }
 
 // TestEnv_IndependentAcrossCalls: unlike valkeytest's container, Env
-// has no reason to be a singleton - each NewEnv boots its own
-// in-process key and JWKS server, cheaply, matching how every adopted
-// call site already built a fresh env per test before conversion. A
-// token from one Env must not validate against another Env's
-// Validator (different key pairs), which is what this pins.
+// has no reason to be a singleton; each NewEnv boots its own
+// in-process key and JWKS server, cheaply. A token from one Env must
+// not validate against another Env's Validator (different key pairs),
+// which is what this pins.
 func TestEnv_IndependentAcrossCalls(t *testing.T) {
 	a := jwtauthtest.NewEnv(t)
 	b := jwtauthtest.NewEnv(t)

@@ -1,6 +1,6 @@
 // UI labels quoted here must match the rendered app; when a label
-// changes, this copy changes in the same round. Deployment facts
-// (which providers run) live on the About page, not here.
+// changes, this copy changes with it. Deployment facts (which
+// providers run) live on the About page, not here.
 export default function HelpEn() {
   return (
     <main aria-label="Help" className="mx-auto w-full max-w-2xl p-6">

@@ -1,7 +1,7 @@
 // Proper nouns only (leave-alone list) - never wrapped for translation.
-// An unknown provider id falls back to itself, same as before. Shared
-// by Login and Account (button labels) and site.ts (the about/privacy/
-// terms pages' provider list), so the three cannot drift apart.
+// An unknown provider id falls back to itself. Shared by Login and
+// Account (button labels) and site.ts (the about/privacy/terms pages'
+// provider list), so the three cannot drift apart.
 export const providerNames: Record<string, string> = {
   google: 'Google',
   twitch: 'Twitch',

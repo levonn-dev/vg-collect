@@ -1,21 +1,14 @@
 // Validator-path pins: each case drives a request through the FULL
-// bff stack (real router, stubbed upstreams, no hand-faked wiring).
-// bff was otherwise a pure relay before specval wired in - it never
-// checked a request body's shape on its own - so
-// TestValidatorPath_CreateEntry_OversizeDeveloperName,
-// _MalformedJSON, and TestValidatorPath_UpdateMe_HandleTooShort were
-// all red before wiring: the stub upstream answered success for
-// whatever it was handed, so every one of those bodies used to relay
-// straight through untouched. The query-enum case
-// (TestValidatorPath_Explore_BadSortEnum) was the exception: it was
-// green immediately, enforced by GetExplore's own hand check during
-// the double-validation window before that check was removed, and
-// stays green now that specval alone owns it. Valid bodies relaying
+// bff stack (real router, stubbed upstreams, no hand-faked wiring),
+// proving specval catches a bad request before any upstream hop.
+// TestValidatorPath_CreateEntry_OversizeDeveloperName, _MalformedJSON,
+// and TestValidatorPath_UpdateMe_HandleTooShort each pin a body-shape
+// rejection; TestValidatorPath_Explore_BadSortEnum pins a rejected
+// query param, enforced solely by specval. Valid bodies relaying
 // byte-for-byte (pin e) is proven by re-running
 // TestUnitCreateEntryPassThrough_OpenWorldRegionRoundTrips in
 // handlers_collection_test.go unmodified - already a fully valid
-// EntryCreate body, so it never depended on the absence of
-// validation and needs no new case here.
+// EntryCreate body, so it needs no new case here.
 package server
 
 import (
@@ -62,11 +55,10 @@ func TestValidatorPath_CreateEntry_OversizeDeveloperName(t *testing.T) {
 }
 
 // TestValidatorPath_UpdateMe_HandleTooShort pins UpdateMeRequest's
-// restored Handle contract (common.yaml's Handle: minLength 2):
-// handle "x" is one rune short. The stub below answers 200 for
-// whatever body it is handed, so before specval wired in this case
-// was genuinely red - unlike a hand-check reversal, nothing stood
-// between this body and the upstream relay until specval did.
+// Handle contract (common.yaml's Handle: minLength 2): handle "x" is
+// one rune short. The stub below answers 200 for whatever body it is
+// handed, so nothing but specval stands between this body and the
+// upstream relay.
 func TestValidatorPath_UpdateMe_HandleTooShort(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	uid := uuid.New()
@@ -141,10 +133,8 @@ func TestValidatorPath_CreateEntry_MalformedJSON(t *testing.T) {
 }
 
 // TestValidatorPath_Explore_BadSortEnum pins GetExplore's sort enum
-// contract (recent|top) on a social list relay. Unlike the body pins
-// above, this passed via GetExplore's own hand check during the
-// double-validation window before that check was removed, and stays
-// green now that specval alone enforces it.
+// contract (recent|top) on a social list relay, enforced solely by
+// specval.
 func TestValidatorPath_Explore_BadSortEnum(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))

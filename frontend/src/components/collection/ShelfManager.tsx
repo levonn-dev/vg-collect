@@ -19,13 +19,11 @@ const visibilityBadges: Record<SavedView['visibility'], string> = {
 }
 
 // ShelfManager is the Shelves tab's own content: the per-shelf
-// management list that used to live behind ViewPicker's Manage-shelves
-// disclosure (ViewPicker itself now renders only the quick-row - see
+// management list (ViewPicker itself renders only the quick-row - see
 // that file). It runs its own me/views queries - views is a cache hit
 // against the key ViewPicker populates from the Items tab, me against
-// the key the app shell resolves at login - and owns its
-// own changeVisibility mutation (moved from ViewPicker along with the
-// rows themselves) plus that mutation's own error surface.
+// the key the app shell resolves at login - and owns its own
+// changeVisibility mutation and that mutation's own error surface.
 //
 // The optional notice at the top warns about a mismatch between the
 // owner's profile visibility and a shelf's own visibility: a private

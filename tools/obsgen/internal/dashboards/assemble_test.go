@@ -572,7 +572,7 @@ func TestAssemble_AlertErrors(t *testing.T) {
 // signature takes an in-memory *manifest.Model rather than requiring one
 // built by manifest.Load, so the same defect is reachable on either
 // side of a hand-built model. The duplicate-title cases share one code
-// path (addPanel's dup check in buildAllPanels) but are asserted for
+// path (stage's dup check in buildAllPanels) but are asserted for
 // every shape that path has to handle: golden vs. custom, golden vs.
 // golden, and custom vs. custom within the same service.
 func TestAssemble_PanelBuildErrors(t *testing.T) {
@@ -689,7 +689,7 @@ func TestAssemble_EmptyCustomPanels(t *testing.T) {
 	}
 }
 
-// TestAssemble_ServiceDisplayNameAcronym pins the owner-ruled exception
+// TestAssemble_ServiceDisplayNameAcronym pins the acronym exception
 // to capitalize's plain first-letter-uppercase fallback: "bff" is an
 // acronym, so its {Service} form must render "BFF", not "Bff" - "auth"
 // stands in for the general case, which still gets plain capitalize

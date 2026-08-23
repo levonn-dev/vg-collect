@@ -163,9 +163,6 @@ func TestOpenRejectsNonCanonicalBase64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Re-encode with standard (padded) alphabet: a different string that
-	// would decode to the same bytes under a lax decoder. Strict raw-url
-	// Open must reject it.
 	padded := base64.URLEncoding.EncodeToString(raw)
 	if padded != sealed {
 		if _, err := codec.Open(padded); err == nil {
@@ -178,9 +175,6 @@ func TestOpenRejectsNonCanonicalBase64(t *testing.T) {
 // sharing the first 16 bytes but differing in the last 16 must not interop.
 // An accidental first-16-byte truncation would let them seal/open each other.
 func TestCodecUsesFullKeyWidth(t *testing.T) {
-	// 32-byte keys sharing the first half: AES-256 keys these differently,
-	// so a seal from one must not open with the other. (An accidental
-	// truncation to the first 16 bytes would let them interoperate.)
 	keyA := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789ABCDEF"))
 	keyB := base64.StdEncoding.EncodeToString([]byte("0123456789abcdefFEDCBA9876543210"))
 	ca, err := NewCodec(keyA, true)
@@ -210,13 +204,11 @@ func TestParseClaimsExpEdges(t *testing.T) {
 		s, _ := tok.SignedString([]byte("k"))
 		return s
 	}
-	// zero, absent, and string exp are rejected (no usable expiry).
 	for _, bad := range []any{nil, 0, "9999"} {
 		if _, err := ParseClaims(mk(bad)); err == nil {
 			t.Fatalf("want error for exp=%v", bad)
 		}
 	}
-	// a negative exp parses to a past instant (already-expired token).
 	c, err := ParseClaims(mk(-1))
 	if err != nil {
 		t.Fatalf("negative exp should parse: %v", err)

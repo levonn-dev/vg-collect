@@ -32,10 +32,8 @@ func (h *Handlers) UpsertUser(w http.ResponseWriter, r *http.Request) {
 	// email/display_name are contract-required (api/user.yaml), but
 	// the schema's required keyword only checks key presence, not
 	// blankness: neither field carries a minLength, so a
-	// present-but-empty value passes specval untouched. This guard is
-	// what actually rejects "" and stays for that reason - it is
-	// semantic, not a mechanical duplicate of anything specval already
-	// covers.
+	// present-but-empty value passes specval untouched, and this check
+	// is what actually rejects "".
 	if req.Email == "" || req.DisplayName == "" {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "email and display_name are required")
 		return
@@ -96,21 +94,14 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request, userId ope
 		return
 	}
 	if req.Handle != nil {
-		// Shape (length, character set) is now the contract's job:
-		// specval enforces common.yaml's Handle schema (minLength,
-		// maxLength, pattern) ahead of this handler, so the former
-		// store.ValidHandle handler-layer duplicate is gone.
-		// store.ValidHandle itself has no production caller left now
-		// (only its own unit test exercises it); the store's
-		// collision-avoidance path uses NormalizeHandle/ReservedHandles
-		// directly, not ValidHandle. The pattern already requires
-		// alnum first/last characters, so any request reaching here
-		// has no leading/trailing whitespace to trim - the old
-		// trim-then-validate step is a no-op past this point and is
-		// dropped with it: a handle padded with incidental whitespace,
-		// silently accepted before, now 400s instead of being
-		// trimmed, a deliberate tightening. Reserved-handle is a
-		// business rule the schema cannot express and stays.
+		// Shape (length, character set) is specval's job: it enforces
+		// common.yaml's Handle schema ahead of this handler
+		// (store.ValidHandle checks the same shape but has no
+		// production caller). The pattern already requires alnum
+		// first/last characters, so a handle reaching here has no
+		// leading/trailing whitespace to trim. Reserved-handle is a
+		// business rule the schema cannot express, so it stays a hand
+		// check.
 		if store.ReservedHandles[store.NormalizeHandle(*req.Handle)] {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "that handle is reserved")
 			return

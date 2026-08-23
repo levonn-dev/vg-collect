@@ -301,7 +301,7 @@ func TestIsArrayIndex(t *testing.T) {
 		{segment: "developers", want: false},
 		// A JSONPointer segment is never empty in practice (object keys
 		// are non-empty, array indices are always digit strings), but an
-		// empty segment must not vacuously count as an index -- an empty
+		// empty segment must not vacuously count as an index - an empty
 		// range loop would otherwise report true with nothing checked.
 		{segment: "", want: false},
 	}

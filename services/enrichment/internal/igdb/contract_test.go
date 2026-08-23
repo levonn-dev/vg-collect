@@ -17,20 +17,15 @@ import (
 const releaseRegionSchemaRef = "#/components/schemas/ReleaseRegion"
 
 // TestReleaseRegionEnum_MatchesGeneratedTable is the anti-drift guard for
-// api/domain.yaml's release_regions rows: oapi-codegen has no way to read
-// domain.yaml, so api/common.yaml (the shared components file every service
-// contract, enrichment's included, references by $ref) hand-types the same
-// ten names once, as the ReleaseRegion vocabulary schema, and the two wire
-// sites (PlatformRef.release_regions items, ReleaseDate.region) $ref it.
-// This test reads api/common.yaml off disk on every run - not a hardcoded
-// snapshot of const identifiers, which would only ever catch a name removed
-// from domain.yaml, never one added to the contract without a matching
-// domain.yaml row - and compares ReleaseRegion's enum against
-// regionkit.ReleaseRegionNames in both directions, so a name added or
-// dropped on EITHER side fails here instead of drifting silently. It also
-// pins that both wire sites still $ref the vocabulary schema: a site
-// quietly reverting to its own inline enum would otherwise fall outside
-// this guard's watch.
+// api/domain.yaml's release_regions rows: oapi-codegen cannot read
+// domain.yaml, so api/common.yaml hand-types the same ten names once as
+// the ReleaseRegion vocabulary schema, and PlatformRef.release_regions and
+// ReleaseDate.region both $ref it. This test parses api/common.yaml off
+// disk on every run - not a hardcoded name list, which would only catch a
+// name removed from domain.yaml, never one added without a matching row -
+// and diffs its enum against regionkit.ReleaseRegionNames in both
+// directions. It also fails if either wire site stops $ref-ing the
+// vocabulary schema and inlines its own enum instead.
 func TestReleaseRegionEnum_MatchesGeneratedTable(t *testing.T) {
 	generated := sortedReleaseRegionNames()
 	contract := parseReleaseRegionContract(t)
@@ -145,13 +140,11 @@ func repoPath(t *testing.T, parts ...string) string {
 	return filepath.Join(append([]string{root}, parts...)...)
 }
 
-// assertSameRegionNames fails with the precise set difference in whichever
-// direction(s) it exists: a name the contract enum declares that the
-// generated table does not (a domain.yaml release_regions row is missing),
-// and a name the generated table has that the contract enum does not (an
-// api/common.yaml enum entry is missing), are reported independently
-// via t.Errorf so both drift directions are visible in one run instead of
-// the first one masking the other.
+// assertSameRegionNames reports each direction's set difference through
+// its own t.Errorf: a name only in the contract enum (a missing
+// domain.yaml row) and a name only in the generated table (a missing
+// api/common.yaml entry) are both visible in one run instead of the first
+// masking the other.
 func assertSameRegionNames(t *testing.T, field string, contract, generated []string) {
 	t.Helper()
 	if only := setDiff(contract, generated); len(only) > 0 {

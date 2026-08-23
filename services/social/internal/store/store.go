@@ -38,10 +38,10 @@ var ParseCursor = httpkit.ParseCursor
 
 // scanAll drains rows into a slice, closing them once done. Every
 // call site in this package starts from an empty (non-nil) slice and
-// returns rows.Err() raw, so scanAll bakes that one convention in
-// rather than taking parameters neither caller varies; scan keeps its
-// own error-wrap text so a scan failure reads exactly as it did
-// before extraction.
+// returns rows.Err() raw, so scanAll bakes in that one convention
+// rather than taking parameters no caller varies; each scan closure
+// keeps its own error-wrap text so a scan failure's message stays
+// call-site-specific.
 func scanAll[T any](rows pgx.Rows, scan func(pgx.Rows) (T, error)) ([]T, error) {
 	defer rows.Close()
 	out := []T{}

@@ -1,13 +1,11 @@
 package catalogval_test
 
-// TDD for NormalizeCredits: lifted from collection's normalizeCredits
-// and enrichment's normalizeCommunityCredits, which were byte-identical
-// twins before this lib existed. These cases pin the trim/drop-empty/
-// nil-in-nil-out rules both call sites relied on. The cap rules
-// (10-name maxItems, 120-char per-name maxLength) NormalizeCredits
-// used to enforce moved to the request validator (libs/go/specval,
-// against each service's own contract); this package no longer sees
-// an over-cap list at all; specval rejects it upstream.
+// These cases pin the trim/drop-empty/nil-in-nil-out rules collection
+// and enrichment both rely on. Cap enforcement (10-name maxItems,
+// 120-char per-name maxLength) happens in the request validator
+// (libs/go/specval, against each service's own contract), so
+// NormalizeCredits never sees an over-cap list; no test case covers
+// that here.
 
 import (
 	"testing"

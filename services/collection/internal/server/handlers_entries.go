@@ -337,11 +337,11 @@ func (h *Handlers) invalidateDashboard(ctx context.Context, userID uuid.UUID) {
 // validateCustomFields enforces the either/or between product-backed
 // and custom creation bodies, and custom's own conditional
 // requirements; a non-empty return is the 400 detail. The length/enum
-// keyword checks these fields used to duplicate (display_name
-// maxLength, item_type enum, platform_name maxLength, cover_url
-// shape) are the contract's job now; display_name and platform_name
-// keep their blank-after-trim guard (see validateEntryInput's region
-// comment - minLength alone cannot catch a whitespace-only value).
+// keyword checks on these fields (display_name maxLength, item_type
+// enum, platform_name maxLength, cover_url shape) are the contract's
+// job; display_name and platform_name keep their blank-after-trim
+// guard (see validateEntryInput's region comment - minLength alone
+// cannot catch a whitespace-only value).
 func validateCustomFields(body api.EntryCreate) string {
 	if body.ProductId != nil {
 		if body.DisplayName != nil || body.ItemType != nil || body.PlatformName != nil ||

@@ -141,8 +141,7 @@ func TestUnitAPIRoutesRequireJWT(t *testing.T) {
 		wantProblem(t, resp, http.StatusUnauthorized, "missing_token")
 	}
 	// A valid token passes the gate: whatever the handler answers, the
-	// middleware must not (401/403 would mean auth swallowed it). This
-	// assertion survives the skeleton handlers being replaced.
+	// middleware must not (401/403 would mean auth swallowed it).
 	for _, p := range paths {
 		resp := do(t, p.method, srv.URL+p.path, a.token(t, uuid.NewString()), nil)
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {

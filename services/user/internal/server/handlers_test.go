@@ -291,15 +291,10 @@ func TestUpdateUser_SelfOnlyAndValidation(t *testing.T) {
 		wantUnitProblemDetail(t, resp, http.StatusBadRequest, "invalid_body", "avatar_url")
 	})
 
-	// Handle whitespace tightening: before specval wired in, an update
-	// trimmed a padded handle silently ("trims handle, keeps avatar" -
-	// " Neo  " -> "Neo", 200). common.yaml's Handle pattern
-	// (^[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?$) requires
-	// alnum first/last characters, and specval validates the RAW wire
-	// value before this handler's own (now-removed) trim ever runs -
-	// so a padded handle 400s instead of being silently cleaned up.
-	// Split into the still-passing clean-update case below and the new
-	// pinned rejection right after it.
+	// common.yaml's Handle pattern
+	// (^[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?$) requires alnum
+	// first/last characters, so the whitespace-padded case below 400s
+	// instead of being trimmed.
 	t.Run("clean handle updates, keeps avatar", func(t *testing.T) {
 		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"),
 			map[string]string{"handle": "Neo"})

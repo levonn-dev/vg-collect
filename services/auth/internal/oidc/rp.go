@@ -38,14 +38,13 @@ func (e *ProviderError) Error() string {
 func (e *ProviderError) Unwrap() error { return e.Err }
 
 // doJSON runs one provider HTTP round trip and decodes a JSON response
-// into out. Every failure mode -- request construction, transport, a
-// non-200 status, or a malformed body -- comes back as *ProviderError,
-// so every call site (fetchDiscovery, redeemCode, and the JWKS
-// refetch) blames the identity provider the same way and
-// OauthCallback's errors.As sees the same type regardless of which
-// leg of the OIDC dance failed. Callers still own any check that needs
-// the decoded value (issuer match, a non-empty id_token, ...): that is
-// not a transport failure, so it is not doJSON's to classify.
+// into out. Every failure mode (request construction, transport, a
+// non-200 status, or a malformed body) returns *ProviderError, so
+// fetchDiscovery, redeemCode, and the JWKS refetch blame the identity
+// provider the same way, and OauthCallback's errors.As sees one type
+// regardless of which leg of the OIDC dance failed. Decoded-value
+// checks (issuer match, a non-empty id_token) are the caller's job,
+// not a transport failure.
 func doJSON(ctx context.Context, hc *http.Client, method, url string, body io.Reader, headers map[string]string, op string, out any) *ProviderError {
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {

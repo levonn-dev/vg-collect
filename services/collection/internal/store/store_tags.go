@@ -24,10 +24,10 @@ type Tag struct {
 	EntryCount int
 }
 
-// TagCap is the per-user distinct-tag ceiling; CreateTag's only
-// uncapped user-writable growth path before this, closed here.
-// Exported so the handler's cap-exceeded detail can name the same
-// number without duplicating the literal.
+// TagCap is the per-user distinct-tag ceiling that bounds CreateTag's
+// only otherwise-uncapped user-writable growth path. Exported so the
+// handler's cap-exceeded detail can name the same number without
+// duplicating the literal.
 const TagCap = 200
 
 // CreateTag creates a user-scoped tag; names are unique per user

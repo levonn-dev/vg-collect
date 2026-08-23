@@ -1242,21 +1242,18 @@ func TestListProviders(t *testing.T) {
 
 // TestInternalServiceToken pins POST /internal/service-token's
 // internal-token guard and minting behavior, driven straight at the
-// handler (params built by hand, the same idiom InternalRefresh's
-// retired X-Internal-Token check used): a wrong or empty
-// X-Internal-Token answers 401 invalid_internal_token regardless of
-// body; the current AND previous accepted secrets (A/B rotation) both
-// mint a token the package's own jwtauth validator accepts, carrying
-// sub svc:<service>, no roles, and token_use=service (the
-// machine-caller signal requireService/requireAdminOrService key off
-// downstream), with expires_in fixed at 900 regardless of
-// ACCESS_TOKEN_TTL. service's enum membership (a service name outside
-// catalog-refresh/entry-rematch) is no longer this handler's own
-// check (the former req.Service.Valid() call is gone) - it is
-// specval's job at the router layer now, pinned by
-// TestValidatorPath_InternalServiceToken_BadServiceEnum instead,
-// which this direct-call harness cannot exercise (it bypasses the
-// router entirely).
+// handler with hand-built params: a wrong or empty X-Internal-Token
+// answers 401 invalid_internal_token regardless of body; the current
+// AND previous accepted secrets (A/B rotation) both mint a token the
+// package's own jwtauth validator accepts, carrying sub svc:<service>,
+// no roles, and token_use=service (the machine-caller signal
+// requireService/requireAdminOrService key off downstream), with
+// expires_in fixed at 900 regardless of ACCESS_TOKEN_TTL. service's
+// enum membership (a service name outside catalog-refresh/entry-rematch)
+// is specval's job at the router layer, pinned by
+// TestValidatorPath_InternalServiceToken_BadServiceEnum instead, which
+// this direct-call harness cannot exercise since it bypasses the
+// router entirely.
 func TestInternalServiceToken(t *testing.T) {
 	m, err := token.NewMinter(testSeed, "vgkeep-auth", "vgkeep", 5*time.Minute)
 	if err != nil {
@@ -2513,9 +2510,7 @@ func TestUnitRefresh_Success(t *testing.T) {
 	if rotPresented == "" || rotNew == "" || rotPresented == rotNew {
 		t.Fatalf("rotate hashes presented=%q new=%q", rotPresented, rotNew)
 	}
-	// Verify the handler propagated the store's absolute ExpiresAt (90s window)
-	// rather than recomputing from its own refreshTTL. Allow a small tolerance
-	// for execution time.
+	// A small tolerance for execution time, not an exact 90.
 	if pair.RefreshExpiresIn < 80 || pair.RefreshExpiresIn > 90 {
 		t.Fatalf("refresh_expires_in = %d, want 80..90 (handler must echo store ExpiresAt, not recompute from refreshTTL)", pair.RefreshExpiresIn)
 	}

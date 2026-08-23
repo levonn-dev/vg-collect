@@ -542,10 +542,9 @@ func TestRun_Findings(t *testing.T) {
 			wantSubstr: "fragment still contains {Svc}",
 		},
 		{
-			// The placeholder lint used to scan a panel's parsed title
-			// only; this proves it now also catches a typo'd placeholder
-			// buried inside a quoted label selector, where a title-only
-			// scan would never have looked.
+			// Proves the whole-fragment scan catches a typo'd placeholder
+			// buried inside a quoted label selector, not just the panel's
+			// parsed title.
 			name: "golden panel fragment has an unresolved placeholder outside the title (a quoted selector)",
 			mutate: func(m *manifest.Model) {
 				m.Dashboards.Blocks["availability"].Panels[0] = `{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{servce}-.*\"}"}]}`

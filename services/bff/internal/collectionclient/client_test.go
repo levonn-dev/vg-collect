@@ -254,10 +254,6 @@ func TestLibrarySummary_UpstreamFailureIsErrUpstream(t *testing.T) {
 	}
 }
 
-// TestTransportErrorSurfaces proves every method's own transport-error
-// branch: a dead upstream surfaces as a plain wrapped error (never
-// ErrUpstream, which is reserved for an upstream that actually
-// answered outside the relayed contract).
 // TestSharedShelf_DecodesTyped proves the shelf-page composition typed
 // read decodes SharedShelf on 200 and forwards the caller's bearer.
 func TestSharedShelf_DecodesTyped(t *testing.T) {
@@ -450,7 +446,7 @@ func TestListSharedShelves_NonOKIsErrUpstream(t *testing.T) {
 
 // TestSharedShelvesByIDs_DecodesTyped proves the feed/Explore hydration
 // batch read decodes the shelves envelope; ids without a resolvable
-// shelf are simply absent (no error, no placeholder).
+// shelf are absent (no error, no placeholder).
 func TestSharedShelvesByIDs_DecodesTyped(t *testing.T) {
 	shelfID := uuid.New()
 	var gotAuth string
@@ -486,6 +482,10 @@ func TestSharedShelvesByIDs_NonOKIsErrUpstream(t *testing.T) {
 	}
 }
 
+// TestTransportErrorSurfaces proves every method's own transport-error
+// branch: a dead upstream surfaces as a plain wrapped error (never
+// ErrUpstream, which is reserved for an upstream that actually
+// answered outside the relayed contract).
 func TestTransportErrorSurfaces(t *testing.T) {
 	c, err := New("http://127.0.0.1:1")
 	if err != nil {

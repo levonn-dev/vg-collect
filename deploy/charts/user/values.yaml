@@ -6,7 +6,7 @@ image:
 replicas: 1
 
 env:
-  jwksUrl: http://auth:8080/.well-known/jwks.json  # resolves once the auth service exists
+  jwksUrl: http://auth:8080/.well-known/jwks.json
   jwtIssuer: vgkeep-auth
   jwtAudience: vgkeep
   handleChangeCooldown: 24h

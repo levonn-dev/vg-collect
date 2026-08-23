@@ -54,8 +54,8 @@ func TestWaitFor_FailsTestWhenTimeoutElapses(t *testing.T) {
 }
 
 // spyBody wraps a Reader and records whether Close was called, so a
-// test can pin the body-closing contract that made item 21 pick
-// enrichment's decodeBody over auth's non-closing decode.
+// test can pin the body-closing contract: DecodeJSON closes the body,
+// unlike auth's original non-closing decode.
 type spyBody struct {
 	io.Reader
 	closed bool
@@ -80,8 +80,8 @@ func TestDecodeJSON_DecodesIntoTheGivenType(t *testing.T) {
 	}
 }
 
-// TestDecodeJSON_ClosesBody pins the trait item 21 explicitly chose:
-// the body-closing variant, not auth's original leaky one.
+// TestDecodeJSON_ClosesBody pins the chosen trait: the body-closing
+// variant, not auth's original leaky one.
 func TestDecodeJSON_ClosesBody(t *testing.T) {
 	body := &spyBody{Reader: strings.NewReader(`{}`)}
 	resp := &http.Response{Body: body}

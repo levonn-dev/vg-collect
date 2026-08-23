@@ -8,10 +8,9 @@ package catalogval
 import "strings"
 
 // NormalizeCredits trims a curated credit list and drops empty
-// elements; nil in, nil out. The contract caps this list used to
-// enforce here too (maxItems, per-name maxLength) are the request
-// validator's job now - it rejects an over-cap body before this ever
-// runs, so this function only ever sees an already-conforming list.
+// elements; nil in, nil out. Cap enforcement (maxItems, per-name
+// maxLength) happens in the request validator, so this function only
+// ever sees an already-conforming list.
 func NormalizeCredits(names *[]string) []string {
 	if names == nil {
 		return nil

@@ -60,10 +60,9 @@ func (h *Handlers) CountProductReferences(w http.ResponseWriter, r *http.Request
 // url), and the credit arrays (developers, publishers).
 // Contract-described and served by the generated mux behind the
 // blanket JWT middleware, admin-or-service-gated in the handler
-// (tightened from any valid JWT - a decision record, same guard as
-// the entry rematch); the caller's bearer rides the enrichment hops.
-// Idempotent and re-runnable - rows are written only when a
-// recomputed field differs from what is stored.
+// (same guard as the entry rematch); the caller's bearer rides the
+// enrichment hops. Idempotent and re-runnable - rows are written only
+// when a recomputed field differs from what is stored.
 func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdminOrService(w, r) {
 		return
@@ -137,9 +136,9 @@ const rematchBudget = 30 * time.Minute
 // resolves at the provider's polite rate (1 req/s), which outlives
 // httpkit's 30s write timeout on exactly the runs that matter. Each
 // successful repoint logs entry and old->new product ids - the audit
-// trail that keeps a run reviewable and hand-reversible - and the
-// run's own completion log plus the rematch.* metrics now carry the
-// three counts the synchronous response used to answer with directly.
+// trail that keeps a run reviewable and hand-reversible; the
+// completion log and the rematch.* metrics carry the run's three
+// counts, not the 202 response.
 func (h *Handlers) InternalRematchEntries(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdminOrService(w, r) {
 		return
@@ -267,10 +266,9 @@ func (h *Handlers) runRematch(ctx context.Context, bearer string) {
 // so nothing is silently misfiled) against the enrichment platform
 // catalog and stamped with the canonical igdb id + name. Re-runnable:
 // stamped rows leave the selection set. Guard: admin role or service
-// token - relaxed from the earlier admin-only gate now that the
-// nightly job runs this alongside normalize-regions and the entry
-// rematch; the mass write stays reviewable through its counts and
-// logs. The caller's bearer rides the enrichment hop.
+// token, since the nightly job runs this alongside normalize-regions
+// and the entry rematch; the mass write stays reviewable through its
+// counts and logs. The caller's bearer rides the enrichment hop.
 //
 // Contract-described like the other internal levers; the bff relays
 // POST /api/admin/normalize-platforms to this endpoint via the Admin page

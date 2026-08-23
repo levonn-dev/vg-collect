@@ -13,9 +13,9 @@ import (
 )
 
 // newTestDB resets the shared pgtest container to an empty public
-// schema, so this package's migration steps always start on the same
-// blank slate the old per-test container gave them, whether or not
-// another test in this binary already ran.
+// schema, so this package's migration steps always start from a
+// blank slate, whether or not another test in this binary already
+// ran.
 func newTestDB(t *testing.T) string {
 	t.Helper()
 	ctx := context.Background()

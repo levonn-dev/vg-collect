@@ -41,10 +41,8 @@ test('failure renders the alert', async () => {
   expect(await screen.findByRole('alert')).toBeInTheDocument()
 })
 
-// Merged from the deleted RefreshTrigger.test.tsx: Admin.tsx now
-// configures NormalizeTrigger directly for the catalog-refresh lever,
-// so these tests exercise that same configuration instead of a
-// dedicated RefreshTrigger component.
+// Exercises Admin.tsx's own NormalizeTrigger configuration for the
+// catalog-refresh lever.
 function renderRefresh() {
   const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
   renderWithI18n(
@@ -90,8 +88,8 @@ it('falls back to the generic refresh failure message on a non-conflict error', 
   expect(await screen.findByRole('alert')).toHaveTextContent('The trigger failed - try again.')
 })
 
-// Merged from the deleted RematchTrigger.test.tsx: same reasoning as
-// renderRefresh above, for the entry-rematch lever.
+// Exercises Admin.tsx's own NormalizeTrigger configuration for the
+// entry-rematch lever, same reasoning as renderRefresh above.
 function renderRematch() {
   const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
   renderWithI18n(

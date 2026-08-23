@@ -12,8 +12,8 @@ env:
   refreshTokenTtl: 720h
   userServiceUrl: http://user:8080
   # The public callback URL registered with real providers (the
-  # gateway's /api/auth/callback once the edge exists). Required only
-  # when Google or Twitch credentials are supplied.
+  # gateway's /api/auth/callback). Required only when Google or
+  # Twitch credentials are supplied.
   oauthRedirectUrl: ""
   googleIssuerUrl: https://accounts.google.com
   twitchIssuerUrl: https://id.twitch.tv/oauth2

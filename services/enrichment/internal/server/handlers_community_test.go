@@ -79,8 +79,7 @@ func TestAdminUnmatchedWorklist(t *testing.T) {
 	}
 
 	// Out-of-bounds limits reject rather than clamping: the contract's
-	// bound (1-500) is specval's job now, a deliberate reversal from
-	// the silent clamp this endpoint used to do.
+	// bound (1-500) is specval's job now.
 	if resp := s.do(http.MethodGet, "/admin/products/unmatched?limit=0", s.adminToken(), nil); resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("limit=0 must be rejected: %d", resp.StatusCode)
 	}
@@ -145,8 +144,7 @@ func TestAdminCommunityWorklist(t *testing.T) {
 	}
 
 	// Out-of-bounds limits reject rather than clamping: the contract's
-	// bound (1-500) is specval's job now, the same deliberate clamp
-	// reversal as the unmatched list's (TestValidatorPath_
+	// bound (1-500) is specval's job now (TestValidatorPath_
 	// ListCommunityProducts_LimitOverMax_ClampReversal in
 	// validator_pins_test.go pins it directly).
 	if resp := s.do(http.MethodGet, "/admin/products/community?limit=0", s.adminToken(), nil); resp.StatusCode != http.StatusBadRequest {
@@ -559,8 +557,7 @@ func TestUnitCreateCommunityProduct_CoverOnlyMint(t *testing.T) {
 
 // TestUnitCreateCommunityProduct_CoverLengthBoundary pins the
 // contract's cover_url maxLength:512 boundary through the full
-// handler stack (specval owns this check now; catalogval.ValidCoverURL,
-// the hand check this superseded, is gone).
+// handler stack.
 func TestUnitCreateCommunityProduct_CoverLengthBoundary(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})

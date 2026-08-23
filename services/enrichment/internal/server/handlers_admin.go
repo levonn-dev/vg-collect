@@ -167,10 +167,9 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 		return
 	}
 
-	// Distinct game ids, then the raws we already hold. A raw below
-	// fields_version - nil release table, or missing fields a newer
-	// generation added - must be refetched, never reprojected as-is; an
-	// id with no raw at all is fetched too.
+	// A raw below fields_version - nil release table, or missing fields
+	// a newer generation added - must be refetched, never reprojected
+	// as-is; an id with no raw at all is fetched too.
 	ids := make([]int64, 0, len(prods))
 	seen := make(map[int64]bool, len(prods))
 	for _, p := range prods {

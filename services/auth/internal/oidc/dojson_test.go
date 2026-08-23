@@ -13,13 +13,11 @@ type doJSONOut struct {
 	Msg string `json:"msg"`
 }
 
-// TestDoJSON pins doJSON's contract directly. doJSON is unexported, so
-// fetchDiscovery's, redeemCode's, and refreshLocked's own suites only
-// ever exercise it indirectly, filtered through each site's op string
-// and decode target; this test makes the shared contract itself -- every
-// failure mode classifies as *ProviderError carrying the caller's op,
-// and a clean response decodes into out -- readable without tracing
-// three call sites.
+// TestDoJSON pins doJSON's contract directly: every failure mode
+// classifies as *ProviderError carrying the caller's op, and a clean
+// response decodes into out. doJSON is unexported, so fetchDiscovery,
+// redeemCode, and refreshLocked only exercise it indirectly through
+// their own op string and decode target.
 func TestDoJSON(t *testing.T) {
 	const op = "the-op"
 

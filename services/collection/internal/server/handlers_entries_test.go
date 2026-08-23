@@ -400,9 +400,9 @@ func TestCreateEntry_CustomCredits(t *testing.T) {
 
 // TestCreateEntry_CreditCaps pins the contract's caps on developers/
 // publishers (maxItems 10, maxLength 120 per name): more than 10 names
-// or a name over 120 runes is a 400, enforced by specval's request-
-// validation middleware ahead of the handler (libs/go/catalogval's
-// NormalizeCredits no longer checks either bound itself).
+// or a name over 120 runes is a 400, enforced by specval's
+// request-validation middleware ahead of the handler, not by
+// libs/go/catalogval's NormalizeCredits.
 func TestCreateEntry_CreditCaps(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 	base := func(devs []string) io.Reader {

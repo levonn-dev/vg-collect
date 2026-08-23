@@ -3,11 +3,9 @@ import type { MessageDescriptor } from '@lingui/core'
 import type { SavedView } from '../api/collection'
 import type { Condition, ItemType, Packaging, Status } from './listParams'
 
-// The label maps below used to live one copy per consuming component,
-// several of them re-declared byte-for-byte in more than one file.
-// Typing every map here as Record<Enum, MessageDescriptor> against the
-// listParams enum types means a future enum member fails to compile
-// at the map that is missing it, instead of quietly rendering blank.
+// Each map is typed as Record<Enum, MessageDescriptor> against the
+// listParams enum types, so a future enum member fails to compile at
+// the map that is missing it, instead of quietly rendering blank.
 
 // statusLabels: the Title-case form (EntryTable's status column,
 // CompactList's status span, BulkEditBar's status <select>, and

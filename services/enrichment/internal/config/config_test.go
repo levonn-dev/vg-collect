@@ -30,10 +30,7 @@ func TestLoad_Defaults(t *testing.T) {
 // fails config loading. caarlos0/env's required tag fires only on an
 // absent key, never a present-but-empty one, so this unsets rather
 // than sets "" - t.Setenv can only represent "present with this
-// value", never "absent". Uncovered while deleting
-// INTERNAL_REFRESH_SECRETS: that field's own required tag was
-// incidentally the one firing here before, since setting
-// MONGO_URL="" never actually failed on its own.
+// value", never "absent".
 func TestLoad_MissingRequired(t *testing.T) {
 	prev, had := os.LookupEnv("MONGO_URL")
 	if err := os.Unsetenv("MONGO_URL"); err != nil {

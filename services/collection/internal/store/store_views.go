@@ -245,14 +245,13 @@ func (s *Store) ListListedShelves(ctx context.Context, ownerIDs []uuid.UUID, lim
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: list listed shelves: %w", err)
 	}
-	// The original's trailing rows.Err() branch returned (out, total,
-	// err) - the real total and whatever shelves had already been
-	// scanned - while its own two earlier error branches above return
-	// (nil, 0, err). seed []View{} is non-nil, so scanAll only ever
+	// On a trailing rows.Err(), this returns (out, total, err) - the
+	// real total plus whatever shelves had already been scanned;
+	// matching the two earlier error branches' (nil, 0, err) only on a
+	// scan error. seed []View{} is non-nil, so scanAll only ever
 	// returns a nil slice here via its own scan-closure short-circuit;
 	// a nil out is therefore an unambiguous signal that this was a
-	// scan error (which the original also reported as (nil, 0, err)),
-	// not a trailing one.
+	// scan error, not a trailing one.
 	out, err := scanAll(rows, []View{}, "", func(r pgx.Rows) (View, error) {
 		v, err := scanView(r)
 		if err != nil {

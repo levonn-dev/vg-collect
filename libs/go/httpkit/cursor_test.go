@@ -29,10 +29,9 @@ func TestCursor_StringShape(t *testing.T) {
 	}
 }
 
-// TestCursor_ParseRejectsMalformed matches the shapes both social's
-// store.ParseCursor and bff's now-deleted validFeedCursor rejected:
-// no dot, an empty half on either side, and a uuid-shaped tail that
-// still fails once a spurious extra dot shifts the split.
+// TestCursor_ParseRejectsMalformed covers malformed shapes: no dot,
+// an empty half on either side, and a uuid-shaped tail that still
+// fails once a spurious extra dot shifts the split.
 func TestCursor_ParseRejectsMalformed(t *testing.T) {
 	cases := []string{"", "abc", "123.", ".uuid", "1.2.not-a-uuid", "notanumber." + uuid.New().String()}
 	for _, s := range cases {
@@ -43,8 +42,8 @@ func TestCursor_ParseRejectsMalformed(t *testing.T) {
 }
 
 // TestCursor_ParseSplitsOnFirstDotOnly guards the uuid-never-contains-
-// a-dot assumption both original implementations relied on: a
-// well-formed cursor parses even though its uuid tail has hyphens.
+// a-dot assumption ParseCursor relies on: a well-formed cursor parses
+// even though its uuid tail has hyphens.
 func TestCursor_ParseSplitsOnFirstDotOnly(t *testing.T) {
 	id := uuid.New()
 	s := "1000." + id.String()

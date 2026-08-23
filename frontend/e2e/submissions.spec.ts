@@ -17,7 +17,7 @@ import { createEntry, deleteEntry, reviewSubmission, setProfile, submitEntry } f
 // standing up a session nothing reads.
 test.use({ storageState: { cookies: [], origins: [] } })
 
-// The gateway budgets /api/auth/* per IP per minute (120 on this dev
+// The gateway budgets /api/auth/* per IP per minute (240 on this dev
 // stack; production keeps it far tighter). This file mints or logs in
 // more identities than most - a submitter, an admin review, and (in
 // three tests) a second collector - so it runs its own tests in

@@ -139,9 +139,9 @@ func TestRefresh_AdminRBACAndConflict(t *testing.T) {
 	reqtest.WaitFor(t, 10*time.Second, func() bool { return !s.h.refreshing.Load() })
 }
 
-// TestUnitInternalRefresh_RequiresServiceToken pins the guard that
-// replaced the retired X-Internal-Token check: a bearer-less request
-// never reaches the handler (jwtauth 401s first, see
+// TestUnitInternalRefresh_RequiresServiceToken pins the service-token
+// guard: a bearer-less request never reaches the handler (jwtauth
+// 401s first, see
 // TestRoutes_InternalRefreshRequiresBearer); a plain user's own
 // access token clears jwtauth but is forbidden by requireService; an
 // ADMIN token is forbidden too - requireService is service-only, the

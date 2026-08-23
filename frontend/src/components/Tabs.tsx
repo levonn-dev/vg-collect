@@ -18,16 +18,14 @@ interface TabsProps<T extends string> {
 }
 
 // Tabs is the shared two-plus-tab strip: Explore's sort switch,
-// Feed's Following/You switch, and Admin's Mappings/Submissions
-// switch all render through this (Admin.tsx originally hand-rolled
-// the identical markup below, before adopting this component).
-// Implements the WAI-ARIA tabs pattern's selection-follows-focus
-// variant with a proper roving tabindex: only the active tab sits
-// in the page tab order (tabIndex 0), every other tab is -1, and
-// ArrowLeft/ArrowRight/Home/End both move focus AND fire onChange
-// in one step, same as a native radio group under arrow keys.
-// Visual classes are Explore's original tablist markup verbatim -
-// adopting this component changes no pixel there.
+// Feed's Following/You switch, Collection's sections switch, and
+// Admin's Mappings/Submissions switch all render through this.
+// Implements the WAI-ARIA tabs
+// pattern's selection-follows-focus variant with a proper roving
+// tabindex: only the active tab sits in the page tab order (tabIndex
+// 0), every other tab is -1, and ArrowLeft/ArrowRight/Home/End both
+// move focus AND fire onChange in one step, same as a native radio
+// group under arrow keys.
 export default function Tabs<T extends string>({ label, tabs, active, onChange, className = '' }: TabsProps<T>) {
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([])
 

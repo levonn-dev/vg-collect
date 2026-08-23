@@ -3,7 +3,7 @@ package store
 // White-box (package store, not store_test): findAll/findPage are
 // unexported, so pinning their own contract directly - independent
 // of any one caller's filter/projection shape - needs a test inside
-// the package. The converted methods' own black-box tests in
+// the package. Their callers' own black-box tests in
 // store_test.go already re-verify the same contract end to end
 // (ListPriced, ListUnmatchedProducts, and friends); this one isolates
 // the two generics themselves against a scratch collection, so a

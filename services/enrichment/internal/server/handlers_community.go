@@ -92,9 +92,7 @@ func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request,
 	}
 	// limit/offset are already known within the contract's 1-500/>=0
 	// bounds by the time this runs (specval rejects out-of-bounds
-	// values; a deliberate reversal from the silent clamp this
-	// endpoint used to do). Only the default-when-absent case needs
-	// handling here.
+	// values). Only the default-when-absent case needs handling here.
 	limit := 200
 	if params.Limit != nil {
 		limit = *params.Limit
@@ -124,9 +122,8 @@ func (h *Handlers) ListCommunityProducts(w http.ResponseWriter, r *http.Request,
 	if !h.requireAdmin(w, r) {
 		return
 	}
-	// See ListUnmatchedProducts: bounds are specval's job (the
-	// deliberate clamp reversal); only the default-when-absent case is
-	// left.
+	// See ListUnmatchedProducts: bounds are specval's job; only the
+	// default-when-absent case is left.
 	limit := 200
 	if params.Limit != nil {
 		limit = *params.Limit
@@ -153,9 +150,8 @@ func (h *Handlers) ListPromoteCandidates(w http.ResponseWriter, r *http.Request,
 	if !h.requireAdmin(w, r) {
 		return
 	}
-	// See ListUnmatchedProducts: bounds are specval's job (the
-	// deliberate clamp reversal); only the default-when-absent case is
-	// left.
+	// See ListUnmatchedProducts: bounds are specval's job; only the
+	// default-when-absent case is left.
 	limit := 200
 	if params.Limit != nil {
 		limit = *params.Limit

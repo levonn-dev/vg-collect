@@ -19,9 +19,8 @@ assert {
 script:post-response {
   if (res.status === 200 && res.body.results && res.body.results.length) {
     const results = res.body.results;
-    // create-proxy-entry.bru packages loose, so pick the first result
-    // priced for loose_cents (provider-safe downstream); fall back to
-    // results[0] so the flow still passes if none carry that price.
+    // create-proxy-entry.bru packages loose: prefer the loose_cents
+    // result (provider-safe downstream), else results[0].
     const picked = results.find((r) => r.loose_cents != null) || results[0];
     if (picked.pc_product_id != null) {
       bru.setEnvVar("bff_pc_product_id", picked.pc_product_id);

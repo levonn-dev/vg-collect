@@ -1,8 +1,8 @@
 // Package pgtest boots one shared postgres testcontainer per test
 // binary and hands back its connection URL. Each service still owns
-// its migrate/connect/reset: this package only replaces the
-// hand-rolled container boot that used to be copied into every
-// store, handlers, and migrations test fixture.
+// its migrate/connect/reset; this package only replaces the
+// hand-rolled container boot duplicated across every store, handlers,
+// and migrations test fixture.
 package pgtest
 
 import (

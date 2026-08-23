@@ -1,14 +1,11 @@
 package valkeykit_test
 
-// TDD for the shared cache-access idioms every service's cache.go
-// duplicated by hand: byte-blob get/put with a redis.Nil miss mapped
-// to (nil, nil), plus the fail-open log-plus-metric callers emit when
-// they degrade instead of failing a request over a cache error.
-// Hit/miss/TTL behaviors round-trip through a live container, the
-// same convention TestConnectAndRoundtrip already uses in this
-// package; the error-wrap tests dial a client at a port that refuses
-// connections (TestConnect_PingFail's trick), a real network error
-// without needing docker.
+// Tests for the shared cache-access idioms in cache.go. Hit/miss/TTL
+// behaviors round-trip through a live container, the same convention
+// TestConnectAndRoundtrip already uses in this package; the
+// error-wrap tests dial a client at a port that refuses connections
+// (TestConnect_PingFail's trick), a real network error without
+// needing docker.
 
 import (
 	"bytes"

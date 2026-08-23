@@ -573,8 +573,7 @@ type internalServiceTokenResponse struct {
 
 // InternalServiceToken mints a short-lived service JWT for a cluster
 // maintenance job: machine-to-machine bootstrap, gated by a static
-// internal secret instead of a JWT (the CronJob has no JWT source -
-// enrichment's retired /internal/refresh secret worked the same way).
+// internal secret instead of a JWT (the CronJob has no JWT source).
 // The minted token carries no roles and token_use=service, so
 // requireService/requireAdminOrService downstream can tell it apart
 // from any user's own access token on sight. The gateway never routes
@@ -589,8 +588,7 @@ func (h *Handlers) InternalServiceToken(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	// service's enum membership (catalog-refresh, entry-rematch) is
-	// now specval's job ahead of this handler; the former
-	// req.Service.Valid() call is gone (see
+	// specval's job ahead of this handler (see
 	// TestValidatorPath_InternalServiceToken_BadServiceEnum).
 	access, err := h.minter.MintService("svc:"+string(req.Service), serviceTokenTTL)
 	if err != nil {
@@ -607,10 +605,9 @@ func (h *Handlers) InternalServiceToken(w http.ResponseWriter, r *http.Request, 
 }
 
 // internalServiceCallerOK checks X-Internal-Token against the accepted
-// set in constant time per candidate (ported from enrichment's retired
-// internalCallerOK, deleted there in the same change that added this
-// endpoint): the set holds one entry in steady state and two during a
-// rotation (accept old + new while the CronJobs' secret flips).
+// set in constant time per candidate: the set holds one entry in
+// steady state and two during a rotation (accept old + new while the
+// CronJobs' secret flips).
 func (h *Handlers) internalServiceCallerOK(params api.InternalServiceTokenParams) bool {
 	got := []byte(params.XInternalToken)
 	if len(got) == 0 {

@@ -637,14 +637,12 @@ func (s *stack) cookieFor(t *testing.T, access, refresh string) *http.Cookie {
 	return s.codec.Cookie(sealed, 3600)
 }
 
-// meResult is one /api/me round-trip's observable outcome.
 type meResult struct {
 	status  int
 	body    []byte
 	cleared bool
 }
 
-// getMe issues GET /api/me through the real server carrying cookie.
 func (s *stack) getMe(t *testing.T, cookie *http.Cookie) meResult {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, s.baseURL+"/api/me", nil)
@@ -664,7 +662,6 @@ func (s *stack) getMe(t *testing.T, cookie *http.Cookie) meResult {
 	return meResult{status: resp.StatusCode, body: body, cleared: clearsCookie(resp)}
 }
 
-// clearsCookie reports whether the response expired the session cookie.
 func clearsCookie(resp *http.Response) bool {
 	for _, c := range resp.Cookies() {
 		if c.Name == session.CookieName && c.MaxAge < 0 {
@@ -674,14 +671,11 @@ func clearsCookie(resp *http.Response) bool {
 	return false
 }
 
-// searchResult is one /api/search round-trip's observable outcome.
 type searchResult struct {
 	status int
 	body   []byte
 }
 
-// search issues GET /api/search?type=&q= through the real server
-// carrying cookie.
 func (s *stack) search(t *testing.T, cookie *http.Cookie, typ, q string) searchResult {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, s.baseURL+"/api/search?type="+typ+"&q="+q, nil)
@@ -701,14 +695,11 @@ func (s *stack) search(t *testing.T, cookie *http.Cookie, typ, q string) searchR
 	return searchResult{status: resp.StatusCode, body: body}
 }
 
-// entriesResult is one /api/entries round-trip's observable outcome.
 type entriesResult struct {
 	status int
 	body   []byte
 }
 
-// entries issues GET /api/entries through the real server carrying
-// cookie.
 func (s *stack) entries(t *testing.T, cookie *http.Cookie) entriesResult {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, s.baseURL+"/api/entries", nil)
@@ -728,15 +719,11 @@ func (s *stack) entries(t *testing.T, cookie *http.Cookie) entriesResult {
 	return entriesResult{status: resp.StatusCode, body: body}
 }
 
-// valueHistoryResult is one /api/dashboard/value-history round-trip's
-// observable outcome.
 type valueHistoryResult struct {
 	status int
 	body   []byte
 }
 
-// valueHistory issues GET /api/dashboard/value-history through the
-// real server carrying cookie.
 func (s *stack) valueHistory(t *testing.T, cookie *http.Cookie) valueHistoryResult {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, s.baseURL+"/api/dashboard/value-history", nil)
@@ -756,15 +743,11 @@ func (s *stack) valueHistory(t *testing.T, cookie *http.Cookie) valueHistoryResu
 	return valueHistoryResult{status: resp.StatusCode, body: body}
 }
 
-// recommendationsResult is one /api/recommendations round-trip's
-// observable outcome.
 type recommendationsResult struct {
 	status int
 	body   []byte
 }
 
-// recommendations issues GET /api/recommendations through the real
-// server carrying cookie.
 func (s *stack) recommendations(t *testing.T, cookie *http.Cookie) recommendationsResult {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, s.baseURL+"/api/recommendations", nil)
@@ -784,9 +767,8 @@ func (s *stack) recommendations(t *testing.T, cookie *http.Cookie) recommendatio
 	return recommendationsResult{status: resp.StatusCode, body: body}
 }
 
-// createEntry issues POST /api/entries (with the Origin header the
-// CheckOrigin middleware requires of a mutating request) through the
-// real server carrying cookie.
+// createEntry POSTs /api/entries with the Origin header CheckOrigin
+// requires of a mutating request.
 func (s *stack) createEntry(t *testing.T, cookie *http.Cookie) int {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, s.baseURL+"/api/entries", strings.NewReader(`{"region":"ntsc_u","packaging":"loose"}`))
@@ -804,8 +786,7 @@ func (s *stack) createEntry(t *testing.T, cookie *http.Cookie) int {
 	return resp.StatusCode
 }
 
-// otlpTraces issues POST /api/otlp/v1/traces with a JSON OTLP payload
-// through the real server; cookie nil drives the cookieless case.
+// otlpTraces accepts a nil cookie to drive the cookieless test case.
 func (s *stack) otlpTraces(t *testing.T, cookie *http.Cookie) int {
 	t.Helper()
 	const body = `{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"test"}}]}}]}`
@@ -825,8 +806,7 @@ func (s *stack) otlpTraces(t *testing.T, cookie *http.Cookie) int {
 	return resp.StatusCode
 }
 
-// otlpMetrics issues POST /api/otlp/v1/metrics with a JSON OTLP payload
-// through the real server; cookie nil drives the cookieless case.
+// otlpMetrics accepts a nil cookie to drive the cookieless test case.
 func (s *stack) otlpMetrics(t *testing.T, cookie *http.Cookie) int {
 	t.Helper()
 	const body = `{"resourceMetrics":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"test"}}]}}]}`

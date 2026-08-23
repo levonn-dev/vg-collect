@@ -2,8 +2,8 @@ package store
 
 // White-box (package store, not store_test): scanAll is unexported,
 // so pinning its own contract directly - independent of any one
-// caller's query shape - needs a test inside the package. The
-// converted methods' own black-box tests in store_test.go already
+// caller's query shape - needs a test inside the package. Its
+// callers' own black-box tests in store_test.go already
 // re-verify the same contract end to end; this one isolates scanAll
 // itself against a schema-free query so a future change to its
 // signature or seed handling fails here first.

@@ -1,8 +1,8 @@
 // Package valkeytest boots one shared Valkey testcontainer per test
 // binary and hands back its connection URL. Each suite still owns its
-// own connect and reset: this package only replaces the hand-rolled
-// container boot that used to be copied into every cache and handler
-// test fixture across bff, collection, and enrichment.
+// own connect and reset; this package only replaces the hand-rolled
+// container boot duplicated across every cache and handler test
+// fixture in bff, collection, and enrichment.
 package valkeytest
 
 import (

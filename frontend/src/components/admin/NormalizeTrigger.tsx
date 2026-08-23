@@ -38,11 +38,10 @@ export function normalizeSuccessMessage(data: NormalizeResult | undefined): Reac
 
 // NormalizeTrigger is the generic admin trigger lever: one mutation, a
 // success line, and an error line with an optional conflict-specific
-// message. Originally shaped for Admin's normalize-platforms/regions
-// pair; extended to also cover the catalog-refresh and entry-rematch
-// levers (formerly RefreshTrigger/RematchTrigger, two near-identical
-// components deleted in favor of configuring this one directly, the
-// same way Admin.tsx already configures it for normalization).
+// message. Shared by Admin's three normalize levers (platforms,
+// regions, community regions) and the catalog-refresh and
+// entry-rematch levers, so each caller configures
+// it directly instead of wrapping its own near-identical component.
 export default function NormalizeTrigger<T>({
   title,
   actionLabel,

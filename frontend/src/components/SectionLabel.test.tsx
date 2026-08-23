@@ -25,9 +25,9 @@ it('renders arbitrary children, not just plain text', () => {
 })
 
 // Each case below is a byte-exact reproduction of one of the seven
-// distinct class combos surveyed across the 20 real sites (see the
-// task 25 report) - proof the four props recombine into every one of
-// them with no leftover or missing whitespace.
+// distinct class combos surveyed across the 20 real sites - proof the
+// four props recombine into every one of them with no leftover or
+// missing whitespace.
 it.each([
   ['CommentList/Profile (h3, sm, bold, mb-3)', { as: 'h3', size: 'sm', className: 'mb-3' } as const,
     'mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500'],

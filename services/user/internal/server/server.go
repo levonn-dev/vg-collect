@@ -75,15 +75,13 @@ func problem(w http.ResponseWriter, r *http.Request, status int, code, detail st
 	httpkit.WriteProblemFields(w, r, status, code, detail)
 }
 
-// internalError answers a 500 and logs its cause via the package
-// default logger: this service holds no *slog.Logger field on
-// Handlers (every other log line here already goes through slog's
-// package-level funcs), so the helper matches rather than introducing
-// a second logging path. op is the log's "op" key, detail the
-// response text - collection's h.internalError proved the
-// log-then-respond shape; social and enrichment share the op/err key
-// convention, so this stays a method for the same h.internalError
-// call-site shape even though it does not touch h.
+// internalError answers a 500 and logs its cause via slog's
+// package-level funcs, since Handlers holds no *slog.Logger field and
+// every other log line here already goes through them. op is the
+// log's "op" key, detail the response text - same op/err convention
+// and log-then-respond shape as collection, social, and enrichment's
+// h.internalError, kept as a method here for that identical
+// call-site shape even though it never touches h.
 func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, op, detail string, err error) {
 	slog.ErrorContext(r.Context(), "store error", "op", op, "err", err)
 	problem(w, r, http.StatusInternalServerError, "internal", detail)

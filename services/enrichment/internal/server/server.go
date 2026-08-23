@@ -251,13 +251,9 @@ func problem(w http.ResponseWriter, r *http.Request, status int, code, detail st
 }
 
 // internalError answers a 500 and logs its cause: op is a stable,
-// grep-able label for the failing operation (the log's "op" key),
-// detail is the response's human-readable text - the two vary
-// independently, same as they did inline. Before this helper, every
-// one of the 29 sites it collapses answered 500 with no log line at
-// all: the cause existed nowhere. collection's h.internalError proved
-// the log-then-respond shape; social and user already logged this
-// way, so op/err are the same keys here.
+// grep-able label for the failing operation (the log's "op" key);
+// detail is the response's human-readable text. The two vary
+// independently.
 func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, op, detail string, err error) {
 	h.logger.ErrorContext(r.Context(), "store error", "op", op, "err", err)
 	problem(w, r, http.StatusInternalServerError, "internal", detail)
@@ -296,8 +292,7 @@ func (h *Handlers) requireAdminOrService(w http.ResponseWriter, r *http.Request)
 // unmatched/community/promote-candidate worklists, promote, dismiss,
 // the mapping fix, delete, and the immediate refresh trigger). Same
 // claims-access path and problem shape as requireService and
-// requireAdminOrService above; nine identical inline copies collapse
-// into this one.
+// requireAdminOrService above.
 func (h *Handlers) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 	claims, _ := jwtauth.FromContext(r.Context())
 	if !claims.HasRole("admin") {

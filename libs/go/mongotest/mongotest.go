@@ -1,8 +1,8 @@
 // Package mongotest boots one shared MongoDB testcontainer per test
 // binary and hands back its connection URL. Each suite still owns its
-// own connect, database-drop reset, and migration run: this package
-// only replaces the hand-rolled container boot that used to be copied
-// into both of enrichment's Mongo-backed test fixtures.
+// own connect, database-drop reset, and migration run; this package
+// only replaces the hand-rolled container boot duplicated across both
+// of enrichment's Mongo-backed test fixtures.
 package mongotest
 
 import (

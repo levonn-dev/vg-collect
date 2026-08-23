@@ -4,9 +4,9 @@ import type { Region } from './listParams'
 
 // Region display labels, split into their own leaf module so the entry
 // form and the catalog search picker's region chip can both import
-// them without either depending on the other - SearchPicker importing
-// this out of EntryForm used to close an import cycle (SearchPicker ->
-// EntryForm -> PricingPanel -> ProxyPicker -> SearchPicker).
+// them without either depending on the other: merging this back into
+// EntryForm reopens the cycle SearchPicker -> EntryForm -> PricingPanel
+// -> ProxyPicker -> SearchPicker.
 export const regionLabels: Record<Region, MessageDescriptor> = {
   ntsc_u: msg`NTSC-U`,
   ntsc_j: msg`NTSC-J`,

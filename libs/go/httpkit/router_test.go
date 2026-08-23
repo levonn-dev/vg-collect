@@ -75,27 +75,23 @@ func TestNewRouter_MountsAPIHandlerAtRoot(t *testing.T) {
 	}
 }
 
-// TestNewRouter_OtelSpanPresentWithRouteFromRawMux is the load-bearing
-// regression test for the router builder's whole reason to exist:
-// RouteLabel must resolve the matched pattern from apiMux, the
-// caller's raw BaseRouter, not from apiHandler -- which every real
+// TestNewRouter_OtelSpanPresentWithRouteFromRawMux is the regression
+// test for RouteLabel resolving the matched pattern from apiMux, the
+// caller's raw BaseRouter, not from apiHandler, which every real
 // caller wraps in jwtauth.Middleware (or, here, a stand-in wrapper with
 // no route-lookup method of its own) before handing it to NewRouter.
-// Threading apiMux through separately is the one design question this
-// builder had to answer; this test is what would fail if a future
-// change dropped or misordered that argument.
+// This is what fails if a future change drops or misorders that
+// argument.
 //
 // It also pins otelhttp's own span-naming behavior for this operation
 // string: otelhttp v0.69's default formatter ignores the operation
 // argument entirely and derives the name from the request's matched
 // pattern instead (net/http's r.Pattern, populated by the same mux
 // dispatch RouteLabel observes). serviceName still has to reach
-// otelhttp.NewHandler correctly -- it is the value any future
-// WithSpanNameFormatter override would receive -- but under the
-// default formatter every service's span is named "METHOD /pattern",
-// never the literal service name; that was already true before this
-// builder existed, since every per-service NewRouter called
-// otelhttp.NewHandler the same way.
+// otelhttp.NewHandler correctly, since it is the value any future
+// WithSpanNameFormatter override would receive, but under the default
+// formatter every service's span is named "METHOD /pattern", never
+// the literal service name.
 func TestNewRouter_OtelSpanPresentWithRouteFromRawMux(t *testing.T) {
 	exp := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))

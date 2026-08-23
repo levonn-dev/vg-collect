@@ -9,11 +9,10 @@ export type ProseVariants = { en: ComponentType } & Partial<Record<Locale, Compo
 // ProsePage serves whole-page translations: the active locale's
 // variant when one was contributed, else the English page. A
 // translated page carries a notice that English is the controlling
-// text (owner decision; legal pages especially). English fallback
-// shown to another locale gets no notice - nothing on it is a
-// translation. page names the calling route ('about', 'terms', ...)
-// for the fallback-served counter below; it carries no other meaning
-// here.
+// text; that matters most on legal pages. English fallback shown to
+// another locale gets no notice - nothing on it is a translation.
+// page names the calling route ('about', 'terms', ...) for the
+// fallback-served counter below; it carries no other meaning here.
 export default function ProsePage({ variants, page }: { variants: ProseVariants; page: string }) {
   const { t, i18n } = useLingui()
   const active = i18n.locale as Locale

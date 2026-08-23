@@ -24,10 +24,9 @@ func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
 	})
 }
 
-// TestSharedShelf is this package's smoke test: a happy path that
-// forwards the bearer and decodes the shelf, and an upstream-error
-// path (a status outside the 200/404 contract) that surfaces as
-// ErrUpstream.
+// TestSharedShelf covers the happy path (forwards the bearer, decodes
+// the shelf) and the upstream-error path (a status outside the
+// 200/404 contract) that surfaces as ErrUpstream.
 func TestSharedShelf(t *testing.T) {
 	id := uuid.New()
 	ownerID := uuid.New()

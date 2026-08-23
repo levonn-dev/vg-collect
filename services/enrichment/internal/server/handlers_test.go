@@ -567,9 +567,8 @@ func decodeBody[T any](t *testing.T, resp *http.Response) T {
 	return reqtest.DecodeJSON[T](t, resp)
 }
 
-// resolveGame is the shared shortcut used across the handler tests
-// (it exercises the resolve handler once that handler exists; it
-// provides a unified product interface for resolve-dependent tests).
+// resolveGame is the shared shortcut used across the handler tests to
+// drive a game through the resolve handler and decode the result.
 func (s *stack) resolveGame(igdbGameID, platformID int64) api.Product {
 	s.t.Helper()
 	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{

@@ -684,12 +684,10 @@ func TestUnitTelemetry_CatalogRefreshStartedLogsTrigger(t *testing.T) {
 }
 
 // TestUnitInternalErrorLogCarriesCause pins the shared 500 helper: the
-// problem body stays the same generic detail text a caller already
-// saw pre-refactor, while the log line now carries the op and cause
-// that text never could. Before this helper, none of enrichment's 29
-// collapsed 500 sites logged anything - the cause existed nowhere
-// (see docs/runbooks/enrichment.md's 5xx triage, updated alongside
-// this). Mirrors collection's TestUnitInternalErrorLogCarriesCause.
+// problem body carries only a generic detail text, while the log line
+// carries the op and cause the client never sees (docs/runbooks/enrichment.md's
+// 5xx triage reads it from there). Mirrors collection's
+// TestUnitInternalErrorLogCarriesCause.
 func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 	env := newAuthEnv(t)
 	boom := errors.New("mongo exploded")
@@ -729,11 +727,10 @@ func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 // mechanism, the way TestUnitInternalNormalizeCommunityRegions_Guards
 // already does for requireAdminOrService: a plain user is forbidden,
 // an admin passes. CreateCommunityProduct (POST /admin/products) is
-// the representative site; every one of the nine callers already had
-// its own per-handler RBAC test before this extraction (e.g.
-// TestUnitCreateCommunityProduct, TestRefresh_AdminRBACAndConflict),
-// so this test's job is pinning the shared gate by name, not
-// reproving RBAC per site.
+// the representative site; every one of the nine callers also has
+// its own per-handler RBAC test (e.g. TestUnitCreateCommunityProduct,
+// TestRefresh_AdminRBACAndConflict), so this test's job is pinning
+// the shared gate by name, not reproving RBAC per site.
 func TestUnitRequireAdmin_Guards(t *testing.T) {
 	env := newAuthEnv(t)
 	h := newUnitHandlers(&stubStore{createProduct: func(_ context.Context, p store.Product) (store.Product, error) {

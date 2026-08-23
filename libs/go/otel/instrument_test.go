@@ -1,13 +1,9 @@
 package otel_test
 
-// TDD for the shared registration helpers: Counter and Histogram fix
-// one argument order (name, description, unit) across every service,
-// closing the footgun where a per-service closure could bind the
-// same two positional strings to WithUnit and WithDescription in
-// different orders. Each test proves the registered instrument's
-// name/description/unit land in the SDK's own fields (observed
-// through a ManualReader, never through the helper's return value
-// alone) and that DurationBuckets is the exact shared tuple.
+// Tests for Counter and Histogram. Each test proves the registered
+// instrument's name/description/unit land in the SDK's own fields
+// (observed through a ManualReader, never through the helper's return
+// value alone), and that DurationBuckets is the exact shared tuple.
 
 import (
 	"context"

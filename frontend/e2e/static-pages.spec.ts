@@ -4,7 +4,7 @@ import { expect, loginAs, test } from './fixtures'
 // (task run, then task e2e). The public pages need no session, so the
 // file opts every test out of the worker's storageState; the help leg
 // logs in with the worker identity via the dev provider (one
-// /api/auth hit; the gateway caps that bucket at 120/min per IP on
+// /api/auth hit; the gateway caps that bucket at 240/min per IP on
 // this dev stack, far tighter in production).
 // Credit lines are not asserted here on purpose: their presence
 // varies with the operator's .env, and unit tests own that logic.

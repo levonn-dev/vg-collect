@@ -1047,10 +1047,9 @@ func TestUnitFeed_ValidatesTabAndCursor(t *testing.T) {
 
 // TestUnitFeed_ValidatesLimitMinimum pins that GetFeed rejects a
 // sub-minimum limit with 400 invalid_param before social is ever
-// called - api/bff.yaml declares minimum: 1 on feed's limit, but the
-// handler used to clamp only the maximum, so limit=0 passed straight
-// through. limit=1 (the minimum) must still be accepted and reach
-// social.Feed unchanged.
+// called - api/bff.yaml declares minimum: 1 on feed's limit. limit=1
+// (the minimum) must still be accepted and reach social.Feed
+// unchanged.
 func TestUnitFeed_ValidatesLimitMinimum(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
@@ -1623,17 +1622,14 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		}
 	})
 
-	// TestUnitExplore_RecentAndTop mid-page-break regression (review
-	// finding): round 1 examines its whole page without filling (A
-	// survives, B's owner is unlisted), so it advances by the full
-	// page as usual - offset 2 for round 2. Round 2 then fills the
-	// limit at C, the FIRST of its two rows, leaving D - also listed -
-	// unexamined in that same page's tail. The old code advanced pos
-	// by round 2's WHOLE consumed page (to 4) before ever gating,
-	// regardless of where the fill happened, so next_offset pointed
-	// past D and it was skipped forever. next_offset must instead
-	// resume just past C (offset 3, at D), the last row actually
-	// examined-and-included.
+	// TestUnitExplore_RecentAndTop mid-page-break: round 1 examines
+	// its whole page without filling (A survives, B's owner is
+	// unlisted), so it advances by the full page as usual - offset 2
+	// for round 2. Round 2 then fills the limit at C, the FIRST of
+	// its two rows, leaving D - also listed - unexamined in that same
+	// page's tail. next_offset must resume just past C (offset 3, at
+	// D), the last row actually examined-and-included, not past the
+	// whole page - advancing past D that way would skip it forever.
 	t.Run("recent: mid-page fill resumes past the last INCLUDED row, not the whole page (regression)", func(t *testing.T) {
 		ownerA, ownerB, ownerC, ownerD := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 		shelfA := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "A", Slug: "a", OwnerId: ownerA, Visibility: "listed", CoverUrls: []string{}}
@@ -1664,11 +1660,11 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 			gotOffsets = append(gotOffsets, offset)
 			switch calls {
 			case 1:
-				// total=5: one more row exists past D, so the buggy
-				// arithmetic's wrong resume point (4, past D) and the
-				// fixed one (3, at D) are both "more data left" - the
-				// bug's symptom is a present-but-wrong next_offset
-				// that skips D, not a falsely-absent one.
+				// total=5: one more row exists past D, so a resume
+				// point of 4 (past D) and one of 3 (at D) both read
+				// as "more data left" - this total makes the failure
+				// mode a present-but-wrong next_offset that skips D,
+				// not a falsely-absent one.
 				return []collectionapi.SharedShelfSummary{shelfA, shelfB}, 5, nil
 			case 2:
 				return []collectionapi.SharedShelfSummary{shelfC, shelfD}, 5, nil
@@ -1862,10 +1858,9 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 // TestUnitExplore_ValidatesLimitAndOffsetMinimum pins that
 // GetExplore's sort=recent branch rejects a sub-minimum limit or a
 // negative offset with 400 invalid_param before any upstream call -
-// api/bff.yaml declares minimum: 1 on limit and minimum: 0 on offset,
-// but the handler used to clamp only the maximum, so limit=0 or
-// offset=-1 passed straight through. limit=1 (the minimum) must still
-// be accepted and reach the upstream collection call.
+// api/bff.yaml declares minimum: 1 on limit and minimum: 0 on offset.
+// limit=1 (the minimum) must still be accepted and reach the upstream
+// collection call.
 func TestUnitExplore_ValidatesLimitAndOffsetMinimum(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
@@ -1912,8 +1907,7 @@ func TestUnitExplore_ValidatesLimitAndOffsetMinimum(t *testing.T) {
 }
 
 // --- Direct pins for the ID-collection helper family (two
-// dedupe-builders, three index-builders) below, written before
-// converting them to share generics. dedupedCommentAuthorIDs
+// dedupe-builders, three index-builders) below. dedupedCommentAuthorIDs
 // deliberately filters uuid.Nil (purged/anonymized comment authors -
 // see rawComment's own doc comment above); shelfSocialByID must keep
 // returning a POINTER map because a missing key reading back nil, not
@@ -1923,10 +1917,10 @@ func TestUnitExplore_ValidatesLimitAndOffsetMinimum(t *testing.T) {
 // fields absent rather than zeroed). TestUnitShelfComments_AuthorHydration
 // above and the explore/feed suites elsewhere in this file already
 // exercise these functions indirectly through full HTTP routes; these
-// five are the direct, single-function pins a shared-generic
-// conversion needs so a naive reuse (a filterless dedupe, or a
-// value-typed index) fails a fast unit test instead of only a full
-// composition test three call sites away.
+// five are the direct, single-function pins their shared generics
+// (dedupedIDs, indexByID, indexByIDPtr) need so a naive reuse (a
+// filterless dedupe, or a value-typed index) fails a fast unit test
+// instead of only a full composition test three call sites away.
 
 func TestUnitDedupedCommentAuthorIDs_FiltersNilAndDedupesInFirstSeenOrder(t *testing.T) {
 	alice, bob := uuid.New(), uuid.New()
@@ -2003,12 +1997,11 @@ func TestUnitShelfSummariesByID_IndexesByShelfID(t *testing.T) {
 // TestUnitCommentByID_IndexesByCommentID pins hydrateFeed's inline
 // commentByID map-build (no standalone named function - it has only
 // the one call site, unlike cardsByID/shelfSummariesByID/
-// shelfSocialByID above), converted to indexByID with the exact same
-// closure shape hydrateFeed itself now uses. A value map is correct
-// here: commentByID's one reader is an `if c, ok := ...; ok` guarded
-// lookup (TestUnitFeed_CommentExcerpts exercises it end to end), so
-// unlike shelfSocialByID there is no nil-on-miss contract to
-// preserve.
+// shelfSocialByID above): indexByID with the exact same closure shape
+// hydrateFeed itself uses. A value map is correct here: commentByID's
+// one reader is an `if c, ok := ...; ok` guarded lookup
+// (TestUnitFeed_CommentExcerpts exercises it end to end), so unlike
+// shelfSocialByID there is no nil-on-miss contract to preserve.
 func TestUnitCommentByID_IndexesByCommentID(t *testing.T) {
 	c1, c2 := uuid.New(), uuid.New()
 	comments := []socialapi.Comment{

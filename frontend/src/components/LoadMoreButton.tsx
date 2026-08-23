@@ -20,8 +20,7 @@ interface LoadMoreButtonProps {
 }
 
 // LoadMoreButton renders nothing once the query has no next page, so
-// callers drop the `{query.hasNextPage && ...}` guard they used to
-// need around it.
+// callers need no `{query.hasNextPage && ...}` guard around it.
 export default function LoadMoreButton({ query, className }: LoadMoreButtonProps) {
   if (!query.hasNextPage) return null
   return (

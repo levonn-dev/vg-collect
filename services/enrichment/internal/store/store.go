@@ -635,12 +635,12 @@ func (s *Store) ListUnmatchedProducts(ctx context.Context, limit, offset int) ([
 // the reprojection is read-cheap (Mongo reads plus a DeepEqual diff gate; a
 // provider call fires only for the missing/nil-table raw set, which
 // drains to zero) so sweeping the whole catalog is the honest shape.
-// Unlike the retired missing-release-dates query it does not filter on
-// the release table - reprojection rebuilds each projection from the raw
-// payload and writes only when it actually changed, so already-healed
-// products must still be revisited (any future projection-logic change
-// then self-deploys on the very next reprojection, instead of waiting for a
-// capped window to drain past them).
+// It does not filter on the release table: reprojection rebuilds each
+// projection from the raw payload and writes only when it actually
+// changed, so already-healed products must still be revisited (any
+// future projection-logic change then self-deploys on the very next
+// reprojection, instead of waiting for a capped window to drain past
+// them).
 func (s *Store) ListIGDBProducts(ctx context.Context) ([]Product, error) {
 	return findAll[Product](ctx, s.db.Collection(colProducts),
 		bson.D{{Key: "igdb", Value: bson.D{{Key: "$exists", Value: true}}}},

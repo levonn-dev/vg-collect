@@ -265,9 +265,9 @@ func TestProduct_SubdocUpdates(t *testing.T) {
 	}
 }
 
-// Mapping writes are identity moves now: a taken (game, platform,
-// listing) slot surfaces ErrIdentityTaken instead of a generic error,
-// clears set the walk hold, and any set lifts it.
+// Mapping writes are identity moves: a taken (game, platform,
+// listing) slot surfaces ErrIdentityTaken, clears set the walk hold,
+// and any set lifts it.
 func TestProduct_MappingWritesHoldAndIdentityTaken(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
@@ -343,8 +343,6 @@ func TestProduct_ListIGDBProducts(t *testing.T) {
 			{Key: "igdb", Value: bson.D{
 				{Key: "game_id", Value: gameID}, {Key: "name", Value: "Game " + id},
 				{Key: "fetched_at", Value: now},
-				// A populated release table: the retired missing-dates
-				// query skipped this shape; the reprojection walk must not.
 				{Key: "release_dates", Value: bson.A{
 					bson.D{{Key: "region", Value: "japan"}, {Key: "date", Value: now}},
 				}},

@@ -19,10 +19,9 @@ import (
 var _ api.ServerInterface = (*Handlers)(nil)
 
 // GetCommentsByIds' and GetShelvesSocialSummary's ids params both
-// declare maxItems: 100 in api/social.yaml; that bound is now a
-// contract constraint specval's request-validation middleware
-// enforces ahead of these handlers (the former handler-layer
-// maxCommentIDsBatch/maxShelfIDsBatch duplicates are gone).
+// declare maxItems: 100 in api/social.yaml; specval's
+// request-validation middleware enforces that bound ahead of these
+// handlers.
 
 func (h *Handlers) Follow(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID) {
 	me, bearer, ok := h.caller(w, r)
@@ -221,20 +220,15 @@ func (h *Handlers) CreateShelfComment(w http.ResponseWriter, r *http.Request, sh
 	if !ok {
 		return
 	}
-	// The generated type for the contract's inline requestBody schema
-	// (required: [body], minLength: 1, maxLength: 2000) replaces the
-	// former anonymous struct.
 	var req api.CreateShelfCommentJSONRequestBody
 	if !httpkit.DecodeBody(w, r, maxBodyBytes, &req) {
 		return
 	}
-	// minLength(1) is specval's job for a literal empty string, but it
-	// cannot reject a whitespace-only body (minLength counts raw
-	// characters); this trim-then-check guard is what actually does,
-	// and stays for that reason - semantic, not a mechanical duplicate
-	// of anything specval already covers. maxLength(2000)'s rune-count
-	// half is gone (specval enforces it ahead of this handler now), so
-	// this check only ever fires on the blank-after-trim case.
+	// minLength(1) is specval's job, but it cannot reject a
+	// whitespace-only body (minLength counts raw characters);
+	// TrimSpace catches what specval cannot. maxLength(2000) is
+	// entirely specval's job, so this only fires on the
+	// blank-after-trim case.
 	body := strings.TrimSpace(req.Body)
 	if body == "" {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "body must not be blank")

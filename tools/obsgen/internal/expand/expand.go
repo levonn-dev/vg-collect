@@ -26,10 +26,9 @@ func Substitute(s, service string) string {
 // serviceDisplayNames overrides capitalize's plain first-letter
 // fallback for a service whose {Service} form is not just its name
 // capitalized: bff is an acronym, not a plain word, so it must render
-// "BFF", not "Bff" - the owner ruling this table exists for. Add an
-// entry here only when capitalize's fallback is wrong for that service
-// - every other service's {Service} form still comes from capitalize
-// alone.
+// "BFF", not "Bff". Add an entry here only when capitalize's fallback
+// is wrong for that service - every other service's {Service} form
+// still comes from capitalize alone.
 var serviceDisplayNames = map[string]string{
 	"bff": "BFF",
 }

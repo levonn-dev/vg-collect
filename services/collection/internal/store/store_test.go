@@ -282,8 +282,9 @@ func wantNames(t *testing.T, got []store.Entry, want ...string) {
 
 // insertEntryWithRegion creates a minimal product-backed entry with
 // region overridden - free text or a known value, per the caller. No
-// raw INSERT needed: the CHECK that used to forbid free text is gone
-// (migration 000013), so CreateEntry accepts it directly.
+// raw INSERT needed: region has no CHECK restricting it to known
+// values (open-world since migration 000013), so CreateEntry accepts
+// it directly.
 func insertEntryWithRegion(t *testing.T, s *store.Store, region string) store.Entry {
 	t.Helper()
 	e := baseEntry(uuid.New())

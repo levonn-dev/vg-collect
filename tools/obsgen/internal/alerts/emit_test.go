@@ -65,13 +65,13 @@ func TestEmit_RealRuleByteFixture(t *testing.T) {
 	}
 }
 
-// TestEmit_ServiceDisplayNameAcronym pins the owner-ruled exception to
+// TestEmit_ServiceDisplayNameAcronym pins the acronym exception to
 // capitalize's plain first-letter-uppercase fallback: "bff" is an
 // acronym, so its {Service} form must render "BFF", not "Bff" - "auth"
 // stands in for the general case, which still gets plain capitalize
 // ("Auth"). Reuses templates()' real pdb_budget entry (title:
-// "{Service} disruption budget exhausted", the exact field this
-// exception was ruled for) rather than a one-off fixture; pdb_budget
+// "{Service} disruption budget exhausted", the exact field the
+// exception applies to) rather than a one-off fixture; pdb_budget
 // carries no panel_ref (see templates()' own comment), so this model
 // needs no dashboards/PanelIndex setup at all. pdb_budget's expr field
 // carries the {service} lowercase form too (the poddisruptionbudget

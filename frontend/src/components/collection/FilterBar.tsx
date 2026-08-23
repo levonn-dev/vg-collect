@@ -32,10 +32,10 @@ interface FilterBarProps {
   onChange: (next: ListState) => void
 }
 
-// FilterBar renders only the seven chip fieldsets now - sort, order,
-// group, and Clear filters moved to ListControls (the always-visible
-// controls row above this disclosure). Collection.tsx mounts this
-// component only while its Filters toggle is open.
+// FilterBar renders the nine filter fieldsets; sort, order, group, and
+// Clear filters live in ListControls (the always-visible controls row
+// above this disclosure). Collection.tsx mounts this component only
+// while its Filters toggle is open.
 export default function FilterBar({ state, platforms, tags, developers = [], publishers = [], onChange }: FilterBarProps) {
   const { t, i18n } = useLingui()
   function toggled<T>(list: T[], v: T): T[] {

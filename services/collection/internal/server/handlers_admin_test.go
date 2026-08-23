@@ -389,10 +389,9 @@ func TestUnitInternalResnapshot_LocalizedTrio(t *testing.T) {
 	}
 }
 
-// A plain user bearer is refused on resnapshot now (tightened from
-// any valid JWT): an all-nil stub store/enrichment panics if the
-// handler ever reaches past the guard, so a silent bypass fails
-// loudly rather than passing.
+// A plain user bearer is refused on resnapshot: an all-nil stub
+// store/enrichment panics if the handler ever reaches past the guard,
+// so a silent bypass fails loudly rather than passing.
 func TestUnitInternalResnapshot_NonAdminOrServiceIsForbidden(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", a.token(t, uuid.NewString()), nil)
@@ -414,10 +413,9 @@ func TestUnitInternalResnapshot_ServiceTokenIsAccepted(t *testing.T) {
 // ---- InternalRematchEntries ----
 
 // triggerRematch fires the entry rematch trigger and asserts the 202
-// the detached run answers with; the counts trio that used to ride
-// this response now lands in the completion log and the rematch.*
-// metrics instead (TestUnitRematchMetrics in telemetry_test.go pins
-// those).
+// the detached run answers with. The count trio lands in the
+// completion log and the rematch.* metrics (TestUnitRematchMetrics in
+// telemetry_test.go pins those), not the response.
 func triggerRematch(t *testing.T, srv *httptest.Server, bearer string) {
 	t.Helper()
 	resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", bearer, nil)
@@ -429,10 +427,9 @@ func triggerRematch(t *testing.T, srv *httptest.Server, bearer string) {
 
 // The rematch groups entries into (game, platform, region) triples,
 // resolves once per triple that has a non-compatible entry, repoints
-// only those entries, and detaches (202): the count trio that used to
-// ride the response now lands in the completion log and the
-// rematch.* metrics instead (TestUnitRematchMetrics). Second run is a
-// no-op (idempotence).
+// only those entries, and detaches (202); the count trio lands in the
+// completion log and the rematch.* metrics, not the response
+// (TestUnitRematchMetrics). Second run is a no-op (idempotence).
 func TestInternalRematchEntries_RepointsAndIsIdempotent(t *testing.T) {
 	productBase := uuid.New()
 	productJP := uuid.New()
@@ -958,14 +955,13 @@ func TestNormalizePlatforms_MatchesAliasesSkipsUnknownAdminOnly(t *testing.T) {
 	}
 }
 
-// TestNormalizePlatforms_ServiceToken pins the relaxed guard: a
-// service token (the nightly job's own credential, same as
-// normalize-regions and the entry rematch) now passes normalize-
-// platforms end to end rather than being turned away. Both
-// collaborators are wired with real (non-nil, no-op) stubs rather than
-// left nil, since a service token reaching a nil stub would panic
-// before this test could tell "reached the handler" apart from
-// "the guard let it through and it actually ran".
+// TestNormalizePlatforms_ServiceToken pins the admin-or-service
+// guard: a service token (the nightly job's own credential, same as
+// normalize-regions and the entry rematch) passes normalize-platforms
+// end to end. Both collaborators are wired with real (non-nil, no-op)
+// stubs rather than left nil, since a service token reaching a nil
+// stub would panic before this test could tell "reached the handler"
+// apart from "the guard let it through and it actually ran".
 func TestNormalizePlatforms_ServiceToken(t *testing.T) {
 	st := &stubStore{listNameOnlyPlatformEntries: func(context.Context) ([]store.PlatformEntryRef, error) { return nil, nil }}
 	enr := &stubEnrichment{listPlatforms: func(context.Context, string) ([]enrichmentclient.Platform, error) { return nil, nil }}

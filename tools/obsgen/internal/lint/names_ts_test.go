@@ -8,10 +8,9 @@ import (
 )
 
 // TestKnown_TypeScriptExtractsRepresentativeRegistrations proves
-// names.Known's TypeScript pass (dashboard-linter design, section
-// 13(f)) against a fixture tree covering every shape real
-// frontend/src/telemetryImpl.ts registrations use, plus the one
-// boundary case that is not a registration at all: a multi-line
+// names.Known's TypeScript pass against a fixture tree covering every
+// shape real frontend/src/telemetryImpl.ts registrations use, plus the
+// one boundary case that is not a registration at all: a multi-line
 // options object whose unit sits beside a nested advice object (proves
 // the bracket-depth tracker survives nested {}/[] without ending the
 // call early), a unitless counter, a plain (non-interpolated) backtick

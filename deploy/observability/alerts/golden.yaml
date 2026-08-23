@@ -8,28 +8,25 @@ services: [auth, bff, collection, enrichment, social, user]
 # up is Prometheus's own scrape-health series. All three come from
 # infrastructure this repo scrapes but never registers metrics for
 # itself, so no scan - Go or TypeScript - could ever discover them.
-# (Frontend browser-telemetry metrics, vg_frontend_, used to sit here
-# too: the lint name scan now has a TypeScript pass over frontend/src
-# that resolves them directly, so they carry no exemption.)
+# (Frontend browser-telemetry metrics, vg_frontend_, need no exemption
+# here: the lint name scan's TypeScript pass over frontend/src
+# resolves them directly.)
 external_metric_prefixes: [kube_, node_, up]
 templates:
-  # Most fields below are lifted verbatim from vg-social-down (social
-  # was this template's only instantiator before the availability
-  # golden panel existed): title uses the lowercase {service} form
-  # (today's title is "social service down", not "Social service
-  # down"), severity is page (not crit - this rule set only ever uses
-  # page/warn). summary is the one field NOT lifted from social's own
-  # wording: it names the datastore-neutral truth ("metrics exporters",
-  # not "postgres exporter") because bff (Valkey only, no Postgres) and
-  # enrichment (Mongo+Valkey, no Postgres) also instantiate this
-  # template now - alerts/social.yaml carries social's own original
-  # wording back as an explicit summary override instead, so
-  # vg-social-down itself stays field-identical to what was live before
-  # this template grew a shared runbook section and panel. runbook and
-  # panel_ref now point at that shared golden-block section/panel
+  # Most fields below match vg-social-down's original values exactly
+  # (social was this template's first instantiator): title uses the
+  # lowercase {service} form ("social service down", not "Social
+  # service down"); severity is page (not crit - this rule set only
+  # uses page/warn). summary is the one field that departs from
+  # social's wording: it names the datastore-neutral truth ("metrics
+  # exporters", not "postgres exporter") because bff (Valkey only, no
+  # Postgres) and enrichment (Mongo+Valkey, no Postgres) also
+  # instantiate this template; alerts/social.yaml carries social's own
+  # wording back as an explicit summary override. runbook and
+  # panel_ref point at the shared golden-block section/panel
   # (dashboards/golden.yaml's Availability panel; stack.md's "Service
-  # down" section) instead of social's own runbook page, since every
-  # service instantiates this template with the identical query shape.
+  # down" section), since every service instantiates this template
+  # with the identical query shape.
   availability:
     uid: vg-{service}-down
     title: "{service} service down"

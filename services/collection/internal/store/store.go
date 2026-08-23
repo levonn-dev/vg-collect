@@ -55,20 +55,15 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
 }
 
-// scanAll drains rows into a slice, closing them once done. Call
-// sites across this package predate scanAll disagreeing on two
-// independent axes that must survive extraction: seed is the
-// zero-row starting value (nil for some readers, []T{} for others -
-// some callers distinguish a nil result from an empty one on the
-// wire or in a store-level contract), and op, when non-empty, wraps a
-// trailing rows.Err() under the same "store: <op>: %w" text that
-// call site's Query-issue error already uses (callers passing ""
-// report rows.Err() raw alongside whatever partial slice had already
-// been assembled, as they did before). scan keeps its own
-// error-wrap text, so a scan failure reads exactly as it did before
-// extraction; on a scan error this always returns (nil, err)
-// regardless of seed or op, matching every site's original
-// discard-partial-results behavior.
+// scanAll drains rows into a slice, closing them once done. seed is
+// the zero-row starting value: callers pass nil or []T{} depending on
+// whether they distinguish a nil result from an empty one on the wire
+// or in a store-level contract. op, when non-empty, wraps a trailing
+// rows.Err() under "store: <op>: %w"; passed as "", rows.Err() is
+// returned raw alongside whatever partial slice had already been
+// assembled. scan keeps its own error-wrap text. On a scan error this
+// always returns (nil, err) regardless of seed or op, discarding
+// partial results.
 func scanAll[T any](rows pgx.Rows, seed []T, op string, scan func(pgx.Rows) (T, error)) ([]T, error) {
 	defer rows.Close()
 	out := seed

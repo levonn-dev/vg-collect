@@ -45,8 +45,6 @@ func newTestHandlersWithEnrichment(t *testing.T, enrich *stubEnrichment) (*Handl
 	return h, &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
 }
 
-// doAuthed drives method/path through h's router carrying env's sealed
-// session cookie.
 func doAuthed(t *testing.T, h *Handlers, env *testEnv, method, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	r := httptest.NewRequest(method, path, nil)

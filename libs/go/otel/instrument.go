@@ -6,10 +6,8 @@ import "go.opentelemetry.io/otel/metric"
 // seconds, shared by every multi-minute background-job duration
 // histogram in the fleet (collection's entry rematch, enrichment's
 // catalog refresh). The SDK's default boundaries top out at 10s and
-// would flatten a multi-minute run into the last bucket. Previously
-// each histogram hand-copied this tuple with only a comment tying
-// the copies together; treat this as read-only, since Histogram
-// passes it straight through to the SDK.
+// would flatten a multi-minute run into the last bucket. Treat this
+// as read-only: Histogram passes it straight through to the SDK.
 var DurationBuckets = []float64{1, 5, 15, 60, 300, 900, 1800}
 
 // Counter registers an Int64Counter on m with one fixed argument
@@ -19,9 +17,9 @@ var DurationBuckets = []float64{1, 5, 15, 60, 300, 900, 1800}
 // line copied between services compiled cleanly while silently
 // swapping which string landed in WithDescription versus WithUnit.
 // Registration is best-effort by convention across every caller: a
-// non-nil error means the returned counter is nil, which Count (and
-// every emission site before Count existed) treats as a no-op, so
-// callers log the error and keep going rather than fail startup.
+// non-nil error means the returned counter is nil, which Count
+// treats as a no-op, so callers log the error and keep going rather
+// than fail startup.
 func Counter(m metric.Meter, name, description, unit string) (metric.Int64Counter, error) {
 	return m.Int64Counter(name, metric.WithDescription(description), metric.WithUnit(unit))
 }

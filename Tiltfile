@@ -56,8 +56,7 @@ SECRET_KEYS = {k: v for k, v in {
     'auth/twitch-client-id': ENV.get('TWITCH_CLIENT_ID', ''),
     'auth/twitch-client-secret': ENV.get('TWITCH_CLIENT_SECRET', ''),
     # The catalog-refresh and entry-rematch CronJobs' shared bootstrap
-    # secret (POST /internal/service-token); auth is its only consumer
-    # now (enrichment's own internal-refresh-token retired with it).
+    # secret (POST /internal/service-token); auth is its only consumer.
     'auth/internal-service-token': ENV.get('AUTH_INTERNAL_SERVICE_TOKEN', ''),
     'auth/internal-service-token-previous': ENV.get('AUTH_INTERNAL_SERVICE_TOKEN_PREVIOUS', ''),
     'bff/cookie-key': ENV.get('BFF_COOKIE_KEY', ''),
@@ -113,10 +112,8 @@ if ENV.get('TWITCH_CLIENT_ID', '') != '' and ENV.get('TWITCH_CLIENT_SECRET', '')
     _auth_set.append('providers.twitch.enabled=true')
 if _auth_set:
     _auth_set.append('env.oauthRedirectUrl=' + ENV.get('OAUTH_REDIRECT_URL', 'http://localhost:8090/api/auth/callback'))
-# Mirrors the old enrichment rotation wiring (retired with
-# internal-refresh-token): a staged previous value in .env means a
-# rotation is in flight, so tell the chart to accept it alongside the
-# current one.
+# A staged previous value in .env means a rotation is in flight, so
+# tell the chart to accept it alongside the current one.
 if ENV.get('AUTH_INTERNAL_SERVICE_TOKEN_PREVIOUS', '') != '':
     _auth_set.append('previousTokenEnabled=true')
 k8s_yaml(helm('deploy/charts/auth', name='auth', namespace='vgkeep', set=_auth_set))

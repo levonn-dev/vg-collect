@@ -133,9 +133,7 @@ func NewTestClient[T any](t *testing.T, h http.Handler, construct func(baseURL s
 }
 
 // DecodeJSON decodes resp's body as JSON into T, closing the body
-// once decoded (the trait that made this the surviving variant over
-// auth's original decode[T], which never closed it). Fails the test
-// on a decode error.
+// once decoded. Fails the test on a decode error.
 func DecodeJSON[T any](t *testing.T, resp *http.Response) T {
 	t.Helper()
 	defer func() { _ = resp.Body.Close() }()

@@ -1,11 +1,9 @@
 // Package metrictest installs an OpenTelemetry ManualReader over the
 // global MeterProvider for a test and hands back typed helpers for
-// reading what it collects. Five call sites across auth, collection,
-// enrichment, and user each hand-rolled this same install under three
-// different cleanup semantics; this package settles on restoring the
-// exact prior provider (shutting down the one it installed) - the
-// careful behavior enrichment and user already used - as the one
-// every adopter now gets.
+// reading what it collects. It replaces five call sites across auth,
+// collection, enrichment, and user that each hand-rolled this same
+// install; see Install for why cleanup restores the prior provider
+// rather than resetting to blank.
 package metrictest
 
 import (

@@ -34,8 +34,7 @@ type InvolvedCompany struct {
 
 // ReleaseDate is one row of the per-platform, per-region release
 // table. Platform and Region arrive unexpanded (raw IGDB ids; Region
-// is the release_region catalog id, mapped to a name via RegionName -
-// the live catalog is pinned in the probe ledger).
+// is the release_region catalog id, mapped to a name via RegionName).
 type ReleaseDate struct {
 	Date     int64 `json:"date,omitempty" bson:"date,omitempty"`
 	Platform int64 `json:"platform,omitempty" bson:"platform,omitempty"`

@@ -438,7 +438,7 @@ func (c *Client) ListSharedShelves(ctx context.Context, bearer string, ownerIDs 
 
 // SharedShelvesByIDs batch-resolves shelf summaries for hydration
 // (feed and Explore excerpts); ids without a resolvable (non-private)
-// shelf are simply absent from the answer.
+// shelf are absent from the answer.
 func (c *Client) SharedShelvesByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]collectionapi.SharedShelfSummary, error) {
 	resp, err := c.api.GetSharedShelvesByIdsWithResponse(ctx, &collectionapi.GetSharedShelvesByIdsParams{Ids: ids}, httpkit.BearerEditor(bearer))
 	if err != nil {

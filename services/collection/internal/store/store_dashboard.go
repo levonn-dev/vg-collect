@@ -143,13 +143,12 @@ func (s *Store) DashboardCounts(ctx context.Context, userID uuid.UUID, f Filters
 	if err != nil {
 		return DashboardCounts{}, fmt.Errorf("store: dashboard spend: %w", err)
 	}
-	// op "" here (unlike the ByPlatform block above): the original tail
-	// was a bare `return out, srows.Err()`, so a trailing rows.Err()
-	// failure reports its raw error AND keeps whatever out already
-	// held (Total/ByStatus/ByItemType/ByPlatform, plus every Spend row
-	// already scanned) - only a scan error discards out entirely, as
-	// the original did. seed []CurrencySpend{} is non-nil, so scanAll
-	// only ever returns a nil slice here via its own scan-closure
+	// op "" here (unlike the ByPlatform block above): a trailing
+	// rows.Err() failure reports its raw error while keeping whatever
+	// out already held (Total/ByStatus/ByItemType/ByPlatform, plus
+	// every Spend row already scanned); only a scan error discards out
+	// entirely. seed []CurrencySpend{} is non-nil, so scanAll only
+	// ever returns a nil slice here via its own scan-closure
 	// short-circuit; a nil spend is therefore an unambiguous signal
 	// that this was a scan error, not a trailing one.
 	spend, err := scanAll(srows, []CurrencySpend{}, "", func(r pgx.Rows) (CurrencySpend, error) {

@@ -3,10 +3,8 @@ import { useState } from 'react'
 type AvatarSize = 'sm' | 'md' | 'lg'
 
 // SIZES maps each named size to the exact box + initial-glyph classes
-// the three call sites used before this file existed: UserChip's
-// inline byline (sm, 24px), Layout's header identity chip (md, 32px),
-// Profile's page header (lg, 64px). Unifying them changes no pixel at
-// any of the three.
+// each call site needs: UserChip's inline byline (sm, 24px), Layout's
+// header identity chip (md, 32px), Profile's page header (lg, 64px).
 const SIZES: Record<AvatarSize, { box: string; text: string }> = {
   sm: { box: 'h-6 w-6', text: 'text-xs' },
   md: { box: 'h-8 w-8', text: 'text-sm' },
@@ -27,10 +25,9 @@ interface AvatarProps {
 // referrer-sensitive throttling), and a failed <img> never retries on
 // its own, so a failure must degrade to something stable instead of a
 // stuck blank. no-referrer sidesteps googleusercontent's
-// referrer-based rejections. Callers key the element by the url (as
-// they did before this was a shared component) so a changed avatar
-// remounts with a fresh attempt instead of staying stuck on a stale
-// failure.
+// referrer-based rejections. Callers key the element by the url so a
+// changed avatar remounts with a fresh attempt instead of staying
+// stuck on a stale failure.
 export default function Avatar({ url, label, size }: AvatarProps) {
   const [failed, setFailed] = useState(false)
   const { box, text } = SIZES[size]

@@ -1,10 +1,7 @@
-// Validator-path pins: each case drives a request through the FULL
+// Validator-path pins: each case drives a request through the full
 // handler stack (real router, real jwtauth, no hand-faked wiring) and
-// asserts the status + problem code specval's request-validation
-// middleware answers with. A case whose bound was already enforced by
-// a hand check passes both before and during the double-validation
-// window that follows wiring, then keeps passing once that hand check
-// is retired and specval alone enforces it.
+// asserts the status and problem code specval's request-validation
+// middleware answers with.
 package server_test
 
 import (
@@ -17,9 +14,8 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 )
 
-// TestValidatorPath_UpdateUser_HandleTooShort pins the Handle schema's
-// minLength(2) contract cap: today store.ValidHandle rejects it; once
-// specval wires in, minLength/pattern do.
+// TestValidatorPath_UpdateUser_HandleTooShort pins the Handle
+// schema's minLength(2) contract cap.
 func TestValidatorPath_UpdateUser_HandleTooShort(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{})
 	uid := uuid.NewString()

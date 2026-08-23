@@ -123,11 +123,9 @@ func New(st Store, col Collection, users Users, opts Options) *Handlers {
 	}
 }
 
-// count is kept as a named method (rather than inlining vgotel.Count
-// at each of its call sites in handlers.go) so every social handler
-// keeps counting through one instrument-plus-attribute call shape;
-// the nil guard and the Add itself now live in vgotel.Count, the
-// shared emission helper this method's own shape was lifted into.
+// count gives every social handler in handlers.go one
+// instrument-plus-attribute call shape instead of each site inlining
+// vgotel.Count directly; the nil guard lives in vgotel.Count.
 func (h *Handlers) count(ctx context.Context, c metric.Int64Counter, key, val string) {
 	vgotel.Count(ctx, c, attribute.String(key, val))
 }
@@ -143,10 +141,9 @@ func problem(w http.ResponseWriter, r *http.Request, status int, code, detail st
 }
 
 // internalError answers a 500 and logs its cause: op is the log's
-// stable "op" label, detail the response's human-readable text - the
-// two already varied independently across the fourteen inline copies
-// this collapses (e.g. op "list_comments" against detail "list
-// failed"). Same shape as collection's h.internalError and
+// stable "op" label, detail the response's human-readable text; the
+// two vary independently (e.g. op "list_comments" against detail
+// "list failed"). Same shape as collection's h.internalError and
 // enrichment's twin.
 func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, op, detail string, err error) {
 	h.logger.ErrorContext(r.Context(), "store error", "op", op, "err", err)

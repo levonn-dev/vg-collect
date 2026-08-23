@@ -62,7 +62,7 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 			ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, r *http.Request, errOpts nethttpmiddleware.ErrorHandlerOpts) {
 				// MatchedRoute is nil exactly when the spec has nothing to
 				// say about this request (unknown path, or a known path
-				// with a method the spec doesn't define for it) -- both
+				// with a method the spec doesn't define for it) - both
 				// the 404 and 405 cases the generated mux is responsible
 				// for, not specval.
 				if errOpts.MatchedRoute == nil {
@@ -76,7 +76,7 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 
 		// A shallow copy so DoNotValidateServers (which nils Servers on
 		// whatever *openapi3.T it is given) never mutates the caller's
-		// spec -- opts.Spec may be shared with, e.g., a self-hosted docs
+		// spec - opts.Spec may be shared with, e.g., a self-hosted docs
 		// endpoint that still wants its Servers field intact.
 		specCopy := *opts.Spec
 		specCopy.Servers = nil
@@ -97,7 +97,7 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 			// there is a body to cap: r.Body is nil for a bodyless
 			// request built by hand (e.g. http.NewRequest with a nil
 			// io.Reader, as every direct-ServeHTTP test harness in this
-			// repo does for a GET/DELETE) -- a real net/http server
+			// repo does for a GET/DELETE) - a real net/http server
 			// guarantees a non-nil Body instead, but MaxBytesReader
 			// itself does not check: it always returns a non-nil
 			// wrapper, and reading (or closing) that wrapper panics on a

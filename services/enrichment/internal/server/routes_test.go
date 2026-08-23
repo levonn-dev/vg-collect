@@ -68,16 +68,12 @@ func TestRoutes_APIRequiresBearer(t *testing.T) {
 		t.Fatalf("tokenless: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
 
-	// SearchCatalog is implemented now, so the authorized case needs
-	// real (stub) collaborators behind the
-	// router instead of newBareRouter's nil ones -- a nil Cache panics
-	// on the handler's first call rather than answering. Stub a game
-	// provider that serves this exact query and require a genuine 200
-	// with a non-empty result: that outcome is reachable only once the
-	// request has cleared the JWT boundary and been served by the live
-	// handler, which still pins this sub-case's original intent (a
-	// valid bearer token makes 401 impossible), just proven from the
-	// success side instead of via a permanent placeholder status.
+	// A nil Cache panics on the handler's first call, so the authorized
+	// case needs real (stub) collaborators behind the router instead of
+	// newBareRouter's nil ones. Stubbing a game provider that serves
+	// this exact query and requiring a genuine 200 with a non-empty
+	// result proves the request cleared the JWT boundary and was served
+	// by the live handler: a valid bearer token makes 401 impossible.
 	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
 		return []igdb.Game{{ID: 1029, Name: "Zelda"}}, nil
 	}}
@@ -106,9 +102,8 @@ func TestRoutes_APIRequiresBearer(t *testing.T) {
 	}
 }
 
-// The CronJob endpoint now rides the SAME blanket JWT guard as every
-// other route (the inverse of its pre-service-token JWT-exempt
-// posture): a bearer-less request 401s with missing_token before
+// /internal/refresh sits behind the same blanket JWT guard as every
+// other route: a bearer-less request 401s with missing_token before
 // InternalRefresh's own requireService check ever runs. The service-
 // token boundary itself (a service token 202s, a plain user token is
 // refused) is exercised fully in the handler tests.

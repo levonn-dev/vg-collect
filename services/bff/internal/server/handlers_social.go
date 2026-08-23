@@ -266,8 +266,7 @@ func (h *Handlers) ListShelfEntries(w http.ResponseWriter, r *http.Request, shel
 // SharedCardsByIDs call over the distinct non-nil author ids (mirrors
 // hydrateFeed's actor-card batching). Anything other than a 200 from
 // social (its own 400 on a malformed cursor included) relays
-// verbatim, unchanged from before this composition existed; cursor
-// and limit still pass straight through to social.
+// verbatim; cursor and limit still pass straight through to social.
 func (h *Handlers) ListShelfComments(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID, params api.ListShelfCommentsParams) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {
@@ -544,8 +543,8 @@ const feedFillRounds = 3
 // handler (api/bff.yaml declares both on the operation); a present
 // cursor still needs its own shape check here - the contract types it
 // as a bare string with no pattern, so only httpkit.ParseCursor knows
-// the <unixnano>.<uuid> shape a bad value must be rejected against,
-// same as before. socialclient.Feed collapses every non-200
+// the <unixnano>.<uuid> shape a bad value must be rejected against.
+// socialclient.Feed collapses every non-200
 // (including social's own 400 on a cursor it would have rejected too)
 // into one generic error, so an unvalidated bad cursor would otherwise
 // surface as a misleading 502.

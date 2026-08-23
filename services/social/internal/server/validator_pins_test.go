@@ -1,17 +1,13 @@
-// Validator-path pins: each case drives a request through the FULL
+// Validator-path pins: each case drives a request through the full
 // handler stack (real router, real jwtauth, no hand-faked wiring) and
-// asserts the status + problem code specval's request-validation
-// middleware answers with. A case whose bound was already enforced by
-// a hand check passes both before and during the double-validation
-// window that follows wiring, then keeps passing once that hand check
-// is retired and specval alone enforces it.
+// asserts the status and problem code specval's request-validation
+// middleware answers with.
 //
 // TestValidatorPath_CreateShelfComment_WhitespaceOnlyBody is the
-// blank-after-trim case: it stays green after specval wires in AND
-// after the mechanical maxLength half of CreateShelfComment's hand
-// check is removed, because the contract's minLength(1) on body
-// cannot reject a whitespace-only string - only the handler's own
-// trim-then-check guard can. That guard is semantic and is kept.
+// blank-after-trim case: the contract's minLength(1) on body cannot
+// reject a whitespace-only string, so only the handler's own
+// trim-then-check guard can - that guard is semantic, not a
+// validation duplicate, and stays.
 package server_test
 
 import (

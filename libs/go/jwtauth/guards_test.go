@@ -151,12 +151,10 @@ func TestCallerID_NoClaimsInContext(t *testing.T) {
 	}
 }
 
-// TestCallerID_BadSubject pins the reconciled detail string: collection
-// and social used to answer this branch with two different 500
-// details ("token subject is not a user id" vs "bad subject"); both
-// now answer with the former. auth mints every subject as a uuid, so
-// this branch is not known to be reachable in production, but the
-// wording still had to converge on one string.
+// TestCallerID_BadSubject pins the reconciled detail string every
+// caller now shares. auth mints every subject as a uuid, so this
+// branch is not known to be reachable in production, but the wording
+// still had to converge on one string.
 func TestCallerID_BadSubject(t *testing.T) {
 	env := newGuardEnv(t)
 	rec := &recordEW{}

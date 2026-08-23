@@ -14,10 +14,8 @@ import (
 // roles). Unknown and private answer the same 404 so resolution is
 // not an existence oracle. GetSharedProfilesByIds' ids (maxItems: 100)
 // and SearchSharedProfiles' q (maxLength: 64) size limits api/user.yaml
-// declares are contract constraints now enforced by specval's
-// request-validation middleware ahead of these handlers; neither
-// handler checks them directly any more (both were mechanical
-// duplicates of the contract bound once specval started enforcing it).
+// declares are enforced by specval's request-validation middleware
+// ahead of these handlers, so neither handler checks them directly.
 
 const searchLimit = 20
 

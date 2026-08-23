@@ -9,11 +9,10 @@ import (
 
 // Count adds 1 to c, tagged with attrs. c is nil-safe: every
 // service's New logs a registration failure once and keeps the nil
-// counter afterward, so every emission site used to repeat the same
-// "if c == nil { return }" guard by hand (originally generalized as
-// social's own count method); Count centralizes that guard so the
-// per-counter wrapper methods across every service can delegate to
-// it instead of restating it.
+// counter afterward, so every emission site needs the same
+// "if c == nil { return }" guard; Count centralizes it (generalized
+// from social's own count method) so the per-counter wrapper methods
+// across every service can delegate instead of restating it.
 func Count(ctx context.Context, c metric.Int64Counter, attrs ...attribute.KeyValue) {
 	if c == nil {
 		return

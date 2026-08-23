@@ -23,9 +23,9 @@ func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
 	})
 }
 
-// TestCardsByIDs is this package's smoke test: a happy path that
-// forwards the bearer and decodes the batch, and an upstream-error
-// path (a non-200 answer) that surfaces as a plain error.
+// TestCardsByIDs covers the happy path (forwards the bearer, decodes
+// the batch) and the upstream-error path (a non-200 answer) that
+// surfaces as a plain error.
 func TestCardsByIDs(t *testing.T) {
 	id := uuid.New()
 	var gotPath, gotAuth string

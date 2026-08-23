@@ -428,13 +428,10 @@ func TestPurgeUser_AnonymizeAndDelete(t *testing.T) {
 	_, _ = s.Like(ctx, other, leaverShelf, leaver, 200)
 	authored, _ := s.CreateComment(ctx, otherShelf, other, leaver, "leaver on other", 50)
 	received, _ := s.CreateComment(ctx, leaverShelf, leaver, other, "other on leaver", 50)
-	// A removed comment by other on other's shelf, removed BY leaver?
-	// Not possible (leaver is not that owner) - instead: other's
-	// comment on leaver's shelf removed by leaver, to exercise the
-	// deleted_by NULLing on rows that get hard-deleted anyway, plus a
-	// third-party row: other authored on other's own... keep it to the
-	// two shelves; the deleted_by case is covered by removing
-	// 'received' below.
+	// leaver, as the shelf owner, removes other's comment on leaver's
+	// own shelf; that row gets hard-deleted below regardless of
+	// deleted_by (TestPurgeUser_PreservesOtherModeratorAttribution
+	// covers the deleted_by-NULLing path on a comment that survives).
 	_, _ = s.DeleteComment(ctx, received.ID, leaver) // owner-removal: deleted_by = leaver
 
 	if err := s.PurgeUser(ctx, leaver); err != nil {

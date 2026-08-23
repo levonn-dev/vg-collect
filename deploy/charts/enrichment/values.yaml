@@ -37,12 +37,8 @@ fx:
 # endpoint with that bearer - the service validates JWTs only (the
 # NetworkPolicy admits only this CronJob and the known service
 # callers, and the gateway never routes there).
-# Secret rotation now happens at auth, not here: publish the new value
-# under auth's internalServiceToken store key and the old one under
-# internalServiceTokenPrevious, flip auth's previousTokenEnabled so it
-# accepts both while the two CronJobs still present the old value, and
-# once a run has gone green, drop the previous key and flip the flag
-# back off.
+# Secret rotation happens at auth: see the auth chart's
+# previousTokenEnabled for the procedure.
 refresh:
   schedule: "0 6 * * *"
   image: curlimages/curl:8.14.1

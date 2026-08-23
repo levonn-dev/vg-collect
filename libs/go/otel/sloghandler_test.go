@@ -111,11 +111,8 @@ func TestTraceHandler_WithGroup_TracePropagates(t *testing.T) {
 	}
 }
 
-// Pins the documented limitation: at Handle time an open WithGroup
-// group swallows the stamped IDs, so they land nested rather than top
-// level. The stdout leg lives with this (services never group the root
-// logger); the OTLP leg is unaffected because the SDK stamps trace
-// context onto the record itself from ctx.
+// Pins the documented limitation on traceContextHandler: an open
+// WithGroup group lands the stamped IDs nested, not top-level.
 func TestTraceHandler_WithGroup_IDsLandInsideGroup(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(vgotel.NewTraceContextHandler(slog.NewJSONHandler(&buf, nil))).WithGroup("ns")

@@ -1,9 +1,9 @@
 // Package jwtauthtest mints real, validator-accepted vgkeep access
 // tokens for tests: an in-process Ed25519 key and JWKS server stand in
 // for the auth service, so a suite can drive its real jwtauth
-// middleware without one running. Four services used to hand-roll this
-// same key/JWKS/mint boilerplate; this package replaces all four
-// copies with one.
+// middleware without one running. It replaces four services'
+// independently hand-rolled key/JWKS/mint boilerplate with one
+// implementation.
 package jwtauthtest
 
 import (
@@ -40,8 +40,7 @@ const kid = "test-key"
 // real signatures, verified through the real jwtauth.Validator, no
 // auth service required. Cheap to build (an in-process httptest
 // server, not a container), so unlike valkeytest's per-suite
-// singleton, a fresh Env per test is the norm - matching how every
-// adopted call site already worked before conversion.
+// singleton, a fresh Env per test is the norm.
 type Env struct {
 	// Validator is wired to this Env's JWKS server and the
 	// Issuer/Audience pair above: hand it to jwtauth's middleware, or

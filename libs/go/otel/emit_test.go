@@ -1,11 +1,8 @@
 package otel_test
 
-// TDD for the shared emission helpers: Count and Record generalize
-// the nil-guarded increment/observe every service's per-counter
-// wrapper method already implemented by hand (originally social's
-// count method, the pattern this lifts). A nil instrument - the
-// registered-failed case every service already tolerates - must be a
-// silent no-op, never a panic.
+// Tests for Count and Record. A nil instrument - the registered-
+// failed case every service already tolerates - must be a silent
+// no-op, never a panic.
 
 import (
 	"context"

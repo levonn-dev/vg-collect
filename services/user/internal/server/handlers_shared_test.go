@@ -140,8 +140,8 @@ func TestUnitSharedSearch_FoldedEmptyQuery_SkipsStore(t *testing.T) {
 	// underscores-only query folds to empty) short-circuits to an empty
 	// result before the store is touched -- the empty stubStore
 	// (searchListed left nil) proves it: a call would panic "unexpected
-	// SearchListed". See handlers_shared.go:66-69 (now shifted by the
-	// size-limit guard, but the same folded == "" branch).
+	// SearchListed". See SearchSharedProfiles' folded == "" branch in
+	// handlers_shared.go.
 	srv, a := newUnitServer(t, &stubStore{})
 	resp := do(t, "GET", srv.URL+"/shared/profiles/search?q=_", a.token(t, "viewer"), nil)
 	if resp.StatusCode != http.StatusOK {

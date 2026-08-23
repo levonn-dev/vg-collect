@@ -50,9 +50,7 @@ func TestUnitListPlatforms_JoinsAliasesSortsAndCaches(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	// The alias-less row must serialize aliases as [], never null: the
-	// contract types it a required string[] and the picker filters over
-	// it with no null guard.
+	// Dreamcast's alias-less row (see above) must serialize as [], never null.
 	if body := rec.Body.String(); !strings.Contains(body, `"aliases":[]`) || strings.Contains(body, `"aliases":null`) {
 		t.Fatalf("alias-less platform must serialize aliases:[] not null: %s", body)
 	}
