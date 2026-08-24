@@ -13,11 +13,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauthtest"
-	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
 	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/user/internal/server"
@@ -29,33 +27,7 @@ import (
 // (Go test packages can't share helpers across packages).
 func newTestStore(t *testing.T) *store.Store {
 	t.Helper()
-	ctx := context.Background()
-	url := pgtest.URL(t)
-	// Reset: drop everything the previous test left (schema_migrations
-	// included) and re-run the embedded migrations, so each test opens
-	// on a fresh, fully migrated database - migration-seeded rows and
-	// all. Two Execs because pgx's extended protocol takes one
-	// statement at a time.
-	conn, err := pgx.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range []string{"DROP SCHEMA public CASCADE", "CREATE SCHEMA public"} {
-		if _, err := conn.Exec(ctx, stmt); err != nil {
-			_ = conn.Close(ctx)
-			t.Fatal(err)
-		}
-	}
-	_ = conn.Close(ctx)
-	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	pool, err := pgkit.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
-	return store.New(pool)
+	return store.New(pgtest.FreshPool(t, migrations.FS, "."))
 }
 
 type authEnv struct {
@@ -78,7 +50,7 @@ func newTestServer(t *testing.T) (*httptest.Server, authEnv) {
 	t.Helper()
 	st := newTestStore(t)
 	a := newAuthEnv(t)
-	h := server.New(st, time.Hour)
+	h := server.New(st, time.Hour, server.Options{})
 	router, err := server.NewRouter(h, a.v, slog.Default(), func(context.Context) error { return nil })
 	if err != nil {
 		t.Fatal(err)
@@ -150,6 +122,29 @@ func TestUpsert_BadRequest(t *testing.T) {
 	}
 }
 
+// TestUpsertUser_InvalidAvatarUrlStoresAvatarless pins the drop-not-
+// fail handling of a bad OIDC picture claim: unlike UpdateUser (which
+// 400s), the login-path upsert has no browser to hand a 400 back to,
+// so an invalid avatar_url must never fail the account create - it is
+// stored as absent instead.
+func TestUpsertUser_InvalidAvatarUrlStoresAvatarless(t *testing.T) {
+	srv, a := newTestServer(t)
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc:auth", "service"),
+		map[string]string{"email": "badavatar@example.com", "display_name": "Bad Avatar", "avatar_url": "ftp://not-http"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (an invalid avatar_url must never fail the login upsert)", resp.StatusCode)
+	}
+	var got struct {
+		AvatarURL *string `json:"avatar_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.AvatarURL != nil {
+		t.Fatalf("avatar_url = %q, want nil (invalid claim dropped, not stored)", *got.AvatarURL)
+	}
+}
+
 func TestHealthEndpointsUnauthenticated(t *testing.T) {
 	srv, _ := newTestServer(t)
 	for _, path := range []string{"/healthz", "/readyz"} {
@@ -199,7 +194,7 @@ func TestUpsert_MalformedJSON(t *testing.T) {
 
 func TestReadyz_FailsWhenHealthcheckFails(t *testing.T) {
 	a := newAuthEnv(t)
-	h := server.New(nil, time.Hour) // store is nil; health check errors before any store call
+	h := server.New(nil, time.Hour, server.Options{}) // store is nil; health check errors before any store call
 	router, err := server.NewRouter(h, a.v, slog.Default(), func(context.Context) error {
 		return errors.New("db down")
 	})
@@ -497,7 +492,7 @@ func (s *stubStore) SearchListed(ctx context.Context, foldedQuery string, limit 
 func newUnitServer(t *testing.T, st server.Store) (*httptest.Server, authEnv) {
 	t.Helper()
 	a := newAuthEnv(t)
-	h := server.New(st, time.Hour)
+	h := server.New(st, time.Hour, server.Options{})
 	router, err := server.NewRouter(h, a.v, slog.Default(), func(context.Context) error { return nil })
 	if err != nil {
 		t.Fatal(err)

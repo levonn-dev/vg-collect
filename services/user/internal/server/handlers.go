@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/url"
 
@@ -18,6 +17,16 @@ import (
 )
 
 var _ api.ServerInterface = (*Handlers)(nil)
+
+// validAvatarURL reports whether s is an absolute http(s) URL - a
+// structural check the contract's string schema cannot express itself
+// (length is specval's job, maxLength 2048). Shared by UpdateUser,
+// which 400s the caller on failure, and UpsertUser, which drops the
+// value instead (see its own comment for why).
+func validAvatarURL(s string) bool {
+	parsed, err := url.Parse(s)
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
+}
 
 func (h *Handlers) UpsertUser(w http.ResponseWriter, r *http.Request) {
 	claims, _ := jwtauth.FromContext(r.Context())
@@ -38,15 +47,28 @@ func (h *Handlers) UpsertUser(w http.ResponseWriter, r *http.Request) {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "email and display_name are required")
 		return
 	}
+	// avatar_url arrives verbatim from the OIDC picture claim (see
+	// services/auth/internal/oidc/rp.go), so a misbehaving provider can
+	// send anything. This endpoint has no browser on the other end to
+	// hand a 400 to - it is the login path itself - so an invalid claim
+	// is dropped (stored as absent) rather than failing the login.
+	avatarURL := req.AvatarUrl
+	invalidAvatar := avatarURL != nil && *avatarURL != "" && !validAvatarURL(*avatarURL)
+	if invalidAvatar {
+		avatarURL = nil
+	}
 	hint := ""
 	if req.LocaleHint != nil {
 		hint = *req.LocaleHint
 	}
 	currency, currencySource := currencyForLocale(hint)
-	u, created, err := h.store.Upsert(r.Context(), req.Email, req.DisplayName, req.AvatarUrl, currency)
+	u, created, err := h.store.Upsert(r.Context(), req.Email, req.DisplayName, avatarURL, currency)
 	if err != nil {
 		h.internalError(w, r, "upsert", "upsert failed", err)
 		return
+	}
+	if invalidAvatar {
+		h.logger.WarnContext(r.Context(), "upsert avatar_url invalid; stored without one", "user_id", u.ID.String())
 	}
 	outcome := "existing"
 	if created {
@@ -56,7 +78,7 @@ func (h *Handlers) UpsertUser(w http.ResponseWriter, r *http.Request) {
 		if h.currencySeeds != nil {
 			h.currencySeeds.Add(r.Context(), 1, metric.WithAttributes(attribute.String("source", currencySource)))
 		}
-		slog.InfoContext(r.Context(), "account created",
+		h.logger.InfoContext(r.Context(), "account created",
 			"user_id", u.ID.String(), "preferred_currency", u.PreferredCurrency, "currency_source", currencySource)
 	}
 	if h.accountUpserts != nil {
@@ -116,16 +138,13 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request, userId ope
 	visibility := (*string)(req.ProfileVisibility)
 	landingPage := (*string)(req.LandingPage)
 	// avatar_url's length cap is the contract's job (maxLength 2048,
-	// enforced by specval ahead of this handler). The scheme/host
-	// parse stays hand-written: it is a structural check the string
-	// schema cannot express. Empty stays exempt - the documented
-	// clear-the-field convention.
-	if req.AvatarUrl != nil && *req.AvatarUrl != "" {
-		parsed, err := url.Parse(*req.AvatarUrl)
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-			problem(w, r, http.StatusBadRequest, "invalid_body", "avatar_url must be an http(s) URL")
-			return
-		}
+	// enforced by specval ahead of this handler); validAvatarURL is the
+	// scheme/host check, a structural check the string schema cannot
+	// express. Empty stays exempt - the documented clear-the-field
+	// convention.
+	if req.AvatarUrl != nil && *req.AvatarUrl != "" && !validAvatarURL(*req.AvatarUrl) {
+		problem(w, r, http.StatusBadRequest, "invalid_body", "avatar_url must be an http(s) URL")
+		return
 	}
 	// preferred_currency's pattern (^[A-Z]{3}$) is now specval's job:
 	// an exact mirror of CurrencyCode's contract pattern, no gap.
@@ -149,9 +168,10 @@ func (h *Handlers) UpdateUser(w http.ResponseWriter, r *http.Request, userId ope
 	writeJSON(w, http.StatusOK, toAPI(u))
 }
 
-// DeleteUser is one leg of account deletion; the collection purge and
-// auth wipe are the caller's (bff's) other legs. Idempotent so an
-// interrupted deletion can be retried to convergence.
+// DeleteUser is the last leg of account deletion; the collection
+// purge, the social graph purge, and the auth identity wipe are the
+// caller's (bff's) other legs, run in that order ahead of this one.
+// Idempotent so an interrupted deletion can be retried to convergence.
 func (h *Handlers) DeleteUser(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID) {
 	claims, _ := jwtauth.FromContext(r.Context())
 	if claims.Subject != userId.String() {
@@ -171,7 +191,7 @@ func (h *Handlers) DeleteUser(w http.ResponseWriter, r *http.Request, userId ope
 	if h.accountDeletes != nil {
 		h.accountDeletes.Add(r.Context(), 1, metric.WithAttributes(attribute.String("outcome", outcome)))
 	}
-	slog.InfoContext(r.Context(), "account deleted", "user_id", userId.String(), "outcome", outcome)
+	h.logger.InfoContext(r.Context(), "account deleted", "user_id", userId.String(), "outcome", outcome)
 	w.WriteHeader(http.StatusNoContent)
 }
 

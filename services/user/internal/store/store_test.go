@@ -7,9 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
-	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
 	"github.com/levonn-dev/vgkeep/services/user/internal/store"
 	"github.com/levonn-dev/vgkeep/services/user/migrations"
@@ -17,33 +15,7 @@ import (
 
 func newTestStore(t *testing.T) *store.Store {
 	t.Helper()
-	ctx := context.Background()
-	url := pgtest.URL(t)
-	// Reset: drop everything the previous test left (schema_migrations
-	// included) and re-run the embedded migrations, so each test opens
-	// on a fresh, fully migrated database - migration-seeded rows and
-	// all. Two Execs because pgx's extended protocol takes one
-	// statement at a time.
-	conn, err := pgx.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range []string{"DROP SCHEMA public CASCADE", "CREATE SCHEMA public"} {
-		if _, err := conn.Exec(ctx, stmt); err != nil {
-			_ = conn.Close(ctx)
-			t.Fatal(err)
-		}
-	}
-	_ = conn.Close(ctx)
-	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	pool, err := pgkit.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
-	return store.New(pool)
+	return store.New(pgtest.FreshPool(t, migrations.FS, "."))
 }
 
 func TestUpsert_FillsOnCreateOnly(t *testing.T) {
@@ -298,6 +270,29 @@ func TestUpsert_MintsAndDedupesHandles(t *testing.T) {
 	}
 }
 
+// TestUpsert_MintsHandleAwayFromReservedWord pins the live signup
+// path's reserved-handle avoidance (Upsert's own base+"1" branch, not
+// the separate migration 000003 backfill that covers the same idea
+// for pre-existing rows). A display_name that derives straight to a
+// reserved fold - "Search", which would otherwise shadow the
+// /shared/profiles/search route (see ReservedHandles in handle.go) -
+// must never mint the bare reserved handle.
+func TestUpsert_MintsHandleAwayFromReservedWord(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	u, _, err := s.Upsert(ctx, "s@example.com", "Search", nil, "USD")
+	if err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	if u.Handle != "Search1" {
+		t.Fatalf("handle = %q, want Search1 (reserved fold must not be assigned bare)", u.Handle)
+	}
+	if key := store.NormalizeHandle(u.Handle); key != "search1" {
+		t.Fatalf("handle_key = %q, want search1", key)
+	}
+}
+
 func TestUpdate_HandleCooldownAndTaken(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -380,9 +375,14 @@ func TestSharedReads_VisibilityAndFold(t *testing.T) {
 	ctx := context.Background()
 	u1, _, _ := s.Upsert(ctx, "a@example.com", "Alice Prime", nil, "USD")
 	u2, _, _ := s.Upsert(ctx, "b@example.com", "Bob Fixture", nil, "USD")
+	u3, _, _ := s.Upsert(ctx, "c@example.com", "Carol Hidden", nil, "USD")
 	listed := "listed"
 	if _, err := s.Update(ctx, u1.ID, nil, nil, nil, &listed, nil, time.Hour); err != nil {
 		t.Fatalf("list alice: %v", err)
+	}
+	unlisted := "unlisted"
+	if _, err := s.Update(ctx, u3.ID, nil, nil, nil, &unlisted, nil, time.Hour); err != nil {
+		t.Fatalf("unlist carol: %v", err)
 	}
 
 	// GetByHandle folds: decorated lookups resolve.
@@ -401,6 +401,13 @@ func TestSharedReads_VisibilityAndFold(t *testing.T) {
 	}
 	if found2, _ := s.SearchListed(ctx, "bobfixture", 20); len(found2) != 0 {
 		t.Fatalf("private profile leaked into search: %v", found2)
+	}
+	// unlisted is link-only (reachable by exact handle - see
+	// TestUnitSharedProfile_VisibilityGate's "unlisted resolves by
+	// exact handle" case - but not by search); the live e2e suite also
+	// pins this end to end.
+	if found3, _ := s.SearchListed(ctx, "carolhidden", 20); len(found3) != 0 {
+		t.Fatalf("unlisted profile leaked into search: %v", found3)
 	}
 
 	// GetByIDs returns both regardless of visibility (attribution rule).

@@ -10,8 +10,8 @@ import (
 // Config holds all environment-sourced configuration for the user service.
 type Config struct {
 	HTTPAddr    string `env:"HTTP_ADDR"           envDefault:":8080"`
-	DatabaseURL string `env:"DATABASE_URL,required"`
-	JWKSURL     string `env:"JWKS_URL,required"`
+	DatabaseURL string `env:"DATABASE_URL,required,notEmpty"`
+	JWKSURL     string `env:"JWKS_URL,required,notEmpty"`
 	JWTIssuer   string `env:"JWT_ISSUER"          envDefault:"vgkeep-auth"`
 	JWTAudience string `env:"JWT_AUDIENCE"        envDefault:"vgkeep"`
 	Version     string `env:"SERVICE_VERSION"     envDefault:"dev"`

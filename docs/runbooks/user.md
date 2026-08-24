@@ -1,11 +1,14 @@
 # User service
 
 Profile and RBAC source of truth. It owns two tables (`users`,
-`user_roles`) and four routes. The auth service calls it on every login
-to find-or-create the profile and on every token refresh to re-read
-roles, so its availability gates logins for the whole stack even though
-no browser ever talks to it directly. Roles travel as JWT claims minted
-by auth from this service's answers; downstream RBAC is stateless.
+`user_roles`) and seven routes: four self/service routes plus three
+cross-user profile routes (see
+[Shared profile routes](#shared-profile-routes)). The auth service
+calls it on every login to find-or-create the profile and on every
+token refresh to re-read roles, so its availability gates logins for
+the whole stack even though no browser ever talks to it directly.
+Roles travel as JWT claims minted by auth from this service's answers;
+downstream RBAC is stateless.
 
 What an operator sees it doing:
 
@@ -22,9 +25,14 @@ What an operator sees it doing:
   refresh time. Admin grants are a psql lever, not an API (see
   [Admin levers](#admin-levers)); they land in the JWT at the next
   login or refresh.
-- Delete the profile row as one leg of account deletion
+- Serve cross-user profile lookup, batch hydration, and search over
+  listed handles (`/shared/profiles/*`; any authenticated caller, not
+  just self) for bff and social (see
+  [Shared profile routes](#shared-profile-routes)).
+- Delete the profile row as the last leg of account deletion
   (`DELETE /users/{id}`, self only, idempotent). The bff orchestrates
-  the other legs (auth identity wipe, collection purge).
+  the other legs first, in order: collection purge, social graph
+  purge, then auth identity wipe.
 
 ## Architecture
 
@@ -72,6 +80,32 @@ Note the login leg writes even for existing accounts (the conflicting
 insert plus an idempotent role grant), so a read-only Postgres fails
 every login while profile reads stay green. Failure mode 1 below
 covers it.
+
+## Shared profile routes
+
+Three routes under `/shared/profiles` serve cross-user reads: any
+valid bearer may call them, with no self-scoping, so the caller can be
+looking up anyone.
+
+- `GET /shared/profiles/{handle}` resolves a handle to its
+  `ProfileCard` (user id, handle, avatar URL, profile_visibility).
+  Private profiles answer the same 404 as an unknown handle, so
+  resolution is never an existence oracle.
+- `GET /shared/profiles/by-ids` batch-loads cards for hydration, up to
+  100 ids, regardless of visibility - actions are signed, so page
+  access is gated by the caller, not by this route.
+- `GET /shared/profiles/search` substring-matches listed profiles'
+  folded handles, up to 20 results, folded-key order; `unlisted` and
+  `private` profiles are both excluded from results.
+
+Callers: bff uses all three (the profile page, card hydration, and the
+people-search box). social uses only `by-ids`, for followee validation
+and the profile cards it attaches to posts and comments; it never
+resolves a bare handle or searches.
+
+The 429 `handle_cooldown` response an operator might expect to find
+here lives on `PATCH /users/{id}` (self-service rename), not on any of
+these three - none of the shared routes can answer 429.
 
 ## Running it
 
@@ -146,9 +180,10 @@ avatar_url, profile_visibility checked to `private | unlisted |
 listed`, preferred_currency with a `^[A-Z]{3}$` check, landing_page
 checked to `collection | feed | explore`, timestamps) and `user_roles`
 (user_id FK cascade-delete, role checked to `user | admin`, composite
-PK). Four migrations so far (`000001_init`, `000002_preferred_currency`,
-`000003_handle`, `000004_landing_page`), embedded in the binary and
-applied by the init container or `task user:db:migrate`.
+PK). Five migrations so far (`000001_init`, `000002_preferred_currency`,
+`000003_handle`, `000004_landing_page`, `000005_listed_index`),
+embedded in the binary and applied by the init container or
+`task user:db:migrate`.
 
 Connection facts: TLS `verify-full` against the cert-manager-issued
 `user-pg-tls` cert (ClusterIssuer `vg-ca`, 90-day duration, renewed
@@ -223,11 +258,11 @@ request), `user service listening` (INFO: addr), `panic recovered`
 Additions, closing the gap that a 500 today leaves no server-side
 cause anywhere:
 
-| Event             | Level | Fields                                                  | Emission site                                                                                     |
-| ----------------- | ----- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `store error`     | ERROR | `op` = `upsert` \| `get` \| `update` \| `delete`, `err` | each handler path that answers a 500, logged with the request context before the problem response |
-| `account created` | INFO  | `user_id`, `preferred_currency`, `currency_source`      | `UpsertUser`, created branch only                                                                 |
-| `account deleted` | INFO  | `user_id`, `outcome`                                    | `DeleteUser`                                                                                      |
+| Event             | Level | Fields                                                                                                             | Emission site                                                                                      |
+| ----------------- | ----- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `store error`     | ERROR | `op` = `upsert` \| `get` \| `update` \| `delete` \| `shared_profile` \| `shared_by_ids` \| `shared_search`, `err` | each handler path that answers a 500, logged with the request context before the problem response |
+| `account created` | INFO  | `user_id`, `preferred_currency`, `currency_source`                                                                | `UpsertUser`, created branch only                                                                  |
+| `account deleted` | INFO  | `user_id`, `outcome`                                                                                              | `DeleteUser`                                                                                       |
 
 Emails stay out of log fields.
 

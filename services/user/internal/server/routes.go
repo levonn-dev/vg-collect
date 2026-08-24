@@ -36,10 +36,6 @@ func NewRouter(h *Handlers, v *jwtauth.Validator, logger *slog.Logger, ready fun
 		},
 	})
 	validate := specval.Middleware(specval.Options{Spec: spec, MaxBodyBytes: maxBodyBytes})
-	authed := jwtauth.Middleware(v, problemEW)(validate(apiRoutes))
+	authed := jwtauth.Middleware(v, problem)(validate(apiRoutes))
 	return httpkit.NewRouter("user", authed, apiMux, logger, ready), nil
-}
-
-func problemEW(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
-	problem(w, r, status, code, detail)
 }

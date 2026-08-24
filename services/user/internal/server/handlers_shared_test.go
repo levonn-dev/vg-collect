@@ -170,6 +170,25 @@ func TestUnitSharedSearch_StoreError_InternalServerError(t *testing.T) {
 	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }
 
+// TestUnitSharedSearch_StoreErrorLog pins that the 500 branch now logs
+// its cause via h.internalError, like every handler in handlers.go,
+// instead of a bare problem() call with no server-side trace.
+func TestUnitSharedSearch_StoreErrorLog(t *testing.T) {
+	_, logs := captureTelemetry(t)
+	st := &stubStore{searchListed: func(context.Context, string, int) ([]store.User, error) {
+		return nil, errStubUser
+	}}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "GET", srv.URL+"/shared/profiles/search?q=Alice_P", a.token(t, "viewer"), nil)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+	_, attrs, ok := logs.find("store error")
+	if !ok || attrs["op"] != "shared_search" || attrs["err"] == "" {
+		t.Fatalf("store error record = %v (found %v), want op=shared_search with err", attrs, ok)
+	}
+}
+
 func TestUnitSharedSearch_QueryTooLong_BadRequest(t *testing.T) {
 	// api/user.yaml declares maxLength: 64 on q; specval's request-
 	// validation middleware now rejects 65+ bytes ahead of this
@@ -190,6 +209,26 @@ func TestUnitSharedProfile_StoreError_InternalServerError(t *testing.T) {
 	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }
 
+// TestUnitSharedProfile_StoreErrorLog pins that the 500 branch now
+// logs its cause via h.internalError, like every handler in
+// handlers.go, instead of a bare problem() call with no server-side
+// trace.
+func TestUnitSharedProfile_StoreErrorLog(t *testing.T) {
+	_, logs := captureTelemetry(t)
+	st := &stubStore{getByHandle: func(context.Context, string) (store.User, error) {
+		return store.User{}, errStubUser
+	}}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "GET", srv.URL+"/shared/profiles/whoever", a.token(t, "viewer"), nil)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+	_, attrs, ok := logs.find("store error")
+	if !ok || attrs["op"] != "shared_profile" || attrs["err"] == "" {
+		t.Fatalf("store error record = %v (found %v), want op=shared_profile with err", attrs, ok)
+	}
+}
+
 func TestUnitSharedByIds_StoreError_InternalServerError(t *testing.T) {
 	// A generic (non-sentinel) store error must surface as 500 internal.
 	st := &stubStore{getByIDs: func(context.Context, []uuid.UUID) ([]store.User, error) {
@@ -198,6 +237,25 @@ func TestUnitSharedByIds_StoreError_InternalServerError(t *testing.T) {
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "GET", srv.URL+"/shared/profiles/by-ids?ids="+uuid.New().String(), a.token(t, "viewer"), nil)
 	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
+}
+
+// TestUnitSharedByIds_StoreErrorLog pins that the 500 branch now logs
+// its cause via h.internalError, like every handler in handlers.go,
+// instead of a bare problem() call with no server-side trace.
+func TestUnitSharedByIds_StoreErrorLog(t *testing.T) {
+	_, logs := captureTelemetry(t)
+	st := &stubStore{getByIDs: func(context.Context, []uuid.UUID) ([]store.User, error) {
+		return nil, errStubUser
+	}}
+	srv, a := newUnitServer(t, st)
+	resp := do(t, "GET", srv.URL+"/shared/profiles/by-ids?ids="+uuid.New().String(), a.token(t, "viewer"), nil)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+	_, attrs, ok := logs.find("store error")
+	if !ok || attrs["op"] != "shared_by_ids" || attrs["err"] == "" {
+		t.Fatalf("store error record = %v (found %v), want op=shared_by_ids with err", attrs, ok)
+	}
 }
 
 func TestUnitSharedByIds_TooManyIds_BadRequest(t *testing.T) {

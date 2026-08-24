@@ -37,10 +37,16 @@ type Store interface {
 // the production wiring.
 var _ Store = (*store.Store)(nil)
 
+// Options carries tunables that vary between environments.
+type Options struct {
+	Logger *slog.Logger
+}
+
 // Handlers owns the backing store and the domain counters for every HTTP
 // handler in the user service.
 type Handlers struct {
 	store          Store
+	logger         *slog.Logger
 	handleCooldown time.Duration
 	accountUpserts metric.Int64Counter
 	currencySeeds  metric.Int64Counter
@@ -51,22 +57,18 @@ type Handlers struct {
 // a caller may change their handle (passed through to Store.Update). The
 // OTel counters are best-effort: a registration failure is logged but does
 // not prevent startup (every increment site guards the nil).
-func New(st Store, cooldown time.Duration) *Handlers {
-	h := &Handlers{store: st, handleCooldown: cooldown}
+func New(st Store, cooldown time.Duration, opts Options) *Handlers {
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
+	}
+	h := &Handlers{store: st, logger: opts.Logger, handleCooldown: cooldown}
 	m := otel.Meter("github.com/levonn-dev/vgkeep/services/user")
-	var err error
-	if h.accountUpserts, err = vgotel.Counter(m, "vg.user.account.upserts",
-		"Login-path profile upserts by outcome (created or existing)", "{upsert}"); err != nil {
-		slog.Error("account upserts counter unavailable", "err", err)
-	}
-	if h.currencySeeds, err = vgotel.Counter(m, "vg.user.currency.seeds",
-		"preferred_currency seeds for new accounts by source (locale hint or fallback)", "{seed}"); err != nil {
-		slog.Error("currency seeds counter unavailable", "err", err)
-	}
-	if h.accountDeletes, err = vgotel.Counter(m, "vg.user.account.deletes",
-		"Account deletions by outcome (deleted or noop)", "{delete}"); err != nil {
-		slog.Error("account deletes counter unavailable", "err", err)
-	}
+	h.accountUpserts = vgotel.CounterLogged(m, opts.Logger, "vg.user.account.upserts",
+		"Login-path profile upserts by outcome (created or existing)", "{upsert}")
+	h.currencySeeds = vgotel.CounterLogged(m, opts.Logger, "vg.user.currency.seeds",
+		"preferred_currency seeds for new accounts by source (locale hint or fallback)", "{seed}")
+	h.accountDeletes = vgotel.CounterLogged(m, opts.Logger, "vg.user.account.deletes",
+		"Account deletions by outcome (deleted or noop)", "{delete}")
 	return h
 }
 
@@ -75,15 +77,13 @@ func problem(w http.ResponseWriter, r *http.Request, status int, code, detail st
 	httpkit.WriteProblemFields(w, r, status, code, detail)
 }
 
-// internalError answers a 500 and logs its cause via slog's
-// package-level funcs, since Handlers holds no *slog.Logger field and
-// every other log line here already goes through them. op is the
-// log's "op" key, detail the response text - same op/err convention
-// and log-then-respond shape as collection, social, and enrichment's
-// h.internalError, kept as a method here for that identical
-// call-site shape even though it never touches h.
+// internalError answers a 500 and logs its cause: op is a stable,
+// grep-able label for the failing operation (the log's "op" key);
+// detail is the response's human-readable text. The two vary
+// independently. Same shape as collection, social, and enrichment's
+// h.internalError.
 func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, op, detail string, err error) {
-	slog.ErrorContext(r.Context(), "store error", "op", op, "err", err)
+	h.logger.ErrorContext(r.Context(), "store error", "op", op, "err", err)
 	problem(w, r, http.StatusInternalServerError, "internal", detail)
 }
 

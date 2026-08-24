@@ -35,7 +35,7 @@ func (h *Handlers) GetSharedProfile(w http.ResponseWriter, r *http.Request, hand
 		return
 	}
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "profile lookup failed")
+		h.internalError(w, r, "shared_profile", "profile lookup failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toCard(u))
@@ -44,7 +44,7 @@ func (h *Handlers) GetSharedProfile(w http.ResponseWriter, r *http.Request, hand
 func (h *Handlers) GetSharedProfilesByIds(w http.ResponseWriter, r *http.Request, params api.GetSharedProfilesByIdsParams) {
 	users, err := h.store.GetByIDs(r.Context(), params.Ids)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "profile batch failed")
+		h.internalError(w, r, "shared_by_ids", "profile batch failed", err)
 		return
 	}
 	cards := make([]api.ProfileCard, len(users))
@@ -62,7 +62,7 @@ func (h *Handlers) SearchSharedProfiles(w http.ResponseWriter, r *http.Request, 
 	}
 	users, err := h.store.SearchListed(r.Context(), folded, searchLimit)
 	if err != nil {
-		problem(w, r, http.StatusInternalServerError, "internal", "search failed")
+		h.internalError(w, r, "shared_search", "search failed", err)
 		return
 	}
 	cards := make([]api.ProfileCard, len(users))
