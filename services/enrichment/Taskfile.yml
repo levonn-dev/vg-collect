@@ -11,7 +11,7 @@ tasks:
   gen:
     desc: Regenerate server stubs from api/enrichment.yaml
     cmds:
-      - go tool oapi-codegen -config oapi.server.yaml ../../api/enrichment.yaml
+      - go tool oapi-codegen -config ../../api/oapi.server.yaml ../../api/enrichment.yaml
 
   db:migrate:
     desc: Run migrations against MONGO_URL/MONGO_DB

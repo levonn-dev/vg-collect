@@ -161,14 +161,6 @@ func generateGo(d *domain, pkg string) ([]byte, error) {
 	b.WriteString("\tdefault:\n\t\treturn \"base\"\n")
 	b.WriteString("\t}\n}\n\n")
 
-	b.WriteString("// PlatformRegions maps an IGDB platform id to the entry region its\n")
-	b.WriteString("// releases belong to.\n")
-	b.WriteString("var PlatformRegions = map[int64]string{\n")
-	for _, p := range d.Platforms {
-		fmt.Fprintf(&b, "\t%d: %q,\n", p.IGDBID, p.Region)
-	}
-	b.WriteString("}\n\n")
-
 	b.WriteString("// TwinPlatformIDs pairs an IGDB platform id with its JP-regional twin\n")
 	b.WriteString("// in both directions: looking up either side of a pair returns the\n")
 	b.WriteString("// other.\n")

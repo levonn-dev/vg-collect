@@ -11,7 +11,7 @@ tasks:
   gen:
     desc: Regenerate server stubs from api/social.yaml
     cmds:
-      - go tool oapi-codegen -config oapi.server.yaml ../../api/social.yaml
+      - go tool oapi-codegen -config ../../api/oapi.server.yaml ../../api/social.yaml
 
   db:migrate:
     desc: Run migrations against DATABASE_URL

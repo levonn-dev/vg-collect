@@ -11,4 +11,4 @@ tasks:
   gen:
     desc: Regenerate server stubs from api/bff.yaml
     cmds:
-      - go tool oapi-codegen -config oapi.server.yaml ../../api/bff.yaml
+      - go tool oapi-codegen -config ../../api/oapi.server.yaml ../../api/bff.yaml

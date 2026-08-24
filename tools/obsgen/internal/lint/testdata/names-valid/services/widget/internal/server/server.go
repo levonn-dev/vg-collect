@@ -1,10 +1,11 @@
 // Package server is test-only fixture source for names.Known's tests: it
-// mirrors the three real registration shapes found across services/ and
-// libs/go/ (a direct vgotel call - user/auth/enrichment's shape; a
-// same-order pass-through closure - social/collection/bff's shape; a
-// direct OTel SDK call - libs/go/pgkit's, libs/go/valkeykit's, and
-// services/auth's own pool/signing-key gauges), so Known's extractor is
-// proven against all three instead of one or two invented shapes. It
+// mirrors the real registration shapes found across services/ and
+// libs/go/ (a direct vgotel call; the CounterLogged/HistogramLogged
+// variants whose logger parameter shifts the argument positions; a
+// same-order pass-through closure; a direct OTel SDK call -
+// libs/go/pgkit's, libs/go/valkeykit's, and services/auth's own
+// pool/signing-key gauges), so Known's extractor is proven against
+// every shape instead of one or two invented ones. It
 // never compiles as part of any real package - every go tool skips a
 // testdata/ directory - so its imports need not resolve to real modules.
 package server
@@ -24,6 +25,15 @@ func setup(m any) {
 		panic(err)
 	}
 	_ = failOpen
+
+	// Logged variants: the logger parameter shifts name/description/unit
+	// one position right of the plain Counter/Histogram shape.
+	saves := vgotel.CounterLogged(m, nil, "vg.widget.saves.count",
+		"Widget saves by outcome", "{save}")
+	_ = saves
+	saveWait := vgotel.HistogramLogged(m, nil, "vg.widget.save_wait.duration",
+		"Time spent waiting on widget saves", "s")
+	_ = saveWait
 
 	// Pass-through closure: one counter/histogram closure per meter,
 	// called with literal args at every registration site.

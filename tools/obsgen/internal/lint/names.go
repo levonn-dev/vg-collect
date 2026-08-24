@@ -34,9 +34,13 @@ const (
 // captured from the enclosing scope, not passed in), so the same two
 // arguments land two positions earlier at the closure's own call
 // sites.
+// The Logged variants (CounterLogged/HistogramLogged) insert a logger
+// parameter after the meter, shifting name and unit one position right.
 const (
 	directNameIndex  = 1
 	directUnitIndex  = 3
+	loggedNameIndex  = 2
+	loggedUnitIndex  = 4
 	closureNameIndex = 0
 	closureUnitIndex = 2
 )
@@ -162,6 +166,8 @@ func scanFile(path string, known map[string]struct{}) error {
 		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
 			if kind, ok := directKind(call, vgAlias); ok {
 				recordCall(known, &errs, path, call.Args, directNameIndex, directUnitIndex, kind)
+			} else if kind, ok := loggedKind(call, vgAlias); ok {
+				recordCall(known, &errs, path, call.Args, loggedNameIndex, loggedUnitIndex, kind)
 			} else if kind, ok := otelMethodKind[sel.Sel.Name]; ok {
 				recordDirectOTelCall(known, &errs, path, call.Args, kind, metricAlias)
 			}
@@ -213,6 +219,28 @@ func directKind(call *ast.CallExpr, alias string) (registrationKind, bool) {
 	case "Counter":
 		return kindCounter, true
 	case "Histogram":
+		return kindHistogram, true
+	default:
+		return 0, false
+	}
+}
+
+// loggedKind is directKind's sibling for the alias.CounterLogged/
+// alias.HistogramLogged shape, whose logger parameter shifts the
+// name/unit argument positions (loggedNameIndex/loggedUnitIndex).
+func loggedKind(call *ast.CallExpr, alias string) (registrationKind, bool) {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return 0, false
+	}
+	x, ok := sel.X.(*ast.Ident)
+	if !ok || x.Name != alias {
+		return 0, false
+	}
+	switch sel.Sel.Name {
+	case "CounterLogged":
+		return kindCounter, true
+	case "HistogramLogged":
 		return kindHistogram, true
 	default:
 		return 0, false

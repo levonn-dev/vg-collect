@@ -1,8 +1,0 @@
-package: api
-generate:
-  models: true
-  std-http-server: true
-  embedded-spec: true
-output: internal/gen/api/server.gen.go
-import-mapping:
-  ./common.yaml: github.com/levonn-dev/vgkeep/libs/go/contract/common

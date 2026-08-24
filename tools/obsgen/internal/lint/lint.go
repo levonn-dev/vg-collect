@@ -1,6 +1,7 @@
 // Package lint validates a loaded observability manifest (and the repo
-// content it references - runbook anchors, registered metric names)
-// beyond what internal/manifest.Load's strict decode already enforces.
+// content it references - runbook anchors, the runbook index,
+// registered metric names) beyond what internal/manifest.Load's strict
+// decode already enforces.
 // Run never mutates anything and never touches deploy/charts/platform;
 // it only reports what it finds, leaving main.go to decide the process
 // exit code. It deliberately does not re-check anything Load already
@@ -85,10 +86,24 @@ func Run(m *manifest.Model, repoRoot string) []Finding {
 	panels := collectPanels(m)
 
 	headingCache := map[string]map[string]bool{}
+	// Loaded once, outside the per-item loop, the same reasoning as
+	// Known below: if the index itself cannot be read, reporting that
+	// once and skipping checkRunbookIndexRow is more useful than
+	// flooding the output with a "missing row" finding for every rule.
+	indexUIDs, indexErr := runbookIndexUIDs(repoRoot)
+	if indexErr != nil {
+		findings = append(findings, Finding{
+			Path: "docs/runbooks/README.md", Rule: "runbook-index-error",
+			Message: indexErr.Error(),
+		})
+	}
 	for _, it := range items {
 		findings = append(findings, checkPlaceholders(it)...)
 		findings = append(findings, checkPanelRef(it, panels)...)
 		findings = append(findings, checkRunbookAnchor(repoRoot, it, headingCache)...)
+		if indexErr == nil {
+			findings = append(findings, checkRunbookIndexRow(it, indexUIDs)...)
+		}
 	}
 	// Every panel is scanned by its whole substituted (golden) or
 	// as-authored (custom) fragment text, not just its parsed title: a
@@ -855,6 +870,46 @@ func checkRunbookAnchor(repoRoot string, it expandedItem, cache map[string]map[s
 		}}
 	}
 	return nil
+}
+
+// --- runbook index row ---------------------------------------------------
+
+// runbookIndexRowRE matches one data row of docs/runbooks/README.md's
+// hand-maintained alert table by its Rule cell, which is always
+// "<uid> - <title>" (e.g. "vg-service-5xx - Service 5xx ratio above 5
+// percent"). The captured group requires the literal "vg-" prefix
+// every real uid carries, so neither the header row ("| Rule | ... |")
+// nor the "|---|...|" separator row - neither of which starts a cell
+// with "vg-" - is ever mistaken for a data row.
+var runbookIndexRowRE = regexp.MustCompile(`(?m)^\|\s*(vg-[a-z0-9-]+)\s+-\s+`)
+
+// runbookIndexUIDs reads repoRoot/docs/runbooks/README.md and returns
+// the set of rule uids its alert table carries a row for.
+func runbookIndexUIDs(repoRoot string) (map[string]bool, error) {
+	path := filepath.Join(repoRoot, "docs", "runbooks", "README.md")
+	data, err := os.ReadFile(path) //nolint:gosec // G304: repoRoot is main's own trusted <repo-root> CLI argument (see runLint), the same threat model this package's other repoRoot-rooted reads already document (e.g. headingsFor, checkRunbookDocs).
+	if err != nil {
+		return nil, err
+	}
+	uids := make(map[string]bool)
+	for _, m := range runbookIndexRowRE.FindAllStringSubmatch(string(data), -1) {
+		uids[m[1]] = true
+	}
+	return uids, nil
+}
+
+// checkRunbookIndexRow reports an expanded rule with no row in
+// docs/runbooks/README.md's alert table - the index a reader lands on
+// from Grafana before diving into a service runbook. Nothing else
+// notices that table going stale when a rule is added.
+func checkRunbookIndexRow(it expandedItem, indexUIDs map[string]bool) []Finding {
+	if indexUIDs[it.uid] {
+		return nil
+	}
+	return []Finding{{
+		Path: it.sourcePath, Rule: "runbook-index-row-missing",
+		Message: fmt.Sprintf("rule %s: no row in docs/runbooks/README.md's alert table", it.uid),
+	}}
 }
 
 // checkRunbookBlock is checkRunbookDocs' per-block treatment: AST

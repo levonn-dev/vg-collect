@@ -26,6 +26,12 @@ func TestKnown_ExtractsRepresentativeRegistrations(t *testing.T) {
 	want := []string{
 		// services/widget: direct vgotel call, curly-brace unit -> no suffix, counter -> _total.
 		"vg_widget_cache_fail_open_total",
+		// services/widget: CounterLogged/HistogramLogged - the logger
+		// parameter shifts name/unit one position right.
+		"vg_widget_saves_count_total",
+		"vg_widget_save_wait_duration_seconds_bucket",
+		"vg_widget_save_wait_duration_seconds_count",
+		"vg_widget_save_wait_duration_seconds_sum",
 		// services/widget: pass-through closure, curly-brace unit, counter.
 		"vg_widget_spins_count_total",
 		// services/widget: pass-through closure, "s" unit, histogram -> three suffixes.
@@ -396,6 +402,15 @@ func TestRun_Findings(t *testing.T) {
 			wantRule:   "runbook-anchor-missing",
 			wantPath:   "alerts/widget.yaml",
 			wantSubstr: `docs/runbooks/widget.md has no heading matching anchor "does-not-exist"`,
+		},
+		{
+			name: "rule has no row in the runbook index",
+			mutate: func(m *manifest.Model) {
+				m.Alerts.Services[0].Alerts[0].UID = "vg-widget-not-indexed"
+			},
+			wantRule:   "runbook-index-row-missing",
+			wantPath:   "alerts/widget.yaml",
+			wantSubstr: "rule vg-widget-not-indexed: no row",
 		},
 		{
 			name: "rule expr does not parse (prometheus datasource)",
