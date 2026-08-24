@@ -29,7 +29,7 @@ rematch:
   image: curlimages/curl:8.14.1
 
 postgres:
-  enabled: true            # the prod-path seam: disable + set externalUrl for RDS/CNPG
+  enabled: true            # the prod-path seam: disable + point DATABASE_URL at RDS/CNPG
   image: postgres:17-alpine
   database: collection
   username: collection

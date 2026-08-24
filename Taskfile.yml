@@ -20,6 +20,14 @@ vars:
   GO_MODULES:
     sh: find . -name go.mod -not -path '*/node_modules/*' -exec dirname {} \; | sort
 
+env:
+  # Shared test datastore servers: one long-lived container per kind,
+  # started once by test:datastores and reused across runs. Concurrent
+  # runs stay apart via the TESTDS_RUN scope test/test:cover mint.
+  PGTEST_URL: postgres://pgtest:pgtest@127.0.0.1:54329/pgtest?sslmode=disable
+  MONGOTEST_URL: mongodb://127.0.0.1:27019
+  VALKEYTEST_URL: redis://127.0.0.1:63790
+
 tasks:
 
   default:
@@ -187,7 +195,7 @@ tasks:
       - cd tools/obsgen && go run . gen ../../deploy/observability ../..
 
   tidy:
-    desc: 'go mod tidy every module (plain tidy; the repo carries no known dependency skew)'
+    desc: 'go mod tidy every module (plain tidy; otel/otelhttp aligned fleet-wide)'
     cmds:
       - for: { var: GO_MODULES, as: MOD }
         cmd: cd {{.MOD}} && go mod tidy
@@ -204,12 +212,18 @@ tasks:
 
   test:
     desc: 'Full test suite for every module (integration tests included; needs Docker) + frontend. -count=1 disables Go test-result caching: tests that read contract YAML from disk would otherwise report stale cached passes after spec edits.'
+    vars:
+      RUN:
+        sh: od -An -N4 -tx4 /dev/urandom | tr -d ' \n'
+    env:
+      TESTDS_RUN: '{{.RUN}}'
     cmds:
-      # -p 2 bounds how many package test binaries run at once, so
-      # their container creates reach the Docker daemon as a trickle
-      # instead of a burst it may stall on. (The testcontainers reaper
-      # stays on: the shared datastore kits deliberately skip Terminate
-      # and rely on it for cleanup.)
+      - task: test:datastores
+      # Deferred: clears this run's test databases even when the suite fails.
+      - defer: { task: test:datastores:clean, vars: { RUN: '{{.RUN}}' } }
+      # -p 2 keeps concurrent binaries' load on the shared datastores and
+      # the Docker daemon a trickle; the kits' self-test boots still rely
+      # on the testcontainers reaper for cleanup.
       - for: { var: GO_MODULES, as: MOD }
         cmd: cd {{.MOD}} && go test -count=1 -p 2 ./...
       - task: frontend:test
@@ -222,10 +236,59 @@ tasks:
       - task: frontend:test
 
   test:cover:
-    desc: Coverage gate (80%, generated code excluded) for Go + frontend
+    desc: Coverage gate (80%, generated code and cmd/ wiring excluded) for Go + frontend
+    vars:
+      RUN:
+        sh: od -An -N4 -tx4 /dev/urandom | tr -d ' \n'
+    env:
+      TESTDS_RUN: '{{.RUN}}'
     cmds:
+      - task: test:datastores
+      - defer: { task: test:datastores:clean, vars: { RUN: '{{.RUN}}' } }
       - scripts/coverage.sh 80
       - task: frontend:test:cover
+
+  test:datastores:
+    desc: 'Start the shared test datastore containers if their ports are not already answering (kits adopt them via the *TEST_URL env vars; `task nuke` removes them)'
+    cmds:
+      - timeout 2 bash -c '</dev/tcp/127.0.0.1/54329' 2>/dev/null || docker start vgkeep-testpg 2>/dev/null ||
+          docker run -d --name vgkeep-testpg -p 127.0.0.1:54329:5432
+          -e POSTGRES_DB=pgtest -e POSTGRES_USER=pgtest -e POSTGRES_PASSWORD=pgtest postgres:17-alpine
+      - timeout 2 bash -c '</dev/tcp/127.0.0.1/27019' 2>/dev/null || docker start vgkeep-testmongo 2>/dev/null ||
+          docker run -d --name vgkeep-testmongo -p 127.0.0.1:27019:27017 mongo:8
+      # --databases 64 = one logical database per test binary, with headroom.
+      - timeout 2 bash -c '</dev/tcp/127.0.0.1/63790' 2>/dev/null || docker start vgkeep-testvalkey 2>/dev/null ||
+          docker run -d --name vgkeep-testvalkey -p 127.0.0.1:63790:6379 valkey/valkey:8-alpine valkey-server --databases 64
+      # Postgres publishes its port only after init, so port-open means ready.
+      - for port in 54329 27019 63790; do
+          for i in $(seq 1 180); do
+            timeout 2 bash -c "</dev/tcp/127.0.0.1/$port" 2>/dev/null && break;
+            test $i -lt 180 || { echo "port $port never became ready"; exit 1; };
+            sleep 1;
+          done;
+        done
+
+  test:datastores:clean:
+    desc: 'Drop test databases from the shared containers: only the deferring run''s own (RUN scope) when called from test/test:cover, everything test-created when run directly. Failures here never fail a run (the kits recreate their databases at the next binary start).'
+    cmds:
+      - docker exec vgkeep-testpg psql -U pgtest -d pgtest -Atc "SELECT datname FROM pg_database WHERE datname LIKE 't\_{{if .RUN}}{{.RUN}}\_{{end}}%'" |
+          xargs -r -n1 docker exec vgkeep-testpg dropdb -U pgtest --force
+      - docker exec vgkeep-testmongo mongosh --quiet --eval
+          'db.adminCommand({listDatabases:1}).databases.forEach(d => { if (d.name.startsWith("t_{{if .RUN}}{{.RUN}}_{{end}}")) db.getSiblingDB(d.name).dropDatabase() })'
+      # Scoped runs flush only the logical databases the valkeytest
+      # allocator recorded for them; a direct run wipes the server.
+      - >-
+        {{if .RUN}}docker exec vgkeep-testvalkey sh -c 'for i in $(valkey-cli SMEMBERS valkeytest_run_{{.RUN}}); do valkey-cli -n $i FLUSHDB; done; valkey-cli DEL valkeytest_run_{{.RUN}}'{{else}}docker exec vgkeep-testvalkey valkey-cli FLUSHALL{{end}}
+
+  test:datastores:nuke:
+    desc: 'Remove the shared test datastore containers'
+    cmds:
+      - docker stop vgkeep-testpg
+      - docker rm vgkeep-testpg
+      - docker stop vgkeep-testmongo
+      - docker rm vgkeep-testmongo
+      - docker stop vgkeep-testvalkey
+      - docker rm vgkeep-testvalkey
 
   # ---------------------------- check / clean ----------------------------
 

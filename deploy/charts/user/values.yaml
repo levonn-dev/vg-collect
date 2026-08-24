@@ -16,7 +16,7 @@ resources:
   limits: { memory: 128Mi }
 
 postgres:
-  enabled: true            # the prod-path seam: disable + set externalUrl for RDS/CNPG
+  enabled: true            # the prod-path seam: disable + point DATABASE_URL at RDS/CNPG
   image: postgres:17-alpine
   database: user
   username: user

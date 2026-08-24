@@ -138,9 +138,12 @@ spec:
             - { name: mongo, containerPort: 27017 }
           readinessProbe:
             exec:
-              # Chain verification against the CA only; the probe skips
-              # hostname checks (localhost is also in the cert SANs, so
-              # the skip is not load-bearing).
+              # The hostname skip is what lets the probe pass while
+              # chain verification against the CA stays in force:
+              # mongosh with no host argument dials the default
+              # 127.0.0.1, and the cert's SANs are all dnsNames (no IP
+              # SAN), so the name check would otherwise fail every
+              # time.
               command: ["mongosh", "--tls", "--tlsCAFile", "/tls/ca.crt", "--tlsAllowInvalidHostnames", "--quiet", "--eval", "db.adminCommand('ping').ok"]
             periodSeconds: 5
             timeoutSeconds: 5

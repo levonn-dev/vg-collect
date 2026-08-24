@@ -35,4 +35,7 @@ deploy/charts/*/Chart.lock
 /services/auth/auth
 /services/enrichment/enrichment
 /services/collection/collection
+/services/bff/bff
+/services/social/social
 /tools/domaingen/domaingen
+/tools/obsgen/obsgen

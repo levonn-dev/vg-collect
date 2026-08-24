@@ -21,13 +21,16 @@ StatefulSet, its postgres-exporter sidecar, PodDisruptionBudget,
 ServiceMonitor, Certificate, and the pg-scoped NetworkPolicy rule - all
 templated once in the shared `vg-lib` library chart rather than
 duplicated per service. Unlike the Mongo seam below, none of the four
-wires `DATABASE_URL` to a dedicated values key yet when the flag flips
-off - it still composes against the chart's own `<service>-pg`
-in-cluster hostname - so pointing at RDS or CloudNativePG today means
-overriding `DATABASE_URL` directly at deploy time. Adding a
-first-class `env.databaseUrl` override, mirroring `env.mongoUrl`
-below, is the natural next step once a real Postgres target exists to
-test it against.
+wires `DATABASE_URL` to a dedicated values key at all - every
+deployment template composes it unconditionally against the chart's
+own `<service>-pg` in-cluster hostname - and the pg-ca volume mount is
+not gated on `postgres.enabled` either, so flipping the flag off alone
+strands the pod on a Certificate secret that no longer renders.
+Pointing at RDS or CloudNativePG today therefore needs a chart change,
+not a values override: a first-class `env.databaseUrl` key (mirroring
+`env.mongoUrl` below) plus gating the pg-ca volume on
+`postgres.enabled` is the natural next step once a real Postgres
+target exists to test it against.
 
 MongoDB moves to MongoDB Atlas on AWS via PrivateLink, explicitly NOT
 DocumentDB: its Mongo 5.0-subset API has no time-series collections,
@@ -119,10 +122,13 @@ by helm: the helm show crds | kubectl apply --server-side line has to
 be re-run by hand on every chart version bump, or the next upgrade
 fails against stale CRDs. NetworkPolicies throughout the repo are
 ingress-only; an egress-lockdown pass is the documented next hardening
-step, not yet done. Every service module pins otelhttp directly rather than
-trusting a transitive resolution, because a transitively-resolved
-older version once regressed response handling; new services must
-follow the same pin.
+step, not yet done. A service that imports otelhttp directly (bff,
+enrichment) pins its own version rather than trusting a
+transitive resolution, because a transitively-resolved older version
+once regressed response handling; a service that never imports it
+directly (auth, collection, social, user) inherits the version through
+libs/go/httpkit, which carries the same pin. A new service follows
+whichever shape matches how it reaches otelhttp.
 
 ## CI
 

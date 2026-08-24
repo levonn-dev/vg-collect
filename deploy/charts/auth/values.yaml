@@ -8,6 +8,8 @@ replicas: 1
 env:
   jwtIssuer: vgkeep-auth
   jwtAudience: vgkeep
+  # Must match the bff chart's accessTokenTtl (the bff sizes denylist
+  # TTLs off this value).
   accessTokenTtl: 5m
   refreshTokenTtl: 720h
   userServiceUrl: http://user:8080

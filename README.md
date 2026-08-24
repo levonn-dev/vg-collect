@@ -43,7 +43,7 @@ Note: the fixture's handle is literally `admin` on dev databases created before 
 | Command                  | What                                                                                                                                                                                              |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task lint`              | golangci-lint every Go module + helm lint every chart + eslint the frontend + obsgen dashboard and alert lint                                                                                     |
-| `task test`              | go test every module (testcontainers need Docker) + frontend vitest                                                                                                                               |
+| `task test`              | go test every module + frontend vitest. Integration tests share three long-lived datastore containers (started on demand, reused across runs; per-run test databases are swept afterward, even on failure)                                                                              |
 | `task test:cover`        | tests + the 80% coverage gate (generated code and cmd/ wiring excluded)                                                                                                                           |
 | `task gen`               | bundle the authored `api/*.yaml`/`api/common.yaml` contracts into self-contained `api/bundled/` files (redocly) + region/platform tables from `api/domain.yaml` and the frontend's constraint-value facets (`frontend/src/gen/facets.ts`) from that bundle, both via `tools/domaingen` + the shared Go contract module and every service's OpenAPI server stubs/types + Grafana alert rules and golden dashboards from `deploy/observability/` + the frontend's typed API client, including its generated per-enum value arrays (`frontend/src/api/schema.ts`)  |
 | `task tidy`              | go mod tidy every module                                                                                                                                                                          |
@@ -51,13 +51,18 @@ Note: the fixture's handle is literally `admin` on dev databases created before 
 | `task build`             | compile every module + the frontend bundle                                                                                                                                                        |
 | `task e2e`               | Parallel Playwright browser suite against the running stack; per-run minted dev fixtures; isolation-first                                                                                         |
 | `task run` / `task down` | tilt up / down                                                                                                                                                                                    |
-| `task nuke`              | full app-stack reset: tilt down + the vgkeep namespace (see Teardown)                                                                                                                             |
+| `task nuke`              | full app-stack reset: tilt down + the vgkeep namespace + the shared test datastore containers (see Teardown)                                                                                       |
+
+Note: `task test` / `task test:cover` run the Go integration suites against
+three shared containers; test databases carry a per-package name and a
+per-run scope, so concurrent runs stay isolated. Bare `go test` in a module
+needs no setup: it boots throwaway containers instead (needs Docker).
 
 ## Teardown
 
 ```bash
 task down                    # stop the dev stack; namespace, datastore PVCs, issued TLS secrets survive
-task nuke                    # app layer: tilt down + delete the vgkeep namespace (drops PVCs + TLS secrets)
+task nuke                    # app layer: tilt down + delete the vgkeep namespace (drops PVCs + TLS secrets) + the shared test datastore containers
 task bootstrap:cluster:down  # remove the platform: helm uninstalls + the vg-platform namespace
 ```
 

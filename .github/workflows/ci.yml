@@ -22,7 +22,10 @@ jobs:
               - 'api/**'
               - 'deploy/**'
               - 'scripts/**'
+              - 'tools/**'
               - 'Taskfile.yml'
+              - 'package.json'
+              - 'package-lock.json'
               - '.golangci.yml'
               - '.github/workflows/**'
 
