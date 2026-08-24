@@ -8,10 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
 	"github.com/levonn-dev/vgkeep/services/social/internal/store"
 	"github.com/levonn-dev/vgkeep/services/social/migrations"
@@ -19,33 +17,7 @@ import (
 
 func newTestStore(t *testing.T) *store.Store {
 	t.Helper()
-	ctx := context.Background()
-	url := pgtest.URL(t)
-	// Reset: drop everything the previous test left (schema_migrations
-	// included) and re-run the embedded migrations, so each test opens
-	// on a fresh, fully migrated database - migration-seeded rows and
-	// all. Two Execs because pgx's extended protocol takes one
-	// statement at a time.
-	conn, err := pgx.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range []string{"DROP SCHEMA public CASCADE", "CREATE SCHEMA public"} {
-		if _, err := conn.Exec(ctx, stmt); err != nil {
-			_ = conn.Close(ctx)
-			t.Fatal(err)
-		}
-	}
-	_ = conn.Close(ctx)
-	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	pool, err := pgkit.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
-	return store.New(pool)
+	return store.New(pgtest.FreshPool(t, migrations.FS, "."))
 }
 
 // poolOf exposes the pool for the raw-SQL assertions below.
@@ -118,10 +90,48 @@ func TestFollow_CapBoundaryIdempotentRetry(t *testing.T) {
 		a, b1).Scan(&events); err != nil || events != 1 {
 		t.Fatalf("b1 event count = %d, %v (want 1)", events, err)
 	}
+	// The retry must not double-charge cap_events either: only the two
+	// genuine follows (b1, b2) may have recorded an event.
+	var capEvents int
+	if err := poolOf(t, s).QueryRow(ctx,
+		`SELECT count(*) FROM cap_events WHERE user_id = $1 AND kind = 'follow'`,
+		a).Scan(&capEvents); err != nil || capEvents != 2 {
+		t.Fatalf("cap events for a = %d, %v (want 2, retry must not double-charge)", capEvents, err)
+	}
 
 	// A genuinely new edge at the same moment still hits the cap.
 	if _, err := s.Follow(ctx, a, b3, followCap); !errors.Is(err, store.ErrCapExceeded) {
 		t.Fatalf("new edge at cap err = %v", err)
+	}
+}
+
+// TestFollow_CapNotResetByUnfollowCycle is F1's regression case: the
+// rolling cap counts follow actions, not currently-held edges, so
+// retract-then-recreate cycling cannot bypass it the way it could
+// before cap_events existed.
+func TestFollow_CapNotResetByUnfollowCycle(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	a, b1, b2, b3 := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	const followCap = 2
+
+	for _, target := range []uuid.UUID{b1, b2} {
+		if ins, err := s.Follow(ctx, a, target, followCap); err != nil || !ins {
+			t.Fatalf("follow %s: ins=%v err=%v", target, ins, err)
+		}
+		if err := s.Unfollow(ctx, a, target); err != nil {
+			t.Fatalf("unfollow %s: %v", target, err)
+		}
+	}
+	// No edge is held at this point - both were unfollowed - but two
+	// genuine follow actions already happened in this window, so the
+	// third must still trip the cap.
+	if _, err := s.Follow(ctx, a, b3, followCap); !errors.Is(err, store.ErrCapExceeded) {
+		t.Fatalf("cap err after unfollow-cycle = %v, want ErrCapExceeded", err)
+	}
+	ids, err := s.FolloweeIDs(ctx, a)
+	if err != nil || len(ids) != 0 {
+		t.Fatalf("followees after cycle = %v, %v (want none held)", ids, err)
 	}
 }
 
@@ -226,10 +236,99 @@ func TestLike_CapBoundaryIdempotentRetry(t *testing.T) {
 		user, shelf1).Scan(&events); err != nil || events != 1 {
 		t.Fatalf("shelf1 event count = %d, %v (want 1)", events, err)
 	}
+	// The retry must not double-charge cap_events either: only the two
+	// genuine likes (shelf1, shelf2) may have recorded an event.
+	var capEvents int
+	if err := poolOf(t, s).QueryRow(ctx,
+		`SELECT count(*) FROM cap_events WHERE user_id = $1 AND kind = 'like'`,
+		user).Scan(&capEvents); err != nil || capEvents != 2 {
+		t.Fatalf("cap events for user = %d, %v (want 2, retry must not double-charge)", capEvents, err)
+	}
 
 	// A genuinely new like at the same moment still hits the cap.
 	if _, err := s.Like(ctx, user, shelf3, owner, likeCap); !errors.Is(err, store.ErrCapExceeded) {
 		t.Fatalf("new like at cap err = %v", err)
+	}
+}
+
+// TestLike_CapNotResetByUnlikeCycle mirrors
+// TestFollow_CapNotResetByUnfollowCycle for the like edge.
+func TestLike_CapNotResetByUnlikeCycle(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	owner, user := uuid.New(), uuid.New()
+	shelf1, shelf2, shelf3 := uuid.New(), uuid.New(), uuid.New()
+	const likeCap = 2
+
+	for _, shelf := range []uuid.UUID{shelf1, shelf2} {
+		if ins, err := s.Like(ctx, user, shelf, owner, likeCap); err != nil || !ins {
+			t.Fatalf("like %s: ins=%v err=%v", shelf, ins, err)
+		}
+		if err := s.Unlike(ctx, user, shelf); err != nil {
+			t.Fatalf("unlike %s: %v", shelf, err)
+		}
+	}
+	// No edge is held at this point - both were unliked - but two
+	// genuine like actions already happened in this window, so the
+	// third must still trip the cap.
+	if _, err := s.Like(ctx, user, shelf3, owner, likeCap); !errors.Is(err, store.ErrCapExceeded) {
+		t.Fatalf("cap err after unlike-cycle = %v, want ErrCapExceeded", err)
+	}
+	sums, err := s.ShelfSummaries(ctx, []uuid.UUID{shelf1, shelf2}, user)
+	if err != nil || len(sums) != 2 {
+		t.Fatalf("summaries after cycle = %+v, %v", sums, err)
+	}
+	for _, x := range sums {
+		if x.LikeCount != 0 || x.ViewerLikes {
+			t.Fatalf("shelf %s = %+v, want unliked and zeroed", x.ShelfID, x)
+		}
+	}
+}
+
+// TestCapEvents_RetentionSweep pins the 48h self-retention: a genuine
+// follow's opportunistic sweep removes cap_events rows older than
+// 48h, but must never touch a row still inside the 24h window the cap
+// check actually reads.
+func TestCapEvents_RetentionSweep(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	pool := poolOf(t, s)
+	agedOut, stillCounted := uuid.New(), uuid.New()
+
+	// Backdate two seed rows directly - one past the 48h retention
+	// line, one inside the 24h cap window - unrelated to the follow
+	// that triggers the sweep below.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO cap_events (user_id, kind, created_at) VALUES ($1, 'follow', now() - interval '49 hours')`,
+		agedOut); err != nil {
+		t.Fatalf("seed aged row: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO cap_events (user_id, kind, created_at) VALUES ($1, 'follow', now() - interval '1 hour')`,
+		stillCounted); err != nil {
+		t.Fatalf("seed recent row: %v", err)
+	}
+
+	// Any genuine follow triggers the opportunistic sweep.
+	a, b := uuid.New(), uuid.New()
+	if _, err := s.Follow(ctx, a, b, 100); err != nil {
+		t.Fatalf("follow: %v", err)
+	}
+
+	var agedCount, recentCount int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM cap_events WHERE user_id = $1`, agedOut).Scan(&agedCount); err != nil {
+		t.Fatalf("count aged: %v", err)
+	}
+	if agedCount != 0 {
+		t.Fatalf("49h-old row survived the sweep: count = %d, want 0", agedCount)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM cap_events WHERE user_id = $1`, stillCounted).Scan(&recentCount); err != nil {
+		t.Fatalf("count recent: %v", err)
+	}
+	if recentCount != 1 {
+		t.Fatalf("1h-old row was swept: count = %d, want 1", recentCount)
 	}
 }
 
@@ -388,6 +487,99 @@ func TestActivity_FeedTabsAndUndo(t *testing.T) {
 	}
 }
 
+// TestFeed_FollowingMergesAcrossFollowees pins the following tab's
+// per-followee merge against a flat oracle query over seeded data:
+// interleaved actors, page boundaries landing mid-actor, and a
+// non-followee that must never surface. Any divergence between the
+// merge shape and the naive whole-set sort fails here.
+func TestFeed_FollowingMergesAcrossFollowees(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	pool := poolOf(t, s)
+	viewer := uuid.New()
+	followees := []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
+	stranger := uuid.New()
+
+	for _, f := range followees {
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO follows (follower_id, followee_id) VALUES ($1, $2)`, viewer, f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 30 followee events with interleaved timestamps (round-robin
+	// actors, one minute apart) plus 5 stranger events inside the same
+	// window.
+	base := time.Now().Add(-2 * time.Hour).Truncate(time.Second)
+	for i := range 30 {
+		actor := followees[i%len(followees)]
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO activity (actor_id, verb, object_shelf_id, target_user_id, created_at)
+			 VALUES ($1, 'liked_shelf', $2, $3, $4)`,
+			actor, uuid.New(), uuid.New(), base.Add(time.Duration(i)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range 5 {
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO activity (actor_id, verb, object_shelf_id, target_user_id, created_at)
+			 VALUES ($1, 'liked_shelf', $2, $3, $4)`,
+			stranger, uuid.New(), uuid.New(), base.Add(time.Duration(i*7)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Oracle: the flat sort over the whole candidate set.
+	rows, err := pool.Query(ctx,
+		`SELECT id FROM activity
+		 WHERE actor_id IN (SELECT followee_id FROM follows WHERE follower_id = $1)
+		 ORDER BY created_at DESC, id DESC`, viewer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		want = append(want, id)
+	}
+	rows.Close()
+	if len(want) != 30 {
+		t.Fatalf("oracle rows = %d, want 30", len(want))
+	}
+
+	// Walk the feed with a page size that never divides evenly, so
+	// page boundaries land mid-actor.
+	var got []uuid.UUID
+	var cursor *store.Cursor
+	for {
+		page, err := s.Feed(ctx, viewer, "following", cursor, 7)
+		if err != nil {
+			t.Fatalf("feed page: %v", err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		for _, e := range page {
+			if e.ActorID == stranger {
+				t.Fatalf("stranger event %s surfaced in the following feed", e.ID)
+			}
+			got = append(got, e.ID)
+		}
+		last := page[len(page)-1]
+		cursor = &store.Cursor{CreatedAt: last.CreatedAt, ID: last.ID}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("walked %d events, oracle has %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("order diverges at %d: got %s, want %s", i, got[i], want[i])
+		}
+	}
+}
+
 func TestRecordPublish_UpsertAndThrottle(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -449,6 +641,7 @@ func TestPurgeUser_AnonymizeAndDelete(t *testing.T) {
 	assertCount(`SELECT count(*) FROM follows WHERE follower_id = $1 OR followee_id = $1`, 0, leaver)
 	assertCount(`SELECT count(*) FROM likes WHERE user_id = $1 OR shelf_owner_id = $1`, 0, leaver)
 	assertCount(`SELECT count(*) FROM activity WHERE actor_id = $1 OR target_user_id = $1`, 0, leaver)
+	assertCount(`SELECT count(*) FROM cap_events WHERE user_id = $1`, 0, leaver)
 	// Comments on leaver's own shelves: hard-deleted (incl. the tombstone).
 	assertCount(`SELECT count(*) FROM comments WHERE shelf_owner_id = $1`, 0, leaver)
 	// Authored on a surviving shelf: anonymized in place.

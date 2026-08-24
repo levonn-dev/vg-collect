@@ -397,7 +397,11 @@ func (h *Handlers) InternalNormalizeCommunityRegions(w http.ResponseWriter, r *h
 		return
 	}
 	ctx := r.Context()
-	refs, err := h.store.ListCommunityRegionDocs(ctx)
+	known := make([]string, 0, len(regionkit.KnownRegions))
+	for k := range regionkit.KnownRegions {
+		known = append(known, k)
+	}
+	refs, err := h.store.ListCommunityRegionDocs(ctx, known)
 	if err != nil {
 		h.internalError(w, r, "normalize_regions_list", "list failed", err)
 		return

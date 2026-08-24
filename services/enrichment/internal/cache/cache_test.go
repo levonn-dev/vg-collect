@@ -20,7 +20,7 @@ func newTestCache(t *testing.T) *cache.Cache {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
-	if err := client.FlushAll(ctx).Err(); err != nil {
+	if err := client.FlushDB(ctx).Err(); err != nil {
 		t.Fatal(err)
 	}
 	return cache.New(client)

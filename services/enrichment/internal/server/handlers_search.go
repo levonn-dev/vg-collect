@@ -109,7 +109,16 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 	degraded := perr != nil
 	if degraded {
 		h.logger.WarnContext(ctx, "search provider unavailable; serving local catalog match", "kind", kind, "err", perr)
-		local, err := h.store.SearchByName(ctx, q, searchLimit)
+		var types []string
+		switch kind {
+		case "game":
+			types = []string{"game"}
+		case "hardware":
+			types = []string{"console", "accessory"}
+		default: // pc_listing: any provider product type may carry a listing mapping
+			types = []string{"game", "console", "accessory", "pc_listing"}
+		}
+		local, err := h.store.SearchByName(ctx, types, q, searchLimit)
 		if err != nil {
 			h.internalError(w, r, "search_local_fallback", "search failed", err)
 			return

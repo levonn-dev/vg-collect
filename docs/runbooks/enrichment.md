@@ -215,14 +215,17 @@ secret's new home).
 
 MongoDB (`enrichment-mongo`, StatefulSet, mongo:8, 1Gi PVC) holds four
 collections. `products` is one document per catalog product; identity
-is enforced by two unique partial indexes scoped to `origin:
-"provider"`: `products_game_identity` on (type, igdb.game_id,
-platform.igdb_id, pricecharting.pc_product_id) and
-`products_hardware_identity` on (type, pricecharting.pc_product_id,
-region, edition, variant), plus a plain `products_name` index for the
-degraded local search. Community products (`origin: "community"`) sit
-outside both identity indexes on purpose: their identity is the
-curated name, and the promote flow re-enters them through the index.
+is enforced by three unique partial indexes: `products_game_identity`
+on (type, igdb.game_id, platform.igdb_id, pricecharting.pc_product_id)
+and `products_hardware_identity` on (type, pricecharting.pc_product_id,
+region, edition, variant), both scoped to `origin: "provider"`, and
+`products_pc_listing_identity` on pricecharting.pc_product_id (partial
+filter type: "pc_listing", unscoped by origin - a community product
+can never be type pc_listing), plus a plain `products_name` index for
+the degraded local search. Community products (`origin: "community"`)
+sit outside the origin-scoped identity indexes on purpose: their
+identity is the curated name, and the promote flow re-enters them
+through the index.
 `igdb_raw` is the shared raw-payload cache (recommendations and
 reprojection read it; every provider fetch populates it
 backwards). `platforms` caches the IGDB platform catalog wholesale.

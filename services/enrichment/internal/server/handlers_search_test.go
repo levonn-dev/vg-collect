@@ -158,7 +158,7 @@ func TestUnitSearch_DegradedFallsBackToCatalog(t *testing.T) {
 	env := newAuthEnv(t)
 	releaseDate := time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC)
 	st := &stubStore{
-		searchByName: func(_ context.Context, q string, _ int) ([]store.Product, error) {
+		searchByName: func(_ context.Context, _ []string, q string, _ int) ([]store.Product, error) {
 			return []store.Product{{
 				ID: "11111111-1111-1111-1111-111111111111", Type: "game", Name: "Chrono Trigger",
 				Platform: &store.Platform{IGDBID: 19, Name: "Super Nintendo Entertainment System"},
@@ -189,11 +189,69 @@ func TestUnitSearch_DegradedFallsBackToCatalog(t *testing.T) {
 	}
 }
 
+// TestUnitSearch_DegradedDoesNotStarveRequestedKind pins that the
+// degraded fallback's store call scopes by kind before its row limit,
+// not after. The stub plays the store's own type filter: it only
+// keeps types-matching rows, then applies limit - exactly what the
+// real Mongo query now does before its $limit stage - so a top-N
+// window stuffed with 20 hardware name matches (which would have
+// crowded out the one game match under the old unscoped-then-Go-
+// filtered query) still surfaces it once the handler passes the
+// correct kind-scoped types through.
+func TestUnitSearch_DegradedDoesNotStarveRequestedKind(t *testing.T) {
+	env := newAuthEnv(t)
+	hit := store.Product{
+		ID: "33333333-3333-3333-3333-333333333333", Type: "game", Name: "Chrono Trigger",
+		Platform: &store.Platform{IGDBID: 19, Name: "Super Nintendo Entertainment System"},
+		IGDB:     &store.IGDBMeta{GameID: 1011, FetchedAt: time.Now()},
+	}
+	st := &stubStore{
+		searchByName: func(_ context.Context, types []string, _ string, limit int) ([]store.Product, error) {
+			all := make([]store.Product, 0, 21)
+			for i := 0; i < 20; i++ {
+				all = append(all, store.Product{
+					ID: uuid.NewString(), Type: "console", Name: "Chrono Hardware",
+					PriceCharting: &store.PCMeta{PCProductID: int64(i)},
+				})
+			}
+			all = append(all, hit)
+			var out []store.Product
+			for _, p := range all {
+				if !slices.Contains(types, p.Type) {
+					continue
+				}
+				out = append(out, p)
+				if len(out) == limit {
+					break
+				}
+			}
+			return out, nil
+		},
+		searchCommunityProducts: func(context.Context, []string, string, int) ([]store.Product, error) { return nil, nil },
+	}
+	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
+		return nil, errors.New("igdb down")
+	}}
+	h := newUnitHandlers(st, games, nil, newStubCache())
+
+	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=game&q=chrono", env.token(t, "u1", []string{"user"}), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("degraded search: %d %s", rec.Code, rec.Body.String())
+	}
+	var res api.SearchResults
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if !res.Degraded || len(res.Results) != 1 || res.Results[0].Name != "Chrono Trigger" {
+		t.Fatalf("the game hit must survive a hardware-heavy top-N window: %+v", res)
+	}
+}
+
 func TestUnitSearch_DegradedIsNotCached(t *testing.T) {
 	env := newAuthEnv(t)
 	c := newStubCache()
 	st := &stubStore{
-		searchByName:            func(context.Context, string, int) ([]store.Product, error) { return nil, nil },
+		searchByName:            func(context.Context, []string, string, int) ([]store.Product, error) { return nil, nil },
 		searchCommunityProducts: func(context.Context, []string, string, int) ([]store.Product, error) { return nil, nil },
 	}
 	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
@@ -667,7 +725,7 @@ func TestUnitSearch_PCListingsDegradedFallsBackToMappings(t *testing.T) {
 		return nil, errors.New("provider down")
 	}
 	loose := int64(1100)
-	st.searchByName = func(ctx context.Context, q string, limit int) ([]store.Product, error) {
+	st.searchByName = func(ctx context.Context, types []string, q string, limit int) ([]store.Product, error) {
 		return []store.Product{{
 			ID: "p1", Type: "game", Name: "Super Mario 64",
 			PriceCharting: &store.PCMeta{
@@ -715,7 +773,7 @@ func TestUnitSearch_PCListingsDegradedDedupesSharedPCProductID(t *testing.T) {
 		return nil, errors.New("provider down")
 	}
 	loose := int64(1100)
-	st.searchByName = func(ctx context.Context, q string, limit int) ([]store.Product, error) {
+	st.searchByName = func(ctx context.Context, types []string, q string, limit int) ([]store.Product, error) {
 		return []store.Product{
 			{
 				ID: "game-1", Type: "game", Name: "Super Mario 64",

@@ -5,9 +5,10 @@ layer over shelves (collection's saved views) and profiles (user's
 identities). It owns four tables (`follows`, `likes`, `comments`,
 `activity`) and validates every write against collection or user
 before it lands - it never accepts an unvalidated follow or like
-target. Visibility is never stored here: every read re-evaluates it
-against collection and user at query time, so a shelf or profile
-going private takes effect immediately everywhere social surfaces it.
+target. Visibility is never stored here: writes independently
+re-check it against collection and user before landing; reads answer
+with ids and counts only, and the bff hydrates and gates visibility
+at read time.
 
 What an operator sees it doing:
 
@@ -166,12 +167,18 @@ a glance: `follows` (follower_id, followee_id composite PK, checked
 PK, denormalized shelf_owner_id so owner-scoped reads and the account
 purge never need a cross-service lookup), `comments` (uuid id, body
 1-2000 chars on a live row by CHECK, the self-delete/owner-delete/
-purge-anonymize lifecycle from the repo's identity rules), and
-`activity` (append-except-undo: retracting a follow, like, or comment
-deletes its event so feeds never show a retracted action; a partial
-unique index keeps exactly one live `published_shelf` row per shelf).
-One migration so far (`000001_init`), embedded in the binary and
-applied by the init container or `task social:db:migrate`.
+purge-anonymize lifecycle from the repo's identity rules), `activity`
+(append-except-undo: retracting a follow, like, or comment deletes its
+event so feeds never show a retracted action; a partial unique index
+keeps exactly one live `published_shelf` row per shelf), and
+`cap_events` (user_id, kind - `follow` or `like` - created_at; one row
+per genuine follow or like action, written in the same transaction as
+the edge and kept even after the edge is retracted, so the rolling-24h
+cap counts actions rather than currently-held edges; every insert
+opportunistically deletes rows older than 48h so the table self-
+retains with no background job). Two migrations so far (`000001_init`,
+`000002_cap_events`), embedded in the binary and applied by the init
+container or `task social:db:migrate`.
 
 Connection facts: TLS `verify-full` against the cert-manager-issued
 `social-pg-tls` cert (ClusterIssuer `vg-ca`, 90-day duration, renewed
@@ -222,7 +229,7 @@ it):
 | `vg.social.likes`           | `vg_social_likes_total`           | counter    | {op}        | `op` = `create` \| `delete`                         | like/unlike rate                                                                                                                |
 | `vg.social.comments`        | `vg_social_comments_total`        | counter    | {op}        | `op` = `create` \| `self_delete` \| `owner_delete`  | comment volume, and which path retracted each deletion (self vs shelf-owner removal)                                            |
 | `vg.social.feed.reads`      | `vg_social_feed_reads_total`      | counter    | {read}      | `tab` = `following` \| `you`                        | which feed tab gets read                                                                                                        |
-| `vg.social.caps.rejections` | `vg_social_caps_rejections_total` | counter    | {rejection} | `kind` = `follows` \| `likes` \| `comments`         | rate-cap pressure per surface; a sustained climb that is not an abuse pattern is the signal to revisit the cap values in config |
+| `vg.social.caps.rejections` | `vg_social_caps_rejections_total` | counter    | {rejection} | `kind` = `follows` \| `likes` \| `comments`         | rate-cap pressure per surface, including retract-then-recreate cycling on follows and likes (their cap counts actions in `cap_events`, not held edges, so unfollowing or unliking never resets it); a sustained climb that is not an abuse pattern is the signal to revisit the cap values in config |
 | `vg.social.publish.events`  | `vg_social_publish_events_total`  | counter    | {event}     | `outcome` = `created` \| `refreshed` \| `throttled` | shelf-publish activity; see failure scenario 3 for reading this against the bff's fail-open counter                             |
 | `vg.social.purge.runs`      | `vg_social_purge_runs_total`      | counter    | {run}       | `outcome` = `ok`                                    | account-deletion leg volume - this service's side of DeleteMe                                                                   |
 

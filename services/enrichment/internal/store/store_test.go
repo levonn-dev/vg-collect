@@ -10,7 +10,6 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	mongodriver "github.com/golang-migrate/migrate/v4/database/mongodb"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
-	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 
@@ -39,13 +38,14 @@ func newTestStore(t *testing.T) (*store.Store, *mongo.Database) {
 	// Reset: drop everything the previous test left (the migration
 	// version collection included) and re-run the embedded migrations,
 	// so each test opens on a fresh, fully migrated database.
-	if err := client.Database("enrichment").Drop(ctx); err != nil {
+	db := mongotest.DBName(t)
+	if err := client.Database(db).Drop(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := mongokit.Migrate(ctx, url, "enrichment", migrations.FS, "."); err != nil {
+	if err := mongokit.Migrate(ctx, url, db, migrations.FS, "."); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	mdb := client.Database("enrichment")
+	mdb := client.Database(db)
 	return store.New(mdb), mdb
 }
 
@@ -422,14 +422,14 @@ func TestProduct_ByIDsAndSearch(t *testing.T) {
 	if _, err := s.CreateProduct(ctx, store.Product{Type: "game", Name: "Chrono Repro", Origin: "community"}); err != nil {
 		t.Fatal(err)
 	}
-	hits, err := s.SearchByName(ctx, "chrono", 10)
+	hits, err := s.SearchByName(ctx, []string{"game"}, "chrono", 10)
 	if err != nil || len(hits) != 2 {
 		t.Fatalf("search: %d, %v", len(hits), err)
 	}
 	if hits[0].Name != "Chrono Cross" {
 		t.Fatalf("want name-sorted results, got %s first", hits[0].Name)
 	}
-	one, _ := s.SearchByName(ctx, "CHRONO", 1)
+	one, _ := s.SearchByName(ctx, []string{"game"}, "CHRONO", 1)
 	if len(one) != 1 {
 		t.Fatal("limit or case-insensitivity broken")
 	}
@@ -452,17 +452,17 @@ func TestSearchByName_MatchesLocalizationNameAndTranslit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	byName, err := s.SearchByName(ctx, "ゼルダの伝説", 10)
+	byName, err := s.SearchByName(ctx, []string{"game"}, "ゼルダの伝説", 10)
 	if err != nil || len(byName) != 1 || byName[0].Name != "The Legend of Zelda: Ocarina of Time" {
 		t.Fatalf("localization name match: %d, %v", len(byName), err)
 	}
 
-	byTranslit, err := s.SearchByName(ctx, "TOKI NO OCARINA", 10)
+	byTranslit, err := s.SearchByName(ctx, []string{"game"}, "TOKI NO OCARINA", 10)
 	if err != nil || len(byTranslit) != 1 || byTranslit[0].Name != "The Legend of Zelda: Ocarina of Time" {
 		t.Fatalf("translit match (case-insensitive): %d, %v", len(byTranslit), err)
 	}
 
-	none, err := s.SearchByName(ctx, "no such text", 10)
+	none, err := s.SearchByName(ctx, []string{"game"}, "no such text", 10)
 	if err != nil || len(none) != 0 {
 		t.Fatalf("want no match, got %d, %v", len(none), err)
 	}
@@ -737,23 +737,21 @@ func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
-	mc, err := tcmongo.Run(ctx, "mongo:8", mongotest.WaitOption())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = mc.Terminate(ctx) })
-	url, err := mc.ConnectionString(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, err := mongokit.Connect(ctx, url)
+	client, err := mongokit.Connect(ctx, mongotest.URL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
+	// A migration-mechanics test needs a virgin database, not a virgin
+	// server: drop the binary's database so the pinned partial migrate
+	// below starts from nothing an earlier test left behind.
+	db := mongotest.DBName(t)
+	if err := client.Database(db).Drop(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	driver, err := mongodriver.WithInstance(client, &mongodriver.Config{
-		DatabaseName: "enrichment",
+		DatabaseName: db,
 		Locking:      mongodriver.Locking{Enabled: true},
 	})
 	if err != nil {
@@ -763,7 +761,7 @@ func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := migrate.NewWithInstance("iofs", src, "enrichment", driver)
+	m, err := migrate.NewWithInstance("iofs", src, db, driver)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -771,7 +769,7 @@ func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
 		t.Fatalf("migrate to pre-listing-keyed state: %v", err)
 	}
 
-	col := client.Database("enrichment").Collection("products")
+	col := client.Database(db).Collection("products")
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	seed := func(id, typ, region, edition, variant string, gameID, platformID int64) {
 		t.Helper()
@@ -842,23 +840,21 @@ func TestMigration_CommunityRegionMovesIntoBlock(t *testing.T) {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
-	mc, err := tcmongo.Run(ctx, "mongo:8", mongotest.WaitOption())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = mc.Terminate(ctx) })
-	url, err := mc.ConnectionString(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, err := mongokit.Connect(ctx, url)
+	client, err := mongokit.Connect(ctx, mongotest.URL(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
+	// A migration-mechanics test needs a virgin database, not a virgin
+	// server: drop the binary's database so the pinned partial migrate
+	// below starts from nothing an earlier test left behind.
+	db := mongotest.DBName(t)
+	if err := client.Database(db).Drop(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	driver, err := mongodriver.WithInstance(client, &mongodriver.Config{
-		DatabaseName: "enrichment",
+		DatabaseName: db,
 		Locking:      mongodriver.Locking{Enabled: true},
 	})
 	if err != nil {
@@ -868,7 +864,7 @@ func TestMigration_CommunityRegionMovesIntoBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := migrate.NewWithInstance("iofs", src, "enrichment", driver)
+	m, err := migrate.NewWithInstance("iofs", src, db, driver)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -880,7 +876,7 @@ func TestMigration_CommunityRegionMovesIntoBlock(t *testing.T) {
 		t.Fatalf("migrate to pre-region-block state: %v", err)
 	}
 
-	col := client.Database("enrichment").Collection("products")
+	col := client.Database(db).Collection("products")
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	seed := func(doc bson.D) {
 		t.Helper()
@@ -1418,12 +1414,16 @@ func TestCommunityCover_RoundTrips(t *testing.T) {
 }
 
 // TestStore_ListCommunityRegionDocs pins the normalize-community-
-// regions sweep's selection: community docs with a curated region,
-// and only those - a regionless community doc has nothing to fold
-// against, and a provider doc is out of scope regardless of shape.
+// regions sweep's selection: community docs whose curated region sits
+// outside the known set, and only those - a regionless community doc
+// has nothing to fold against, a doc already holding a known region
+// has nothing left to promote (excluding it is what lets a second
+// sweep settle to zero, mirroring collection's ListOpenRegionEntries),
+// and a provider doc is out of scope regardless of shape.
 func TestStore_ListCommunityRegionDocs(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
+	known := []string{"ntsc_u", "ntsc_j", "pal", "region_free", "korea", "brazil", "china"}
 
 	jp, err := s.CreateProduct(ctx, store.Product{
 		Type: "game", Name: "Community JP", Origin: "community",
@@ -1444,11 +1444,19 @@ func TestStore_ListCommunityRegionDocs(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// Already canonical: excluded from selection rather than re-fetched
+	// and re-folded to itself every run.
+	if _, err := s.CreateProduct(ctx, store.Product{
+		Type: "game", Name: "Community Already Canonical", Origin: "community",
+		Community: &store.CommunityMeta{Region: "ntsc_j"},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.CreateProduct(ctx, gameProduct(9601, 19, "Provider Excluded", "SNES", "")); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := s.ListCommunityRegionDocs(ctx)
+	got, err := s.ListCommunityRegionDocs(ctx, known)
 	if err != nil {
 		t.Fatal(err)
 	}

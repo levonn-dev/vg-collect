@@ -37,7 +37,7 @@ func findAllTestCollection(t *testing.T) *mongo.Collection {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
-	col := client.Database("enrichment").Collection("scanall_findall_test_docs")
+	col := client.Database(mongotest.DBName(t)).Collection("scanall_findall_test_docs")
 	if err := col.Drop(ctx); err != nil {
 		t.Fatal(err)
 	}

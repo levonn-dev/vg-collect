@@ -17,7 +17,7 @@ type Config struct {
 
 	// Mongo connection URL (TLS via tls=true&tlsCAFile=... params) and
 	// database name.
-	MongoURL string `env:"MONGO_URL,required"`
+	MongoURL string `env:"MONGO_URL,required,notEmpty"`
 	MongoDB  string `env:"MONGO_DB"  envDefault:"enrichment"`
 	// Optional credential pair composed into MongoURL's userinfo (see
 	// mongokit.ComposeURL) rather than arriving pre-embedded. Must be
@@ -26,11 +26,11 @@ type Config struct {
 	MongoUsername string `env:"MONGO_USERNAME"`
 	MongoPassword string `env:"MONGO_PASSWORD"`
 
-	ValkeyURL string `env:"VALKEY_URL,required"`
+	ValkeyURL string `env:"VALKEY_URL,required,notEmpty"`
 	// CA bundle for rediss:// against the in-cluster CA-issued cert.
 	ValkeyCAFile string `env:"VALKEY_CA_FILE"`
 
-	JWKSURL     string `env:"JWKS_URL,required"`
+	JWKSURL     string `env:"JWKS_URL,required,notEmpty"`
 	JWTIssuer   string `env:"JWT_ISSUER"   envDefault:"vgkeep-auth"`
 	JWTAudience string `env:"JWT_AUDIENCE" envDefault:"vgkeep"`
 

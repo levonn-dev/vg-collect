@@ -218,7 +218,13 @@ func (c *Client) PopularGames(ctx context.Context, genreIDs []int64, excludeIDs 
 		}
 		where += fmt.Sprintf(" & id != (%s)", intsCSV(capped))
 	}
-	body := fmt.Sprintf("fields %s; where %s; sort total_rating desc; limit %d;", gameFields, where, limit+len(excludeIDs))
+	// limit grows with the caller's full exclude count (headroom for the
+	// client-side filter below), but the API rejects any limit over
+	// maxIDsPerQuery outright - the same ceiling the where-clause id cap
+	// above respects. A large library's exclude set must not push this
+	// past it.
+	queryLimit := min(limit+len(excludeIDs), maxIDsPerQuery)
+	body := fmt.Sprintf("fields %s; where %s; sort total_rating desc; limit %d;", gameFields, where, queryLimit)
 	var out []Game
 	if err := c.query(ctx, "games", body, &out); err != nil {
 		return nil, err

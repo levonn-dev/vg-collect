@@ -618,6 +618,53 @@ func TestReprojection_HealsBelowVersionRaw(t *testing.T) {
 	}
 }
 
+// TestUnitReprojection_StopsEarlyOnContextCancellation mirrors
+// TestUnitRunRefresh_StopsEarlyOnContextCancellation for the
+// reprojection step's identical stop-early guard: once the budget
+// expires partway through the walk, the next product's ctx.Err()
+// check must stop the loop instead of rebuilding the rest.
+func TestUnitReprojection_StopsEarlyOnContextCancellation(t *testing.T) {
+	prods := make([]store.Product, 5)
+	raws := make([]store.RawGame, 5)
+	for i := range prods {
+		gid := int64(2000 + i)
+		prods[i] = store.Product{
+			ID: fmt.Sprintf("p%d", i), Type: "game",
+			Platform: &store.Platform{IGDBID: 19},
+			IGDB:     &store.IGDBMeta{GameID: gid, Name: "Stored"},
+		}
+		// A nil-vs-empty ReleaseDates mismatch against the stored
+		// projection (which carries none) is enough to force every
+		// rebuild to differ, without needing a refetch: raws are already
+		// current-version and non-nil, so fetchIDs stays empty.
+		raws[i] = store.RawGame{GameID: gid, Game: igdb.Game{ID: gid, Name: "Rebuilt", ReleaseDates: []igdb.ReleaseDate{}}, FieldsVersion: store.RawFieldsVersion}
+	}
+	st := &stubStore{
+		listIGDBProducts: func(context.Context) ([]store.Product, error) { return prods, nil },
+		rawByIDs:         func(context.Context, []int64) ([]store.RawGame, error) { return raws, nil },
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var calls int
+	st.setIGDB = func(context.Context, string, store.IGDBMeta) error {
+		calls++
+		if calls == 2 {
+			// The budget expires partway through (after the 2nd of 5
+			// products): the next iteration's ctx.Err() check must stop
+			// the reprojection instead of rebuilding the rest.
+			cancel()
+		}
+		return nil
+	}
+	h := newUnitHandlers(st, &stubGames{}, nil, newStubCache())
+
+	h.runReprojection(ctx)
+
+	if calls != 2 {
+		t.Fatalf("reprojection must stop between products once ctx is done: SetIGDB called %d times, want 2", calls)
+	}
+}
+
 // The nightly catalog refresh's second pass is wired into startRefresh: an
 // internal refresh trigger must reach ListIGDBProducts, not just the
 // price pass.
@@ -739,6 +786,42 @@ func TestUnitCandidateSweep_HardwareFlagsSkipsDismissedAndSortsBestFirst(t *test
 	}
 }
 
+// TestUnitCandidateSweep_StopsEarlyOnContextCancellation mirrors
+// TestUnitRunRefresh_StopsEarlyOnContextCancellation for the candidate
+// sweep's identical stop-early guard: once the budget expires partway
+// through the sweep, the next product's ctx.Err() check must stop the
+// loop instead of searching the rest.
+func TestUnitCandidateSweep_StopsEarlyOnContextCancellation(t *testing.T) {
+	comm := make([]store.Product, 5)
+	for i := range comm {
+		comm[i] = store.Product{ID: fmt.Sprintf("c%d", i), Type: "game", Name: "Community Game", Origin: "community"}
+	}
+	st := &stubStore{
+		listCommunityProducts:    func(context.Context) ([]store.Product, error) { return comm, nil },
+		replacePromoteCandidates: func(context.Context, string, []store.PromoteCandidate) error { return nil },
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var calls int
+	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
+		calls++
+		if calls == 2 {
+			// The budget expires partway through (after the 2nd of 5
+			// products): the next iteration's ctx.Err() check must stop
+			// the sweep instead of searching the rest.
+			cancel()
+		}
+		return nil, nil
+	}}
+	h := newUnitHandlers(st, games, &stubPrices{}, newStubCache())
+
+	h.runCandidateSweep(ctx)
+
+	if calls != 2 {
+		t.Fatalf("candidate sweep must stop between products once ctx is done: SearchGames called %d times, want 2", calls)
+	}
+}
+
 // ---- InternalNormalizeCommunityRegions ----
 
 // TestUnitInternalNormalizeCommunityRegions_PromotesFoldMatchSkipsUnknown
@@ -755,7 +838,7 @@ func TestUnitInternalNormalizeCommunityRegions_PromotesFoldMatchSkipsUnknown(t *
 	untouched := "p-taiwan"
 	var wrote []struct{ id, region string }
 	st := &stubStore{
-		listCommunityRegionDocs: func(context.Context) ([]store.CommunityRegionRef, error) {
+		listCommunityRegionDocs: func(context.Context, []string) ([]store.CommunityRegionRef, error) {
 			return []store.CommunityRegionRef{
 				{ID: promoted, Region: "Japan"},
 				{ID: promotedKR, Region: "Korea"},
@@ -794,7 +877,7 @@ func TestUnitInternalNormalizeCommunityRegions_PromotesFoldMatchSkipsUnknown(t *
 // own credential) passes, a plain user token is forbidden.
 func TestUnitInternalNormalizeCommunityRegions_Guards(t *testing.T) {
 	env := newAuthEnv(t)
-	st := &stubStore{listCommunityRegionDocs: func(context.Context) ([]store.CommunityRegionRef, error) { return nil, nil }}
+	st := &stubStore{listCommunityRegionDocs: func(context.Context, []string) ([]store.CommunityRegionRef, error) { return nil, nil }}
 	h := newUnitHandlers(st, nil, nil, newStubCache())
 
 	svc := env.serviceToken(t, "svc:normalize-community-regions")
@@ -807,5 +890,67 @@ func TestUnitInternalNormalizeCommunityRegions_Guards(t *testing.T) {
 	rec = serveUnit(t, h, env, http.MethodPost, "/internal/normalize-community-regions", user, nil)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("plain user: status %d, want 403: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestUnitInternalNormalizeCommunityRegions_SettlesToZeroOnSecondRun
+// pins the sweep's re-runnability. The stub plays the store's own
+// exclusion contract: it hands back a row only while its region is
+// not itself one of the known values passed in - exactly what the
+// real Mongo filter now does - so this proves the handler correctly
+// threads regionkit.KnownRegions through as that known set. A row
+// starting on a reviewed synonym ("Japan") is promoted and counted the
+// first run; already holding its canonical form ("ntsc_j") on the
+// second run, it never reaches SetCommunityRegion and never counts
+// toward normalized again - unlike a fold-only guard, which would
+// still fetch and re-check the dead row every time.
+func TestUnitInternalNormalizeCommunityRegions_SettlesToZeroOnSecondRun(t *testing.T) {
+	env := newAuthEnv(t)
+	const id = "p-japan"
+	region := "Japan"
+	var setCalls int
+	st := &stubStore{
+		listCommunityRegionDocs: func(_ context.Context, known []string) ([]store.CommunityRegionRef, error) {
+			for _, k := range known {
+				if k == region {
+					return nil, nil
+				}
+			}
+			return []store.CommunityRegionRef{{ID: id, Region: region}}, nil
+		},
+		setCommunityRegion: func(_ context.Context, _, r string) error {
+			setCalls++
+			region = r
+			return nil
+		},
+	}
+	h := newUnitHandlers(st, nil, nil, newStubCache())
+	admin := env.token(t, "admin1", []string{"admin"})
+
+	rec := serveUnit(t, h, env, http.MethodPost, "/internal/normalize-community-regions", admin, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first run status %d: %s", rec.Code, rec.Body.String())
+	}
+	var first map[string]int
+	if err := json.Unmarshal(rec.Body.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	if first["scanned"] != 1 || first["normalized"] != 1 || setCalls != 1 {
+		t.Fatalf("first run = %+v, setCalls %d, want scanned 1 normalized 1 setCalls 1", first, setCalls)
+	}
+	if region != "ntsc_j" {
+		t.Fatalf("region after first run = %q, want ntsc_j", region)
+	}
+
+	rec = serveUnit(t, h, env, http.MethodPost, "/internal/normalize-community-regions", admin, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second run status %d: %s", rec.Code, rec.Body.String())
+	}
+	var second map[string]int
+	if err := json.Unmarshal(rec.Body.Bytes(), &second); err != nil {
+		t.Fatal(err)
+	}
+	if second["scanned"] != 0 || second["normalized"] != 0 || setCalls != 1 {
+		t.Fatalf("second run = %+v, setCalls still %d, want scanned 0 normalized 0 setCalls still 1 (an already-canonical region must settle, not be rewritten forever)", second, setCalls)
 	}
 }

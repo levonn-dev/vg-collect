@@ -663,10 +663,15 @@ func (s *Store) ProductsByIDs(ctx context.Context, ids []string) ([]Product, err
 // cold-cache-and-provider-down only). Provider-origin only: this
 // fallback stands in for provider search, so community docs (which
 // have no provider identity) must not surface here as dead rows.
-func (s *Store) SearchByName(ctx context.Context, q string, limit int) ([]Product, error) {
+// types scopes the match server-side, ahead of the limit - mirroring
+// SearchCommunityProducts - so a query whose top name-sorted matches
+// skew toward another kind cannot crowd the caller's requested kind
+// out of the capped result window.
+func (s *Store) SearchByName(ctx context.Context, types []string, q string, limit int) ([]Product, error) {
 	rx := bson.D{{Key: "$regex", Value: regexp.QuoteMeta(q)}, {Key: "$options", Value: "i"}}
 	filter := bson.D{
 		{Key: "origin", Value: "provider"},
+		{Key: "type", Value: bson.D{{Key: "$in", Value: types}}},
 		{Key: "$or", Value: bson.A{
 			bson.D{{Key: "name", Value: rx}},
 			bson.D{{Key: "igdb.localizations.name", Value: rx}},
@@ -704,16 +709,24 @@ type CommunityRegionRef struct {
 	Region string
 }
 
-// ListCommunityRegionDocs lists every community product carrying a
-// non-empty curated region - the normalize-community-regions sweep's
-// worklist. Selection against the known/synonym tables happens in the
-// handler (regions.go, via regionkit): the community population is
-// tiny by construction, so filtering the small result in Go costs
-// nothing and keeps those tables out of the store layer.
-func (s *Store) ListCommunityRegionDocs(ctx context.Context) ([]CommunityRegionRef, error) {
+// ListCommunityRegionDocs lists every community product whose curated
+// region sits outside the known set - the normalize-community-regions
+// sweep's worklist. known is regionkit.KnownRegions, built by the
+// caller (InternalNormalizeCommunityRegions in handlers_admin.go);
+// excluding rows whose region already exactly matches a known value,
+// not just the empty/missing ones, is what lets a second sweep settle
+// to zero - mirroring collection's ListOpenRegionEntries, whose
+// `WHERE NOT (region = ANY($1))` does the equivalent exclusion. A
+// synonym like "usa" is not itself a known value, so it stays selected
+// until the fold in the handler promotes it.
+func (s *Store) ListCommunityRegionDocs(ctx context.Context, known []string) ([]CommunityRegionRef, error) {
+	nin := bson.A{"", nil}
+	for _, k := range known {
+		nin = append(nin, k)
+	}
 	filter := bson.D{
 		{Key: "origin", Value: "community"},
-		{Key: "community.region", Value: bson.D{{Key: "$nin", Value: bson.A{"", nil}}}},
+		{Key: "community.region", Value: bson.D{{Key: "$nin", Value: nin}}},
 	}
 	opts := options.Find().
 		SetProjection(bson.D{{Key: "community.region", Value: 1}}).

@@ -203,6 +203,26 @@ func TestUnitFollow(t *testing.T) {
 		wantProblem(t, resp2, http.StatusNotFound, "profile_not_found")
 	})
 
+	t.Run("unlisted and listed followees are followable", func(t *testing.T) {
+		for _, vis := range []string{"unlisted", "listed"} {
+			t.Run(vis, func(t *testing.T) {
+				var followed bool
+				st := &stubStore{follow: func(context.Context, uuid.UUID, uuid.UUID, int) (bool, error) {
+					followed = true
+					return true, nil
+				}}
+				users := &stubUsers{cardsByIDs: func(context.Context, string, []uuid.UUID) ([]userclient.Card, error) {
+					return []userclient.Card{{UserID: other, Visibility: vis}}, nil
+				}}
+				srv, a := newUnitServer(t, st, &stubCollection{}, users)
+				resp := do(t, http.MethodPut, srv.URL+"/follows/"+other.String(), a.token(t, me.String()), nil)
+				if resp.StatusCode != http.StatusNoContent || !followed {
+					t.Fatalf("status = %d, followed = %v", resp.StatusCode, followed)
+				}
+			})
+		}
+	})
+
 	t.Run("cap maps to 429", func(t *testing.T) {
 		st := &stubStore{follow: func(context.Context, uuid.UUID, uuid.UUID, int) (bool, error) {
 			return false, store.ErrCapExceeded

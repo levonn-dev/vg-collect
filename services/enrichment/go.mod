@@ -8,6 +8,8 @@ replace github.com/levonn-dev/vgkeep/libs/go/config => ../../libs/go/config
 
 replace github.com/levonn-dev/vgkeep/libs/go/contract => ../../libs/go/contract
 
+replace github.com/levonn-dev/vgkeep/libs/go/ctrtest => ../../libs/go/ctrtest
+
 replace github.com/levonn-dev/vgkeep/libs/go/httpkit => ../../libs/go/httpkit
 
 replace github.com/levonn-dev/vgkeep/libs/go/jwtauth => ../../libs/go/jwtauth
@@ -55,7 +57,6 @@ require (
 	github.com/levonn-dev/vgkeep/libs/go/valkeytest v0.0.0-00010101000000-000000000000
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/redis/go-redis/v9 v9.22.0
-	github.com/testcontainers/testcontainers-go/modules/mongodb v0.35.0
 	go.mongodb.org/mongo-driver v1.17.9
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
 	go.opentelemetry.io/otel v1.45.0
@@ -95,6 +96,7 @@ require (
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
+	github.com/levonn-dev/vgkeep/libs/go/ctrtest v0.0.0-00010101000000-000000000000 // indirect
 	github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
@@ -125,6 +127,7 @@ require (
 	github.com/speakeasy-api/openapi v1.24.0 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/testcontainers/testcontainers-go v0.35.0 // indirect
+	github.com/testcontainers/testcontainers-go/modules/mongodb v0.35.0 // indirect
 	github.com/testcontainers/testcontainers-go/modules/valkey v0.35.0 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect

@@ -55,7 +55,15 @@ func scanAll[T any](rows pgx.Rows, scan func(pgx.Rows) (T, error)) ([]T, error) 
 	return out, rows.Err()
 }
 
-// capCount counts a user's rows in the rolling 24h window.
+// capCount counts a user's rows in the rolling 24h window, read
+// straight from a live table. Only comments use this: a comment's own
+// row IS its permanent history (delete tombstones it with deleted_at
+// set rather than removing it), so retract-then-recreate cycling
+// already burns the cap with no extra bookkeeping. Follows and likes
+// hard-delete their edge on retraction (feeds must never show a
+// retracted action), so a live-table count would forget every
+// retracted action - they read cap_events instead; see
+// capEventCount.
 func capCount(ctx context.Context, tx pgx.Tx, table, col string, user uuid.UUID) (int, error) {
 	var n int
 	err := tx.QueryRow(ctx,
@@ -67,11 +75,48 @@ func capCount(ctx context.Context, tx pgx.Tx, table, col string, user uuid.UUID)
 	return n, nil
 }
 
+// capEventCount counts a user's rolling-24h actions of kind
+// ('follow' or 'like') from cap_events - an append-only log that
+// outlives the edge itself, unlike the live follows/likes tables (see
+// capCount's comment for why comments don't need this). The count
+// only ever reads back 24h, so it is unaffected by whether the 48h
+// retention sweep below has run yet.
+func capEventCount(ctx context.Context, tx pgx.Tx, kind string, user uuid.UUID) (int, error) {
+	var n int
+	err := tx.QueryRow(ctx,
+		`SELECT count(*) FROM cap_events WHERE user_id = $1 AND kind = $2 AND created_at > now() - interval '24 hours'`,
+		user, kind).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("store: cap event count %s: %w", kind, err)
+	}
+	return n, nil
+}
+
+// recordCapEvent charges one action against a user's rolling-24h kind
+// cap. Called only after the cap check passes, so this never runs for
+// the already-held idempotent-retry path. Opportunistically sweeps
+// rows older than 48h first - twice the 24h window capEventCount ever
+// reads - so the table self-retains without a background job, the
+// same idiom auth's auth_states sweep uses.
+func recordCapEvent(ctx context.Context, tx pgx.Tx, kind string, user uuid.UUID) error {
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM cap_events WHERE created_at < now() - interval '48 hours'`); err != nil {
+		return fmt.Errorf("store: sweep cap events: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO cap_events (user_id, kind) VALUES ($1, $2)`, user, kind); err != nil {
+		return fmt.Errorf("store: cap event: %w", err)
+	}
+	return nil
+}
+
 // Follow inserts the edge and, iff it inserted, the event. Returns
 // whether this call inserted (false = already following). The edge
 // insert runs before the cap check, so a retry of an edge already
 // held is never charged against the cap - only a genuine new edge is
-// counted, and it is counted after it lands.
+// counted, and it is counted after it lands. The cap itself counts
+// cap_events, not the live edge: unfollowing later must not let a
+// user re-earn cap headroom (see capEventCount).
 func (s *Store) Follow(ctx context.Context, follower, followee uuid.UUID, cap int) (bool, error) {
 	inserted := false
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -84,14 +129,17 @@ func (s *Store) Follow(ctx context.Context, follower, followee uuid.UUID, cap in
 		if tag.RowsAffected() == 0 {
 			return nil
 		}
-		n, err := capCount(ctx, tx, "follows", "follower_id", follower)
+		n, err := capEventCount(ctx, tx, "follow", follower)
 		if err != nil {
 			return err
 		}
-		if n > cap {
+		if n >= cap {
 			return ErrCapExceeded
 		}
 		inserted = true
+		if err := recordCapEvent(ctx, tx, "follow", follower); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO activity (actor_id, verb, target_user_id)
 			VALUES ($1, 'followed_user', $2)`, follower, followee); err != nil {
@@ -159,7 +207,9 @@ func (s *Store) FolloweeIDs(ctx context.Context, follower uuid.UUID) ([]uuid.UUI
 // Like inserts the edge (+event iff inserted). shelfOwner is
 // denormalized from the caller's collection resolve. As with Follow,
 // the edge insert runs before the cap check, so a retry of a like
-// already held is never charged against the cap.
+// already held is never charged against the cap. The cap itself
+// counts cap_events, not the live edge: unliking later must not let a
+// user re-earn cap headroom (see capEventCount).
 func (s *Store) Like(ctx context.Context, user, shelf, shelfOwner uuid.UUID, cap int) (bool, error) {
 	inserted := false
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -172,14 +222,17 @@ func (s *Store) Like(ctx context.Context, user, shelf, shelfOwner uuid.UUID, cap
 		if tag.RowsAffected() == 0 {
 			return nil
 		}
-		n, err := capCount(ctx, tx, "likes", "user_id", user)
+		n, err := capEventCount(ctx, tx, "like", user)
 		if err != nil {
 			return err
 		}
-		if n > cap {
+		if n >= cap {
 			return ErrCapExceeded
 		}
 		inserted = true
+		if err := recordCapEvent(ctx, tx, "like", user); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO activity (actor_id, verb, object_shelf_id, target_user_id)
 			VALUES ($1, 'liked_shelf', $2, $3)`, user, shelf, shelfOwner); err != nil {

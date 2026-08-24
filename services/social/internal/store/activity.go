@@ -41,10 +41,24 @@ func (s *Store) Feed(ctx context.Context, viewer uuid.UUID, tab string, cursor *
 	var query string
 	switch tab {
 	case "following":
-		query = `SELECT ` + eventCols + ` FROM activity
-			WHERE actor_id IN (SELECT followee_id FROM follows WHERE follower_id = $1)
-			  AND (created_at, id) < ($2, $3)
-			ORDER BY created_at DESC, id DESC LIMIT $4`
+		// Per-followee top-K merge: each followee contributes at most
+		// one LIMIT worth of rows via its own (actor_id, created_at,
+		// id) index walk, and the outer sort merges those small sets.
+		// A flat IN-list query would instead gather every candidate
+		// row from every followee before sorting, so its cost grows
+		// with total activity volume; this shape's grows only with the
+		// followee count. The result is provably identical: the global
+		// newest LIMIT rows are always contained in the union of each
+		// followee's newest LIMIT rows below the cursor.
+		query = `SELECT a.* FROM follows f
+			CROSS JOIN LATERAL (
+				SELECT ` + eventCols + ` FROM activity
+				WHERE actor_id = f.followee_id
+				  AND (created_at, id) < ($2, $3)
+				ORDER BY created_at DESC, id DESC LIMIT $4
+			) a
+			WHERE f.follower_id = $1
+			ORDER BY a.created_at DESC, a.id DESC LIMIT $4`
 	case "you":
 		query = `SELECT ` + eventCols + ` FROM activity
 			WHERE target_user_id = $1 AND actor_id <> $1
@@ -112,6 +126,9 @@ func (s *Store) PurgeUser(ctx context.Context, userID uuid.UUID) error {
 		steps := []struct{ q string }{
 			{`DELETE FROM follows WHERE follower_id = $1 OR followee_id = $1`},
 			{`DELETE FROM likes WHERE user_id = $1 OR shelf_owner_id = $1`},
+			// cap_events would self-expire within 48h anyway, but purge
+			// leaves nothing behind on principle.
+			{`DELETE FROM cap_events WHERE user_id = $1`},
 			{`DELETE FROM activity WHERE actor_id = $1 OR target_user_id = $1`},
 			{`DELETE FROM comments WHERE shelf_owner_id = $1`},
 			// deleted_by is nulled only when it names the purged user

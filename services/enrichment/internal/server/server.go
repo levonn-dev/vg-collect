@@ -45,9 +45,9 @@ type Store interface {
 	DeleteUnmatchedProduct(ctx context.Context, id string) (bool, error)
 	ListIGDBProducts(ctx context.Context) ([]store.Product, error)
 	ProductsByIDs(ctx context.Context, ids []string) ([]store.Product, error)
-	SearchByName(ctx context.Context, q string, limit int) ([]store.Product, error)
+	SearchByName(ctx context.Context, types []string, q string, limit int) ([]store.Product, error)
 	SearchCommunityProducts(ctx context.Context, types []string, q string, limit int) ([]store.Product, error)
-	ListCommunityRegionDocs(ctx context.Context) ([]store.CommunityRegionRef, error)
+	ListCommunityRegionDocs(ctx context.Context, known []string) ([]store.CommunityRegionRef, error)
 	SetCommunityRegion(ctx context.Context, id, region string) error
 	ListCommunityProducts(ctx context.Context) ([]store.Product, error)
 	ListCommunityProductsPage(ctx context.Context, limit, offset int) ([]store.Product, int64, error)
@@ -189,44 +189,30 @@ func New(st Store, games GameProvider, prices PriceProvider, fxRates FXProvider,
 		now: time.Now,
 	}
 	meter := otel.Meter("github.com/levonn-dev/vgkeep/services/enrichment")
-	var err error
-	if h.cacheFailOpen, err = vgotel.Counter(meter, "vg.enrichment.cache.fail_open",
-		"Valkey operations that failed and were failed open", "{event}"); err != nil {
-		opts.Logger.Error("cache fail-open counter unavailable", "err", err)
-	}
-	if h.searchRequests, err = vgotel.Counter(meter, "vg.enrichment.search.requests",
-		"Answered catalog searches by kind and answer source", "{request}"); err != nil {
-		opts.Logger.Error("search requests counter unavailable", "err", err)
-	}
-	if h.localizationLeg, err = vgotel.Counter(meter, "vg.enrichment.search.localization_leg",
-		"Supplementary localization-title search legs by outcome", "{leg}"); err != nil {
-		opts.Logger.Error("localization leg counter unavailable", "err", err)
-	}
-	if h.matchOutcomes, err = vgotel.Counter(meter, "vg.enrichment.match.outcomes",
-		"Auto-match attempts by calling flow and outcome", "{attempt}"); err != nil {
-		opts.Logger.Error("match outcomes counter unavailable", "err", err)
-	}
-	if h.fallbackSearch, err = vgotel.Counter(meter, "vg.enrichment.match.fallback_search",
-		"Auto-match fallback name-form searches by outcome", "{search}"); err != nil {
-		opts.Logger.Error("fallback search counter unavailable", "err", err)
-	}
-	if h.refreshItems, err = vgotel.Counter(meter, "vg.enrichment.refresh.items",
-		"Nightly refresh items by step and outcome", "{item}"); err != nil {
-		opts.Logger.Error("refresh items counter unavailable", "err", err)
-	}
+	h.cacheFailOpen = vgotel.CounterLogged(meter, opts.Logger, "vg.enrichment.cache.fail_open",
+		"Valkey operations that failed and were failed open", "{event}")
+	h.searchRequests = vgotel.CounterLogged(meter, opts.Logger, "vg.enrichment.search.requests",
+		"Answered catalog searches by kind and answer source", "{request}")
+	h.localizationLeg = vgotel.CounterLogged(meter, opts.Logger, "vg.enrichment.search.localization_leg",
+		"Supplementary localization-title search legs by outcome", "{leg}")
+	h.matchOutcomes = vgotel.CounterLogged(meter, opts.Logger, "vg.enrichment.match.outcomes",
+		"Auto-match attempts by calling flow and outcome", "{attempt}")
+	h.fallbackSearch = vgotel.CounterLogged(meter, opts.Logger, "vg.enrichment.match.fallback_search",
+		"Auto-match fallback name-form searches by outcome", "{search}")
+	h.refreshItems = vgotel.CounterLogged(meter, opts.Logger, "vg.enrichment.refresh.items",
+		"Nightly refresh items by step and outcome", "{item}")
 	// Explicit boundaries: the SDK defaults top out at 10s and would
 	// flatten every multi-minute refresh step into the last bucket
 	// (the same shared DurationBuckets tuple collection's
 	// rematch.duration histogram uses).
-	if h.refreshStepDuration, err = vgotel.Histogram(meter, "vg.enrichment.refresh.step_duration",
-		"Elapsed seconds per catalog refresh step", "s", vgotel.DurationBuckets...); err != nil {
-		opts.Logger.Error("refresh step duration histogram unavailable", "err", err)
-	}
+	h.refreshStepDuration = vgotel.HistogramLogged(meter, opts.Logger, "vg.enrichment.refresh.step_duration",
+		"Elapsed seconds per catalog refresh step", "s", vgotel.DurationBuckets...)
 	// Direct SDK registration (not vgotel.Histogram/Counter): an
 	// Observable gauge needs RegisterCallback, which those wrappers do
 	// not expose. Mirrors libs/go/pgkit's pool gauges and this same
 	// service's auth/collection siblings (signing-keys, pending-
 	// submissions).
+	var err error
 	if h.refreshLastCompleted, err = meter.Float64ObservableGauge("vg.enrichment.refresh.last_completed",
 		metric.WithDescription("Unix time a catalog refresh step last completed, labeled by step"),
 		metric.WithUnit("s")); err != nil {
@@ -234,10 +220,8 @@ func New(st Store, games GameProvider, prices PriceProvider, fxRates FXProvider,
 	} else if _, err := meter.RegisterCallback(h.observeRefreshLastCompleted, h.refreshLastCompleted); err != nil {
 		opts.Logger.Error("refresh last completed callback unavailable", "err", err)
 	}
-	if h.normalizeCommunityRegions, err = vgotel.Counter(meter, "vg.enrichment.normalize.regions",
-		"Normalize-community-regions sweep rows by outcome", "{row}"); err != nil {
-		opts.Logger.Error("normalize community regions counter unavailable", "err", err)
-	}
+	h.normalizeCommunityRegions = vgotel.CounterLogged(meter, opts.Logger, "vg.enrichment.normalize.regions",
+		"Normalize-community-regions sweep rows by outcome", "{row}")
 	return h
 }
 
@@ -283,7 +267,7 @@ func (h *Handlers) requireService(w http.ResponseWriter, r *http.Request) bool {
 // role. Same claims-access path and 403 problem shape as
 // requireService above.
 func (h *Handlers) requireAdminOrService(w http.ResponseWriter, r *http.Request) bool {
-	return jwtauth.RequireAdminOrService(w, r, problemEW)
+	return jwtauth.RequireAdminOrService(w, r, problem)
 }
 
 // requireAdmin answers false (and writes the 403 problem) unless the

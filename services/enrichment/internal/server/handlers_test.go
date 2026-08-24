@@ -43,9 +43,9 @@ type stubStore struct {
 	deleteUnmatchedProduct       func(ctx context.Context, id string) (bool, error)
 	listIGDBProducts             func(ctx context.Context) ([]store.Product, error)
 	productsByIDs                func(ctx context.Context, ids []string) ([]store.Product, error)
-	searchByName                 func(ctx context.Context, q string, limit int) ([]store.Product, error)
+	searchByName                 func(ctx context.Context, types []string, q string, limit int) ([]store.Product, error)
 	searchCommunityProducts      func(ctx context.Context, types []string, q string, limit int) ([]store.Product, error)
-	listCommunityRegionDocs      func(ctx context.Context) ([]store.CommunityRegionRef, error)
+	listCommunityRegionDocs      func(ctx context.Context, known []string) ([]store.CommunityRegionRef, error)
 	setCommunityRegion           func(ctx context.Context, id, region string) error
 	listCommunityProducts        func(ctx context.Context) ([]store.Product, error)
 	listCommunityProductsPage    func(ctx context.Context, limit, offset int) ([]store.Product, int64, error)
@@ -147,11 +147,11 @@ func (s *stubStore) ProductsByIDs(ctx context.Context, ids []string) ([]store.Pr
 	return s.productsByIDs(ctx, ids)
 }
 
-func (s *stubStore) SearchByName(ctx context.Context, q string, limit int) ([]store.Product, error) {
+func (s *stubStore) SearchByName(ctx context.Context, types []string, q string, limit int) ([]store.Product, error) {
 	if s.searchByName == nil {
 		panic("unexpected SearchByName")
 	}
-	return s.searchByName(ctx, q, limit)
+	return s.searchByName(ctx, types, q, limit)
 }
 
 func (s *stubStore) SearchCommunityProducts(ctx context.Context, types []string, q string, limit int) ([]store.Product, error) {
@@ -161,11 +161,11 @@ func (s *stubStore) SearchCommunityProducts(ctx context.Context, types []string,
 	return s.searchCommunityProducts(ctx, types, q, limit)
 }
 
-func (s *stubStore) ListCommunityRegionDocs(ctx context.Context) ([]store.CommunityRegionRef, error) {
+func (s *stubStore) ListCommunityRegionDocs(ctx context.Context, known []string) ([]store.CommunityRegionRef, error) {
 	if s.listCommunityRegionDocs == nil {
 		panic("unexpected ListCommunityRegionDocs")
 	}
-	return s.listCommunityRegionDocs(ctx)
+	return s.listCommunityRegionDocs(ctx, known)
 }
 
 func (s *stubStore) SetCommunityRegion(ctx context.Context, id, region string) error {
@@ -489,13 +489,14 @@ func newStack(t *testing.T) *stack {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = mclient.Disconnect(context.Background()) })
-	if err := mclient.Database("enrichment").Drop(ctx); err != nil {
+	db := mongotest.DBName(t)
+	if err := mclient.Database(db).Drop(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := mongokit.Migrate(ctx, url, "enrichment", migrations.FS, "."); err != nil {
+	if err := mongokit.Migrate(ctx, url, db, migrations.FS, "."); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	mdb := mclient.Database("enrichment")
+	mdb := mclient.Database(db)
 	st := store.New(mdb)
 
 	rdb, err := valkeykit.Connect(ctx, valkeytest.URL(t))
@@ -504,8 +505,10 @@ func newStack(t *testing.T) *stack {
 	}
 	t.Cleanup(func() { _ = rdb.Close() })
 	// Reset: flush whatever the previous test cached so each test
-	// starts on an empty cache.
-	if err := rdb.FlushAll(ctx).Err(); err != nil {
+	// starts on an empty cache. FlushDB, not FlushAll: the URL is
+	// scoped to this binary's own database on the shared server, and
+	// FlushAll would wipe every other binary's data too.
+	if err := rdb.FlushDB(ctx).Err(); err != nil {
 		t.Fatal(err)
 	}
 

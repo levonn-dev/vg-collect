@@ -191,6 +191,34 @@ func TestClient_PopularGames_ExcludesClientSide(t *testing.T) {
 	}
 }
 
+// TestClient_PopularGames_LimitClauseCappedForLargeExcludeSet pins
+// that the constructed limit clause stays within maxIDsPerQuery (the
+// documented IGDB ceiling) even when the caller's exclude set is much
+// larger: recommendations callers can pass thousands of excluded ids
+// (a large library plus the candidate cap), and limit+len(excludeIDs)
+// must never reach the provider unclamped.
+func TestClient_PopularGames_LimitClauseCappedForLargeExcludeSet(t *testing.T) {
+	var body string
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		_, _ = w.Write([]byte(`[]`))
+	})
+	exclude := make([]int64, 600)
+	for i := range exclude {
+		exclude[i] = int64(i + 1)
+	}
+	if _, err := c.PopularGames(context.Background(), []int64{12}, exclude, 40); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(body, "limit 640;") {
+		t.Fatalf("limit clause must be capped, not limit+len(excludeIDs) unclamped: %s", body)
+	}
+	if !strings.Contains(body, "limit 500;") {
+		t.Fatalf("want the clamped ceiling (500) in the request body: %s", body)
+	}
+}
+
 func TestClient_429SurfacesError(t *testing.T) {
 	c, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)

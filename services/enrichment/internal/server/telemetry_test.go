@@ -84,7 +84,7 @@ func TestUnitTelemetry_SearchAnswersByKindAndSource(t *testing.T) {
 	}
 	// Provider down on a cold key: the degraded local match answers.
 	games.searchGames = func(context.Context, string, int) ([]igdb.Game, error) { return nil, errors.New("igdb down") }
-	st.searchByName = func(context.Context, string, int) ([]store.Product, error) { return nil, nil }
+	st.searchByName = func(context.Context, []string, string, int) ([]store.Product, error) { return nil, nil }
 	if rec := serveUnit(t, h, env, http.MethodGet, "/search?type=game&q=other", tok, nil); rec.Code != http.StatusOK {
 		t.Fatalf("degraded search: %d", rec.Code)
 	}
@@ -492,7 +492,7 @@ func TestUnitTelemetry_RefreshItemsSweep(t *testing.T) {
 func TestUnitTelemetry_NormalizeCommunityRegions(t *testing.T) {
 	reader := metrictest.Install(t)
 	st := &stubStore{
-		listCommunityRegionDocs: func(context.Context) ([]store.CommunityRegionRef, error) {
+		listCommunityRegionDocs: func(context.Context, []string) ([]store.CommunityRegionRef, error) {
 			return []store.CommunityRegionRef{
 				{ID: "p-ok", Region: "Japan"},
 				{ID: "p-unknown", Region: "Atlantis"},
@@ -799,15 +799,15 @@ func TestUnitTelemetry_RegistrationFailureIsBestEffort(t *testing.T) {
 
 	logged := buf.String()
 	for _, want := range []string{
-		"cache fail-open counter unavailable",
-		"search requests counter unavailable",
-		"localization leg counter unavailable",
-		"match outcomes counter unavailable",
-		"fallback search counter unavailable",
-		"refresh items counter unavailable",
-		"refresh step duration histogram unavailable",
+		`"msg":"counter unavailable","name":"vg.enrichment.cache.fail_open"`,
+		`"msg":"counter unavailable","name":"vg.enrichment.search.requests"`,
+		`"msg":"counter unavailable","name":"vg.enrichment.search.localization_leg"`,
+		`"msg":"counter unavailable","name":"vg.enrichment.match.outcomes"`,
+		`"msg":"counter unavailable","name":"vg.enrichment.match.fallback_search"`,
+		`"msg":"counter unavailable","name":"vg.enrichment.refresh.items"`,
+		`"msg":"histogram unavailable","name":"vg.enrichment.refresh.step_duration"`,
 		"refresh last completed gauge unavailable",
-		"normalize community regions counter unavailable",
+		`"msg":"counter unavailable","name":"vg.enrichment.normalize.regions"`,
 	} {
 		if !strings.Contains(logged, want) {
 			t.Fatalf("missing registration-failure log %q in: %s", want, logged)
