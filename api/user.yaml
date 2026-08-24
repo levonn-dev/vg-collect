@@ -22,6 +22,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /users/{userId}:
@@ -40,6 +41,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -81,6 +83,7 @@ paths:
       responses:
         "204":
           description: Deleted (or already gone)
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /shared/profiles/{handle}:
@@ -126,6 +129,7 @@ paths:
                   profiles:
                     type: array
                     items: { $ref: "#/components/schemas/ProfileCard" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /shared/profiles/search:
     get:
@@ -145,6 +149,7 @@ paths:
                   profiles:
                     type: array
                     items: { $ref: "#/components/schemas/ProfileCard" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   securitySchemes:
@@ -240,9 +245,11 @@ components:
       properties:
         handle:
           description: >
-            New typed form. Decoration-only changes are free renames;
-            one change per cooldown window (429 handle_cooldown);
-            folded-key collisions answer 409 handle_taken.
+            New typed form. Any change to the typed string, including
+            a decoration-only edit (case or underscores only, same
+            folded key), still consumes the cooldown: one change per
+            cooldown window (429 handle_cooldown); folded-key
+            collisions answer 409 handle_taken.
           allOf:
             - $ref: './common.yaml#/components/schemas/Handle'
         avatar_url: { type: string, maxLength: 2048 }

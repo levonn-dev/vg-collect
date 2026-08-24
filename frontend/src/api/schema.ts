@@ -85,7 +85,7 @@ export interface paths {
         post?: never;
         /**
          * Delete the account everywhere (collection, linked logins, profile) and end the session
-         * @description Orchestrated in self-healing order: collection purge, then auth identities + refresh revocation, then the user row, then session teardown. A mid-sequence failure answers 502 with the session intact so the request can be retried; an abandoned partial deletion re-attaches to the surviving account on next login.
+         * @description Orchestrated in self-healing order: collection purge, then social-graph purge, then auth identities + refresh revocation, then the user row, then session teardown. A mid-sequence failure answers 502 with the session intact so the request can be retried; an abandoned partial deletion re-attaches to the surviving account on next login.
          */
         delete: operations["deleteMe"];
         options?: never;

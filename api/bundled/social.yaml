@@ -88,7 +88,7 @@ paths:
           $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/TooManyRequests'
-          description: Like cap reached (code cap_exceeded)
+          description: Like cap reached - unliking does not reset it (code cap_exceeded)
         '502':
           $ref: '#/components/responses/UpstreamError'
     delete:
@@ -134,6 +134,8 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/ShelfSocialSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
   /shelves/{shelfId}/comments:
@@ -267,6 +269,8 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Comment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
   /feed:
@@ -326,6 +330,8 @@ paths:
           description: Recorded (created
           refreshed: null
           or throttled): null
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -360,6 +366,8 @@ paths:
                     items:
                       type: string
                       format: uuid
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
   /user-data:
@@ -411,7 +419,7 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
     TooManyRequests:
-      description: Follow cap reached (code cap_exceeded)
+      description: Follow cap reached - unfollowing does not reset it (code cap_exceeded)
       content:
         application/problem+json:
           schema:

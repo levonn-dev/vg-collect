@@ -72,7 +72,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429":
           $ref: "#/components/responses/TooManyRequests"
-          description: Like cap reached (code cap_exceeded)
+          description: Like cap reached - unliking does not reset it (code cap_exceeded)
         "502": { $ref: "#/components/responses/UpstreamError" }
     delete:
       operationId: unlikeShelf
@@ -109,6 +109,7 @@ paths:
                   summaries:
                     type: array
                     items: { $ref: "#/components/schemas/ShelfSocialSummary" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /shelves/{shelfId}/comments:
     get:
@@ -211,6 +212,7 @@ paths:
                   comments:
                     type: array
                     items: { $ref: "#/components/schemas/Comment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /feed:
     get:
@@ -255,6 +257,7 @@ paths:
                 shelf_id: { type: string, format: uuid }
       responses:
         "204": { description: Recorded (created, refreshed, or throttled) }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "502": { $ref: "#/components/responses/UpstreamError" }
@@ -279,6 +282,7 @@ paths:
                   shelf_ids:
                     type: array
                     items: { type: string, format: uuid }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /user-data:
     delete:
@@ -324,7 +328,7 @@ components:
         application/problem+json:
           schema: { $ref: './common.yaml#/components/schemas/Problem' }
     TooManyRequests:
-      description: Follow cap reached (code cap_exceeded)
+      description: Follow cap reached - unfollowing does not reset it (code cap_exceeded)
       content:
         application/problem+json:
           schema: { $ref: './common.yaml#/components/schemas/Problem' }

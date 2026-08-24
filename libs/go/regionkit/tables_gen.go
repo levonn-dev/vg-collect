@@ -63,14 +63,6 @@ func ConsoleRegion(consoleName string) string {
 	}
 }
 
-// PlatformRegions maps an IGDB platform id to the entry region its
-// releases belong to.
-var PlatformRegions = map[int64]string{
-	99: "ntsc_j",
-	58: "ntsc_j",
-	51: "ntsc_j",
-}
-
 // TwinPlatformIDs pairs an IGDB platform id with its JP-regional twin
 // in both directions: looking up either side of a pair returns the
 // other.

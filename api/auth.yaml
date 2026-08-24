@@ -80,6 +80,7 @@ paths:
                 $ref: "#/components/schemas/StartResponse"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /providers:
     get:
@@ -138,6 +139,7 @@ paths:
           $ref: "#/components/responses/BadRequest"
           description: Malformed body, or unknown fixture handle (code unknown_fixture)
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           $ref: "#/components/responses/Conflict"
@@ -177,6 +179,7 @@ paths:
         "204":
           description: Unlinked
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404":
           $ref: "#/components/responses/NotFound"
           description: No such identity on the caller's account (code identity_not_found)
@@ -216,6 +219,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenPair"
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/RefreshUnauthorized" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
@@ -232,6 +236,7 @@ paths:
       responses:
         "204":
           description: Chain revoked (or token unknown; idempotent)
+        "400": { $ref: "#/components/responses/BadRequest" }
         "500": { $ref: "#/components/responses/InternalError" }
   /.well-known/jwks.json:
     get:
