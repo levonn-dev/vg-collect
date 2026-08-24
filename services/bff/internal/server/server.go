@@ -232,22 +232,13 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 		opts.Logger = slog.Default()
 	}
 	meter := otel.Meter("github.com/levonn-dev/vgkeep/services/bff")
-	counter := func(name, description, unit string) metric.Int64Counter {
-		c, err := vgotel.Counter(meter, name, description, unit)
-		if err != nil {
-			// A telemetry hiccup must not stop logins; every emit
-			// helper guards the nil.
-			opts.Logger.Error("counter unavailable", "name", name, "err", err)
-		}
-		return c
-	}
-	failOpen := counter("vg.bff.cache.fail_open",
+	failOpen := vgotel.CounterLogged(meter, opts.Logger, "vg.bff.cache.fail_open",
 		"Valkey operations that failed and were failed open", "{event}")
-	logins := counter("vg.bff.auth.logins",
+	logins := vgotel.CounterLogged(meter, opts.Logger, "vg.bff.auth.logins",
 		"Completed login and account-link attempts by flow and outcome", "{login}")
-	refreshes := counter("vg.bff.session.refreshes",
+	refreshes := vgotel.CounterLogged(meter, opts.Logger, "vg.bff.session.refreshes",
 		"Session refresh attempts by terminal outcome", "{refresh}")
-	cacheLookups := counter("vg.bff.cache.lookups",
+	cacheLookups := vgotel.CounterLogged(meter, opts.Logger, "vg.bff.cache.lookups",
 		"Composition cache lookups (me, recs) by hit or miss", "{lookup}")
 	return &Handlers{
 		codec: codec, cache: cache, auth: auth, users: users, enrichment: enrichment, collection: collection, social: social,
@@ -303,9 +294,7 @@ func (h *Handlers) cacheLookupEvent(ctx context.Context, cache, outcome string) 
 }
 
 func writeProblem(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
-	httpkit.WriteProblem(w, r, httpkit.Problem{
-		Status: status, Title: http.StatusText(status), Code: code, Detail: detail,
-	})
+	httpkit.WriteProblemFields(w, r, status, code, detail)
 }
 
 func (h *Handlers) unauthorized(w http.ResponseWriter, r *http.Request) {

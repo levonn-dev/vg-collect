@@ -127,20 +127,29 @@ func (c *Cache) InvalidateMe(ctx context.Context, sub string) error {
 	return nil
 }
 
+// recsKeyVersion tags the /api/recommendations cache key with the
+// cached body's shape. The cached bytes are enrichment's raw
+// /recommendations:score wire body, verbatim, so bump it whenever that
+// upstream response shape changes - the same discipline meKeyVersion
+// documents for /api/me, on a cache with a much longer TTL.
+const recsKeyVersion = "v1"
+
+func recsKey(sub string) string { return "recs:" + recsKeyVersion + ":" + sub }
+
 // GetRecs returns the cached recommendations body for sub, or nil.
 func (c *Cache) GetRecs(ctx context.Context, sub string) ([]byte, error) {
-	return valkeykit.GetBytes(ctx, c.rdb, "recs:"+sub, "cache: get recs")
+	return valkeykit.GetBytes(ctx, c.rdb, recsKey(sub), "cache: get recs")
 }
 
 // PutRecs caches a composed recommendations body.
 func (c *Cache) PutRecs(ctx context.Context, sub string, body []byte, ttl time.Duration) error {
-	return valkeykit.PutBytes(ctx, c.rdb, "recs:"+sub, body, ttl, "cache: put recs")
+	return valkeykit.PutBytes(ctx, c.rdb, recsKey(sub), body, ttl, "cache: put recs")
 }
 
 // InvalidateRecs drops a user's recommendations after one of their
 // entry mutations (the library that feeds scoring changed).
 func (c *Cache) InvalidateRecs(ctx context.Context, sub string) error {
-	if err := c.rdb.Del(ctx, "recs:"+sub).Err(); err != nil {
+	if err := c.rdb.Del(ctx, recsKey(sub)).Err(); err != nil {
 		return fmt.Errorf("cache: invalidate recs: %w", err)
 	}
 	return nil

@@ -518,7 +518,8 @@ type stack struct {
 // what belongs here is that Handlers forwards the session's own bearer
 // and never shadows the upstream's caching), and the codec + Handlers
 // + router on an httptest server. Skips on -short. Each test starts on
-// an empty keyspace via its own FlushAll below.
+// an empty keyspace via its own FlushDB below (never FlushAll: the
+// URL is scoped to this binary's own database on the shared server).
 func newStack(t *testing.T) *stack {
 	t.Helper()
 	ctx := context.Background()
@@ -528,7 +529,7 @@ func newStack(t *testing.T) *stack {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
-	if err := client.FlushAll(ctx).Err(); err != nil {
+	if err := client.FlushDB(ctx).Err(); err != nil {
 		t.Fatal(err)
 	}
 	c := cache.New(client)

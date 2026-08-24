@@ -12,7 +12,7 @@ What it does, as an operator sees it:
 
 - Sessions: dev and OAuth login, logout, transparent refresh with a
   Valkey-coordinated singleflight, account linking and unlinking, full account
-  deletion (purge orchestration across collection, auth, and user).
+  deletion (purge orchestration across collection, social, auth, and user).
 - Profile: `/api/me` composed from the user service and cached 45s; profile
   edits invalidate the cache immediately.
 - Collection relays: entries CRUD, reorder, and bulk-update, tags, views, dashboard, value
@@ -21,6 +21,10 @@ What it does, as an operator sees it:
 - Recommendations: the one cross-service composition (collection library
   summary + enrichment scoring), cached 1h per user; the user's own entry
   mutations invalidate it.
+- Social relays: follows and unfollows, shelf likes, shelf comments (list,
+  create, delete), the activity feed, Explore browsing (recent and top
+  shelves), and the shared profile and shelf pages composed from collection,
+  user, and social together.
 - Admin relays: unmatched and community product worklists, mapping corrections,
   guarded product delete (reference check against collection before the
   enrichment delete), community mint, promote flows, submissions queue and
@@ -149,6 +153,7 @@ runs are in `.env.example`.
 | `USER_SERVICE_URL`            | `http://user:8080`                                     | `env.userServiceUrl`                                                                                                      | required                                                                      |
 | `ENRICHMENT_SERVICE_URL`      | `http://enrichment:8080`                               | `env.enrichmentServiceUrl`                                                                                                | required                                                                      |
 | `COLLECTION_SERVICE_URL`      | `http://collection:8080`                               | `env.collectionServiceUrl`                                                                                                | required                                                                      |
+| `SOCIAL_SERVICE_URL`          | `http://social:8080`                                   | `env.socialServiceUrl`                                                                                                    | required                                                                      |
 | `VALKEY_URL`                  | `rediss://bff-valkey:6379/0`                           | `env.valkeyUrl`                                                                                                           | required; `rediss://` demands `VALKEY_CA_FILE`                                |
 | `VALKEY_CA_FILE`              | `/etc/vg/valkey-ca/ca.crt`                             | set by the chart when `valkey.enabled`                                                                                    | CA from the `bff-valkey-tls` secret                                           |
 | `ACCESS_TOKEN_TTL`            | `5m`                                                   | `env.accessTokenTtl`                                                                                                      | must match the auth chart's `accessTokenTtl`; bounds denylist entry TTLs      |
@@ -182,7 +187,7 @@ Key families, all written by the bff:
 | `refresh:lock:<sha256(refresh)>`   | rotation singleflight lock                        | 10s                              |
 | `refresh:result:<sha256(refresh)>` | published rotation result (AES-GCM sealed cookie) | 60s                              |
 | `me:v4:<sub>`                      | composed `/api/me` body                           | `ME_CACHE_TTL` (45s)             |
-| `recs:<sub>`                       | composed recommendations body                     | `RECS_CACHE_TTL` (1h)            |
+| `recs:v1:<sub>`                    | composed recommendations body                     | `RECS_CACHE_TTL` (1h)            |
 
 Nothing secret rests in Valkey in the clear: the published rotation result is
 the same ciphertext the browser holds. Every key carries a TTL, so memory
@@ -522,8 +527,12 @@ Route-to-dependency map: `/api/auth/*` and `/api/me/identities*` > auth;
 `/api/admin/normalize-regions` > collection; `/api/search`,
 `/api/products*`, `/api/fx`, `/api/platforms`, `/api/admin/products*`,
 `/api/admin/refresh`, `/api/admin/normalize-community-regions` > enrichment;
-`/api/otlp/v1/traces` > otel-agent.
-`/api/recommendations` and `DELETE /api/me` touch several services; read the
+`/api/social/follows/*`, `/api/social/likes/*`, `/api/shelves/*`,
+`/api/shelves/*/comments`, `/api/comments/*`, `/api/feed`, `/api/explore`,
+`/api/profiles/*` > social; `/api/otlp/v1/traces` > otel-agent.
+`/api/recommendations`, `DELETE /api/me`, and the composed profile pages
+(`/api/profiles/{handle}` and `/api/profiles/{handle}/shelves/{slug}`
+read user and collection before social) touch several services; read the
 problem detail or the trace. Then triage the named service, not the bff
 ([stack.md](stack.md#1-service-5xx-ratio-above-5-percent) says the same
 from the other direction).

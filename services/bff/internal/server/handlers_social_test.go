@@ -249,6 +249,124 @@ func TestUnitShelfPage_EffectiveVisibility(t *testing.T) {
 	})
 }
 
+// TestUnitProfileShelfPage_EffectiveVisibility pins
+// GetProfileShelfPage's anti-enumeration property: unknown handle,
+// private owner, and unknown slug all converge on the exact same 404
+// shelf_not_found so a probing request cannot tell the reasons apart
+// (GetShelfPage's own effectiveShelf rule, applied here to the
+// handle+slug lookup path), plus the happy path, through
+// GET /api/profiles/{handle}/shelves/{slug}.
+func TestUnitProfileShelfPage_EffectiveVisibility(t *testing.T) {
+	ownerID, shelfID := uuid.New(), uuid.New()
+	listedOwner := userapi.ProfileCard{UserId: ownerID, Handle: "alice", ProfileVisibility: "listed"}
+	privateOwner := userapi.ProfileCard{UserId: ownerID, Handle: "alice", ProfileVisibility: "private"}
+	shelf := collectionapi.SharedShelf{
+		Id: shelfID, Name: "Backlog", Slug: "backlog", OwnerId: ownerID,
+		Visibility: "listed", Params: map[string]any{},
+	}
+
+	setup := func(usr *stubUsers, col *stubCollection, soc *stubSocialFull) (*Handlers, *testEnv) {
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
+		h.users, h.collection, h.social = usr, col, soc
+		access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
+		return h, &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
+	}
+	const path = "/api/profiles/alice/shelves/backlog"
+
+	t.Run("unknown handle -> 404 shelf_not_found", func(t *testing.T) {
+		usr := &stubUsers{sharedProfile: func(context.Context, string, string) (userapi.ProfileCard, error) {
+			return userapi.ProfileCard{}, userclient.ErrProfileNotFound
+		}}
+		h, env := setup(usr, &stubCollection{}, &stubSocialFull{})
+		rec := doAuthed(t, h, env, http.MethodGet, path)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rec.Code)
+		}
+		var got struct {
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Code != "shelf_not_found" {
+			t.Fatalf("code = %q, want shelf_not_found", got.Code)
+		}
+	})
+
+	t.Run("known handle, private owner -> 404 shelf_not_found, SharedShelfBySlug never called", func(t *testing.T) {
+		usr := &stubUsers{sharedProfile: func(context.Context, string, string) (userapi.ProfileCard, error) {
+			return privateOwner, nil
+		}}
+		// sharedShelfBySlug is deliberately unset: a private owner must
+		// short-circuit before collection is ever consulted for the slug.
+		h, env := setup(usr, &stubCollection{}, &stubSocialFull{})
+		rec := doAuthed(t, h, env, http.MethodGet, path)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rec.Code)
+		}
+		var got struct {
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Code != "shelf_not_found" {
+			t.Fatalf("code = %q, want shelf_not_found", got.Code)
+		}
+	})
+
+	t.Run("known handle, listed owner, unknown slug -> 404 shelf_not_found", func(t *testing.T) {
+		usr := &stubUsers{sharedProfile: func(context.Context, string, string) (userapi.ProfileCard, error) {
+			return listedOwner, nil
+		}}
+		col := &stubCollection{sharedShelfBySlug: func(context.Context, string, uuid.UUID, string) (collectionapi.SharedShelf, error) {
+			return collectionapi.SharedShelf{}, collectionclient.ErrShelfNotFound
+		}}
+		h, env := setup(usr, col, &stubSocialFull{})
+		rec := doAuthed(t, h, env, http.MethodGet, path)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rec.Code)
+		}
+		var got struct {
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Code != "shelf_not_found" {
+			t.Fatalf("code = %q, want shelf_not_found", got.Code)
+		}
+	})
+
+	t.Run("known handle, listed owner, known slug -> 200 ShelfPage", func(t *testing.T) {
+		usr := &stubUsers{sharedProfile: func(context.Context, string, string) (userapi.ProfileCard, error) {
+			return listedOwner, nil
+		}}
+		col := &stubCollection{sharedShelfBySlug: func(context.Context, string, uuid.UUID, string) (collectionapi.SharedShelf, error) {
+			return shelf, nil
+		}}
+		soc := &stubSocialFull{shelvesSummary: func(context.Context, string, []uuid.UUID) ([]socialapi.ShelfSocialSummary, error) {
+			return []socialapi.ShelfSocialSummary{{ShelfId: shelfID, LikeCount: 2}}, nil
+		}}
+		h, env := setup(usr, col, soc)
+		rec := doAuthed(t, h, env, http.MethodGet, path)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+		}
+		var got struct {
+			Shelf           struct{ Slug string }   `json:"shelf"`
+			Owner           struct{ Handle string } `json:"owner"`
+			SocialAvailable bool                    `json:"social_available"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Shelf.Slug != "backlog" || got.Owner.Handle != "alice" || !got.SocialAvailable {
+			t.Fatalf("got = %+v", got)
+		}
+	})
+}
+
 // TestUnitProfilePage_ComposesAndHides pins GET /api/profiles/{handle}:
 // the 404 on an unresolvable handle, that the shelf list is scoped to
 // exactly the resolved owner, and that a social outage degrades the
@@ -257,6 +375,7 @@ func TestUnitShelfPage_EffectiveVisibility(t *testing.T) {
 func TestUnitProfilePage_ComposesAndHides(t *testing.T) {
 	ownerID := uuid.New()
 	owner := userapi.ProfileCard{UserId: ownerID, Handle: "alice", ProfileVisibility: "listed"}
+	privateOwner := userapi.ProfileCard{UserId: ownerID, Handle: "alice", ProfileVisibility: "private"}
 	shelfSummary := collectionapi.SharedShelfSummary{
 		Id: uuid.New(), Name: "Backlog", Slug: "backlog", OwnerId: ownerID,
 		Visibility: "listed", EntryCount: 4, CoverUrls: []string{},
@@ -278,6 +397,28 @@ func TestUnitProfilePage_ComposesAndHides(t *testing.T) {
 		rec := doAuthed(t, h, env, http.MethodGet, path)
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want 404", rec.Code)
+		}
+	})
+
+	t.Run("known handle, private owner -> 404 profile_not_found, ListSharedShelves never called", func(t *testing.T) {
+		usr := &stubUsers{sharedProfile: func(context.Context, string, string) (userapi.ProfileCard, error) {
+			return privateOwner, nil
+		}}
+		// listSharedShelves is deliberately unset: a private owner must
+		// short-circuit before collection is ever consulted for the shelf list.
+		h, env := setup(usr, &stubCollection{}, &stubSocialFull{})
+		rec := doAuthed(t, h, env, http.MethodGet, path)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rec.Code)
+		}
+		var got struct {
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Code != "profile_not_found" {
+			t.Fatalf("code = %q, want profile_not_found", got.Code)
 		}
 	})
 

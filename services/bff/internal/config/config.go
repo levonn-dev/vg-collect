@@ -12,7 +12,7 @@ type Config struct {
 	HTTPAddr string `env:"HTTP_ADDR" envDefault:":8080"`
 
 	// base64 (std) 32-byte AES-256 key sealing the session cookie.
-	CookieKey string `env:"COOKIE_KEY,required"`
+	CookieKey string `env:"COOKIE_KEY,required,notEmpty"`
 	// Secure stays on even in dev: browsers treat http://localhost as a
 	// trustworthy origin, so Secure cookies work over the port-forward.
 	CookieSecure bool `env:"COOKIE_SECURE" envDefault:"true"`
@@ -21,18 +21,18 @@ type Config struct {
 	// the Vite dev server origin in dev).
 	PublicOrigins []string `env:"PUBLIC_ORIGINS,required,notEmpty" envSeparator:","`
 
-	AuthServiceURL       string `env:"AUTH_SERVICE_URL,required"`
-	UserServiceURL       string `env:"USER_SERVICE_URL,required"`
-	EnrichmentServiceURL string `env:"ENRICHMENT_SERVICE_URL,required"`
-	CollectionServiceURL string `env:"COLLECTION_SERVICE_URL,required"`
-	SocialServiceURL     string `env:"SOCIAL_SERVICE_URL,required"`
+	AuthServiceURL       string `env:"AUTH_SERVICE_URL,required,notEmpty"`
+	UserServiceURL       string `env:"USER_SERVICE_URL,required,notEmpty"`
+	EnrichmentServiceURL string `env:"ENRICHMENT_SERVICE_URL,required,notEmpty"`
+	CollectionServiceURL string `env:"COLLECTION_SERVICE_URL,required,notEmpty"`
+	SocialServiceURL     string `env:"SOCIAL_SERVICE_URL,required,notEmpty"`
 
 	// OTLP/HTTP base URL of the collector agent for relayed browser
 	// telemetry. Empty disables the relay (payloads are accepted and
 	// dropped): telemetry must never break the app.
 	OTLPProxyURL string `env:"OTLP_PROXY_URL"`
 
-	ValkeyURL string `env:"VALKEY_URL,required"`
+	ValkeyURL string `env:"VALKEY_URL,required,notEmpty"`
 	// CA bundle for rediss:// against the in-cluster CA-issued cert.
 	ValkeyCAFile string `env:"VALKEY_CA_FILE"`
 

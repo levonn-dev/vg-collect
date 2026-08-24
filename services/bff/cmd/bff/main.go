@@ -12,8 +12,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/redis/go-redis/v9"
-
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
@@ -62,14 +60,8 @@ func run() error {
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
-	// Valkey is required at startup (a deploy-ordering fact); runtime
-	// outages fail open per-request instead.
-	var rdb *redis.Client
-	if cfg.ValkeyCAFile != "" {
-		rdb, err = valkeykit.ConnectTLS(ctx, cfg.ValkeyURL, cfg.ValkeyCAFile)
-	} else {
-		rdb, err = valkeykit.Connect(ctx, cfg.ValkeyURL)
-	}
+	// Valkey is required at startup (deploy-ordering); runtime outages fail open.
+	rdb, err := valkeykit.ConnectFromConfig(ctx, cfg.ValkeyURL, cfg.ValkeyCAFile)
 	if err != nil {
 		return err
 	}

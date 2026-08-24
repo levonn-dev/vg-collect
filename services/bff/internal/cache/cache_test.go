@@ -21,7 +21,8 @@ func newTestCache(t *testing.T) *cache.Cache {
 // newTestCacheWithClient is newTestCache but also hands back the raw
 // client, for tests that need to reach around the Cache API (e.g. to
 // seed or inspect a key directly). Each test starts on an empty
-// keyspace via its own FlushAll below.
+// keyspace via its own FlushDB below (never FlushAll: the URL is
+// scoped to this binary's own database on the shared server).
 func newTestCacheWithClient(t *testing.T) (*cache.Cache, *redis.Client) {
 	t.Helper()
 	ctx := context.Background()
@@ -30,7 +31,7 @@ func newTestCacheWithClient(t *testing.T) (*cache.Cache, *redis.Client) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
-	if err := client.FlushAll(ctx).Err(); err != nil {
+	if err := client.FlushDB(ctx).Err(); err != nil {
 		t.Fatal(err)
 	}
 	return cache.New(client), client
