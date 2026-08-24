@@ -13,16 +13,16 @@ import (
 // service. Provider credentials default to empty: an empty pair keeps
 // that provider disabled, so the stack runs with zero real secrets.
 type Config struct {
-	HTTPAddr    string `env:"HTTP_ADDR"            envDefault:":8080"`
-	DatabaseURL string `env:"DATABASE_URL,required"`
+	HTTPAddr    string `env:"HTTP_ADDR"                     envDefault:":8080"`
+	DatabaseURL string `env:"DATABASE_URL,required,notEmpty"`
 
-	JWTSigningKey   string        `env:"JWT_SIGNING_KEY,required"` // base64 (std) 32-byte Ed25519 seed
+	JWTSigningKey   string        `env:"JWT_SIGNING_KEY,required,notEmpty"` // base64 (std) 32-byte Ed25519 seed
 	JWTIssuer       string        `env:"JWT_ISSUER"           envDefault:"vgkeep-auth"`
 	JWTAudience     string        `env:"JWT_AUDIENCE"         envDefault:"vgkeep"`
 	AccessTokenTTL  time.Duration `env:"ACCESS_TOKEN_TTL"     envDefault:"5m"`
 	RefreshTokenTTL time.Duration `env:"REFRESH_TOKEN_TTL"    envDefault:"720h"`
 
-	UserServiceURL string `env:"USER_SERVICE_URL,required"`
+	UserServiceURL string `env:"USER_SERVICE_URL,required,notEmpty"`
 
 	// Accepted internal-caller tokens for POST /internal/service-token
 	// (the catalog-refresh and entry-rematch CronJobs' bootstrap

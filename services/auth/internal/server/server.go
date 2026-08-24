@@ -97,6 +97,12 @@ type Handlers struct {
 	// POST /internal/service-token (an A/B pair during rotation).
 	internalServiceSecrets []string
 
+	// logger backs the domain instrument registration logs and the
+	// signing-keys gauge's setup errors (same configured-logger shape
+	// as the other services' Handlers, instead of the package-level
+	// slog default).
+	logger *slog.Logger
+
 	// Domain instruments (best-effort: nil when registration failed,
 	// and the record helpers no-op).
 	loginOutcomes  metric.Int64Counter
@@ -106,33 +112,33 @@ type Handlers struct {
 
 // New builds a Handlers wired to the given collaborators. Instruments
 // are best-effort, like the bff cache counter: a registration failure
-// is logged but never prevents startup.
+// is logged but never prevents startup. logger defaults to
+// slog.Default() when nil, matching bff/enrichment's Options.Logger
+// idiom.
 func New(st Store, m Minter, users UserService, providers map[string]oidc.Provider,
-	verifier Verifier, devEnabled bool, refreshTTL time.Duration, internalServiceSecrets []string) *Handlers {
+	verifier Verifier, devEnabled bool, refreshTTL time.Duration, internalServiceSecrets []string, logger *slog.Logger) *Handlers {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	h := &Handlers{
 		store: st, minter: m, users: users, providers: providers,
 		verifier: verifier, devEnabled: devEnabled, refreshTTL: refreshTTL,
 		internalServiceSecrets: internalServiceSecrets,
+		logger:                 logger,
 	}
 	meter := otel.Meter("github.com/levonn-dev/vgkeep/services/auth")
-	var err error
-	h.loginOutcomes, err = vgotel.Counter(meter, "vg.auth.login.outcomes",
+	h.loginOutcomes = vgotel.CounterLogged(meter, h.logger, "vg.auth.login.outcomes",
 		"Terminals of provider login and link dances", "{login}")
-	if err != nil {
-		slog.Error("login outcomes counter unavailable", "err", err)
-	}
-	h.tokenRefreshes, err = vgotel.Counter(meter, "vg.auth.token.refreshes",
+	h.tokenRefreshes = vgotel.CounterLogged(meter, h.logger, "vg.auth.token.refreshes",
 		"Refresh token rotation terminals", "{refresh}")
-	if err != nil {
-		slog.Error("token refreshes counter unavailable", "err", err)
-	}
+	var err error
 	h.signingKeys, err = meter.Int64ObservableGauge("vg.auth.signing_keys.active",
 		metric.WithDescription("Signing keys the JWKS serves right now"),
 		metric.WithUnit("{key}"))
 	if err != nil {
-		slog.Error("signing keys gauge unavailable", "err", err)
+		h.logger.Error("signing keys gauge unavailable", "err", err)
 	} else if _, err := meter.RegisterCallback(h.observeSigningKeys, h.signingKeys); err != nil {
-		slog.Error("signing keys callback unavailable", "err", err)
+		h.logger.Error("signing keys callback unavailable", "err", err)
 	}
 	return h
 }

@@ -118,9 +118,32 @@ func TestDiscovery_IssuerMismatchRejected(t *testing.T) {
 	}, nil)
 	// The discovery document lives under the configured issuer path, so
 	// the fetch itself 404s; a mix-up where the doc loads but declares a
-	// different issuer is covered by Exchange's issuer check below.
+	// different issuer is covered by TestDiscovery_DocumentIssuerMismatchRejected.
 	if _, err := p.AuthorizeURL(context.Background(), "s", "n", "c"); err == nil {
 		t.Fatal("want error for issuer mismatch")
+	}
+}
+
+func TestDiscovery_DocumentIssuerMismatchRejected(t *testing.T) {
+	f := newFakeIDP(t)
+	f.discoveryIssuer = "https://not-the-real-issuer.example"
+	p := newRP(t, f, nil)
+
+	// The fetch succeeds (the document lives under the configured issuer
+	// path and answers 200), but the document itself asserts a different
+	// issuer than the one we were configured to talk to. fetchDiscovery's
+	// mix-up defense must reject this before AuthorizeURL ever gets an
+	// authorization endpoint out of it.
+	_, err := p.AuthorizeURL(context.Background(), "s", "n", "c")
+	var pe *oidc.ProviderError
+	if !errors.As(err, &pe) {
+		t.Fatalf("want *oidc.ProviderError, got %v", err)
+	}
+	if pe.Op != "discovery" {
+		t.Fatalf("Op = %q, want discovery", pe.Op)
+	}
+	if !strings.Contains(pe.Err.Error(), "issuer mismatch") {
+		t.Fatalf("err = %v, want it to mention issuer mismatch", pe.Err)
 	}
 }
 

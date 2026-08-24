@@ -47,8 +47,16 @@ func (h *Handlers) OauthStart(w http.ResponseWriter, r *http.Request) {
 // URL. linkUserID is nil for a login-mode start (OauthStart) and the
 // caller's id for a link-mode start (OauthLinkStart); persistErrDetail
 // is the two callers' only other difference, the wording of the 500
-// they answer when the state write itself fails.
+// they answer when the state write itself fails. Both failure branches
+// record a login-outcomes terminal (symmetric with OauthCallback's
+// exchange branches): the provider is already known here, and a
+// provider outage or discovery failure often shows up at this leg
+// before any in-flight login reaches the callback.
 func (h *Handlers) startDance(w http.ResponseWriter, r *http.Request, p oidc.Provider, linkUserID *uuid.UUID, persistErrDetail string) {
+	flow := flowLogin
+	if linkUserID != nil {
+		flow = flowLink
+	}
 	state := oidc.RandomToken()
 	nonce := oidc.RandomToken()
 	verifier, challenge := oidc.NewPKCE()
@@ -57,12 +65,14 @@ func (h *Handlers) startDance(w http.ResponseWriter, r *http.Request, p oidc.Pro
 		Provider: p.Name(), ExpiresAt: time.Now().Add(stateTTL), LinkUserID: linkUserID,
 	}); err != nil {
 		logStoreError(r.Context(), "create_state", err)
+		h.recordLogin(r.Context(), p.Name(), flow, outcomeInternalError)
 		problem(w, r, http.StatusInternalServerError, "internal", persistErrDetail)
 		return
 	}
 	authorizeURL, err := p.AuthorizeURL(r.Context(), state, nonce, challenge)
 	if err != nil {
 		logProviderError(r.Context(), p.Name(), err)
+		h.recordLogin(r.Context(), p.Name(), flow, outcomeProviderError)
 		problem(w, r, http.StatusBadGateway, "provider_error", "identity provider unavailable")
 		return
 	}

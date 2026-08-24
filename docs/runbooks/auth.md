@@ -156,7 +156,8 @@ Bruno flows live in `bruno/auth/` and target `auth_url =
 http://localhost:8082` directly with Bearer tokens: `dev-token` logs in
 and stores tokens, `refresh` rotates, `reuse-detect` replays the
 consumed token and expects `refresh_reused`, plus `jwks`, `identities`,
-`dev-link`, `unlink-identity`, `revoke`, and `delete-user-auth`.
+`dev-link`, `unlink-identity`, `revoke`, `delete-user-auth`, and
+`service-token`.
 
 ## Configuration
 
@@ -212,7 +213,11 @@ this schema):
   SHA-256 of the opaque token (the raw token is never stored).
   `family_id` groups a login session's rotation chain; `parent_hash` is
   the audit trail; `used_at`/`revoked_at` drive reuse detection;
-  `last_access_jti` is what `revoke_jtis` reports.
+  `last_access_jti` is what `revoke_jtis` reports. Dead (used or
+  revoked) rows more than 30 days past their expiry are swept
+  opportunistically on the next login insert, same as `auth_states`;
+  a still-referenced `parent_hash` link nulls out via the FK instead
+  of blocking the delete.
 - `auth_states`: pending OAuth round-trips (state, PKCE verifier,
   nonce, provider, 10 minute expiry, optional `link_user_id` marking a
   link flow). Swept on every insert; no background job.
@@ -221,8 +226,10 @@ this schema):
   its kid at boot (kid is derived from the key, so this is idempotent).
 
 Migrations are golang-migrate SQL files embedded in the binary
-(`services/auth/migrations`, currently `000001_init` and
-`000002_identity_link`), applied by the `migrate` init container.
+(`services/auth/migrations`, currently `000001_init`,
+`000002_identity_link`, `000003_user_id_indexes`, and
+`000004_parent_hash_set_null`), applied by the `migrate` init
+container.
 
 Connection facts: single-replica StatefulSet `auth-pg` (postgres:17-alpine,
 1Gi PVC), TLS on with a cert-manager certificate (`auth-pg-tls`, issuer
@@ -275,18 +282,22 @@ carry user ids or free-form strings.
 Emission sites, precisely:
 
 - `vg.auth.login.outcomes` increments once per terminal of a dance
-  whose provider is known: the exchange branches of `OauthCallback`
+  whose provider is known: `startDance`'s two failure branches (the
+  shared tail of `OauthStart` and `OauthLinkStart`: state-persist
+  failure -> `internal_error`, provider `AuthorizeURL` failure ->
+  `provider_error`), the exchange branches of `OauthCallback`
   (`ProviderError` -> `provider_error`, other verify failures ->
   `rejected`), the unknown-fixture 400s of `DevToken` and `DevLink`
   (provider `dev` -> `rejected`), and every terminal of `completeLogin`
   / `completeLink` (unverified email, identity conflict, link target
   gone -> `rejected`; user service Get/Upsert failure ->
   `upstream_error`; store or mint failure -> `internal_error`; session
-  minted -> `success`). `flow` is `link` when the consumed state
-  carried `link_user_id` (and for `DevLink`), else `login`. Malformed
-  bodies, `unknown_provider`, and `invalid_state` are not counted (no
-  provider to attribute); they stay visible as 4xx on "4xx and 5xx by
-  route and status".
+  minted -> `success`). `flow` is `link` for `OauthLinkStart` (including
+  its `startDance` failures), `DevLink`, and any callback whose consumed
+  state carried `link_user_id`; otherwise `login`. Malformed bodies,
+  `unknown_provider`, and `invalid_state` are not counted (no provider
+  to attribute); they stay visible as 4xx on "4xx and 5xx by route and
+  status".
 - `vg.auth.token.refreshes` increments once per `RefreshToken` terminal:
   200 -> `success`; both reuse branches (revoked-family short-circuit
   and rotation-time detection) -> `reuse_detected`; unknown/expired

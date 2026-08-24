@@ -52,9 +52,11 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestLoad_MissingRequired(t *testing.T) {
-	// caarlos0/env "required" only fires when the var is absent, not when
-	// set to empty. t.Setenv registers cleanup before os.Unsetenv so the
-	// env is restored correctly at test end.
+	// t.Setenv can only represent a present value, so this unsets each
+	// var afterward to prove required's own absent-only failure mode;
+	// notEmpty (also set on every field here) separately catches a
+	// present-but-empty value. t.Setenv registers cleanup before
+	// os.Unsetenv so the env is restored correctly at test end.
 	for _, k := range required {
 		t.Setenv(k, "")
 		if err := os.Unsetenv(k); err != nil {

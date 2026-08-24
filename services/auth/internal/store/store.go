@@ -306,7 +306,22 @@ func (s *Store) DeleteUserAuth(ctx context.Context, userID uuid.UUID) error {
 
 // CreateSession starts a new refresh family at login. accessJTI is the
 // jti of the access token minted alongside this refresh token.
+//
+// Before inserting, it opportunistically sweeps dead rows outside the
+// retention window (same placement as CreateState's auth_states sweep:
+// the table self-cleans without a background job). A row is eligible
+// once it is dead (used or revoked) AND its expiry is more than 30 days
+// past - 30 days keeps short-horizon reuse forensics available after a
+// family dies while bounding table growth. A swept row still named as
+// some live descendant's parent_hash is fine: migration 000004 nulls
+// that link out on delete instead of blocking the sweep.
 func (s *Store) CreateSession(ctx context.Context, tokenHash string, userID uuid.UUID, accessJTI string, expiresAt time.Time) error {
+	if _, err := s.pool.Exec(ctx, `
+		DELETE FROM refresh_tokens
+		WHERE (used_at IS NOT NULL OR revoked_at IS NOT NULL)
+		AND expires_at < now() - interval '30 days'`); err != nil {
+		return fmt.Errorf("store: sweep refresh tokens: %w", err)
+	}
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO refresh_tokens (token_hash, family_id, user_id, last_access_jti, expires_at)
 		VALUES ($1, gen_random_uuid(), $2, $3, $4)`,

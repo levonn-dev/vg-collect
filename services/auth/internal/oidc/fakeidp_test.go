@@ -30,6 +30,7 @@ type fakeIDP struct {
 
 	// knobs
 	discoveryStatus int           // 0 means 200
+	discoveryIssuer string        // non-empty overrides the "issuer" field in the discovery document
 	tokenStatus     int           // 0 means 200
 	jwksStatus      int           // 0 means 200
 	tokenRawBody    string        // non-empty overrides the JSON response
@@ -62,8 +63,12 @@ func (f *fakeIDP) discovery(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(f.discoveryStatus)
 		return
 	}
+	issuer := f.srv.URL
+	if f.discoveryIssuer != "" {
+		issuer = f.discoveryIssuer
+	}
 	_ = json.NewEncoder(w).Encode(map[string]string{
-		"issuer":                 f.srv.URL,
+		"issuer":                 issuer,
 		"authorization_endpoint": f.srv.URL + "/authorize",
 		"token_endpoint":         f.srv.URL + "/token",
 		"jwks_uri":               f.srv.URL + "/jwks",

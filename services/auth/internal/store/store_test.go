@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/store"
 	"github.com/levonn-dev/vgkeep/services/auth/migrations"
@@ -20,33 +19,7 @@ import (
 
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	ctx := context.Background()
-	url := pgtest.URL(t)
-	// Reset: drop everything the previous test left (schema_migrations
-	// included) and re-run the embedded migrations, so each test opens
-	// on a fresh, fully migrated database - migration-seeded rows and
-	// all. Two Execs because pgx's extended protocol takes one
-	// statement at a time.
-	conn, err := pgx.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range []string{"DROP SCHEMA public CASCADE", "CREATE SCHEMA public"} {
-		if _, err := conn.Exec(ctx, stmt); err != nil {
-			_ = conn.Close(ctx)
-			t.Fatal(err)
-		}
-	}
-	_ = conn.Close(ctx)
-	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	pool, err := pgkit.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
-	return pool
+	return pgtest.FreshPool(t, migrations.FS, ".")
 }
 
 func newTestStore(t *testing.T) (*store.Store, *pgxpool.Pool) {
@@ -485,6 +458,111 @@ func TestRevokeFamily_RacingLiveRotation_NoSurvivors(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatalf("%d rows survived logout (phantom child)", n)
+	}
+}
+
+func TestCreateSession_SweepsDeadRowsPastRetention(t *testing.T) {
+	s, pool := newTestStore(t)
+	ctx := context.Background()
+
+	mustCreateSession(t, s, "dead-old", uuid.New(), "jti-dead-old")
+	if err := s.RevokeFamilyByToken(ctx, "dead-old"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx,
+		`UPDATE refresh_tokens SET expires_at = now() - interval '31 days' WHERE token_hash = 'dead-old'`); err != nil {
+		t.Fatal(err)
+	}
+
+	// Any login insert runs the sweep first.
+	mustCreateSession(t, s, "trigger", uuid.New(), "jti-trigger")
+
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM refresh_tokens WHERE token_hash = 'dead-old'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatal("dead row past retention survived the sweep")
+	}
+}
+
+func TestCreateSession_SweepPreservesLiveTipAndRecentDeadRows(t *testing.T) {
+	s, pool := newTestStore(t)
+	ctx := context.Background()
+	user := uuid.New()
+
+	// Chain h0 -> h1 -> h2; h2 is the live tip, h0 and h1 are dead
+	// (used) by rotation, all three sharing one far-future family
+	// expiry until the direct UPDATE below ages h0 alone.
+	mustCreateSession(t, s, "h0", user, "jti-0")
+	if _, err := s.Rotate(ctx, "h0", "h1", "jti-1", window); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Rotate(ctx, "h1", "h2", "jti-2", window); err != nil {
+		t.Fatal(err)
+	}
+
+	// Only h0 ages past the retention window; h1 and h2 keep the
+	// family's real (far-future) expiry.
+	if _, err := pool.Exec(ctx,
+		`UPDATE refresh_tokens SET expires_at = now() - interval '31 days' WHERE token_hash = 'h0'`); err != nil {
+		t.Fatal(err)
+	}
+
+	mustCreateSession(t, s, "trigger", uuid.New(), "jti-trigger")
+
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM refresh_tokens WHERE token_hash = 'h0'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatal("stale dead ancestor past retention survived the sweep")
+	}
+
+	// h1 is dead but recent (not past retention): it survives as both
+	// a live descendant's parent and the swept row's child, and its
+	// parent_hash link to h0 nulls out via the FK instead of the
+	// sweep's DELETE failing.
+	var parentHash *string
+	if err := pool.QueryRow(ctx,
+		`SELECT parent_hash FROM refresh_tokens WHERE token_hash = 'h1'`).Scan(&parentHash); err != nil {
+		t.Fatalf("h1 (recent dead parent) did not survive: %v", err)
+	}
+	if parentHash != nil {
+		t.Fatalf("h1.parent_hash = %v, want NULL after its parent was swept", *parentHash)
+	}
+
+	// The live tip survives untouched by the sweep.
+	if _, err := s.Rotate(ctx, "h2", "h3", "jti-3", window); err != nil {
+		t.Fatalf("live tip did not survive the sweep: %v", err)
+	}
+}
+
+func TestCreateSession_SweepPreservesRecentlyDeadRows(t *testing.T) {
+	s, pool := newTestStore(t)
+	ctx := context.Background()
+
+	mustCreateSession(t, s, "dead-recent", uuid.New(), "jti-dead-recent")
+	if err := s.RevokeFamilyByToken(ctx, "dead-recent"); err != nil {
+		t.Fatal(err)
+	}
+	// Expired, but well within the 30-day retention window.
+	if _, err := pool.Exec(ctx,
+		`UPDATE refresh_tokens SET expires_at = now() - interval '1 day' WHERE token_hash = 'dead-recent'`); err != nil {
+		t.Fatal(err)
+	}
+
+	mustCreateSession(t, s, "trigger", uuid.New(), "jti-trigger")
+
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM refresh_tokens WHERE token_hash = 'dead-recent'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatal("recently dead row inside the retention window was swept")
 	}
 }
 

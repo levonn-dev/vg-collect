@@ -23,11 +23,10 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
-	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/libs/go/metrictest"
 	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
 	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/auth/internal/gen/api"
@@ -45,33 +44,7 @@ var testSeed = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32))
 // (Go test packages can't share helpers across packages).
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	ctx := context.Background()
-	url := pgtest.URL(t)
-	// Reset: drop everything the previous test left (schema_migrations
-	// included) and re-run the embedded migrations, so each test opens
-	// on a fresh, fully migrated database - migration-seeded rows and
-	// all. Two Execs because pgx's extended protocol takes one
-	// statement at a time.
-	conn, err := pgx.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range []string{"DROP SCHEMA public CASCADE", "CREATE SCHEMA public"} {
-		if _, err := conn.Exec(ctx, stmt); err != nil {
-			_ = conn.Close(ctx)
-			t.Fatal(err)
-		}
-	}
-	_ = conn.Close(ctx)
-	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	pool, err := pgkit.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
-	return pool
+	return pgtest.FreshPool(t, migrations.FS, ".")
 }
 
 // --- stub user service (validates service tokens through jwtauth) ---
@@ -360,7 +333,7 @@ func newEnv(t *testing.T, devEnabled bool) *env {
 	// own JWKS, mirrored here from the same minter that signs the
 	// sessions these tests log in with.
 	verifier := newJWKSValidator(t, m)
-	h := server.New(st, m, uc, providers, verifier, devEnabled, 30*24*time.Hour, []string{testInternalServiceToken})
+	h := server.New(st, m, uc, providers, verifier, devEnabled, 30*24*time.Hour, []string{testInternalServiceToken}, slog.Default())
 	router, err := server.NewRouter(h, slog.Default(), func(context.Context) error { return nil })
 	if err != nil {
 		t.Fatal(err)
@@ -827,6 +800,13 @@ func TestOauthLinkStart_UnknownProviderAndMissingBearer(t *testing.T) {
 
 	resp = postAuth(t, e.srv.URL+"/oauth/link/start", "", map[string]string{"provider": "google"})
 	wantProblem(t, resp, 401, "missing_token")
+
+	svcTok, err := e.minter.ServiceToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp = postAuth(t, e.srv.URL+"/oauth/link/start", svcTok, map[string]string{"provider": "google"})
+	wantProblem(t, resp, 403, "forbidden")
 }
 
 // --- token lifecycle ---
@@ -1223,7 +1203,7 @@ func TestListProviders(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := server.New(nil, nil, nil, tc.providers, &stubVerifier{}, tc.devEnabled, 0, []string{testInternalServiceToken})
+			h := server.New(nil, nil, nil, tc.providers, &stubVerifier{}, tc.devEnabled, 0, []string{testInternalServiceToken}, slog.Default())
 			rec := httptest.NewRecorder()
 			h.ListProviders(rec, httptest.NewRequest(http.MethodGet, "/providers", nil))
 			if rec.Code != http.StatusOK {
@@ -1260,7 +1240,7 @@ func TestInternalServiceToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := newJWKSValidator(t, m)
-	h := server.New(nil, m, nil, nil, v, false, 0, []string{"current-token", "previous-token"})
+	h := server.New(nil, m, nil, nil, v, false, 0, []string{"current-token", "previous-token"}, slog.Default())
 
 	call := func(t *testing.T, xInternalToken, service string) *httptest.ResponseRecorder {
 		t.Helper()
@@ -1553,7 +1533,7 @@ const stubAccessJWT = "stub.access.jwt"
 // newUnit builds Handlers wired to the given stubs for a single test.
 func newUnit(st server.Store, m server.Minter, users server.UserService,
 	providers map[string]oidc.Provider, verifier server.Verifier, devEnabled bool) *server.Handlers {
-	return server.New(st, m, users, providers, verifier, devEnabled, unitRefreshTTL, []string{testInternalServiceToken})
+	return server.New(st, m, users, providers, verifier, devEnabled, unitRefreshTTL, []string{testInternalServiceToken}, slog.Default())
 }
 
 // stubVerifier implements server.Verifier. validate is nil by default,
@@ -1649,17 +1629,24 @@ func TestUnitOauthStart_UnknownProvider(t *testing.T) {
 }
 
 func TestUnitOauthStart_CreateStateError(t *testing.T) {
-	st := &stubStore{createState: func(context.Context, store.AuthState) error { return errStub }}
+	reader := metrictest.Install(t)
+	st := &stubStore{createState: func(context.Context, store.AuthState) error { return errStub }, activeSigningKeys: signingKeysOK}
 	p := &stubProvider{name: "google"}
 	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.OauthStart(rec, jsonReq(t, http.MethodPost, "/oauth/start",
 		api.StartRequest{Provider: "google"}))
 	wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
+	// The state-persist failure records an internal_error login-outcomes
+	// terminal (see TestUnitOauthStart_AuthorizeProviderError's sibling
+	// assertion, and F4 in the phase-5 review).
+	pts := metrictest.Int64Points(t, reader, "vg.auth.login.outcomes")
+	wantSingleCount(t, pts, loginAttrs("google", "login", "internal_error")...)
 }
 
 func TestUnitOauthStart_AuthorizeProviderError(t *testing.T) {
-	st := &stubStore{createState: func(context.Context, store.AuthState) error { return nil }}
+	reader := metrictest.Install(t)
+	st := &stubStore{createState: func(context.Context, store.AuthState) error { return nil }, activeSigningKeys: signingKeysOK}
 	p := &stubProvider{
 		name: "google",
 		authorizeURL: func(context.Context, string, string, string) (string, error) {
@@ -1671,6 +1658,11 @@ func TestUnitOauthStart_AuthorizeProviderError(t *testing.T) {
 	h.OauthStart(rec, jsonReq(t, http.MethodPost, "/oauth/start",
 		api.StartRequest{Provider: "google"}))
 	wantProblemRec(t, rec, http.StatusBadGateway, "provider_error")
+	// The provider AuthorizeURL failure records a provider_error
+	// login-outcomes terminal, symmetric with OauthCallback's exchange
+	// branch (TestLoginOutcomeMetric's "callback provider error" case).
+	pts := metrictest.Int64Points(t, reader, "vg.auth.login.outcomes")
+	wantSingleCount(t, pts, loginAttrs("google", "login", "provider_error")...)
 }
 
 func TestUnitOauthStart_Success(t *testing.T) {
@@ -1722,12 +1714,13 @@ func TestUnitOauthStart_Success(t *testing.T) {
 // LinkUserID.
 
 func TestUnitOauthLinkStart_CreateStateError(t *testing.T) {
+	reader := metrictest.Install(t)
 	callerID := uuid.New()
 	var savedState store.AuthState
 	st := &stubStore{createState: func(_ context.Context, s store.AuthState) error {
 		savedState = s
 		return errStub
-	}}
+	}, activeSigningKeys: signingKeysOK}
 	p := &stubProvider{name: "google"}
 	h := newUnit(st, unitMinter(), &stubUserService{}, providerMap(p), claimsVerifier(callerID.String(), "user"), false)
 	rec := httptest.NewRecorder()
@@ -1742,15 +1735,20 @@ func TestUnitOauthLinkStart_CreateStateError(t *testing.T) {
 	if savedState.LinkUserID == nil || *savedState.LinkUserID != callerID {
 		t.Fatalf("LinkUserID = %v, want %s", savedState.LinkUserID, callerID)
 	}
+	// flow=link here (not login): startDance derives it from linkUserID,
+	// not from the (not-yet-persisted) state row.
+	pts := metrictest.Int64Points(t, reader, "vg.auth.login.outcomes")
+	wantSingleCount(t, pts, loginAttrs("google", "link", "internal_error")...)
 }
 
 func TestUnitOauthLinkStart_AuthorizeProviderError(t *testing.T) {
+	reader := metrictest.Install(t)
 	callerID := uuid.New()
 	var savedState store.AuthState
 	st := &stubStore{createState: func(_ context.Context, s store.AuthState) error {
 		savedState = s
 		return nil
-	}}
+	}, activeSigningKeys: signingKeysOK}
 	p := &stubProvider{
 		name: "google",
 		authorizeURL: func(context.Context, string, string, string) (string, error) {
@@ -1770,6 +1768,8 @@ func TestUnitOauthLinkStart_AuthorizeProviderError(t *testing.T) {
 	if savedState.LinkUserID == nil || *savedState.LinkUserID != callerID {
 		t.Fatalf("LinkUserID = %v, want %s", savedState.LinkUserID, callerID)
 	}
+	pts := metrictest.Int64Points(t, reader, "vg.auth.login.outcomes")
+	wantSingleCount(t, pts, loginAttrs("google", "link", "provider_error")...)
 }
 
 // --- OauthCallback ---
@@ -2792,6 +2792,16 @@ func TestUnitDeleteIdentity_Outcomes(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("service role forbidden", func(t *testing.T) {
+		identityID := uuid.New()
+		// stubStore is unwired: requireUser must reject the service token
+		// before DeleteIdentity ever reaches the store.
+		h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, claimsVerifier("svc:auth", "service"), false)
+		rec := httptest.NewRecorder()
+		h.DeleteIdentity(rec, bearerReq(http.MethodDelete, "/identities/"+identityID.String()), identityID)
+		wantProblemRec(t, rec, http.StatusForbidden, "forbidden")
+	})
 }
 
 func TestUnitDeleteUserAuth_Forbidden(t *testing.T) {

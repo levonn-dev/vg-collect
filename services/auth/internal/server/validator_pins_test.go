@@ -96,3 +96,21 @@ func TestValidatorPath_InternalServiceToken_BadServiceEnum(t *testing.T) {
 	resp := send(t, req)
 	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
+
+// TestValidatorPath_InternalServiceToken_MissingHeader pins the
+// documented ordering (auth.yaml's internalServiceToken description):
+// required-parameter validation runs before internalServiceCallerOK's
+// own secret check, so a request with no X-Internal-Token header at
+// all answers the validator's generated 400, never the handler's 401
+// invalid_internal_token. The stub store panicking on any call would
+// catch a regression that let this reach the handler.
+func TestValidatorPath_InternalServiceToken_MissingHeader(t *testing.T) {
+	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
+	srv := newUnitRouterServer(t, h)
+	req := jsonReq(t, http.MethodPost, srv.URL+"/internal/service-token", map[string]string{"service": "catalog-refresh"})
+	resp := send(t, req)
+	body := wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
+	if body.Detail != "X-Internal-Token is required" {
+		t.Fatalf("detail = %q, want %q", body.Detail, "X-Internal-Token is required")
+	}
+}
