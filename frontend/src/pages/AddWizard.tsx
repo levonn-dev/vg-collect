@@ -1,4 +1,6 @@
 import { Trans, useLingui } from '@lingui/react/macro'
+import { msg } from '@lingui/core/macro'
+import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
@@ -8,13 +10,25 @@ import SearchPicker from '../components/catalog/SearchPicker'
 import ConfirmShell from '../components/wizard/ConfirmShell'
 import ConfirmStep from '../components/wizard/ConfirmStep'
 import { cleanNames } from '../lib/credits'
+import { itemTypeWireLabels } from '../lib/enumLabels'
 import { invalidateEntryQueries } from '../lib/entryQueries'
+import { resolveApiError } from '../lib/resolveApiError'
 import type { CustomValues } from '../components/wizard/CustomStep'
 import CustomStep from '../components/wizard/CustomStep'
 import type { DetailsValues } from '../components/wizard/DetailsStep'
 import DetailsStep, { defaultDetails, detailsToCreate } from '../components/wizard/DetailsStep'
 import type { ManualMatch } from '../lib/catalog'
 import { useDisplayMoney } from '../lib/useDisplayMoney'
+
+// A custom create never references a catalog product: pricing_mode is
+// hard-coded to disabled below and no product_id is ever sent, so
+// createEntry cannot answer any of its documented codes on this path
+// (unlike ConfirmStep's catalog-pick create, which reaches a couple)
+// - the translated fallback is the whole story here.
+const customEntryErrorCodes: Record<string, MessageDescriptor> = {}
+function customEntryErrorMessage(e: unknown, i18n: I18n): string {
+  return resolveApiError(e, i18n, customEntryErrorCodes, msg`The entry could not be created.`)
+}
 
 type WizardStep =
   | { step: 'search' }
@@ -127,7 +141,7 @@ function CustomConfirm({
   details: DetailsValues
   onBack: () => void
 }) {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const money = useDisplayMoney()
@@ -157,8 +171,8 @@ function CustomConfirm({
     <ConfirmShell
       ariaLabel={t`Confirm custom item`}
       title={custom.displayName}
-      subtitle={[custom.platformName || null, custom.itemType, t`custom item`].filter(Boolean).join(' - ')}
-      errorMessage={create.isError ? create.error.message || t`The entry could not be created.` : undefined}
+      subtitle={[custom.platformName || null, i18n._(itemTypeWireLabels[custom.itemType]), t`custom item`].filter(Boolean).join(' - ')}
+      errorMessage={create.isError ? customEntryErrorMessage(create.error, i18n) : undefined}
       onBack={onBack}
       onSubmit={() => create.mutate()}
       submitPending={create.isPending}

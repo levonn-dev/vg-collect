@@ -10,7 +10,7 @@ import { invalidateEntryQueries } from '../../lib/entryQueries'
 import { entryToUpdate } from '../../lib/entryUpdate'
 import { dollarsToCents, formatCents, formatDate } from '../../lib/format'
 import { btnSecondary } from '../../lib/formStyles'
-import { renderQueryState } from '../../lib/queryBoundary'
+import { refetchWarning, renderQueryState } from '../../lib/queryBoundary'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import MatchStatusCard from '../MatchStatusCard'
 import SectionLabel from '../SectionLabel'
@@ -160,8 +160,9 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
 
       {value.mode === 'auto' && entry.product_id && (
         <div className="mt-3">
-          {ownProduct.isSuccess ? (
+          {ownProduct.data !== undefined ? (
             <>
+              {refetchWarning(ownProduct)}
               <MatchCard product={ownProduct.data} />
               {entry.pricing_mode === 'auto' && ownProduct.data.type === 'game' && !ownProduct.data.pricecharting &&
                 ownProduct.data.igdb && ownProduct.data.platform && (

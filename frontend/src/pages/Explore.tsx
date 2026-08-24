@@ -12,7 +12,8 @@ import UserChip from '../components/social/UserChip'
 import Tabs, { type Tab } from '../components/Tabs'
 import { parameters } from '../gen/facets'
 import { pathsApiExploreGetParametersQuerySortValues } from '../api/schema'
-import { renderQueryState } from '../lib/queryBoundary'
+import { refetchWarning, renderQueryState } from '../lib/queryBoundary'
+import { tabButtonId } from '../lib/tabs'
 
 const EXPLORE_SORTS = pathsApiExploreGetParametersQuerySortValues
 const USER_SEARCH_Q_MAX = parameters.userSearchQ.maxLength
@@ -28,7 +29,12 @@ const sortLabels: Record<ExploreSort, MessageDescriptor> = {
   recent: msg`Recent`,
   top: msg`Top`,
 }
-const SORT_TABS: { key: ExploreSort; label: MessageDescriptor }[] = EXPLORE_SORTS.map((key) => ({ key, label: sortLabels[key] }))
+const PANEL_IDS: Record<ExploreSort, string> = {
+  recent: 'explore-recent-panel',
+  top: 'explore-top-panel',
+}
+const SORT_TABS: { key: ExploreSort; label: MessageDescriptor; panelId: string }[] =
+  EXPLORE_SORTS.map((key) => ({ key, label: sortLabels[key], panelId: PANEL_IDS[key] }))
 
 // The pause after the last keystroke before /api/search/users fires -
 // long enough that ordinary typing never triggers a call per letter.
@@ -116,36 +122,39 @@ export default function Explore() {
 
       <Tabs
         label={t`Explore sort`}
-        tabs={SORT_TABS.map((s): Tab<ExploreSort> => ({ key: s.key, label: i18n._(s.label) }))}
+        tabs={SORT_TABS.map((s): Tab<ExploreSort> => ({ key: s.key, label: i18n._(s.label), panelId: s.panelId }))}
         active={tab}
         onChange={setTab}
         className="mt-6"
       />
 
-      {renderQueryState(active, {
-        size: 'subsection',
-        className: 'mt-4',
-        role: 'alert',
-        loading: <Trans>Loading shelves...</Trans>,
-        error: <Trans>Shelves cannot be loaded right now. Please try again.</Trans>,
-      }) ?? (
-        shelves && (
-          shelves.length === 0 ? (
-            <EmptyState size="default"><Trans>No shared shelves yet.</Trans></EmptyState>
-          ) : (
-            <>
-              <ul className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {shelves.map((s) => (
-                  <li key={s.id}>
-                    <ShelfCard card={s} />
-                  </li>
-                ))}
-              </ul>
-              {tab === 'recent' && <LoadMoreButton query={recent} className="mt-4" />}
-            </>
+      <div role="tabpanel" id={PANEL_IDS[tab]} aria-labelledby={tabButtonId(PANEL_IDS[tab])}>
+        {refetchWarning(active)}
+        {renderQueryState(active, {
+          size: 'subsection',
+          className: 'mt-4',
+          role: 'alert',
+          loading: <Trans>Loading shelves...</Trans>,
+          error: <Trans>Shelves cannot be loaded right now. Please try again.</Trans>,
+        }) ?? (
+          shelves && (
+            shelves.length === 0 ? (
+              <EmptyState size="default"><Trans>No shared shelves yet.</Trans></EmptyState>
+            ) : (
+              <>
+                <ul className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {shelves.map((s) => (
+                    <li key={s.id}>
+                      <ShelfCard card={s} />
+                    </li>
+                  ))}
+                </ul>
+                {tab === 'recent' && <LoadMoreButton query={recent} className="mt-4" />}
+              </>
+            )
           )
-        )
-      )}
+        )}
+      </div>
     </main>
   )
 }

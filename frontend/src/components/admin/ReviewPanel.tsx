@@ -27,6 +27,7 @@ const ITEM_TYPE_VALUES = itemTypeValues
 const SUBMISSION_NAME_MAX = CommunityProductSpec.properties.name.maxLength
 const SUBMISSION_EDITION_MAX = CommunityProductSpec.properties.edition.maxLength
 const SUBMISSION_PLATFORM_MAX = CommunityProductSpec.properties.platform_name.maxLength
+const SUBMISSION_COVER_URL_MAX = CommunityProductSpec.properties.cover_url.maxLength
 
 interface ReviewPanelProps {
   submission: AdminSubmission
@@ -254,7 +255,13 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
         </div>
         <label>
           <Trans>Cover image link</Trans>
-          <input value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} placeholder="https://..." className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1" />
+          <input
+            value={coverUrl}
+            onChange={(e) => setCoverUrl(e.target.value)}
+            maxLength={SUBMISSION_COVER_URL_MAX}
+            placeholder={t(i18n)`https://...`}
+            className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1"
+          />
         </label>
         {coverUrl.trim() !== '' && (
           <img

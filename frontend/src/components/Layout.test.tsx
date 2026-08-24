@@ -203,6 +203,36 @@ it('logs out and navigates to login', async () => {
   )).toBe(true)
 })
 
+it('clears the cache and navigates to login even when the logout request fails', async () => {
+  // onSettled fires on both success and failure - the cache-clear and
+  // navigate-away must happen unconditionally either way, since a
+  // failed logout still leaves the session gone or unreachable.
+  const fetchMock = vi.fn((path: unknown) => {
+    if (requestPath(path) === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
+    if (requestPath(path) === '/api/auth/logout') return Promise.resolve(new Response('x', { status: 500 }))
+    return Promise.resolve(jsonResponse(200, me))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  renderWithI18n(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<div>page-content</div>} />
+          </Route>
+          <Route path="/login" element={<LoginProbe />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  await screen.findByText('page-content')
+  expect(qc.getQueryData(['me'])).toBeDefined()
+  await userEvent.click(screen.getByRole('button', { name: 'Log out' }))
+  expect(await screen.findByText('login-page')).toBeInTheDocument()
+  expect(qc.getQueryData(['me'])).toBeUndefined()
+})
+
 it('shows the Admin nav link only for the admin role', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { ...me, roles: ['user', 'admin'] })))
   renderLayout()

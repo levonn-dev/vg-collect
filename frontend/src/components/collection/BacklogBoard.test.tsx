@@ -13,12 +13,16 @@ const entries = [
   entryFixture({ display_name: 'Third', backlog_rank: 'n' }),
 ]
 
-function renderBoard() {
+// Defaults render a single, full page (page 0, totalCount ==
+// entries.length) - both edges are the true global edges, matching
+// every pre-existing test below. Tests for the page-edge guard itself
+// pass an explicit page/totalCount that put the fixture mid-backlog.
+function renderBoard(page = 0, totalCount = entries.length) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <BacklogBoard entries={entries} />
+        <BacklogBoard entries={entries} page={page} totalCount={totalCount} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -68,6 +72,43 @@ it('edge moves are disabled', () => {
   expect(screen.getByRole('button', { name: 'Move Third down' })).toBeDisabled()
 })
 
+// page 1 (the second page, 0-based) of a backlog far bigger than this
+// fixture's 3 rows: neither visible edge is the true global edge, so
+// a move landing on either one cannot be resolved to a real neighbor.
+it('on a non-edge page, the Up button on the first visible row is disabled', () => {
+  vi.stubGlobal('fetch', vi.fn())
+  renderBoard(1, 500)
+  expect(screen.getByRole('button', { name: 'Move First up' })).toBeDisabled()
+})
+
+it('on a non-edge page, a drag to the top slot sends no request', async () => {
+  const fetchMock = vi.fn()
+  vi.stubGlobal('fetch', fetchMock)
+  renderBoard(1, 500)
+  stubRowRects()
+  // Second (row index 1, rect center 70) dragged up onto First's slot
+  // (row index 0, rect center 20): landing there would compute
+  // after_id: null, which on this page is a page-local top, not the
+  // backlog's true front.
+  dragHandle('Drag Second', -50)
+  // Give the guarded drop the same async onMutate hop a real submit
+  // needs, so a regression (a fired request) would have time to show up.
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  expect(fetchMock).not.toHaveBeenCalled()
+})
+
+it('on a non-edge page, a mid-page move still sends non-null neighbor ids', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, entries[0]))
+  vi.stubGlobal('fetch', fetchMock)
+  renderBoard(1, 500)
+  await userEvent.click(screen.getByRole('button', { name: 'Move First down' }))
+  expect(fetchMock).toHaveBeenCalledTimes(1)
+  expect(await putBody(fetchMock.mock.calls[0][0])).toEqual({
+    after_id: entries[1].id,
+    before_id: entries[2].id,
+  })
+})
+
 it('a 409 conflict reports and recovers', async () => {
   const fetchMock = vi.fn().mockResolvedValue(problemResponse(409, 'conflicting_order', 'neighbors do not straddle'))
   vi.stubGlobal('fetch', fetchMock)
@@ -84,7 +125,9 @@ function BoardFromCache() {
     queryKey: ['entries'],
     queryFn: () => fetchEntries(new URLSearchParams()),
   })
-  return list.data?.entries ? <BacklogBoard entries={list.data.entries} /> : null
+  return list.data?.entries
+    ? <BacklogBoard entries={list.data.entries} page={0} totalCount={list.data.total_count} />
+    : null
 }
 
 it('a move reorders the rendered rows and locks the buttons before the server answers', async () => {

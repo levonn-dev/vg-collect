@@ -1,4 +1,5 @@
 import { Trans, useLingui } from '@lingui/react/macro'
+import { plural } from '@lingui/core/macro'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
@@ -21,16 +22,20 @@ import EmptyState from '../components/EmptyState'
 import EntryGroupSection from '../components/EntryGroupSection'
 import { fetchEntryFacets } from '../lib/entryFacets'
 import type { ListState } from '../lib/listParams'
-import { fromSearchParams, toQuery, toSearchParams } from '../lib/listParams'
-import { renderQueryState } from '../lib/queryBoundary'
+import { fromSearchParams, lastPage, toQuery, toSearchParams } from '../lib/listParams'
+import { refetchWarning, renderQueryState } from '../lib/queryBoundary'
+import { tabButtonId } from '../lib/tabs'
 
 type CollectionTab = 'items' | 'shelves'
+
+const ITEMS_PANEL = 'collection-items-panel'
+const SHELVES_PANEL = 'collection-shelves-panel'
 
 export default function Collection() {
   const { t } = useLingui()
   const collectionTabs: Tab<CollectionTab>[] = [
-    { key: 'items', label: t`Items` },
-    { key: 'shelves', label: t`Shelves` },
+    { key: 'items', label: t`Items`, panelId: ITEMS_PANEL },
+    { key: 'shelves', label: t`Shelves`, panelId: SHELVES_PANEL },
   ]
   const [searchParams, setSearchParams] = useSearchParams()
   const state = fromSearchParams(searchParams)
@@ -94,7 +99,7 @@ export default function Collection() {
   const facets = useQuery({ queryKey: ['entry-facets'], queryFn: fetchEntryFacets })
   const tags = useQuery({ queryKey: ['tags'], queryFn: fetchTags })
 
-  if (list.isPending || list.isError) {
+  if (list.isPending || (list.isError && list.data === undefined)) {
     return renderQueryState(list, {
       size: 'page',
       role: 'alert',
@@ -138,7 +143,8 @@ export default function Collection() {
     <main className="py-6" aria-label={t`Collection`}>
       <Tabs label={t`Collection sections`} tabs={collectionTabs} active={tab} onChange={setTab} className="mb-4" />
       {tab === 'items' ? (
-        <>
+        <div role="tabpanel" id={ITEMS_PANEL} aria-labelledby={tabButtonId(ITEMS_PANEL)}>
+          {refetchWarning(list)}
           <ViewPicker state={state} onApply={apply} />
           <ListControls
             state={state}
@@ -189,7 +195,7 @@ export default function Collection() {
               onApplied={(n) => {
                 setBulkMode(false)
                 setSelected(new Set())
-                setBulkAnnouncement(t`Updated ${n} entries.`)
+                setBulkAnnouncement(plural(n, { one: 'Updated # entry.', other: 'Updated # entries.' }))
               }}
             />
           )}
@@ -203,8 +209,26 @@ export default function Collection() {
                 </Trans>
               </EmptyState>
             )
+          ) : !groups && entries.length === 0 ? (
+            // total_count is real but this page has nothing: a stale
+            // bookmark/shared link to a page number that shrank
+            // (entries deleted, filters changed) rather than an
+            // actually-empty collection, which total_count === 0 above
+            // already covers on its own.
+            <EmptyState size="default">
+              <Trans>
+                This page is past the end of your list.{' '}
+                <button
+                  type="button"
+                  onClick={() => apply({ ...state, page: lastPage(total_count) })}
+                  className="underline"
+                >
+                  Go to the last page.
+                </button>
+              </Trans>
+            </EmptyState>
           ) : state.sort === 'backlog_rank' && !groups ? (
-            <BacklogBoard entries={entries} />
+            <BacklogBoard entries={entries} page={state.page} totalCount={total_count} />
           ) : groups ? (
             groups.map((g) => (
               <EntryGroupSection key={g.key} label={g.label}>
@@ -215,9 +239,11 @@ export default function Collection() {
             renderEntries(entries)
           )}
           <Pager page={state.page} totalCount={total_count} onPage={(p) => apply({ ...state, page: p })} />
-        </>
+        </div>
       ) : (
-        <ShelfManager />
+        <div role="tabpanel" id={SHELVES_PANEL} aria-labelledby={tabButtonId(SHELVES_PANEL)}>
+          <ShelfManager />
+        </div>
       )}
     </main>
   )

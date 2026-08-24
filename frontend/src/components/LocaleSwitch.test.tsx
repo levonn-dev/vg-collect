@@ -33,7 +33,7 @@ async function withFailingJaCatalog(
   }
 }
 
-const ONE = ['en'] as readonly Locale[]
+const ONE: readonly Locale[] = ['en']
 
 describe('LocaleSwitch', () => {
   it('renders nothing while fewer than two locales are supported', () => {

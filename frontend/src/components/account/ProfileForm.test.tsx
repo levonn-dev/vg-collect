@@ -42,6 +42,16 @@ it('renders profile fields seeded from /api/me and saves via PATCH', async () =>
   }))
 })
 
+it('retracts the Saved. confirmation once the form is edited again', async () => {
+  stubFetch()
+  renderProfileForm()
+  const input = await screen.findByLabelText('Handle')
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  expect(await screen.findByRole('status')).toHaveTextContent('Saved.')
+  await userEvent.type(input, 'x')
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+})
+
 it('carries client-side handle validation matching the server rules', async () => {
   renderProfileForm()
   const input = await screen.findByLabelText('Handle')

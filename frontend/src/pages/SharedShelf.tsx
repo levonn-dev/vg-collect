@@ -5,7 +5,7 @@ import { ApiError } from '../api/client'
 import { fetchShelfEntries, fetchShelfPage } from '../api/social'
 import { formatDate } from '../lib/format'
 import { offsetNextPageParam } from '../lib/pagination'
-import { renderQueryState } from '../lib/queryBoundary'
+import { refetchWarning, renderQueryState } from '../lib/queryBoundary'
 import EmptyState from '../components/EmptyState'
 import EntryGroupSection from '../components/EntryGroupSection'
 import LoadMoreButton from '../components/LoadMoreButton'
@@ -80,7 +80,7 @@ export default function SharedShelf() {
     enabled: shelfId !== undefined,
   })
 
-  if (page.isPending || page.isError) {
+  if (page.isPending || (page.isError && page.data === undefined)) {
     return renderQueryState(page, {
       size: 'page',
       role: 'alert',
@@ -103,6 +103,7 @@ export default function SharedShelf() {
 
   return (
     <main aria-label={t`Shared shelf`} className="py-6">
+      {refetchWarning(page)}
       <header className="mb-6 border-b border-gray-200 pb-4">
         <h2 className="text-2xl font-bold">{shelf.name}</h2>
         <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -122,6 +123,7 @@ export default function SharedShelf() {
       </header>
 
       <section aria-label={t`Entries`} className="mb-8">
+        {refetchWarning(entries)}
         {renderQueryState(entries, {
           size: 'subsection',
           role: 'alert',
@@ -135,7 +137,16 @@ export default function SharedShelf() {
               {groups.length > 0 ? (
                 groups.map((g) => (
                   <EntryGroupSection key={g.key} label={g.label}>
-                    <View entries={g.entries} linkTo={() => null} shared />
+                    {mode === 'table' ? (
+                      <EntryTable
+                        entries={g.entries}
+                        linkTo={() => null}
+                        numbered={shelf.params.sort === 'backlog_rank'}
+                        shared
+                      />
+                    ) : (
+                      <View entries={g.entries} linkTo={() => null} shared />
+                    )}
                   </EntryGroupSection>
                 ))
               ) : mode === 'table' ? (
@@ -155,7 +166,11 @@ export default function SharedShelf() {
       </section>
 
       <CommentComposer shelfId={shelf.id} />
-      <CommentList shelfId={shelf.id} ownerId={owner.user_id} />
+      {/* Keyed on shelf.id so a client-side navigation to a different
+          shelf (no route remount otherwise - same route pattern) always
+          unmounts this instance rather than reusing it: useCommentDelete's
+          pending-undo flush is meant to fire only on a true unmount. */}
+      <CommentList key={shelf.id} shelfId={shelf.id} ownerId={owner.user_id} />
     </main>
   )
 }

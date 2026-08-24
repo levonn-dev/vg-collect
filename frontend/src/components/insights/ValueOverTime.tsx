@@ -48,6 +48,26 @@ export default function ValueOverTime({ history }: { history: ValueHistory }) {
           </LineChart>
         </ResponsiveContainer>
       </div>
+      {/* The chart has no text/table fallback otherwise: a screen
+          reader gets the section name and the caption text but nothing
+          describing what the chart actually shows. */}
+      <table className="sr-only">
+        <caption>{t`Collection value in ${currency} (last 90 days)`}</caption>
+        <thead>
+          <tr>
+            <th>{t`Date`}</th>
+            <th>{t`Value`}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((p) => (
+            <tr key={p.date}>
+              <td>{p.date}</td>
+              <td>{money.format(p.cents) ?? '-'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </section>
   )
 }

@@ -10,7 +10,7 @@ import FollowButton from '../components/social/FollowButton'
 import NotFoundState from '../components/social/NotFoundState'
 import ShelfCard from '../components/social/ShelfCard'
 import { foldHandle } from '../lib/handle'
-import { renderQueryState } from '../lib/queryBoundary'
+import { refetchWarning, renderQueryState } from '../lib/queryBoundary'
 import { useMe } from '../lib/useMe'
 
 // Profile is the public /u/:handle page: owner card, follower/
@@ -34,7 +34,7 @@ export default function Profile() {
     queryFn: () => fetchProfilePage(handle),
   })
 
-  if (profile.isPending || profile.isError) {
+  if (profile.isPending || (profile.isError && profile.data === undefined)) {
     return renderQueryState(profile, {
       size: 'page',
       role: 'alert',
@@ -56,6 +56,7 @@ export default function Profile() {
 
   return (
     <main aria-label={t`Profile`} className="py-6">
+      {refetchWarning(profile)}
       <header className="flex flex-wrap items-center gap-4 border-b border-gray-200 pb-4">
         <Avatar key={card.avatar_url} url={card.avatar_url} label={card.handle} size="lg" />
         <div>

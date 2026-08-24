@@ -139,8 +139,10 @@ region tag of their own, derived from the listing's console-name axis
 or a Famicom-family distinct name maps to pal/ntsc_j, everything else to
 ntsc_u); a hardware pick seeds the wizard's region default with that
 tag. Wherever a pick carries no region signal at all, the wizard's
-default falls back to the UI locale's home region -
-`LOCALE_HOME_REGIONS` in the same module (`en` to ntsc_u, `ja` to ntsc_j
-today); an unmapped locale contributes no home region.
+default falls back to a hardcoded `ntsc_u` (`defaultDetails` in
+`src/components/wizard/DetailsStep.tsx`) - it never consults the UI
+locale. `LOCALE_HOME_REGIONS` only feeds the per-chip suggestion
+described above, and only when the chip's own region set already
+contains the home region.
 
 See the root README for the full stack (task run / task down).

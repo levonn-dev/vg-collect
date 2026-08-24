@@ -1,5 +1,6 @@
 import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
+import type { Product } from '../api/catalog'
 import type { SavedView } from '../api/collection'
 import type { Condition, ItemType, Packaging, Status } from './listParams'
 
@@ -68,6 +69,20 @@ export const itemTypeWireLabels: Record<ItemType, MessageDescriptor> = {
   game: msg`game`,
   console: msg`console`,
   accessory: msg`accessory`,
+}
+
+// productTypeWireLabels: a Product's own type field (PromoteCandidates,
+// UnmatchedWorklist, ProductLookup, ConfirmStep) reaches one more value
+// than ItemType above - pc_listing, a priced catalog listing rather than
+// a collectible item - so it cannot just reuse itemTypeWireLabels.
+// game/console/accessory stay identity-preserving like itemTypeWireLabels;
+// pc_listing takes the same noun ManualMatchPicker's prose already uses
+// for the concept, since the bare wire word is not a real word to show.
+export const productTypeWireLabels: Record<Product['type'], MessageDescriptor> = {
+  game: msg`game`,
+  console: msg`console`,
+  accessory: msg`accessory`,
+  pc_listing: msg`price listing`,
 }
 
 // Visibility covers shelves and saved views alike (SavedView's own

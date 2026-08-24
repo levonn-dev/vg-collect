@@ -26,3 +26,17 @@ export function moveByOffset(ids: string[], activeId: string, offset: -1 | 1): N
   if (from < 0 || to < 0 || to >= ids.length) return null
   return neighborIDs(ids, activeId, ids[to])
 }
+
+// crossesUnknownEdge: ids is always one page of a possibly larger
+// backlog, so a null after_id/before_id from neighborIDs/moveByOffset
+// only means "true global edge" when the page itself starts/ends at
+// that global edge. On any other page it means "this lands at the
+// page's own visible boundary" - a slot whose real neighbor sits on
+// an unfetched adjacent page - and writing null there would silently
+// claim the whole-backlog edge. isFirstPage/isLastPage identify the
+// page's own boundaries against the true ones; a page-local move that
+// never touches either boundary always has both ids non-null and
+// never reaches this check.
+export function crossesUnknownEdge(pair: NeighborIDs, isFirstPage: boolean, isLastPage: boolean): boolean {
+  return (pair.after_id === null && !isFirstPage) || (pair.before_id === null && !isLastPage)
+}

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { dashboardFixture, entryFixture, jsonResponse, listFixture, meFixture, putBody, requestPath } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
-import { defaultListState, toViewParams } from '../lib/listParams'
+import { defaultListState, toQuery, toViewParams } from '../lib/listParams'
 import Collection from './Collection'
 
 function renderCollection(path = '/') {
@@ -55,6 +55,37 @@ it('shows the query-error banner when the entries list fails to load', async () 
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(500, {})))
   renderCollection()
   expect(await screen.findByRole('alert')).toHaveTextContent(/collection cannot be loaded/i)
+  // The alert must live inside <main>, not replace its landmark role.
+  expect(screen.getByRole('main')).toBeInTheDocument()
+})
+
+it('a background refetch failure keeps showing the entries and shows the inline warning, not the hard error', async () => {
+  const entries = [entryFixture({ display_name: 'Chrono Trigger' })]
+  const entriesKey = ['entries', toQuery(defaultListState()).toString()]
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // Pre-seeded so the query already has data at mount; the entries
+  // endpoint then 500s the fetch this mount still triggers (default
+  // staleTime treats cached data as stale), landing exactly on the
+  // isError-with-data state this test targets.
+  qc.setQueryData(entriesKey, listFixture(entries))
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
+    if (u.startsWith('/api/me')) return Promise.resolve(jsonResponse(200, meFixture()))
+    if (u.startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (u.startsWith('/api/views')) return Promise.resolve(jsonResponse(200, { views: [] }))
+    if (u.startsWith('/api/dashboard')) return Promise.resolve(jsonResponse(200, dashboardFixture()))
+    if (u.startsWith('/api/entries')) return Promise.resolve(jsonResponse(500, {}))
+    return Promise.resolve(jsonResponse(200, {}))
+  }))
+  renderWithI18n(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter><Collection /></MemoryRouter>
+    </QueryClientProvider>,
+  )
+  const warning = await screen.findByText(/last refresh failed/i)
+  expect(warning).toHaveAttribute('role', 'status')
+  expect(screen.getByRole('link', { name: 'Chrono Trigger' })).toBeInTheDocument()
+  expect(screen.queryByText(/collection cannot be loaded/i)).not.toBeInTheDocument()
 })
 
 it('shows the empty-collection state with a link to add the first item', async () => {
@@ -76,6 +107,28 @@ it('pages forward with an offset request', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Next' }))
   const urls = vi.mocked(fetch).mock.calls.map((c) => requestPath(c[0]))
   expect(urls.some((u) => u.includes('offset=200'))).toBe(true)
+})
+
+it('shows a reset link (not a blank range) for a page beyond the real total, and clamps back into range', async () => {
+  const realEntries = [entryFixture({ display_name: 'Chrono Trigger' })]
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
+    if (u.startsWith('/api/me')) return Promise.resolve(jsonResponse(200, meFixture()))
+    if (u.startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (u.startsWith('/api/views')) return Promise.resolve(jsonResponse(200, { views: [] }))
+    if (u.startsWith('/api/dashboard')) return Promise.resolve(jsonResponse(200, dashboardFixture()))
+    // total_count (1) only fits on page 0; the stale page=5 request
+    // gets a real, nonzero total back with an empty page of entries -
+    // exactly what the server answers for an out-of-range offset.
+    return Promise.resolve(jsonResponse(200, u.includes('offset=') ? listFixture([], { total_count: 1 }) : listFixture(realEntries)))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderCollection('/?page=5')
+  expect(await screen.findByText(/past the end of your list/i)).toBeInTheDocument()
+  expect(screen.queryByText('Chrono Trigger')).not.toBeInTheDocument()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Go to the last page.' }))
+  expect(await screen.findByText('Chrono Trigger')).toBeInTheDocument()
 })
 
 it('keeps the filter panel closed by default and opens it via the Filters button', async () => {
@@ -329,6 +382,28 @@ it('applies a bulk change end to end: request body, success announcement, and ex
   const body = await putBody<{ entry_ids: string[]; status: string }>(post?.[0])
   expect(body.status).toBe('shelved')
   expect(body.entry_ids).toHaveLength(2)
+})
+
+it('pluralizes the bulk-apply announcement singular for exactly one selected entry', async () => {
+  const entries = [entryFixture({ display_name: 'Chrono Trigger' }), entryFixture({ display_name: 'Repro Cart' })]
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
+    if (u === '/api/entries/bulk-update') return Promise.resolve(jsonResponse(200, { updated_count: 1 }))
+    if (u.startsWith('/api/me')) return Promise.resolve(jsonResponse(200, meFixture()))
+    if (u.startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (u.startsWith('/api/views')) return Promise.resolve(jsonResponse(200, { views: [] }))
+    if (u.startsWith('/api/dashboard')) return Promise.resolve(jsonResponse(200, dashboardFixture()))
+    return Promise.resolve(jsonResponse(200, listFixture(entries)))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderCollection()
+  await screen.findByRole('table')
+  await userEvent.click(screen.getByRole('button', { name: 'Bulk edit' }))
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Select Chrono Trigger' }))
+  await userEvent.selectOptions(screen.getByLabelText('Status'), 'shelved')
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+  expect(await screen.findByRole('status')).toHaveTextContent('Updated 1 entry.')
 })
 
 it('Cancel in the bulk bar exits bulk mode and clears the selection so re-entering starts fresh', async () => {

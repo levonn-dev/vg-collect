@@ -34,10 +34,11 @@ export default function ConfirmShell({
         </p>
       )}
       <div className="flex gap-2">
-        <button onClick={onBack} className={btnSecondary}>
+        <button type="button" onClick={onBack} className={btnSecondary}>
           <Trans>Back</Trans>
         </button>
         <button
+          type="button"
           onClick={onSubmit}
           disabled={submitPending}
           className={btnPrimary}

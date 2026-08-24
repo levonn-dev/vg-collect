@@ -37,6 +37,20 @@ it('carries display fields on custom entries (they are user-owned)', () => {
   expect(u.first_release_date).toBe('1995-03-11')
 })
 
+it('carries the linked platform, cover image, and credits on custom entries (a baseline spread must not clear them)', () => {
+  const u = entryToUpdate({
+    ...base, product_id: undefined,
+    platform: { name: 'SNES', igdb_platform_id: 19 },
+    cover_url: 'https://example.com/cover.jpg',
+    developers: ['Square'],
+    publishers: ['Square'],
+  })
+  expect(u.platform_igdb_id).toBe(19)
+  expect(u.cover_url).toBe('https://example.com/cover.jpg')
+  expect(u.developers).toEqual(['Square'])
+  expect(u.publishers).toEqual(['Square'])
+})
+
 it('a serialized baseline drops no set field (absent means cleared on PUT)', () => {
   const u = entryToUpdate({ ...base, product_id: 'p1' })
   const wire = JSON.parse(JSON.stringify(u)) as Record<string, unknown>

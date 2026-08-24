@@ -91,6 +91,7 @@ export default function ListControls({
         {(['table', 'grid', 'compact'] as const).map((m) => (
           <button
             key={m}
+            type="button"
             aria-pressed={state.mode === m}
             onClick={() => onApply({ ...state, mode: m })}
             className={

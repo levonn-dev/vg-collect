@@ -2,7 +2,7 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { deleteComment, fetchShelfComments } from '../../api/social'
 import { confirmThen } from '../../lib/confirm'
-import { renderQueryState } from '../../lib/queryBoundary'
+import { refetchWarning, renderQueryState } from '../../lib/queryBoundary'
 import { relativeTime } from '../../lib/relativeTime'
 import { invalidateShelfSocial } from '../../lib/shelfQueries'
 import { useMe } from '../../lib/useMe'
@@ -93,6 +93,7 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
   return (
     <section aria-label={t`Comments`} className="mt-6">
       <SectionLabel as="h3" size="sm" className="mb-3"><Trans>Comments</Trans></SectionLabel>
+      {refetchWarning(list)}
       {renderQueryState(list, {
         size: 'subsection',
         role: 'alert',

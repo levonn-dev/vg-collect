@@ -46,6 +46,17 @@ it('pending shows the wait and cancels', async () => {
   expect(await screen.findByRole('button', { name: 'Submit to catalog' })).toBeInTheDocument()
 })
 
+it('shows a curated message when cancel loses a race against the submission resolving first', async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(sub('pending'))
+    .mockResolvedValueOnce(problemResponse(404, 'submission_not_found', 'nothing is pending for this entry'))
+  vi.stubGlobal('fetch', fetchMock)
+  renderBlock()
+  await userEvent.click(await screen.findByRole('button', { name: 'Cancel submission' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Nothing is pending to cancel.')
+})
+
 it('rejected shows the reason and offers Resubmit', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sub('rejected', { reject_reason: 'not a shared item' })))
   renderBlock()
@@ -53,7 +64,7 @@ it('rejected shows the reason and offers Resubmit', async () => {
   expect(screen.getByRole('button', { name: 'Resubmit to catalog' })).toBeInTheDocument()
 })
 
-it('renders the 429 detail verbatim at the button', async () => {
+it('shows a curated message for a rate-limited submission, not the raw detail', async () => {
   const fetchMock = vi
     .fn()
     .mockResolvedValueOnce(problemResponse(404, 'submission_not_found', 'none'))
@@ -61,5 +72,5 @@ it('renders the 429 detail verbatim at the button', async () => {
   vi.stubGlobal('fetch', fetchMock)
   renderBlock()
   await userEvent.click(await screen.findByRole('button', { name: 'Submit to catalog' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('at most 20 submissions per rolling 24h; try again later')
+  expect(await screen.findByRole('alert')).toHaveTextContent('Too many submissions recently - try again later.')
 })

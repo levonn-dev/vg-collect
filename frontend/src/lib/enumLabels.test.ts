@@ -6,15 +6,17 @@ import {
   itemTypeWireLabels,
   packagingChipLabels,
   packagingWireLabels,
+  productTypeWireLabels,
   statusLabels,
   statusWireLabels,
   visibilityLabels,
   visibilityWireLabels,
 } from './enumLabels'
-import { visibilityValues } from '../api/schema'
+import { productTypeValues, visibilityValues } from '../api/schema'
 import { CONDITIONS, ITEM_TYPES, PACKAGINGS, STATUSES } from './listParams'
 
 const VISIBILITY_VALUES = visibilityValues
+const PRODUCT_TYPE_VALUES = productTypeValues
 
 i18n.load('en', messages)
 i18n.activate('en')
@@ -37,6 +39,7 @@ test('every map covers exactly its enum, no more, no less', () => {
   expectComplete(packagingWireLabels, PACKAGINGS)
   expectComplete(packagingChipLabels, PACKAGINGS)
   expectComplete(itemTypeWireLabels, ITEM_TYPES)
+  expectComplete(productTypeWireLabels, PRODUCT_TYPE_VALUES)
   expectComplete(visibilityLabels, VISIBILITY_VALUES)
   expectComplete(visibilityWireLabels, VISIBILITY_VALUES)
 })
@@ -48,6 +51,10 @@ test('known labels resolve to their expected text under the test i18n', () => {
   expect(i18n._(packagingWireLabels.cib)).toBe('cib')
   expect(i18n._(packagingChipLabels.cib)).toBe('CIB')
   expect(i18n._(itemTypeWireLabels.console)).toBe('console')
+  expect(i18n._(productTypeWireLabels.game)).toBe('game')
+  // pc_listing is the one productTypeWireLabels member with no bare wire
+  // word to preserve identity for.
+  expect(i18n._(productTypeWireLabels.pc_listing)).toBe('price listing')
   expect(i18n._(visibilityLabels.unlisted)).toBe('Unlisted')
   expect(i18n._(visibilityWireLabels.unlisted)).toBe('unlisted')
 })

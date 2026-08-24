@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { updateMe, type Me } from '../../api/me'
 import CopyButton from '../CopyButton'
-import { Handle } from '../../gen/facets'
+import { Handle, UpdateMeRequest } from '../../gen/facets'
 import { landingPageValues, visibilityValues } from '../../api/schema'
 import { btnPrimary } from '../../lib/formStyles'
 import { resolveApiError } from '../../lib/resolveApiError'
@@ -13,6 +13,7 @@ import { resolveApiError } from '../../lib/resolveApiError'
 const HANDLE_MIN = Handle.minLength
 const HANDLE_MAX = Handle.maxLength
 const HANDLE_PATTERN = Handle.pattern
+const AVATAR_URL_MAX = UpdateMeRequest.properties.avatar_url.maxLength
 const VISIBILITY_VALUES = visibilityValues
 type Visibility = (typeof VISIBILITY_VALUES)[number]
 type LandingPage = (typeof landingPageValues)[number]
@@ -64,6 +65,14 @@ export default function ProfileForm({ me }: { me: Me }) {
   const [avatarUrl, setAvatarUrl] = useState(me.avatar_url ?? '')
   const [visibility, setVisibility] = useState(me.profile_visibility)
   const [landingPage, setLandingPage] = useState(me.landing_page)
+  // The saved confirmation must disappear the moment the form drifts
+  // from what was saved (mirrors EntryForm's editedSinceSave), so every
+  // field setter below flips this.
+  const [editedSinceSave, setEditedSinceSave] = useState(false)
+  const updateHandle = (v: string) => { setEditedSinceSave(true); setHandle(v) }
+  const updateAvatarUrl = (v: string) => { setEditedSinceSave(true); setAvatarUrl(v) }
+  const updateVisibility = (v: Visibility) => { setEditedSinceSave(true); setVisibility(v) }
+  const updateLandingPage = (v: LandingPage) => { setEditedSinceSave(true); setLandingPage(v) }
   const queryClient = useQueryClient()
   const save = useMutation({
     mutationFn: () =>
@@ -81,6 +90,7 @@ export default function ProfileForm({ me }: { me: Me }) {
       className="flex max-w-md flex-col gap-3"
       onSubmit={(e) => {
         e.preventDefault()
+        setEditedSinceSave(false)
         save.mutate()
       }}
     >
@@ -91,7 +101,7 @@ export default function ProfileForm({ me }: { me: Me }) {
         <input
           id="handle"
           value={handle}
-          onChange={(e) => setHandle(e.target.value)}
+          onChange={(e) => updateHandle(e.target.value)}
           required
           minLength={HANDLE_MIN}
           maxLength={HANDLE_MAX}
@@ -108,8 +118,9 @@ export default function ProfileForm({ me }: { me: Me }) {
           id="avatar-url"
           type="url"
           value={avatarUrl}
-          onChange={(e) => setAvatarUrl(e.target.value)}
-          placeholder="https://..."
+          onChange={(e) => updateAvatarUrl(e.target.value)}
+          maxLength={AVATAR_URL_MAX}
+          placeholder={t(i18n)`https://...`}
           className="rounded border border-gray-300 px-3 py-2"
         />
         <p className="text-xs text-gray-500"><Trans>Leave empty to use your initial instead.</Trans></p>
@@ -123,7 +134,7 @@ export default function ProfileForm({ me }: { me: Me }) {
               name="profile_visibility"
               value={value}
               checked={visibility === value}
-              onChange={() => setVisibility(value)}
+              onChange={() => updateVisibility(value)}
             />
             {i18n._(label)}
           </label>
@@ -139,7 +150,7 @@ export default function ProfileForm({ me }: { me: Me }) {
               name="landing_page"
               value={value}
               checked={landingPage === value}
-              onChange={() => setLandingPage(value)}
+              onChange={() => updateLandingPage(value)}
             />
             {i18n._(label)}
           </label>
@@ -160,7 +171,7 @@ export default function ProfileForm({ me }: { me: Me }) {
         >
           <Trans>Save</Trans>
         </button>
-        {save.isSuccess && (
+        {save.isSuccess && !editedSinceSave && (
           <span role="status" className="text-sm text-green-800">
             <Trans>Saved.</Trans>
           </span>

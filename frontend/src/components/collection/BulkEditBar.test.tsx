@@ -109,6 +109,23 @@ it('unchecking an already-checked remove-tag chip drops it from the request body
   expect(body).toEqual({ entry_ids: ['e1', 'e2'], remove_tag_ids: ['t1'] })
 })
 
+it('checking a tag under Remove after it is checked under Add un-checks it there, and vice versa', async () => {
+  renderBar()
+  const addGroup = within(screen.getByRole('group', { name: 'Add tags' }))
+  const removeGroup = within(screen.getByRole('group', { name: 'Remove tags' }))
+
+  await userEvent.click(addGroup.getByRole('checkbox', { name: 'rpg' }))
+  expect(addGroup.getByRole('checkbox', { name: 'rpg' })).toBeChecked()
+
+  await userEvent.click(removeGroup.getByRole('checkbox', { name: 'rpg' }))
+  expect(removeGroup.getByRole('checkbox', { name: 'rpg' })).toBeChecked()
+  expect(addGroup.getByRole('checkbox', { name: 'rpg' })).not.toBeChecked()
+
+  await userEvent.click(addGroup.getByRole('checkbox', { name: 'rpg' }))
+  expect(addGroup.getByRole('checkbox', { name: 'rpg' })).toBeChecked()
+  expect(removeGroup.getByRole('checkbox', { name: 'rpg' })).not.toBeChecked()
+})
+
 it('sends the chosen status', async () => {
   const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { updated_count: 2 }))
   vi.stubGlobal('fetch', fetchMock)
@@ -181,13 +198,15 @@ it('invalidates entries, tags, dashboard, and recommendations, and reports the u
   expect(keys).toContainEqual(['recommendations'])
 })
 
-it('shows the ApiError message and keeps the draft and selection for a retry, without exiting', async () => {
+it('shows the curated tag_cap_exceeded message and keeps the draft and selection for a retry, without exiting', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problemResponse(400, 'tag_cap_exceeded', 'entry would exceed 50 tags')))
   const { onApplied, onCancel } = renderBar()
   const addGroup = within(screen.getByRole('group', { name: 'Add tags' }))
   await userEvent.click(addGroup.getByRole('checkbox', { name: 'rpg' }))
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('entry would exceed 50 tags')
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'One or more of the selected entries would end up with too many tags.',
+  )
   expect(onApplied).not.toHaveBeenCalled()
   expect(onCancel).not.toHaveBeenCalled()
   expect(addGroup.getByRole('checkbox', { name: 'rpg' })).toBeChecked()

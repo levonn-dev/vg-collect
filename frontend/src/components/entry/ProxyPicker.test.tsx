@@ -117,11 +117,13 @@ it('suppresses the community lane even when the response carries community resul
   expect(screen.queryByRole('button', { name: 'Repro Alpha on SNES' })).not.toBeInTheDocument()
 })
 
-it('is a modal dialog and starts focus inside it', () => {
+it('is a (non-modal) dialog and starts focus inside it', () => {
   vi.stubGlobal('fetch', vi.fn())
   renderWithMoney(<ProxyPicker onPick={vi.fn()} onClose={vi.fn()} />)
   const dialog = screen.getByRole('dialog')
-  expect(dialog).toHaveAttribute('aria-modal', 'true')
+  // The panel renders inline with no overlay/focus-trap, so aria-modal
+  // would misrepresent it to assistive tech - guard against it coming back.
+  expect(dialog).not.toHaveAttribute('aria-modal')
   expect(dialog).toContainElement(document.activeElement as HTMLElement)
 })
 

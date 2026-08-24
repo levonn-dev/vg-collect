@@ -1,6 +1,14 @@
 import '@testing-library/jest-dom/vitest'
+import { configure } from '@testing-library/dom'
 import { i18n } from '@lingui/core'
 import { messages } from '../locales/en.po'
+
+// findBy*/waitFor default to a 1s ceiling, sized for an idle machine.
+// Under coverage instrumentation or a loaded 2-core CI runner the
+// suite runs several times slower and legitimate renders blow through
+// that second, so the ceiling gets room. Only failing waits pay the
+// difference; passing ones return the moment they resolve.
+configure({ asyncUtilTimeout: 5000 })
 
 // Recharts' ResponsiveContainer needs a ResizeObserver; jsdom has
 // none. The stub reports a fixed size on observe so charts render

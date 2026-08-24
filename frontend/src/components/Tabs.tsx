@@ -1,8 +1,17 @@
 import { useRef, type KeyboardEvent } from 'react'
+import { tabButtonId } from '../lib/tabs'
 
 export interface Tab<T extends string> {
   key: T
   label: string
+  // The id of the tabpanel this tab controls - renders as this tab's
+  // own DOM id (see lib/tabs' tabButtonId) and aria-controls,
+  // completing the WAI-ARIA tabs pattern's tab<->panel relationship.
+  // The caller wraps its active panel in role="tabpanel" with a
+  // matching id and aria-labelledby={tabButtonId(panelId)}. Optional
+  // so a caller with no discrete panel markup to wrap (none exist
+  // today) still compiles.
+  panelId?: string
 }
 
 interface TabsProps<T extends string> {
@@ -49,7 +58,9 @@ export default function Tabs<T extends string>({ label, tabs, active, onChange, 
           ref={(el) => { buttonRefs.current[i] = el }}
           type="button"
           role="tab"
+          id={t.panelId ? tabButtonId(t.panelId) : undefined}
           aria-selected={active === t.key}
+          aria-controls={t.panelId}
           tabIndex={active === t.key ? 0 : -1}
           onClick={() => onChange(t.key)}
           onKeyDown={(e) => onKeyDown(e, i)}

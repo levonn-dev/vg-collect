@@ -40,17 +40,43 @@ export default function BreakdownCharts({ dashboard }: { dashboard: Dashboard })
     <div className="grid gap-4 md:grid-cols-3">
       <section aria-label={t`By platform`} className="rounded border border-gray-200 p-4 md:col-span-1">
         <SectionLabel as="h3" size="xs" className="mb-2"><Trans>By platform</Trans></SectionLabel>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={platforms} layout="vertical" margin={{ left: 24 }}>
-              <XAxis type="number" allowDecimals={false} />
-              <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11 }} />
-              <Tooltip cursor={{ fill: 'var(--color-gray-100)' }} {...CHART_TOOLTIP_STYLE} />
-              {/* Theme variable, not a hex: the bar follows light/dark. */}
-              <Bar dataKey="count" fill="var(--color-gray-900)" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {platforms.length === 0 ? (
+          <p className="text-sm text-gray-400"><Trans>Nothing yet</Trans></p>
+        ) : (
+          <>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={platforms} layout="vertical" margin={{ left: 24 }}>
+                  <XAxis type="number" allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11 }} />
+                  <Tooltip cursor={{ fill: 'var(--color-gray-100)' }} {...CHART_TOOLTIP_STYLE} />
+                  {/* Theme variable, not a hex: the bar follows light/dark. */}
+                  <Bar dataKey="count" fill="var(--color-gray-900)" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            {/* The chart has no text/table fallback otherwise: a screen
+                reader gets the section name and nothing describing what
+                it actually shows. */}
+            <table className="sr-only">
+              <caption>{t`By platform`}</caption>
+              <thead>
+                <tr>
+                  <th>{t`Platform`}</th>
+                  <th>{t`Count`}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {platforms.map((p) => (
+                  <tr key={p.name}>
+                    <td>{p.name}</td>
+                    <td>{p.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
       </section>
       <CountList title={t`By status`} counts={dashboard.by_status} labels={statusWireLabels} />
       <CountList title={t`By item type`} counts={dashboard.by_item_type} labels={itemTypeWireLabels} />

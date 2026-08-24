@@ -14,7 +14,10 @@ function renderList() {
   )
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
 
 function communityProduct(
   id: string,
@@ -70,7 +73,21 @@ it('shows a Region column, labeled for a known value and raw for an open-world o
   expect(screen.getByText('Korea')).toBeInTheDocument()
 })
 
+it('delete asks for confirmation first; declining fires no DELETE call', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(false)
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
+    products: [communityProduct('c1', 'Repro Alpha', { platform_name: 'SNES' })], total_count: 1,
+  }))
+  vi.stubGlobal('fetch', fetchMock)
+  renderList()
+  await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
+  expect(window.confirm).toHaveBeenCalled()
+  expect(fetchMock.mock.calls.some(([input]) => (input as Request).method === 'DELETE')).toBe(false)
+  expect(screen.getByText('Repro Alpha')).toBeInTheDocument()
+})
+
 it('delete success removes the row via the DELETE call and list invalidation', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
   let listCalls = 0
   const fetchMock = vi.fn().mockImplementation((url: unknown) => {
     const u = requestPath(url)
@@ -95,6 +112,7 @@ it('delete success removes the row via the DELETE call and list invalidation', a
 })
 
 it('delete 409 product_referenced shows the inline per-row message and keeps the row', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
   const fetchMock = vi.fn().mockImplementation((url: unknown) => {
     const u = requestPath(url)
     if (u === '/api/admin/products/c1' && (url as Request).method === 'DELETE') {

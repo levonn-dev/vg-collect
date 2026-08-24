@@ -5,10 +5,11 @@ import { Link } from 'react-router'
 import { fetchProfileCards, fetchSubmissions } from '../../api/admin'
 import type { AdminSubmission, ProfileCard } from '../../api/admin'
 import type { ApiError } from '../../api/client'
+import { itemTypeWireLabels } from '../../lib/enumLabels'
 import { formatDate } from '../../lib/format'
 import { btnSecondaryXs } from '../../lib/formStyles'
 import { offsetNextPageParam } from '../../lib/pagination'
-import { renderQueryState } from '../../lib/queryBoundary'
+import { refetchWarning, renderQueryState } from '../../lib/queryBoundary'
 import { regionLabelText } from '../../lib/regionLabels'
 import LoadMoreButton from '../LoadMoreButton'
 import ReviewPanel, { verdictErrorMessage } from './ReviewPanel'
@@ -66,7 +67,7 @@ export default function SubmissionsQueue() {
     void queryClient.invalidateQueries({ queryKey: ['admin'] })
   }
 
-  if (list.isPending || list.isError) {
+  if (list.isPending || (list.isError && list.data === undefined)) {
     return renderQueryState(list, {
       size: 'subsection',
       className: 'mt-4',
@@ -83,6 +84,7 @@ export default function SubmissionsQueue() {
       <h3 className="text-base font-semibold">
         <Plural value={total} one="# pending submission" other="# pending submissions" />
       </h3>
+      {refetchWarning(list)}
       {notice && (
         <p role="status" className="mt-2 rounded bg-amber-50 p-2 text-sm text-amber-800">
           {verdictErrorMessage(notice, i18n)}
@@ -104,7 +106,7 @@ export default function SubmissionsQueue() {
           {rows.map((s) => (
             <tr key={s.id} className="border-b border-gray-100">
               <td className="py-1 pr-2">{s.display_name}</td>
-              <td className="py-1 pr-2">{s.item_type}</td>
+              <td className="py-1 pr-2">{i18n._(itemTypeWireLabels[s.item_type])}</td>
               <td className="py-1 pr-2">{s.platform_name ?? ''}</td>
               <td className="py-1 pr-2">{[regionLabelText(i18n, s.region), s.edition].filter(Boolean).join(' / ')}</td>
               <td className="py-1 pr-2">

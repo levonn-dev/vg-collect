@@ -51,7 +51,7 @@ async function addCustom(
   if (region) await page.getByLabel('Region').selectOption(region)
   if (developer) {
     await page.getByRole('button', { name: 'Add developer' }).click()
-    await page.getByLabel('Developers 1', { exact: true }).fill(developer)
+    await page.getByLabel('Developers: 1', { exact: true }).fill(developer)
   }
   if (cover) await page.getByLabel(/cover image link/i).fill(cover)
   await page.getByRole('button', { name: 'Continue' }).click()
@@ -386,7 +386,7 @@ test('region flows through queue, review, and the next add wizard', async ({ pag
   await row.getByRole('button', { name: 'Review' }).click()
   const panel = page.locator(`[aria-label="Review ${name}"]`)
   await expect(panel.getByLabel('Region')).toHaveValue('ntsc_j')
-  await expect(panel.getByLabel('Developers 1', { exact: true })).toHaveValue('Garage Team')
+  await expect(panel.getByLabel('Developers: 1', { exact: true })).toHaveValue('Garage Team')
   await panel.getByRole('button', { name: 'Approve as new product' }).click()
   await expect(queue.locator('tbody tr').filter({ hasText: name })).toHaveCount(0)
 
@@ -439,6 +439,9 @@ test('admin deletes a community product from the cleanup list', async ({ page, f
     if ((await row.count()) === 0 && (await loadMore.count()) > 0) await loadMore.click()
     await expect(row).toBeVisible({ timeout: 2_000 })
   }).toPass({ timeout: 30_000 })
+  // Deleting from this list now asks the same confirm question every
+  // other destructive action does.
+  acceptNext(page)
   await row.getByRole('button', { name: 'Delete' }).click()
   await expect(row).toHaveCount(0)
 })

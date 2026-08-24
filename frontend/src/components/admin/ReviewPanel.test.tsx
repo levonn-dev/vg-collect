@@ -178,9 +178,9 @@ it('prefills the submitter credits and mints the edited lists', async () => {
   })
   vi.stubGlobal('fetch', fetchMock)
   renderPanel(credited, vi.fn())
-  expect(screen.getByLabelText('Developers 1')).toHaveValue('Garage Team')
+  expect(screen.getByLabelText('Developers: 1')).toHaveValue('Garage Team')
   await userEvent.click(screen.getByRole('button', { name: 'Add publisher' }))
-  await userEvent.type(screen.getByLabelText('Publishers 1'), '  Repro House  ')
+  await userEvent.type(screen.getByLabelText('Publishers: 1'), '  Repro House  ')
   await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
   const verdictCall = fetchMock.mock.calls.find(([u]) => requestPath(u) === '/api/admin/submissions/s1/verdict')
   expect(await putBody(verdictCall?.[0])).toEqual({

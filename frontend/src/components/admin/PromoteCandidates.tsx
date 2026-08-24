@@ -3,9 +3,10 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { fetchPromoteCandidates } from '../../api/admin'
 import { formatDate } from '../../lib/format'
+import { productTypeWireLabels } from '../../lib/enumLabels'
 import { btnSecondaryXs } from '../../lib/formStyles'
 import { offsetNextPageParam } from '../../lib/pagination'
-import { renderQueryState } from '../../lib/queryBoundary'
+import { refetchWarning, renderQueryState } from '../../lib/queryBoundary'
 import LoadMoreButton from '../LoadMoreButton'
 import PromotePanel from './PromotePanel'
 
@@ -19,7 +20,7 @@ import PromotePanel from './PromotePanel'
 // refetch with their stored pageParam (rows that got promoted, or
 // whose last candidate got dismissed, leave the list).
 export default function PromoteCandidates() {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const list = useInfiniteQuery({
@@ -34,7 +35,7 @@ export default function PromoteCandidates() {
     void queryClient.invalidateQueries({ queryKey: ['admin'] })
   }
 
-  if (list.isPending || list.isError) {
+  if (list.isPending || (list.isError && list.data === undefined)) {
     return renderQueryState(list, {
       size: 'subsection',
       className: 'mt-4',
@@ -61,6 +62,7 @@ export default function PromoteCandidates() {
           other="# community products with possible provider matches"
         />
       </h3>
+      {refetchWarning(list)}
       <table className="mt-2 w-full text-left text-sm">
         <thead>
           <tr className="border-b border-gray-200 text-gray-500">
@@ -75,7 +77,7 @@ export default function PromoteCandidates() {
           {rows.map((row) => (
             <tr key={row.product.id} className="border-b border-gray-100">
               <td className="py-1 pr-2">{row.product.name}</td>
-              <td className="py-1 pr-2">{row.product.type}</td>
+              <td className="py-1 pr-2">{i18n._(productTypeWireLabels[row.product.type])}</td>
               <td className="py-1 pr-2">
                 {row.candidates[0] ? `${row.candidates[0].name} (${row.candidates[0].score.toFixed(2)})` : ''}
               </td>
@@ -94,7 +96,12 @@ export default function PromoteCandidates() {
         </tbody>
       </table>
       <LoadMoreButton query={list} className="mt-2" />
-      {reviewing && <PromotePanel product={reviewing.product} candidates={reviewing.candidates} onDone={done} />}
+      {/* key={reviewing.product.id}: without it, switching the reviewed
+          row while the panel is open reconciles the same PromotePanel
+          instance in place, leaking its attached-listing/picking state
+          across products (see ProductLookup and SubmissionsQueue for the
+          same pattern). */}
+      {reviewing && <PromotePanel key={reviewing.product.id} product={reviewing.product} candidates={reviewing.candidates} onDone={done} />}
     </section>
   )
 }

@@ -19,6 +19,26 @@ function headersOf(call: unknown[]): Headers {
   return new Headers(init?.headers)
 }
 
+// findDataPoints centralizes the "flush, then look up one metric's data
+// points by descriptor name" lookup that recurs throughout this file:
+// every describe block below builds its own MeterProvider under a fresh
+// vi.resetModules(), so there is no single shared exporter to close over
+// instead - callers pass their own local metricReader/metricExporter.
+// The type param picks the block's own point shape (a plain counter's
+// number vs. a histogram's bucketed value).
+async function findDataPoints<T = number>(
+  metricReader: PeriodicExportingMetricReader,
+  metricExporter: InMemoryMetricExporter,
+  name: string,
+): Promise<DataPoint<T>[]> {
+  await metricReader.forceFlush()
+  const [resourceMetrics] = metricExporter.getMetrics()
+  const metric = resourceMetrics?.scopeMetrics
+    .flatMap((sm) => sm.metrics)
+    .find((m) => m.descriptor.name === name)
+  return (metric?.dataPoints ?? []) as DataPoint<T>[]
+}
+
 describe('initTelemetry', () => {
   let exporter: InMemorySpanExporter
   let fetchStub: ReturnType<typeof vi.fn>
@@ -92,12 +112,7 @@ describe('locale and prose metric counters', () => {
       exportIntervalMillis: NEVER_TICK_MILLIS,
     })
     await telemetry.initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()), metricReader)
-    await metricReader.forceFlush()
-    const points =
-      metricExporter
-        .getMetrics()[0]
-        ?.scopeMetrics.flatMap((sm) => sm.metrics)
-        .find((m) => m.descriptor.name === 'vg.frontend.locale.boot')?.dataPoints ?? []
+    const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.locale.boot')
     expect(points).toHaveLength(1)
     expect(points[0].attributes).toEqual({ locale: 'ja', source: 'stored', browser_language: 'ja' })
     trace.disable()
@@ -135,18 +150,9 @@ describe('locale and prose metric counters', () => {
       propagation.disable()
     })
 
-    async function dataPointsFor(name: string) {
-      await metricReader.forceFlush()
-      const [resourceMetrics] = metricExporter.getMetrics()
-      const metric = resourceMetrics?.scopeMetrics
-        .flatMap((sm) => sm.metrics)
-        .find((m) => m.descriptor.name === name)
-      return metric?.dataPoints ?? []
-    }
-
     it('records a locale boot with the locale, source, and browser primary subtag', async () => {
       telemetry.recordLocaleBoot('en', 'stored', 'en-GB')
-      const points = await dataPointsFor('vg.frontend.locale.boot')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.locale.boot')
       expect(points).toHaveLength(1)
       expect(points[0].value).toBe(1)
       expect(points[0].attributes).toEqual({ locale: 'en', source: 'stored', browser_language: 'en' })
@@ -154,13 +160,13 @@ describe('locale and prose metric counters', () => {
 
     it('omits browser_language when no browser language is available', async () => {
       telemetry.recordLocaleBoot('en', 'fallback', undefined)
-      const points = await dataPointsFor('vg.frontend.locale.boot')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.locale.boot')
       expect(points[0].attributes).toEqual({ locale: 'en', source: 'fallback' })
     })
 
     it('records a catalog failure with the stage and locale', async () => {
       telemetry.recordCatalogFailure('switch', 'de')
-      const points = await dataPointsFor('vg.frontend.locale.catalog_failures')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.locale.catalog_failures')
       expect(points).toHaveLength(1)
       expect(points[0].value).toBe(1)
       expect(points[0].attributes).toEqual({ stage: 'switch', locale: 'de' })
@@ -168,7 +174,7 @@ describe('locale and prose metric counters', () => {
 
     it('records a locale switch with from and to', async () => {
       telemetry.recordLocaleSwitch('en', 'de')
-      const points = await dataPointsFor('vg.frontend.locale.switches')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.locale.switches')
       expect(points).toHaveLength(1)
       expect(points[0].value).toBe(1)
       expect(points[0].attributes).toEqual({ from: 'en', to: 'de' })
@@ -176,7 +182,7 @@ describe('locale and prose metric counters', () => {
 
     it('records a prose fallback with the page', async () => {
       telemetry.recordProseFallback('help')
-      const points = await dataPointsFor('vg.frontend.prose.fallback_served')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.prose.fallback_served')
       expect(points).toHaveLength(1)
       expect(points[0].value).toBe(1)
       expect(points[0].attributes).toEqual({ page: 'help' })
@@ -185,7 +191,7 @@ describe('locale and prose metric counters', () => {
     it('accumulates repeated calls into the same counter', async () => {
       telemetry.recordLocaleSwitch('en', 'de')
       telemetry.recordLocaleSwitch('en', 'de')
-      const points = await dataPointsFor('vg.frontend.locale.switches')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.locale.switches')
       expect(points).toHaveLength(1)
       expect(points[0].value).toBe(2)
     })
@@ -228,18 +234,9 @@ describe('uncaught-error and network-failure counters', () => {
       propagation.disable()
     })
 
-    async function dataPointsFor(name: string) {
-      await metricReader.forceFlush()
-      const [resourceMetrics] = metricExporter.getMetrics()
-      const metric = resourceMetrics?.scopeMetrics
-        .flatMap((sm) => sm.metrics)
-        .find((m) => m.descriptor.name === name)
-      return metric?.dataPoints ?? []
-    }
-
     it('records an uncaught error via the window error listener', async () => {
       window.dispatchEvent(new ErrorEvent('error'))
-      const points = await dataPointsFor('vg.frontend.errors')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.errors')
       expect(points).toHaveLength(1)
       expect(points[0].value).toBe(1)
       expect(points[0].attributes).toEqual({ kind: 'error' })
@@ -253,7 +250,7 @@ describe('uncaught-error and network-failure counters', () => {
     // end without needing that constructor.
     it('records an uncaught rejection via the window unhandledrejection listener', async () => {
       window.dispatchEvent(new Event('unhandledrejection'))
-      const points = await dataPointsFor('vg.frontend.errors')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.errors')
       expect(points).toHaveLength(1)
       expect(points[0].attributes).toEqual({ kind: 'unhandledrejection' })
     })
@@ -262,7 +259,7 @@ describe('uncaught-error and network-failure counters', () => {
       telemetry.recordUncaughtError('error')
       telemetry.recordUncaughtError('unhandledrejection')
       telemetry.recordUncaughtError('boundary')
-      const points = await dataPointsFor('vg.frontend.errors')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.errors')
       expect(points).toHaveLength(3)
       expect(points.map((p) => p.attributes.kind).sort()).toEqual(['boundary', 'error', 'unhandledrejection'])
     })
@@ -270,14 +267,14 @@ describe('uncaught-error and network-failure counters', () => {
     it('accumulates repeated calls of the same kind into one data point', async () => {
       telemetry.recordUncaughtError('error')
       telemetry.recordUncaughtError('error')
-      const points = await dataPointsFor('vg.frontend.errors')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.errors')
       expect(points).toHaveLength(1)
       expect(points[0].value).toBe(2)
     })
 
     it('records api_failures through recordApiNetworkFailure directly', async () => {
       telemetry.recordApiNetworkFailure()
-      const points = await dataPointsFor('vg.frontend.api_failures')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.api_failures')
       expect(points).toHaveLength(1)
       expect(points[0].value).toBe(1)
       expect(points[0].attributes).toEqual({})
@@ -286,7 +283,7 @@ describe('uncaught-error and network-failure counters', () => {
     it('records a network failure when a fetch call itself rejects', async () => {
       fetchStub.mockRejectedValueOnce(new TypeError('Failed to fetch'))
       await expect(fetch('/api/entries')).rejects.toThrow('Failed to fetch')
-      const points = await dataPointsFor('vg.frontend.api_failures')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.api_failures')
       expect(points).toHaveLength(1)
       expect(points[0].value).toBe(1)
     })
@@ -294,14 +291,14 @@ describe('uncaught-error and network-failure counters', () => {
     it('does not record a network failure for a completed response carrying an HTTP error status', async () => {
       fetchStub.mockResolvedValueOnce(new Response('{}', { status: 500 }))
       await fetch('/api/entries')
-      const points = await dataPointsFor('vg.frontend.api_failures')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.api_failures')
       expect(points).toHaveLength(0)
     })
 
     it('does not record a network failure for the ignored relay path (no self-counting)', async () => {
       fetchStub.mockRejectedValueOnce(new TypeError('Failed to fetch'))
       await expect(fetch('/api/otlp/v1/traces', { method: 'POST', body: '{}' })).rejects.toThrow()
-      const points = await dataPointsFor('vg.frontend.api_failures')
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.api_failures')
       expect(points).toHaveLength(0)
     })
   })
@@ -362,12 +359,8 @@ describe('uncaught-error and network-failure counters', () => {
     it('includes version on vg.frontend.errors adds when set', async () => {
       const { telemetry, metricExporter, metricReader } = await initWithVersion('1.2.3')
       telemetry.recordUncaughtError('error')
-      await metricReader.forceFlush()
-      const [resourceMetrics] = metricExporter.getMetrics()
-      const metric = resourceMetrics?.scopeMetrics
-        .flatMap((sm) => sm.metrics)
-        .find((m) => m.descriptor.name === 'vg.frontend.errors')
-      expect(metric?.dataPoints[0].attributes).toEqual({ kind: 'error', version: '1.2.3' })
+      const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.errors')
+      expect(points[0].attributes).toEqual({ kind: 'error', version: '1.2.3' })
     })
   })
 })
@@ -432,18 +425,9 @@ describe('web vitals histograms', () => {
       propagation.disable()
     })
 
-    async function dataPointsFor(name: string): Promise<DataPoint<Histogram>[]> {
-      await metricReader.forceFlush()
-      const [resourceMetrics] = metricExporter.getMetrics()
-      const metric = resourceMetrics?.scopeMetrics
-        .flatMap((sm) => sm.metrics)
-        .find((m) => m.descriptor.name === name)
-      return (metric?.dataPoints ?? []) as DataPoint<Histogram>[]
-    }
-
     it('records LCP into vg.frontend.web_vitals.lcp with its rating and the configured bucket boundaries', async () => {
       telemetry.handleWebVital('LCP', 1200, 'good')
-      const points = await dataPointsFor('vg.frontend.web_vitals.lcp')
+      const points = await findDataPoints<Histogram>(metricReader, metricExporter, 'vg.frontend.web_vitals.lcp')
       expect(points).toHaveLength(1)
       expect(points[0].value.sum).toBe(1200)
       expect(points[0].value.count).toBe(1)
@@ -453,7 +437,7 @@ describe('web vitals histograms', () => {
 
     it('records INP into vg.frontend.web_vitals.inp with its rating and the configured bucket boundaries', async () => {
       telemetry.handleWebVital('INP', 150, 'needs-improvement')
-      const points = await dataPointsFor('vg.frontend.web_vitals.inp')
+      const points = await findDataPoints<Histogram>(metricReader, metricExporter, 'vg.frontend.web_vitals.inp')
       expect(points).toHaveLength(1)
       expect(points[0].value.sum).toBe(150)
       expect(points[0].value.count).toBe(1)
@@ -466,7 +450,7 @@ describe('web vitals histograms', () => {
     // regression that multiplies it by 1000 or similar.
     it('records CLS into vg.frontend.web_vitals.cls unscaled, with its rating and the configured bucket boundaries', async () => {
       telemetry.handleWebVital('CLS', 0.08, 'poor')
-      const points = await dataPointsFor('vg.frontend.web_vitals.cls')
+      const points = await findDataPoints<Histogram>(metricReader, metricExporter, 'vg.frontend.web_vitals.cls')
       expect(points).toHaveLength(1)
       expect(points[0].value.sum).toBeCloseTo(0.08)
       expect(points[0].value.count).toBe(1)
@@ -477,7 +461,7 @@ describe('web vitals histograms', () => {
     it('accumulates repeated calls for the same vital into one histogram', async () => {
       telemetry.handleWebVital('LCP', 1200, 'good')
       telemetry.handleWebVital('LCP', 1800, 'good')
-      const points = await dataPointsFor('vg.frontend.web_vitals.lcp')
+      const points = await findDataPoints<Histogram>(metricReader, metricExporter, 'vg.frontend.web_vitals.lcp')
       expect(points).toHaveLength(1)
       expect(points[0].value.count).toBe(2)
       expect(points[0].value.sum).toBe(3000)
@@ -519,12 +503,8 @@ describe('web vitals histograms', () => {
       const telemetry = await import('./telemetry')
       await telemetry.initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()), metricReader)
       telemetry.handleWebVital('CLS', 0.02, 'good')
-      await metricReader.forceFlush()
-      const [resourceMetrics] = metricExporter.getMetrics()
-      const metric = resourceMetrics?.scopeMetrics
-        .flatMap((sm) => sm.metrics)
-        .find((m) => m.descriptor.name === 'vg.frontend.web_vitals.cls')
-      expect(metric?.dataPoints[0].attributes).toEqual({ rating: 'good', version: '1.2.3' })
+      const points = await findDataPoints<Histogram>(metricReader, metricExporter, 'vg.frontend.web_vitals.cls')
+      expect(points[0].attributes).toEqual({ rating: 'good', version: '1.2.3' })
     })
   })
 })

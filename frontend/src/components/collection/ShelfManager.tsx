@@ -1,10 +1,13 @@
 import { Trans, useLingui } from '@lingui/react/macro'
+import { msg } from '@lingui/core/macro'
+import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { SavedView } from '../../api/collection'
 import { fetchViews, updateView } from '../../api/collection'
 import { visibilityWireLabels } from '../../lib/enumLabels'
+import { resolveApiError } from '../../lib/resolveApiError'
 import { useMe } from '../../lib/useMe'
 import CopyButton from '../CopyButton'
 import VisibilityControl from '../social/VisibilityControl'
@@ -16,6 +19,17 @@ const visibilityBadges: Record<SavedView['visibility'], string> = {
   private: 'bg-gray-100 text-gray-700',
   unlisted: 'bg-amber-50 text-amber-800',
   listed: 'bg-green-50 text-green-800',
+}
+
+// view_exists (a name conflict) is left out: this mutation resends the
+// shelf's own unchanged name (see changeVisibility below), which never
+// conflicts with itself, so the endpoint's other documented code never
+// answers a visibility-only PUT.
+const changeVisibilityErrorCodes: Record<string, MessageDescriptor> = {
+  view_not_found: msg`This shelf no longer exists.`,
+}
+function changeVisibilityErrorMessage(e: unknown, i18n: I18n): string {
+  return resolveApiError(e, i18n, changeVisibilityErrorCodes, msg`The shelf visibility update failed.`)
 }
 
 // ShelfManager is the Shelves tab's own content: the per-shelf
@@ -77,7 +91,7 @@ export default function ShelfManager() {
       )}
       {changeVisibility.error && (
         <p role="alert" className="text-xs text-red-700">
-          {changeVisibility.error.message || t`The shelf visibility update failed.`}
+          {changeVisibilityErrorMessage(changeVisibility.error, i18n)}
         </p>
       )}
       {views.data && (

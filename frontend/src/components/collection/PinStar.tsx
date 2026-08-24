@@ -19,6 +19,7 @@ export default function PinStar({ entry }: { entry: Entry }) {
   })
   return (
     <button
+      type="button"
       onClick={() => toggle.mutate()}
       disabled={toggle.isPending}
       aria-pressed={entry.pinned}

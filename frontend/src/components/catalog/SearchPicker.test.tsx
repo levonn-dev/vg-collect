@@ -187,7 +187,7 @@ const saturnAvailabilityResult = {
   platforms: [{ igdb_platform_id: 32, name: 'Sega Saturn', release_regions: ['japan'] }],
 }
 
-it('renders an availability badge on a platform chip, folded into the aria-label', async () => {
+it('renders an availability region tag on a platform chip, folded into the aria-label', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { degraded: false, results: [saturnAvailabilityResult] })))
   renderPicker({ initialQuery: 'panzer' })
   const chip = await screen.findByRole('button', { name: 'Panzer Dragoon Saga on Sega Saturn (NTSC-J)' })
@@ -199,7 +199,7 @@ const multiRegionAvailabilityResult = {
   platforms: [{ igdb_platform_id: 6, name: 'SNES', release_regions: ['north_america', 'europe'] }],
 }
 
-it('joins multiple availability badges on a chip with a slash', async () => {
+it('joins multiple availability region tags on a chip with a slash', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { degraded: false, results: [multiRegionAvailabilityResult] })))
   renderPicker({ initialQuery: 'actraiser' })
   const chip = await screen.findByRole('button', { name: 'Actraiser 2 on SNES (NTSC-U/PAL)' })
@@ -303,7 +303,7 @@ const koreaOnlyResult = {
   localizations: [{ region: 'ja-JP', translit: 'Seiken Densetsu 3' }],
 }
 
-it('badges a korea-only chip and seeds korea over the out-of-set matched region', async () => {
+it('tags a korea-only chip and seeds korea over the out-of-set matched region', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { degraded: false, results: [koreaOnlyResult] })))
   const onPick = renderPicker({ initialQuery: 'seiken' })
   const chip = await screen.findByRole('button', { name: 'Trials of Mana on SNES (Korea)' })
@@ -357,7 +357,7 @@ const mrGimmickResult = {
   ],
 }
 
-it('gives each platform chip its own badges and suggested region end to end', async () => {
+it('gives each platform chip its own region tags and suggested region end to end', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { degraded: false, results: [mrGimmickResult] })))
   const onPick = renderPicker({ initialQuery: 'gimmick' })
   const famicomChip = await screen.findByRole('button', { name: 'Mr. Gimmick on Famicom (NTSC-J)' })

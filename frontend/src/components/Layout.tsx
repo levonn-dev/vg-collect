@@ -37,8 +37,8 @@ export default function Layout() {
       return <Navigate to={`/login${next}`} replace />
     }
     return (
-      <main className="p-8" role="alert">
-        <Trans>Something went wrong. Please try again.</Trans>
+      <main className="p-8">
+        <p role="alert"><Trans>Something went wrong. Please try again.</Trans></p>
       </main>
     )
   }

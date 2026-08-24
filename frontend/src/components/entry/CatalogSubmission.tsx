@@ -1,8 +1,32 @@
 import { Trans, useLingui } from '@lingui/react/macro'
+import { msg } from '@lingui/core/macro'
+import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { cancelSubmission, createSubmission } from '../../api/submissions'
 import { btnSecondary } from '../../lib/formStyles'
+import { resolveApiError } from '../../lib/resolveApiError'
 import { useSubmission } from './useSubmission'
+
+// entry_not_custom never actually reaches submit: this block only
+// ever mounts for a custom entry (EntryDetail's !e.product_id gate),
+// so the one code the endpoint documents that this call cannot
+// answer is left out on purpose, not overlooked.
+const submitErrorCodes: Record<string, MessageDescriptor> = {
+  entry_not_found: msg`This entry no longer exists.`,
+  submission_pending: msg`A submission is already pending for this entry.`,
+  too_many_pending_submissions: msg`You already have too many submissions pending review.`,
+  submission_rate_limited: msg`Too many submissions recently - try again later.`,
+}
+function submitErrorMessage(e: unknown, i18n: I18n): string {
+  return resolveApiError(e, i18n, submitErrorCodes, msg`The entry could not be submitted.`)
+}
+
+const cancelErrorCodes: Record<string, MessageDescriptor> = {
+  submission_not_found: msg`Nothing is pending to cancel.`,
+}
+function cancelErrorMessage(e: unknown, i18n: I18n): string {
+  return resolveApiError(e, i18n, cancelErrorCodes, msg`The cancellation failed.`)
+}
 
 // CatalogSubmission is the custom-entry block for the shared-catalog
 // pipeline: submit, watch the pending review, read a rejection,
@@ -10,7 +34,7 @@ import { useSubmission } from './useSubmission'
 // product-backed and this block (custom-only) unmounts. Cancelled
 // reads as never-submitted for resubmit purposes.
 export default function CatalogSubmission({ entryId }: { entryId: string }) {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
   const submission = useSubmission(entryId)
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['submission', entryId] })
@@ -40,7 +64,7 @@ export default function CatalogSubmission({ entryId }: { entryId: string }) {
         </button>
         {cancel.isError && (
           <p role="alert" className="mt-2 text-red-700">
-            {cancel.error.message}
+            {cancelErrorMessage(cancel.error, i18n)}
           </p>
         )}
       </section>
@@ -70,7 +94,7 @@ export default function CatalogSubmission({ entryId }: { entryId: string }) {
       </button>
       {submit.isError && (
         <p role="alert" className="mt-2 text-red-700">
-          {submit.error.message}
+          {submitErrorMessage(submit.error, i18n)}
         </p>
       )}
     </section>

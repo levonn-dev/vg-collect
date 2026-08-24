@@ -48,7 +48,7 @@ export default function Account() {
       {linked && (
         <p role="status" className="max-w-md rounded bg-green-50 p-3 text-sm text-green-800">
           <Trans>Login linked. Signing in with it now lands in this account.</Trans>
-          <button className="ml-2 underline" onClick={() => setParams({}, { replace: true })}>
+          <button type="button" className="ml-2 underline" onClick={() => setParams({}, { replace: true })}>
             <Trans>Dismiss</Trans>
           </button>
         </p>
@@ -56,7 +56,7 @@ export default function Account() {
       {linkError && (
         <p role="alert" className="max-w-md rounded bg-red-50 p-3 text-sm text-red-700">
           {i18n._(linkErrorMessages[linkError] ?? linkErrorMessages.link_failed)}
-          <button className="ml-2 underline" onClick={() => setParams({}, { replace: true })}>
+          <button type="button" className="ml-2 underline" onClick={() => setParams({}, { replace: true })}>
             <Trans>Dismiss</Trans>
           </button>
         </p>
@@ -132,6 +132,7 @@ export default function Account() {
         </p>
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={() =>
               confirmThen(
                 t(i18n)`Delete your account? Your collection, tags, shelves, linked logins, and profile will be permanently removed.`,

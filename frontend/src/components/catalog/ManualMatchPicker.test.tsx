@@ -45,14 +45,16 @@ it('prefills and auto-fires the listing search from initialQuery', async () => {
   expect(await screen.findByRole('button', { name: /use chrono trigger/i })).toBeInTheDocument()
 })
 
-it('is a modal dialog, starts focus inside, and returns it on close', () => {
+it('is a (non-modal) dialog, starts focus inside, and returns it on close', () => {
   stubSearch()
   const opener = document.createElement('button')
   document.body.appendChild(opener)
   opener.focus()
   const { unmount } = renderWithMoney(<ManualMatchPicker initialQuery="" onPick={vi.fn()} onClose={vi.fn()} />)
   const dialog = screen.getByRole('dialog', { name: 'Match a price listing' })
-  expect(dialog).toHaveAttribute('aria-modal', 'true')
+  // The panel renders inline with no overlay/focus-trap, so aria-modal
+  // would misrepresent it to assistive tech - guard against it coming back.
+  expect(dialog).not.toHaveAttribute('aria-modal')
   expect(dialog).toContainElement(document.activeElement as HTMLElement)
   unmount()
   expect(document.activeElement).toBe(opener)

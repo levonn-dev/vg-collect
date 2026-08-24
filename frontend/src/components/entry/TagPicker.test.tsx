@@ -49,14 +49,26 @@ it('creates a tag inline and selects it', async () => {
   expect(await screen.findByRole('checkbox', { name: /holiday/ })).toBeChecked()
 })
 
-it('surfaces a duplicate-name conflict', async () => {
+it('surfaces a duplicate-name conflict as its curated tag_exists message', async () => {
   const fetchMock = vi.fn()
     .mockResolvedValueOnce(jsonResponse(200, { tags }))
-    .mockResolvedValueOnce(problemResponse(409, 'name_taken', 'tag name already in use'))
+    .mockResolvedValueOnce(problemResponse(409, 'tag_exists', 'a tag with that name already exists'))
   vi.stubGlobal('fetch', fetchMock)
   renderPicker()
   await screen.findByRole('checkbox', { name: /rpg/ })
   await userEvent.type(screen.getByRole('textbox', { name: /new tag/i }), 'rpg')
   await userEvent.click(screen.getByRole('button', { name: /add tag/i }))
-  expect(await screen.findByRole('alert')).toHaveTextContent(/already in use/i)
+  expect(await screen.findByRole('alert')).toHaveTextContent('A tag with that name already exists.')
+})
+
+it('shows the generic fallback message when tag creation fails with no recognized code', async () => {
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(jsonResponse(200, { tags }))
+    .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+  vi.stubGlobal('fetch', fetchMock)
+  renderPicker()
+  await screen.findByRole('checkbox', { name: /rpg/ })
+  await userEvent.type(screen.getByRole('textbox', { name: /new tag/i }), 'holiday')
+  await userEvent.click(screen.getByRole('button', { name: /add tag/i }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('The tag could not be created.')
 })

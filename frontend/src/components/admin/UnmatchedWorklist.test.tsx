@@ -50,6 +50,15 @@ it('loads the next page and appends', async () => {
   expect(calledPath(fetchMock, 1)).toBe('/api/admin/products/unmatched?offset=200')
 })
 
+it('shows the type column through its localized label, not the raw wire value', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
+    products: [{ ...row('p1', 'Repro Alpha'), type: 'pc_listing' }], total_count: 1,
+  })))
+  renderWorklist()
+  expect(await screen.findByText('price listing')).toBeInTheDocument()
+  expect(screen.queryByText('pc_listing')).not.toBeInTheDocument()
+})
+
 it('opens the fix panel for a row', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
     products: [row('p1', 'Worklist Alpha')], total_count: 1,

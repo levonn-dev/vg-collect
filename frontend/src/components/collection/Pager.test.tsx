@@ -8,6 +8,11 @@ it('collapses to a count line when one page suffices', () => {
   expect(screen.queryByRole('button')).not.toBeInTheDocument()
 })
 
+it('pluralizes the single-page count line for one item', () => {
+  renderWithI18n(<Pager page={0} totalCount={1} onPage={() => {}} />)
+  expect(screen.getByText('1 item')).toBeInTheDocument()
+})
+
 it('bounds the buttons and reports the window', () => {
   renderWithI18n(<Pager page={1} totalCount={450} onPage={() => {}} />)
   expect(screen.getByText('201-400 of 450')).toBeInTheDocument()

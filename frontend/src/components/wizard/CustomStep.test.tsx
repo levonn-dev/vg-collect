@@ -259,8 +259,8 @@ test('base on an existing item fills region and credits from a community pick th
   fireEvent.click(screen.getByRole('button', { name: 'Search' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Repro Delta on Game Boy' }))
   expect(screen.getByLabelText('Region')).toHaveValue('pal')
-  expect(screen.getByLabelText('Developers 1')).toHaveValue('Garage Team')
-  expect(screen.getByLabelText('Publishers 1')).toHaveValue('Repro House')
+  expect(screen.getByLabelText('Developers: 1')).toHaveValue('Garage Team')
+  expect(screen.getByLabelText('Publishers: 1')).toHaveValue('Repro House')
   fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
   expect(onNext).toHaveBeenCalledWith(expect.objectContaining({
     developers: ['Garage Team'], publishers: ['Repro House'],

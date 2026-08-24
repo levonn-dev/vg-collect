@@ -102,7 +102,11 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
                 disabled={dismiss.isPending}
                 className={btnSecondaryXs}
               >
-                <Trans>Dismiss</Trans>
+                {/* Its own catalog entry, distinct from the transient
+                    banner Dismiss (DismissibleNotice/Account): this one
+                    silences a wrong candidate permanently, not closes a
+                    notice, and a translator needs that difference. */}
+                <Trans context="silence a promote candidate">Dismiss</Trans>
               </button>
             </li>
           ))}

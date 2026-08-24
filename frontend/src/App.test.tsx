@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { renderWithI18n } from './test/i18n'
 import { jsonResponse, problemResponse, requestPath } from './test/fixtures'
 import App from './App'
@@ -31,9 +31,12 @@ it('does not retry a 401 and routes to login', async () => {
   expect(await screen.findByText('Track your game collection.')).toBeInTheDocument()
   // 401 must not be retried: each shell probes /api/me exactly once
   // (Layout's gate, then PublicShell's header probe after the
-  // redirect). Retries would push this past two.
-  const meCalls = fetchMock.mock.calls.filter((c) => requestPath(c[0]) === '/api/me')
-  expect(meCalls).toHaveLength(2)
+  // redirect). Retries would push this past two. Polled rather than
+  // asserted instantly: the header probe lands a beat after the login
+  // screen paints, later still on a loaded or coverage-instrumented
+  // run.
+  const meCalls = () => fetchMock.mock.calls.filter((c) => requestPath(c[0]) === '/api/me')
+  await waitFor(() => expect(meCalls()).toHaveLength(2))
 })
 
 // The header's CurrencySelect fetches /api/fx on every authenticated

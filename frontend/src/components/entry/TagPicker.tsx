@@ -1,9 +1,19 @@
 import { Trans, useLingui } from '@lingui/react/macro'
+import { msg } from '@lingui/core/macro'
+import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { ApiError } from '../../api/client'
 import { createTag, fetchTags } from '../../api/collection'
 import { btnSecondary } from '../../lib/formStyles'
+import { resolveApiError } from '../../lib/resolveApiError'
+
+const createTagErrorCodes: Record<string, MessageDescriptor> = {
+  tag_exists: msg`A tag with that name already exists.`,
+  cap_exceeded: msg`You have reached the 200-tag limit.`,
+}
+function createTagErrorMessage(e: unknown, i18n: I18n): string {
+  return resolveApiError(e, i18n, createTagErrorCodes, msg`The tag could not be created.`)
+}
 
 interface TagPickerProps {
   value: string[]
@@ -13,7 +23,7 @@ interface TagPickerProps {
 // TagPicker assigns existing tags and creates new ones inline. It only
 // edits the id list; the surrounding form submits it as tag_ids.
 export default function TagPicker({ value, onChange }: TagPickerProps) {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
   const tags = useQuery({ queryKey: ['tags'], queryFn: fetchTags })
   const [name, setName] = useState('')
@@ -66,9 +76,7 @@ export default function TagPicker({ value, onChange }: TagPickerProps) {
       </div>
       {create.isError && (
         <p role="alert" className="mt-1 text-xs text-red-700">
-          {create.error instanceof ApiError && create.error.message
-            ? create.error.message
-            : t`The tag could not be created.`}
+          {createTagErrorMessage(create.error, i18n)}
         </p>
       )}
     </fieldset>

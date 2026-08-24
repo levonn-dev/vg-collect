@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { fetchPromoteCandidates } from '../../api/admin'
 import { fetchProduct } from '../../api/catalog'
 import { ApiError } from '../../api/client'
+import { productTypeWireLabels } from '../../lib/enumLabels'
 import { btnSecondary } from '../../lib/formStyles'
 import { regionLabelText } from '../../lib/regionLabels'
 import MappingFix from './MappingFix'
@@ -84,7 +85,7 @@ export default function ProductLookup() {
         <div className="mt-2">
           <p className="text-sm font-semibold">{product.data.name}</p>
           <p className="text-sm text-gray-500">
-            {product.data.type}
+            {i18n._(productTypeWireLabels[product.data.type])}
             {product.data.platform ? ` - ${product.data.platform.name}` : ''}
           </p>
           {product.data.origin === 'community' && (

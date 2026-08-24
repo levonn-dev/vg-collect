@@ -5,13 +5,13 @@ import { fetchRecommendations } from '../api/catalog'
 import EmptyState from '../components/EmptyState'
 import ItemTypeIcon from '../components/ItemTypeIcon'
 import { releaseYear } from '../lib/format'
-import { renderQueryState } from '../lib/queryBoundary'
+import { refetchWarning, renderQueryState } from '../lib/queryBoundary'
 
 export default function Recommendations() {
   const { t } = useLingui()
   const recs = useQuery({ queryKey: ['recommendations'], queryFn: fetchRecommendations })
 
-  if (recs.isPending || recs.isError) {
+  if (recs.isPending || (recs.isError && recs.data === undefined)) {
     return renderQueryState(recs, {
       size: 'page',
       role: 'alert',
@@ -23,6 +23,7 @@ export default function Recommendations() {
   const { degraded, recommendations } = recs.data
   return (
     <main className="py-6" aria-label={t`Recommendations`}>
+      {refetchWarning(recs)}
       <h2 className="mb-1 text-2xl font-bold"><Trans>Recommended for you</Trans></h2>
       <p className="mb-4 text-sm text-gray-600">
         <Trans>Unowned games scored against what you own, play, and rate.</Trans>

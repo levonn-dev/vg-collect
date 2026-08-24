@@ -1,13 +1,15 @@
 import { Trans, useLingui } from '@lingui/react/macro'
+import { msg } from '@lingui/core/macro'
+import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { ApiError } from '../../api/client'
 import type { BulkUpdateRequest, Entry, Tag } from '../../api/collection'
 import { bulkUpdateEntries } from '../../api/collection'
 import { BulkUpdateRequest as BulkUpdateRequestFacet } from '../../gen/facets'
 import { statusLabels } from '../../lib/enumLabels'
 import { invalidateEntryQueries } from '../../lib/entryQueries'
 import { btnSecondary } from '../../lib/formStyles'
+import { resolveApiError } from '../../lib/resolveApiError'
 import SectionLabel from '../SectionLabel'
 
 // The server's own cap on entry_ids per request (api/bff.yaml); the
@@ -17,6 +19,17 @@ import SectionLabel from '../SectionLabel'
 // the over-cap message below renders, so its msgid reads naturally.
 const cap = BulkUpdateRequestFacet.properties.entry_ids.maxItems
 const STORAGE_LOCATION_MAX = BulkUpdateRequestFacet.properties.storage_location.maxLength
+
+// The only per-entry-tag-cap code the transaction can answer (api/bff.yaml);
+// everything else 400s as invalid_body, whose detail text already says
+// what is wrong better than one static message could.
+const bulkUpdateErrorCodes: Record<string, MessageDescriptor> = {
+  tag_cap_exceeded: msg`One or more of the selected entries would end up with too many tags.`,
+}
+
+function bulkUpdateErrorMessage(e: unknown, i18n: I18n): string {
+  return resolveApiError(e, i18n, bulkUpdateErrorCodes, msg`The bulk update failed.`)
+}
 
 interface BulkEditBarProps {
   selected: ReadonlySet<string>
@@ -62,10 +75,23 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
     },
   })
 
-  const toggleAddTag = (id: string) =>
-    setAddTagIds((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]))
-  const toggleRemoveTag = (id: string) =>
-    setRemoveTagIds((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]))
+  // A tag checked on one side un-checks it on the other: add_tag_ids
+  // and remove_tag_ids sharing an id would submit a self-contradictory
+  // request with no indication of which side the server would apply.
+  // The sibling clear is decided from the current render's own state
+  // (read once, outside either updater) and issued as its own setState
+  // call, not from inside the other setter's updater - updaters stay
+  // pure functions of their own previous value.
+  const toggleAddTag = (id: string) => {
+    const adding = !addTagIds.includes(id)
+    setAddTagIds((v) => (adding ? [...v, id] : v.filter((x) => x !== id)))
+    if (adding) setRemoveTagIds((r) => r.filter((x) => x !== id))
+  }
+  const toggleRemoveTag = (id: string) => {
+    const adding = !removeTagIds.includes(id)
+    setRemoveTagIds((v) => (adding ? [...v, id] : v.filter((x) => x !== id)))
+    if (adding) setAddTagIds((a) => a.filter((x) => x !== id))
+  }
 
   const hasAction = addTagIds.length > 0 || removeTagIds.length > 0 || status !== '' || locationEnabled
   const overCap = selected.size > cap
@@ -161,9 +187,7 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
       )}
       {apply.isError && (
         <p role="alert" className="text-sm text-red-700">
-          {apply.error instanceof ApiError && apply.error.message
-            ? apply.error.message
-            : t`The bulk update failed.`}
+          {bulkUpdateErrorMessage(apply.error, i18n)}
         </p>
       )}
       <div className="flex items-center gap-2">

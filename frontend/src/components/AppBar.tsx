@@ -78,6 +78,7 @@ export default function AppBar({ me }: { me: Me }) {
           <span className="text-sm text-gray-700">@{me.handle}</span>
         </NavLink>
         <button
+          type="button"
           onClick={() => signOut.mutate()}
           disabled={signOut.isPending}
           className={btnSecondary}

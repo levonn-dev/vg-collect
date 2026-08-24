@@ -129,7 +129,7 @@ it('invalidates the dashboard and recommendations caches after a save', async ()
   expect(qc.getQueryState(['dashboard'])?.isInvalidated).toBe(true)
 })
 
-it('surfaces a 404 pricing problem from the save', async () => {
+it('surfaces a 404 pricing problem from the save as a curated message, not the raw detail', async () => {
   const e = entryFixture()
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
     if (requestPath(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
@@ -141,7 +141,36 @@ it('surfaces a 404 pricing problem from the save', async () => {
   }))
   renderDetail(e.id)
   await userEvent.click(await screen.findByRole('button', { name: /save/i }))
-  expect(await screen.findByRole('alert')).toHaveTextContent(/no such pricing product/i)
+  expect(await screen.findByRole('alert')).toHaveTextContent('That price source no longer exists in the catalog.')
+})
+
+it('a first-load failure shows the full error UI, with the main landmark intact', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(500, {})))
+  renderDetail('e1')
+  expect(await screen.findByRole('alert')).toHaveTextContent(/entry cannot be loaded/i)
+  // The alert must live inside <main>, not replace its landmark role.
+  expect(screen.getByRole('main')).toBeInTheDocument()
+})
+
+it('a background refetch failure keeps showing the entry and shows the inline warning, not the hard error', async () => {
+  const e = entryFixture({ display_name: 'Chrono Trigger' })
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // Pre-seeded so the query already has data at mount; the entry
+  // endpoint then 500s the fetch this mount still triggers (default
+  // staleTime treats cached data as stale), landing exactly on the
+  // isError-with-data state this test targets.
+  qc.setQueryData(['entry', e.id], e)
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
+    if (requestPath(url).endsWith('/submission')) return Promise.resolve(noSubmission())
+    if (requestPath(url) === `/api/entries/${e.id}`) return Promise.resolve(jsonResponse(500, {}))
+    return Promise.resolve(jsonResponse(200, e))
+  }))
+  renderDetail(e.id, qc)
+  const warning = await screen.findByText(/last refresh failed/i)
+  expect(warning).toHaveAttribute('role', 'status')
+  expect(screen.getByRole('heading', { name: 'Chrono Trigger' })).toBeInTheDocument()
+  expect(screen.queryByText(/entry cannot be loaded/i)).not.toBeInTheDocument()
 })
 
 it('renders the pricing panel', async () => {

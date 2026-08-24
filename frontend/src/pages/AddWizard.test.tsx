@@ -394,9 +394,9 @@ it('creates a custom entry with pricing disabled', async () => {
   await userEvent.type(screen.getByLabelText(/platform/i), 'snes')
   await userEvent.click(await screen.findByRole('button', { name: 'Super Nintendo Entertainment System' }))
   await userEvent.click(screen.getByRole('button', { name: 'Add developer' }))
-  await userEvent.type(screen.getByLabelText('Developers 1'), '  Garage Team  ')
+  await userEvent.type(screen.getByLabelText('Developers: 1'), '  Garage Team  ')
   await userEvent.click(screen.getByRole('button', { name: 'Add publisher' }))
-  await userEvent.type(screen.getByLabelText('Publishers 1'), 'Repro House')
+  await userEvent.type(screen.getByLabelText('Publishers: 1'), 'Repro House')
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
   await userEvent.click(await screen.findByRole('button', { name: 'Continue' })) // details step, defaults
@@ -419,6 +419,26 @@ it('creates a custom entry with pricing disabled', async () => {
   // The cover input was left empty: the wire body must carry no
   // cover_url key at all, not just an empty-string value.
   expect(body).not.toHaveProperty('cover_url')
+})
+
+it('shows the generic fallback message when a custom create fails with no recognized code', async () => {
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    if (requestPath(url) === '/api/entries' && (url as Request).method === 'POST') {
+      return Promise.reject(new TypeError('Failed to fetch'))
+    }
+    return Promise.resolve(jsonResponse(404, {}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderWizard()
+
+  await userEvent.click(screen.getByRole('button', { name: /add it as a custom item/i }))
+  await userEvent.type(screen.getByLabelText(/^name$/i), 'Chrono Trigger Repro')
+  await userEvent.selectOptions(screen.getByLabelText(/item type/i), 'game')
+  await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Continue' })) // details step, defaults
+
+  await userEvent.click(screen.getByRole('button', { name: 'Add to collection' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('The entry could not be created.')
 })
 
 it('sends a cover url on a custom create when the wizard cover input is filled', async () => {

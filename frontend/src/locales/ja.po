@@ -57,6 +57,10 @@ msgstr "{HANDLE_MIN}-{HANDLE_MAX}文字の英数字（アンダースコアは�
 msgid "{hours}h ago"
 msgstr "{hours}時間前"
 
+#: src/components/StringListInput.tsx
+msgid "{label}: {n}"
+msgstr "{label}：{n}"
+
 #: src/components/social/ShelfCard.tsx
 msgid "{likeCount, plural, one {# like} other {# likes}}"
 msgstr "{likeCount, plural, other {いいね#件}}"
@@ -64,6 +68,10 @@ msgstr "{likeCount, plural, other {いいね#件}}"
 #: src/lib/relativeTime.ts
 msgid "{minutes}m ago"
 msgstr "{minutes}分前"
+
+#: src/pages/Collection.tsx
+msgid "{n, plural, one {Updated # entry.} other {Updated # entries.}}"
+msgstr "{n, plural, other {アイテム#件を更新しました。}}"
 
 #: src/components/Footer.tsx
 msgid "{name} is run by {operator}"
@@ -102,12 +110,12 @@ msgid "{total, plural, one {# pending submission} other {# pending submissions}}
 msgstr "{total, plural, other {審査待ちのカタログ申請#件}}"
 
 #: src/components/admin/UnmatchedWorklist.tsx
-msgid "{total} unmatched products"
-msgstr "未マッピングの商品{total}件"
+msgid "{total, plural, one {# unmatched product} other {# unmatched products}}"
+msgstr "{total, plural, other {未マッピングの商品#件}}"
 
 #: src/components/collection/Pager.tsx
-msgid "{totalCount} items"
-msgstr "{totalCount}件"
+msgid "{totalCount, plural, one {# item} other {# items}}"
+msgstr "{totalCount, plural, other {アイテム#件}}"
 
 #: src/pages/SharedShelf.tsx
 msgid "{totalEntries, plural, one {# entry} other {# entries}}"
@@ -145,6 +153,14 @@ msgstr "更新はすでに実行中です。"
 #: src/pages/Admin.tsx
 msgid "A rematch is already running."
 msgstr "再照合はすでに実行中です。"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "A submission is already pending for this entry."
+msgstr "このアイテムには審査待ちのカタログ申請がすでにあります。"
+
+#: src/components/entry/TagPicker.tsx
+msgid "A tag with that name already exists."
+msgstr "その名前のタグはすでに存在します。"
 
 #: src/components/Footer.tsx
 msgid "About"
@@ -582,6 +598,10 @@ msgstr "リンクをコピー"
 msgid "Copy profile link"
 msgstr "プロフィールリンクをコピー"
 
+#: src/components/insights/BreakdownCharts.tsx
+msgid "Count"
+msgstr "件数"
+
 #: src/components/admin/ReviewPanel.tsx
 msgid "Cover image link"
 msgstr "カバー画像リンク"
@@ -628,6 +648,10 @@ msgstr "カスタム価格（{inputCurrency}）"
 msgid "Danger zone"
 msgstr "危険な操作"
 
+#: src/components/insights/ValueOverTime.tsx
+msgid "Date"
+msgstr "日付"
+
 #: src/components/collection/ListControls.tsx
 msgid "Date added"
 msgstr "追加日"
@@ -661,6 +685,10 @@ msgstr "棚を削除"
 #: src/pages/EntryDetail.tsx
 msgid "Delete this entry? This cannot be undone."
 msgstr "このアイテムを削除しますか？この操作は元に戻せません。"
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "Delete this product from the catalog? Only products that no entries reference can be deleted."
+msgstr "この商品をカタログから削除しますか？削除できるのは、どのアイテムからも参照されていない商品のみです。"
 
 #: src/components/admin/MappingFix.tsx
 msgid "Delete this product from the catalog? Only unmatched products that no entries reference can be deleted."
@@ -715,9 +743,13 @@ msgstr "開発元"
 msgid "disabled (no market value)"
 msgstr "無効（相場なし）"
 
-#: src/components/admin/PromotePanel.tsx
 #: src/components/entry/DismissibleNotice.tsx
 #: src/pages/Account.tsx
+msgid "Dismiss"
+msgstr "閉じる"
+
+#: src/components/admin/PromotePanel.tsx
+msgctxt "silence a promote candidate"
 msgid "Dismiss"
 msgstr "非表示にする"
 
@@ -950,6 +982,8 @@ msgstr "保留"
 msgid "Hold this product out of the nightly entry rematch? Setting any mapping lifts the hold."
 msgstr "この商品を保留にして、毎晩のエントリー再照合の対象から外しますか？マッピングを設定すると保留は解除されます。"
 
+#: src/components/account/ProfileForm.tsx
+#: src/components/admin/ReviewPanel.tsx
 #: src/components/entry/EntryForm.tsx
 #: src/components/wizard/CustomStep.tsx
 msgid "https://..."
@@ -1293,6 +1327,7 @@ msgstr "価格ソースはまだ選択されていません。"
 
 #: src/components/admin/ProductLookup.tsx
 #: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/ConfirmStep.tsx
 msgid "No product with that id."
 msgstr "そのIDの商品はありません。"
 
@@ -1358,6 +1393,10 @@ msgstr "まだ何もありません。<0>最初のアイテムを追加しまし
 msgid "Nothing here."
 msgstr "ここには何もありません。"
 
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Nothing is pending to cancel."
+msgstr "取り消せる審査待ちの申請はありません。"
+
 #: src/pages/Collection.tsx
 msgid "Nothing matches these filters."
 msgstr "このフィルターに一致するアイテムはありません。"
@@ -1381,6 +1420,14 @@ msgstr "NTSC-J"
 #: src/lib/regionLabels.ts
 msgid "NTSC-U"
 msgstr "NTSC-U"
+
+#: src/pages/EntryDetail.tsx
+msgid "One of the selected tags no longer exists."
+msgstr "選択したタグのいずれかがすでに存在しません。"
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "One or more of the selected entries would end up with too many tags."
+msgstr "選択したアイテムの一部でタグ数が上限を超えてしまいます。"
 
 #: src/components/collection/ListControls.tsx
 msgid "Order: {direction}"
@@ -1447,6 +1494,7 @@ msgstr "ピン留め"
 #: src/components/collection/EntryTable.tsx
 #: src/components/collection/FilterBar.tsx
 #: src/components/collection/ListControls.tsx
+#: src/components/insights/BreakdownCharts.tsx
 msgid "Platform"
 msgstr "プラットフォーム"
 
@@ -1481,6 +1529,10 @@ msgstr "前へ"
 #: src/lib/site.ts
 msgid "Price data"
 msgstr "価格データ"
+
+#: src/lib/enumLabels.ts
+msgid "price listing"
+msgstr "価格リスティング"
 
 #: src/components/wizard/DetailsStep.tsx
 msgid "Price listing match (optional)"
@@ -2058,6 +2110,10 @@ msgstr "そのログインはすでに別のアカウントに連携されてい
 msgid "That login has no verified email address; verify it there and try again."
 msgstr "そのログインには確認済みのメールアドレスがありません。提供元で確認してから、もう一度お試しください。"
 
+#: src/pages/EntryDetail.tsx
+msgid "That price source no longer exists in the catalog."
+msgstr "その価格ソースはすでにカタログに存在しません。"
+
 #: src/pages/Login.tsx
 msgid "That sign-in service is unavailable. Please try again shortly."
 msgstr "そのログインサービスは現在利用できません。しばらくしてからもう一度お試しください。"
@@ -2070,7 +2126,13 @@ msgstr "積みゲーリストが別の場所で変更されたため、リスト
 msgid "The bulk update failed."
 msgstr "一括更新できませんでした。"
 
+#: src/components/entry/CatalogSubmission.tsx
+msgid "The cancellation failed."
+msgstr "取り消しに失敗しました。"
+
 #: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/ConfirmStep.tsx
+#: src/pages/EntryDetail.tsx
 msgid "The catalog cannot be reached - try again."
 msgstr "カタログに接続できませんでした。もう一度お試しください。"
 
@@ -2095,9 +2157,21 @@ msgstr "アイテムを読み込めませんでした。もう一度お試しく
 msgid "The entry could not be created."
 msgstr "アイテムを作成できませんでした。"
 
+#: src/pages/EntryDetail.tsx
+msgid "The entry could not be saved."
+msgstr "アイテムを保存できませんでした。"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "The entry could not be submitted."
+msgstr "アイテムを申請できませんでした。"
+
 #: src/pages/Feed.tsx
 msgid "The feed cannot be loaded right now. Please try again."
 msgstr "フィードを読み込めませんでした。もう一度お試しください。"
+
+#: src/lib/queryBoundary.tsx
+msgid "The last refresh failed - showing what was loaded before."
+msgstr "最新の更新に失敗したため、以前に読み込んだ内容を表示しています。"
 
 #: src/components/entry/PricingPanel.tsx
 msgid "The listing match failed; try again in a moment."
@@ -2200,9 +2274,18 @@ msgstr "他の人も持っていそうなアイテムですか？共有カタロ
 msgid "This entry does not exist (it may have been deleted)."
 msgstr "このアイテムは存在しません（削除された可能性があります）。"
 
+#: src/components/entry/CatalogSubmission.tsx
+#: src/pages/EntryDetail.tsx
+msgid "This entry no longer exists."
+msgstr "このアイテムはすでに存在しません。"
+
 #: src/components/wizard/ConfirmStep.tsx
 msgid "This item is no longer available; try searching again."
 msgstr "このアイテムは利用できなくなりました。もう一度検索してください。"
+
+#: src/pages/Collection.tsx
+msgid "This page is past the end of your list. <0>Go to the last page.</0>"
+msgstr "このページはリストの末尾を越えています。<0>最後のページへ移動</0>。"
 
 #: src/components/entry/RegionMismatchBanner.tsx
 msgid "This price listing is from a different region than this entry."
@@ -2224,9 +2307,17 @@ msgstr "棚を読み込めませんでした。もう一度お試しください
 msgid "This shelf is empty."
 msgstr "この棚は空です。"
 
+#: src/components/collection/ShelfManager.tsx
+msgid "This shelf no longer exists."
+msgstr "この棚はすでに存在しません。"
+
 #: src/components/ProsePage.tsx
 msgid "This translation is provided for convenience. The English version is the controlling text."
 msgstr "この翻訳は参考のために提供されています。正文は英語版です。"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Too many submissions recently - try again later."
+msgstr "短期間の申請が多すぎます。しばらくしてからもう一度お試しください。"
 
 #: src/pages/Explore.tsx
 msgid "Top"
@@ -2321,10 +2412,6 @@ msgstr "棚を更新"
 msgid "Updated"
 msgstr "更新日"
 
-#: src/pages/Collection.tsx
-msgid "Updated {n} entries."
-msgstr "{n}件のアイテムを更新しました。"
-
 #: src/components/catalog/SearchResultRow.tsx
 msgid "Use {name}"
 msgstr "{name}を使用"
@@ -2369,6 +2456,14 @@ msgstr "ログイン後に最初に表示されるページです。"
 #: src/pages/Feed.tsx
 msgid "You"
 msgstr "あなた"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "You already have too many submissions pending review."
+msgstr "審査待ちの申請が多すぎます。"
+
+#: src/components/entry/TagPicker.tsx
+msgid "You have reached the 200-tag limit."
+msgstr "タグの上限（200件）に達しました。"
 
 #: src/pages/Login.tsx
 msgid "Your account has been deleted."

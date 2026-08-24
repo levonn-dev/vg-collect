@@ -1,4 +1,6 @@
 import { Trans, useLingui } from '@lingui/react/macro'
+import { msg } from '@lingui/core/macro'
+import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
@@ -13,8 +15,23 @@ import { confirmThen } from '../lib/confirm'
 import { itemTypeWireLabels } from '../lib/enumLabels'
 import { invalidateEntryQueries } from '../lib/entryQueries'
 import { releaseYear } from '../lib/format'
-import { renderQueryState } from '../lib/queryBoundary'
+import { refetchWarning, renderQueryState } from '../lib/queryBoundary'
 import { entryCover, entrySecondary, entrySecondaryLang, entryTitle, entryTitleLang, titleFormFor } from '../lib/productTitle'
+import { resolveApiError } from '../lib/resolveApiError'
+
+// invalid_product_change is left out: EntryForm carries no
+// product-repoint control (that only exists in the wizard's
+// ConfirmStep), so a plain save can never submit the product_id
+// change that code answers.
+const saveEntryErrorCodes: Record<string, MessageDescriptor> = {
+  entry_not_found: msg`This entry no longer exists.`,
+  unknown_pricing_product: msg`That price source no longer exists in the catalog.`,
+  tag_not_found: msg`One of the selected tags no longer exists.`,
+  enrichment_unavailable: msg`The catalog cannot be reached - try again.`,
+}
+function saveEntryErrorMessage(e: unknown, i18n: I18n): string {
+  return resolveApiError(e, i18n, saveEntryErrorCodes, msg`The entry could not be saved.`)
+}
 
 export default function EntryDetail() {
   const { t, i18n } = useLingui()
@@ -44,14 +61,14 @@ export default function EntryDetail() {
     },
   })
 
-  if (entry.isPending || entry.isError) {
+  if (entry.isPending || (entry.isError && entry.data === undefined)) {
     return renderQueryState(entry, {
       size: 'page',
       role: 'alert',
       loading: <Trans>Loading entry...</Trans>,
       error: <Trans>The entry cannot be loaded right now. Please try again.</Trans>,
       notFound: entry.isError && entry.error instanceof ApiError && entry.error.status === 404
-        ? <main className="py-8" role="alert"><Trans>This entry does not exist (it may have been deleted).</Trans></main>
+        ? <main className="py-8"><p role="alert"><Trans>This entry does not exist (it may have been deleted).</Trans></p></main>
         : undefined,
     })
   }
@@ -64,6 +81,7 @@ export default function EntryDetail() {
   const publisherNames = (e.publishers ?? []).join(', ')
   return (
     <main className="py-6" aria-label={t`Entry detail`}>
+      {refetchWarning(entry)}
       {justAdded && (
         <p role="status" className="mb-4 rounded bg-green-50 p-3 text-sm text-green-800">
           <Trans>Added to your collection.</Trans>
@@ -110,6 +128,7 @@ export default function EntryDetail() {
           )}
         </div>
         <button
+          type="button"
           onClick={() => confirmThen(t`Delete this entry? This cannot be undone.`, () => remove.mutate())}
           disabled={remove.isPending}
           className="ml-auto rounded border border-red-300 px-3 py-1 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
@@ -134,7 +153,7 @@ export default function EntryDetail() {
         onSave={(u) => save.mutate(u)}
         saving={save.isPending}
         saved={save.isSuccess}
-        error={save.isError ? save.error.message : null}
+        error={save.isError ? saveEntryErrorMessage(save.error, i18n) : null}
       />
     </main>
   )

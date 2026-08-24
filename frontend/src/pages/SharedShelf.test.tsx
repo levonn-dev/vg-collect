@@ -183,6 +183,28 @@ it('renders no selection checkboxes, even in table mode (bulk edit is owner-only
   expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
 })
 
+it('numbers grouped entries too when the shelf is backlog_rank-sorted', async () => {
+  stubFetch({
+    '/api/me': meFixture(),
+    '/api/profiles/alice/shelves/backlog-wall': shelfPage({
+      shelf: {
+        id: 'shelf1', name: 'Backlog Wall', slug: 'backlog-wall',
+        params: { mode: 'table', sort: 'backlog_rank', group_by: 'platform' },
+      },
+    }),
+    '/api/shelves/shelf1/entries': {
+      total_count: 1,
+      groups: [{ key: 'snes', label: 'SNES', entries: [sharedEntryFixture({ display_name: 'Chrono Trigger' })] }],
+    },
+    '/api/shelves/shelf1/comments': { comments: [] },
+    '/api/fx': fxRatesFixture(),
+  })
+  renderShelf()
+  expect(await screen.findByRole('heading', { name: 'SNES' })).toBeInTheDocument()
+  const rows = screen.getAllByRole('row').slice(1) // drop the header row
+  expect(within(rows[0]).getByRole('cell', { name: '1' })).toBeInTheDocument()
+})
+
 it('renders grouped entries as labeled sections', async () => {
   stubFetch({
     '/api/me': meFixture(),

@@ -12,10 +12,12 @@ function renderDialog(onClose = vi.fn()) {
   )
 }
 
-it('renders a modal dialog with the given aria-label and title', () => {
+it('renders a (non-modal) dialog with the given aria-label and title', () => {
   renderDialog()
   const dialog = screen.getByRole('dialog', { name: 'Pick a thing' })
-  expect(dialog).toHaveAttribute('aria-modal', 'true')
+  // The panel renders inline with no overlay/focus-trap, so aria-modal
+  // would misrepresent it to assistive tech - guard against it coming back.
+  expect(dialog).not.toHaveAttribute('aria-modal')
   expect(screen.getByText('Pick a thing')).toBeInTheDocument()
 })
 

@@ -57,6 +57,10 @@ msgstr "{HANDLE_MIN}-{HANDLE_MAX} characters, letters/digits, underscores inside
 msgid "{hours}h ago"
 msgstr "{hours}h ago"
 
+#: src/components/StringListInput.tsx
+msgid "{label}: {n}"
+msgstr "{label}: {n}"
+
 #: src/components/social/ShelfCard.tsx
 msgid "{likeCount, plural, one {# like} other {# likes}}"
 msgstr "{likeCount, plural, one {# like} other {# likes}}"
@@ -64,6 +68,10 @@ msgstr "{likeCount, plural, one {# like} other {# likes}}"
 #: src/lib/relativeTime.ts
 msgid "{minutes}m ago"
 msgstr "{minutes}m ago"
+
+#: src/pages/Collection.tsx
+msgid "{n, plural, one {Updated # entry.} other {Updated # entries.}}"
+msgstr "{n, plural, one {Updated # entry.} other {Updated # entries.}}"
 
 #: src/components/Footer.tsx
 msgid "{name} is run by {operator}"
@@ -102,12 +110,12 @@ msgid "{total, plural, one {# pending submission} other {# pending submissions}}
 msgstr "{total, plural, one {# pending submission} other {# pending submissions}}"
 
 #: src/components/admin/UnmatchedWorklist.tsx
-msgid "{total} unmatched products"
-msgstr "{total} unmatched products"
+msgid "{total, plural, one {# unmatched product} other {# unmatched products}}"
+msgstr "{total, plural, one {# unmatched product} other {# unmatched products}}"
 
 #: src/components/collection/Pager.tsx
-msgid "{totalCount} items"
-msgstr "{totalCount} items"
+msgid "{totalCount, plural, one {# item} other {# items}}"
+msgstr "{totalCount, plural, one {# item} other {# items}}"
 
 #: src/pages/SharedShelf.tsx
 msgid "{totalEntries, plural, one {# entry} other {# entries}}"
@@ -145,6 +153,14 @@ msgstr "A refresh is already running."
 #: src/pages/Admin.tsx
 msgid "A rematch is already running."
 msgstr "A rematch is already running."
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "A submission is already pending for this entry."
+msgstr "A submission is already pending for this entry."
+
+#: src/components/entry/TagPicker.tsx
+msgid "A tag with that name already exists."
+msgstr "A tag with that name already exists."
 
 #: src/components/Footer.tsx
 msgid "About"
@@ -582,6 +598,10 @@ msgstr "Copy link"
 msgid "Copy profile link"
 msgstr "Copy profile link"
 
+#: src/components/insights/BreakdownCharts.tsx
+msgid "Count"
+msgstr "Count"
+
 #: src/components/admin/ReviewPanel.tsx
 msgid "Cover image link"
 msgstr "Cover image link"
@@ -628,6 +648,10 @@ msgstr "Custom price ({inputCurrency})"
 msgid "Danger zone"
 msgstr "Danger zone"
 
+#: src/components/insights/ValueOverTime.tsx
+msgid "Date"
+msgstr "Date"
+
 #: src/components/collection/ListControls.tsx
 msgid "Date added"
 msgstr "Date added"
@@ -661,6 +685,10 @@ msgstr "Delete shelf"
 #: src/pages/EntryDetail.tsx
 msgid "Delete this entry? This cannot be undone."
 msgstr "Delete this entry? This cannot be undone."
+
+#: src/components/admin/CommunityProducts.tsx
+msgid "Delete this product from the catalog? Only products that no entries reference can be deleted."
+msgstr "Delete this product from the catalog? Only products that no entries reference can be deleted."
 
 #: src/components/admin/MappingFix.tsx
 msgid "Delete this product from the catalog? Only unmatched products that no entries reference can be deleted."
@@ -715,9 +743,13 @@ msgstr "Developers"
 msgid "disabled (no market value)"
 msgstr "disabled (no market value)"
 
-#: src/components/admin/PromotePanel.tsx
 #: src/components/entry/DismissibleNotice.tsx
 #: src/pages/Account.tsx
+msgid "Dismiss"
+msgstr "Dismiss"
+
+#: src/components/admin/PromotePanel.tsx
+msgctxt "silence a promote candidate"
 msgid "Dismiss"
 msgstr "Dismiss"
 
@@ -950,6 +982,8 @@ msgstr "Hold"
 msgid "Hold this product out of the nightly entry rematch? Setting any mapping lifts the hold."
 msgstr "Hold this product out of the nightly entry rematch? Setting any mapping lifts the hold."
 
+#: src/components/account/ProfileForm.tsx
+#: src/components/admin/ReviewPanel.tsx
 #: src/components/entry/EntryForm.tsx
 #: src/components/wizard/CustomStep.tsx
 msgid "https://..."
@@ -1293,6 +1327,7 @@ msgstr "No price source chosen yet."
 
 #: src/components/admin/ProductLookup.tsx
 #: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/ConfirmStep.tsx
 msgid "No product with that id."
 msgstr "No product with that id."
 
@@ -1358,6 +1393,10 @@ msgstr "Nothing here yet. <0>Add your first item.</0>"
 msgid "Nothing here."
 msgstr "Nothing here."
 
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Nothing is pending to cancel."
+msgstr "Nothing is pending to cancel."
+
 #: src/pages/Collection.tsx
 msgid "Nothing matches these filters."
 msgstr "Nothing matches these filters."
@@ -1381,6 +1420,14 @@ msgstr "NTSC-J"
 #: src/lib/regionLabels.ts
 msgid "NTSC-U"
 msgstr "NTSC-U"
+
+#: src/pages/EntryDetail.tsx
+msgid "One of the selected tags no longer exists."
+msgstr "One of the selected tags no longer exists."
+
+#: src/components/collection/BulkEditBar.tsx
+msgid "One or more of the selected entries would end up with too many tags."
+msgstr "One or more of the selected entries would end up with too many tags."
 
 #: src/components/collection/ListControls.tsx
 msgid "Order: {direction}"
@@ -1447,6 +1494,7 @@ msgstr "Pinned"
 #: src/components/collection/EntryTable.tsx
 #: src/components/collection/FilterBar.tsx
 #: src/components/collection/ListControls.tsx
+#: src/components/insights/BreakdownCharts.tsx
 msgid "Platform"
 msgstr "Platform"
 
@@ -1481,6 +1529,10 @@ msgstr "Previous"
 #: src/lib/site.ts
 msgid "Price data"
 msgstr "Price data"
+
+#: src/lib/enumLabels.ts
+msgid "price listing"
+msgstr "price listing"
 
 #: src/components/wizard/DetailsStep.tsx
 msgid "Price listing match (optional)"
@@ -2058,6 +2110,10 @@ msgstr "That login already belongs to another account, so it was not linked."
 msgid "That login has no verified email address; verify it there and try again."
 msgstr "That login has no verified email address; verify it there and try again."
 
+#: src/pages/EntryDetail.tsx
+msgid "That price source no longer exists in the catalog."
+msgstr "That price source no longer exists in the catalog."
+
 #: src/pages/Login.tsx
 msgid "That sign-in service is unavailable. Please try again shortly."
 msgstr "That sign-in service is unavailable. Please try again shortly."
@@ -2070,7 +2126,13 @@ msgstr "The backlog changed somewhere else; the list has been refreshed."
 msgid "The bulk update failed."
 msgstr "The bulk update failed."
 
+#: src/components/entry/CatalogSubmission.tsx
+msgid "The cancellation failed."
+msgstr "The cancellation failed."
+
 #: src/components/admin/ReviewPanel.tsx
+#: src/components/wizard/ConfirmStep.tsx
+#: src/pages/EntryDetail.tsx
 msgid "The catalog cannot be reached - try again."
 msgstr "The catalog cannot be reached - try again."
 
@@ -2095,9 +2157,21 @@ msgstr "The entry cannot be loaded right now. Please try again."
 msgid "The entry could not be created."
 msgstr "The entry could not be created."
 
+#: src/pages/EntryDetail.tsx
+msgid "The entry could not be saved."
+msgstr "The entry could not be saved."
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "The entry could not be submitted."
+msgstr "The entry could not be submitted."
+
 #: src/pages/Feed.tsx
 msgid "The feed cannot be loaded right now. Please try again."
 msgstr "The feed cannot be loaded right now. Please try again."
+
+#: src/lib/queryBoundary.tsx
+msgid "The last refresh failed - showing what was loaded before."
+msgstr "The last refresh failed - showing what was loaded before."
 
 #: src/components/entry/PricingPanel.tsx
 msgid "The listing match failed; try again in a moment."
@@ -2200,9 +2274,18 @@ msgstr "Think others own this too? Submit it to the shared catalog for review."
 msgid "This entry does not exist (it may have been deleted)."
 msgstr "This entry does not exist (it may have been deleted)."
 
+#: src/components/entry/CatalogSubmission.tsx
+#: src/pages/EntryDetail.tsx
+msgid "This entry no longer exists."
+msgstr "This entry no longer exists."
+
 #: src/components/wizard/ConfirmStep.tsx
 msgid "This item is no longer available; try searching again."
 msgstr "This item is no longer available; try searching again."
+
+#: src/pages/Collection.tsx
+msgid "This page is past the end of your list. <0>Go to the last page.</0>"
+msgstr "This page is past the end of your list. <0>Go to the last page.</0>"
 
 #: src/components/entry/RegionMismatchBanner.tsx
 msgid "This price listing is from a different region than this entry."
@@ -2224,9 +2307,17 @@ msgstr "This shelf cannot be loaded right now. Please try again."
 msgid "This shelf is empty."
 msgstr "This shelf is empty."
 
+#: src/components/collection/ShelfManager.tsx
+msgid "This shelf no longer exists."
+msgstr "This shelf no longer exists."
+
 #: src/components/ProsePage.tsx
 msgid "This translation is provided for convenience. The English version is the controlling text."
 msgstr "This translation is provided for convenience. The English version is the controlling text."
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "Too many submissions recently - try again later."
+msgstr "Too many submissions recently - try again later."
 
 #: src/pages/Explore.tsx
 msgid "Top"
@@ -2321,10 +2412,6 @@ msgstr "Update shelf"
 msgid "Updated"
 msgstr "Updated"
 
-#: src/pages/Collection.tsx
-msgid "Updated {n} entries."
-msgstr "Updated {n} entries."
-
 #: src/components/catalog/SearchResultRow.tsx
 msgid "Use {name}"
 msgstr "Use {name}"
@@ -2369,6 +2456,14 @@ msgstr "Where the app opens after you sign in."
 #: src/pages/Feed.tsx
 msgid "You"
 msgstr "You"
+
+#: src/components/entry/CatalogSubmission.tsx
+msgid "You already have too many submissions pending review."
+msgstr "You already have too many submissions pending review."
+
+#: src/components/entry/TagPicker.tsx
+msgid "You have reached the 200-tag limit."
+msgstr "You have reached the 200-tag limit."
 
 #: src/pages/Login.tsx
 msgid "Your account has been deleted."

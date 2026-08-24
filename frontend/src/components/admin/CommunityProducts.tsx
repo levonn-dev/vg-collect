@@ -4,10 +4,11 @@ import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { deleteProduct, fetchCommunityProducts } from '../../api/admin'
+import { confirmThen } from '../../lib/confirm'
 import { formatDate, releaseYear } from '../../lib/format'
 import { btnSecondaryXs } from '../../lib/formStyles'
 import { offsetNextPageParam } from '../../lib/pagination'
-import { renderQueryState } from '../../lib/queryBoundary'
+import { refetchWarning, renderQueryState } from '../../lib/queryBoundary'
 import { regionLabelText } from '../../lib/regionLabels'
 import { resolveApiError } from '../../lib/resolveApiError'
 import ItemTypeIcon from '../ItemTypeIcon'
@@ -59,12 +60,16 @@ export default function CommunityProducts() {
     onError: (e, productId) => setBlocked((prev) => ({ ...prev, [productId]: e })),
   })
 
-  const remove = (productId: string) => {
-    clearBlocked(productId)
-    del.mutate(productId)
-  }
+  const remove = (productId: string) =>
+    confirmThen(
+      t(i18n)`Delete this product from the catalog? Only products that no entries reference can be deleted.`,
+      () => {
+        clearBlocked(productId)
+        del.mutate(productId)
+      },
+    )
 
-  if (list.isPending || list.isError) {
+  if (list.isPending || (list.isError && list.data === undefined)) {
     return renderQueryState(list, {
       size: 'subsection',
       className: 'mt-4',
@@ -82,6 +87,7 @@ export default function CommunityProducts() {
       <p className="mt-1 text-sm text-gray-500">
         <Trans>Community catalog products; delete removes unused ones - products referenced by entries are protected.</Trans>
       </p>
+      {refetchWarning(list)}
       <table className="mt-2 w-full text-left text-sm">
         <thead>
           <tr className="border-b border-gray-200 text-gray-500">

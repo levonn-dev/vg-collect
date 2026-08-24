@@ -32,6 +32,17 @@ export type ViewMode = 'table' | 'grid' | 'compact'
 // PAGE_SIZE is a product paging choice, hand-set well under the contract's entries-list limit maximum (500).
 export const PAGE_SIZE = 200
 
+// lastPage is the highest valid zero-based page for a given total -
+// shared by Pager (its Next-button bound) and Collection (clamping a
+// stale page number back into range once a total is known). A page
+// number lives in the URL, so it can outlive the data it once
+// matched (entries deleted, filters changed, a bookmarked link) and
+// needs a real total_count to be judged against - callers that only
+// have the URL (fromSearchParams) cannot make this call themselves.
+export function lastPage(totalCount: number): number {
+  return Math.max(0, Math.ceil(totalCount / PAGE_SIZE) - 1)
+}
+
 export { REGIONS }
 export const SORTS: Sort[] = ['name', 'release_date', 'purchased_at', 'created_at', 'value', 'paid', 'rating', 'backlog_rank']
 export const GROUPS: GroupBy[] = ['platform', 'status', 'item_type', 'location', 'tag']

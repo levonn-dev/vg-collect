@@ -1,6 +1,6 @@
-import { Trans, useLingui } from '@lingui/react/macro'
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { btnSecondary } from '../../lib/formStyles'
-import { PAGE_SIZE } from '../../lib/listParams'
+import { lastPage as lastPageFor, PAGE_SIZE } from '../../lib/listParams'
 
 interface PagerProps {
   page: number
@@ -11,14 +11,18 @@ interface PagerProps {
 export default function Pager({ page, totalCount, onPage }: PagerProps) {
   const { t } = useLingui()
   if (totalCount <= PAGE_SIZE && page === 0) {
-    return <p className="mt-4 text-xs text-gray-500"><Trans>{totalCount} items</Trans></p>
+    return (
+      <p className="mt-4 text-xs text-gray-500">
+        <Plural value={totalCount} one="# item" other="# items" />
+      </p>
+    )
   }
   const from = page * PAGE_SIZE + 1
   const to = Math.min((page + 1) * PAGE_SIZE, totalCount)
-  const lastPage = Math.max(0, Math.ceil(totalCount / PAGE_SIZE) - 1)
   return (
     <nav className="mt-4 flex items-center gap-3 text-sm" aria-label={t`Pagination`}>
       <button
+        type="button"
         onClick={() => onPage(page - 1)}
         disabled={page === 0}
         className={btnSecondary}
@@ -29,8 +33,9 @@ export default function Pager({ page, totalCount, onPage }: PagerProps) {
         <Trans>{from}-{to} of {totalCount}</Trans>
       </span>
       <button
+        type="button"
         onClick={() => onPage(page + 1)}
-        disabled={page >= lastPage}
+        disabled={page >= lastPageFor(totalCount)}
         className={btnSecondary}
       >
         <Trans>Next</Trans>

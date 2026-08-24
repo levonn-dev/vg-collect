@@ -1,12 +1,14 @@
-import { Trans, useLingui } from '@lingui/react/macro'
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { fetchUnmatchedProducts } from '../../api/admin'
 import type { Product } from '../../api/catalog'
 import { formatDate } from '../../lib/format'
+import { productTypeWireLabels } from '../../lib/enumLabels'
 import { btnSecondaryXs } from '../../lib/formStyles'
 import { offsetNextPageParam } from '../../lib/pagination'
-import { renderQueryState } from '../../lib/queryBoundary'
+import { refetchWarning, renderQueryState } from '../../lib/queryBoundary'
+import { regionLabelText } from '../../lib/regionLabels'
 import LoadMoreButton from '../LoadMoreButton'
 import MappingFix from './MappingFix'
 
@@ -15,7 +17,7 @@ import MappingFix from './MappingFix'
 // successful fix invalidates admin queries and loaded pages refetch
 // with their stored pageParam (rows that got fixed leave the list).
 export default function UnmatchedWorklist() {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
   const [fixing, setFixing] = useState<Product | null>(null)
   const list = useInfiniteQuery({
@@ -30,7 +32,7 @@ export default function UnmatchedWorklist() {
     void queryClient.invalidateQueries({ queryKey: ['admin'] })
   }
 
-  if (list.isPending || list.isError) {
+  if (list.isPending || (list.isError && list.data === undefined)) {
     return renderQueryState(list, {
       size: 'subsection',
       className: 'mt-4',
@@ -45,7 +47,10 @@ export default function UnmatchedWorklist() {
 
   return (
     <section aria-label={t`Unmatched products`} className="mt-6">
-      <h3 className="text-base font-semibold"><Trans>{total} unmatched products</Trans></h3>
+      <h3 className="text-base font-semibold">
+        <Plural value={total} one="# unmatched product" other="# unmatched products" />
+      </h3>
+      {refetchWarning(list)}
       <table className="mt-2 w-full text-left text-sm">
         <thead>
           <tr className="border-b border-gray-200 text-gray-500">
@@ -68,9 +73,11 @@ export default function UnmatchedWorklist() {
                   </span>
                 )}
               </td>
-              <td className="py-1 pr-2">{p.type}</td>
+              <td className="py-1 pr-2">{i18n._(productTypeWireLabels[p.type])}</td>
               <td className="py-1 pr-2">{p.platform?.name ?? ''}</td>
-              <td className="py-1 pr-2">{[p.region, p.edition, p.variant].filter(Boolean).join(' / ')}</td>
+              <td className="py-1 pr-2">
+                {[p.region ? regionLabelText(i18n, p.region) : undefined, p.edition, p.variant].filter(Boolean).join(' / ')}
+              </td>
               <td className="py-1 pr-2">{formatDate(p.updated_at)}</td>
               <td className="py-1">
                 <button
@@ -86,7 +93,11 @@ export default function UnmatchedWorklist() {
         </tbody>
       </table>
       <LoadMoreButton query={list} className="mt-2" />
-      {fixing && <MappingFix product={fixing} onDone={done} />}
+      {/* key={fixing.id}: without it, fixing a different row while the
+          panel is open reconciles the same MappingFix instance in place,
+          leaking its picker/pending state across products (see
+          ProductLookup and SubmissionsQueue for the same pattern). */}
+      {fixing && <MappingFix key={fixing.id} product={fixing} onDone={done} />}
     </section>
   )
 }

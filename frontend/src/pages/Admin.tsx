@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { Navigate } from 'react-router'
 import { normalizeCommunityRegions, normalizeRegions, normalizePlatforms, triggerRefresh, triggerRematch } from '../api/admin'
 import { useMe } from '../lib/useMe'
+import { tabButtonId } from '../lib/tabs'
 import CommunityProducts from '../components/admin/CommunityProducts'
 import NormalizeTrigger, { normalizeSuccessMessage } from '../components/admin/NormalizeTrigger'
 import ProductLookup from '../components/admin/ProductLookup'
@@ -16,14 +17,17 @@ import Tabs, { type Tab } from '../components/Tabs'
 
 type AdminTab = 'mappings' | 'submissions'
 
+const MAPPINGS_PANEL = 'admin-mappings-panel'
+const SUBMISSIONS_PANEL = 'admin-submissions-panel'
+
 // Tabs.tsx renders whatever label string each caller hands it (no i18n
 // awareness of its own); the table stays msg descriptors at module
 // scope (same shape as Explore's SORT_TABS / Feed's FEED_TABS) and gets
 // resolved into the plain strings Tab<T> expects down in the component
 // body, where i18n is available.
-const ADMIN_TABS: { key: AdminTab; label: MessageDescriptor }[] = [
-  { key: 'mappings', label: msg`Mappings` },
-  { key: 'submissions', label: msg`Submissions` },
+const ADMIN_TABS: { key: AdminTab; label: MessageDescriptor; panelId: string }[] = [
+  { key: 'mappings', label: msg`Mappings`, panelId: MAPPINGS_PANEL },
+  { key: 'submissions', label: msg`Submissions`, panelId: SUBMISSIONS_PANEL },
 ]
 
 // Admin is the role-gated console, in two tabs: Mappings (unmatched
@@ -45,13 +49,13 @@ export default function Admin() {
       <h2 className="mb-1 text-2xl font-bold"><Trans>Admin</Trans></h2>
       <Tabs
         label={t`Admin sections`}
-        tabs={ADMIN_TABS.map((s): Tab<AdminTab> => ({ key: s.key, label: i18n._(s.label) }))}
+        tabs={ADMIN_TABS.map((s): Tab<AdminTab> => ({ key: s.key, label: i18n._(s.label), panelId: s.panelId }))}
         active={tab}
         onChange={setTab}
         className="mt-4"
       />
       {tab === 'mappings' ? (
-        <>
+        <div role="tabpanel" id={MAPPINGS_PANEL} aria-labelledby={tabButtonId(MAPPINGS_PANEL)}>
           <UnmatchedWorklist />
           <PromoteCandidates />
           <ProductLookup />
@@ -82,12 +86,12 @@ export default function Admin() {
               <NormalizeTrigger title={t`Normalize community regions`} actionLabel={t`Run community region normalization`} mutationFn={normalizeCommunityRegions} successMessage={normalizeSuccessMessage} />
             </div>
           </section>
-        </>
+        </div>
       ) : (
-        <>
+        <div role="tabpanel" id={SUBMISSIONS_PANEL} aria-labelledby={tabButtonId(SUBMISSIONS_PANEL)}>
           <SubmissionsQueue />
           <CommunityProducts />
-        </>
+        </div>
       )}
     </main>
   )

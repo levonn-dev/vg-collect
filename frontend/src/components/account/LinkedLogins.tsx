@@ -35,6 +35,7 @@ export default function LinkedLogins({ identities }: { identities: Identity[] })
               </p>
             </div>
             <button
+              type="button"
               onClick={() =>
                 confirmThen(
                   t(i18n)`Unlink this login? You will no longer be able to sign in with it.`,

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../test/fixtures'
+import { jsonResponse, requestPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import PromoteCandidates from './PromoteCandidates'
 
@@ -90,4 +90,36 @@ it('dismiss inside an open panel refreshes it in place from the worklist refetch
   await waitFor(() => expect(within(panel()).getAllByRole('button', { name: 'Dismiss' })).toHaveLength(1))
   expect(within(panel()).getByText('Secret of Mana', { exact: false })).toBeInTheDocument()
   expect(within(panel()).queryByText('Chrono Trigger', { exact: false })).not.toBeInTheDocument()
+})
+
+it('switching the reviewed row does not leak an attached listing from the previous row (missing-key regression)', async () => {
+  const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
+    if (u.includes('type=pc_listing')) {
+      return Promise.resolve(jsonResponse(200, {
+        degraded: false,
+        results: [{ type: 'pc_listing', name: 'Chrono Trigger Listing', pc_product_id: 7788 }],
+      }))
+    }
+    if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
+    return Promise.resolve(jsonResponse(200, {
+      products: [row('p1', 'Repro Alpha'), row('p2', 'Repro Beta')], total_count: 2,
+    }))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderCandidates()
+  const reviewButtons = await screen.findAllByRole('button', { name: 'Review' })
+  await userEvent.click(reviewButtons[0])
+  await userEvent.click(screen.getByRole('button', { name: 'Promote to provider identity' }))
+  await userEvent.click(screen.getByRole('button', { name: /attach a price listing/i }))
+  const dialog = await screen.findByRole('dialog', { name: 'Match a price listing' })
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Use Chrono Trigger Listing' }))
+  expect(screen.getByText('Listing: Chrono Trigger Listing')).toBeInTheDocument()
+
+  // Review row B without clearing row A's panel first - without a key,
+  // the same PromotePanel instance reconciles in place and carries row
+  // A's attached listing straight into row B's promote flow.
+  await userEvent.click(screen.getAllByRole('button', { name: 'Review' })[1])
+  expect(screen.getByLabelText('Promote Repro Beta')).toBeInTheDocument()
+  expect(screen.queryByText(/^Listing:/)).not.toBeInTheDocument()
 })

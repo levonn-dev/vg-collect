@@ -10,7 +10,8 @@ import { ApiError } from '../../api/client'
 import type { Entry, EntryList } from '../../api/collection'
 import { reorderEntry } from '../../api/collection'
 import type { NeighborIDs } from '../../lib/reorder'
-import { moveByOffset, neighborIDs } from '../../lib/reorder'
+import { crossesUnknownEdge, moveByOffset, neighborIDs } from '../../lib/reorder'
+import { PAGE_SIZE } from '../../lib/listParams'
 
 function SortableRow({
   entry, onMove, atTop, atBottom, pending,
@@ -72,12 +73,22 @@ function SortableRow({
 // calls. Optimistic: the cached page reorders immediately; a failure
 // refetches. 409 conflicting_order means the list moved somewhere else
 // (another tab, another device) - refetch and say so.
-export default function BacklogBoard({ entries }: { entries: Entry[] }) {
+//
+// entries is always one PAGE_SIZE page of a possibly much larger
+// backlog, so a move landing on the visible top/bottom slot cannot in
+// general be resolved to a correct after_id/before_id - the true
+// neighbor may sit on an unfetched adjacent page. page/totalCount let
+// the board tell a page-local edge apart from the true global edge
+// (see lib/reorder's crossesUnknownEdge): everywhere else, a move
+// stays a page-local, always-safe operation.
+export default function BacklogBoard({ entries, page, totalCount }: { entries: Entry[]; page: number; totalCount: number }) {
   const { t } = useLingui()
   const queryClient = useQueryClient()
   const [conflict, setConflict] = useState<string | null>(null)
   const sensors = useSensors(useSensor(PointerSensor))
   const ids = entries.map((e) => e.id)
+  const isFirstPage = page === 0
+  const isLastPage = page * PAGE_SIZE + entries.length === totalCount
 
   const reorder = useMutation({
     mutationFn: ({ id, pair }: { id: string; pair: NeighborIDs }) => reorderEntry(id, pair),
@@ -117,7 +128,8 @@ export default function BacklogBoard({ entries }: { entries: Entry[] }) {
 
   const submit = (id: string, pair: NeighborIDs | null) => {
     if (reorder.isPending) return
-    if (pair) reorder.mutate({ id, pair })
+    if (!pair || crossesUnknownEdge(pair, isFirstPage, isLastPage)) return
+    reorder.mutate({ id, pair })
   }
   const handleDragEnd = (event: DragEndEvent) => {
     const overId = event.over?.id
@@ -135,16 +147,26 @@ export default function BacklogBoard({ entries }: { entries: Entry[] }) {
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
           <ul className="flex flex-col gap-2">
-            {entries.map((e, i) => (
-              <SortableRow
-                key={e.id}
-                entry={e}
-                atTop={i === 0}
-                atBottom={i === entries.length - 1}
-                pending={reorder.isPending}
-                onMove={(id, offset) => submit(id, moveByOffset(ids, id, offset))}
-              />
-            ))}
+            {entries.map((e) => {
+              // A row's own Up/Down is disabled whenever that specific
+              // move is impossible (moveByOffset null, the page's own
+              // bound) or would write a false global edge on this page
+              // (see crossesUnknownEdge) - the same guard submit()
+              // applies, computed ahead of the click so the button
+              // reflects it instead of silently no-opping.
+              const up = moveByOffset(ids, e.id, -1)
+              const down = moveByOffset(ids, e.id, 1)
+              return (
+                <SortableRow
+                  key={e.id}
+                  entry={e}
+                  atTop={!up || crossesUnknownEdge(up, isFirstPage, isLastPage)}
+                  atBottom={!down || crossesUnknownEdge(down, isFirstPage, isLastPage)}
+                  pending={reorder.isPending}
+                  onMove={(id, offset) => submit(id, moveByOffset(ids, id, offset))}
+                />
+              )
+            })}
           </ul>
         </SortableContext>
       </DndContext>

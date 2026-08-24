@@ -10,8 +10,8 @@ import { Trans, useLingui } from '@lingui/react/macro'
 export default function NotFoundState() {
   const { t } = useLingui()
   return (
-    <main aria-label={t`Not found`} className="py-12 text-center text-gray-500" role="alert">
-      <p><Trans>Nothing here.</Trans></p>
+    <main aria-label={t`Not found`} className="py-12 text-center text-gray-500">
+      <p role="alert"><Trans>Nothing here.</Trans></p>
     </main>
   )
 }

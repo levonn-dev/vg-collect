@@ -11,8 +11,9 @@ import LoadMoreButton from '../components/LoadMoreButton'
 import Tabs, { type Tab } from '../components/Tabs'
 import UserChip from '../components/social/UserChip'
 import { componentsParametersTabValues } from '../api/schema'
-import { renderQueryState } from '../lib/queryBoundary'
+import { refetchWarning, renderQueryState } from '../lib/queryBoundary'
 import { relativeTime } from '../lib/relativeTime'
+import { tabButtonId } from '../lib/tabs'
 
 // Tabs.tsx renders whatever label string each caller hands it (no
 // i18n awareness of its own - see components/Tabs.tsx); the table
@@ -26,7 +27,12 @@ const tabLabels: Record<FeedTab, MessageDescriptor> = {
   following: msg`Following`,
   you: msg`You`,
 }
-const FEED_TABS: { key: FeedTab; label: MessageDescriptor }[] = componentsParametersTabValues.map((key) => ({ key, label: tabLabels[key] }))
+const PANEL_IDS: Record<FeedTab, string> = {
+  following: 'feed-following-panel',
+  you: 'feed-you-panel',
+}
+const FEED_TABS: { key: FeedTab; label: MessageDescriptor; panelId: string }[] =
+  componentsParametersTabValues.map((key) => ({ key, label: tabLabels[key], panelId: PANEL_IDS[key] }))
 
 function shelfHref(shelf: ShelfCardData): string {
   return `/u/${shelf.owner.handle}/shelves/${shelf.slug}`
@@ -140,39 +146,42 @@ export default function Feed() {
 
       <Tabs
         label={t`Feed sections`}
-        tabs={FEED_TABS.map((s): Tab<FeedTab> => ({ key: s.key, label: i18n._(s.label) }))}
+        tabs={FEED_TABS.map((s): Tab<FeedTab> => ({ key: s.key, label: i18n._(s.label), panelId: s.panelId }))}
         active={tab}
         onChange={setTab}
       />
 
-      {renderQueryState(query, {
-        size: 'subsection',
-        className: 'mt-4',
-        role: 'alert',
-        loading: <Trans>Loading feed...</Trans>,
-        error: <Trans>The feed cannot be loaded right now. Please try again.</Trans>,
-      }) ?? (
-        items.length === 0 ? (
-          tab === 'following' ? (
-            <EmptyState size="default">
-              <Trans>
-                Nothing yet. <Link to="/explore" className="text-gray-900 hover:underline">Explore</Link> people to follow.
-              </Trans>
-            </EmptyState>
+      <div role="tabpanel" id={PANEL_IDS[tab]} aria-labelledby={tabButtonId(PANEL_IDS[tab])}>
+        {refetchWarning(query)}
+        {renderQueryState(query, {
+          size: 'subsection',
+          className: 'mt-4',
+          role: 'alert',
+          loading: <Trans>Loading feed...</Trans>,
+          error: <Trans>The feed cannot be loaded right now. Please try again.</Trans>,
+        }) ?? (
+          items.length === 0 ? (
+            tab === 'following' ? (
+              <EmptyState size="default">
+                <Trans>
+                  Nothing yet. <Link to="/explore" className="text-gray-900 hover:underline">Explore</Link> people to follow.
+                </Trans>
+              </EmptyState>
+            ) : (
+              <EmptyState size="default"><Trans>No activity yet.</Trans></EmptyState>
+            )
           ) : (
-            <EmptyState size="default"><Trans>No activity yet.</Trans></EmptyState>
+            <>
+              <ul className="mt-4">
+                {items.map((item) => (
+                  <FeedRow key={item.id} item={item} />
+                ))}
+              </ul>
+              <LoadMoreButton query={query} className="mt-4" />
+            </>
           )
-        ) : (
-          <>
-            <ul className="mt-4">
-              {items.map((item) => (
-                <FeedRow key={item.id} item={item} />
-              ))}
-            </ul>
-            <LoadMoreButton query={query} className="mt-4" />
-          </>
-        )
-      )}
+        )}
+      </div>
     </main>
   )
 }

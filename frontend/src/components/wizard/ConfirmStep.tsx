@@ -1,4 +1,6 @@
 import { Trans, useLingui } from '@lingui/react/macro'
+import { msg } from '@lingui/core/macro'
+import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
@@ -7,8 +9,10 @@ import { fetchProduct, resolveProduct } from '../../api/catalog'
 import { createEntry } from '../../api/collection'
 import type { ManualMatch } from '../../lib/catalog'
 import { resolveRequestFor } from '../../lib/catalog'
+import { productTypeWireLabels } from '../../lib/enumLabels'
 import { invalidateEntryQueries } from '../../lib/entryQueries'
 import { btnSecondary } from '../../lib/formStyles'
+import { resolveApiError } from '../../lib/resolveApiError'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
 import MatchStatusCard from '../MatchStatusCard'
 import type { CatalogPick } from '../../lib/catalogPicks'
@@ -16,6 +20,20 @@ import type { DetailsValues } from './DetailsStep'
 import { detailsToCreate } from './DetailsStep'
 import ConfirmShell from './ConfirmShell'
 import ManualMatchPicker from '../catalog/ManualMatchPicker'
+
+// product_id is always the already-resolved product above, and
+// pricing_mode never leaves auto on this path (the wizard's proxy
+// picker only applies post-creation, in PricingPanel) - so of
+// createEntry's documented codes, only a resolved product vanishing
+// out from under the create and enrichment itself being unreachable
+// are reachable here.
+const createEntryErrorCodes: Record<string, MessageDescriptor> = {
+  unknown_product: msg`No product with that id.`,
+  enrichment_unavailable: msg`The catalog cannot be reached - try again.`,
+}
+function createEntryErrorMessage(e: unknown, i18n: I18n): string {
+  return resolveApiError(e, i18n, createEntryErrorCodes, msg`The entry could not be created.`)
+}
 
 interface ConfirmStepProps {
   pick: CatalogPick
@@ -34,7 +52,7 @@ interface ConfirmStepProps {
 // its price-match status before the entry is created: the user sees
 // what "market value" will mean for this copy.
 export default function ConfirmStep({ pick, details, manualMatch, onManualMatch, onBack }: ConfirmStepProps) {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const money = useDisplayMoney()
@@ -80,7 +98,7 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
             <Trans>The lookup failed; your details are kept - try again in a moment.</Trans>
           )}
         </p>
-        <button onClick={onBack} className={`${btnSecondary} mt-3`}>
+        <button type="button" onClick={onBack} className={`${btnSecondary} mt-3`}>
           <Trans>Back</Trans>
         </button>
       </div>
@@ -93,8 +111,8 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
     <ConfirmShell
       ariaLabel={t`Confirm`}
       title={p.name}
-      subtitle={[p.platform?.name, p.type].filter(Boolean).join(' - ')}
-      errorMessage={create.isError ? create.error.message || t`The entry could not be created.` : undefined}
+      subtitle={[p.platform?.name, i18n._(productTypeWireLabels[p.type])].filter(Boolean).join(' - ')}
+      errorMessage={create.isError ? createEntryErrorMessage(create.error, i18n) : undefined}
       onBack={onBack}
       onSubmit={() => create.mutate()}
       submitPending={create.isPending}

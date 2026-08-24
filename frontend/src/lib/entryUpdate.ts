@@ -35,7 +35,11 @@ export function entryToUpdate(e: Entry): EntryUpdate {
   if (!e.product_id) {
     u.display_name = e.display_name
     u.platform_name = e.platform?.name
+    u.platform_igdb_id = e.platform?.igdb_platform_id
+    u.cover_url = e.cover_url
     u.first_release_date = e.first_release_date
+    u.developers = e.developers
+    u.publishers = e.publishers
   }
   return u
 }

@@ -30,13 +30,12 @@ export default function SearchPickerDialog({ ariaLabel, title, onClose, children
     <div
       ref={dialogRef}
       role="dialog"
-      aria-modal="true"
       aria-label={ariaLabel}
       className="mt-3 rounded border border-gray-300 bg-gray-50 p-3"
     >
       <div className="mb-2 flex items-center justify-between">
         <p className="text-sm font-semibold">{title}</p>
-        <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-900">
+        <button type="button" onClick={onClose} className="text-sm text-gray-500 hover:text-gray-900">
           <Trans>Close</Trans>
         </button>
       </div>
