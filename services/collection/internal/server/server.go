@@ -156,55 +156,41 @@ func New(st Store, enrich Enrichment, c Cache, opts Options) *Handlers {
 		opts.Logger = slog.Default()
 	}
 	m := otel.Meter("github.com/levonn-dev/vgkeep/services/collection")
-	counter := func(name, desc, unit string) metric.Int64Counter {
-		ctr, err := vgotel.Counter(m, name, desc, unit)
-		if err != nil {
-			opts.Logger.Error("counter unavailable", "name", name, "err", err)
-		}
-		return ctr
-	}
-	histogram := func(name, desc, unit string, buckets ...float64) metric.Float64Histogram {
-		hg, err := vgotel.Histogram(m, name, desc, unit, buckets...)
-		if err != nil {
-			opts.Logger.Error("histogram unavailable", "name", name, "err", err)
-		}
-		return hg
-	}
 	h := &Handlers{
 		store:        st,
 		enrichment:   enrich,
 		cache:        c,
 		logger:       opts.Logger,
 		dashboardTTL: opts.DashboardCacheTTL,
-		pricingCompose: counter("vg.collection.pricing.compose",
+		pricingCompose: vgotel.CounterLogged(m, opts.Logger, "vg.collection.pricing.compose",
 			"Read-time value compositions that called enrichment for prices, by surface and outcome",
 			"{request}"),
-		cacheLookups: counter("vg.collection.cache.lookups",
+		cacheLookups: vgotel.CounterLogged(m, opts.Logger, "vg.collection.cache.lookups",
 			"Dashboard and value-history cache reads, split hit/miss",
 			"{lookup}"),
-		cacheFailOpen: counter("vg.collection.cache.fail_open",
+		cacheFailOpen: vgotel.CounterLogged(m, opts.Logger, "vg.collection.cache.fail_open",
 			"Valkey operations that failed and were failed open",
 			"{event}"),
-		submissionEvents: counter("vg.collection.submissions.events",
+		submissionEvents: vgotel.CounterLogged(m, opts.Logger, "vg.collection.submissions.events",
 			"Catalog submission lifecycle transitions",
 			"{event}"),
 		// Explicit boundaries: the SDK defaults top out at 10s and would
 		// flatten a multi-minute entry-rematch run into the last bucket
 		// (the same shared DurationBuckets tuple enrichment's
 		// refresh.step_duration histogram uses).
-		rematchDuration: histogram("vg.collection.rematch.duration",
+		rematchDuration: vgotel.HistogramLogged(m, opts.Logger, "vg.collection.rematch.duration",
 			"Elapsed seconds per entry-rematch run",
 			"s", vgotel.DurationBuckets...),
-		rematchTriples: counter("vg.collection.rematch.triples",
+		rematchTriples: vgotel.CounterLogged(m, opts.Logger, "vg.collection.rematch.triples",
 			"Entry-rematch (game, platform, region) triples by outcome",
 			"{triple}"),
-		rematchRepoints: counter("vg.collection.rematch.repoints",
+		rematchRepoints: vgotel.CounterLogged(m, opts.Logger, "vg.collection.rematch.repoints",
 			"Entries repointed onto a region-correct sibling by the entry rematch",
 			"{entry}"),
-		normalizePlatformsRuns: counter("vg.collection.normalize.platforms",
+		normalizePlatformsRuns: vgotel.CounterLogged(m, opts.Logger, "vg.collection.normalize.platforms",
 			"Normalize-platforms sweep rows by outcome",
 			"{row}"),
-		normalizeRegionsRuns: counter("vg.collection.normalize.regions",
+		normalizeRegionsRuns: vgotel.CounterLogged(m, opts.Logger, "vg.collection.normalize.regions",
 			"Normalize-regions sweep rows by outcome",
 			"{row}"),
 	}
@@ -327,11 +313,12 @@ func (h *Handlers) countNormalizeRegionsRow(ctx context.Context, outcome string)
 	vgotel.Count(ctx, h.normalizeRegionsRuns, attribute.String("outcome", outcome))
 }
 
-// internalError answers a 500 and logs its cause, which the problem
-// body deliberately does not carry; without this line the reason for
-// a 500 exists nowhere.
-func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, detail string, err error) {
-	h.logger.ErrorContext(r.Context(), "internal error", "detail", detail, "err", err)
+// internalError answers a 500 and logs its cause: op is a stable,
+// grep-able label for the failing operation (the log's "op" key);
+// detail is the response's human-readable text. The two vary
+// independently.
+func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, op, detail string, err error) {
+	h.logger.ErrorContext(r.Context(), "store error", "op", op, "err", err)
 	problem(w, r, http.StatusInternalServerError, "internal", detail)
 }
 
@@ -353,14 +340,14 @@ func bearerToken(r *http.Request) string {
 // service token, so they read bearerToken directly instead and never
 // call this at all.
 func (h *Handlers) caller(w http.ResponseWriter, r *http.Request) (uuid.UUID, string, bool) {
-	return jwtauth.CallerID(w, r, problemEW)
+	return jwtauth.CallerID(w, r, problem)
 }
 
 // requireAdminOrService admits an admin user or a service token - the
 // guard on every operator lever a CronJob drives: resnapshot, the
 // entry rematch, normalize-platforms, and normalize-regions.
 func (h *Handlers) requireAdminOrService(w http.ResponseWriter, r *http.Request) bool {
-	return jwtauth.RequireAdminOrService(w, r, problemEW)
+	return jwtauth.RequireAdminOrService(w, r, problem)
 }
 
 var _ api.ServerInterface = (*Handlers)(nil)

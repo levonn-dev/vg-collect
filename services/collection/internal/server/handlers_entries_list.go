@@ -186,7 +186,7 @@ func (h *Handlers) ListEntries(w http.ResponseWriter, r *http.Request, params ap
 	f, groupBy, limit, offset := listParams(params)
 	entries, err := h.store.ListEntries(r.Context(), userID, f)
 	if err != nil {
-		h.internalError(w, r, "list failed", err)
+		h.internalError(w, r, "list_entries", "list failed", err)
 		return
 	}
 

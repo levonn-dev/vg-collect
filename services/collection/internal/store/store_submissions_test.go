@@ -295,6 +295,51 @@ func TestApproveSubmission_PreservesUserOwnedFields(t *testing.T) {
 	}
 }
 
+// TestApproveSubmission_WritesCatalogCredits guards the adoption
+// UPDATE actually persisting the snapshot's developers/publishers: the
+// custom entry seeds its OWN credits, approval carries DIFFERENT ones
+// on the CatalogSnapshot, and only the snapshot's must survive the
+// reload - through the real SQL, not a stub, since a Go-level argument
+// carrying the right value proves nothing about the UPDATE's column
+// list.
+func TestApproveSubmission_WritesCatalogCredits(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	userID := uuid.New()
+
+	e := customEntry(userID)
+	e.Developers = []string{"Square"}
+	e.Publishers = []string{"Square"}
+	created := mustCreate(t, s, e, nil)
+
+	sub, err := s.CreateSubmission(ctx, userID, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appr, err := s.ApproveSubmission(ctx, sub.ID, store.CatalogSnapshot{
+		ProductID: uuid.New(), ItemType: "game", DisplayName: "Curated Name",
+		Developers: []string{"Square Enix", "TOSE"},
+		Publishers: []string{"Square Enix"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if appr.Status != "approved" {
+		t.Fatalf("approve status = %q", appr.Status)
+	}
+
+	adopted, err := s.GetEntry(ctx, userID, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(adopted.Developers) != 2 || adopted.Developers[0] != "Square Enix" || adopted.Developers[1] != "TOSE" {
+		t.Fatalf("developers = %v, want the snapshot's [Square Enix TOSE], not the pre-adoption [Square]", adopted.Developers)
+	}
+	if len(adopted.Publishers) != 1 || adopted.Publishers[0] != "Square Enix" {
+		t.Fatalf("publishers = %v, want the snapshot's [Square Enix], not the pre-adoption [Square]", adopted.Publishers)
+	}
+}
+
 // TestGetSubmission is GetSubmission's direct exercise: a hit returns
 // the row keyed on id alone (no user scoping - the admin queue reads
 // across users), a miss answers the documented sentinel. GetSubmission

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
@@ -765,36 +764,12 @@ type stack struct {
 // churn was the bulk of the Docker-daemon load behind the WSL2
 // connection-refused flakes. Each test still gets exactly what the old
 // fixture gave it - a freshly migrated database and an empty cache -
-// via the drop-schema + re-migrate and FlushAll resets below.
+// via the drop-schema + re-migrate and FlushDB resets below.
 func newStack(t *testing.T) *stack {
 	t.Helper()
 	ctx := context.Background()
 
-	url := pgtest.URL(t)
-	// Reset: drop everything the previous test left (schema_migrations
-	// included) and re-run the embedded migrations, so each test opens
-	// on a fresh, fully migrated database - migration-seeded rows and
-	// all. Two Execs because pgx's extended protocol takes one
-	// statement at a time.
-	conn, err := pgx.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range []string{"DROP SCHEMA public CASCADE", "CREATE SCHEMA public"} {
-		if _, err := conn.Exec(ctx, stmt); err != nil {
-			_ = conn.Close(ctx)
-			t.Fatal(err)
-		}
-	}
-	_ = conn.Close(ctx)
-	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
-		t.Fatal(err)
-	}
-	pool, err := pgkit.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
+	pool := pgtest.FreshPool(t, migrations.FS, ".")
 
 	rdb, err := valkeykit.Connect(ctx, valkeytest.URL(t))
 	if err != nil {
@@ -802,8 +777,10 @@ func newStack(t *testing.T) *stack {
 	}
 	t.Cleanup(func() { _ = rdb.Close() })
 	// Reset: flush whatever the previous test cached so each test
-	// starts on an empty cache.
-	if err := rdb.FlushAll(ctx).Err(); err != nil {
+	// starts on an empty cache. FlushDB, not FlushAll: the URL is
+	// scoped to this binary's own database on the shared server, and
+	// FlushAll would wipe every other binary's data too.
+	if err := rdb.FlushDB(ctx).Err(); err != nil {
 		t.Fatal(err)
 	}
 

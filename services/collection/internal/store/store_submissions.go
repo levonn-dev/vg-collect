@@ -307,13 +307,15 @@ func (s *Store) ApproveSubmission(ctx context.Context, id uuid.UUID, snap Catalo
 			    first_release_date = $7, igdb_game_id = $8, cover_url = $9,
 			    localized_name = $10, localized_name_translit = $11,
 			    localized_cover_url = $12,
+			    developers = $13, publishers = $14,
 			    region_mismatch_ack_at = NULL,
 			    updated_at = now()
 			WHERE id = $1`,
 			sub.EntryID, snap.ProductID, snap.ItemType, snap.DisplayName,
 			snap.PlatformIGDBID, snap.PlatformName,
 			snap.FirstReleaseDate, snap.IGDBGameID, snap.CoverURL,
-			snap.LocalizedName, snap.LocalizedNameTranslit, snap.LocalizedCoverURL); err != nil {
+			snap.LocalizedName, snap.LocalizedNameTranslit, snap.LocalizedCoverURL,
+			snap.Developers, snap.Publishers); err != nil {
 			return fmt.Errorf("store: adopt entry: %w", err)
 		}
 		out = sub

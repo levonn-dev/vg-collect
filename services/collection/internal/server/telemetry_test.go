@@ -930,13 +930,13 @@ func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 	resp := do(t, http.MethodGet, srv.URL+"/entries/"+uuid.NewString(), a.token(t, uuid.NewString()), nil)
 	wantProblem(t, resp, http.StatusInternalServerError, "internal")
 
-	line := findLine(buf.lines(t), "internal error")
+	line := findLine(buf.lines(t), "store error")
 	if line == nil {
-		t.Fatal("no internal error log line")
+		t.Fatal("no store error log line")
 	}
-	if line["level"] != "ERROR" || line["detail"] != "get failed" ||
+	if line["level"] != "ERROR" || line["op"] != "get_entry" ||
 		!strings.Contains(fmt.Sprint(line["err"]), "pg exploded") {
-		t.Fatalf("internal error line: %v", line)
+		t.Fatalf("store error line: %v", line)
 	}
 }
 

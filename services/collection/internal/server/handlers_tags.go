@@ -38,7 +38,7 @@ func (h *Handlers) ListTags(w http.ResponseWriter, r *http.Request) {
 	}
 	tags, err := h.store.ListTags(r.Context(), userID)
 	if err != nil {
-		h.internalError(w, r, "list failed", err)
+		h.internalError(w, r, "list_tags", "list failed", err)
 		return
 	}
 	out := make([]api.Tag, len(tags))
@@ -73,7 +73,7 @@ func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "create failed", err)
+		h.internalError(w, r, "create_tag", "create failed", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toAPITag(tag))
@@ -103,7 +103,7 @@ func (h *Handlers) RenameTag(w http.ResponseWriter, r *http.Request, tagId opena
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "rename failed", err)
+		h.internalError(w, r, "rename_tag", "rename failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toAPITag(tag))
@@ -121,7 +121,7 @@ func (h *Handlers) DeleteTag(w http.ResponseWriter, r *http.Request, tagId opena
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "delete failed", err)
+		h.internalError(w, r, "delete_tag", "delete failed", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

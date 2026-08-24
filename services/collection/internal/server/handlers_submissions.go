@@ -56,7 +56,7 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request, entr
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "get failed", err)
+		h.internalError(w, r, "submission_create_entry_load", "get failed", err)
 		return
 	}
 	if entry.ProductID != nil {
@@ -65,7 +65,7 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request, entr
 	}
 	pending, err := h.store.CountPendingSubmissions(r.Context(), userID)
 	if err != nil {
-		h.internalError(w, r, "count failed", err)
+		h.internalError(w, r, "submission_pending_count", "count failed", err)
 		return
 	}
 	if pending >= submissionPendingCap {
@@ -76,7 +76,7 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request, entr
 	}
 	recent, err := h.store.CountSubmissionsSince(r.Context(), userID, time.Now().UTC().Add(-submissionRateWindow))
 	if err != nil {
-		h.internalError(w, r, "count failed", err)
+		h.internalError(w, r, "submission_window_count", "count failed", err)
 		return
 	}
 	if recent >= submissionDailyCap {
@@ -91,7 +91,7 @@ func (h *Handlers) CreateSubmission(w http.ResponseWriter, r *http.Request, entr
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "create failed", err)
+		h.internalError(w, r, "submission_create", "create failed", err)
 		return
 	}
 	h.logger.InfoContext(r.Context(), "submission created", "submission_id", sub.ID, "entry_id", sub.EntryID)
@@ -109,7 +109,7 @@ func (h *Handlers) GetSubmission(w http.ResponseWriter, r *http.Request, entryId
 		problem(w, r, http.StatusNotFound, "entry_not_found", "no such entry")
 		return
 	} else if err != nil {
-		h.internalError(w, r, "get failed", err)
+		h.internalError(w, r, "submission_get_entry_load", "get failed", err)
 		return
 	}
 	sub, err := h.store.LatestSubmissionForEntry(r.Context(), userID, entryId)
@@ -118,7 +118,7 @@ func (h *Handlers) GetSubmission(w http.ResponseWriter, r *http.Request, entryId
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "get failed", err)
+		h.internalError(w, r, "submission_latest_get", "get failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toAPISubmission(sub))
@@ -139,7 +139,7 @@ func (h *Handlers) AckSubmissionResolution(w http.ResponseWriter, r *http.Reques
 		problem(w, r, http.StatusNotFound, "entry_not_found", "no such entry")
 		return
 	} else if err != nil {
-		h.internalError(w, r, "get failed", err)
+		h.internalError(w, r, "submission_ack_entry_load", "get failed", err)
 		return
 	}
 	sub, err := h.store.LatestApprovedSubmissionForEntry(r.Context(), userID, entryId)
@@ -148,12 +148,12 @@ func (h *Handlers) AckSubmissionResolution(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "get failed", err)
+		h.internalError(w, r, "submission_latest_approved_get", "get failed", err)
 		return
 	}
 	if sub.ResolutionAckAt == nil {
 		if err := h.store.AckSubmissionResolution(r.Context(), sub.ID); err != nil {
-			h.internalError(w, r, "ack failed", err)
+			h.internalError(w, r, "submission_ack", "ack failed", err)
 			return
 		}
 	}
@@ -172,7 +172,7 @@ func (h *Handlers) CancelSubmission(w http.ResponseWriter, r *http.Request, entr
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "cancel failed", err)
+		h.internalError(w, r, "submission_cancel", "cancel failed", err)
 		return
 	}
 	h.submissionEvent(r.Context(), "cancelled")
@@ -200,7 +200,7 @@ func (h *Handlers) ListSubmissions(w http.ResponseWriter, r *http.Request, param
 	}
 	rows, total, err := h.store.ListPendingSubmissions(r.Context(), limit, offset)
 	if err != nil {
-		h.internalError(w, r, "list failed", err)
+		h.internalError(w, r, "list_submissions", "list failed", err)
 		return
 	}
 	page := api.AdminSubmissionsPage{Submissions: make([]common.AdminSubmission, 0, len(rows)), TotalCount: total}
@@ -258,7 +258,7 @@ func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submiss
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "get failed", err)
+		h.internalError(w, r, "verdict_get_submission", "get failed", err)
 		return
 	}
 	if sub.Status != "pending" {
@@ -278,7 +278,7 @@ func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submiss
 			return
 		}
 		if err != nil {
-			h.internalError(w, r, "reject failed", err)
+			h.internalError(w, r, "verdict_reject", "reject failed", err)
 			return
 		}
 		h.logger.InfoContext(r.Context(), "submission verdict",
@@ -311,7 +311,7 @@ func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submiss
 				problem(w, r, http.StatusConflict, "submission_resolved", "another admin already resolved this submission")
 				return
 			} else if err != nil {
-				h.internalError(w, r, "record failed", err)
+				h.internalError(w, r, "verdict_record_product", "record failed", err)
 				return
 			}
 			productID = &minted.Id
@@ -342,7 +342,7 @@ func (h *Handlers) adoptAndApprove(w http.ResponseWriter, r *http.Request, beare
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "entry load failed", err)
+		h.internalError(w, r, "verdict_entry_load", "entry load failed", err)
 		return
 	}
 	out, err := h.store.ApproveSubmission(r.Context(), sub.ID, catalogSnapshot(product, entry.Region))
@@ -351,7 +351,7 @@ func (h *Handlers) adoptAndApprove(w http.ResponseWriter, r *http.Request, beare
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "approve failed", err)
+		h.internalError(w, r, "verdict_approve", "approve failed", err)
 		return
 	}
 	h.logger.InfoContext(r.Context(), "submission verdict",

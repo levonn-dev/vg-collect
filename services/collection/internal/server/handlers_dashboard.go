@@ -63,12 +63,12 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params a
 
 	counts, err := h.store.DashboardCounts(r.Context(), userID, f)
 	if err != nil {
-		h.internalError(w, r, "aggregation failed", err)
+		h.internalError(w, r, "dashboard_counts", "aggregation failed", err)
 		return
 	}
 	rows, err := h.store.PricingRows(r.Context(), userID, f)
 	if err != nil {
-		h.internalError(w, r, "aggregation failed", err)
+		h.internalError(w, r, "dashboard_pricing_rows", "aggregation failed", err)
 		return
 	}
 
@@ -146,7 +146,7 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params a
 	}
 	body, err := json.Marshal(dash)
 	if err != nil {
-		h.internalError(w, r, "encoding failed", err)
+		h.internalError(w, r, "dashboard_encode", "encoding failed", err)
 		return
 	}
 	if pricing.Available && !f.Filtered() {
@@ -271,7 +271,7 @@ func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 	// aggregate history, so no filter narrows this composition.
 	rows, err := h.store.PricingRows(r.Context(), userID, store.Filters{})
 	if err != nil {
-		h.internalError(w, r, "aggregation failed", err)
+		h.internalError(w, r, "value_history_pricing_rows", "aggregation failed", err)
 		return
 	}
 	var ids []uuid.UUID
@@ -300,7 +300,7 @@ func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err = json.Marshal(vh)
 	if err != nil {
-		h.internalError(w, r, "encoding failed", err)
+		h.internalError(w, r, "value_history_encode", "encoding failed", err)
 		return
 	}
 	if vh.Available {
@@ -320,7 +320,7 @@ func (h *Handlers) GetLibrarySummary(w http.ResponseWriter, r *http.Request) {
 	}
 	lib, err := h.store.LibrarySummary(r.Context(), userID)
 	if err != nil {
-		h.internalError(w, r, "summary failed", err)
+		h.internalError(w, r, "library_summary", "summary failed", err)
 		return
 	}
 	games := make([]common.LibraryEntry, len(lib))

@@ -28,7 +28,7 @@ func (h *Handlers) PurgeUserData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.PurgeUserData(r.Context(), userID); err != nil {
-		h.internalError(w, r, "purge failed", err)
+		h.internalError(w, r, "purge", "purge failed", err)
 		return
 	}
 	h.invalidateDashboard(r.Context(), userID)
@@ -46,7 +46,7 @@ func (h *Handlers) CountProductReferences(w http.ResponseWriter, r *http.Request
 	}
 	n, err := h.store.CountEntriesByProduct(r.Context(), productId)
 	if err != nil {
-		h.internalError(w, r, "count failed", err)
+		h.internalError(w, r, "count_product_refs", "count failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, struct {
@@ -70,7 +70,7 @@ func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 	bearer := bearerToken(r)
 	refs, err := h.store.ListGameBackedRefs(r.Context())
 	if err != nil {
-		h.internalError(w, r, "list failed", err)
+		h.internalError(w, r, "resnapshot_list", "list failed", err)
 		return
 	}
 	byProduct := make(map[uuid.UUID][]store.GameEntryRef)
@@ -314,7 +314,7 @@ func (h *Handlers) InternalNormalizePlatforms(w http.ResponseWriter, r *http.Req
 	}
 	refs, err := h.store.ListNameOnlyPlatformEntries(r.Context())
 	if err != nil {
-		h.internalError(w, r, "list failed", err)
+		h.internalError(w, r, "normalize_platforms_list", "list failed", err)
 		return
 	}
 	var normalized, skipped int
@@ -389,7 +389,7 @@ func (h *Handlers) InternalNormalizeRegions(w http.ResponseWriter, r *http.Reque
 	folds := regionkit.RegionFoldMap()
 	refs, err := h.store.ListOpenRegionEntries(r.Context(), known)
 	if err != nil {
-		h.internalError(w, r, "list failed", err)
+		h.internalError(w, r, "normalize_regions_list", "list failed", err)
 		return
 	}
 	norm := func(s string) string { return strings.ToLower(strings.TrimSpace(s)) }

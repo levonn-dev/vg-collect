@@ -224,7 +224,7 @@ func TestScanAll_TrailingErrRespectsOp(t *testing.T) {
 // subtest uses a real connection since that failure mode - unlike a
 // trailing error - is trivial to trigger on demand.
 func TestScanAll_OpEmptyCallerDispatch(t *testing.T) {
-	t.Run("scan error: dispatch discards, matching the pre-conversion (zero value, err)", func(t *testing.T) {
+	t.Run("scan error: dispatch discards, matching every hand-written loop's (zero value, err) on a scan error", func(t *testing.T) {
 		conn := scanAllTestConn(t)
 		ctx := context.Background()
 		rows, err := conn.Query(ctx, `SELECT n FROM generate_series(1, 3) AS n`)
@@ -248,12 +248,12 @@ func TestScanAll_OpEmptyCallerDispatch(t *testing.T) {
 		}
 	})
 
-	t.Run("trailing error: dispatch keeps the partial value, matching the pre-conversion (out/total/fields, raw err)", func(t *testing.T) {
+	t.Run("trailing error: dispatch keeps the partial value, matching every hand-written loop's (out/total/fields, raw err) on a trailing error", func(t *testing.T) {
 		trailingErr := errors.New("connection reset")
 		rows := &stubRows{vals: []int{1, 2}, errAfter: trailingErr}
 		out, err := scanAll(rows, []int{}, "", scanAllInt)
 		if out == nil && err != nil {
-			t.Fatal("the dispatch's discard condition wrongly fired on a trailing error - the partial value would be lost, contradicting the pre-conversion behavior")
+			t.Fatal("the dispatch's discard condition wrongly fired on a trailing error - the partial value would be lost, contradicting every hand-written loop's behavior")
 		}
 		if !reflect.DeepEqual(out, []int{1, 2}) {
 			t.Fatalf("out = %v, want the partial [1 2] preserved for the caller to merge into its success value", out)

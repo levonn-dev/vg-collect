@@ -158,7 +158,7 @@ func (h *Handlers) sharedShelfOr404(w http.ResponseWriter, r *http.Request, id u
 		return store.View{}, false
 	}
 	if err != nil {
-		h.internalError(w, r, "shelf lookup failed", err)
+		h.internalError(w, r, "shelf_lookup", "shelf lookup failed", err)
 		return store.View{}, false
 	}
 	return v, true
@@ -171,7 +171,7 @@ func (h *Handlers) GetSharedShelf(w http.ResponseWriter, r *http.Request, shelfI
 	}
 	out, err := toSharedShelf(v)
 	if err != nil {
-		h.internalError(w, r, "shelf encoding failed", err)
+		h.internalError(w, r, "shelf_encode", "shelf encoding failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -184,12 +184,12 @@ func (h *Handlers) GetSharedShelfBySlug(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "shelf lookup failed", err)
+		h.internalError(w, r, "shelf_lookup_by_slug", "shelf lookup failed", err)
 		return
 	}
 	out, mErr := toSharedShelf(v)
 	if mErr != nil {
-		h.internalError(w, r, "shelf encoding failed", mErr)
+		h.internalError(w, r, "shelf_encode", "shelf encoding failed", mErr)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -214,7 +214,7 @@ func (h *Handlers) ListSharedShelfEntries(w http.ResponseWriter, r *http.Request
 	f, groupBy := filtersFromViewParams(v.Params)
 	entries, err := h.store.ListEntries(r.Context(), v.UserID, f)
 	if err != nil {
-		h.internalError(w, r, "list failed", err)
+		h.internalError(w, r, "shared_shelf_entries_list", "list failed", err)
 		return
 	}
 	total := len(entries)
@@ -259,12 +259,12 @@ func (h *Handlers) ListSharedShelves(w http.ResponseWriter, r *http.Request, par
 	}
 	views, total, err := h.store.ListListedShelves(r.Context(), owners, limit, offset)
 	if err != nil {
-		h.internalError(w, r, "list shelves failed", err)
+		h.internalError(w, r, "shared_shelves_list", "list shelves failed", err)
 		return
 	}
 	summaries, err := h.shelfSummaries(r, views)
 	if err != nil {
-		h.internalError(w, r, "summaries failed", err)
+		h.internalError(w, r, "shared_shelves_summaries", "summaries failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"total_count": total, "shelves": summaries})
@@ -277,12 +277,12 @@ func (h *Handlers) GetSharedShelvesByIds(w http.ResponseWriter, r *http.Request,
 	copy(ids, params.Ids)
 	views, err := h.store.SharedShelvesByIDs(r.Context(), ids)
 	if err != nil {
-		h.internalError(w, r, "shelves by ids failed", err)
+		h.internalError(w, r, "shared_shelves_by_ids", "shelves by ids failed", err)
 		return
 	}
 	summaries, err := h.shelfSummaries(r, views)
 	if err != nil {
-		h.internalError(w, r, "summaries failed", err)
+		h.internalError(w, r, "shared_shelves_summaries", "summaries failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"shelves": summaries})

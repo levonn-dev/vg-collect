@@ -8,10 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 	"github.com/levonn-dev/vgkeep/services/collection/migrations"
@@ -23,33 +21,7 @@ import (
 // DEFAULTed column) takes the pool directly.
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	ctx := context.Background()
-	url := pgtest.URL(t)
-	// Reset: drop everything the previous test left (schema_migrations
-	// included) and re-run the embedded migrations, so each test opens
-	// on a fresh, fully migrated database - migration-seeded rows and
-	// all. Two Execs because pgx's extended protocol takes one
-	// statement at a time.
-	conn, err := pgx.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range []string{"DROP SCHEMA public CASCADE", "CREATE SCHEMA public"} {
-		if _, err := conn.Exec(ctx, stmt); err != nil {
-			_ = conn.Close(ctx)
-			t.Fatal(err)
-		}
-	}
-	_ = conn.Close(ctx)
-	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	pool, err := pgkit.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
-	return pool
+	return pgtest.FreshPool(t, migrations.FS, ".")
 }
 
 func newTestStore(t *testing.T) *store.Store {

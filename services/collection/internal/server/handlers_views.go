@@ -68,7 +68,7 @@ func viewBody(w http.ResponseWriter, r *http.Request) (api.ViewCreate, []byte, s
 func (h *Handlers) respondView(w http.ResponseWriter, r *http.Request, v store.View, status int) {
 	out, err := toAPIView(v)
 	if err != nil {
-		h.internalError(w, r, "view encoding failed", err)
+		h.internalError(w, r, "view_encode", "view encoding failed", err)
 		return
 	}
 	writeJSON(w, status, out)
@@ -82,18 +82,18 @@ func (h *Handlers) ListViews(w http.ResponseWriter, r *http.Request) {
 	}
 	views, err := h.store.ListViews(r.Context(), userID)
 	if err != nil {
-		h.internalError(w, r, "list failed", err)
+		h.internalError(w, r, "list_views", "list failed", err)
 		return
 	}
 	if len(views) == 0 {
 		// First visit (or factory reset): give the two starter
 		// shelves, then re-read so the response includes them.
 		if err := h.store.SeedDefaultViews(r.Context(), userID); err != nil {
-			h.internalError(w, r, "seed failed", err)
+			h.internalError(w, r, "views_seed", "seed failed", err)
 			return
 		}
 		if views, err = h.store.ListViews(r.Context(), userID); err != nil {
-			h.internalError(w, r, "list failed", err)
+			h.internalError(w, r, "list_views", "list failed", err)
 			return
 		}
 	}
@@ -101,7 +101,7 @@ func (h *Handlers) ListViews(w http.ResponseWriter, r *http.Request) {
 	for i, v := range views {
 		av, err := toAPIView(v)
 		if err != nil {
-			h.internalError(w, r, "view encoding failed", err)
+			h.internalError(w, r, "view_encode", "view encoding failed", err)
 			return
 		}
 		out[i] = av
@@ -125,7 +125,7 @@ func (h *Handlers) CreateView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "create failed", err)
+		h.internalError(w, r, "create_view", "create failed", err)
 		return
 	}
 	h.respondView(w, r, v, http.StatusCreated)
@@ -151,7 +151,7 @@ func (h *Handlers) UpdateView(w http.ResponseWriter, r *http.Request, viewId ope
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "update failed", err)
+		h.internalError(w, r, "update_view", "update failed", err)
 		return
 	}
 	h.respondView(w, r, v, http.StatusOK)
@@ -169,7 +169,7 @@ func (h *Handlers) DeleteView(w http.ResponseWriter, r *http.Request, viewId ope
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "delete failed", err)
+		h.internalError(w, r, "delete_view", "delete failed", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

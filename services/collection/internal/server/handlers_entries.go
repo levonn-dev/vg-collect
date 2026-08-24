@@ -475,7 +475,7 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "create failed", err)
+		h.internalError(w, r, "create_entry", "create failed", err)
 		return
 	}
 	h.invalidateDashboard(r.Context(), userID)
@@ -494,7 +494,7 @@ func (h *Handlers) GetEntry(w http.ResponseWriter, r *http.Request, entryId open
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "get failed", err)
+		h.internalError(w, r, "get_entry", "get failed", err)
 		return
 	}
 	h.respondEntry(w, r, bearer, e, http.StatusOK)
@@ -515,7 +515,7 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "get failed", err)
+		h.internalError(w, r, "update_entry_load", "get failed", err)
 		return
 	}
 
@@ -738,7 +738,7 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "update failed", err)
+		h.internalError(w, r, "update_entry", "update failed", err)
 		return
 	}
 	h.invalidateDashboard(r.Context(), userID)
@@ -757,7 +757,7 @@ func (h *Handlers) DeleteEntry(w http.ResponseWriter, r *http.Request, entryId o
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "delete failed", err)
+		h.internalError(w, r, "delete_entry", "delete failed", err)
 		return
 	}
 	h.invalidateDashboard(r.Context(), userID)
@@ -780,7 +780,7 @@ func (h *Handlers) AckEntryRegionMismatch(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "ack failed", err)
+		h.internalError(w, r, "ack_region_mismatch", "ack failed", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -818,7 +818,7 @@ func (h *Handlers) ReorderEntry(w http.ResponseWriter, r *http.Request, entryId 
 		problem(w, r, http.StatusConflict, "conflicting_order", "the neighbors do not straddle; refresh the list and retry")
 		return
 	case err != nil:
-		h.internalError(w, r, "reorder failed", err)
+		h.internalError(w, r, "reorder_entry", "reorder failed", err)
 		return
 	}
 	h.invalidateDashboard(r.Context(), userID)
@@ -880,7 +880,7 @@ func (h *Handlers) BulkUpdateEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		h.internalError(w, r, "bulk update failed", err)
+		h.internalError(w, r, "bulk_update_entries", "bulk update failed", err)
 		return
 	}
 	h.invalidateDashboard(r.Context(), userID)
