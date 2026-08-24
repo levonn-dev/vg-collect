@@ -1,53 +1,54 @@
-// Package mongotest boots one shared MongoDB testcontainer per test
-// binary and hands back its connection URL. Each suite still owns its
+// Package mongotest hands each test binary a live MongoDB connection
+// URL plus DBName, the binary's own database name on that server.
+// The server is either the long-lived shared container the Taskfile
+// manages (MONGOTEST_URL set: zero Docker traffic from the tests
+// themselves) or, for bare `go test` runs outside the Taskfile, a
+// one-shot testcontainer booted per binary. Each suite still owns its
 // own connect, database-drop reset, and migration run; this package
-// only replaces the hand-rolled container boot duplicated across both
-// of enrichment's Mongo-backed test fixtures.
+// stops at handing back a reachable server and a name no concurrently
+// running binary shares.
 package mongotest
 
 import (
 	"context"
-	"sync"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/testcontainers/testcontainers-go"
 	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/levonn-dev/vgkeep/libs/go/ctrtest"
 )
 
-// container boots at most once and remembers either its URL or its
-// boot error, so every caller after the first - success or failure -
-// gets the same outcome instead of retrying a boot that already ran.
-type container struct {
-	once sync.Once
-	url  string
-	err  error
+var shared ctrtest.Container
+
+// envURL names the shared MongoDB server the Taskfile starts once and
+// keeps running across runs (task test / test:cover set it). When it
+// is set the kit adopts that server instead of booting a container.
+// Unset (bare `go test`), the kit boots its own container exactly as
+// before.
+const envURL = "MONGOTEST_URL"
+
+// serverURL resolves the server this binary's tests run against: the
+// env-named shared server when present, a freshly booted per-binary
+// container otherwise.
+func serverURL(ctx context.Context) (string, error) {
+	if v := os.Getenv(envURL); v != "" {
+		return v, nil
+	}
+	return bootMongo(ctx)
 }
 
-// resolve runs boot the first time it is called and returns its URL
-// (or its boot error, cached the same way) on every call after that.
-// Plain error return, not a *testing.T dependency: that keeps the
-// once.Do memoization - including the failure leg, where a real boot
-// failure isn't something a test can reliably trigger and once.Do
-// would refuse to retry it anyway - unit-testable with a stub.
-func (c *container) resolve(boot func(context.Context) (string, error)) (string, error) {
-	c.once.Do(func() {
-		c.url, c.err = boot(context.Background())
-	})
-	return c.url, c.err
-}
-
-var shared container
-
-// WaitOption is the module's own readiness strategy (log line plus
+// waitOption is the module's own readiness strategy (log line plus
 // listening port) with every deadline raised from the 60s defaults to
 // 180s: long enough to outlast the multi-minute freezes a loaded
 // dev-host Docker daemon can hit, so a frozen daemon costs a slow
-// container start instead of a failed suite. Exported for callers
-// that boot their own dedicated Mongo (migration scenarios) so every
-// boot in the repo rides freezes out the same way.
-func WaitOption() testcontainers.CustomizeRequestOption {
+// container start instead of a failed suite.
+func waitOption() testcontainers.CustomizeRequestOption {
 	return testcontainers.WithWaitStrategyAndDeadline(180*time.Second,
 		wait.ForLog("Waiting for connections").WithStartupTimeout(180*time.Second),
 		wait.ForListeningPort("27017/tcp").WithStartupTimeout(180*time.Second))
@@ -57,28 +58,33 @@ func WaitOption() testcontainers.CustomizeRequestOption {
 // URL. No Terminate: the testcontainers reaper collects the container
 // when the test process exits.
 func bootMongo(ctx context.Context) (string, error) {
-	mc, err := tcmongo.Run(ctx, "mongo:8", WaitOption())
+	mc, err := tcmongo.Run(ctx, "mongo:8", waitOption())
 	if err != nil {
 		return "", err
 	}
 	return mc.ConnectionString(ctx)
 }
 
-// URL boots the shared MongoDB container the first time it is called
-// in a test binary and returns its connection URL on every call after
-// that, including from other test files and packages sharing the
-// process. Callers run their own connect against the URL, plus their
-// own database-drop-and-remigrate reset - each service owns its
-// migrations, so this package stops at handing back a live, reachable
-// database.
+// URL resolves the shared server the first time it is called in a
+// test binary and returns its connection URL on every call after
+// that, including from other test files sharing the process. Callers
+// run their own connect against the URL and scope every database
+// access to DBName, so two binaries running concurrently under
+// `go test -p 2` never touch each other's data.
 func URL(t *testing.T) string {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
-	url, err := shared.resolve(bootMongo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return url
+	return shared.URL(t, serverURL)
+}
+
+// DBName returns this test binary's own database name on the shared
+// server, derived from the calling file's directory - call it
+// directly from the package under test. Mongo creates databases
+// lazily, so there is nothing to provision: suites drop this database
+// at fixture start (their existing reset), which is also what makes
+// every run start fresh, and the t_ prefix is what the Taskfile's
+// post-run sweep matches when it clears the shared server.
+func DBName(t *testing.T) string {
+	t.Helper()
+	_, file, _, _ := runtime.Caller(1)
+	return ctrtest.DBName(filepath.Dir(file))
 }

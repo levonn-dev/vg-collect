@@ -12,8 +12,7 @@ import (
 // token (token_use=service): the guard on operator levers a CronJob
 // can drive as a machine credential just as well as an operator can
 // drive by hand. On failure it writes a 403 via ew and returns false;
-// callers must stop handling the request when this returns false, the
-// same contract RequireRole uses.
+// callers must stop handling the request when this returns false.
 func RequireAdminOrService(w http.ResponseWriter, r *http.Request, ew ErrorWriter) bool {
 	claims, _ := FromContext(r.Context())
 	if claims.HasRole("admin") || claims.IsService() {

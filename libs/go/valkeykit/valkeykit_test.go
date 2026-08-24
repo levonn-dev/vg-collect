@@ -13,12 +13,16 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
 	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -31,34 +35,114 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 )
 
-func TestConnectAndRoundtrip(t *testing.T) {
+// TestMain disables the testcontainers reaper when the shared server
+// is adopted: the only container this binary then boots is the TLS
+// test's throwaway, which terminates itself, so the reaper is pure
+// risk - its startup wait is hardcoded to the 60s default inside
+// testcontainers, the one window the 180s deadlines here cannot
+// cover when the Docker daemon stalls. Bare runs keep the reaper:
+// the shared per-binary container relies on it for cleanup.
+func TestMain(m *testing.M) {
+	if os.Getenv("VALKEYTEST_URL") != "" {
+		_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+	}
+	os.Exit(m.Run())
+}
+
+// Shared-server adoption state: one allocated logical database per
+// test binary (see testValkeyServer), flushed per test.
+var (
+	valkeyOnce sync.Once
+	valkeyURL  string
+	valkeyErr  error
+)
+
+// newTestValkey hands back a connected client on a fresh keyspace
+// plus the URL it dialed: the binary's own logical database on the
+// shared test server when VALKEYTEST_URL is set (no Docker involved),
+// a throwaway per-binary container otherwise. FlushDB per call keeps
+// tests from seeing each other's keys either way.
+func newTestValkey(t *testing.T) (*redis.Client, string) {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
-	vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine")
+	valkeyOnce.Do(func() { valkeyURL, valkeyErr = testValkeyServer(ctx) })
+	if valkeyErr != nil {
+		t.Fatal(valkeyErr)
+	}
+	client, err := valkeykit.Connect(ctx, valkeyURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = vk.Terminate(ctx) })
-
-	url, err := vk.ConnectionString(ctx) // redis://host:port
-	if err != nil {
+	t.Cleanup(func() { _ = client.Close() })
+	if err := client.FlushDB(ctx).Err(); err != nil {
 		t.Fatal(err)
 	}
+	return client, valkeyURL
+}
 
+// testValkeyServer resolves the server once per binary. The adopted
+// branch speaks the same allocator protocol as libs/go/valkeytest
+// (identical key, atomic INCR), so this binary's index can never
+// collide with a kit-allocated one, and records it under the run
+// scope for the Taskfile's deferred clean. The boot branch leaves
+// cleanup to the testcontainers reaper.
+func testValkeyServer(ctx context.Context) (string, error) {
+	base := os.Getenv("VALKEYTEST_URL")
+	if base == "" {
+		vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine",
+			testcontainers.WithWaitStrategyAndDeadline(180*time.Second,
+				wait.ForLog("* Ready to accept connections").WithStartupTimeout(180*time.Second)))
+		if err != nil {
+			return "", err
+		}
+		return vk.ConnectionString(ctx)
+	}
+	admin, err := valkeykit.Connect(ctx, base)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = admin.Close() }()
+	cfg, err := admin.ConfigGet(ctx, "databases").Result()
+	if err != nil {
+		return "", err
+	}
+	count, convErr := strconv.Atoi(cfg["databases"])
+	if convErr != nil || count < 2 {
+		return "", fmt.Errorf("valkey reports databases=%q, need a numeric value of at least 2", cfg["databases"])
+	}
+	n, err := admin.Incr(ctx, "valkeytest_next_db").Result()
+	if err != nil {
+		return "", err
+	}
+	idx := int(n%int64(count-1)) + 1
+	if run := os.Getenv("TESTDS_RUN"); run != "" {
+		if err := admin.SAdd(ctx, "valkeytest_run_"+run, idx).Err(); err != nil {
+			return "", err
+		}
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	u.Path = "/" + strconv.Itoa(idx)
+	return u.String(), nil
+}
+
+func TestConnectAndRoundtrip(t *testing.T) {
+	ctx := context.Background()
 	// Pool metrics ride the same global meter the services install;
 	// drain it into a manual reader to see what Connect registered.
+	// Installed before the helper's Connect so the pool it creates is
+	// the one the reader observes.
 	reader := sdkmetric.NewManualReader()
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
 	t.Cleanup(func() { otel.SetMeterProvider(prev) })
 
-	client, err := valkeykit.Connect(ctx, url)
-	if err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
-	t.Cleanup(func() { _ = client.Close() })
+	client, url := newTestValkey(t)
 
 	if err := client.Set(ctx, "k", "v", 0).Err(); err != nil {
 		t.Fatal(err)
@@ -181,6 +265,22 @@ func TestConnectTLSBadPEM(t *testing.T) {
 	_, err := valkeykit.ConnectTLS(context.Background(), "rediss://localhost:6379", f)
 	if err == nil || !strings.Contains(err.Error(), "no certificates") {
 		t.Fatalf("want pem error, got %v", err)
+	}
+}
+
+// TestConnectFromConfig_BranchSelection proves the branch itself
+// without a live server: an empty caFile takes the Connect leg (a
+// malformed URL fails with Connect's own parse error), and a
+// non-empty caFile takes the ConnectTLS leg even against a plain
+// redis:// URL (ConnectTLS's own "requires a rediss://" guard fires,
+// which Connect never would).
+func TestConnectFromConfig_BranchSelection(t *testing.T) {
+	if _, err := valkeykit.ConnectFromConfig(context.Background(), "://not-a-url", ""); err == nil {
+		t.Fatal("empty caFile: want Connect's parse error, got nil")
+	}
+	_, err := valkeykit.ConnectFromConfig(context.Background(), "redis://localhost:6379", "/does/not/matter.pem")
+	if err == nil || !strings.Contains(err.Error(), "rediss") {
+		t.Fatalf("non-empty caFile: want ConnectTLS's rediss requirement error, got %v", err)
 	}
 }
 

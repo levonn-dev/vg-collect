@@ -65,6 +65,17 @@ func ConnectTLS(ctx context.Context, url, caFile string) (*redis.Client, error) 
 	return connect(ctx, opt)
 }
 
+// ConnectFromConfig picks ConnectTLS when caFile is non-empty and
+// Connect otherwise: the (url, caFile) pair every valkey-backed
+// service's config already carries as one unit (see
+// libs/go/config.RequireCAForRediss, which validates the same pair).
+func ConnectFromConfig(ctx context.Context, url, caFile string) (*redis.Client, error) {
+	if caFile != "" {
+		return ConnectTLS(ctx, url, caFile)
+	}
+	return Connect(ctx, url)
+}
+
 func connect(ctx context.Context, opt *redis.Options) (*redis.Client, error) {
 	client := redis.NewClient(opt)
 	if err := instrumentTracing(client); err != nil {

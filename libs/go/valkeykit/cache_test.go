@@ -17,9 +17,6 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/testcontainers/testcontainers-go"
-	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -37,26 +34,8 @@ func newDeadClient(t *testing.T) *redis.Client {
 }
 
 func TestGetBytes_HitAndMiss(t *testing.T) {
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
 	ctx := context.Background()
-	vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine",
-		testcontainers.WithWaitStrategyAndDeadline(180*time.Second,
-			wait.ForLog("* Ready to accept connections").WithStartupTimeout(180*time.Second)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = vk.Terminate(ctx) })
-	url, err := vk.ConnectionString(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, err := valkeykit.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = client.Close() })
+	client, _ := newTestValkey(t)
 
 	if body, err := valkeykit.GetBytes(ctx, client, "k", "cache: get k"); err != nil || body != nil {
 		t.Fatalf("cold read must be a nil miss: %v %v", body, err)
@@ -82,26 +61,8 @@ func TestGetBytes_ErrorWrapsOpLabel(t *testing.T) {
 }
 
 func TestPutBytes_SetsWithTTL(t *testing.T) {
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
 	ctx := context.Background()
-	vk, err := tcvalkey.Run(ctx, "valkey/valkey:8-alpine",
-		testcontainers.WithWaitStrategyAndDeadline(180*time.Second,
-			wait.ForLog("* Ready to accept connections").WithStartupTimeout(180*time.Second)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = vk.Terminate(ctx) })
-	url, err := vk.ConnectionString(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, err := valkeykit.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = client.Close() })
+	client, _ := newTestValkey(t)
 
 	if err := valkeykit.PutBytes(ctx, client, "k", []byte("hello"), 200*time.Millisecond, "cache: put k"); err != nil {
 		t.Fatal(err)

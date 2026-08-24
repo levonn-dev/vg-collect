@@ -2,60 +2,33 @@ package mongotest
 
 import (
 	"context"
-	"errors"
 	"testing"
 )
 
-// TestContainer_resolve_CachesBootError drives resolve's failure leg
-// directly with a stub boot: a real Docker failure isn't something a
-// test can reliably trigger, and once.Do would make the real thing
-// untestable a second time anyway (a failed Do never re-runs). Both
-// calls must return the same error, and boot itself must run exactly
-// once: the cached error has to reach the second caller without a
-// second boot attempt.
-func TestContainer_resolve_CachesBootError(t *testing.T) {
-	c := &container{}
-	bootErr := errors.New("boom")
-	calls := 0
-	boot := func(context.Context) (string, error) {
-		calls++
-		return "", bootErr
+// TestServerURL_PrefersEnv pins the adoption seam: with MONGOTEST_URL
+// set, serverURL must hand it back verbatim without touching Docker
+// (the value is a sentinel no daemon could produce).
+func TestServerURL_PrefersEnv(t *testing.T) {
+	t.Setenv(envURL, "mongodb://example.invalid:1/adopted")
+	got, err := serverURL(context.Background())
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	if _, err := c.resolve(boot); !errors.Is(err, bootErr) {
-		t.Fatalf("first resolve error = %v, want %v", err, bootErr)
-	}
-	if _, err := c.resolve(boot); !errors.Is(err, bootErr) {
-		t.Fatalf("second resolve error = %v, want the cached %v", err, bootErr)
-	}
-	if calls != 1 {
-		t.Fatalf("boot called %d times, want exactly 1 (once.Do must memoize the failure too)", calls)
+	if got != "mongodb://example.invalid:1/adopted" {
+		t.Fatalf("serverURL = %q, want the env value verbatim", got)
 	}
 }
 
-// TestContainer_resolve_CachesSuccess pins the other half of the
-// singleton contract: a successful boot also runs exactly once, and
-// every subsequent resolve reuses its URL instead of booting again.
-// This is the property both adopted call sites depend on (one
-// container per test binary, not one per test).
-func TestContainer_resolve_CachesSuccess(t *testing.T) {
-	c := &container{}
-	calls := 0
-	boot := func(context.Context) (string, error) {
-		calls++
-		return "mongodb://shared:27017", nil
+// TestBootMongo_CanceledContext pins bootMongo's error return without
+// paying for a container: a pre-canceled context must fail the boot
+// instead of hanging on the daemon.
+func TestBootMongo_CanceledContext(t *testing.T) {
+	if testing.Short() {
+		t.Skip("docker client interaction")
 	}
-
-	for i := 0; i < 3; i++ {
-		url, err := c.resolve(boot)
-		if err != nil {
-			t.Fatalf("resolve #%d: %v", i, err)
-		}
-		if url != "mongodb://shared:27017" {
-			t.Fatalf("resolve #%d url = %q", i, url)
-		}
-	}
-	if calls != 1 {
-		t.Fatalf("boot called %d times, want exactly 1", calls)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := bootMongo(ctx); err == nil {
+		t.Fatal("bootMongo succeeded with a canceled context")
 	}
 }

@@ -7,11 +7,15 @@ package regionkit
 
 // KnownRegions is not a validation gate (region is open-world); it
 // keys the machinery tables and each normalize lever's promotion
-// target set.
-var KnownRegions = map[string]bool{
-	"ntsc_u": true, "ntsc_j": true, "pal": true, "region_free": true,
-	"korea": true, "brazil": true, "china": true,
-}
+// target set. Derived from the generated RegionNames so the known set
+// can never drift from api/domain.yaml by hand.
+var KnownRegions = func() map[string]bool {
+	m := make(map[string]bool, len(RegionNames))
+	for _, r := range RegionNames {
+		m[r] = true
+	}
+	return m
+}()
 
 // RegionSynonyms maps each known region to the reviewed free-text
 // forms each normalize lever promotes. Fold-matched (lowercase,

@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 
@@ -13,8 +14,23 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	"go.mongodb.org/mongo-driver/bson"
 
+	"github.com/levonn-dev/vgkeep/libs/go/ctrtest"
 	"github.com/levonn-dev/vgkeep/libs/go/mongokit"
 )
+
+// TestMain disables the testcontainers reaper when the shared server
+// is adopted: the only container this binary then boots is the
+// reserved-char-password test's throwaway, which terminates itself,
+// so the reaper is pure risk - its startup wait is hardcoded to the
+// 60s default inside testcontainers, the one window mongoWait's 180s
+// deadlines cannot cover when the Docker daemon stalls. Bare runs
+// keep the reaper as the safety net behind the explicit Terminates.
+func TestMain(m *testing.M) {
+	if os.Getenv("MONGOTEST_URL") != "" {
+		_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+	}
+	os.Exit(m.Run())
+}
 
 // mongoWait raises every container-start deadline from the 60s
 // defaults to 180s, outlasting dev-host Docker daemon freezes.
@@ -88,37 +104,52 @@ func TestUnitComposeURL_UnparsableBaseErrors(t *testing.T) {
 	}
 }
 
-// newTestMongoURL starts a throwaway MongoDB and returns its URL.
-// Integration helper: skipped under -short.
-func newTestMongoURL(t *testing.T) string {
+// newTestMongo hands back a server URL plus a fresh per-test database
+// name: the shared test server when MONGOTEST_URL is set (no Docker
+// involved), a throwaway per-test container otherwise. The drop makes
+// the database virgin either way. Integration helper: skipped under
+// -short.
+func newTestMongo(t *testing.T) (string, string) {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
-	mc, err := tcmongo.Run(ctx, "mongo:8", mongoWait())
+	uri := os.Getenv("MONGOTEST_URL")
+	if uri == "" {
+		mc, err := tcmongo.Run(ctx, "mongo:8", mongoWait())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = mc.Terminate(ctx) })
+		uri, err = mc.ConnectionString(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	db := ctrtest.DBName("libs/go/mongokit/" + t.Name())
+	client, err := mongokit.Connect(ctx, uri)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = mc.Terminate(ctx) })
-	uri, err := mc.ConnectionString(ctx)
-	if err != nil {
+	defer func() { _ = client.Disconnect(context.Background()) }()
+	if err := client.Database(db).Drop(ctx); err != nil {
 		t.Fatal(err)
 	}
-	return uri
+	return uri, db
 }
 
 func TestMigrate_CreatesCollectionAndIsIdempotent(t *testing.T) {
-	uri := newTestMongoURL(t)
+	uri, db := newTestMongo(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	if err := mongokit.Migrate(ctx, uri, "mongokit_test", testMigrations, "testdata/migrations"); err != nil {
+	if err := mongokit.Migrate(ctx, uri, db, testMigrations, "testdata/migrations"); err != nil {
 		t.Fatalf("first migrate: %v", err)
 	}
 	// Second run must be a clean no-op (init containers re-run on every
 	// pod start).
-	if err := mongokit.Migrate(ctx, uri, "mongokit_test", testMigrations, "testdata/migrations"); err != nil {
+	if err := mongokit.Migrate(ctx, uri, db, testMigrations, "testdata/migrations"); err != nil {
 		t.Fatalf("second migrate: %v", err)
 	}
 
@@ -127,7 +158,7 @@ func TestMigrate_CreatesCollectionAndIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
-	mdb := client.Database("mongokit_test")
+	mdb := client.Database(db)
 
 	specs, err := mdb.ListCollectionSpecifications(ctx, bson.D{})
 	if err != nil {
@@ -146,9 +177,9 @@ func TestMigrate_CreatesCollectionAndIsIdempotent(t *testing.T) {
 // leg: a directory the embedded FS does not have must surface as an
 // error once Connect has already succeeded.
 func TestMigrate_BadSourceDir(t *testing.T) {
-	uri := newTestMongoURL(t)
+	uri, db := newTestMongo(t)
 	ctx := context.Background()
-	if err := mongokit.Migrate(ctx, uri, "mongokit_test", testMigrations, "no/such/dir"); err == nil {
+	if err := mongokit.Migrate(ctx, uri, db, testMigrations, "no/such/dir"); err == nil {
 		t.Fatal("want migration source error")
 	}
 }
@@ -158,15 +189,15 @@ func TestMigrate_BadSourceDir(t *testing.T) {
 // naming a MongoDB command that does not exist must fail m.Up() and
 // surface through Migrate rather than silently succeeding.
 func TestMigrate_UpError(t *testing.T) {
-	uri := newTestMongoURL(t)
+	uri, db := newTestMongo(t)
 	ctx := context.Background()
-	if err := mongokit.Migrate(ctx, uri, "mongokit_test_bad", badMigrations, "testdata/badmigrations"); err == nil {
+	if err := mongokit.Migrate(ctx, uri, db, badMigrations, "testdata/badmigrations"); err == nil {
 		t.Fatal("want migrate error for an invalid migration command")
 	}
 }
 
 func TestHealth(t *testing.T) {
-	uri := newTestMongoURL(t)
+	uri, _ := newTestMongo(t)
 	ctx := context.Background()
 	client, err := mongokit.Connect(ctx, uri)
 	if err != nil {

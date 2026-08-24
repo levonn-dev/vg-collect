@@ -137,8 +137,8 @@ func TestValidate_ParsesTokenUse(t *testing.T) {
 	}
 }
 
-func TestMiddleware_NoTokenAndRoles(t *testing.T) {
-	pub, priv := genKey(t)
+func TestMiddleware_NoToken(t *testing.T) {
+	pub, _ := genKey(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write(jwksJSON("k1", pub))
 	}))
@@ -152,23 +152,6 @@ func TestMiddleware_NoTokenAndRoles(t *testing.T) {
 	authed.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
 	if w.Code != 401 {
 		t.Fatalf("no token: status = %d, want 401", w.Code)
-	}
-
-	admin := jwtauth.Middleware(v, ew)(jwtauth.RequireRole("admin", ew)(ok))
-	r := httptest.NewRequest("GET", "/", nil)
-	r.Header.Set("Authorization", "Bearer "+mint(t, "k1", priv, nil)) // roles: [user]
-	w = httptest.NewRecorder()
-	admin.ServeHTTP(w, r)
-	if w.Code != 403 {
-		t.Fatalf("user hitting admin route: status = %d, want 403", w.Code)
-	}
-
-	r = httptest.NewRequest("GET", "/", nil)
-	r.Header.Set("Authorization", "Bearer "+mint(t, "k1", priv, func(c jwt.MapClaims) { c["roles"] = []string{"admin"} }))
-	w = httptest.NewRecorder()
-	admin.ServeHTTP(w, r)
-	if w.Code != 200 {
-		t.Fatalf("admin: status = %d, want 200", w.Code)
 	}
 }
 

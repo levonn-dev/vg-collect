@@ -1,44 +1,60 @@
-// Package valkeytest boots one shared Valkey testcontainer per test
-// binary and hands back its connection URL. Each suite still owns its
-// own connect and reset; this package only replaces the hand-rolled
-// container boot duplicated across every cache and handler test
-// fixture in bff, collection, and enrichment.
+// Package valkeytest hands each test binary a live Valkey connection
+// URL with the binary's own logical database index baked in. The
+// server is either the long-lived shared container the Taskfile
+// manages (VALKEYTEST_URL set: zero Docker traffic from the tests
+// themselves) or, for bare `go test` runs outside the Taskfile, a
+// one-shot testcontainer booted per binary. Each suite still owns its
+// own connect and per-test reset - which must be FlushDB, not
+// FlushAll: on the shared server FlushAll would wipe every other
+// binary's database and the allocator along with it.
 package valkeytest
 
 import (
 	"context"
-	"sync"
+	"fmt"
+	"net/url"
+	"os"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/testcontainers/testcontainers-go"
 	tcvalkey "github.com/testcontainers/testcontainers-go/modules/valkey"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/levonn-dev/vgkeep/libs/go/ctrtest"
+	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 )
 
-// container boots at most once and remembers either its URL or its
-// boot error, so every caller after the first - success or failure -
-// gets the same outcome instead of retrying a boot that already ran.
-type container struct {
-	once sync.Once
-	url  string
-	err  error
+var shared ctrtest.Container
+
+// envURL names the shared Valkey server the Taskfile starts once and
+// keeps running across runs (task test / test:cover set it). When it
+// is set the kit adopts that server instead of booting a container.
+// Unset (bare `go test`), the kit boots its own container exactly as
+// before.
+const envURL = "VALKEYTEST_URL"
+
+// allocatorKey lives in database 0 and is INCRed once per test binary
+// to reserve a logical database index. Database 0 is never handed
+// out, so no suite's flush can touch the counter; the Taskfile's
+// post-run FLUSHALL resets it along with everything else.
+const allocatorKey = "valkeytest_next_db"
+
+// serverURL resolves the server this binary's tests run against: the
+// env-named shared server when present, a freshly booted per-binary
+// container otherwise.
+func serverURL(ctx context.Context) (string, error) {
+	if v := os.Getenv(envURL); v != "" {
+		return v, nil
+	}
+	return bootValkey(ctx)
 }
 
-// resolve runs boot the first time it is called and returns its URL
-// (or its boot error, cached the same way) on every call after that.
-// Plain error return, not a *testing.T dependency: that keeps the
-// once.Do memoization - including the failure leg, where a real boot
-// failure isn't something a test can reliably trigger and once.Do
-// would refuse to retry it anyway - unit-testable with a stub.
-func (c *container) resolve(boot func(context.Context) (string, error)) (string, error) {
-	c.once.Do(func() {
-		c.url, c.err = boot(context.Background())
-	})
-	return c.url, c.err
-}
-
-var shared container
+// bootedContainer retains the last container bootValkey started, so
+// the kit's own boot test can terminate what it booted. Every other
+// caller leaves cleanup to the testcontainers reaper.
+var bootedContainer testcontainers.Container
 
 // bootValkey starts a valkey/valkey:8-alpine container and returns its
 // connection URL. The wait is the module's own readiness log line with
@@ -54,24 +70,79 @@ func bootValkey(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	bootedContainer = vk
 	return vk.ConnectionString(ctx)
 }
 
-// URL boots the shared Valkey container the first time it is called in
-// a test binary and returns its connection URL on every call after
-// that, including from other test files and packages sharing the
-// process. Callers run their own valkeykit.Connect against the URL and
-// their own reset first (typically FlushAll, since what "empty" means
-// - and whether every test needs it - is a per-suite choice) - this
-// package stops at handing back a live, reachable Valkey.
+// URL reserves a logical database on the shared server the first time
+// it is called in a test binary and returns the connection URL with
+// that index in its path on every call after that, including from
+// other test files sharing the process. valkeykit.Connect (go-redis
+// ParseURL underneath) honors the index, so every adopted call site
+// lands in the binary's own database and two binaries running
+// concurrently under `go test -p 2` never see each other's keys.
+// Callers run their own per-test reset against it - FlushDB, never
+// FlushAll (see the package comment).
 func URL(t *testing.T) string {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
-	url, err := shared.resolve(bootValkey)
+	return shared.URL(t, func(ctx context.Context) (string, error) {
+		base, err := serverURL(ctx)
+		if err != nil {
+			return "", err
+		}
+		return allocateDB(ctx, base)
+	})
+}
+
+// allocateDB reserves the next logical database index for this binary
+// and returns base with the index baked into the URL path. The index
+// comes from an atomic INCR, so concurrent binaries can never draw
+// the same one; the modulus wraps the counter around the server's
+// database count (CONFIG GET, so the fallback container's 16 and the
+// Taskfile container's 64 both just work), which with two concurrent
+// binaries and a fresh FLUSHDB on reservation is harmless. The flush
+// is also the fresh-per-run guarantee for runs whose post-run sweep
+// never got to happen.
+func allocateDB(ctx context.Context, base string) (string, error) {
+	admin, err := valkeykit.Connect(ctx, base)
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
-	return url
+	defer func() { _ = admin.Close() }()
+	cfg, err := admin.ConfigGet(ctx, "databases").Result()
+	if err != nil {
+		return "", err
+	}
+	count, convErr := strconv.Atoi(cfg["databases"])
+	if convErr != nil || count < 2 {
+		return "", fmt.Errorf("valkey reports databases=%q, need a numeric value of at least 2 to hand out per-binary indexes", cfg["databases"])
+	}
+	n, err := admin.Incr(ctx, allocatorKey).Result()
+	if err != nil {
+		return "", err
+	}
+	idx := int(n%int64(count-1)) + 1
+	// Record the index under the run's scope (also in database 0) so
+	// the Taskfile's deferred clean can flush exactly this run's
+	// databases instead of a concurrent run's.
+	if run := os.Getenv("TESTDS_RUN"); run != "" {
+		if err := admin.SAdd(ctx, "valkeytest_run_"+run, idx).Err(); err != nil {
+			return "", err
+		}
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	u.Path = "/" + strconv.Itoa(idx)
+	derived := u.String()
+	client, err := valkeykit.Connect(ctx, derived)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = client.Close() }()
+	if err := client.FlushDB(ctx).Err(); err != nil {
+		return "", err
+	}
+	return derived, nil
 }

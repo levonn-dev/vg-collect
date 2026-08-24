@@ -6,8 +6,11 @@ package otel_test
 // value alone), and that DurationBuckets is the exact shared tuple.
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"slices"
 	"testing"
 
@@ -126,6 +129,53 @@ func TestCounter_RegistrationErrorPropagates(t *testing.T) {
 	}
 }
 
+// logLine decodes the single JSON log line captured from a
+// slog.JSONHandler-backed buffer.
+func logLine(t *testing.T, buf *bytes.Buffer) map[string]any {
+	t.Helper()
+	var line map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
+		t.Fatalf("bad log line %q: %v", buf.String(), err)
+	}
+	return line
+}
+
+func TestCounterLogged_Success(t *testing.T) {
+	m, reader := newTestMeter(t)
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	c := vgotel.CounterLogged(m, logger, "vg.test.logged_counter", "d", "u")
+	c.Add(context.Background(), 1)
+
+	if _, ok := metricByName(collect(t, reader), "vg.test.logged_counter"); !ok {
+		t.Fatal("vg.test.logged_counter not exported")
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("want no log output on a successful registration, got %q", buf.String())
+	}
+}
+
+// TestCounterLogged_RegistrationFailureLogsNameAndReturnsNil pins the
+// one uniform failure shape every service's registration block now
+// shares: message "counter unavailable", the instrument's own name
+// under the "name" key, and a nil instrument rather than a
+// propagated error.
+func TestCounterLogged_RegistrationFailureLogsNameAndReturnsNil(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	c := vgotel.CounterLogged(stubErrMeter{}, logger, "vg.test.refused_counter", "d", "u")
+	if c != nil {
+		t.Fatalf("counter = %v, want nil on a refused registration", c)
+	}
+
+	line := logLine(t, &buf)
+	if line["msg"] != "counter unavailable" || line["name"] != "vg.test.refused_counter" || line["level"] != "ERROR" {
+		t.Fatalf("log line = %v, want msg=counter unavailable name=vg.test.refused_counter level=ERROR", line)
+	}
+}
+
 func TestHistogram_RegistersNameDescriptionUnitAndBuckets(t *testing.T) {
 	m, reader := newTestMeter(t)
 	h, err := vgotel.Histogram(m, "vg.test.duration", "Seconds elapsed", "s", vgotel.DurationBuckets...)
@@ -194,6 +244,41 @@ func TestHistogram_RegistrationErrorPropagates(t *testing.T) {
 	}
 	if h != nil {
 		t.Fatalf("histogram = %v, want nil on error", h)
+	}
+}
+
+func TestHistogramLogged_Success(t *testing.T) {
+	m, reader := newTestMeter(t)
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	h := vgotel.HistogramLogged(m, logger, "vg.test.logged_histogram", "d", "u")
+	h.Record(context.Background(), 1)
+
+	if _, ok := metricByName(collect(t, reader), "vg.test.logged_histogram"); !ok {
+		t.Fatal("vg.test.logged_histogram not exported")
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("want no log output on a successful registration, got %q", buf.String())
+	}
+}
+
+// TestHistogramLogged_RegistrationFailureLogsNameAndReturnsNil is
+// TestCounterLogged_RegistrationFailureLogsNameAndReturnsNil's twin:
+// same shape, "histogram unavailable" in place of "counter
+// unavailable".
+func TestHistogramLogged_RegistrationFailureLogsNameAndReturnsNil(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	h := vgotel.HistogramLogged(stubErrMeter{}, logger, "vg.test.refused_histogram", "d", "u")
+	if h != nil {
+		t.Fatalf("histogram = %v, want nil on a refused registration", h)
+	}
+
+	line := logLine(t, &buf)
+	if line["msg"] != "histogram unavailable" || line["name"] != "vg.test.refused_histogram" || line["level"] != "ERROR" {
+		t.Fatalf("log line = %v, want msg=histogram unavailable name=vg.test.refused_histogram level=ERROR", line)
 	}
 }
 

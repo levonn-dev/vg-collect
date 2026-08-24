@@ -21,6 +21,31 @@ func TestKnownRegions_ExactlySevenRegions(t *testing.T) {
 	}
 }
 
+// TestKnownRegions_MatchesGeneratedRegionNames proves KnownRegions
+// never drifts from the generated RegionNames table: same size, same
+// members each way. KnownRegions is derived from RegionNames (see
+// regions.go), so this pins that derivation rather than two
+// independently hand-maintained lists.
+func TestKnownRegions_MatchesGeneratedRegionNames(t *testing.T) {
+	fromNames := make(map[string]bool, len(regionkit.RegionNames))
+	for _, r := range regionkit.RegionNames {
+		fromNames[r] = true
+	}
+	if len(fromNames) != len(regionkit.KnownRegions) {
+		t.Fatalf("RegionNames has %d distinct entries, KnownRegions has %d, want equal", len(fromNames), len(regionkit.KnownRegions))
+	}
+	for r := range fromNames {
+		if !regionkit.KnownRegions[r] {
+			t.Errorf("KnownRegions is missing %q, present in RegionNames", r)
+		}
+	}
+	for r := range regionkit.KnownRegions {
+		if !fromNames[r] {
+			t.Errorf("KnownRegions has %q, not present in RegionNames", r)
+		}
+	}
+}
+
 // TestRegionFoldMap_EverySynonymFoldsToAKnownRegion confirms every
 // RegionSynonyms row folds to a canonical key that is itself known,
 // and that RegionFoldMap actually wires the row up.

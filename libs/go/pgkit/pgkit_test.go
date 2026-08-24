@@ -4,13 +4,18 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/levonn-dev/vgkeep/libs/go/ctrtest"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -23,11 +28,39 @@ import (
 //go:embed testdata/migrations/*.sql
 var testMigrations embed.FS
 
-func TestConnectMigrateHealth(t *testing.T) {
+// newTestPostgresURL hands back the URL of a fresh database: a
+// drop-and-recreated per-test database on the shared test server when
+// PGTEST_URL is set (no Docker involved), a throwaway per-test
+// container otherwise.
+func newTestPostgresURL(t *testing.T) string {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("requires docker")
 	}
 	ctx := context.Background()
+	if base := os.Getenv("PGTEST_URL"); base != "" {
+		name := ctrtest.DBName("libs/go/pgkit/" + t.Name())
+		conn, err := pgx.Connect(ctx, base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = conn.Close(ctx) }()
+		ident := pgx.Identifier{name}.Sanitize()
+		for _, stmt := range []string{
+			"DROP DATABASE IF EXISTS " + ident + " WITH (FORCE)",
+			"CREATE DATABASE " + ident,
+		} {
+			if _, err := conn.Exec(ctx, stmt); err != nil {
+				t.Fatal(err)
+			}
+		}
+		u, err := url.Parse(base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		u.Path = "/" + name
+		return u.String()
+	}
 	// 180s deadlines outlast dev-host Docker daemon freezes; the outer
 	// deadline matters too - WithWaitStrategy alone caps the wait at 60s.
 	pg, err := tcpostgres.Run(ctx, "postgres:17-alpine",
@@ -40,11 +73,16 @@ func TestConnectMigrateHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = pg.Terminate(ctx) })
-
-	url, err := pg.ConnectionString(ctx, "sslmode=disable")
+	booted, err := pg.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		t.Fatal(err)
 	}
+	return booted
+}
+
+func TestConnectMigrateHealth(t *testing.T) {
+	ctx := context.Background()
+	url := newTestPostgresURL(t)
 	if err := pgkit.Migrate(url, testMigrations, "testdata/migrations"); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}

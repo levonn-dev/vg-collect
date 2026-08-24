@@ -3,6 +3,7 @@ package mongotest_test
 import (
 	"context"
 	"flag"
+	"strings"
 	"testing"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -30,7 +31,7 @@ func TestURL_BootsConnectsAndQueries(t *testing.T) {
 		t.Fatalf("ping: %v", err)
 	}
 
-	coll := client.Database("mongotest").Collection("probe")
+	coll := client.Database(mongotest.DBName(t)).Collection("probe")
 	if _, err := coll.InsertOne(ctx, bson.M{"k": "v"}); err != nil {
 		t.Fatalf("insert: %v", err)
 	}
@@ -51,6 +52,20 @@ func TestURL_SharedAcrossCalls(t *testing.T) {
 	second := mongotest.URL(t)
 	if first != second {
 		t.Fatalf("URL varied across calls: %q vs %q, want the shared per-suite singleton", first, second)
+	}
+}
+
+// TestDBName_StableAndPrefixed pins the isolation contract suites
+// depend on: the same binary always gets the same name (fixtures and
+// tests in different files must land in one database) and the name
+// carries the t_ prefix the Taskfile's post-run sweep matches.
+func TestDBName_StableAndPrefixed(t *testing.T) {
+	name := mongotest.DBName(t)
+	if name != mongotest.DBName(t) {
+		t.Fatalf("DBName varied across calls in one binary: %q vs %q", name, mongotest.DBName(t))
+	}
+	if !strings.HasPrefix(name, "t_") {
+		t.Fatalf("DBName %q lacks the t_ sweep prefix", name)
 	}
 }
 

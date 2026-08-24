@@ -39,19 +39,3 @@ func Middleware(v *Validator, ew ErrorWriter) func(http.Handler) http.Handler {
 		})
 	}
 }
-
-// RequireRole returns an HTTP middleware that enforces the named role on the
-// Claims already stored in context by Middleware. Must be chained after
-// Middleware.
-func RequireRole(role string, ew ErrorWriter) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			claims, ok := FromContext(r.Context())
-			if !ok || !claims.HasRole(role) {
-				ew(w, r, http.StatusForbidden, "forbidden", "role "+role+" required")
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}

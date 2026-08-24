@@ -1,6 +1,10 @@
 package otel
 
-import "go.opentelemetry.io/otel/metric"
+import (
+	"log/slog"
+
+	"go.opentelemetry.io/otel/metric"
+)
 
 // DurationBuckets are the explicit histogram bucket boundaries, in
 // seconds, shared by every multi-minute background-job duration
@@ -24,6 +28,21 @@ func Counter(m metric.Meter, name, description, unit string) (metric.Int64Counte
 	return m.Int64Counter(name, metric.WithDescription(description), metric.WithUnit(unit))
 }
 
+// CounterLogged is Counter plus one fixed failure response: a
+// registration error logs "counter unavailable" keyed by name and
+// CounterLogged returns the (nil) instrument instead of the error.
+// Every service registers its counters through this instead of
+// hand-rolling the same log-and-return closure, so a fleet-wide log
+// query for a failed registration has one message shape to match
+// regardless of which service emitted it.
+func CounterLogged(m metric.Meter, logger *slog.Logger, name, description, unit string) metric.Int64Counter {
+	c, err := Counter(m, name, description, unit)
+	if err != nil {
+		logger.Error("counter unavailable", "name", name, "err", err)
+	}
+	return c
+}
+
 // Histogram registers a Float64Histogram on m with the same fixed
 // argument order as Counter, plus optional explicit bucket
 // boundaries (pass DurationBuckets for the shared multi-minute-job
@@ -35,4 +54,15 @@ func Histogram(m metric.Meter, name, description, unit string, buckets ...float6
 		opts = append(opts, metric.WithExplicitBucketBoundaries(buckets...))
 	}
 	return m.Float64Histogram(name, opts...)
+}
+
+// HistogramLogged is CounterLogged's twin for Histogram: same
+// "<kind> unavailable" plus name-keyed log line on a registration
+// failure, same nil-instrument-instead-of-error return.
+func HistogramLogged(m metric.Meter, logger *slog.Logger, name, description, unit string, buckets ...float64) metric.Float64Histogram {
+	h, err := Histogram(m, name, description, unit, buckets...)
+	if err != nil {
+		logger.Error("histogram unavailable", "name", name, "err", err)
+	}
+	return h
 }
