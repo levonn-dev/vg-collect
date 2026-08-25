@@ -8,11 +8,9 @@ import FollowButton from './FollowButton'
 
 afterEach(() => vi.unstubAllGlobals())
 
-// Wrapped inline (not via the renderWithI18n helper): the first test
-// below calls rerender() with a fresh element tree, which must carry
-// the same I18nProvider ancestor as the initial render, or React would
-// swap out the whole tree - including the i18n context - rather than
-// reconcile it in place.
+// Wrapped inline, not via renderWithI18n: rerender() needs the same
+// I18nProvider ancestor as the initial render, or React swaps the whole tree
+// (including i18n context) instead of reconciling in place.
 function renderButton(qc: QueryClient, viewerFollows: boolean) {
   return render(
     <I18nProvider i18n={i18n}>

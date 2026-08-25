@@ -6,8 +6,8 @@ interface ConfirmShellProps {
   ariaLabel: string
   title: string
   subtitle: ReactNode
-  // The path-specific status content: a price-match card for a
-  // catalog pick, a plain notice for a custom item.
+  // Path-specific status content: a price-match card for a catalog pick, a
+  // plain notice for a custom item.
   children: ReactNode
   errorMessage?: string
   onBack: () => void
@@ -15,11 +15,8 @@ interface ConfirmShellProps {
   submitPending: boolean
 }
 
-// ConfirmShell is the layout both wizard confirm steps share: heading,
-// subtitle, the caller's own status content, an optional error banner,
-// and the Back / Add to collection actions. It holds no resolve or
-// submit logic of its own - callers own their mutation and pass its
-// state in.
+// Holds no resolve/submit logic of its own; callers own their mutation and
+// pass its state in.
 export default function ConfirmShell({
   ariaLabel, title, subtitle, children, errorMessage, onBack, onSubmit, submitPending,
 }: ConfirmShellProps) {

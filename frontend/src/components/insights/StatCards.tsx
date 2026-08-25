@@ -1,4 +1,4 @@
-import { Trans, useLingui } from '@lingui/react/macro'
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import type { Dashboard } from '../../api/collection'
 import { formatCents } from '../../lib/format'
 import { useDisplayMoney } from '../../lib/useDisplayMoney'
@@ -24,7 +24,11 @@ export default function StatCards({ dashboard }: { dashboard: Dashboard }) {
           <>
             <p className="mt-1 text-3xl font-bold">{money.format(p.total_value_cents) ?? money.format(0)}</p>
             <p className="mt-1 text-xs text-gray-500">
-              <Trans>{pricedCount} priced - {unpricedCount} unpriced - {excludedCount} excluded</Trans>
+              <Plural value={pricedCount} one="# priced" other="# priced" />
+              {' - '}
+              <Plural value={unpricedCount} one="# unpriced" other="# unpriced" />
+              {' - '}
+              <Plural value={excludedCount} one="# excluded" other="# excluded" />
             </p>
           </>
         ) : (

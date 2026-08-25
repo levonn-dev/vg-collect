@@ -5,9 +5,8 @@ import { renderWithI18n } from '../test/i18n'
 import { recordProseFallback } from '../telemetry'
 import ProsePage, { type ProseVariants } from './ProsePage'
 
-// Isolates the component from initTelemetry's no-op-before-init state:
-// without this, recordProseFallback would be a real but uninitialized
-// no-op and the assertions below would have nothing to check.
+// Isolates from initTelemetry's no-op-before-init state so the assertions
+// below have something to check.
 vi.mock('../telemetry', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../telemetry')>()
   return { ...mod, recordProseFallback: vi.fn() }
@@ -25,9 +24,8 @@ function Ja() {
 
 // Activation is global on the singleton; every test leaves en active.
 afterEach(() => {
-  // Unmount before touching the singleton: this hook runs ahead of
-  // RTL's auto-cleanup, and re-activating against a mounted tree is
-  // an I18nProvider update outside act.
+  // Runs ahead of RTL's auto-cleanup; re-activating a mounted tree updates
+  // I18nProvider outside act.
   cleanup()
   i18n.activate('en')
   vi.clearAllMocks()

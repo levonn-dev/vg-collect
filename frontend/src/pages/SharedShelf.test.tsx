@@ -8,12 +8,10 @@ import { fxRatesFixture, jsonResponse, meFixture, problemResponse, requestPath, 
 import { renderWithI18n } from '../test/i18n'
 import SharedShelf from './SharedShelf'
 
-// Same route-map idiom as Profile.test/Explore.test: fetch is
-// dispatched by matching prefix, and any URL nothing stubbed fails
-// the test in afterEach. A route's value may be a plain body (always
-// 200), a Response (explicit status), or an array of either consumed
-// in call order (the last entry repeats once exhausted) - what the
-// grouped Load-more test needs for its second, different page.
+// Same route-map idiom as Profile.test/Explore.test: prefix-matched
+// dispatch, unstubbed URLs fail in afterEach. Value is a body,
+// Response, or array consumed in order (last repeats), for the
+// Load-more test's second page.
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
   const counts: Record<string, number> = {}
@@ -164,8 +162,8 @@ it('renders entries read-only, numbered 1-based, for a rank-sorted table stub', 
   expect(within(rows[0]).getByRole('cell', { name: '1' })).toBeInTheDocument()
   expect(within(rows[1]).getByRole('cell', { name: '2' })).toBeInTheDocument()
 
-  // The second row's region-localized title passes through unchanged:
-  // romanized text (default locale), tagged ja-Latn.
+  // Second row's region-localized title passes through unchanged:
+  // romanized text, tagged ja-Latn.
   expect(within(rows[1]).getByText('Seiken Densetsu 3')).toHaveAttribute('lang', 'ja-Latn')
 })
 
@@ -228,9 +226,8 @@ it('merges a Load more page into an already-open group instead of duplicating or
     total_count: 2,
     groups: [{ key: 'snes', label: 'SNES', entries: [sharedEntryFixture({ display_name: 'Chrono Trigger' })] }],
   }
-  // The server pages the underlying sequence before grouping, so the
-  // same key can recur on a later page - here SNES continues with a
-  // second title instead of starting a duplicate SNES section.
+  // Server pages before grouping, so the same key recurs on a later
+  // page; SNES continues, no duplicate section.
   const second = {
     total_count: 2,
     groups: [{ key: 'snes', label: 'SNES', entries: [sharedEntryFixture({ display_name: 'Super Mario World' })] }],
@@ -297,18 +294,15 @@ it('shows the undo toast and fires no immediate DELETE when the viewer deletes t
     '/api/shelves/shelf1/comments': {
       comments: [{ id: 'c1', shelf_id: 'shelf1', author_id: 'visitor', body: 'My take', created_at: new Date().toISOString() }],
     },
-    // Stubbed so the still-pending c1's unmount-triggered flush (at
-    // the end of this test, below) has somewhere valid to resolve -
-    // it must never fire WHILE the test's own assertions run, which
-    // is what the whole test verifies.
+    // Stubbed so c1's unmount-triggered flush (below) has somewhere to
+    // resolve; must never fire during the test's own assertions.
     '/api/comments/c1': new Response(null, { status: 204 }),
   })
   const { unmount } = renderShelf()
   await screen.findByText('My take')
 
-  // Fake timers engage only around the click itself: fireEvent (not
-  // userEvent) avoids userEvent's own internal delay hanging under a
-  // faked clock, matching Explore.test's established pattern.
+  // Fake timers only around the click; fireEvent avoids userEvent's
+  // delay hanging under a faked clock (Explore.test pattern).
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   act(() => {
     screen.getByRole('button', { name: 'Delete your comment: My take' }).click()
@@ -324,11 +318,7 @@ it('shows the undo toast and fires no immediate DELETE when the viewer deletes t
   })
   expect(fetchMock.mock.calls.some(([url]) => requestPath(url) === '/api/comments/c1')).toBe(false)
 
-  // c1 is still pending (never reached expiry, never undone).
-  // Unmounting here - inside the test, while fetch is still mocked -
-  // lets its unmount-triggered flush (useCommentDelete's own
-  // pagehide-equivalent commit) run safely; deferring to RTL's
-  // implicit auto-cleanup would hit the real fetch after this file's
-  // own afterEach unstubs it.
+  // c1 still pending; unmounting here (fetch still mocked) lets
+  // useCommentDelete's flush run safely, before afterEach unstubs fetch.
   act(() => unmount())
 })

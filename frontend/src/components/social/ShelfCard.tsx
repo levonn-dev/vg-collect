@@ -4,12 +4,9 @@ import type { ShelfCard } from '../../api/social'
 import { formatDate } from '../../lib/format'
 import UserChip from './UserChip'
 
-// ShelfCard is the shared shelf summary tile: Explore grids, profile
-// shelf lists, and feed excerpts all render the same card. owner rides
-// along on the payload, so the byline (via UserChip) needs no second
-// round trip. like_count/comment_count/viewer_likes are absent
-// together exactly when the page's social composition failed open -
-// only like_count is shown here, and only when present.
+// owner rides on the payload, so the byline needs no second round trip.
+// like_count/comment_count/viewer_likes are absent together when the page's
+// social composition failed open; only like_count is shown here, and only when present.
 export default function ShelfCard({ card }: { card: ShelfCard }) {
   const entryCount = card.entry_count
   const likeCount = card.like_count ?? 0

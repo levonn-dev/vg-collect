@@ -4,11 +4,8 @@ import { REGIONS } from '../gen/domain'
 
 type ListQuery = NonNullable<paths['/api/entries']['get']['parameters']['query']>
 
-// ItemType/Status/Packaging/Condition are derived from the generated
-// API schema's enum value arrays (see ../api/schema) - the wire
-// enum's single source of truth, one named vocabulary schema per
-// value set - kept under their existing names here so every importer
-// below (and every consumer of this module) compiles unchanged.
+// Derived from the generated schema's enum arrays (single source of
+// truth); kept under existing names so importers compile unchanged.
 export const ITEM_TYPES = itemTypeValues
 export const STATUSES = entryStatusValues
 export const PACKAGINGS = packagingValues
@@ -17,28 +14,20 @@ export type ItemType = (typeof ITEM_TYPES)[number]
 export type Status = (typeof STATUSES)[number]
 export type Packaging = (typeof PACKAGINGS)[number]
 export type Condition = (typeof CONDITIONS)[number]
-// The known entry regions - the machinery key set (labels always;
-// pricing class and localization chains where a region has rows).
-// region itself is open-world on the wire; these are what the UI
-// offers first-class and what the filter buckets cover. Generated
-// from api/domain.yaml (see ../gen/domain); REGIONS re-exported below
-// for existing importers.
+// Known entry regions the UI offers first-class (wire region itself is
+// open-world). Generated from api/domain.yaml; REGIONS re-exported below.
 export type Region = (typeof REGIONS)[number]
 export type Sort = NonNullable<ListQuery['sort']>
 export type Order = NonNullable<ListQuery['order']>
 export type GroupBy = NonNullable<ListQuery['group_by']>
 export type ViewMode = 'table' | 'grid' | 'compact'
 
-// PAGE_SIZE is a product paging choice, hand-set well under the contract's entries-list limit maximum (500).
+// Product paging choice, well under the contract's entries-list limit (500).
 export const PAGE_SIZE = 200
 
-// lastPage is the highest valid zero-based page for a given total -
-// shared by Pager (its Next-button bound) and Collection (clamping a
-// stale page number back into range once a total is known). A page
-// number lives in the URL, so it can outlive the data it once
-// matched (entries deleted, filters changed, a bookmarked link) and
-// needs a real total_count to be judged against - callers that only
-// have the URL (fromSearchParams) cannot make this call themselves.
+// Highest valid zero-based page for a total; shared by Pager's bound
+// and Collection's stale-page clamp. Needs a real total_count, so
+// URL-only callers (fromSearchParams) can't make this call.
 export function lastPage(totalCount: number): number {
   return Math.max(0, Math.ceil(totalCount / PAGE_SIZE) - 1)
 }
@@ -47,16 +36,15 @@ export { REGIONS }
 export const SORTS: Sort[] = ['name', 'release_date', 'purchased_at', 'created_at', 'value', 'paid', 'rating', 'backlog_rank']
 export const GROUPS: GroupBy[] = ['platform', 'status', 'item_type', 'location', 'tag']
 
-// ListState is the single source of collection-view state. The URL is
-// its persistence (shareable, back-button friendly) and shelves
-// serialize the same shape.
+// Single source of collection-view state; URL is its persistence,
+// shelves serialize the same shape.
 export interface ListState {
   itemType: ItemType[]
   status: Status[]
   packaging: Packaging[]
   region: Region[]
-  // Credit filters: open-world snapshot facts (IGDB and community
-  // names alike), matched by array overlap server-side.
+  // Open-world snapshot facts (IGDB and community names alike),
+  // matched by array overlap server-side.
   developer: string[]
   publisher: string[]
   itemCondition: Condition[]
@@ -77,8 +65,7 @@ export function defaultListState(): ListState {
   }
 }
 
-// canBacklogSort: the drag board only makes sense over exactly the
-// backlog (ranks exist only there).
+// Drag board only makes sense over exactly the backlog (ranks exist only there).
 export function canBacklogSort(s: ListState): boolean {
   return s.status.length === 1 && s.status[0] === 'backlog'
 }
@@ -95,12 +82,9 @@ function appendFilters(q: URLSearchParams, s: ListState): void {
   for (const v of s.tagId) q.append('tag_id', v)
 }
 
-// toQuery builds the /api/entries request. RULE: a backlog_rank read
-// always sends order=asc explicitly. The contract-wide order default
-// is desc (right for newest-first created_at listings), but applied to
-// rank it reverses drag order, and the board's visual-neighbor
-// reorder mapping would then disagree with rank adjacency and the
-// server would answer 409 conflicting_order.
+// backlog_rank always sends order=asc explicitly: the contract-wide
+// desc default would reverse drag order and the server answers 409
+// conflicting_order.
 export function toQuery(s: ListState): URLSearchParams {
   const q = new URLSearchParams()
   appendFilters(q, s)
@@ -117,9 +101,8 @@ export function toQuery(s: ListState): URLSearchParams {
   return q
 }
 
-// toFilterQuery serializes only the filter dimensions - the slice the
-// dashboard aggregates accept. Sort, grouping, paging, and view mode
-// change how the list reads, not which entries are counted.
+// Filter dimensions only, the slice dashboard aggregates accept;
+// sort/paging/mode don't change which entries count.
 export function toFilterQuery(s: ListState): URLSearchParams {
   const q = new URLSearchParams()
   appendFilters(q, s)
@@ -130,10 +113,8 @@ function pick<T extends string>(all: readonly T[], values: string[]): T[] {
   return values.filter((v): v is T => (all as readonly string[]).includes(v))
 }
 
-// toSearchParams/fromSearchParams persist ListState in the URL,
-// omitting defaults so plain routes stay clean. Unknown or invalid
-// values are dropped, never thrown: URLs and stored view params are
-// user-editable input.
+// Persist ListState in the URL, omitting defaults. Unknown/invalid
+// values drop, never throw: URLs are user-editable.
 export function toSearchParams(s: ListState): URLSearchParams {
   const sp = new URLSearchParams()
   appendFilters(sp, s)
@@ -170,15 +151,14 @@ export function fromSearchParams(sp: URLSearchParams): ListState {
   if (mode === 'grid' || mode === 'compact') s.mode = mode
   const view = sp.get('shelf')
   if (view) s.viewId = view
-  // A rank sort outside a pure-backlog filter has no meaning; drop it
+  // Rank sort outside a pure-backlog filter is meaningless; drop it
   // rather than render an inconsistent board.
   if (s.sort === 'backlog_rank' && !canBacklogSort(s)) s.sort = undefined
   return s
 }
 
-// toViewParams/fromViewParams serialize the same state (minus paging
-// and the view's own id) into a saved view's opaque params JSON. The
-// v marker lets a future shape change branch instead of guess.
+// Serializes ListState (minus paging/viewId) into a saved view's
+// opaque params JSON; v marker lets a future shape change branch, not guess.
 export function toViewParams(s: ListState): Record<string, unknown> {
   return {
     v: 1,

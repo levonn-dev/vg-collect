@@ -6,6 +6,7 @@ import { Navigate } from 'react-router'
 import { normalizeCommunityRegions, normalizeRegions, normalizePlatforms, triggerRefresh, triggerRematch } from '../api/admin'
 import { useMe } from '../lib/useMe'
 import { tabButtonId } from '../lib/tabs'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 import CommunityProducts from '../components/admin/CommunityProducts'
 import NormalizeTrigger, { normalizeSuccessMessage } from '../components/admin/NormalizeTrigger'
 import ProductLookup from '../components/admin/ProductLookup'
@@ -20,32 +21,26 @@ type AdminTab = 'mappings' | 'submissions'
 const MAPPINGS_PANEL = 'admin-mappings-panel'
 const SUBMISSIONS_PANEL = 'admin-submissions-panel'
 
-// Tabs.tsx renders whatever label string each caller hands it (no i18n
-// awareness of its own); the table stays msg descriptors at module
-// scope (same shape as Explore's SORT_TABS / Feed's FEED_TABS) and gets
-// resolved into the plain strings Tab<T> expects down in the component
-// body, where i18n is available.
+// Tabs.tsx has no i18n of its own, so labels stay msg descriptors at
+// module scope, resolved in the component body.
 const ADMIN_TABS: { key: AdminTab; label: MessageDescriptor; panelId: string }[] = [
   { key: 'mappings', label: msg`Mappings`, panelId: MAPPINGS_PANEL },
   { key: 'submissions', label: msg`Submissions`, panelId: SUBMISSIONS_PANEL },
 ]
 
-// Admin is the role-gated console, in two tabs: Mappings (unmatched
-// worklist, promote-candidates worklist, product lookup, then the
-// Maintenance grid of trigger cards) and Submissions (the catalog
-// review queue, then the community products cleanup list below it).
-// Layout already gates authentication; this page checks only the
-// role, and the server enforces it regardless, so a bypassed guard
-// yields 403 problems, never data.
+// Two tabs: Mappings (worklists + Maintenance triggers) and
+// Submissions (review queue + cleanup list). Layout gates
+// authentication; this page checks only role, server enforces it regardless.
 export default function Admin() {
   const { t, i18n } = useLingui()
+  useDocumentTitle(t`Admin`)
   const me = useMe()
   const [tab, setTab] = useState<AdminTab>('mappings')
   if (me.isPending) return null
   if (me.isError || !me.data.roles.includes('admin')) return <Navigate to="/" replace />
 
   return (
-    <main aria-label={t`Admin`} className="py-6">
+    <main id="main-content" tabIndex={-1} aria-label={t`Admin`} className="py-6">
       <h2 className="mb-1 text-2xl font-bold"><Trans>Admin</Trans></h2>
       <Tabs
         label={t`Admin sections`}

@@ -83,9 +83,9 @@ export type ProfileCardsResponse =
   paths['/api/shared/profiles/by-ids']['get']['responses']['200']['content']['application/json']
 export type ProfileCard = ProfileCardsResponse['profiles'][number]
 
-// Batch-hydrates submitter handles for the submissions queue. Cards come
-// back visibility-independent (the queue itself gates what it shows per
-// card), so a submitter with no listed profile still resolves a handle.
+// Batch-hydrates submitter handles; cards come back visibility-
+// independent (queue gates what it shows), so an unlisted submitter
+// still resolves a handle.
 export async function fetchProfileCards(ids: string[]): Promise<ProfileCardsResponse> {
   const params = new URLSearchParams()
   for (const id of ids) params.append('ids', id)

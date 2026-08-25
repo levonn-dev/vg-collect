@@ -25,12 +25,10 @@ it('renders the chart region with the whole-collection caption, titled in USD', 
     />,
   )
   expect(screen.getByRole('region', { name: 'Collection value over time' })).toBeInTheDocument()
-  // Scoped to the heading role: the sr-only data table's own <caption>
-  // repeats this exact sentence for non-visual users (see the test
-  // below), so a plain getByText would no longer resolve uniquely.
+  // Scoped to heading role: the sr-only table's own caption repeats this
+  // exact sentence, so a plain getByText wouldn't resolve uniquely.
   expect(screen.getByRole('heading', { name: 'Collection value in USD (last 90 days)' })).toBeInTheDocument()
-  // The series never follows filters (snapshots are aggregate
-  // history); the caption must say so.
+  // Series never follows filters (snapshots are aggregate history); caption must say so.
   expect(screen.getByText(/covers your whole collection/i)).toBeInTheDocument()
 })
 

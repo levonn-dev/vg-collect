@@ -1,9 +1,7 @@
 import { cleanNames } from './credits'
 
-// Pins every branch cleanNames actually has: trim, blank-drop (plain
-// empty and whitespace-only alike), internal whitespace left alone,
-// order preserved, and the empty-result collapse to undefined that
-// lets a caller send no key at all rather than an empty array.
+// Pins every branch: trim, blank-drop, internal whitespace preserved,
+// order preserved, empty-result collapse to undefined.
 it('trims leading and trailing whitespace off every entry', () => {
   expect(cleanNames([' Nintendo ', '\tSega\n', 'Capcom'])).toEqual(['Nintendo', 'Sega', 'Capcom'])
 })

@@ -1,9 +1,8 @@
 import { i18n } from '@lingui/core'
 import { site } from '../../lib/site'
 
-// Copy about the instance itself. Deployment facts (operator,
-// contact, active sources) come from site(); everything else
-// describes the software and holds for every instance.
+// Deployment facts (operator, contact, sources) come from site();
+// everything else describes the software.
 const SOURCE_NOTES: Record<string, string> = {
   igdb: 'Titles, platforms, genres, release dates, and cover art come from the IGDB catalog. Cover images load from IGDB directly.',
   pricecharting:
@@ -15,7 +14,7 @@ const SOURCE_NOTES: Record<string, string> = {
 export default function AboutEn() {
   const s = site()
   return (
-    <main aria-label="About" className="mx-auto w-full max-w-2xl p-6">
+    <main id="main-content" tabIndex={-1} aria-label="About" className="mx-auto w-full max-w-2xl p-6">
       <h2 className="mb-4 text-2xl font-bold">About {s.name}</h2>
       <div className="flex flex-col gap-4 text-sm text-gray-700">
         <p>

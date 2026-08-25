@@ -1,6 +1,4 @@
-// Vector stand-in for entries and catalog items without artwork; the
-// item type picks the glyph. Decorative only: the surrounding card
-// carries the accessible name, so the svg stays aria-hidden.
+// Decorative: the surrounding card carries the accessible name, so aria-hidden.
 const glyphFor = (type?: string) => (type === 'console' || type === 'accessory' ? type : 'game')
 
 export default function ItemTypeIcon({ type, className }: { type?: string; className?: string }) {

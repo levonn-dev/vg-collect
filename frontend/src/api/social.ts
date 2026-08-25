@@ -56,10 +56,8 @@ export async function postComment(shelfId: string, body: string): Promise<Commen
   )
 }
 
-// opts is an optional trailing bag (currently just keepalive, for
-// callers that must survive the tab closing mid-request, e.g. a
-// beacon-style commit on pagehide/unmount) - additive so every
-// existing call site keeps compiling unchanged.
+// opts is an additive trailing bag (currently just keepalive, for a
+// beacon-style commit on pagehide/unmount).
 export async function deleteComment(
   id: string,
   opts?: { keepalive?: boolean },
@@ -88,8 +86,8 @@ export async function unlike(shelfId: string): Promise<void> {
   return unwrap<void>(await api.DELETE('/api/social/likes/{shelfId}', { params: { path: { shelfId } } }))
 }
 
-// fetchFeed appends &cursor= only when the caller supplies one, so
-// the first page of a tab never carries a stale or empty cursor.
+// Appends &cursor= only when supplied, so the first page never
+// carries a stale cursor.
 export async function fetchFeed(tab: FeedTab, cursor?: string): Promise<FeedPage> {
   const params = new URLSearchParams({ tab })
   if (cursor) params.set('cursor', cursor)

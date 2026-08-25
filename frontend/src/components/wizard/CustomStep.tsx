@@ -26,21 +26,19 @@ export interface CustomValues {
 }
 
 interface CustomStepProps {
-  // Seeds the form when a caller remounts this step with values it
-  // already collected (e.g. wizard Back from a later step); omitted,
-  // the step starts blank as before.
+  // Seeds the form when a caller remounts with values already collected (e.g.
+  // wizard Back); omitted, the step starts blank.
   initialValues?: CustomValues
-  // Seeds a fresh (no initialValues) form's name and type from the
-  // search the caller was on before falling back to custom - e.g. a
-  // hardware-tab search seeds itemType accessory. Ignored once
-  // initialValues carries a real Back snapshot.
+  // Seeds a fresh form's name/type from the search the caller was on (e.g. a
+  // hardware-tab search seeds itemType accessory); ignored once initialValues
+  // carries a real Back snapshot.
   seed?: { displayName: string; itemType: CustomValues['itemType'] }
   onBack: () => void
   onNext: (c: CustomValues) => void
 }
 
-// CustomStep collects the display facts for an item no provider lists.
-// These stay user-owned and editable, unlike catalog snapshots.
+// Display facts for an item no provider lists; stay user-owned/editable,
+// unlike catalog snapshots.
 export default function CustomStep({ initialValues, seed, onBack, onNext }: CustomStepProps) {
   const { t, i18n } = useLingui()
   const [v, setV] = useState<CustomValues>(() => initialValues ?? {
@@ -48,42 +46,23 @@ export default function CustomStep({ initialValues, seed, onBack, onNext }: Cust
     platformIgdbId: undefined, region: '', firstReleaseDate: '', coverUrl: '',
     developers: [], publishers: [],
   })
-  // Pristine until the user picks a region themselves - only then does
-  // a later platform pick's suggestion stop overwriting it. A Back
-  // remount that restores an already-explicit region (initialValues
-  // carrying a non-empty one) counts as touched from the start: that
-  // region was itself either a prior explicit pick or an earlier
-  // platform default already applied, and either way a later platform
-  // pick on the same remount must not clobber it.
+  // Pristine until the user picks a region; only then does a platform pick's
+  // suggestion stop overwriting it. A Back remount restoring a non-empty
+  // region counts as touched from the start, so a later platform pick can't
+  // clobber it.
   const [regionTouched, setRegionTouched] = useState(() => initialValues !== undefined && initialValues.region !== '')
-  // Toggles the embedded SearchPicker used to prefill the form from an
-  // existing catalog item (below) - kept as its own flag, not derived
-  // from v, so Cancel can close the picker without touching any typed
-  // field.
+  // Own flag, not derived from v, so Cancel can close the picker without
+  // touching any typed field.
   const [basing, setBasing] = useState(false)
-  // Bumped by applyBase to key-remount PlatformPicker and RegionPicker
-  // below - see applyBase's comment for why a remount, not a prop
-  // update, is what makes an externally applied base actually show up.
+  // Bumped by applyBase to key-remount PlatformPicker/RegionPicker below (see
+  // applyBase for why a remount, not a prop update, is needed).
   const [baseGeneration, setBaseGeneration] = useState(0)
 
-  // Replaces the form wholesale with the picked item's own facts - a
-  // starting point the user can still edit, not a link to the catalog
-  // item. pc_listing is excluded: a listing is a price source, not an
-  // identity a custom item can be based on, and SearchPicker's default
-  // kinds never surface one here anyway.
-  //
-  // Both pickers below derive their display mode from a useState
-  // initializer that only runs at mount (RegionPicker: known value vs
-  // free text; PlatformPicker: confirmed pick vs free-text search
-  // text), so writing the new values into v alone would leave a picker
-  // stuck in whatever mode it was already showing - RegionPicker's
-  // escape hatch still open with the wire value hidden in text mode,
-  // PlatformPicker's cached search text stale next to the new pick.
-  // Bumping baseGeneration changes their key, forcing a full remount so
-  // each re-derives its mode from the freshly applied values. Deriving
-  // mode from value transitions instead (no remount) would trade this
-  // bug for a worse one: it would snap a picker shut mid-typing any
-  // time a user's own free-text entry happened to match a known value.
+  // pc_listing excluded: a price source, not an identity to base an item on.
+  // Both pickers derive display mode from a mount-only useState initializer,
+  // so new values in v alone leave them stuck in the old mode; bumping
+  // baseGeneration remounts them to re-derive it, instead of deriving mode
+  // from value (which would snap a picker shut mid-typing on a text match).
   const applyBase = (p: CatalogPick) => {
     if (p.kind === 'pc_listing') return
     setRegionTouched(true)
@@ -118,11 +97,9 @@ export default function CustomStep({ initialValues, seed, onBack, onNext }: Cust
     <div className="flex flex-col gap-3">
       {basing ? (
         <div className="rounded border border-gray-200 p-3">
-          {/* A sibling of the form below, not a child: nesting SearchPicker's
-              own <form> inside this step's <form> would let a native submit
-              (its Search button, or Enter in its search box) bubble up and
-              fire this step's onSubmit too - Continue-by-accident on every
-              picker search. */}
+          {/* Sibling of the form below, not a child: nesting SearchPicker's
+              <form> inside this step's would let a native submit bubble up
+              and fire onSubmit too - Continue-by-accident on every search. */}
           <SearchPicker initialQuery={v.displayName || (seed?.displayName ?? '')} onPick={applyBase} />
           <button type="button" onClick={() => setBasing(false)} className={linkButtonClass}>
             <Trans>Cancel</Trans>

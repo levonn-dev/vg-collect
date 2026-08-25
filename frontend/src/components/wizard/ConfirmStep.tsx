@@ -21,12 +21,9 @@ import { detailsToCreate } from './DetailsStep'
 import ConfirmShell from './ConfirmShell'
 import ManualMatchPicker from '../catalog/ManualMatchPicker'
 
-// product_id is always the already-resolved product above, and
-// pricing_mode never leaves auto on this path (the wizard's proxy
-// picker only applies post-creation, in PricingPanel) - so of
-// createEntry's documented codes, only a resolved product vanishing
-// out from under the create and enrichment itself being unreachable
-// are reachable here.
+// pricing_mode never leaves auto on this path (the proxy picker applies
+// post-creation, in PricingPanel), so of createEntry's documented codes only
+// a vanished product and unreachable enrichment are reachable here.
 const createEntryErrorCodes: Record<string, MessageDescriptor> = {
   unknown_product: msg`No product with that id.`,
   enrichment_unavailable: msg`The catalog cannot be reached - try again.`,
@@ -38,29 +35,23 @@ function createEntryErrorMessage(e: unknown, i18n: I18n): string {
 interface ConfirmStepProps {
   pick: CatalogPick
   details: DetailsValues
-  // The user's exact listing choice, when one was made; rides the
-  // resolve and lands on that listing's own product. onManualMatch
-  // reports a choice made HERE (either card's picker) so the wizard
-  // state owns it either way.
+  // User's exact listing choice, when made; rides the resolve to that
+  // listing's product. onManualMatch reports a choice made here either way.
   manualMatch?: ManualMatch
   onManualMatch: (m: ManualMatch) => void
   onBack: () => void
 }
 
-// ConfirmStep resolves the canonical product (find-or-create is
-// idempotent by contract, so a query fits despite the POST) and shows
-// its price-match status before the entry is created: the user sees
-// what "market value" will mean for this copy.
+// find-or-create is idempotent by contract, so a query fits despite the
+// POST; shows price-match status before the entry is created.
 export default function ConfirmStep({ pick, details, manualMatch, onManualMatch, onBack }: ConfirmStepProps) {
   const { t, i18n } = useLingui()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const money = useDisplayMoney()
   const [matchOpen, setMatchOpen] = useState(false)
-  // Community picks name a product that is already minted: fetch it
-  // directly and skip the resolve. (The req/queryFn branches both
-  // recheck pick.kind, rather than branching on communityId, so each
-  // stays narrowed to the provider-only picks resolveRequestFor takes.)
+  // Community picks name an already-minted product: fetch directly, skip
+  // resolve. req/queryFn recheck pick.kind (not communityId) to stay narrowed.
   const communityId = pick.kind === 'community' ? pick.productId : null
   const req = pick.kind === 'community' ? null : resolveRequestFor(pick, manualMatch, details.edition, details.region)
   const product = useQuery({
@@ -118,8 +109,7 @@ export default function ConfirmStep({ pick, details, manualMatch, onManualMatch,
       submitPending={create.isPending}
     >
       {matchOpen ? (
-        // The picker takes the status card's place while open; the
-        // Back and Add actions stay put below it.
+        // Picker takes the status card's place while open; Back/Add stay put below.
         <ManualMatchPicker
           initialQuery={pick.name}
           onPick={(m) => {

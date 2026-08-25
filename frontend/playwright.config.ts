@@ -1,18 +1,15 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// Runs against the live dev stack through the APISIX gateway
-// port-forward; nothing is started here. Bring the stack up first
-// (task run), then: task e2e
+// Runs against the live dev stack (task run, then task e2e); nothing
+// is started here.
 //
-// Tests are isolation-first (per-run minted users, API-seeded state),
-// so they run fully parallel. The worker count is bounded by the
-// gateway's shared per-IP request budget, not by CPU; E2E_WORKERS
-// overrides for tuning and for the single-worker isolation check.
+// Isolation-first (per-run minted users, API-seeded state), so tests
+// run fully parallel. Worker count is bounded by the gateway's per-IP
+// budget, not CPU; E2E_WORKERS overrides for tuning.
 export default defineConfig({
   testDir: './e2e',
-  // Before any test: sweep accounts and products stranded by earlier
-  // runs that died before their teardowns (see global-setup.ts); after
-  // a completed run: drop this run's minted manifests (global-teardown).
+  // Sweeps stranded accounts/products before tests (global-setup.ts);
+  // drops this run's manifests after (global-teardown).
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
   fullyParallel: true,
@@ -21,8 +18,8 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: process.env.BFF_URL ?? 'http://localhost:8090',
-    // Money assertions read navigator.language; pin en-US so symbol
-    // placement and grouping stay deterministic across machines.
+    // Money assertions read navigator.language; pin en-US for
+    // deterministic symbol placement/grouping.
     locale: 'en-US',
     trace: 'retain-on-failure',
   },

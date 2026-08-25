@@ -1,7 +1,5 @@
-// Logo renders the brand mark inline: the pixel VG monogram on its
-// wide indigo tile (docs/brand/logo.svg is the canonical source).
-// Decorative on purpose - the header's h1 carries the accessible
-// name, and the indigo is a fixed brand color, not a theme token.
+// docs/brand/logo.svg is the canonical source. Decorative (h1 carries the
+// accessible name); indigo is a fixed brand color, not a theme token.
 export default function Logo({ className = 'h-7 w-auto' }: { className?: string }) {
   return (
     <svg viewBox="0 0 120 90" width="40" height="30" aria-hidden="true" className={className}>

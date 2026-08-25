@@ -1,17 +1,15 @@
 import { site } from '../../lib/site'
 
-// Japanese Terms page; mirrors Terms.en section for section.
-// Boilerplate terms for a self-hosted instance, not legal advice.
-// Operators deploying publicly should have this reviewed. Statements
-// about deletion and content must track actual app behavior; change
-// the Last updated date when the text changes.
+// Mirrors Terms.en section for section. Boilerplate, not legal advice;
+// deletion/content statements must track actual app behavior, move the
+// Last updated date on change.
 export default function TermsJa() {
   const s = site()
   const providers =
     s.authProviders.map((p) => p.label).join('または') || '第三者のログインプロバイダー'
   const contact = s.contact || 'このインスタンスの運営者'
   return (
-    <main aria-label="利用規約" className="mx-auto w-full max-w-2xl p-6">
+    <main id="main-content" tabIndex={-1} aria-label="利用規約" className="mx-auto w-full max-w-2xl p-6">
       <h2 className="mb-4 text-2xl font-bold">利用規約</h2>
       <div className="flex flex-col gap-4 text-sm text-gray-700">
         <section aria-label="同意">

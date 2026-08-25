@@ -21,13 +21,9 @@ function renderExplore() {
   )
 }
 
-// Fetch is routed per endpoint (first matching prefix wins) so each
-// test declares exactly the calls it expects; a URL nothing stubbed
-// is recorded and fails the test in afterEach (Admin.test's idiom). A
-// route's value may be a plain body (always 200), a Response (explicit
-// status), or an array of either consumed in call order - the last
-// entry repeats once exhausted - which is what the load-more test
-// needs for a second, different page.
+// Fetch routed per endpoint, first matching prefix wins; unstubbed
+// URLs fail in afterEach (Admin.test idiom). Value is a body, Response,
+// or array consumed in order (last repeats), for the load-more test's second page.
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
   const counts: Record<string, number> = {}
@@ -111,10 +107,9 @@ it('swaps to the top-sort query, and its data, when the Top tab is selected', as
 })
 
 it('loads the next recent page via Load more, using the server-computed next_offset', async () => {
-  // next_offset (30) deliberately differs from shelves.length (24) -
-  // the bff's collection-space offset skips rows gated out server-side,
-  // so a client-side loaded-count tally would resume from the wrong
-  // spot. This proves the offset comes from the response, not a count.
+  // next_offset (30) deliberately differs from shelves.length (24):
+  // bff's offset skips server-gated rows, so a client-side tally would
+  // resume wrong. Proves offset comes from the response.
   const first = { shelves: Array.from({ length: 24 }, (_, i) => shelf(`s${i}`, `Shelf ${i}`)), next_offset: 30 }
   const second = { shelves: [shelf('s24', 'Shelf 24')] }
   const fetchMock = stubFetch({ '/api/explore?sort=recent': [first, second] })
@@ -124,18 +119,13 @@ it('loads the next recent page via Load more, using the server-computed next_off
   await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
   expect(await screen.findByRole('link', { name: 'Shelf 24' })).toBeInTheDocument()
   expect(calledPath(fetchMock, 1)).toBe('/api/explore?sort=recent&offset=30')
-  // The second page carries no next_offset - the stream is exhausted,
-  // so Load more must not render.
+  // Second page carries no next_offset (exhausted); Load more must not render.
   expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
 })
 
-// Faking only setTimeout/clearTimeout keeps the fake clock scoped to
-// the debounce's own timer. React's async act() (which findBy*/
-// waitFor wrap internally) needs real timers to flush even once the
-// DOM is already correct, so every test below switches back to real
-// timers immediately after the advance - before any findBy* call,
-// never mid-wait (waitFor forbids that switch, and for good reason:
-// half-drained timers make for a confusing failure).
+// Fakes only setTimeout/clearTimeout, scoped to the debounce timer.
+// act()/findBy* need real timers to flush, so tests switch back right
+// after the advance, never mid-wait.
 function advanceDebounce() {
   act(() => {
     vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS)
@@ -159,9 +149,8 @@ it('debounces the search box, firing /api/search/users only once idle, and rende
 
 it('shows a Searching indicator while the debounced query is in flight, replaced by results once it resolves', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-  // A held promise (Explore.test's stubFetch resolves every route
-  // immediately, which can never model an in-flight fetch) - same
-  // captured-resolve idiom as CommentList.test's in-flight regression.
+  // Held promise: stubFetch resolves immediately and can't model
+  // in-flight, so this uses CommentList.test's captured-resolve idiom.
   let resolveSearch!: (res: Response) => void
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
     if (requestPath(url).startsWith('/api/search/users')) {

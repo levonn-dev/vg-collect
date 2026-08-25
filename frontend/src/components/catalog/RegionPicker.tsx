@@ -8,19 +8,14 @@ import { regionLabels } from '../../lib/regionLabels'
 
 const REGION_MAX = EntryCreate.properties.region.maxLength
 
-// RegionPicker is PlatformPicker's sibling for the open-world region:
-// the known values as a labeled select, free text behind an
-// explicit escape hatch. Mode derives from the value (a stored
-// free-text region opens in text mode), plus a local flag so an empty
-// free-text draft does not snap back to the select mid-typing.
+// Mode derives from the value (a stored free-text region opens in text mode),
+// plus a local flag so an empty free-text draft doesn't snap back mid-typing.
 export default function RegionPicker({ value, onChange, regionGroup, required }: {
   value: string
   onChange: (v: string) => void
   regionGroup?: { platformName: string; regions: EntryRegion[] }
-  // Entry-owned surfaces (DetailsStep, EntryForm) must not submit an
-  // empty region - the server 400s it - so they pass required; the
-  // item-facts surfaces (CustomStep's base draft, ReviewPanel's mint
-  // form) leave this unset because an empty region is legitimate there.
+  // Entry-owned surfaces (DetailsStep, EntryForm) pass required since the
+  // server 400s an empty region; item-facts surfaces leave it unset.
   required?: boolean
 }) {
   const { t, i18n } = useLingui()

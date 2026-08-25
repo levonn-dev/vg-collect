@@ -1,15 +1,9 @@
 import { acceptNext, expect, loginAs, test } from './fixtures'
 import { createEntry, createTag, deleteEntry, deleteTag } from './seed'
 
-// Seven independent tests covering collection management: granular
-// field edits, pinning, backlog reordering, shelves (saved filter
-// views), bulk edit, and the platform/developer/publisher facets. Six
-// run on the shared worker user and assert only against their own
-// stamped entries; the bulk edit test's tag-filtered row count is the
-// one count assertion in the file, safe because the stamped tag
-// isolates exactly its own two rows. The developer/publisher facet
-// test uses a fresh user instead, since those facets aggregate across
-// every entry the signed-in user owns.
+// Six tests run on the shared worker user, asserting only their own
+// stamped entries (bulk edit's tag-filtered count is isolated by the
+// stamped tag); the facet test uses freshUser since facets aggregate.
 const stamp = `e2e-col-${Date.now()}`
 
 test('granular field edits persist', async ({ page, api }) => {
@@ -20,8 +14,7 @@ test('granular field edits persist', async ({ page, api }) => {
   await page.getByLabel('Notes').fill(`${stamp} tested and working`)
   await page.getByLabel('Item condition').selectOption('good')
   await page.getByRole('button', { name: 'Save changes' }).click()
-  // Wait for the save confirmation before reloading: reloading right
-  // after the click can race the write and read back stale values.
+  // Wait for save confirmation before reload to avoid reading back stale values.
   await expect(page.getByText('Saved.')).toBeVisible()
   await page.reload()
   await expect(page.getByLabel('Notes')).toHaveValue(`${stamp} tested and working`)
@@ -54,19 +47,15 @@ test('backlog reorder persists server-side', async ({ page, api }) => {
   await page.getByRole('link', { name: 'Collection', exact: true }).click()
   // The chip is behind the Filters disclosure; open it first.
   await page.getByRole('button', { name: /^Filters/ }).click()
-  // The status filter is a controlled checkbox that rewrites the URL,
-  // so a plain click drives it (check() races the re-render); the
-  // backlog sort option only exists once the filter is exactly the
-  // backlog.
+  // Controlled checkbox rewrites the URL; click, not check() (races the
+  // re-render). Backlog sort exists only once filtered.
   await page.getByRole('checkbox', { name: 'Backlog' }).click()
   await expect(page.getByRole('checkbox', { name: 'Backlog' })).toBeChecked()
   await page.getByLabel('Sort').selectOption('backlog_rank')
   const board = page.getByRole('region', { name: 'Backlog order' })
   await expect(board).toBeVisible()
   const handleA = board.getByRole('button', { name: `Drag ${customA}` })
-  // Pre-drag order: A is above B (backlog rank appends in creation
-  // order), so the post-drag check below reflects a real move and not
-  // the starting layout.
+  // A starts above B (creation order); post-drag check proves a real move.
   await expect(handleA).toBeVisible()
   const orderOf = async () => {
     const texts = await board.getByRole('listitem').allTextContents()
@@ -79,22 +68,16 @@ test('backlog reorder persists server-side', async ({ page, api }) => {
     expect(a).toBeLessThan(b)
   }).toPass()
 
-  // Scroll targetB into view before measuring: an extra backlog row
-  // (another entry can already sit in the backlog on a long-lived
-  // stack) can push the last row to the viewport fold, and a drop
-  // aimed past a clipped row lands outside the viewport where the
-  // pointer never lands on it, leaving over==null and a no-op drop.
+  // Scroll target into view first: an extra backlog row can push it
+  // past the viewport fold, leaving a clipped drop as a no-op.
   const rowBLoc = board.getByRole('listitem').filter({ hasText: customB })
   await rowBLoc.scrollIntoViewIfNeeded()
   const from = await handleA.boundingBox()
   const rowB = await rowBLoc.boundingBox()
   if (!from || !rowB) throw new Error('drag handles not visible')
-  // Drag handles are left-aligned and closestCenter picks the
-  // droppable nearest the dragged row's center, so stay in the handle
-  // column (a horizontal excursion shoves the row out of the list ->
-  // over==null) and sink past targetB's midpoint. Nudge first to arm
-  // the PointerSensor, step down the column to targetB's lower edge,
-  // then settle before release.
+  // closestCenter picks the nearest droppable by row center; stay in
+  // the handle column (horizontal move -> over==null). Nudge first to
+  // arm PointerSensor.
   const dragX = from.x + from.width / 2
   await page.mouse.move(dragX, from.y + from.height / 2)
   await page.mouse.down()
@@ -103,9 +86,8 @@ test('backlog reorder persists server-side', async ({ page, api }) => {
   await page.mouse.move(dragX, rowB.y + rowB.height - 4)
   await page.mouse.up()
 
-  // The write is server-side: reload and the order holds. A full
-  // reload refetches the list, so wait for the board to repaint
-  // before reading the order.
+  // Write is server-side; reload refetches, so wait for the board to
+  // repaint before reading order.
   await page.reload()
   await expect(board.getByRole('button', { name: `Drag ${customA}` })).toBeVisible()
   await expect(async () => {
@@ -133,10 +115,8 @@ test('shelf round-trip: save, clear, reapply', async ({ page, api }) => {
   await expect(page.getByRole('checkbox', { name: 'Backlog' })).toBeChecked()
   await page.getByLabel('Sort').selectOption('backlog_rank')
   await expect(page.getByRole('region', { name: 'Backlog order' })).toBeVisible()
-  // Close the panel before the round trip below: reapplying a shelf
-  // never auto-opens it (the Filters count badge is the only signal),
-  // so the panel must already be closed for the later re-open click to
-  // actually prove that instead of just toggling it shut.
+  // Close the panel first: reapplying a shelf never auto-opens it
+  // (count badge is the only signal).
   await page.getByRole('button', { name: /^Filters/ }).click()
 
   acceptNext(page, viewName)
@@ -145,15 +125,13 @@ test('shelf round-trip: save, clear, reapply', async ({ page, api }) => {
   await page.getByRole('button', { name: 'Clear filters' }).click()
   await expect(page.getByRole('region', { name: 'Backlog order' })).toBeHidden()
   await page.getByRole('combobox', { name: 'Shelf' }).selectOption({ label: viewName })
-  // Reapplying the shelf restores its filters but never auto-opens the
-  // panel (the Filters count badge is the signal, not a forced
-  // reveal); open it again before the checkbox is reachable.
+  // Reapply restores filters but doesn't auto-open the panel; open it
+  // before the checkbox is reachable.
   await page.getByRole('button', { name: /^Filters/ }).click()
   await expect(page.getByRole('checkbox', { name: 'Backlog' })).toBeChecked()
   await expect(page.getByRole('region', { name: 'Backlog order' })).toBeVisible()
 
-  // Cleanup: delete the shelf through the UI (no helper deletes a view
-  // over the API), then both entries.
+  // No helper deletes a view over the API; delete through the UI.
   acceptNext(page)
   await page.getByRole('button', { name: 'Delete shelf' }).click()
   await expect(page.getByRole('option', { name: viewName })).toHaveCount(0)
@@ -172,9 +150,8 @@ test('bulk edit applies tags and status; the tag facet isolates rows', async ({ 
 
   const bulkTagName = `bulk ${stamp}`
   const bulkTagId = await createTag(api, bulkTagName)
-  // The page's tags list was fetched before this tag existed and never
-  // refetches on its own; reload to pick it up before the bulk bar's
-  // Add tags group can offer it.
+  // Tags list was fetched before this tag existed and never refetches;
+  // reload to pick it up.
   await page.reload()
 
   await page.getByRole('button', { name: 'Bulk edit' }).click()
@@ -203,11 +180,8 @@ test('bulk edit applies tags and status; the tag facet isolates rows', async ({ 
 test('platform facet from a picker-created entry', async ({ page, api }) => {
   await page.goto('/')
   const name = `Picker Cart ${stamp}`
-  // Mirrors the payload the custom-add wizard sends once a platform
-  // picker suggestion is chosen (CustomConfirm in AddWizard.tsx):
-  // platform_name plus the picker's platform_igdb_id, here Super
-  // Nintendo Entertainment System (igdb platform id 19 in the catalog
-  // fixture data).
+  // Mirrors CustomConfirm's platform-picker payload: platform_name +
+  // platform_igdb_id (19 = SNES in fixture data).
   const entry = await createEntry(api, {
     display_name: name,
     platform_name: 'Super Nintendo Entertainment System',
@@ -247,16 +221,12 @@ test('developer and publisher facets filter the collection', async ({ page, fres
   await expect(page.getByRole('row', { name: new RegExp(creditedName) })).toBeVisible()
   await expect(page.getByRole('row', { name: new RegExp(uncreditedName) })).toHaveCount(0)
 
-  // Clear the developer filter before checking publisher: every filter
-  // dimension combines with AND (filterWhere in the collection
-  // service's store_entries.go), so leaving developer checked would
-  // make the publisher assertions below pass on the AND of both rather
-  // than proving the publisher facet filters on its own.
+  // Filters combine with AND (filterWhere, store_entries.go); clear
+  // developer first so publisher's assertions prove it alone.
   await page.getByRole('button', { name: 'Clear filters' }).click()
 
-  // Facets are user-global aggregates (fetchEntryFacets sweeps every
-  // entry this user owns), so the publisher group renders from the
-  // credited entry's own seeded value the same way developers did above.
+  // Facets are user-global aggregates (fetchEntryFacets); publisher
+  // group renders the same way developer did above.
   const publisherGroup = page.getByRole('group', { name: 'Publisher' })
   await expect(publisherGroup.getByText(pubName)).toBeVisible()
   await publisherGroup.getByRole('checkbox', { name: pubName }).click()

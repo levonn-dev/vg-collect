@@ -10,12 +10,8 @@ interface FollowButtonProps {
   viewerFollows: boolean
 }
 
-// FollowButton toggles the follow edge through the dedicated PUT/DELETE
-// routes - a follow is a fact, not a resource with sibling fields to
-// preserve, so there is no PinStar-style full-baseline replacement
-// here. viewerFollows is read straight off the caller's props: the
-// button owns no local state, so its next render always reflects
-// whatever the invalidated profile query re-fetches.
+// A follow is a fact, not a resource with sibling fields to preserve, so no
+// full-baseline PUT; viewerFollows is read straight off props (no local state).
 export default function FollowButton({ userId, handle, viewerFollows }: FollowButtonProps) {
   const queryClient = useQueryClient()
   const toggle = useMutation({
@@ -29,10 +25,8 @@ export default function FollowButton({ userId, handle, viewerFollows }: FollowBu
       onClick={() => toggle.mutate()}
       disabled={toggle.isPending}
       aria-pressed={viewerFollows}
-      // The "Follow" branch stays hand-rolled at btnSecondary's own
-      // px-3 py-1 footprint rather than adopting btnPrimary (px-4
-      // py-2): the two branches must render at the same size, or the
-      // button visibly grows/shrinks on every follow/unfollow click.
+      // Hand-rolled at btnSecondary's px-3 py-1 footprint, not btnPrimary's
+      // px-4 py-2: both branches must render at the same size or the button resizes.
       className={
         viewerFollows
           ? btnSecondary

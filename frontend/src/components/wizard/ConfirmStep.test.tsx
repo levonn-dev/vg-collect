@@ -222,9 +222,8 @@ it('keeps the gray card remedy and shows no admin note anywhere', async () => {
     created_at: 'x', updated_at: 'x',
   }
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, anchored)))
-  // A manual match that disagrees with the resolved listing used to be
-  // exactly what triggered the deleted admin note; keep that shape here
-  // so this stays a real guard against its return.
+  // A manual match disagreeing with the resolved listing keeps this shape as
+  // a guard against the removed admin note reappearing.
   const matched = renderConfirm(vi.fn(), { manualMatch: { pcProductId: 5099, name: 'A different listing' } })
   expect(await screen.findByText(/match 100%/i)).toBeInTheDocument()
   expect(screen.queryByText(/already matched to a different listing/i)).not.toBeInTheDocument()

@@ -1,4 +1,4 @@
-import { Trans, useLingui } from '@lingui/react/macro'
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { msg } from '@lingui/core/macro'
 import type { I18n, MessageDescriptor } from '@lingui/core'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -12,17 +12,14 @@ import { btnSecondary } from '../../lib/formStyles'
 import { resolveApiError } from '../../lib/resolveApiError'
 import SectionLabel from '../SectionLabel'
 
-// The server's own cap on entry_ids per request (api/bff.yaml); the
-// bar disables Apply and explains itself once the shared selection
-// grows past it rather than let the request fail server-side. `cap`
-// (not the constant's own name) is also the interpolation placeholder
-// the over-cap message below renders, so its msgid reads naturally.
+// Server's cap on entry_ids per request; Apply disables and explains itself
+// past it rather than fail server-side. Named `cap` (not the facet's own
+// name) so it doubles as the over-cap message's interpolation placeholder.
 const cap = BulkUpdateRequestFacet.properties.entry_ids.maxItems
 const STORAGE_LOCATION_MAX = BulkUpdateRequestFacet.properties.storage_location.maxLength
 
-// The only per-entry-tag-cap code the transaction can answer (api/bff.yaml);
-// everything else 400s as invalid_body, whose detail text already says
-// what is wrong better than one static message could.
+// The only per-entry-tag-cap code the transaction can answer; everything else
+// 400s as invalid_body, whose detail text already explains itself.
 const bulkUpdateErrorCodes: Record<string, MessageDescriptor> = {
   tag_cap_exceeded: msg`One or more of the selected entries would end up with too many tags.`,
 }
@@ -35,22 +32,14 @@ interface BulkEditBarProps {
   selected: ReadonlySet<string>
   tags: Tag[]
   onCancel: () => void
-  // Fires only on a successful apply, with the response's updated_count
-  // - Collection exits bulk mode, clears the selection, and announces
-  // the count itself, so the bar does not need to survive its own
-  // unmount to show that message.
+  // Fires only on success, with updated_count; Collection announces the
+  // count itself so the bar doesn't need to survive its own unmount.
   onApplied: (updatedCount: number) => void
 }
 
-// BulkEditBar is Collection's bulk-actions surface, mounted only while
-// bulk mode is on. It owns its own draft (which tags to add/remove, an
-// optional status, an optional storage location) and the single
-// mutation that submits them together against the shared selection
-// Set. Cancel and a successful apply both hand control back to
-// Collection immediately; a FAILED apply deliberately does neither -
-// the draft and the selection stay exactly as they were so a
-// tag_cap_exceeded response (or any other 400) leaves the user able to
-// adjust and retry without reselecting anything.
+// Cancel and a successful apply hand control back to Collection immediately;
+// a failed apply does neither, so the draft/selection survive for a retry
+// (e.g. tag_cap_exceeded) without reselecting.
 export default function BulkEditBar({ selected, tags, onCancel, onApplied }: BulkEditBarProps) {
   const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
@@ -63,25 +52,17 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
   const apply = useMutation({
     mutationFn: (body: BulkUpdateRequest) => bulkUpdateEntries(body),
     onSuccess: (result) => {
-      // Precisely the queries a bulk update can move: the list itself,
-      // tag usage counts (add/remove both touch entry_count), the
-      // dashboard stats a status change feeds (InsightsPanel/StatCards
-      // - both keyed under 'dashboard'), and recommendation weights (a
-      // status change alters them server-side - dropped halves a
-      // game's weight - the same reason EntryDetail's single-entry
-      // save invalidates 'recommendations' on every save).
+      // Invalidates: the list, tag usage counts (entry_count), dashboard stats
+      // ('dashboard'), and recommendation weights (a status change alters them
+      // server-side, e.g. dropped halves a game's weight).
       invalidateEntryQueries(queryClient, [['tags']])
       onApplied(result.updated_count)
     },
   })
 
-  // A tag checked on one side un-checks it on the other: add_tag_ids
-  // and remove_tag_ids sharing an id would submit a self-contradictory
-  // request with no indication of which side the server would apply.
-  // The sibling clear is decided from the current render's own state
-  // (read once, outside either updater) and issued as its own setState
-  // call, not from inside the other setter's updater - updaters stay
-  // pure functions of their own previous value.
+  // add_tag_ids/remove_tag_ids sharing an id would be self-contradictory, so
+  // checking one unchecks the other. The sibling clear reads current state
+  // outside either updater, as its own setState - updaters stay pure.
   const toggleAddTag = (id: string) => {
     const adding = !addTagIds.includes(id)
     setAddTagIds((v) => (adding ? [...v, id] : v.filter((x) => x !== id)))
@@ -102,9 +83,8 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
     if (addTagIds.length > 0) body.add_tag_ids = addTagIds
     if (removeTagIds.length > 0) body.remove_tag_ids = removeTagIds
     if (status !== '') body.status = status
-    // Checked-with-empty-text clears the field (an explicit '' on the
-    // wire); unchecked never sets the key at all, leaving it untouched
-    // - the opposite of the single-entry form's clearing rule.
+    // Checked+empty clears the field (explicit '' on the wire); unchecked
+    // never sets the key - opposite of the single-entry form's rule.
     if (locationEnabled) body.storage_location = location
     apply.mutate(body)
   }
@@ -116,7 +96,9 @@ export default function BulkEditBar({ selected, tags, onCancel, onApplied }: Bul
       className="mb-3 flex flex-col gap-3 rounded border border-gray-300 bg-gray-50 p-3"
     >
       <div className="flex flex-wrap items-end gap-4">
-        <span className="text-sm font-medium"><Trans>{selectedCount} selected</Trans></span>
+        <span className="text-sm font-medium">
+          <Plural value={selectedCount} one="# selected" other="# selected" />
+        </span>
         <fieldset disabled={disabled} className="flex flex-wrap items-center gap-2">
           <SectionLabel as="legend" size="xs" className="float-left mr-2">
             <Trans>Add tags</Trans>

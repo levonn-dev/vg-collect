@@ -12,8 +12,8 @@ import type { PricingValue } from './PricingPanel'
 import PricingPanel from './PricingPanel'
 import TagPicker from './TagPicker'
 
-// The shared copy-details cluster plus what only the editor collects:
-// the custom-entry display fields, tags, and the pricing draft.
+// Shared copy-details cluster plus what only the editor collects: custom-entry
+// display fields, tags, and the pricing draft.
 interface FormValues extends CopyDetailsValues {
   displayName: string
   platformName: string
@@ -24,9 +24,8 @@ interface FormValues extends CopyDetailsValues {
   pricing: PricingValue
 }
 
-// customValueDraft seeds the custom-price text: a stored pair in the
-// input currency is shown verbatim (the pin rule's edit-side twin);
-// anything else converts the USD snapshot into the input currency.
+// Stored pair in the input currency shows verbatim (edit-side twin of the pin
+// rule); anything else converts the USD snapshot into that currency.
 function customValueDraft(e: Entry, inputCurrency: string, rate: number | undefined): string {
   if (e.custom_value_entered_cents !== undefined && e.custom_value_entered_currency === inputCurrency) {
     return centsToDollars(e.custom_value_entered_cents)
@@ -68,16 +67,10 @@ function valuesFrom(e: Entry, inputCurrency: string, rate: number | undefined): 
   }
 }
 
-// toUpdate lays the form values over the faithful PUT baseline. The
-// update is a full replacement (absent optional = cleared), so
-// cleared inputs become absent fields on purpose. Two fields ride the
-// baseline through untouched instead: currency is stamped once at
-// create and never re-currencied by an edit, so entryToUpdate(e)'s
-// `currency: e.currency` is left standing with no override here; and
-// the custom-price pair, whose baseline is only overridden below when
-// the draft holds a convertible value - an empty or unconvertible
-// draft must not clobber stored memory just because some unrelated
-// field changed.
+// Full-replacement PUT: absent optional = cleared, so cleared inputs become
+// absent fields on purpose. currency rides the baseline untouched (stamped
+// once at create); the custom-price pair's baseline is overridden only when
+// the draft holds a convertible value, so an empty draft can't clobber it.
 function toUpdate(e: Entry, v: FormValues, inputCurrency: string, rate: number | undefined): EntryUpdate {
   const u: EntryUpdate = {
     ...entryToUpdate(e),
@@ -128,23 +121,21 @@ interface EntryFormProps {
 export default function EntryForm({ entry, onSave, saving, saved, error }: EntryFormProps) {
   const { t } = useLingui()
   const money = useDisplayMoney()
-  // The input currency freezes per mount: a rate snapshot arriving
-  // mid-edit must not silently reinterpret typed text.
+  // Input currency freezes per mount; a rate snapshot arriving mid-edit
+  // must not silently reinterpret typed text.
   const [inputCurrency] = useState(() => (money.ready ? money.currency : 'USD'))
   const [v, setV] = useState<FormValues>(() => valuesFrom(entry, inputCurrency, money.rateFor(inputCurrency)))
-  // The saved confirmation must disappear the moment the form drifts
-  // from what was saved, so every field change flips this.
+  // Saved confirmation must disappear the moment the form drifts from what
+  // was saved, so every field change flips this.
   const [editedSinceSave, setEditedSinceSave] = useState(false)
-  // Client-side save blocker (a proxy needs a chosen source); any
-  // further edit retracts it.
+  // Client-side save blocker (a proxy needs a chosen source); any further edit retracts it.
   const [pricingError, setPricingError] = useState<string | null>(null)
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setEditedSinceSave(true)
     setPricingError(null)
     setV((prev) => ({ ...prev, [key]: value }))
   }
-  // The shared cluster hands back one full next value; the same
-  // drift bookkeeping applies before it lands over the host fields.
+  // Shared cluster hands back one full next value; same drift bookkeeping applies.
   const setDetails = (next: CopyDetailsValues) => {
     setEditedSinceSave(true)
     setPricingError(null)
@@ -155,18 +146,15 @@ export default function EntryForm({ entry, onSave, saving, saved, error }: Entry
 
   return (
     <>
-      {/* Above the form element, not inside it: the proxy picker
-          embeds the catalog search form, and forms cannot nest. The
-          draft still lives here, so pricing edits save with the same
-          button as everything else. */}
+      {/* Above the form: forms can't nest, and the proxy picker embeds a
+          catalog search form. Draft lives here, so pricing saves with it. */}
       <PricingPanel entry={entry} value={v.pricing} onChange={(p) => set('pricing', p)} inputCurrency={inputCurrency} />
     <form
       onSubmit={(e) => {
         e.preventDefault()
-        // Read fresh at submit: the input currency froze at mount, but
-        // its rate must not - a header switch mid-edit (optimistic
-        // ['me'] update, no remount) can move the CURRENT display
-        // currency's rate without touching the frozen input currency's.
+        // Read fresh at submit: input currency froze at mount but its rate
+        // must not - a header switch mid-edit (optimistic ['me'] update, no
+        // remount) can move it.
         const submitRate = money.rateFor(inputCurrency)
         if (v.pricing.mode === 'proxy' && !v.pricing.productId) {
           setPricingError(t`Choose a price source before saving.`)

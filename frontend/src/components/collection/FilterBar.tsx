@@ -9,10 +9,8 @@ import { CONDITIONS, ITEM_TYPES, PACKAGINGS, REGIONS, STATUSES } from '../../lib
 import { regionLabels } from '../../lib/regionLabels'
 import SectionLabel from '../SectionLabel'
 
-// item_type has no other chip-labeled site to share with (unlike
-// status/packaging/condition/region below), so its three entries stay
-// inlined here rather than moving to lib/enumLabels for an audience of
-// one.
+// item_type has no other chip-labeled site to share with, so its three
+// entries stay inlined rather than moving to lib/enumLabels for an audience of one.
 const chipLabels: Record<string, MessageDescriptor> = {
   ...statusLabels,
   game: msg`Games`, console: msg`Consoles`, accessory: msg`Accessories`,
@@ -25,26 +23,23 @@ interface FilterBarProps {
   state: ListState
   platforms: PlatformFacet[]
   tags: Tag[]
-  // Distinct credit names across the collection (fetchEntryFacets),
-  // same derivation as platforms.
+  // Distinct credit names across the collection (fetchEntryFacets), same
+  // derivation as platforms.
   developers?: string[]
   publishers?: string[]
   onChange: (next: ListState) => void
 }
 
-// FilterBar renders the nine filter fieldsets; sort, order, group, and
-// Clear filters live in ListControls (the always-visible controls row
-// above this disclosure). Collection.tsx mounts this component only
-// while its Filters toggle is open.
+// Nine filter fieldsets; sort/order/group/Clear live in ListControls above.
+// Mounted only while Collection's Filters toggle is open.
 export default function FilterBar({ state, platforms, tags, developers = [], publishers = [], onChange }: FilterBarProps) {
   const { t, i18n } = useLingui()
   function toggled<T>(list: T[], v: T): T[] {
     return list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
   }
 
-  // Credit fieldsets render facet names verbatim (open-world values,
-  // never translated), the platform fieldset's shape with a string
-  // dimension.
+  // Credit fieldsets render facet names verbatim (open-world, never
+  // translated), same shape as the platform fieldset with a string dimension.
   const nameGroup = (legend: string, all: string[], key: 'developer' | 'publisher', empty: string) => (
     <fieldset className="flex flex-wrap items-center gap-2">
       <SectionLabel as="legend" size="xs" className="float-left mr-2">

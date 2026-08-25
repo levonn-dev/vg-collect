@@ -10,24 +10,20 @@ import SearchPicker from '../catalog/SearchPicker'
 interface ProxyPickerProps {
   onPick: (product: Product) => void
   onClose: () => void
-  // Seeds the search box (and auto-fires the search) - the entry page
-  // passes the entry's own title/edition so "change price source"
-  // starts from a relevant search rather than empty.
+  // Seeds the search box (auto-fires); the entry page passes the entry's own
+  // title/edition so "change price source" starts relevant, not empty.
   initialQuery?: string
 }
 
-// ProxyPicker chooses a catalog product as an entry's price source:
-// the shared search surface plus a resolve to mint/fetch the product.
-// The caller owns the PUT that activates it.
+// Shared search surface plus a resolve to mint/fetch the product; the caller
+// owns the PUT that activates it.
 export default function ProxyPicker({ onPick, onClose, initialQuery }: ProxyPickerProps) {
   const { t } = useLingui()
 
   const resolve = useMutation({
-    // The community lane is suppressed here (communityLane="hidden"):
-    // community products are priceless, so they are not price sources.
-    // The community branch stays as a defensive guard - SearchPicker's
-    // onPick type still admits a CommunityPick - and narrows the pick so
-    // resolveRequestFor only ever sees a resolvable kind.
+    // Community lane hidden: community products are priceless, not price
+    // sources. The branch stays as a defensive guard (SearchPicker's onPick
+    // type still admits a CommunityPick), narrowing to a resolvable kind.
     mutationFn: (pick: CatalogPick) =>
       pick.kind === 'community' ? fetchProduct(pick.productId) : resolveProduct(resolveRequestFor(pick)),
     onSuccess: (product) => onPick(product),

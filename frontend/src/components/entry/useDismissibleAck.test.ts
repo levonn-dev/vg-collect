@@ -22,8 +22,7 @@ it('dismiss optimistically flips dismissed, then fires the mutation', async () =
   const mutationFn = vi.fn().mockResolvedValue(undefined)
   const { hook } = setup(mutationFn)
   act(() => hook.result.current.dismiss())
-  // dismissed flips synchronously with the click, ahead of the mutation
-  // even starting - that's the "optimistic" half of optimistic dismiss.
+  // dismissed flips synchronously with the click, ahead of the mutation starting.
   expect(hook.result.current.dismissed).toBe(true)
   await waitFor(() => expect(mutationFn).toHaveBeenCalledTimes(1))
 })

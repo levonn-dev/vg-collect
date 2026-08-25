@@ -12,10 +12,8 @@ import { regionLabelText } from '../../lib/regionLabels'
 import LoadMoreButton from '../LoadMoreButton'
 import MappingFix from './MappingFix'
 
-// UnmatchedWorklist pages through every product with no mapping
-// (held ones flagged). Fixing a row changes the list itself, so a
-// successful fix invalidates admin queries and loaded pages refetch
-// with their stored pageParam (rows that got fixed leave the list).
+// Fixing a row invalidates admin queries; loaded pages refetch with their
+// stored pageParam (fixed rows leave the list).
 export default function UnmatchedWorklist() {
   const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
@@ -93,10 +91,8 @@ export default function UnmatchedWorklist() {
         </tbody>
       </table>
       <LoadMoreButton query={list} className="mt-2" />
-      {/* key={fixing.id}: without it, fixing a different row while the
-          panel is open reconciles the same MappingFix instance in place,
-          leaking its picker/pending state across products (see
-          ProductLookup and SubmissionsQueue for the same pattern). */}
+      {/* key={fixing.id}: without it, fixing another row reconciles the same
+          MappingFix in place, leaking picker/pending state across products. */}
       {fixing && <MappingFix key={fixing.id} product={fixing} onDone={done} />}
     </section>
   )

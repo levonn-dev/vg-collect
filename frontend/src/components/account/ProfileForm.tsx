@@ -18,9 +18,8 @@ const VISIBILITY_VALUES = visibilityValues
 type Visibility = (typeof VISIBILITY_VALUES)[number]
 type LandingPage = (typeof landingPageValues)[number]
 
-// The HTML pattern attribute is implicitly anchored at both ends, so
-// the generated HANDLE_PATTERN's own ^...$ would be redundant on the
-// wire - stripped once here rather than baked into the constant.
+// HTML's pattern attribute is implicitly anchored at both ends, so
+// HANDLE_PATTERN's ^...$ is stripped here rather than baked into the constant.
 const handlePatternAttr = HANDLE_PATTERN.replace(/^\^|\$$/g, '')
 
 const visibilityLabelText: Record<Visibility, MessageDescriptor> = {
@@ -28,9 +27,8 @@ const visibilityLabelText: Record<Visibility, MessageDescriptor> = {
   unlisted: msg`Unlisted - anyone signed in who has your link`,
   listed: msg`Listed - appears in Explore and search`,
 }
-// VISIBILITY_VALUES already orders private/unlisted/listed - the radio
-// group's existing display order - so mapping over it is a pure
-// source-of-truth swap, not a reorder.
+// VISIBILITY_VALUES already orders private/unlisted/listed (the radio
+// group's display order), so mapping over it is a source-of-truth swap.
 const visibilityOptions: [Visibility, MessageDescriptor][] = VISIBILITY_VALUES.map((v): [Visibility, MessageDescriptor] => [v, visibilityLabelText[v]])
 
 const landingPageLabelText: Record<LandingPage, MessageDescriptor> = {
@@ -38,10 +36,8 @@ const landingPageLabelText: Record<LandingPage, MessageDescriptor> = {
   collection: msg`Collection`,
   explore: msg`Explore`,
 }
-// Display order (feed first, the common case) is a UX choice
-// independent of the wire enum's own declared order - typed against
-// the generated LandingPage so a removed value fails to compile here
-// instead of lingering as a dead option.
+// Display order (feed first) is a UX choice independent of the wire enum's
+// order; typed against LandingPage so a removed value fails to compile here.
 const LANDING_PAGE_DISPLAY_ORDER: readonly LandingPage[] = ['feed', 'collection', 'explore']
 const landingPageOptions: [LandingPage, MessageDescriptor][] = LANDING_PAGE_DISPLAY_ORDER.map((v): [LandingPage, MessageDescriptor] => [v, landingPageLabelText[v]])
 
@@ -50,24 +46,22 @@ const saveErrorCodes: Record<string, MessageDescriptor> = {
   handle_cooldown: msg`Handle changed too recently - try again later.`,
 }
 
-// t(i18n) throughout this file: its strings use the explicit form
-// (not the useLingui()-bound t) so they match resolveApiError's own
-// explicit-i18n signature without importing a second, same-named t.
+// Uses explicit t(i18n), not useLingui()'s t, to match resolveApiError's
+// signature without importing a second same-named t.
 function saveErrorMessage(error: unknown, i18n: I18n): string {
   return resolveApiError(error, i18n, saveErrorCodes, msg`Saving failed. Please try again.`)
 }
 
-// ProfileForm is keyed by me.id at the call site so its local draft
-// state seeds once per loaded profile.
+// Keyed by me.id at the call site so local draft state seeds once per
+// loaded profile.
 export default function ProfileForm({ me }: { me: Me }) {
   const { i18n } = useLingui()
   const [handle, setHandle] = useState(me.handle)
   const [avatarUrl, setAvatarUrl] = useState(me.avatar_url ?? '')
   const [visibility, setVisibility] = useState(me.profile_visibility)
   const [landingPage, setLandingPage] = useState(me.landing_page)
-  // The saved confirmation must disappear the moment the form drifts
-  // from what was saved (mirrors EntryForm's editedSinceSave), so every
-  // field setter below flips this.
+  // Saved confirmation must disappear the moment the form drifts from what
+  // was saved, so every field setter below flips this.
   const [editedSinceSave, setEditedSinceSave] = useState(false)
   const updateHandle = (v: string) => { setEditedSinceSave(true); setHandle(v) }
   const updateAvatarUrl = (v: string) => { setEditedSinceSave(true); setAvatarUrl(v) }

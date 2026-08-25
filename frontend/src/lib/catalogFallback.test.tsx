@@ -5,30 +5,20 @@ import { messages as zzMessages } from '../locales/zz.po'
 import NotFound from '../pages/NotFound'
 import { renderWithI18n } from '../test/i18n'
 
-// Proves a partially translated catalog renders its untranslated
-// entries in English, never as raw message ids. src/locales/zz.po is
-// a two-entry fixture ('zz' is never a real locale and never joins
-// SUPPORTED_LOCALES): msgids copied verbatim from en.po, one with a
-// fake translation, one with an empty msgstr. Importing it compiles
-// through the same @lingui/vite-plugin -> lingui.config.ts pipeline
-// (fallbackLocales included) as every real catalog.
+// Proves partial translation renders English, never raw message ids.
+// zz.po is a 2-entry fixture (zz never joins SUPPORTED_LOCALES): one
+// translated entry, one empty msgstr; compiles through the real lingui pipeline.
 //
-// The assertions render NotFound (which owns both fixture strings)
-// rather than calling i18n._() with a hand-picked id: compiled
-// catalog keys are opaque generated hashes, so a broken fallback
-// renders a visible hash that these text queries cannot miss, where
-// a hardcoded-id assertion could quietly agree with it.
+// Asserts via NotFound's rendered text, not i18n._() with a hand-picked
+// id: compiled keys are opaque hashes, so a broken fallback shows a
+// visible hash these queries catch but a hardcoded-id assertion could miss.
 //
-// If fallbackLocales is ever edited: @lingui/cli also falls back to
-// sourceLocale unconditionally beneath it, so the untranslated
-// assertion stays green even with fallbackLocales emptied; what this
-// test fails on is a deeper pipeline break (leaked ids, broken tag
-// markup).
+// If fallbackLocales is ever removed, @lingui/cli still falls back to
+// sourceLocale, so this test stays green regardless; it only catches a
+// deeper pipeline break (leaked ids, broken tag markup).
 afterEach(() => {
-  // Unmount before touching the shared singleton: this hook runs
-  // ahead of RTL's auto-cleanup (afterEach hooks are LIFO), and
-  // re-activating against a still-mounted tree is an I18nProvider
-  // update outside act.
+  // Unmount before touching the singleton: afterEach hooks are LIFO,
+  // and re-activating a still-mounted tree is an update outside act.
   cleanup()
   i18n.activate('en')
 })
@@ -47,10 +37,8 @@ it('fills an untranslated catalog entry with English instead of leaking its mess
   // Fixture entry with a msgstr: the (fake) translation renders.
   expect(screen.getByRole('heading', { name: 'zz-translated-not-found' })).toBeInTheDocument()
 
-  // Fixture entry with an empty msgstr: the compiled-in English
-  // fallback renders verbatim - the full sentence, not a bare hash id
-  // and not blank. The link only appears at all if the fallback text
-  // still carried valid <0>...</0> tag markup around it.
+  // Empty msgstr: English fallback renders verbatim, not a hash or
+  // blank; the link only appears if <0>...</0> tag markup survived.
   const link = screen.getByRole('link', { name: 'Go to the start page' })
   expect(link).toHaveAttribute('href', '/')
   expect(link.closest('p')?.textContent).toBe(

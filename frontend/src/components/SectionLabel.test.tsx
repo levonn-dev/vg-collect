@@ -24,10 +24,8 @@ it('renders arbitrary children, not just plain text', () => {
   expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent('Recommended next')
 })
 
-// Each case below is a byte-exact reproduction of one of the seven
-// distinct class combos surveyed across the 20 real sites - proof the
-// four props recombine into every one of them with no leftover or
-// missing whitespace.
+// Each case reproduces one of the seven class combos found across real
+// sites, proving the four props recombine with no leftover/missing whitespace.
 it.each([
   ['CommentList/Profile (h3, sm, bold, mb-3)', { as: 'h3', size: 'sm', className: 'mb-3' } as const,
     'mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500'],

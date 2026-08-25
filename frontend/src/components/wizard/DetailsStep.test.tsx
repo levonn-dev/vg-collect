@@ -70,9 +70,8 @@ it('detailsToCreate maps values onto the create contract', () => {
   expect(c.notes).toBeUndefined()
 })
 
-// The stamp is the profile currency handed in by the caller, not
-// anything read off the details - CREATE must work even while rates
-// are down, which is why this never touches a rate.
+// Profile currency handed in by the caller, not read off details; CREATE
+// must work even while rates are down.
 it('stamps the create payload with the given currency', () => {
   const body = detailsToCreate(defaultDetails(), 'EUR')
   expect(body.currency).toBe('EUR')
@@ -145,8 +144,7 @@ it('groups the region select by the platform set and defaults from initialValues
   expect(Array.from(groups[0].querySelectorAll('option')).map((o) => o.getAttribute('value')))
     .toEqual(['ntsc_u', 'pal'])
   expect(groups[1]).toHaveAttribute('label', 'Other regions')
-  // RegionPicker's escape-hatch placeholder lives in this optgroup only;
-  // the platform-set group above never carries it.
+  // RegionPicker's escape-hatch placeholder lives in this optgroup only.
   expect(Array.from(groups[1].querySelectorAll('option')).map((o) => o.getAttribute('value')))
     .toEqual(['', 'ntsc_j', 'korea', 'brazil', 'china', 'region_free'])
 })
@@ -160,8 +158,7 @@ it('renders the flat ungrouped select without a regionGroup', () => {
   renderWithI18n(<DetailsStep product={{ name: 'Chrono Trigger' }} currency="USD" onBack={vi.fn()} onNext={vi.fn()} />)
   const select = screen.getByLabelText('Region')
   expect(select.querySelector('optgroup')).toBeNull()
-  // Behavioral, not a bare count: the placeholder plus exactly the
-  // known regions.
+  // Behavioral, not a bare count: the placeholder plus exactly the known regions.
   expect(Array.from(select.querySelectorAll('option')).map((o) => o.getAttribute('value')))
     .toEqual(['', 'ntsc_u', 'ntsc_j', 'pal', 'korea', 'brazil', 'china', 'region_free'])
 })

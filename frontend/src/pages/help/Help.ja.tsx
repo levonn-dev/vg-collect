@@ -1,11 +1,9 @@
-// Japanese Help page; mirrors Help.en section for section, anchor ids
-// included. UI labels quoted here must match the rendered app (the ja
-// catalog); when a label changes, this copy changes with it.
-// Deployment facts (which providers run) live on the About page, not
-// here.
+// Mirrors Help.en section for section, anchor ids included. UI labels
+// here must match the rendered app (ja catalog); deployment facts live
+// on the About page, not here.
 export default function HelpJa() {
   return (
-    <main aria-label="ヘルプ" className="mx-auto w-full max-w-2xl p-6">
+    <main id="main-content" tabIndex={-1} aria-label="ヘルプ" className="mx-auto w-full max-w-2xl p-6">
       <h2 className="mb-4 text-2xl font-bold">ヘルプ</h2>
       <div className="flex flex-col gap-6 text-sm text-gray-700">
         <section aria-labelledby="shelves-from-tags">

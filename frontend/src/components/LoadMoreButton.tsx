@@ -1,9 +1,7 @@
 import { Trans } from '@lingui/react/macro'
 import { btnSecondary } from '../lib/formStyles'
 
-// The shape every useInfiniteQuery result satisfies structurally - no
-// TData/TError generics needed since this button never touches the
-// page data itself, only the pager controls.
+// Structural subset of useInfiniteQuery's result; no TData/TError generics needed.
 interface LoadMoreQuery {
   hasNextPage: boolean
   isFetchingNextPage: boolean
@@ -12,15 +10,12 @@ interface LoadMoreQuery {
 
 interface LoadMoreButtonProps {
   query: LoadMoreQuery
-  // The one thing that differs per site (page-level lists sit under a
-  // Tabs control and use mt-4; CommentList's mt-3 and the four admin
-  // worklists' mt-2 match the spacing of what is directly above them)
-  // - everything else about the button is identical everywhere.
+  // Only value that differs per caller: mt-4 under Tabs, mt-3 for
+  // CommentList, mt-2 for the admin worklists.
   className: string
 }
 
-// LoadMoreButton renders nothing once the query has no next page, so
-// callers need no `{query.hasNextPage && ...}` guard around it.
+// Renders nothing with no next page, so callers need no hasNextPage guard.
 export default function LoadMoreButton({ query, className }: LoadMoreButtonProps) {
   if (!query.hasNextPage) return null
   return (

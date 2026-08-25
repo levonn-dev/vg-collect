@@ -5,10 +5,8 @@ import { visibilityValues } from '../../api/schema'
 const VISIBILITY_VALUES = visibilityValues
 export type Visibility = (typeof VISIBILITY_VALUES)[number]
 
-// Segment icon paths keyed by the generated enum, in its own order -
-// the lock/link/globe sequence below matches VISIBILITY_VALUES already
-// (private, unlisted, listed), so deriving OPTIONS from it is a pure
-// source-of-truth swap, not a reorder.
+// ICON_PATHS keyed by the generated enum, whose order already matches
+// lock/link/globe, so deriving OPTIONS from it is a source-of-truth swap.
 const ICON_PATHS: Record<Visibility, string> = {
   private: 'M5 8V6a3 3 0 1 1 6 0v2h1v6H4V8h1zm2-2a1 1 0 1 1 2 0v2H7V6z',
   unlisted: 'M6 3a3 3 0 0 0-3 3v1h2V6a1 1 0 1 1 2 0v1h2V6a3 3 0 0 0-3-3zm-3 6h10v5H3V9z',
@@ -22,12 +20,9 @@ interface VisibilityControlProps {
   disabled?: boolean
 }
 
-// VisibilityControl is the lock/link/globe segmented control shared by
-// every place a shelf or saved view picks its own visibility (Account
-// keeps its own radio group for profile_visibility - a plain form
-// field with a Save step, not a live-updating row control). Each
-// segment is its own button, not a radio group, so a click commits
-// immediately - callers wire onChange straight into a mutation.
+// Account keeps its own radio group for profile_visibility (a plain field
+// with a Save step, not a live row control). Each segment is its own button,
+// not a radio group, so a click commits immediately into onChange.
 export default function VisibilityControl({ value, onChange, disabled }: VisibilityControlProps) {
   const { i18n } = useLingui()
   return (

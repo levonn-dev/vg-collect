@@ -15,18 +15,15 @@ function navClass({ isActive }: { isActive: boolean }): string {
     : 'text-sm text-gray-500 hover:text-gray-900'
 }
 
-// AppBar is the signed-in header. Layout always renders it;
-// PublicShell renders it too once its session probe resolves, so the
-// chrome does not change with the route after sign-in.
+// Also rendered by PublicShell once its session probe resolves, so chrome
+// stays static across the sign-in route.
 export default function AppBar({ me }: { me: Me }) {
   const { t } = useLingui()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const signOut = useMutation({
     mutationFn: logout,
-    // onSettled fires on both an HTTP error and a network failure:
-    // either way the session is gone or unreachable, so clear the
-    // cache and navigate away unconditionally.
+    // Fires on both HTTP and network failure; either way the session is gone.
     onSettled: () => {
       queryClient.clear()
       void navigate('/login')

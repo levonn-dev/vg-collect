@@ -17,8 +17,7 @@ function renderPicker(
 }
 
 afterEach(() => {
-  // Order matters: cleanup() before activate() - see EntryTable.test.tsx's
-  // afterEach for why (I18nProvider update outside act otherwise).
+  // cleanup() before activate(): otherwise I18nProvider updates outside act.
   vi.unstubAllGlobals()
   cleanup()
   i18n.activate('en')
@@ -56,11 +55,8 @@ it('searches games and picks a platform', async () => {
   })
 })
 
-// The JP trio: a region-localized result carrying both a native-script
-// title and its transliteration plus its own box art, matching the
-// fixture productTitle.test.ts exercises. r.name ('Trials of Mana')
-// stands in for the canonical/community name a plain query would
-// otherwise show.
+// Region-localized result with a native-script title, transliteration, and its
+// own box art; r.name stands in for the canonical name a plain query would show.
 const jpMatchedResult = {
   type: 'game', name: 'Trials of Mana', igdb_game_id: 2000,
   cover_url: 'https://img.example/na.jpg',
@@ -78,9 +74,8 @@ it('renders the localized title, canonical secondary, and JP cover on a matched_
   expect(title).toHaveAttribute('lang', 'ja-Latn')
   expect(screen.getByText('Trials of Mana')).toBeInTheDocument()
   expect(document.querySelector('img')).toHaveAttribute('src', 'https://x/jp.jpg')
-  // The card itself carries no region chip anymore - region signals
-  // live on the platform chips (none here: this SNES platform ref has
-  // no release_regions).
+  // No card-level region chip; region signals live on platform chips (none
+  // here: this SNES ref has no release_regions).
   expect(screen.queryByText('NTSC-J')).not.toBeInTheDocument()
 })
 
@@ -92,9 +87,8 @@ it('renders the native title under the ja locale for a matched_region hit', asyn
   expect(title).toHaveAttribute('lang', 'ja')
 })
 
-// Same bundle data as jpMatchedResult, but the query matched the
-// canonical name (no matched_region) - the row must render exactly as
-// it would with no localizations at all.
+// Same bundle as jpMatchedResult but matched the canonical name (no
+// matched_region); must render as if there were no localizations.
 const jpUnmatchedResult = {
   type: 'game', name: 'Trials of Mana', igdb_game_id: 2000,
   cover_url: 'https://img.example/na.jpg',
@@ -126,10 +120,8 @@ it('includes the matched region as a suggestion on a game platform pick', async 
   })
 })
 
-// ko-KR is a real, open-world region identifier (schema comment on
-// SearchResult.matched_region) with no REGION_FROM_MATCH entry today:
-// the title still swaps (that only needs a matching bundle), but no
-// chip renders and no suggestion rides the pick.
+// ko-KR has no REGION_FROM_MATCH entry: the title still swaps (needs only a
+// matching bundle), but no chip renders and no suggestion rides the pick.
 const koMatchedResult = {
   type: 'game', name: 'Trials of Mana', igdb_game_id: 2001,
   cover_url: 'https://img.example/na.jpg',
@@ -153,10 +145,8 @@ it('swaps the title for an unmapped matched_region but suggests no region', asyn
   })
 })
 
-// EU (a continent-form region identifier) carries no BCP-47 language
-// subtag (bundleLang('EU') is undefined) - the swapped title must
-// render with no lang attribute at all, never the string
-// "undefined-Latn".
+// EU has no BCP-47 language subtag (bundleLang('EU') is undefined); the
+// swapped title must render with no lang attribute, never "undefined-Latn".
 const euMatchedResult = {
   type: 'game', name: 'Trials of Mana', igdb_game_id: 2002,
   cover_url: 'https://img.example/na.jpg',
@@ -175,13 +165,9 @@ it('renders an EU match with no chip and never an "undefined-Latn" lang attribut
   expect(screen.queryByText('PAL')).not.toBeInTheDocument()
 })
 
-// The region picker: a platform chip's own release_regions (distinct
-// from matched_region, which is about the searched name/title) become
-// that chip's mapped region list, seeding the wizard's region step
-// platform-first - the matched-region mapping only breaks ties within
-// the chip's own set (see the precedence tests below). gameResults
-// above (no release_regions on either platform) is the untouched
-// regression fixture for the bare-chip case.
+// A platform chip's release_regions (distinct from matched_region, about the
+// searched title) become its mapped region list, seeding the region step
+// platform-first; matched_region only breaks ties within that set.
 const saturnAvailabilityResult = {
   type: 'game', name: 'Panzer Dragoon Saga', igdb_game_id: 3000,
   platforms: [{ igdb_platform_id: 32, name: 'Sega Saturn', release_regions: ['japan'] }],
@@ -240,9 +226,8 @@ const matchedOverAvailabilityResult = {
   ],
 }
 
-// Platform-first precedence: the clicked chip names the physical copy,
-// so its own regions outrank the matched name - the matched mapping
-// only wins when it is in the chip's set.
+// Chip regions outrank the matched name (clicked chip = physical copy);
+// matched mapping only wins when it's in the chip's own set.
 it('pick seeds the chip region over a conflicting matched region', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { degraded: false, results: [matchedOverAvailabilityResult] })))
   const onPick = renderPicker({ initialQuery: 'trials' })
@@ -250,10 +235,8 @@ it('pick seeds the chip region over a conflicting matched region', async () => {
   expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ suggestedRegion: 'ntsc_u', regions: ['ntsc_u'] }))
 })
 
-// The Wii-shape tiebreak: the matched region IS in the chip's set, so
-// it wins over the earliest-release default. (This also proves the
-// matched region outranks the en home region: ntsc_u is in the chip
-// set too, yet ja-JP wins.)
+// Matched region is in the chip's set, so it wins over the earliest-release
+// default and over the en home region (ntsc_u is also in the set, yet ja-JP wins).
 const matchedWithinAvailabilityResult = {
   type: 'game', name: 'Secret of Mana', igdb_game_id: 4002,
   platforms: [{ igdb_platform_id: 41, name: 'Wii', release_regions: ['japan', 'north_america', 'australia', 'europe'] }],
@@ -270,10 +253,8 @@ it('pick seeds the matched region when the chip set contains it', async () => {
   }))
 })
 
-// The home-region arm: a canonical-name search (no matched region) on
-// a chip released everywhere must not default to the earliest release
-// region (JP-first worldwide games would all land NTSC-J) - the UI
-// locale's home region wins when the chip's set contains it.
+// No matched region on a worldwide chip must not default to earliest release
+// (JP-first games would all land NTSC-J); the UI locale's home region wins instead.
 const jpFirstWorldwideResult = {
   type: 'game', name: 'Super Mario 64', igdb_game_id: 4004,
   platforms: [{ igdb_platform_id: 4, name: 'Nintendo 64', release_regions: ['japan', 'north_america', 'europe'] }],
@@ -294,8 +275,8 @@ it('pick seeds the ja home region for the same chip under the ja locale', async 
   expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ suggestedRegion: 'ntsc_j' }))
 })
 
-// A korea-only chip is first-class: it badges Korea and its own region
-// outranks a matched region that is not in the chip's set.
+// Korea-only chip is first-class: badges Korea and outranks an out-of-set
+// matched region.
 const koreaOnlyResult = {
   type: 'game', name: 'Trials of Mana', igdb_game_id: 4003,
   platforms: [{ igdb_platform_id: 6, name: 'SNES', release_regions: ['korea'] }],
@@ -312,9 +293,8 @@ it('tags a korea-only chip and seeds korea over the out-of-set matched region', 
   expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ suggestedRegion: 'korea', regions: ['korea'] }))
 })
 
-// A chip whose rows are all unmapped (a future IGDB region this build
-// does not know) stays bare and carries no regions; the matched
-// mapping still seeds the default.
+// Chip with only unmapped rows (unknown IGDB region) stays bare with no
+// regions; the matched mapping still seeds the default.
 const unmappedOnlyResult = {
   type: 'game', name: 'Trials of Mana', igdb_game_id: 4005,
   platforms: [{ igdb_platform_id: 6, name: 'SNES', release_regions: ['moon_base_region'] }],
@@ -329,8 +309,7 @@ it('keeps an unmapped-only chip bare and falls back to the matched region', asyn
   expect(within(chip).queryByText(/NTSC|PAL/)).not.toBeInTheDocument()
   await userEvent.click(chip)
   expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ suggestedRegion: 'ntsc_j' }))
-  // The key is present-but-undefined on the payload; what matters is
-  // that no region list rides the pick.
+  // Key is present-but-undefined; what matters is no region list rides the pick.
   expect((onPick.mock.calls[0][0] as GamePick).regions).toBeUndefined()
 })
 
@@ -346,9 +325,8 @@ it('pick seeds the earliest availability region when there is no matched-region 
   expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ suggestedRegion: 'ntsc_j' }))
 })
 
-// The Mr. Gimmick shape: release_regions is platform-exact (no JP-twin
-// fold), so a single game's platform chips can carry different
-// availability and therefore different suggested regions.
+// release_regions is platform-exact (no JP-twin fold), so one game's chips
+// can carry different availability and suggested regions.
 const mrGimmickResult = {
   type: 'game', name: 'Mr. Gimmick', igdb_game_id: 5000,
   platforms: [
@@ -386,10 +364,8 @@ it('searches hardware and picks a listing', async () => {
   expect(document.querySelector('svg[data-icon="console"]')).toBeInTheDocument()
 })
 
-// The region tag rides the console-name axis (productTitle.test.ts's
-// consoleRegionFor table): a distinct-name JP console tags NTSC-J even
-// with no "JP " prefix, and the tag rides the hardware pick as its
-// suggested region.
+// Region tag rides the console-name axis: a distinct-name JP console tags
+// NTSC-J with no "JP " prefix, and rides the hardware pick as suggested region.
 it('tags hardware rows with the listing region and seeds the hardware pick', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, {
     degraded: false,
@@ -464,8 +440,7 @@ it('offers only Games and Hardware by default', () => {
 })
 
 it('labels the search box for the default game-and-hardware kinds', () => {
-  // Pinned exactly: the add wizard's tests and e2e steps locate the
-  // search box by this string.
+  // Pinned exactly: the add wizard's tests/e2e locate the search box by this string.
   vi.stubGlobal('fetch', vi.fn())
   renderPicker()
   expect(screen.getByRole('searchbox', { name: 'Search for games and hardware' })).toBeInTheDocument()
@@ -503,8 +478,7 @@ it('renders a pc_listing price line, with - for a missing value', async () => {
       },
       {
         // Real-provider listings carry a genre string as category, not a
-        // hardware category - this must still render as a game, not an
-        // accessory.
+        // hardware category; must still render as a game, not an accessory.
         type: 'pc_listing', name: 'Metroid Prime', pc_product_id: 5300,
         console_name: 'Nintendo Gamecube', category: 'Platformer',
         loose_cents: 500, cib_cents: 900, new_cents: 1500,
@@ -627,9 +601,8 @@ it('tags a community row with a known region and carries it on the pick', async 
   expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ region: 'ntsc_j' }))
 })
 
-// Community region is open-world (curated free text, not just the four
-// known values) - an unrecognized region rides the row verbatim rather
-// than disappearing or throwing, same as regionLabelText's contract.
+// Community region is open-world free text; an unrecognized region rides the
+// row verbatim, same as regionLabelText's contract.
 it('tags a community row with an open-world region verbatim', async () => {
   const results = {
     degraded: false,

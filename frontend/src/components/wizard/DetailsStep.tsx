@@ -11,8 +11,7 @@ import type { CopyDetailsValues } from '../entry/CopyDetailsFields'
 import { CopyDetailsFields } from '../entry/CopyDetailsFields'
 import ManualMatchPicker from '../catalog/ManualMatchPicker'
 
-// The step collects exactly the shared copy-details cluster; the alias
-// keeps the wizard's own vocabulary at its call sites (AddWizard and
+// Alias keeps the wizard's own vocabulary at its call sites (AddWizard and
 // ConfirmStep pass DetailsValues between steps).
 export type DetailsValues = CopyDetailsValues
 
@@ -29,13 +28,9 @@ export function defaultDetails(region: string = 'ntsc_u'): DetailsValues {
   }
 }
 
-// detailsToCreate maps the step's values onto the shared EntryCreate
-// fields. pricing_mode and match_provenance are both auto (the
-// product-backed defaults); the custom path overrides pricing_mode to
-// disabled and ConfirmStep overrides match_provenance to user, both
-// after spreading. currency is the caller's stamp (the signed-in
-// profile's currency) - this step never collects one, and stamping
-// needs no rate, so it still works while conversion is down.
+// pricing_mode/match_provenance are both auto; the custom path overrides
+// pricing_mode to disabled, ConfirmStep overrides match_provenance to user,
+// both after spreading. currency is the caller's stamp, needing no rate.
 // eslint-disable-next-line react-refresh/only-export-components -- shared with ConfirmStep and the test, alongside this component.
 export function detailsToCreate(d: DetailsValues, currency: string): Omit<EntryCreate, 'product_id' | 'display_name' | 'item_type' | 'platform_name' | 'first_release_date'> {
   return {
@@ -63,25 +58,20 @@ export function detailsToCreate(d: DetailsValues, currency: string): Omit<EntryC
 }
 
 interface DetailsStepProps {
-  // The product identity the heading names: the canonical name plus
-  // any localization bundles off the search result. The heading
-  // follows the currently selected region through regionTitle, so a
-  // JP copy reads by its JP identity while the select sits on ntsc_j.
+  // Heading follows the selected region through regionTitle, so a JP copy
+  // reads by its JP identity while the select sits on ntsc_j.
   product: { name: string; localizations?: LocalizationBundle[] }
-  // The picked platform's own region set (game picks with known
-  // regions only): renders the Region select grouped, that set first.
-  // Guidance, not enforcement - every region stays selectable.
+  // Platform's own region set (game picks only): renders the Region select
+  // grouped, that set first - guidance, not enforcement.
   regionGroup?: { platformName: string; regions: EntryRegion[] }
-  // Label only: the price-paid field is stamped with this at create
-  // time (detailsToCreate takes it separately), never edited here.
+  // Label only: price-paid is stamped with this at create time
+  // (detailsToCreate takes it separately), never edited here.
   currency: string
-  // Seeds the form when a caller remounts this step with values it
-  // already collected (e.g. wizard Back from a later step); omitted,
-  // the step starts blank as before.
+  // Seeds the form when a caller remounts with values already collected (e.g.
+  // wizard Back); omitted, the step starts blank.
   initialValues?: DetailsValues
-  // Manual price match (game catalog path only): current choice plus
-  // change callback; the row renders only when the callback is given.
-  // The custom and hardware paths pass neither.
+  // Manual price match (game catalog path only): row renders only when the
+  // callback is given; custom/hardware paths pass neither.
   manualMatch?: ManualMatch | null
   onManualMatchChange?: (m: ManualMatch | null) => void
   // Seeds the listing search when the dialog opens.
@@ -95,8 +85,7 @@ export default function DetailsStep({ product, regionGroup, currency, initialVal
   const [v, setV] = useState<DetailsValues>(() => initialValues ?? defaultDetails())
   const [matchOpen, setMatchOpen] = useState(false)
 
-  // The heading's identity follows the live-selected region, so a
-  // region change (e.g. off a JP default) re-derives it on every render.
+  // Heading follows the live-selected region, re-deriving on every render.
   const form = titleFormFor(i18n.locale)
   const title = regionTitle(product.name, product.localizations, v.region, form)
   const titleText = title.text

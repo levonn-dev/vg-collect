@@ -14,12 +14,8 @@ interface SearchResultRowProps {
   onPick: (pick: CatalogPick) => void
 }
 
-// SearchResultRow renders one search-result card: cover art (or a
-// type icon when there is none), the region-localized title line, and
-// the origin-specific pick control - a community add button or chip,
-// game platform chips, a pc_listing Use button, or a hardware Add
-// button. SearchPicker maps its rows through this component and keeps
-// only state and layout for itself.
+// One search-result card: cover/icon, region-localized title, origin-specific
+// pick control.
 export default function SearchResultRow({ result: r, onPick }: SearchResultRowProps) {
   const { t, i18n } = useLingui()
   const money = useDisplayMoney()
@@ -28,12 +24,9 @@ export default function SearchResultRow({ result: r, onPick }: SearchResultRowPr
   const loose = money.format(r.loose_cents) ?? '-'
   const cib = money.format(r.cib_cents) ?? '-'
   const newPrice = money.format(r.new_cents) ?? '-'
-  // Region-localized presentation (game results only): a
-  // matched_region hit picks its bundle and swaps the title,
-  // secondary name, and cover; a plain canonical-name match
-  // (no matched_region) renders r.name/r.cover_url untouched
-  // even when localizations are present, so browsing never
-  // flips a title the query did not ask for.
+  // matched_region picks its bundle and swaps title/name/cover; a canonical-name
+  // match renders r.name/cover untouched even with localizations present, so
+  // browsing never flips a title the query didn't ask for.
   const matchedBundle = r.matched_region
     ? r.localizations?.find((l) => l.region === r.matched_region)
     : undefined
@@ -43,9 +36,8 @@ export default function SearchResultRow({ result: r, onPick }: SearchResultRowPr
         ? (matchedBundle.name ?? matchedBundle.translit ?? r.name)
         : (matchedBundle.translit ?? matchedBundle.name ?? r.name))
     : r.name
-  // bundleLang is undefined for a continent-form identifier
-  // (EU); guarded here so a translit title never renders the
-  // literal string "undefined-Latn".
+  // bundleLang is undefined for a continent-form identifier (EU); guarded so
+  // a translit title never renders "undefined-Latn".
   const bundleLangTag = matchedBundle ? bundleLang(matchedBundle.region) : undefined
   const titleLang = matchedBundle && title !== r.name
     ? (title === matchedBundle.name ? bundleLangTag : (bundleLangTag ? `${bundleLangTag}-Latn` : undefined))
@@ -105,8 +97,7 @@ export default function SearchResultRow({ result: r, onPick }: SearchResultRowPr
         {r.origin === 'community' ? (
           r.platform_name ? (
             <p className="mt-1 flex flex-wrap items-center gap-1">
-              {/* Mirrors the provider game row's chip idiom below:
-                  the chip is the pick target, not the row. */}
+              {/* Mirrors the provider game row's chip idiom: chip is the pick target. */}
               <span className="text-xs text-gray-500"><Trans>Add on:</Trans></span>
               <button
                 type="button"
@@ -132,13 +123,9 @@ export default function SearchResultRow({ result: r, onPick }: SearchResultRowPr
             <span className="text-xs text-gray-500"><Trans>Add on:</Trans></span>
             {r.platforms?.map((p) => {
               const platformName = p.name
-              // The chips are the region picker: each shows its platform's full
-              // mapped region list (worldwide expands - a picker shows the whole
-              // choice set), and the pick seeds the wizard platform-first: the
-              // matched-region mapping wins within the chip's set, else the UI
-              // locale's home region within the set, else the earliest release
-              // region. The shadow of the outer platformName is the file's chip
-              // idiom.
+              // Each chip shows its full mapped region list; suggestedRegion picks
+              // within that set: matched_region first, else the UI locale's home
+              // region, else the earliest release region.
               const regions = platformEntryRegions(p.release_regions)
               const regionText = regions.map((b) => i18n._(regionLabels[b])).join('/')
               const matched = r.matched_region ? REGION_FROM_MATCH[r.matched_region] : undefined

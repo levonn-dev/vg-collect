@@ -37,9 +37,8 @@ it('the submit handler itself guards against an empty body too, not just the dis
   const fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
   renderComposer()
-  // Bypasses the disabled attribute by submitting the form directly -
-  // proves canPost is re-checked inside onSubmit, not only relied on
-  // via the button's disabled state.
+  // Bypasses disabled by submitting the form directly, proving canPost is
+  // re-checked inside onSubmit, not only via the button's disabled state.
   fireEvent.submit(screen.getByRole('textbox', { name: 'Add a comment' }).closest('form')!)
   expect(fetchMock).not.toHaveBeenCalled()
 })

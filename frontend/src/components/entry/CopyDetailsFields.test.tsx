@@ -14,8 +14,8 @@ function baseValues(): CopyDetailsValues {
   }
 }
 
-// The component is controlled, so the harness owns the value the way a
-// host form does; the spy sees every onChange before it lands.
+// Controlled: harness owns the value like a host form; spy sees every
+// onChange before it lands.
 function Harness({ initial, onChange }: { initial?: Partial<CopyDetailsValues>; onChange?: (next: CopyDetailsValues) => void }) {
   const [v, setV] = useState({ ...baseValues(), ...initial })
   return (
@@ -42,8 +42,8 @@ it('going loose clears both flags and hides the gated condition selects, keeping
   expect(screen.getByRole('checkbox', { name: /has manual/i })).not.toBeChecked()
   expect(screen.queryByLabelText(/box condition/i)).not.toBeInTheDocument()
   expect(screen.queryByLabelText(/manual condition/i)).not.toBeInTheDocument()
-  // The rule flips the flags only; stored grades ride along untouched
-  // (the wire mappers drop them while the flags are off).
+  // Rule flips flags only; stored grades ride along untouched (wire mappers
+  // drop them while flags are off).
   expect(onChange).toHaveBeenCalledWith({
     ...baseValues(), boxCondition: 'good', manualCondition: 'good',
     packaging: 'loose', hasBox: false, hasManual: false,
@@ -93,8 +93,8 @@ it('selects render translated labels off the shared maps, not raw wire values', 
   const condition = screen.getByLabelText(/item condition/i)
   expect(within(condition).getByRole('option', { name: 'Near mint' })).toBeInTheDocument()
   expect(within(condition).queryByRole('option', { name: 'near_mint' })).not.toBeInTheDocument()
-  // The status and packaging wire labels read like their values on
-  // purpose; what matters is that the known values all stay offered.
+  // Status/packaging wire labels read like their values on purpose; what
+  // matters is known values stay offered.
   expect(within(screen.getByLabelText('Status')).getByRole('option', { name: 'backlog' })).toBeInTheDocument()
   expect(within(screen.getByLabelText('Packaging')).getByRole('option', { name: 'sealed' })).toBeInTheDocument()
 })

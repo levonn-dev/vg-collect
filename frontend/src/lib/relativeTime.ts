@@ -2,11 +2,8 @@ import { i18n } from '@lingui/core'
 import { t } from '@lingui/core/macro'
 import { formatDate } from './format'
 
-// relativeTime buckets a timestamp for a byline - comments and feed
-// rows both use it. now defaults to the real clock; tests pin it
-// explicitly so the buckets are deterministic regardless of when the
-// suite runs. Bucket strings live in the catalog; English output is
-// unchanged ("3m ago" stays "3m ago").
+// Buckets a timestamp for a byline (comments, feed rows); now defaults
+// to the real clock, tests pin it for deterministic buckets.
 export function relativeTime(iso: string, now: number = Date.now()): string {
   const minutes = Math.floor((now - new Date(iso).getTime()) / 60000)
   if (minutes < 1) return t(i18n)`just now`

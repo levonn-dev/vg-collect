@@ -3,21 +3,21 @@ import path from 'node:path'
 import { request } from '@playwright/test'
 import { AUTH_DIR, BASE_URL } from './fixtures'
 
-// Teardown cleaning is not transactional: a run that dies mid-flight
-// (crash, interrupt, a failed fixture) strands its minted e2e-*
-// accounts and whatever they created. Every mint appends its name to a
-// per-run manifest under .auth/ (see fixtures.ts), so the NEXT run can
-// finish the job here before any test starts. Each stale name gets a
-// fresh dev login - binding whatever account currently answers to the
-// name - and a DELETE /api/me, which cascades collection data (entries,
-// tags, views, and submissions via the entry cascade), the social
-// graph, the login identities, and the user row. Community products
-// are shared rather than user-owned, so no cascade reaches them: the
-// ones tests mint carry an "e2e " name prefix and are swept separately
-// below, after the accounts (and with them every referencing entry)
-// are gone. A clean state returns before any request is made.
+// Not transactional: a crashed run strands minted e2e-* accounts (.auth/
+// manifest) and "e2e "-prefixed community products. DELETE /api/me
+// cascades entries/tags/views/submissions and the social graph; products
+// are swept separately below since they are not user-owned.
 export default async function globalSetup() {
   if (!existsSync(AUTH_DIR)) return
+  // Any e2e-w<idx>-<stamp>.json here predates this run (workers mint
+  // their own after setup returns); orphaned by a crashed prior run,
+  // swept unconditionally.
+  const orphanedStates = readdirSync(AUTH_DIR).filter((f) => /^e2e-w\d+-[a-z0-9]+\.json$/.test(f))
+  for (const f of orphanedStates) rmSync(path.join(AUTH_DIR, f))
+  if (orphanedStates.length > 0) {
+    console.log(`sweep: removed ${orphanedStates.length} orphaned worker session file(s)`)
+  }
+
   const stale = readdirSync(AUTH_DIR).filter((f) => /^minted-[a-z0-9]+\.log$/.test(f))
   if (stale.length === 0) return
   const names = [
@@ -34,8 +34,7 @@ export default async function globalSetup() {
   const ctx = await request.newContext({ baseURL: BASE_URL })
   let removed = 0
   for (const [i, name] of names.entries()) {
-    // The gateway budgets logins per IP per minute; a large backlog
-    // paces itself under that budget instead of tripping 429s.
+    // Gateway budgets logins per IP per minute; backlog paces itself to avoid 429s.
     if (i > 0 && i % 150 === 0) await new Promise((resolve) => setTimeout(resolve, 60_000))
     const login = await ctx.get(`/api/auth/login?provider=dev&user=${name}`)
     if (!login.ok()) {
@@ -57,8 +56,7 @@ export default async function globalSetup() {
         console.log(`sweep: product "${p.name}" -> ${del.status()}`)
       }
     } else if (list.status() === 403) {
-      // A stack where the admin fixture has not been granted the role
-      // yet (task e2e grants it; a bare playwright run may not have).
+      // Admin role not granted yet (task e2e grants it; a bare playwright run may not).
       console.log('sweep: admin role not granted; community products skipped')
     }
   } else {

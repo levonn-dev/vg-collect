@@ -48,9 +48,8 @@ it('shows no count when no filter dimension is active', () => {
 })
 
 it('counts active filter dimensions, not selected values, on the Filters badge', () => {
-  // Three dimensions active (status, platformId, developer) even though
-  // status alone carries two selected values - the badge counts
-  // dimensions, and the credit dimensions count like any other.
+  // Badge counts dimensions, not values: status carries two values but counts
+  // once, and credit dimensions count like any other.
   const state = {
     ...defaultListState(),
     status: ['backlog' as const, 'playing' as const], platformId: [6], developer: ['Square'],

@@ -1,6 +1,23 @@
-import { fireEvent, screen } from '@testing-library/react'
+import { useState } from 'react'
+import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { renderWithI18n } from '../../test/i18n'
 import RegionPicker from './RegionPicker'
+
+// value is a plain prop with no internal draft state, so typing more than
+// one character needs the onChange fed back in.
+function Harness({ initial, spy }: { initial: string; spy: (v: string) => void }) {
+  const [value, setValue] = useState(initial)
+  return (
+    <RegionPicker
+      value={value}
+      onChange={(v) => {
+        spy(v)
+        setValue(v)
+      }}
+    />
+  )
+}
 
 test('known value renders the labeled select', () => {
   renderWithI18n(<RegionPicker value="ntsc_j" onChange={() => {}} />)
@@ -8,13 +25,13 @@ test('known value renders the labeled select', () => {
   expect(screen.getByRole('option', { name: 'NTSC-J' })).toBeInTheDocument()
 })
 
-test('escape hatch flips to free text and back', () => {
+test('escape hatch flips to free text and back', async () => {
   const onChange = vi.fn()
-  renderWithI18n(<RegionPicker value="" onChange={onChange} />)
-  fireEvent.click(screen.getByRole('button', { name: "My region isn't listed" }))
-  fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'Korea' } })
+  renderWithI18n(<Harness initial="" spy={onChange} />)
+  await userEvent.click(screen.getByRole('button', { name: "My region isn't listed" }))
+  await userEvent.type(screen.getByLabelText('Region'), 'Korea')
   expect(onChange).toHaveBeenLastCalledWith('Korea')
-  fireEvent.click(screen.getByRole('button', { name: 'Pick a known region instead' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Pick a known region instead' }))
   expect(onChange).toHaveBeenLastCalledWith('')
 })
 
@@ -40,10 +57,10 @@ test('regionGroup renders both optgroups', () => {
   expect(screen.getByRole('group', { name: 'Other regions' })).toBeInTheDocument()
 })
 
-test('required renders on the select and, after the escape hatch, on the input', () => {
+test('required renders on the select and, after the escape hatch, on the input', async () => {
   renderWithI18n(<RegionPicker value="ntsc_j" onChange={() => {}} required />)
   expect(screen.getByLabelText('Region')).toBeRequired()
-  fireEvent.click(screen.getByRole('button', { name: "My region isn't listed" }))
+  await userEvent.click(screen.getByRole('button', { name: "My region isn't listed" }))
   expect(screen.getByLabelText('Region')).toBeRequired()
 })
 
@@ -52,12 +69,12 @@ test('required is absent by default', () => {
   expect(screen.getByLabelText('Region')).not.toBeRequired()
 })
 
-test('placeholder option exists and selecting a value fires onChange', () => {
+test('placeholder option exists and selecting a value fires onChange', async () => {
   const onChange = vi.fn()
   renderWithI18n(<RegionPicker value="" onChange={onChange} />)
   const select = screen.getByLabelText('Region')
   expect(screen.getByRole('option', { name: 'Choose...' })).toBeInTheDocument()
   expect(select).toHaveValue('')
-  fireEvent.change(select, { target: { value: 'ntsc_u' } })
+  await userEvent.selectOptions(select, 'ntsc_u')
   expect(onChange).toHaveBeenCalledWith('ntsc_u')
 })

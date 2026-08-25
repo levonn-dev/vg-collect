@@ -3,12 +3,9 @@ export interface NeighborIDs {
   before_id: string | null
 }
 
-// neighborIDs maps a drag (active dropped onto over's slot) onto the
-// reorder contract's neighbor pair: simulate the array move, then read
-// the moved item's new neighbors. Null means "nothing to do" (no-op
-// drop or stale ids). The caller guarantees ids arrive in rank order
-// ascending - the same order the board renders - so visual neighbors
-// ARE rank neighbors and the server's straddle check agrees.
+// Simulates the array move, reads the moved item's new neighbors. Null
+// = no-op/stale ids. Caller guarantees rank-ascending order, so visual
+// neighbors are rank neighbors.
 export function neighborIDs(ids: string[], activeId: string, overId: string): NeighborIDs | null {
   const from = ids.indexOf(activeId)
   const to = ids.indexOf(overId)
@@ -27,16 +24,9 @@ export function moveByOffset(ids: string[], activeId: string, offset: -1 | 1): N
   return neighborIDs(ids, activeId, ids[to])
 }
 
-// crossesUnknownEdge: ids is always one page of a possibly larger
-// backlog, so a null after_id/before_id from neighborIDs/moveByOffset
-// only means "true global edge" when the page itself starts/ends at
-// that global edge. On any other page it means "this lands at the
-// page's own visible boundary" - a slot whose real neighbor sits on
-// an unfetched adjacent page - and writing null there would silently
-// claim the whole-backlog edge. isFirstPage/isLastPage identify the
-// page's own boundaries against the true ones; a page-local move that
-// never touches either boundary always has both ids non-null and
-// never reaches this check.
+// A null neighbor id only means the true backlog edge when
+// isFirstPage/isLastPage says so; otherwise it's the page's own visible
+// boundary, whose real neighbor sits on an unfetched page.
 export function crossesUnknownEdge(pair: NeighborIDs, isFirstPage: boolean, isLastPage: boolean): boolean {
   return (pair.after_id === null && !isFirstPage) || (pair.before_id === null && !isLastPage)
 }

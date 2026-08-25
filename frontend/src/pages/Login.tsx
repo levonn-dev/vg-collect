@@ -7,6 +7,7 @@ import { fetchProviders } from '../api/me'
 import SectionLabel from '../components/SectionLabel'
 import { btnPrimary } from '../lib/formStyles'
 import { devFixtures, providerNames } from '../lib/providers'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { useMe } from '../lib/useMe'
 
 const errorMessages: Record<string, MessageDescriptor> = {
@@ -21,13 +22,12 @@ function safeNext(raw: string | null): string | null {
   return raw
 }
 
-// Login links are full navigations on purpose: the OAuth dance needs
-// the browser to follow the gateway's redirects, and the dev provider
-// sets the session cookie on the same hop. The gateway always lands
-// back on /, so a requested destination is stashed to sessionStorage
-// before the hop and Layout re-applies it once the session resolves.
+// Full navigations on purpose: OAuth needs the browser to follow the
+// gateway's redirects. Gateway always lands on /, so the destination is
+// stashed to sessionStorage first; Layout re-applies it.
 export default function Login() {
   const { t, i18n } = useLingui()
+  useDocumentTitle(t`Sign in`)
   const [params] = useSearchParams()
   const me = useMe()
   const providers = useQuery({ queryKey: ['providers'], queryFn: fetchProviders })
@@ -37,13 +37,14 @@ export default function Login() {
     if (next) sessionStorage.setItem('vg_next', next)
   }
 
-  // A live session has no business here (the browser's back button
-  // lands on this page after the OAuth hop, since that hop is a full
-  // navigation): bounce to the requested page or home.
+  // Back button can land here after the OAuth hop (a full navigation);
+  // bounce a live session to next or home.
   if (me.data) return <Navigate to={next ?? '/'} replace />
 
   return (
     <main
+      id="main-content"
+      tabIndex={-1}
       aria-label={t`Sign in`}
       className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6"
     >

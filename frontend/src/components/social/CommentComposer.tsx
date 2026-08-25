@@ -9,13 +9,9 @@ import { invalidateShelfSocial } from '../../lib/shelfQueries'
 
 const MAX_LENGTH = CreateCommentRequest.properties.body.maxLength
 
-// CommentComposer posts a top-level comment onto a shared shelf. body
-// keeps the raw typed text (so the counter tracks exactly what is on
-// screen, including trailing whitespace); only the submitted payload
-// is trimmed. A 429 (the rolling 24h comment cap) gets its own copy;
-// any other failure falls back to a generic one - both read from the
-// mutation's own error state, so a retried submit clears whichever
-// was showing.
+// body keeps the raw typed text (counter tracks trailing whitespace too);
+// only the submitted payload is trimmed. 429 (rolling 24h cap) gets its own
+// copy; both read from the mutation's error state, so a retry clears it.
 export default function CommentComposer({ shelfId }: { shelfId: string }) {
   const { t } = useLingui()
   const [body, setBody] = useState('')

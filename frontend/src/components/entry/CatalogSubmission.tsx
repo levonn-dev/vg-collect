@@ -7,10 +7,8 @@ import { btnSecondary } from '../../lib/formStyles'
 import { resolveApiError } from '../../lib/resolveApiError'
 import { useSubmission } from './useSubmission'
 
-// entry_not_custom never actually reaches submit: this block only
-// ever mounts for a custom entry (EntryDetail's !e.product_id gate),
-// so the one code the endpoint documents that this call cannot
-// answer is left out on purpose, not overlooked.
+// entry_not_custom never reaches submit: this block only mounts for a custom
+// entry, so the one code it can't answer is left out on purpose.
 const submitErrorCodes: Record<string, MessageDescriptor> = {
   entry_not_found: msg`This entry no longer exists.`,
   submission_pending: msg`A submission is already pending for this entry.`,
@@ -28,11 +26,8 @@ function cancelErrorMessage(e: unknown, i18n: I18n): string {
   return resolveApiError(e, i18n, cancelErrorCodes, msg`The cancellation failed.`)
 }
 
-// CatalogSubmission is the custom-entry block for the shared-catalog
-// pipeline: submit, watch the pending review, read a rejection,
-// cancel or resubmit. Approval needs no state here - the entry turns
-// product-backed and this block (custom-only) unmounts. Cancelled
-// reads as never-submitted for resubmit purposes.
+// Approval needs no state here: the entry turns product-backed and this
+// block unmounts. Cancelled reads as never-submitted for resubmit purposes.
 export default function CatalogSubmission({ entryId }: { entryId: string }) {
   const { t, i18n } = useLingui()
   const queryClient = useQueryClient()

@@ -9,25 +9,19 @@ interface Props<T> {
   title: string
   actionLabel: string
   mutationFn: () => Promise<T>
-  // Every caller's success text differs in shape: Normalize's is derived
-  // from the response counts, Refresh/Rematch's is a fixed sentence that
-  // ignores the response body entirely. A required renderer covers both
-  // without a default that would have to guess the response shape.
+  // Required, not defaulted: Normalize derives text from response counts,
+  // Refresh/Rematch ignores the body entirely - no default could guess the shape.
   successMessage: (data: T | undefined) => ReactNode
-  // inProgressCode/inProgressMessage cover the one ApiError code each
-  // trigger treats specially (a 409 for a sweep that is already
-  // running); Normalize's three callers have no such code and omit
-  // both. failureMessage is the generic fallback for every other
-  // error, and its wording differs per caller, so it stays a prop
-  // rather than a second hardcoded string.
+  // inProgressCode/Message cover the one ApiError code a trigger treats
+  // specially (409, sweep already running); Normalize's callers omit both.
+  // failureMessage is the generic fallback, worded per caller.
   inProgressCode?: string
   inProgressMessage?: ReactNode
   failureMessage?: ReactNode
 }
 
-// The scanned/normalized/skipped sentence Admin's three normalize-*
-// triggers share; exported so Admin.tsx passes the same function three
-// times instead of repeating the sentence three times.
+// Shared scanned/normalized/skipped sentence; exported so Admin.tsx passes
+// one function instead of repeating the sentence three times.
 // eslint-disable-next-line react-refresh/only-export-components -- shared with Admin.tsx's three normalize-* triggers, alongside this component.
 export function normalizeSuccessMessage(data: NormalizeResult | undefined): ReactNode {
   const scanned = data?.scanned ?? 0
@@ -36,12 +30,8 @@ export function normalizeSuccessMessage(data: NormalizeResult | undefined): Reac
   return <Trans>Scanned {scanned}, promoted {normalized}, skipped {skipped}.</Trans>
 }
 
-// NormalizeTrigger is the generic admin trigger lever: one mutation, a
-// success line, and an error line with an optional conflict-specific
-// message. Shared by Admin's three normalize levers (platforms,
-// regions, community regions) and the catalog-refresh and
-// entry-rematch levers, so each caller configures
-// it directly instead of wrapping its own near-identical component.
+// Generic admin trigger lever: mutation, success line, optional
+// conflict-specific error. Callers configure it directly instead of wrapping it.
 export default function NormalizeTrigger<T>({
   title,
   actionLabel,

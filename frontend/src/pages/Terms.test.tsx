@@ -15,9 +15,8 @@ function renderTerms() {
 
 afterEach(() => {
   vi.unstubAllEnvs()
-  // Unmount before touching the singleton (this hook runs ahead of
-  // RTL's auto-cleanup; re-activating against a mounted tree is an
-  // I18nProvider update outside act), then leave en active.
+  // Unmount before touching the singleton: re-activating a mounted
+  // tree is an update outside act. Leave en active after.
   cleanup()
   i18n.activate('en')
 })

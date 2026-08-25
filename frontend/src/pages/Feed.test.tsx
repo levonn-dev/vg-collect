@@ -9,12 +9,10 @@ import { calledPath, jsonResponse, requestPath } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
 import Feed from './Feed'
 
-// Same route-map idiom as Explore.test/SharedShelf.test: fetch is
-// dispatched by matching prefix, and any URL nothing stubbed fails the
-// test in afterEach. A route's value may be a plain body (always
-// 200), a Response (explicit status), or an array of either consumed
-// in call order (the last entry repeats once exhausted) - what the
-// load-more test needs for its second, different page.
+// Same route-map idiom as Explore.test/SharedShelf.test: prefix-matched
+// dispatch, unstubbed URLs fail in afterEach. Value is a body,
+// Response, or array consumed in order (last repeats), for the
+// load-more test's second page.
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
   const counts: Record<string, number> = {}
@@ -37,11 +35,9 @@ function stubFetch(routes: Record<string, unknown>) {
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  // The Japanese-sentence test switches the shared Lingui singleton;
-  // every test starts from the English catalog setup.ts activated.
-  // Unmount first: this hook runs ahead of RTL's auto-cleanup, and
-  // re-activating against a mounted tree is an I18nProvider update
-  // outside act.
+  // Japanese-sentence test switches the shared Lingui singleton; every
+  // test starts from English. Unmount first: re-activating a mounted
+  // tree is an update outside act.
   cleanup()
   i18n.activate('en')
   const missed = unstubbed
@@ -109,10 +105,8 @@ it('renders verb-shaped rows on the Following tab: two profile links for a follo
   const rows = await screen.findAllByRole('listitem')
   expect(rows).toHaveLength(3)
 
-  // Each row is one translated sentence, so beyond the words being
-  // present the actor/verb/target reading order is part of the
-  // contract; toHaveTextContent regexes pin that order (the .* gaps
-  // absorb the avatar-fallback initials the chips render in jsdom).
+  // One Trans per row, so reading order is part of the contract;
+  // regexes pin it (.* gaps absorb chip avatar-fallback initials).
 
   // Follow row: "@Alice_Prime followed @Bob_Prime" - two distinct profile links.
   expect(within(rows[0]).getByRole('link', { name: '@Alice_Prime' })).toHaveAttribute('href', '/u/Alice_Prime')
@@ -161,10 +155,8 @@ it('renders Japanese rows as whole SOV sentences, particles flush against the li
     i18n.activate('ja')
   })
 
-  // The regexes pin word order AND that each particle sits directly
-  // against its neighbor in the text layer - the reason the sentence
-  // is one Trans instead of per-word flex items. (The follow row needs
-  // a .* gap where the followee chip's avatar-fallback initial lands.)
+  // Regexes pin word order and that particles sit flush against
+  // neighbors - why the sentence is one Trans, not per-word flex items.
   expect(rows[0]).toHaveTextContent(/@Alice_Primeが.*@Bob_Primeをフォローしました/)
   expect(rows[1]).toHaveTextContent(/@Bob_PrimeがBacklog Wallをいいねしました/)
   expect(rows[2]).toHaveTextContent(/@Alice_PrimeがBacklog Wallにコメントしました/)

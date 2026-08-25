@@ -31,24 +31,17 @@ const promoteErrorCodes: Record<string, MessageDescriptor> = {
   upstream_unavailable: msg`The provider is unavailable - try again.`,
 }
 
-// This file's own strings use the explicit t(i18n) form (not the
-// useLingui()-bound t) so they match resolveApiError's own
-// explicit-i18n signature without importing a second, same-named t.
-//
-// identity_taken names the provider holder; surface it verbatim (ahead
-// of resolveApiError's own code lookup) - this is the true-merge signal
-// an admin acts on by hand, so it wins even though the code itself
-// already matches a known entry.
+// Uses explicit t(i18n), not useLingui()'s t, to match resolveApiError's
+// signature without importing a second same-named t.
+// identity_taken names the provider holder; shown verbatim ahead of
+// resolveApiError's code lookup since it's the true-merge signal an admin acts on.
 function promoteErrorMessage(e: unknown, i18n: I18n): string {
   if (e instanceof ApiError && e.code === 'identity_taken' && e.message) return e.message
   return resolveApiError(e, i18n, promoteErrorCodes, msg`The promotion failed.`)
 }
 
-// PromotePanel is a community product's upgrade surface: confirm the
-// provider identity through the live pickers (a candidate pre-seeds
-// the search) and promote in place - the product id stays stable, so
-// every adopter upgrades through live reads. Dismiss silences a
-// wrong candidate permanently.
+// Promotes in place: product id stays stable, so adopters upgrade through
+// live reads. Dismiss silences a wrong candidate permanently.
 export default function PromotePanel({ product, candidates, onDone }: PromotePanelProps) {
   const { i18n } = useLingui()
   const queryClient = useQueryClient()
@@ -61,24 +54,20 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
   })
   const dismiss = useMutation({
     mutationFn: (c: Candidate) => dismissPromoteCandidate(product.id, c.provider, c.provider_id),
-    // Dismiss silences one wrong candidate, not the whole review: refresh
-    // the list (the parent re-feeds this panel's candidates) but keep the
-    // panel open so the remaining candidates stay reviewable. Only a
-    // promote closes it.
+    // Refreshes the list but keeps the panel open for remaining candidates;
+    // only a promote closes it.
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin'] }),
   })
 
-  // Both promote paths (game pick and manual match pick below) ask the
-  // exact same question, so the message is computed once here rather
-  // than repeated at each confirmThen call site.
+  // Both promote paths ask the same question, computed once rather than
+  // repeated at each confirmThen call site.
   const promoteMessage = t(i18n)`Promote this community product to provider identity? Adopter entries upgrade in place; this cannot be undone from the UI.`
   const pickGame = (p: CatalogPick) => {
     if (p.kind !== 'game') return
     setPicking(false)
     const identity = { igdb_game_id: p.igdbGameId, platform_igdb_id: p.platformId }
-    // The attached listing is optional: without one the body is the two
-    // provider ids, exactly as before; a pick adds pc_product_id so the
-    // promoted product re-enters the index already priced.
+    // Listing is optional: without one the body is just the two provider ids;
+    // with one, pc_product_id lets the product re-enter the index already priced.
     confirmThen(promoteMessage, () =>
       promote.mutate(listing ? { ...identity, pc_product_id: listing.pcProductId } : identity),
     )
@@ -102,10 +91,8 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
                 disabled={dismiss.isPending}
                 className={btnSecondaryXs}
               >
-                {/* Its own catalog entry, distinct from the transient
-                    banner Dismiss (DismissibleNotice/Account): this one
-                    silences a wrong candidate permanently, not closes a
-                    notice, and a translator needs that difference. */}
+                {/* Distinct from DismissibleNotice's transient Dismiss: this
+                    permanently silences a candidate, not closes a notice. */}
                 <Trans context="silence a promote candidate">Dismiss</Trans>
               </button>
             </li>
@@ -123,9 +110,8 @@ export default function PromotePanel({ product, candidates, onDone }: PromotePan
         (product.type === 'game' ? (
           <div className="mt-2">
             <SearchPicker kinds={['game']} initialQuery={seed} onPick={pickGame} />
-            {/* Optional: attach a price listing before picking the game
-                (the game pick fires the promote). No attach keeps the
-                body at the two provider ids. */}
+            {/* Optional: attach a listing before picking the game (which fires
+                the promote); no attach keeps the body at the two provider ids. */}
             {listing ? (
               <p className="mt-2 flex items-center gap-2 text-sm">
                 <span><Trans>Listing: {listingName}</Trans></span>

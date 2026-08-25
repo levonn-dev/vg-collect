@@ -9,27 +9,13 @@ export interface PlatformValue {
   platformName: string
 }
 
-// PlatformPicker replaces the free-text platform input across the
-// wizard, the entry form, and the admin curation form. It filters the
-// cached /api/platforms catalog client-side (name + aliases,
-// case-insensitive) as the user types - the submit-then-list SearchPicker
-// idiom, but the list is small and local so it filters live. An explicit
-// escape hatch reveals a plain input for platforms the catalog does not
-// list (stored name-only, no id).
-//
-// A confirmed pick is driven entirely by the value prop
-// (value.platformIgdbId !== undefined), not local state: once a
-// canonical platform is set, the input and suggestion list (which would
-// otherwise keep matching the picked name against itself) are replaced
-// by the name as text plus a Change button. Being value-driven means an
-// entry that already carries a canonical platform opens confirmed, a
-// wizard Back that retains state re-enters it, and an external reset of
-// the value exits it - all for free, with no extra state to sync.
-// maxLength is an optional pass-through onto the free-text inputs
-// below (both the catalog-suggest search box and the escape-hatch
-// field can end up as the platformName that gets submitted) - absent
-// by default so every existing caller renders exactly as before;
-// ReviewPanel is the one caller that supplies it today.
+// Filters cached /api/platforms client-side (name+aliases, case-insensitive)
+// live, unlike SearchPicker's submit-then-list; escape hatch stores a
+// name-only platform with no id.
+// Confirmed state follows value.platformIgdbId !== undefined, not local
+// state, so an external reset (or wizard Back) needs no sync to exit it.
+// maxLength passes through to both free-text inputs; optional so other
+// callers are unchanged.
 export default function PlatformPicker({ value, onChange, maxLength }: { value: PlatformValue; onChange: (v: PlatformValue) => void; maxLength?: number }) {
   const { t } = useLingui()
   const platforms = useQuery({ queryKey: ['platforms'], queryFn: fetchPlatforms, staleTime: Infinity })
@@ -127,9 +113,8 @@ export default function PlatformPicker({ value, onChange, maxLength }: { value: 
                 type="button"
                 onClick={() => {
                   onChange({ platformIgdbId: p.igdb_id, platformName: p.name })
-                  // The confirmed state renders the prop, not query - reset
-                  // it so a later Change starts from a clean input instead
-                  // of resurfacing this pick's leftover search text.
+                  // Confirmed state renders the prop, not query; reset so a
+                  // later Change starts clean, not from leftover search text.
                   setQuery('')
                 }}
                 className="w-full rounded border border-gray-200 px-2 py-0.5 text-left text-sm hover:bg-gray-50"

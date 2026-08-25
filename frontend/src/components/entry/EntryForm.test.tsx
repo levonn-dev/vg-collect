@@ -10,11 +10,9 @@ function renderForm(
   onSave = vi.fn(),
   moneyOpts: { currency?: string; rates?: boolean } = {},
 ) {
-  // mockImplementation, URL-aware, fresh Response per call: a custom
-  // entry mounts several concurrent fetchers (TagPicker, PlatformPicker,
-  // and - once a price-source picker opens - SearchPicker's auto-fired
-  // search), each needing its own shape and its own Response instance (a
-  // shared instance can only have its body read once).
+  // URL-aware mockImplementation, fresh Response per call: a custom entry
+  // mounts concurrent fetchers (TagPicker, PlatformPicker, SearchPicker), each
+  // needing its own shape and Response (a shared body can only read once).
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
     const u = requestPath(url)
     if (u.startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
@@ -59,8 +57,8 @@ it('submits a faithful full-replacement payload with the edits applied', async (
   expect(onSave).toHaveBeenCalledTimes(1)
   const sent = onSave.mock.calls[0][0] as EntryUpdate
   expect(sent.notes).toBe('replayed in 2026')
-  // Untouched fields survive: the pricing draft initializes from the
-  // entry and rides the payload unchanged, and tags survive.
+  // Untouched fields survive: pricing draft inits from the entry and rides
+  // unchanged, tags survive.
   expect(sent.pricing_mode).toBe('proxy')
   expect(sent.pricing_product_id).toBe('p9')
   expect(sent.tag_ids).toEqual(['t1'])
@@ -147,10 +145,8 @@ it('renders the save error', () => {
   expect(screen.getByRole('alert')).toHaveTextContent('no such pricing product')
 })
 
-// Price paid is stamped once at create and never re-currencied by an
-// edit: the label shows the entry's own stored currency (JPY) even
-// though the signed-in profile displays in a different one (EUR), and
-// the save payload must carry the same stored code through unchanged.
+// Price paid is stamped at create, never re-currencied: label shows the
+// entry's stored currency (JPY) even under a EUR profile, and the payload keeps it.
 it('preserves the stored paid currency on edit and shows it on the label', async () => {
   const entry = entryFixture({ currency: 'JPY', price_paid_cents: 500000 })
   const { onSave } = renderForm(entry, vi.fn(), { currency: 'EUR' })
@@ -163,9 +159,8 @@ it('preserves the stored paid currency on edit and shows it on the label', async
   expect(sent.currency).toBe('JPY')
 })
 
-// The tests above pin the payload semantics (full-replacement baseline,
-// clearing, gating); this one exercises every remaining field's own
-// control once - breadth, not new behavior.
+// Tests above pin payload semantics (baseline, clearing, gating); this one
+// exercises every remaining field's control once - breadth, not new behavior.
 it('carries edits from every remaining field control into the payload', async () => {
   const tags = [{ id: 't1', name: 'rpg', entry_count: 1 }]
   const platforms = { platforms: [{ igdb_id: 99, name: 'Famicom', aliases: [] }] }
@@ -180,8 +175,7 @@ it('carries edits from every remaining field control into the payload', async ()
 
   await userEvent.clear(screen.getByLabelText(/^name$/i))
   await userEvent.type(screen.getByLabelText(/^name$/i), 'Repro Cart II')
-  // The fixture's platform already carries a canonical id, so the picker
-  // opens confirmed (see PlatformPicker's value-driven confirmed state):
+  // Fixture's platform carries a canonical id, so the picker opens confirmed;
   // Change is required before the input exists to type into.
   await userEvent.click(screen.getByRole('button', { name: 'Change platform' }))
   await userEvent.type(screen.getByLabelText(/^platform$/i), 'Famicom')
@@ -213,8 +207,7 @@ it('carries edits from every remaining field control into the payload', async ()
   expect(sent.edition).toBe('black label')
   expect(sent.packaging).toBe('loose')
   expect(sent.item_condition).toBe('poor')
-  // Going loose cleared both flags; the manual click above re-checked
-  // manual only.
+  // Going loose cleared both flags; the manual click above re-checked manual only.
   expect(sent.has_box).toBe(false)
   expect(sent.has_manual).toBe(true)
   expect(sent.price_paid_cents).toBe(999)
@@ -247,12 +240,9 @@ it('omits cover_url from the payload when the cover input is left empty', async 
   await userEvent.click(screen.getByRole('button', { name: /save/i }))
   expect(onSave).toHaveBeenCalledTimes(1)
   const sent = onSave.mock.calls[0][0] as EntryUpdate
-  // Value-level: the field carries no cover. Wire-level: cover_url must
-  // be absent from the serialized body, not present-but-undefined - the
-  // two are indistinguishable on the raw object (toUpdate always
-  // assigns the key) but not after JSON.stringify, which is what
-  // actually crosses the network (same wire round-trip idiom as
-  // lib/entryUpdate.test.ts).
+  // Value-level: field carries no cover. Wire-level: cover_url must be absent
+  // from the serialized body, not present-but-undefined - indistinguishable on
+  // the raw object (toUpdate always assigns the key) but not after JSON.stringify.
   expect(sent.cover_url).toBeUndefined()
   const wire = JSON.parse(JSON.stringify(sent)) as Record<string, unknown>
   expect(wire).not.toHaveProperty('cover_url')
@@ -268,10 +258,9 @@ it('carries a stored custom price through an untouched save', async () => {
 })
 
 it('blocks saving a custom price left empty', async () => {
-  // pricing_product_id stays undefined so PricingPanel fires no product
-  // fetch of its own here: it would otherwise race TagPicker's tags
-  // fetch for the single mocked response body (see renderForm) and
-  // could surface a second, unrelated role=alert.
+  // pricing_product_id stays undefined so PricingPanel fires no product fetch,
+  // which would otherwise race TagPicker's tags fetch for the single mocked
+  // response and could surface an unrelated role=alert.
   const { onSave } = renderForm(entryFixture({ pricing_mode: 'disabled', pricing_product_id: undefined }))
   await userEvent.click(screen.getByRole('radio', { name: /^custom/i }))
   await userEvent.click(screen.getByRole('button', { name: /save/i }))
@@ -322,10 +311,9 @@ it('falls back to a USD input when rates are unavailable', () => {
 })
 
 it('blocks saving a custom price when the rate vanishes after mount', async () => {
-  // The input currency froze to EUR at mount; a fresh snapshot then
-  // arrives WITHOUT a EUR rate. Replacing the cached snapshot with a
-  // defined object updates observers synchronously and stays fresh
-  // (staleTime Infinity), so no refetch races the assertion.
+  // Input currency froze to EUR at mount; a fresh snapshot then arrives
+  // without a EUR rate. Replacing the cached snapshot updates observers
+  // synchronously and stays fresh (staleTime Infinity), so no refetch races it.
   const entry = entryFixture({ pricing_mode: 'custom', custom_value_cents: 5400 })
   const { onSave, queryClient } = renderForm(entry, vi.fn(), { currency: 'EUR' })
   expect(screen.getByLabelText(/custom price \(eur\)/i)).toBeInTheDocument()
@@ -336,10 +324,9 @@ it('blocks saving a custom price when the rate vanishes after mount', async () =
 })
 
 it('converts the draft at the frozen input currency when the display currency changes mid-edit', async () => {
-  // The input currency froze to EUR at mount. The header selector then
-  // flips the profile to JPY mid-edit (optimistic ['me'] update, no
-  // remount) - the draft typed in EUR must still convert at EUR's
-  // rate, not JPY's.
+  // Input currency froze to EUR at mount; the header then flips the profile
+  // to JPY mid-edit (optimistic, no remount) - the draft must still convert
+  // at EUR's rate.
   const entry = entryFixture({ pricing_mode: 'custom', custom_value_cents: 5400 })
   const { onSave, queryClient } = renderForm(entry, vi.fn(), { currency: 'EUR' })
   const input = screen.getByLabelText(/custom price \(eur\)/i)
@@ -354,9 +341,8 @@ it('converts the draft at the frozen input currency when the display currency ch
   expect(sent.custom_value_entered_currency).toBe('EUR')
 })
 
-// Locks in a deliberate behavior change: a blanked draft no longer clears
-// stored memory on save - without this, a stray clear-then-switch-mode
-// click would silently erase custom_value_cents from the baseline echo.
+// A blanked draft no longer clears stored memory on save: a stray
+// clear-then-switch-mode click must not erase custom_value_cents.
 it('preserves a stored custom price when the draft is blanked and saved under a different mode', async () => {
   const entry = entryFixture({
     pricing_mode: 'custom',

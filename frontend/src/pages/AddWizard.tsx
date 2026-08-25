@@ -19,12 +19,11 @@ import type { DetailsValues } from '../components/wizard/DetailsStep'
 import DetailsStep, { defaultDetails, detailsToCreate } from '../components/wizard/DetailsStep'
 import type { ManualMatch } from '../lib/catalog'
 import { useDisplayMoney } from '../lib/useDisplayMoney'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
-// A custom create never references a catalog product: pricing_mode is
-// hard-coded to disabled below and no product_id is ever sent, so
-// createEntry cannot answer any of its documented codes on this path
-// (unlike ConfirmStep's catalog-pick create, which reaches a couple)
-// - the translated fallback is the whole story here.
+// Custom create never references a product (pricing_mode hard-coded
+// disabled, no product_id sent), so createEntry can't answer its
+// documented codes here; the fallback is the whole story.
 const customEntryErrorCodes: Record<string, MessageDescriptor> = {}
 function customEntryErrorMessage(e: unknown, i18n: I18n): string {
   return resolveApiError(e, i18n, customEntryErrorCodes, msg`The entry could not be created.`)
@@ -40,17 +39,16 @@ type WizardStep =
 
 export default function AddWizard() {
   const { t } = useLingui()
+  useDocumentTitle(t`Add`)
   const [searchParams] = useSearchParams()
   const [state, setState] = useState<WizardStep>({ step: 'search' })
   const money = useDisplayMoney()
-  // Survives the step machine: SearchPicker unmounts on every step
-  // change, so its state lives here and Back re-seeds it (the TanStack
-  // search cache brings the results straight back). Wins over the ?q=
-  // deep link, which only seeds a fresh wizard.
+  // SearchPicker unmounts every step change; state lives here so Back
+  // re-seeds it (TanStack cache brings results back).
   const [searchState, setSearchState] = useState<SearchPickerState | undefined>(undefined)
 
   return (
-    <main className="py-6" aria-label={t`Add to collection`}>
+    <main id="main-content" tabIndex={-1} className="py-6" aria-label={t`Add to collection`}>
       <h2 className="mb-4 text-2xl font-bold"><Trans>Add to collection</Trans></h2>
       {state.step === 'search' && (
         <SearchPicker
@@ -161,8 +159,8 @@ function CustomConfirm({
         publishers: cleanNames(custom.publishers),
       }),
     onSuccess: (entry) => {
-      // A custom add can mint new facet values (its platform and its
-      // credit names) - same invalidation the product-add confirm does.
+      // Custom add can mint new facet values (platform, credit names);
+      // same invalidation as the product-add confirm.
       invalidateEntryQueries(queryClient, [['entry-facets']])
       void navigate(`/entries/${entry.id}`, { state: { justAdded: true } })
     },

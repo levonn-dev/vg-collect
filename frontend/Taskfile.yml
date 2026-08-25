@@ -79,11 +79,8 @@ tasks:
     deps:
       - deps
     cmds:
-      # The gateway budgets /api/* and /api/auth/* per client IP per
-      # minute, sized so a full run clears them with headroom (see the
-      # bff chart's values.yaml). One 429 per run is expected and
-      # asserted by a test: the handle-cooldown answer on PATCH
-      # /api/me, an application response relayed through the gateway.
-      # Any OTHER 429 is a real signal, not noise to pace around. No
-      # test contains timing machinery.
+      # The gateway rate-limits /api/* and /api/auth/* per client IP per
+      # minute (bff chart values.yaml); a full run clears them with
+      # headroom. Exactly one 429 is expected, from PATCH /api/me's
+      # handle-cooldown test; any other 429 is a real signal, not noise.
       - npx playwright test

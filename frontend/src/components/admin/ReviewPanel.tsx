@@ -31,11 +31,9 @@ const SUBMISSION_COVER_URL_MAX = CommunityProductSpec.properties.cover_url.maxLe
 
 interface ReviewPanelProps {
   submission: AdminSubmission
-  // onDone closes the panel; an optional error rides through to the
-  // queue notice, so a raced-verdict explanation is seen after the panel
-  // (and its inline message) unmounts. The error travels, not its
-  // message: the queue phrases it at render time, so the notice follows
-  // a locale switch instead of freezing the language it was raised in.
+  // Closes the panel; an optional error rides to the queue notice so a raced
+  // verdict is explained after unmount. The error travels, not a rendered
+  // message, so the notice follows a later locale switch.
   onDone: (error?: ApiError) => void
 }
 
@@ -45,11 +43,9 @@ const verdictErrorCodes: Record<string, MessageDescriptor> = {
   enrichment_unavailable: msg`The catalog cannot be reached - try again.`,
 }
 
-// This file's own strings use the explicit t(i18n) form (not the
-// useLingui()-bound t) so they match resolveApiError's own
-// explicit-i18n signature without importing a second, same-named t.
-// PotentialDuplicates below has no such helper to collide with, so it
-// uses the plain useLingui()-bound Trans/t as usual.
+// Uses explicit t(i18n), not useLingui()'s t, to match resolveApiError's
+// signature without importing a second same-named t. PotentialDuplicates below
+// has no such collision, so it uses the plain useLingui()-bound Trans/t.
 // eslint-disable-next-line react-refresh/only-export-components -- shared with SubmissionsQueue, which phrases the error this panel hands it, alongside this component.
 export function verdictErrorMessage(e: unknown, i18n: I18n): string {
   return resolveApiError(e, i18n, verdictErrorCodes, msg`The verdict failed.`)
@@ -59,13 +55,9 @@ function duplicatesKind(itemType: AdminSubmission['item_type']): SearchKind {
   return itemType === 'game' ? 'game' : 'hardware'
 }
 
-// isExactDuplicate flags a duplicate row that is (almost certainly) the
-// submitted item itself: identical name (case/whitespace-insensitive),
-// and - when both sides carry a platform - identical platform too. A
-// row or submission missing a platform name falls back to name-only
-// equality, since a data gap is not a mismatch signal. A named helper
-// (not inlined JSX) so the badge's rendering behavior is what the test
-// targets, not an ad hoc expression.
+// Case/whitespace-insensitive name match, plus platform match when both
+// sides have one; a missing platform falls back to name-only (a data gap
+// isn't a mismatch signal).
 function isExactDuplicate(submission: AdminSubmission, row: SearchResult): boolean {
   const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
   if (!same(row.name, submission.display_name)) return false
@@ -75,19 +67,11 @@ function isExactDuplicate(submission: AdminSubmission, row: SearchResult): boole
   return same(rowPlatform, subPlatform)
 }
 
-// PotentialDuplicates surfaces the top catalog matches for the
-// submitted proposal's own name, so the admin can spot an existing
-// provider or community product before minting a duplicate. Keyed by
-// submission id and searched on the ORIGINAL proposal (name + type),
-// not the live-edited curation fields below, so editing the form
-// causes no refetch. Mostly read-only: a provider row has no pick
-// action here (adopt existing covers that, via its own SearchPicker),
-// but a community row already carries its own product_id, so it gets
-// a direct "Use as existing" shortcut. onAdopt is the panel's own
-// adoptPick - the exact function the SearchPicker-driven community
-// pick calls - so both entry points share one mutation and one
-// pending/error/invalidation story; this component mints no pick or
-// verdict logic of its own.
+// Searched on the ORIGINAL proposal (name + type), not the live-edited fields
+// below, so editing the form causes no refetch.
+// Community rows get a "Use as existing" shortcut (they carry product_id);
+// provider rows have no pick action here (SearchPicker's adopt-existing covers it).
+// onAdopt is the panel's own adoptPick, so both entry points share one mutation.
 function PotentialDuplicates({
   submission,
   onAdopt,
@@ -155,13 +139,9 @@ function PotentialDuplicates({
   )
 }
 
-// ReviewPanel is one submission's curation surface. The proposal
-// pre-fills the mint form (moderated shared truth: the admin fixes
-// casing, platform text, dates before anything becomes catalog).
-// Adopt existing covers the second submitter and the
-// provider-already-has-it case: community hits adopt directly,
-// provider hits resolve to a product first. Reject carries the
-// reason the submitter reads.
+// Proposal pre-fills the mint form so the admin can fix casing/platform/dates
+// before anything becomes catalog. Adopt existing: community hits adopt
+// directly, provider resolves to a product first. Reject carries a reason.
 export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
   const { i18n } = useLingui()
   const [name, setName] = useState(submission.display_name)
@@ -182,8 +162,7 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
     mutationFn: (v: VerdictRequest) => submitVerdict(submission.id, v),
     onSuccess: () => onDone(),
     onError: (e) => {
-      // A raced verdict is done from this row's perspective: close, and
-      // carry the error up so the queue can show it once this unmounts.
+      // A raced verdict closes this row; the error carries up for the queue to show.
       if (e instanceof ApiError && e.code === 'submission_resolved') onDone(e)
     },
   })
@@ -194,9 +173,8 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
       product: {
         type: itemType,
         name: name.trim(),
-        // Name-only by design: community facts carry platform_name, never
-        // a platform id, so a confirmed catalog pick's id is display-only
-        // here and intentionally dropped from the mint.
+        // Name-only by design: community facts carry platform_name, never an
+        // id, so a confirmed pick's id is display-only and dropped from the mint.
         ...(platform.platformName.trim() !== '' && { platform_name: platform.platformName.trim() }),
         ...(region !== '' && { region }),
         ...(edition.trim() !== '' && { edition: edition.trim() }),
@@ -309,11 +287,8 @@ export default function ReviewPanel({ submission, onDone }: ReviewPanelProps) {
         <div className="mt-3 border-t border-gray-200 pt-3">
           <SearchPicker
             kinds={['game', 'hardware']}
-            // Seeds the picker's kind radio through the same initialState
-            // seam the add wizard uses to restore a typed search (see
-            // AddWizard) - text/submitted mirror what initialQuery alone
-            // used to set, kind now matches the submission's own item
-            // type instead of always defaulting to the first kind (game).
+            // Seeds via the same initialState seam AddWizard uses; kind matches
+            // the submission's item type instead of defaulting to game.
             initialState={{
               kind: duplicatesKind(submission.item_type),
               text: submission.display_name,

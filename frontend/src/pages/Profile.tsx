@@ -11,20 +11,13 @@ import NotFoundState from '../components/social/NotFoundState'
 import ShelfCard from '../components/social/ShelfCard'
 import { foldHandle } from '../lib/handle'
 import { refetchWarning, renderQueryState } from '../lib/queryBoundary'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { useMe } from '../lib/useMe'
 
-// Profile is the public /u/:handle page: owner card, follower/
-// following counts, a follow control (hidden for the signed-in owner
-// looking at their own page), and the owner's listed shelves. The
-// query key folds the handle so it lines up with FollowButton's
-// invalidation target regardless of the case/underscores the visitor
-// typed or a link carried. An unknown handle and a private one answer
-// the same 404 (deliberately indistinguishable), so the error branch
-// never inspects the problem body - it renders the shared
-// NotFoundState either way. social_available false means the social
-// service degraded open: the page still renders, just without counts
-// or a follow control (a control we cannot render correctly without
-// knowing whether the viewer already follows this person).
+// Public /u/:handle page. Query key folds the handle to match
+// FollowButton's invalidation target. Unknown and private handles both
+// 404 indistinguishably. social_available false means the social
+// service degraded open: renders without counts or follow control.
 export default function Profile() {
   const { t } = useLingui()
   const { handle = '' } = useParams()
@@ -33,6 +26,7 @@ export default function Profile() {
     queryKey: ['profile', foldHandle(handle)],
     queryFn: () => fetchProfilePage(handle),
   })
+  useDocumentTitle(profile.data ? `@${profile.data.profile.handle}` : t`Profile`)
 
   if (profile.isPending || (profile.isError && profile.data === undefined)) {
     return renderQueryState(profile, {
@@ -47,15 +41,14 @@ export default function Profile() {
   }
 
   const { profile: card, social_available, social, shelves, total_count } = profile.data
-  // Defaults to "is the owner" (hides the follow control) until me
-  // resolves, rather than risk a flash of Follow on the viewer's own
-  // page while the identity check is still in flight.
+  // Defaults to owner (hides follow control) until me resolves,
+  // avoiding a flash of Follow on your own page.
   const isOwner = me.data ? me.data.id === card.user_id : true
   const followerCount = social_available && social ? social.follower_count : 0
-  const followingCount = social_available && social ? social.following_count : undefined
+  const followingCount = social_available && social ? social.following_count : 0
 
   return (
-    <main aria-label={t`Profile`} className="py-6">
+    <main id="main-content" tabIndex={-1} aria-label={t`Profile`} className="py-6">
       {refetchWarning(profile)}
       <header className="flex flex-wrap items-center gap-4 border-b border-gray-200 pb-4">
         <Avatar key={card.avatar_url} url={card.avatar_url} label={card.handle} size="lg" />
@@ -65,7 +58,7 @@ export default function Profile() {
             <p className="text-sm text-gray-500">
               <Plural value={followerCount} one="# follower" other="# followers" />
               {' - '}
-              <Trans>{followingCount} following</Trans>
+              <Plural value={followingCount} one="# following" other="# following" />
             </p>
           )}
         </div>

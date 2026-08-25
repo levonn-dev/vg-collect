@@ -13,18 +13,15 @@ import CopyButton from '../CopyButton'
 import VisibilityControl from '../social/VisibilityControl'
 
 // Badge classes stay on the gray/amber/green ladder that mirrors
-// private/unlisted/listed elsewhere (VisibilityControl's active
-// segment, ApprovalNotice's status colors).
+// private/unlisted/listed elsewhere (VisibilityControl, ApprovalNotice).
 const visibilityBadges: Record<SavedView['visibility'], string> = {
   private: 'bg-gray-100 text-gray-700',
   unlisted: 'bg-amber-50 text-amber-800',
   listed: 'bg-green-50 text-green-800',
 }
 
-// view_exists (a name conflict) is left out: this mutation resends the
-// shelf's own unchanged name (see changeVisibility below), which never
-// conflicts with itself, so the endpoint's other documented code never
-// answers a visibility-only PUT.
+// view_exists is left out: this resends the shelf's own unchanged name,
+// which never conflicts with itself, so that code never answers this PUT.
 const changeVisibilityErrorCodes: Record<string, MessageDescriptor> = {
   view_not_found: msg`This shelf no longer exists.`,
 }
@@ -32,19 +29,12 @@ function changeVisibilityErrorMessage(e: unknown, i18n: I18n): string {
   return resolveApiError(e, i18n, changeVisibilityErrorCodes, msg`The shelf visibility update failed.`)
 }
 
-// ShelfManager is the Shelves tab's own content: the per-shelf
-// management list (ViewPicker itself renders only the quick-row - see
-// that file). It runs its own me/views queries - views is a cache hit
-// against the key ViewPicker populates from the Items tab, me against
-// the key the app shell resolves at login - and owns its own
-// changeVisibility mutation and that mutation's own error surface.
-//
-// The optional notice at the top warns about a mismatch between the
-// owner's profile visibility and a shelf's own visibility: a private
-// profile hides every shelf regardless of the shelf's own setting, and
-// an unlisted profile keeps listed shelves out of Explore even though
-// they are still link-reachable. At most one of the two notes ever
-// applies, since profile_visibility is a single value.
+// views is a cache hit against the key ViewPicker populates from the Items
+// tab; me against the key the app shell resolves at login.
+// The notice warns on a mismatch: a private profile hides every shelf
+// regardless of its own setting; an unlisted profile keeps listed shelves out
+// of Explore (still link-reachable). At most one note applies, since
+// profile_visibility is single-valued.
 export default function ShelfManager() {
   const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
@@ -52,9 +42,8 @@ export default function ShelfManager() {
   const views = useQuery({ queryKey: ['views'], queryFn: fetchViews })
   const myHandle = me.data?.handle
 
-  // changeVisibility carries the shelf's OWN stored name/params (not
-  // any currently-applied list state), so flipping visibility on any
-  // row never overwrites that shelf's saved filters.
+  // Carries the shelf's own stored name/params, not any currently-applied
+  // list state, so flipping visibility never overwrites saved filters.
   const changeVisibility = useMutation({
     mutationFn: (vars: { view: SavedView; visibility: SavedView['visibility'] }) =>
       updateView(vars.view.id, vars.view.name, vars.view.params, vars.visibility),

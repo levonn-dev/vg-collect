@@ -36,8 +36,7 @@ it('renders the candidate count and a row with its top candidate', async () => {
   expect(screen.getByText('1 community product with possible provider matches')).toBeInTheDocument()
   expect(screen.getByText('Repro Alpha')).toBeInTheDocument()
   expect(screen.getByText('Chrono Trigger (0.92)')).toBeInTheDocument()
-  // The sweep re-confirms candidates nightly, so the timestamp is the
-  // LAST confirmation, not a first discovery; the header must say so.
+  // The sweep re-confirms nightly, so the timestamp is the LAST confirmation.
   expect(screen.getByRole('columnheader', { name: 'Last confirmed' })).toBeInTheDocument()
 })
 
@@ -84,9 +83,8 @@ it('dismiss inside an open panel refreshes it in place from the worklist refetch
   const panel = () => screen.getByLabelText('Promote Repro Alpha')
   expect(within(panel()).getAllByRole('button', { name: 'Dismiss' })).toHaveLength(2)
   await userEvent.click(within(panel()).getAllByRole('button', { name: 'Dismiss' })[0])
-  // Dismiss invalidates admin queries; the worklist refetches its page and
-  // the still-open panel - which derives its candidates from rows.find,
-  // not a snapshot taken when it opened - picks up the reduced list.
+  // Dismiss invalidates admin queries; the still-open panel derives candidates
+  // from rows.find (not a snapshot), so it picks up the reduced list.
   await waitFor(() => expect(within(panel()).getAllByRole('button', { name: 'Dismiss' })).toHaveLength(1))
   expect(within(panel()).getByText('Secret of Mana', { exact: false })).toBeInTheDocument()
   expect(within(panel()).queryByText('Chrono Trigger', { exact: false })).not.toBeInTheDocument()
@@ -116,9 +114,8 @@ it('switching the reviewed row does not leak an attached listing from the previo
   await userEvent.click(await within(dialog).findByRole('button', { name: 'Use Chrono Trigger Listing' }))
   expect(screen.getByText('Listing: Chrono Trigger Listing')).toBeInTheDocument()
 
-  // Review row B without clearing row A's panel first - without a key,
-  // the same PromotePanel instance reconciles in place and carries row
-  // A's attached listing straight into row B's promote flow.
+  // Without a key, the same PromotePanel instance reconciles in place,
+  // carrying row A's attached listing into row B's promote flow.
   await userEvent.click(screen.getAllByRole('button', { name: 'Review' })[1])
   expect(screen.getByLabelText('Promote Repro Beta')).toBeInTheDocument()
   expect(screen.queryByText(/^Listing:/)).not.toBeInTheDocument()

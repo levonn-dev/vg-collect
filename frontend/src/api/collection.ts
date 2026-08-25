@@ -15,10 +15,8 @@ export type SavedView = components['schemas']['SavedView']
 export type Dashboard = components['schemas']['Dashboard']
 export type ValueHistory = components['schemas']['ValueHistory']
 
-// The list endpoints take their query from the URL-first list state as
-// a ready URLSearchParams, so the codec stays the single serializer:
-// the params pass through verbatim (openapi-fetch appends no ? when
-// the serializer returns an empty string).
+// Query comes in as a ready URLSearchParams; passes through verbatim
+// (no ? when the serializer returns empty).
 export async function fetchEntries(query: URLSearchParams): Promise<EntryList> {
   return unwrap(await api.GET('/api/entries', { querySerializer: () => query.toString() }))
 }
@@ -39,9 +37,8 @@ export async function deleteEntry(id: string): Promise<void> {
   return unwrap<void>(await api.DELETE('/api/entries/{entryId}', { params: { path: { entryId: id } } }))
 }
 
-// Dismisses the region-mismatch banner for the entry's current
-// (region, product) choice; the collection service clears the stamp
-// again whenever either changes, so the banner notifies once more.
+// Dismisses the banner for the current (region, product) choice;
+// server clears the ack when either changes.
 export async function ackRegionMismatch(id: string): Promise<void> {
   return unwrap<void>(
     await api.POST('/api/entries/{entryId}/region-mismatch-ack', { params: { path: { entryId: id } } }),
@@ -54,10 +51,9 @@ export async function reorderEntry(id: string, body: ReorderRequest): Promise<En
   )
 }
 
-// bulkUpdateEntries applies a tag/status/storage-location delta across
-// a batch of the caller's own entries in one transaction. Absent
-// fields stay untouched; storage_location alone clears on an explicit
-// empty string (the opposite of updateEntry's full-replacement rule).
+// Applies a tag/status/storage-location delta in one transaction.
+// Absent fields stay untouched; storage_location clears only on an
+// explicit empty string (opposite of updateEntry's full-replacement).
 export async function bulkUpdateEntries(body: BulkUpdateRequest): Promise<BulkUpdateResult> {
   return unwrap(await api.POST('/api/entries/bulk-update', { body }))
 }
@@ -76,10 +72,9 @@ export async function fetchViews(): Promise<SavedView[]> {
   return body.views
 }
 
-// The generated ViewCreate type marks visibility required (the
-// generator treats a schema default as always-present), but the
-// contract declares it optional with default private - the cast keeps
-// the wire omitting it, so creation stays server-defaulted.
+// Generated ViewCreate marks visibility required (generator treats a
+// default as always-present); contract makes it optional, so the cast
+// keeps it omittable and server-defaulted.
 export async function createView(name: string, params: Record<string, unknown>): Promise<SavedView> {
   const body = { name, params } as components['schemas']['ViewCreate']
   return unwrap(await api.POST('/api/views', { body }))

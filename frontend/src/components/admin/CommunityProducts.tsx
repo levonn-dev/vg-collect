@@ -18,20 +18,15 @@ const deleteErrorCodes: Record<string, MessageDescriptor> = {
   product_referenced: msg`In use by existing entries - cannot delete.`,
 }
 
-// This file's own strings use the explicit t(i18n) form (not the
-// useLingui()-bound t) so they match resolveApiError's own
-// explicit-i18n signature without importing a second, same-named t.
+// Uses explicit t(i18n), not useLingui()'s t, to match resolveApiError's
+// signature without importing a second same-named t.
 function deleteErrorMessage(e: unknown, i18n: I18n): string {
   return resolveApiError(e, i18n, deleteErrorCodes, msg`The product could not be deleted.`)
 }
 
-// CommunityProducts lists every admin-minted, un-promoted community
-// product, for cleanup. Delete reuses the guarded admin delete
-// (deleteProduct): an unreferenced product goes away immediately (the
-// list invalidates and the row disappears on refetch); one still
-// referenced by entries answers 409 product_referenced, shown inline
-// on that row only, so a single blocked row never hides the rest of
-// the list.
+// Delete reuses the guarded admin delete: unreferenced products vanish on
+// refetch; one still referenced answers 409 product_referenced, shown inline
+// on that row only.
 export default function CommunityProducts() {
   const { i18n } = useLingui()
   const queryClient = useQueryClient()

@@ -22,25 +22,17 @@ const fixErrorCodes: Record<string, MessageDescriptor> = {
   upstream_unavailable: msg`The price provider is unavailable - try again.`,
 }
 
-// This file's own strings use the explicit t(i18n) form (not the
-// useLingui()-bound t) so they match resolveApiError's own
-// explicit-i18n signature without importing a second, same-named t.
-//
-// identity_taken's server detail names the holding product; surface it
-// verbatim (ahead of resolveApiError's own code lookup) so the admin
-// can look the holder up, same as any other code's server detail would
-// win once no code matches at all - this is that same preference,
-// just also applying to a code that DOES match.
+// Uses explicit t(i18n), not useLingui()'s t, to match resolveApiError's
+// signature without importing a second same-named t.
+// identity_taken's server detail names the holding product; shown verbatim
+// ahead of resolveApiError's code lookup, like any unmatched code's detail.
 function fixErrorMessage(e: unknown, i18n: I18n): string {
   if (e instanceof ApiError && e.code === 'identity_taken' && e.message) return e.message
   return resolveApiError(e, i18n, fixErrorCodes, msg`The mapping change failed.`)
 }
 
-// MappingFix is the admin correction surface for one product: set a
-// mapping through the same listing picker the add wizard uses, clear
-// it (a clear sets match_hold, so it asks first), or - for unmatched
-// residue whose listings all belong to siblings - park it with Hold
-// (the same PUT null; the entry rematch stops retrying, any set lifts it).
+// Clear sets match_hold (asks first); Hold is the same PUT null for residue
+// whose listings all belong to siblings - rematch stops retrying, any set lifts it.
 export default function MappingFix({ product, onDone }: MappingFixProps) {
   const { i18n } = useLingui()
   const [pickerOpen, setPickerOpen] = useState(false)

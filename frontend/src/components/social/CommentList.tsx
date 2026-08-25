@@ -11,23 +11,17 @@ import SectionLabel from '../SectionLabel'
 import { useCommentDelete } from './useCommentDelete'
 import UserChip from './UserChip'
 
-// truncateBody keeps a row's Delete/Remove accessible name distinct
-// per comment - unadorned "Delete"/"Remove" reads identically for
-// every row to a screen reader, with no way to tell which comment a
-// given button acts on - without repeating the full body, which can
+// Keeps each row's Delete/Remove accessible name distinct: unadorned "Delete"
+// reads identically for every row to a screen reader, but the full body can
 // run to the composer's 2000-char cap.
 function truncateBody(body: string, max = 30): string {
   return body.length > max ? `${body.slice(0, max)}...` : body
 }
 
-// UnresolvedAuthor stands in for a comment whose author_id is present
-// but the bff's hydration did not attach a card: the batched
-// SharedCardsByIDs call failed open (comments still render; identity
-// chips are an enhancement, not access-gated data), or the account
-// behind author_id no longer resolves. A literal UUID would be
-// unreadable and a guessed/truncated handle could collide with an
-// unrelated real one and link to the wrong person, so this
-// placeholder never fabricates an identity.
+// Author card missing though author_id is present: SharedCardsByIDs failed
+// open (chips are an enhancement, not access-gated) or the account no longer
+// resolves. Never fabricates an identity: a truncated handle could collide
+// with an unrelated real one and link to the wrong person.
 function UnresolvedAuthor() {
   return (
     <span className="inline-flex items-center gap-1.5 text-sm text-gray-500">
@@ -42,36 +36,14 @@ function UnresolvedAuthor() {
   )
 }
 
-// DeletedUser stands in for a purge-anonymized comment: author_id
-// itself comes back null, so there is no id left to hydrate or link -
-// the design's anonymized rendering, distinct from UnresolvedAuthor's
-// merely-unresolved placeholder.
-function DeletedUser() {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-sm text-gray-500">
-      <span
-        aria-hidden="true"
-        className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-400"
-      >
-        ?
-      </span>
-      <Trans>Deleted user</Trans>
-    </span>
-  )
-}
-
 interface CommentListProps {
   shelfId: string
   ownerId: string
 }
 
-// CommentList renders a shelf's live comments (server order: newest
-// first, keyset-paged). Two distinct delete paths sit side by side: a
-// comment's own author gets the undo-window hook (requestDelete/undo
-// below - the row is replaced by an inline "Comment deleted - Undo"
-// toast while pending); the shelf owner removing someone else's
-// comment is a moderation action with no undo, confirmed and
-// committed immediately through its own mutation.
+// Own author gets the undo-window hook (requestDelete/undo): row shows an
+// inline "Comment deleted - Undo" toast while pending. Owner removing someone
+// else's is moderation: no undo, confirmed and committed immediately.
 export default function CommentList({ shelfId, ownerId }: CommentListProps) {
   const { t } = useLingui()
   const me = useMe()
@@ -83,9 +55,11 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next_cursor,
   })
+  // onSettled, not onSuccess: a failed removal must still invalidate so the
+  // row resyncs with server truth.
   const ownerRemove = useMutation({
     mutationFn: (id: string) => deleteComment(id),
-    onSuccess: () => invalidateShelfSocial(qc, shelfId),
+    onSettled: () => invalidateShelfSocial(qc, shelfId),
   })
 
   const comments = list.data?.pages.flatMap((p) => p.comments) ?? []
@@ -93,6 +67,11 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
   return (
     <section aria-label={t`Comments`} className="mt-6">
       <SectionLabel as="h3" size="sm" className="mb-3"><Trans>Comments</Trans></SectionLabel>
+      {ownerRemove.isError && (
+        <p role="alert" className="mb-2 text-sm text-red-700">
+          <Trans>Comment could not be removed. Please try again.</Trans>
+        </p>
+      )}
       {refetchWarning(list)}
       {renderQueryState(list, {
         size: 'subsection',
@@ -128,13 +107,7 @@ export default function CommentList({ shelfId, ownerId }: CommentListProps) {
                 return (
                   <li key={c.id} className="flex flex-col gap-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      {c.author ? (
-                        <UserChip profile={c.author} />
-                      ) : c.author_id == null ? (
-                        <DeletedUser />
-                      ) : (
-                        <UnresolvedAuthor />
-                      )}
+                      {c.author ? <UserChip profile={c.author} /> : <UnresolvedAuthor />}
                       <span className="text-xs text-gray-400">{relativeTime(c.created_at)}</span>
                       {isSelf && (
                         <button

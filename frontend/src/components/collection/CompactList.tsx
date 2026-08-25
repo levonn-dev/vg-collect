@@ -10,11 +10,10 @@ import { isFullEntry, rowMeta, type EntryRow } from './rowMeta'
 interface CompactListProps {
   entries: EntryRow[]
   pinSlot?: (e: Entry) => ReactNode
-  // linkTo lets shared pages retarget or suppress row links; null
-  // renders plain text.
+  // linkTo lets shared pages retarget or suppress row links; null renders plain text.
   linkTo?: (e: EntryRow) => string | null
-  // shared omits the trailing value span - the status span is already
-  // isFullEntry-gated, so a SharedEntry row never shows one anyway.
+  // shared omits the trailing value span; already isFullEntry-gated, so a
+  // SharedEntry row never shows one anyway.
   shared?: boolean
 }
 

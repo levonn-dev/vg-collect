@@ -1,21 +1,18 @@
 import { Trans } from '@lingui/react/macro'
 
 interface PriceTripleProps {
-  // Each caller has already run its own three cents fields through
-  // useDisplayMoney (a missing price shows "-", not empty) - this
-  // component only owns the shared "Loose X / CIB Y / New Z" text and
-  // its one translatable message.
+  // Callers already run cents through useDisplayMoney (missing price shows
+  // "-", not empty); this owns only the shared text and its one message.
   loose: string
   cib: string
   newPrice: string
-  // The one thing that differs per site: a search result row (plain
-  // gray-500 text) and a confirmed price match card (green-800 on a
-  // green card, with the top margin its neighbor above does not need).
+  // Only value that differs per caller: gray-500 for search rows, green-800
+  // on green for a confirmed match card.
   className: string
 }
 
-// PriceTriple renders the Loose/CIB/New price line shared by
-// SearchPicker's result rows and PricingPanel's confirmed-match card.
+// Loose/CIB/New price line shared by SearchPicker's rows and PricingPanel's
+// match card.
 export default function PriceTriple({ loose, cib, newPrice, className }: PriceTripleProps) {
   return (
     <p className={className}>

@@ -9,17 +9,13 @@ interface SearchPickerDialogProps {
   children: ReactNode
 }
 
-// SearchPickerDialog is the modal shell ProxyPicker and ManualMatchPicker
-// both wrap around a SearchPicker: a focus-managed dialog with a header
-// and Close button. Callers own everything below the header - their own
-// SearchPicker call plus whatever pending/error status they need
-// (ProxyPicker's resolve step; ManualMatchPicker has none).
+// Focus-managed dialog shell shared by ProxyPicker and ManualMatchPicker.
+// Callers own everything below the header.
 export default function SearchPickerDialog({ ariaLabel, title, onClose, children }: SearchPickerDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
 
-  // A dialog opens on top of the page's own focus; move focus in so
-  // keyboard and screen-reader users land inside it, and give it back
-  // to whatever had it when this closes (unmounts).
+  // Moves focus in on open for keyboard/screen-reader users, and restores it
+  // to whatever had it on unmount.
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null
     dialogRef.current?.querySelector<HTMLElement>('input')?.focus()
@@ -31,6 +27,7 @@ export default function SearchPickerDialog({ ariaLabel, title, onClose, children
       ref={dialogRef}
       role="dialog"
       aria-label={ariaLabel}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose() }}
       className="mt-3 rounded border border-gray-300 bg-gray-50 p-3"
     >
       <div className="mb-2 flex items-center justify-between">

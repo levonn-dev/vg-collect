@@ -12,12 +12,9 @@ export interface EntryFacets {
   publishers: string[]
 }
 
-// fetchEntryFacets derives the filter choices from the collection
-// itself (there is no facet endpoint): it pages the flat list at the
-// server's maximum page size and collects distinct platform snapshots
-// and credit names in one sweep. Collections are person-scale, so
-// this is a few requests at worst; the page cap is a safety stop, not
-// a real limit.
+// No facet endpoint: pages the flat list at max page size, collecting
+// distinct platforms/credits. Collections are person-scale; the page
+// cap below is a safety stop, not a real limit.
 export async function fetchEntryFacets(): Promise<EntryFacets> {
   const seen = new Map<number, string>()
   const developers = new Set<string>()

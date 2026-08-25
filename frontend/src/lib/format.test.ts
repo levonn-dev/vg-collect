@@ -17,9 +17,8 @@ it('formatCents honors an explicit locale', () => {
 it('formatCents default locale: a stored choice outranks the browser language', () => {
   const langSpy = vi.spyOn(window.navigator, 'language', 'get').mockReturnValue('fr-FR')
   try {
-    // No stored choice yet: the (stubbed) browser language governs,
-    // so grouping follows fr-FR - a comma decimal separator, not
-    // en's period.
+    // No stored choice yet: browser language governs, fr-FR grouping
+    // uses a comma decimal, not en's period.
     expect(formatCents(123456)).toContain(',56')
     expect(formatCents(123456)).not.toBe('$1,234.56')
 

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { triggerRefresh, triggerRematch } from '../../api/admin'
 import { calledPath, jsonResponse, problemResponse } from '../../test/fixtures'
@@ -26,7 +26,7 @@ test('runs the sweep and renders counts', async () => {
     actionLabel: 'Run region normalization',
     mutationFn: fn,
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Run region normalization' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Run region normalization' }))
   expect(await screen.findByText('Scanned 3, promoted 2, skipped 1.')).toBeInTheDocument()
 })
 
@@ -37,7 +37,7 @@ test('failure renders the alert', async () => {
     actionLabel: 'Run',
     mutationFn: fn,
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Run' }))
   expect(await screen.findByRole('alert')).toBeInTheDocument()
 })
 

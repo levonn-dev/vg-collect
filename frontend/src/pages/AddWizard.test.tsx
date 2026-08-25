@@ -13,9 +13,8 @@ const searchAnswer = {
     platforms: [{ igdb_platform_id: 6, name: 'SNES' }],
   }],
 }
-// Same shape as searchAnswer, but this result carries a matched_region
-// and a matching localizations bundle, so its game pick suggests a
-// wizard region and the heading derives from the bundle.
+// Same shape as searchAnswer, but this carries a matched_region and a
+// matching localizations bundle, suggesting a region and heading.
 const jpMatchedSearchAnswer = {
   degraded: false,
   results: [{
@@ -41,13 +40,10 @@ function renderWizard(
   currency = 'USD',
   rates = true,
 ) {
-  // SearchPicker now reads useDisplayMoney unconditionally; seed its
-  // queries so they never hit the fetch mock (whose single mocked
-  // Response the app-level assertions in these tests already read once).
-  // rates: false skips the ['fx'] seed: the query settles from the
-  // fetch mock's unmatched-URL fallback, so useDisplayMoney's currency
-  // falls back to USD while profileCurrency keeps the given value -
-  // the same rates-unavailable convention as renderWithMoney.
+  // SearchPicker reads useDisplayMoney unconditionally; seed its
+  // queries so they never hit the fetch mock. rates: false skips the
+  // ['fx'] seed, so currency falls back to USD while profileCurrency
+  // keeps the given value (renderWithMoney's convention).
   qc.setQueryData(['me'], meFixture({ preferred_currency: currency }))
   if (rates) qc.setQueryData(['fx'], fxRatesFixture())
   return {
@@ -197,8 +193,7 @@ it('stamps the created entry with the profile currency', async () => {
   vi.stubGlobal('fetch', fetchMock)
   // Rates down: money.currency falls back to USD while profileCurrency
   // stays EUR, so this only passes if the create call stamps
-  // profileCurrency - with rates up the two values are identical and
-  // the assertion below could not tell them apart.
+  // profileCurrency (with rates up, the two values are identical).
   renderWizard('/add', undefined, 'EUR', false)
 
   await userEvent.type(screen.getByRole('searchbox', { name: /search/i }), 'chrono')
@@ -263,9 +258,8 @@ it('keeps typed details across a Confirm Back, and each Back returns to the prev
   await userEvent.selectOptions(screen.getByLabelText('Status'), 'beaten')
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
-  // Confirm renders; its Back returns to Details with every typed
-  // field retained (the resolve-error copy on this step promises as
-  // much, but the retention holds on the success path too).
+  // Confirm renders; Back returns to Details with every typed field
+  // retained (also holds on the success path, not just resolve-error).
   expect(await screen.findByText(/match 93%/i)).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Back' }))
   expect(await screen.findByLabelText(/edition or variant/i)).toHaveValue('first print')
@@ -492,8 +486,7 @@ it('stamps a custom-created entry with the profile currency', async () => {
   vi.stubGlobal('fetch', fetchMock)
   // Rates down: money.currency falls back to USD while profileCurrency
   // stays EUR, so this only passes if the create call stamps
-  // profileCurrency - with rates up the two values are identical and
-  // the assertion below could not tell them apart.
+  // profileCurrency (with rates up, the two values are identical).
   renderWizard('/add', undefined, 'EUR', false)
 
   await userEvent.click(screen.getByRole('button', { name: /add it as a custom item/i }))
@@ -680,10 +673,8 @@ it('restores the typed search when Back returns from the details step', async ()
 })
 
 it('prefers the wizard snapshot over the q deep link on Back', async () => {
-  // mockImplementation, not mockResolvedValue: this test's two distinct
-  // searches ('zelda' then 'mario') both hit the mock for real, and a
-  // Response body can only be read once - a single shared instance
-  // would fail the second read.
+  // mockImplementation, not mockResolvedValue: two distinct searches
+  // both hit the mock, and a Response body can only be read once.
   const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse(200, searchAnswer)))
   vi.stubGlobal('fetch', fetchMock)
   renderWizard('/add?q=zelda')

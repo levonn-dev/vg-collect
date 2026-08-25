@@ -18,16 +18,14 @@ import LikeButton from '../components/social/LikeButton'
 import NotFoundState from '../components/social/NotFoundState'
 import UserChip from '../components/social/UserChip'
 import { foldHandle } from '../lib/handle'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 type EntriesPage = Awaited<ReturnType<typeof fetchShelfEntries>>
 type EntryGroupRow = NonNullable<EntriesPage['groups']>[number]
 
-// mergeGroups accumulates infinite-query pages by group key: the
-// server pages the underlying entry sequence FIRST, then partitions
-// only that page's own window into groups (ListSharedShelfEntries
-// slices before grouping) - so the same group key can recur across
-// pages, and a "Load more" click can continue a group the previous
-// page already started.
+// Server pages the entry sequence first, then groups only that page's
+// window (slices before grouping), so the same group key can recur
+// across pages and Load more continues it.
 function mergeGroups(pages: EntriesPage[]): EntryGroupRow[] {
   const order: string[] = []
   const byKey = new Map<string, EntryGroupRow>()
@@ -49,16 +47,10 @@ function viewMode(params: Record<string, unknown>): 'table' | 'grid' | 'compact'
   return params.mode === 'grid' || params.mode === 'compact' ? params.mode : 'table'
 }
 
-// SharedShelf is the public /u/:handle/shelves/:slug page: a
-// read-only entry listing reusing EntryTable/CoverGrid/CompactList
-// through their linkTo suppression (no route into /entries/:id - the
-// viewer does not own these rows) plus a like button and a comment
-// section. The query key folds both handle and slug with the same
-// foldHandle (their fold expressions share the same shape:
-// lower-and-strip-underscores) purely for cache-key stability - the
-// path itself carries the raw typed values, and the server remains
-// authoritative on identity. 404 covers unknown, private-owner, and
-// private-shelf alike (no existence oracle).
+// Public /u/:handle/shelves/:slug page: read-only, linkTo suppressed
+// (no route into /entries/:id, viewer doesn't own these rows). Query
+// key folds handle+slug for cache stability only; server stays
+// authoritative. 404 covers unknown, private-owner, and private-shelf alike.
 export default function SharedShelf() {
   const { t } = useLingui()
   const { handle = '', slug = '' } = useParams()
@@ -66,6 +58,7 @@ export default function SharedShelf() {
     queryKey: ['sharedShelf', foldHandle(handle), foldHandle(slug)],
     queryFn: () => fetchShelfPage(handle, slug),
   })
+  useDocumentTitle(page.data ? page.data.shelf.name : t`Shared shelf`)
   const shelfId = page.data?.shelf.id
   const entries = useInfiniteQuery({
     queryKey: ['sharedEntries', shelfId],
@@ -102,7 +95,7 @@ export default function SharedShelf() {
   const View = mode === 'grid' ? CoverGrid : mode === 'compact' ? CompactList : EntryTable
 
   return (
-    <main aria-label={t`Shared shelf`} className="py-6">
+    <main id="main-content" tabIndex={-1} aria-label={t`Shared shelf`} className="py-6">
       {refetchWarning(page)}
       <header className="mb-6 border-b border-gray-200 pb-4">
         <h2 className="text-2xl font-bold">{shelf.name}</h2>
@@ -166,10 +159,8 @@ export default function SharedShelf() {
       </section>
 
       <CommentComposer shelfId={shelf.id} />
-      {/* Keyed on shelf.id so a client-side navigation to a different
-          shelf (no route remount otherwise - same route pattern) always
-          unmounts this instance rather than reusing it: useCommentDelete's
-          pending-undo flush is meant to fire only on a true unmount. */}
+      {/* Keyed on shelf.id: same route pattern wouldn't remount
+          otherwise, and useCommentDelete's undo flush needs a true unmount. */}
       <CommentList key={shelf.id} shelfId={shelf.id} ownerId={owner.user_id} />
     </main>
   )

@@ -21,13 +21,9 @@ const PRODUCT_TYPE_VALUES = productTypeValues
 i18n.load('en', messages)
 i18n.activate('en')
 
-// expectComplete is also the compile-time completeness check: its
-// parameter type only accepts a Record<E, MessageDescriptor> for the
-// same E as members, so a map missing an enum member - or a map whose
-// own declared type ever loosens past Record<Enum, MessageDescriptor>
-// - fails to satisfy this call. The runtime comparison below catches
-// the same gap even for someone skimming test output without a
-// type-checker.
+// Parameter type only accepts Record<E, MessageDescriptor> for the
+// same E, so a map missing a member fails to compile; the runtime
+// comparison below catches it without a type-checker too.
 function expectComplete<E extends string>(map: Record<E, MessageDescriptor>, members: readonly E[]): void {
   expect(Object.keys(map).sort()).toEqual([...members].sort())
 }
@@ -52,8 +48,7 @@ test('known labels resolve to their expected text under the test i18n', () => {
   expect(i18n._(packagingChipLabels.cib)).toBe('CIB')
   expect(i18n._(itemTypeWireLabels.console)).toBe('console')
   expect(i18n._(productTypeWireLabels.game)).toBe('game')
-  // pc_listing is the one productTypeWireLabels member with no bare wire
-  // word to preserve identity for.
+  // pc_listing is the one member with no bare wire word to preserve identity for.
   expect(i18n._(productTypeWireLabels.pc_listing)).toBe('price listing')
   expect(i18n._(visibilityLabels.unlisted)).toBe('Unlisted')
   expect(i18n._(visibilityWireLabels.unlisted)).toBe('unlisted')

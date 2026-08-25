@@ -17,10 +17,8 @@ it('pins the week-plus date fallback to the resolved locale, not the runtime def
   try {
     const now = new Date('2026-07-25T12:00:00Z').getTime()
     const old = new Date(now - 10 * 86_400_000)
-    // fr-FR ("15/07/2026") differs from the jsdom/Node runtime
-    // default ("7/15/2026"), so this fails if the fallback ever stops
-    // routing through formatLocale() and starts using the runtime
-    // default instead.
+    // fr-FR ("15/07/2026") differs from the runtime default
+    // ("7/15/2026"); fails if the fallback stops routing through formatLocale().
     expect(relativeTime(old.toISOString(), now)).toBe(old.toLocaleDateString(formatLocale()))
   } finally {
     langSpy.mockRestore()

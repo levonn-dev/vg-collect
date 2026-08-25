@@ -87,9 +87,8 @@ it('fromViewParams survives hostile params objects', () => {
   expect(fromViewParams({ status: 'not-an-array', sort: 7, mode: ['grid'] })).toEqual(defaultListState())
 })
 
-// Credit filters are open-world snapshot facts: both codecs carry
-// them verbatim, with no known set to gate against (region's posture,
-// minus even the known-value pick).
+// Credit filters are open-world: both codecs carry them verbatim, no
+// known set to gate against.
 it('credit filters round-trip the URL and view params verbatim', () => {
   const s = defaultListState()
   s.developer = ['Retro Studios', 'Square']

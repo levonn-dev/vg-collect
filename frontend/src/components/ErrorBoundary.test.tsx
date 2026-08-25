@@ -4,8 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { recordUncaughtError } from '../telemetry'
 import ErrorBoundary from './ErrorBoundary'
 
-// Isolates the component from initTelemetry's no-op-before-init state,
-// same seam ProsePage.test.tsx and locale.test.ts use.
+// Isolates from initTelemetry's no-op-before-init state.
 vi.mock('../telemetry', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../telemetry')>()
   return { ...mod, recordUncaughtError: vi.fn() }
@@ -15,10 +14,8 @@ function Thrower(): never {
   throw new Error('kaboom')
 }
 
-// componentDidCatch running is the whole point of the tests below, and
-// React logs every boundary-caught error via console.error (its
-// default onCaughtError root option) - silenced file-wide, per RTL's
-// own convention for testing error boundaries, rather than asserted on.
+// React logs every boundary-caught error via console.error (default
+// onCaughtError); silenced file-wide rather than asserted on.
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -27,10 +24,8 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-// Deliberate: nothing in this file reaches for renderWithI18n. The
-// fallback must work even if the i18n runtime is what crashed, so the
-// proof is every test here - crash included - passing under the plain
-// RTL render(), with zero providers in the tree.
+// No renderWithI18n: the fallback must work even if the i18n runtime crashed,
+// so tests run under plain RTL render() with zero providers.
 
 it('passes children through unchanged, with no wrapper element, when nothing throws', () => {
   const { container } = render(

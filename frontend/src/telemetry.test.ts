@@ -5,10 +5,8 @@ import { InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-tr
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Well beyond any test run's wall-clock time - PeriodicExportingMetricReader
-// starts this interval the moment it is bound to a MeterProvider, and the
-// tests below only ever read data by calling forceFlush() themselves, so
-// the periodic tick should never actually fire during a run.
+// Well beyond any test run: PeriodicExportingMetricReader starts this
+// interval on bind, and tests only read via forceFlush().
 const NEVER_TICK_MILLIS = 24 * 60 * 60 * 1000
 
 const okResponse = () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -19,13 +17,9 @@ function headersOf(call: unknown[]): Headers {
   return new Headers(init?.headers)
 }
 
-// findDataPoints centralizes the "flush, then look up one metric's data
-// points by descriptor name" lookup that recurs throughout this file:
-// every describe block below builds its own MeterProvider under a fresh
-// vi.resetModules(), so there is no single shared exporter to close over
-// instead - callers pass their own local metricReader/metricExporter.
-// The type param picks the block's own point shape (a plain counter's
-// number vs. a histogram's bucketed value).
+// Flush then look up one metric's points by descriptor name; each
+// block builds its own MeterProvider under vi.resetModules(), so
+// callers pass their own reader/exporter. Type param picks counter vs histogram shape.
 async function findDataPoints<T = number>(
   metricReader: PeriodicExportingMetricReader,
   metricExporter: InMemoryMetricExporter,
@@ -54,10 +48,9 @@ describe('initTelemetry', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
-    // @opentelemetry/api keeps its registered tracer/propagator on the
-    // real globalThis (Symbol.for-keyed), so it outlives vi.resetModules().
-    // Without disabling here, only the first test's provider.register()
-    // ever wins and later tests silently export through its processor.
+    // @opentelemetry/api keeps its tracer/propagator on real globalThis,
+    // outliving vi.resetModules(); without disabling, only the first
+    // test's register() wins.
     trace.disable()
     context.disable()
     propagation.disable()
@@ -98,11 +91,9 @@ describe('locale and prose metric counters', () => {
   })
 
   it('replays a record buffered while init is pending', async () => {
-    // The boot counter's survival path: main.tsx fires initTelemetry
-    // without awaiting and activateBoot records during that same gap,
-    // so the facade must buffer the event and deliver it once the impl
-    // chunk lands - a dropped boot would skew the dashboard's
-    // boots-denominator recipe.
+    // Boot counter's survival path: main.tsx fires initTelemetry
+    // unawaited while activateBoot records in the gap; a dropped boot
+    // skews the dashboard denominator.
     vi.resetModules()
     const telemetry = await import('./telemetry')
     telemetry.recordLocaleBoot('ja', 'stored', 'ja-JP')
@@ -127,11 +118,8 @@ describe('locale and prose metric counters', () => {
 
     beforeEach(async () => {
       vi.resetModules()
-      // InMemoryMetricExporter is sdk-metrics's own test-oriented
-      // exporter (its doc comment says as much); pairing it with a
-      // PeriodicExportingMetricReader and driving forceFlush() by hand
-      // gives a deterministic read with no timer to wait on, mirroring
-      // InMemorySpanExporter + SimpleSpanProcessor above.
+      // InMemoryMetricExporter + manual forceFlush() gives a
+      // deterministic read with no timer, mirroring InMemorySpanExporter above.
       metricExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE)
       metricReader = new PeriodicExportingMetricReader({
         exporter: metricExporter,
@@ -142,9 +130,7 @@ describe('locale and prose metric counters', () => {
     })
 
     afterEach(() => {
-      // Same global-registry leak as the trace describe above (this
-      // block's beforeEach also calls initTelemetry, which also
-      // registers a tracer/propagator).
+      // Same global-registry leak as the trace describe above.
       trace.disable()
       context.disable()
       propagation.disable()
@@ -242,12 +228,9 @@ describe('uncaught-error and network-failure counters', () => {
       expect(points[0].attributes).toEqual({ kind: 'error' })
     })
 
-    // jsdom has no PromiseRejectionEvent constructor. addEventListener
-    // dispatch matches by event.type alone, and the handler never reads
-    // an event field - kind comes from the listener's own closure in
-    // initTelemetry, not the event - so a base Event of the same type
-    // exercises the real 'unhandledrejection' listener wiring end to
-    // end without needing that constructor.
+    // jsdom has no PromiseRejectionEvent; dispatch matches by event.type
+    // alone and kind comes from the listener's closure, so a base
+    // Event exercises the real wiring.
     it('records an uncaught rejection via the window unhandledrejection listener', async () => {
       window.dispatchEvent(new Event('unhandledrejection'))
       const points = await findDataPoints(metricReader, metricExporter, 'vg.frontend.errors')
@@ -335,10 +318,8 @@ describe('uncaught-error and network-failure counters', () => {
         [ATTR_SERVICE_NAME]: 'frontend',
         [ATTR_SERVICE_VERSION]: '1.2.3',
       })
-      // A reader only ever exports once some instrument has a recorded
-      // data point, so recordApiNetworkFailure here is what makes the
-      // metrics-side resource inspectable below - unrelated to what
-      // this test is actually checking.
+      // Reader only exports once an instrument has a data point;
+      // recordApiNetworkFailure here just makes the resource inspectable below.
       telemetry.recordApiNetworkFailure()
       await metricReader.forceFlush()
       const [resourceMetrics] = metricExporter.getMetrics()
@@ -374,22 +355,16 @@ describe('web vitals histograms', () => {
     expect(() => handleWebVital('CLS', 0.08, 'poor')).not.toThrow()
   })
 
-  // jsdom has no PerformanceObserver support; setup.ts's
-  // PerformanceObserverStub reports an empty supportedEntryTypes, so
-  // web-vitals' own feature detection (PerformanceObserver.supportedEntryTypes.includes(...))
-  // finds nothing to observe for any of LCP/INP/CLS. This drives
-  // initTelemetry through its real (non-injected) metric reader
-  // construction too, so both the histogram-with-advice creation and
-  // the onLCP/onINP/onCLS registration run for real, not just against
-  // the test seam used below.
+  // jsdom's PerformanceObserverStub reports empty supportedEntryTypes,
+  // so web-vitals' feature detection finds nothing to observe. Drives
+  // initTelemetry through real (non-injected) metric reader construction too.
   it('initializes without throwing even though jsdom cannot back the web-vitals PerformanceObservers', async () => {
     vi.resetModules()
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse()))
     const { initTelemetry, handleWebVital } = await import('./telemetry')
     await expect(initTelemetry(new SimpleSpanProcessor(new InMemorySpanExporter()))).resolves.toBeUndefined()
-    // The onLCP/onINP/onCLS calls above never fire under jsdom (no
-    // observer support), but the seam they would have delegated to is
-    // live either way.
+    // onLCP/onINP/onCLS never fire under jsdom, but the seam they'd
+    // delegate to is live either way.
     expect(() => handleWebVital('LCP', 1200, 'good')).not.toThrow()
     vi.unstubAllGlobals()
     trace.disable()
@@ -414,11 +389,9 @@ describe('web vitals histograms', () => {
     })
 
     afterEach(() => {
-      // Same global-registry leak noted on the other "once initialized"
-      // blocks above, plus vi.spyOn(document, 'visibilityState', 'get')
-      // below shadows a real getter with an own property on the shared
-      // jsdom `document` - restoreAllMocks removes that shadow so later
-      // tests see the real value again.
+      // Same global-registry leak as other blocks, plus
+      // vi.spyOn(document,'visibilityState') below shadows a real
+      // getter; restoreAllMocks removes it.
       vi.restoreAllMocks()
       trace.disable()
       context.disable()
@@ -445,9 +418,8 @@ describe('web vitals histograms', () => {
       expect(points[0].value.buckets.boundaries).toEqual([50, 100, 150, 200, 300, 400, 500, 750, 1000, 2000])
     })
 
-    // CLS is a unitless fraction - recorded as-is (never scaled/rounded
-    // like the millisecond vitals), so this also guards against a
-    // regression that multiplies it by 1000 or similar.
+    // CLS is unitless, recorded as-is (never scaled); guards against a
+    // x1000-style regression.
     it('records CLS into vg.frontend.web_vitals.cls unscaled, with its rating and the configured bucket boundaries', async () => {
       telemetry.handleWebVital('CLS', 0.08, 'poor')
       const points = await findDataPoints<Histogram>(metricReader, metricExporter, 'vg.frontend.web_vitals.cls')

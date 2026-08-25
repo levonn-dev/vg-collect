@@ -18,9 +18,8 @@ const identities = {
 }
 const providers = { providers: ['google', 'dev'] }
 
-// route fetches by URL so each test can vary one answer. Overrides only
-// apply to non-GET calls (unlink/delete), so a shared URL prefix cannot
-// hijack the GET fixtures below; those vary per test via `data`.
+// Routes fetch by URL so each test can vary one answer; overrides
+// apply only to non-GET calls (unlink/delete), GET fixtures vary via `data`.
 function stubFetch(
   overrides: Record<string, Response> = {},
   data: { me?: typeof me; identities?: typeof identities; providers?: typeof providers } = {},

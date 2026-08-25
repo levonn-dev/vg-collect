@@ -17,10 +17,8 @@ import SectionLabel from '../SectionLabel'
 import ManualMatchPicker from '../catalog/ManualMatchPicker'
 import ProxyPicker from './ProxyPicker'
 
-// MatchCard owns the no-match paragraph itself (a bare <p>, unlike
-// ConfirmStep's boxed gray branch below it) and otherwise defers to
-// the shared status card, with prices on - the one difference from
-// ConfirmStep's own (prices-off) use of that same card.
+// Bare <p> for the no-match case (unlike ConfirmStep's boxed branch);
+// otherwise defers to MatchStatusCard with prices on (ConfirmStep uses prices off).
 function MatchCard({ product }: { product: Product }) {
   const pc = product.pricecharting
   if (!pc) {
@@ -33,9 +31,8 @@ function MatchCard({ product }: { product: Product }) {
   return <MatchStatusCard pc={pc} showPrices />
 }
 
-// The pricing slice of the entry form's draft. customValue is the
-// dollars TEXT (converted to cents only at save) so partial input
-// like "59." survives typing.
+// customValue is dollars TEXT (converted to cents only at save), so partial
+// input like "59." survives typing.
 export interface PricingValue {
   mode: Entry['pricing_mode']
   productId?: string
@@ -46,31 +43,25 @@ interface PricingPanelProps {
   entry: Entry
   value: PricingValue
   onChange: (v: PricingValue) => void
-  // Frozen per the owning form's mount (see EntryForm); the panel never
-  // computes it, only labels with it.
+  // Frozen per the owning form's mount; the panel never computes it, only
+  // labels with it.
   inputCurrency: string
 }
 
-// PricingPanel owns every pricing affordance on the entry page, as a
-// controlled editor of the form's pricing draft: nothing here talks to
-// the server, changes land only with the form's save button. productId
-// persists across mode changes by design: off proxy it is "last proxy
-// target" memory, and any activation INTO proxy is re-validated by the
-// server on save (a vanished target answers 404).
+// Controlled draft editor: nothing here talks to the server except save.
+// productId persists across mode changes as "last proxy target" memory;
+// activating proxy re-validates it server-side on save (vanished = 404).
 export default function PricingPanel({ entry, value, onChange, inputCurrency }: PricingPanelProps) {
   const { t } = useLingui()
   const [picking, setPicking] = useState(false)
   const [matching, setMatching] = useState(false)
   const queryClient = useQueryClient()
-  // Narrow re-match: an auto-priced entry on an unmatched game product
-  // may move onto the listing the user picks. The resolve lands on
-  // that listing's product (same game and platform - identity is
-  // listing-keyed) and the entry repoints to it. Unlike every other
-  // control here, this saves immediately: it is a catalog identity
-  // action, not a draft field, and the server validates the narrow
-  // conditions again. The button below gates on entry.pricing_mode
-  // (the SAVED mode), not value.mode (the draft), because this
-  // immediate PUT resends the stored entry, not the draft.
+  // Unlike every other control here, this saves immediately: a catalog
+  // identity action, not a draft field, re-validated server-side. Resolve
+  // lands on the listing's product (same game+platform, identity is
+  // listing-keyed).
+  // Gates on entry.pricing_mode (SAVED), not value.mode (draft), since the
+  // PUT resends the stored entry.
   const rematch = useMutation({
     mutationFn: async (m: ManualMatch) => {
       const p = ownProduct.data
@@ -182,9 +173,8 @@ export default function PricingPanel({ entry, value, onChange, inputCurrency }: 
               )}
             </>
           ) : (
-            // No role: a still-checking or momentarily-unavailable match
-            // status is not worth interrupting a screen reader over, unlike
-            // every role="alert" boundary elsewhere in this file.
+            // No role: a still-checking/unavailable match status isn't worth
+            // interrupting a screen reader over, unlike role=alert elsewhere here.
             renderQueryState(ownProduct, {
               size: 'subsection',
               loading: <Trans>Checking the price match...</Trans>,

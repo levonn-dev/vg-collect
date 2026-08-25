@@ -1,9 +1,8 @@
 import { expect, test } from './fixtures'
 
-// The browser reports a dark system preference so the dark default is
-// assertable (Playwright's own default is light). This runs against
-// the bff's CSP, which blocks inline scripts - exactly what a unit
-// test cannot see.
+// Dark system preference makes the dark default assertable (Playwright
+// defaults light); runs against the bff's real CSP, which blocks
+// inline scripts a unit test can't see.
 test.use({ colorScheme: 'dark' })
 
 test('dark by default under a dark system preference; explicit choice survives reload', async ({ page }) => {

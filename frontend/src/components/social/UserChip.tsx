@@ -2,9 +2,8 @@ import { Link } from 'react-router'
 import type { ProfileCard } from '../../api/social'
 import Avatar from '../Avatar'
 
-// UserChip is the cross-surface identity chip - avatar plus @handle,
-// linking to the public profile - shared by feed rows, shelf card
-// bylines, and search results.
+// Cross-surface identity chip (avatar + @handle, links to public profile)
+// shared by feed rows, shelf card bylines, and search results.
 export default function UserChip({ profile }: { profile: ProfileCard }) {
   return (
     <Link

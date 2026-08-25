@@ -10,10 +10,8 @@ interface Props {
   error?: ReactNode
 }
 
-// LeverCard is the shared shell for the Maintenance grid: title, one
-// action button, and a status line showing the latest run's outcome.
-// Callers own the mutation and the messages; the card only renders
-// them, so it stays ignorant of what each lever does.
+// Callers own the mutation and the messages; the card only renders them,
+// staying ignorant of what each lever does.
 export default function LeverCard({ title, actionLabel, onRun, pending, success, error }: Props) {
   return (
     <section aria-label={title} className="rounded border border-gray-200 p-3">

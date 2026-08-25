@@ -5,8 +5,8 @@ import type { SharedEntry } from '../components/collection/rowMeta'
 
 let seq = 0
 
-// entryFixture builds a minimal valid product-backed Entry; override
-// what the test cares about (product_id: undefined makes it custom).
+// Minimal valid product-backed Entry; override what the test cares
+// about (product_id: undefined makes it custom).
 export function entryFixture(overrides: Partial<Entry> = {}): Entry {
   seq++
   const n = String(seq).padStart(12, '0')
@@ -37,10 +37,8 @@ export function listFixture(entries: Entry[], overrides: Partial<EntryList> = {}
   return { pricing_available: true, total_count: entries.length, entries, ...overrides }
 }
 
-// sharedEntryFixture builds a minimal valid SharedEntry - the
-// cross-user whitelist projection Entry rows get cut down to for a
-// shared shelf. Deliberately has no status/rating/price fields: a
-// SharedEntry never carries them.
+// Minimal valid SharedEntry, the cross-user whitelist projection of
+// Entry; deliberately has no status/rating/price fields.
 export function sharedEntryFixture(overrides: Partial<SharedEntry> = {}): SharedEntry {
   seq++
   const n = String(seq).padStart(12, '0')
@@ -93,9 +91,8 @@ export function meFixture(overrides: Partial<Me> = {}): Me {
 }
 
 // Round rates on purpose: $42.00 is exactly 21 EUR, 31.50 GBP, 6300 JPY.
-// date defaults to today (real wall-clock) so a default render is never
-// flagged stale no matter when the suite runs; pass an explicit date
-// override to test the stale-snapshot cue.
+// date defaults to today, so a default render is never flagged stale;
+// pass an override to test the stale-snapshot cue.
 export function fxRatesFixture(overrides: Partial<FXRates> = {}): FXRates {
   return {
     base: 'USD',
@@ -111,33 +108,22 @@ export const jsonResponse = (status: number, body: unknown) =>
     headers: { 'Content-Type': 'application/json' },
   })
 
-// problemResponse builds an RFC 9457 problem+json error Response - the
-// shape ApiError-mapping tests need. type/title are fixed placeholders
-// (toApiError only reads status/code/detail off the body - see
-// api/client.ts - so nothing ever observes them), and code/detail stay
-// optional so a caller that only cares about the status can omit both;
-// JSON.stringify drops an undefined value's key entirely, so an
-// omitted code or detail is simply absent from the body, same as a
-// hand-built literal that never set the key.
+// RFC 9457 problem+json Response. type/title are fixed placeholders
+// (client.ts only reads status/code/detail); JSON.stringify drops
+// undefined keys, so omitted code/detail are simply absent.
 export const problemResponse = (status: number, code?: string, detail?: string) =>
   new Response(JSON.stringify({ type: 'about:blank', title: 'x', status, code, detail }), {
     status,
     headers: { 'Content-Type': 'application/problem+json' },
   })
 
-// putBody parses the JSON body recorded on a fetch mock call - the
-// parse step every mutation-body assertion in this suite needs before
-// comparing the object a component actually sent. Takes the call's
-// first argument (the transport always records a Request) and clones
-// before reading, because a body is consumed on read and a test may
-// parse the same call twice.
+// Parses the JSON body off a mocked fetch call's Request; clones
+// before reading since a body is consumed once and may be parsed twice.
 export async function putBody<T = unknown>(input: unknown): Promise<T> {
   return (await (input as Request).clone().json()) as T
 }
 
-// calledPath reads the wire path+query out of a stubbed fetch call,
-// whether the caller passed a string URL or a Request (openapi-fetch
-// always constructs a Request).
+// Reads the wire path+query off a stubbed fetch call (string URL or Request).
 export function calledPath(fetchMock: { mock: { calls: unknown[][] } }, n?: number): string {
   const calls = fetchMock.mock.calls
   const input = calls[n ?? calls.length - 1][0]
@@ -146,9 +132,8 @@ export function calledPath(fetchMock: { mock: { calls: unknown[][] } }, n?: numb
   return u.pathname + u.search
 }
 
-// requestPath is calledPath's router-side twin: it normalizes a single
-// fetch argument (string URL or Request) to path+query, for
-// mockImplementation handlers that branch on the requested path.
+// calledPath's router-side twin: normalizes one fetch argument to
+// path+query, for mockImplementation branching.
 export function requestPath(input: unknown): string {
   const url = input instanceof Request ? input.url : String(input)
   const u = new URL(url, 'http://test.local')

@@ -1,7 +1,5 @@
-// site() resolves this deployment's identity from VITE_SITE_*
-// variables baked in at build time: what the instance is called, who
-// runs it, and which providers are active. Reads happen per call so
-// tests can stub the env.
+// Resolves deployment identity from VITE_SITE_* vars; reads per call
+// so tests can stub the env.
 import { msg } from '@lingui/core/macro'
 import type { MessageDescriptor } from '@lingui/core'
 import { providerNames } from './providers'
@@ -28,10 +26,9 @@ export type Site = {
   authProviders: AuthProvider[]
 }
 
-// The catalog is code knowledge: every source the app can credit,
-// with its wording. Which entries are active is deployment config
-// (the CSVs). dev login is absent on purpose: legal text must never
-// name it.
+// Every source the app can credit, with its wording; which entries are
+// active is deployment config (the CSVs). dev login is absent on
+// purpose: legal text must never name it.
 const DATA_SOURCES: DataSource[] = [
   { key: 'igdb', label: 'IGDB', dataType: msg`Game data`, url: 'https://www.igdb.com' },
   {
@@ -48,12 +45,11 @@ const DATA_SOURCES: DataSource[] = [
   },
 ]
 
-// Derived from the same providerNames Login and Account render their
-// buttons from (see lib/providers.ts), so the two never drift.
+// Derived from the same providerNames Login/Account render buttons
+// from, so the two never drift.
 const AUTH_PROVIDERS: AuthProvider[] = Object.entries(providerNames).map(([key, label]) => ({ key, label }))
 
-// Unset and empty both mean none (what is set is what exists), and
-// unknown keys are dropped. Result order is catalog order.
+// Unset/empty both mean none; unknown keys drop. Result order is catalog order.
 function fromCsv<T extends { key: string }>(catalog: T[], csv: string | undefined): T[] {
   const keys = (csv ?? '')
     .split(',')

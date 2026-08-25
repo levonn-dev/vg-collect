@@ -34,8 +34,8 @@ it('DELETEs to unlike when the viewer already likes it, without moving the count
   await userEvent.click(screen.getByRole('button', { name: 'Unlike' }))
   expect(calledPath(fetchMock)).toBe('/api/social/likes/s1')
   expect((fetchMock.mock.calls.at(-1)?.[0] as Request).method).toBe('DELETE')
-  // optimistic-free: the prop-driven count does not move on its own,
-  // only once the invalidated query re-fetches with a real one.
+  // optimistic-free: prop-driven count doesn't move until the invalidated
+  // query re-fetches with a real one.
   expect(screen.getByText('4')).toBeInTheDocument()
 })
 

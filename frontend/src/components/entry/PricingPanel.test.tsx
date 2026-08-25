@@ -17,9 +17,8 @@ const matchedProduct = {
   created_at: 'x', updated_at: 'x',
 }
 
-// A game product with no PriceCharting mapping yet, but a full
-// identity (igdb + platform) - the shape the "Match listing" gate
-// needs to consider the entry a re-match candidate.
+// No PriceCharting mapping but a full identity (igdb + platform): the shape
+// the Match listing gate needs to consider a re-match candidate.
 const unmatchedGameProduct = {
   id: 'p1', type: 'game', name: 'Chrono Trigger',
   igdb: { game_id: 1000 },
@@ -39,8 +38,8 @@ function stubFetch(handlers: Record<string, unknown>) {
   return fetchMock
 }
 
-// The panel is a controlled editor of the form's pricing draft; by
-// default the draft mirrors the entry, like the form initializes it.
+// Controlled editor of the form's pricing draft; by default the draft
+// mirrors the entry.
 function renderPanel(
   entry: Entry = entryFixture(),
   value: PricingValue = {
@@ -162,9 +161,8 @@ it('presents a parked target as memory with a reactivate affordance', async () =
     entryFixture({ pricing_mode: 'disabled', pricing_product_id: 'p9', product_id: undefined }),
   )
   expect(await screen.findByText(/last price proxy/i)).toBeInTheDocument()
-  // Distinct accessible name: the custom-price memory row below can
-  // render at once with its own "Reactivate" button, so a screen
-  // reader (and a strict query) needs a name that says which.
+  // Distinct accessible name: the custom-price memory row below can render at
+  // once with its own Reactivate button, so a screen reader needs to tell them apart.
   const reactivateButton = screen.getByRole('button', { name: 'Reactivate the last price proxy' })
   await userEvent.click(reactivateButton)
   expect(onChange).toHaveBeenCalledWith({ mode: 'proxy', productId: 'p9', customValue: '' })
@@ -295,11 +293,9 @@ it('shows Match listing only for auto mode on an unmatched game product', async 
   expect(await screen.findByRole('button', { name: 'Match listing' })).toBeInTheDocument()
   cleanup()
 
-  // stored mode proxy, draft flipped to auto, same unmatched game with
-  // full identity -> absent. The immediate PUT resends the STORED
-  // entry, so the affordance needs the saved mode to already be auto,
-  // not just the draft (a stored non-auto entry with a draft flipped
-  // to auto would otherwise show a button that can only 400).
+  // Stored proxy, draft flipped to auto -> absent: the immediate PUT resends
+  // the STORED entry, so the affordance needs the saved mode to already be
+  // auto, or the button could only 400.
   stubFetch({ '/api/products/': unmatchedGameProduct })
   renderPanel(entryFixture({ pricing_mode: 'proxy' }), { mode: 'auto', productId: undefined, customValue: '' })
   expect(await screen.findByText(/no confirmed price listing yet/i)).toBeInTheDocument()
@@ -348,7 +344,7 @@ it('resolves the picked listing and PUTs the entry onto the member', async () =>
   const updatedEntry = { ...entry, product_id: 'm7' }
   const fetchMock = stubFetch({
     // More specific prefixes first: stubFetch matches by URL prefix, and
-    // '/api/products/resolve' also starts with '/api/products/'.
+    // '/api/products/resolve' starts with '/api/products/' too.
     '/api/products/resolve': member,
     '/api/search': {
       degraded: false,

@@ -16,9 +16,8 @@ function renderAbout() {
 
 afterEach(() => {
   vi.unstubAllEnvs()
-  // Unmount before touching the singleton (this hook runs ahead of
-  // RTL's auto-cleanup; re-activating against a mounted tree is an
-  // I18nProvider update outside act), then leave en active.
+  // Unmount before touching the singleton: re-activating a mounted
+  // tree is an update outside act. Leave en active after.
   cleanup()
   i18n.activate('en')
 })
@@ -97,11 +96,9 @@ it('keeps the English page safe to render while a non-en locale is active', () =
   activateJa()
   renderWithI18n(<AboutEn />)
   expect(screen.getByRole('heading', { name: 'About vgkeep' })).toBeInTheDocument()
-  // About.en reads its data-source type labels through i18n._() on the
-  // module singleton. This guards that read under a non-en active
-  // locale: the page renders, and the labels resolve from the active
-  // (ja) catalog - the accepted mixed render for an English page
-  // served as a fallback.
+  // Guards the i18n._() label read under a non-en active locale:
+  // labels resolve from the active (ja) catalog, the accepted mixed
+  // render for an English fallback page.
   const region = screen.getByRole('region', { name: 'Data sources' })
   expect(within(region).getByText(/ゲームデータ/)).toBeInTheDocument()
 })

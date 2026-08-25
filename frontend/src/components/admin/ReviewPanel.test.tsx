@@ -12,11 +12,9 @@ import ReviewPanel from './ReviewPanel'
 
 function renderPanel(submission: AdminSubmission, onDone = vi.fn(), platforms: Platform[] = []) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } })
-  // PlatformPicker renders unconditionally here (no custom-entry gate)
-  // and fires a ['platforms'] fetch on mount; seed it fresh+stale-proof
-  // so that call never races the verdict/adopt calls the tests assert on.
-  // Empty by default (most tests never search the catalog); a test that
-  // drives a confirmed pick supplies its own seed rows.
+  // PlatformPicker fires a ['platforms'] fetch on mount; seed it fresh+stale-proof
+  // so it never races the verdict/adopt calls under test. Empty by default; a
+  // confirmed-pick test supplies its own seed rows.
   qc.setQueryData(['platforms'], { platforms })
   renderWithI18n(
     <QueryClientProvider client={qc}>
@@ -28,8 +26,7 @@ function renderPanel(submission: AdminSubmission, onDone = vi.fn(), platforms: P
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  // Order matters: cleanup() before activate() - see EntryDetail.test.tsx's
-  // afterEach for why (I18nProvider update outside act otherwise).
+  // cleanup() before activate(): otherwise I18nProvider updates outside act.
   cleanup()
   i18n.activate('en')
 })
@@ -41,10 +38,8 @@ const row: AdminSubmission = {
 }
 
 it('approve-new mints from the curated form', async () => {
-  // mockImplementation (not a single shared mockResolvedValue object): the
-  // panel's own duplicates search and the verdict call each need their own
-  // fresh Response - a Response body can only be read once, and reusing one
-  // singleton across both calls would break whichever call reads it second.
+  // mockImplementation, not a shared mockResolvedValue: duplicates search and
+  // verdict each need a fresh Response, since a body can only be read once.
   const fetchMock = vi.fn().mockImplementation((url: unknown) => {
     if (requestPath(url).startsWith('/api/search')) return Promise.resolve(jsonResponse(200, { degraded: false, results: [] }))
     return Promise.resolve(jsonResponse(200, { ...row, status: 'approved' }))
@@ -66,30 +61,24 @@ it('approve-new mints from the curated form', async () => {
   expect(onDone).toHaveBeenCalledWith()
 })
 
-// Type options used to be raw, untranslated text (a straight
-// "game"/"console"/"accessory" <option> literal) - this pins that they
-// now render through itemTypeWireLabels, so a ja reader sees ja text
-// rather than the English wire value. Options are found by their
-// locale-invariant value (not the label text, which is itself
-// translated under ja) so the query does not depend on the very
-// translation being pinned.
+// Pins that Type options render through itemTypeWireLabels (ja text, not the
+// English wire value). Found by locale-invariant value, not label text, so
+// the query doesn't depend on the translation being pinned.
 it('renders the Type options through the translated wire label under ja', () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { degraded: false, results: [] })))
   i18n.load('ja', jaMessages)
   i18n.activate('ja')
   renderPanel(row)
-  // Found by the option's value attribute (locale-invariant) rather
-  // than getByDisplayValue, which matches a select's VISIBLE option
-  // text - itself translated under ja, so it cannot locate the node.
+  // getByDisplayValue matches visible (translated) text, so the value
+  // attribute locates the node under ja instead.
   const select = document.querySelector('option[value="game"]')!.parentElement!
   const texts = Array.from(select.querySelectorAll('option')).map((o) => o.textContent)
   expect(texts).toEqual(['ゲーム', 'ゲーム機', '周辺機器'])
 })
 
 it('a catalog platform pick shows the confirmed state (not a blank field) and mints the canonical name', async () => {
-  // No platform_name prefill: the picker mounts straight into its
-  // catalog-search branch (the prefilled-free-text path is covered by
-  // the test above and must stay untouched).
+  // No platform_name prefill: mounts straight into the catalog-search branch
+  // (prefilled-free-text is covered above).
   const noPlatform: AdminSubmission = {
     id: 's2', entry_id: 'e2', user_id: 'u1', status: 'pending',
     display_name: 'Chrono Trigger', item_type: 'game',
@@ -107,9 +96,7 @@ it('a catalog platform pick shows the confirmed state (not a blank field) and mi
   await userEvent.type(screen.getByLabelText(/^platform$/i), 'snes')
   await userEvent.click(await screen.findByRole('button', { name: 'Super Nintendo Entertainment System' }))
 
-  // The regression this guards: the picked name used to vanish into
-  // panel state with the visible field left blank. Confirmed state
-  // means the field is gone, replaced by the canonical name + Change.
+  // Confirmed state: field is gone, replaced by the canonical name + Change.
   expect(screen.queryByLabelText(/^platform$/i)).not.toBeInTheDocument()
   expect(screen.getByText('Super Nintendo Entertainment System')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Change platform' })).toBeInTheDocument()
@@ -117,8 +104,7 @@ it('a catalog platform pick shows the confirmed state (not a blank field) and mi
   await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
   const verdictCall = fetchMock.mock.calls.find(([u]) => requestPath(u) === '/api/admin/submissions/s2/verdict')
   expect(verdictCall).toBeDefined()
-  // Name-only by design (community facts carry platform_name, never a
-  // platform id) - toEqual on the whole body proves no id field rode along.
+  // Name-only by design; toEqual on the whole body proves no id field rode along.
   expect(await putBody(verdictCall?.[0])).toEqual({
     action: 'approve_new',
     product: { type: 'game', name: 'Chrono Trigger', platform_name: 'Super Nintendo Entertainment System', region: 'pal' },
@@ -136,8 +122,7 @@ it('renders the region as a RegionPicker select prefilled with the submission re
   renderPanel(row, onDone)
   const regionField = screen.getByLabelText('Region')
   expect(regionField).toHaveValue('pal')
-  // The known-value branch: a select, with the free-text escape hatch
-  // alongside it rather than the text-mode "pick a known region" link.
+  // Known-value branch: a select, with the free-text escape hatch alongside it.
   expect(screen.getByRole('button', { name: "My region isn't listed" })).toBeInTheDocument()
   await userEvent.selectOptions(regionField, 'ntsc_u')
   await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
@@ -327,8 +312,7 @@ it('renders submission_resolved inline and refetches', async () => {
   renderPanel(row, onDone)
   await userEvent.click(screen.getByRole('button', { name: 'Approve as new product' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('Another admin already resolved this submission.')
-  // The error itself rides up, not a phrased message: the queue holds it
-  // and phrases it at render time, so it survives a locale switch.
+  // The error itself rides up, not a phrased message, so it survives a locale switch.
   const [carried] = onDone.mock.calls[0] as [ApiError]
   expect(carried).toBeInstanceOf(ApiError)
   expect(carried.code).toBe('submission_resolved')
@@ -398,9 +382,8 @@ it('flags an exact-match duplicate row by name+platform, not a differently-named
           { type: 'game', name: 'Chrono Trigger', origin: 'community', product_id: 'dupe-diff-name', item_type: 'game', platform_name: 'SNES' },
           // Same name, different platform (both sides present): not exact.
           { type: 'game', name: 'Repro Alpha', origin: 'community', product_id: 'dupe-diff-platform', item_type: 'game', platform_name: 'Genesis' },
-          // Same name, row carries no platform at all (no console_name, no
-          // platform_name): the name-only fallback still counts as exact,
-          // since a missing platform is a data gap, not a mismatch signal.
+          // No platform at all (no console_name/platform_name): name-only
+          // fallback still counts as exact - a data gap isn't a mismatch signal.
           { type: 'game', name: 'Repro Alpha', origin: 'community', product_id: 'dupe-no-platform', item_type: 'game' },
         ],
       }))

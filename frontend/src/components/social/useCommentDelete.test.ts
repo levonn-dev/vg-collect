@@ -4,9 +4,8 @@ import { createElement, type ReactNode } from 'react'
 import { UNDO_WINDOW_MS, useCommentDelete } from './useCommentDelete'
 import { calledPath, requestPath } from '../../test/fixtures'
 
-// Kept as a plain .ts file (the hook itself has no JSX either); the
-// provider wrapper below uses createElement instead of JSX since a
-// .ts file cannot parse JSX syntax.
+// Plain .ts file (hook has no JSX either); wrapper uses createElement since
+// .ts can't parse JSX.
 function setup(shelfId = 's1') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
@@ -16,11 +15,9 @@ function setup(shelfId = 's1') {
   return { hook, invalidateSpy }
 }
 
-// Every test gives fetch a resolvable Promise, even ones that never
-// expect it to be called: the hook's own unmount-cleanup flushes any
-// still-pending delete (a real setTimeout the test never advanced),
-// and an un-mocked bare vi.fn() would return undefined, breaking
-// .finally() mid-teardown.
+// Every test needs a resolvable fetch, even ones that never expect a call:
+// unmount-cleanup flushes any still-pending delete, and a bare vi.fn() would
+// return undefined, breaking .finally() mid-teardown.
 function stubFetch() {
   const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
   vi.stubGlobal('fetch', fetchMock)
@@ -32,15 +29,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-// Each test unmounts explicitly, inside its own body, rather than
-// relying on RTL's implicit auto-cleanup: that cleanup registers
-// lazily on the first render call, which lands AFTER this file's own
-// afterEach in the hook chain - by the time it fires, fetch is
-// already unstubbed, and the hook's unmount-triggered flush (any
-// still-pending delete commits on unmount, same as a pagehide) would
-// hit the real fetch and reject against the unreachable placeholder
-// host. Unmounting here keeps the flush inside the still-mocked
-// window.
+// Explicit unmount, not RTL's auto-cleanup: that registers lazily on first
+// render, landing after this file's own afterEach unstubs fetch, so the
+// unmount-triggered flush would hit the real fetch and reject. Unmounting
+// here keeps the flush inside the still-mocked window.
 function teardown(hook: ReturnType<typeof setup>['hook']) {
   act(() => hook.unmount())
 }
@@ -54,11 +46,9 @@ it('requestDelete adds the id to pendingIds and fires no fetch', () => {
   teardown(hook)
 })
 
-// Regression for the stale-timer clear guard at the top of
-// requestDelete: reachable twice in a row for the same id (a second
-// Delete click before the first commits), and without the guard both
-// timers would independently fire commit(id) at expiry, sending two
-// DELETEs for one comment.
+// Two Delete clicks for the same id before the first commits: without the
+// stale-timer clear guard, both timers would independently fire commit(id),
+// sending two DELETEs.
 it('two requestDelete calls for the same id clear the stale timer, firing exactly one DELETE at expiry', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const fetchMock = stubFetch()
@@ -101,10 +91,8 @@ it('undo on an id with no pending timer (already expired, or never requested) is
   expect(hook.result.current.pendingIds.has('never-requested')).toBe(false)
   expect(fetchMock).not.toHaveBeenCalled()
 
-  // Already expired: requestDelete's own timer fires and fully
-  // settles (commit() deletes the timers entry, then the resolved
-  // fetch clears the id from pendingIds) - undo afterward must still
-  // be a no-op, not a second DELETE.
+  // Already expired: the timer fires and fully settles (commit() clears the
+  // entry, fetch clears pendingIds); undo afterward must still be a no-op.
   act(() => hook.result.current.requestDelete('c1'))
   await act(async () => {
     await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS)
@@ -138,13 +126,9 @@ it('fires exactly one DELETE at expiry, invalidates the comment queries, and cle
   teardown(hook)
 })
 
-// Regression for a real bug: undo() used to clear pendingIds
-// unconditionally, even when the timer it looked up was already gone
-// because commit() had fired at expiry. That "restored" the row in
-// the UI (Undo button disappears, comment looks back to normal)
-// while its DELETE was still in flight - a false success. The fetch
-// here deliberately never resolves during the in-flight window so the
-// test can observe pendingIds at that exact moment.
+// undo() unconditionally clearing pendingIds when the timer is already gone
+// would falsely restore the row (Undo disappears) while its DELETE is still
+// in flight. Fetch never resolves here so the test can observe that moment.
 it('undo while the expiry-fired commit is still in flight does not falsely restore the row', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   let resolveFetch!: (res: Response) => void
@@ -157,8 +141,8 @@ it('undo while the expiry-fired commit is still in flight does not falsely resto
   await act(async () => {
     await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS)
   })
-  // The timer fired and commit() kicked off the DELETE, but the fetch
-  // above is still unresolved: the id must still read as pending.
+  // Timer fired and commit() started the DELETE, but the fetch is still
+  // unresolved: the id must still read as pending.
   expect(fetchMock).toHaveBeenCalledTimes(1)
   expect(hook.result.current.pendingIds.has('c1')).toBe(true)
 
@@ -182,8 +166,7 @@ it('a failed commit swallows the rejection and still invalidates so the comment 
   vi.stubGlobal('fetch', fetchMock)
   const { hook, invalidateSpy } = setup('s1')
   act(() => hook.result.current.requestDelete('c1'))
-  // No unhandled rejection reaches here (vitest fails the run on one
-  // by default) - the test completing at all is part of the proof.
+  // No unhandled rejection reaching here (vitest fails on one) is itself part of the proof.
   await act(async () => {
     await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS)
   })
@@ -202,9 +185,8 @@ it('two pending deletes expire independently', async () => {
     await vi.advanceTimersByTimeAsync(3000)
   })
   act(() => hook.result.current.requestDelete('c2'))
-  // c1 has now waited 3000ms of its own 7000ms window; this advance
-  // covers the remaining 4000ms - c1 expires while c2 (requested at
-  // the 3000ms mark) has only waited 4000ms of its own window.
+  // c1 has waited 3000ms of its 7000ms window; this advance covers the
+  // remaining 4000ms, expiring c1 while c2 (requested at 3000ms) has only waited 4000ms.
   await act(async () => {
     await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS - 3000)
   })
@@ -248,11 +230,9 @@ it('pagehide flushes every pending id immediately via a keepalive fetch and clea
   teardown(hook)
 })
 
-// Dedicated coverage for the unmount-flush path itself: every other
-// test's teardown() exercises it incidentally (an unmounted still-
-// pending id flushes), but nothing asserts the call it makes - so
-// deleting the flush() call in the hook's cleanup would pass every
-// other test in this file unnoticed.
+// Every other test's teardown() exercises the unmount-flush incidentally but
+// asserts nothing about it, so deleting the hook's flush() call would pass
+// unnoticed elsewhere.
 it('unmount before expiry flushes the pending delete via a keepalive commit exactly once', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const fetchMock = stubFetch()

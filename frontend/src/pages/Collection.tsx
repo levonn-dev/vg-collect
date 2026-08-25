@@ -25,6 +25,7 @@ import type { ListState } from '../lib/listParams'
 import { fromSearchParams, lastPage, toQuery, toSearchParams } from '../lib/listParams'
 import { refetchWarning, renderQueryState } from '../lib/queryBoundary'
 import { tabButtonId } from '../lib/tabs'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 type CollectionTab = 'items' | 'shelves'
 
@@ -33,6 +34,7 @@ const SHELVES_PANEL = 'collection-shelves-panel'
 
 export default function Collection() {
   const { t } = useLingui()
+  useDocumentTitle(t`Collection`)
   const collectionTabs: Tab<CollectionTab>[] = [
     { key: 'items', label: t`Items`, panelId: ITEMS_PANEL },
     { key: 'shelves', label: t`Shelves`, panelId: SHELVES_PANEL },
@@ -41,24 +43,15 @@ export default function Collection() {
   const state = fromSearchParams(searchParams)
   const apply = (next: ListState) => setSearchParams(toSearchParams(next))
   const onFilterChange = (next: ListState) => apply({ ...next, page: 0 })
-  // Filter-panel visibility is local UI state, not part of ListState: it
-  // never persists to the URL or a saved shelf, so applying a shelf (or
-  // loading a URL) that carries filters never forces the panel open -
-  // the Filters count badge is the only signal for that.
+  // Local UI state, not part of ListState: never persists, so applying
+  // a shelf never forces the panel open.
   const [filtersOpen, setFiltersOpen] = useState(false)
-  // Tab state is local, not URL-driven (matches Feed/Admin). The Items
-  // panel's own contents remount on every switch back to it (plain
-  // conditional rendering, same as Feed/Admin), but filtersOpen above
-  // lives on Collection itself, which never unmounts on a tab switch,
-  // so it survives a round trip - acceptable either way.
+  // Local, not URL-driven (matches Feed/Admin); Items panel remounts
+  // each switch, but filtersOpen lives on Collection and survives it.
   const [tab, setTab] = useState<CollectionTab>('items')
 
-  // Bulk edit's own local state: bulkMode gates the toggle's pressed
-  // state and the bar/checkboxes; selected is shared across every
-  // table on screen (grouped rendering mounts one EntryTable per
-  // group, all pointed at this same Set). Like filtersOpen above,
-  // neither persists to the URL and both survive a tab round trip
-  // since they live on Collection itself.
+  // bulkMode gates the toggle/bar/checkboxes; selected is shared across
+  // every grouped EntryTable via this one Set. Neither persists to the URL.
   const [bulkMode, setBulkMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkAnnouncement, setBulkAnnouncement] = useState('')
@@ -75,12 +68,9 @@ export default function Collection() {
       return next
     })
   }
-  // Leaving table mode - by the mode buttons, a saved shelf, or
-  // browser back/forward - exits bulk mode and drops the selection
-  // rather than leaving it to silently resume on a later return trip.
-  // Adjusted during render (React's documented pattern for resetting
-  // state when a value changes) instead of in an effect, so there is
-  // no extra post-commit render pass just to correct the mode.
+  // Leaving table mode drops bulk selection rather than silently
+  // resuming it later. Adjusted during render (React's reset pattern),
+  // not an effect, to avoid an extra pass.
   const [modeAtLastRender, setModeAtLastRender] = useState(state.mode)
   if (state.mode !== modeAtLastRender) {
     setModeAtLastRender(state.mode)
@@ -111,20 +101,14 @@ export default function Collection() {
   const { entries = [], groups, total_count, pricing_available } = list.data
   const View = state.mode === 'grid' ? CoverGrid : state.mode === 'compact' ? CompactList : EntryTable
   const pinSlot = (e: Entry) => <PinStar entry={e} />
-  // Distinguishes "your collection is empty" from "these filters match
-  // nothing": mode and page are normalized away since neither is a filter.
+  // Distinguishes empty collection from filters matching nothing;
+  // mode/page are normalized away first.
   const filtered = toSearchParams({ ...state, mode: 'table', page: 0 }).size > 0
-  // The backlog drag board (below) takes over the table's own spot
-  // whenever a pure-backlog filter is sorted by rank and ungrouped -
-  // it has no row checkboxes, so bulk mode has nothing to attach to
-  // while it is showing (state.mode can still say 'table' the whole
-  // time; this is a second, independent reason to hide the bar). Also
-  // passed to ListControls as bulkAvailable so the toggle itself
-  // disappears along with the bar/checkboxes instead of flipping
-  // aria-pressed with no visible bulk UI behind it; bulkMode/selected
-  // are untouched by this (unlike an actual mode switch away from
-  // table), so a bulk edit already in progress when the board takes
-  // over stays paused, and leaving the board restores all three.
+  // Board has no row checkboxes, so bulk mode has nothing to attach to
+  // while it shows; also passed as bulkAvailable so the toggle itself
+  // disappears (not just the bar), avoiding aria-pressed with no UI.
+  // bulkMode/selected stay untouched, so an in-progress bulk edit
+  // pauses and resumes once the board goes away.
   const boardActive = state.sort === 'backlog_rank' && !groups
   const bulkActive = bulkMode && state.mode === 'table' && !boardActive
   const renderEntries = (items: Entry[]) =>
@@ -140,7 +124,7 @@ export default function Collection() {
       <View entries={items} pinSlot={pinSlot} />
     )
   return (
-    <main className="py-6" aria-label={t`Collection`}>
+    <main id="main-content" tabIndex={-1} className="py-6" aria-label={t`Collection`}>
       <Tabs label={t`Collection sections`} tabs={collectionTabs} active={tab} onChange={setTab} className="mb-4" />
       {tab === 'items' ? (
         <div role="tabpanel" id={ITEMS_PANEL} aria-labelledby={tabButtonId(ITEMS_PANEL)}>
@@ -172,10 +156,8 @@ export default function Collection() {
               <Trans>Market pricing is temporarily unavailable; values are hidden.</Trans>
             </p>
           )}
-          {/* Always mounted, text empty when there is nothing to say - an
-              always-mounted live region announces more reliably than one
-              inserted only when it already has content (see CopyButton's
-              own status sibling for the same reasoning). */}
+          {/* Always mounted (empty when nothing to say): announces more
+              reliably than inserting on demand (see CopyButton). */}
           <p
             role="status"
             className={
@@ -211,10 +193,7 @@ export default function Collection() {
             )
           ) : !groups && entries.length === 0 ? (
             // total_count is real but this page has nothing: a stale
-            // bookmark/shared link to a page number that shrank
-            // (entries deleted, filters changed) rather than an
-            // actually-empty collection, which total_count === 0 above
-            // already covers on its own.
+            // bookmark to a page number that shrank.
             <EmptyState size="default">
               <Trans>
                 This page is past the end of your list.{' '}

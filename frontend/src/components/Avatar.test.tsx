@@ -33,9 +33,7 @@ it('remounts and retries the image when a url-keyed caller changes the url', () 
   expect(document.querySelector('img')).toBeNull() // fell back to the initial
 
   rerender(<Wrapper url="https://img.example/b.png" />)
-  // The changed key remounts a fresh instance: failed resets to
-  // false, so the new url gets its own attempt instead of staying
-  // stuck on the old url's failure.
+  // Changed key remounts a fresh instance, resetting failed for the new url.
   const img = document.querySelector('img')
   expect(img).toHaveAttribute('src', 'https://img.example/b.png')
 })

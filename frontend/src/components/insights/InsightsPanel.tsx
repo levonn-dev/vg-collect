@@ -4,17 +4,15 @@ import { useState } from 'react'
 import { fetchDashboard, fetchValueHistory } from '../../api/collection'
 import type { ListState } from '../../lib/listParams'
 import { toFilterQuery } from '../../lib/listParams'
+import { refetchWarning, renderQueryState } from '../../lib/queryBoundary'
 import BreakdownCharts from './BreakdownCharts'
 import RecsPanel from './RecsPanel'
 import StatCards from './StatCards'
 import ValueOverTime from './ValueOverTime'
 
-// InsightsPanel is the dashboard folded into the collection page: the
-// stat cards always ride above the list and follow the active
-// filters; the heavier charts and suggestions expand on demand (and
-// only fetch once expanded). Value-over-time alone stays
-// whole-collection - price snapshots record aggregate history - and
-// says so in its caption.
+// Stat cards ride above the list and follow active filters; heavier
+// charts/suggestions expand on demand and fetch only once expanded.
+// Value-over-time alone stays whole-collection (aggregate snapshots).
 export default function InsightsPanel({ state }: { state: ListState }) {
   const { t } = useLingui()
   const filterQuery = toFilterQuery(state).toString()
@@ -30,19 +28,20 @@ export default function InsightsPanel({ state }: { state: ListState }) {
     enabled: open,
   })
 
-  if (dashboard.isError) {
-    return (
-      <p role="alert" className="mb-4 text-sm text-gray-500">
-        <Trans>Stats cannot be loaded right now.</Trans>
-      </p>
-    )
-  }
   return (
     <section aria-label={t`Insights`} className="mb-4 flex flex-col gap-4">
-      {dashboard.data ? (
-        <StatCards dashboard={dashboard.data} />
+      {dashboard.data !== undefined ? (
+        <>
+          {refetchWarning(dashboard)}
+          <StatCards dashboard={dashboard.data} />
+        </>
       ) : (
-        <p className="text-sm text-gray-500"><Trans>Loading stats...</Trans></p>
+        renderQueryState(dashboard, {
+          size: 'subsection',
+          role: 'alert',
+          loading: <Trans>Loading stats...</Trans>,
+          error: <Trans>Stats cannot be loaded right now.</Trans>,
+        })
       )}
       <button
         type="button"

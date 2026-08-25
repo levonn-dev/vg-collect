@@ -4,37 +4,25 @@ import { tabButtonId } from '../lib/tabs'
 export interface Tab<T extends string> {
   key: T
   label: string
-  // The id of the tabpanel this tab controls - renders as this tab's
-  // own DOM id (see lib/tabs' tabButtonId) and aria-controls,
-  // completing the WAI-ARIA tabs pattern's tab<->panel relationship.
-  // The caller wraps its active panel in role="tabpanel" with a
-  // matching id and aria-labelledby={tabButtonId(panelId)}. Optional
-  // so a caller with no discrete panel markup to wrap (none exist
-  // today) still compiles.
+  // tabButtonId(panelId) becomes this tab's DOM id and aria-controls; the
+  // caller's panel is role="tabpanel" with a matching id and
+  // aria-labelledby={tabButtonId(panelId)}. Optional: no caller needs it today.
   panelId?: string
 }
 
 interface TabsProps<T extends string> {
-  // Accessible name for the tablist itself (Admin's "Admin sections"/
-  // Explore's own "Explore sort" idiom - every tablist needs one).
+  // Accessible name for the tablist (e.g. Admin's "Admin sections").
   label: string
   tabs: readonly Tab<T>[]
   active: T
   onChange: (key: T) => void
-  // Positional spacing only (e.g. Explore's "mt-6" below the search
-  // box); the tablist/tab visual classes themselves are fixed below.
+  // Positional spacing only; tablist/tab visual classes are fixed below.
   className?: string
 }
 
-// Tabs is the shared two-plus-tab strip: Explore's sort switch,
-// Feed's Following/You switch, Collection's sections switch, and
-// Admin's Mappings/Submissions switch all render through this.
-// Implements the WAI-ARIA tabs
-// pattern's selection-follows-focus variant with a proper roving
-// tabindex: only the active tab sits in the page tab order (tabIndex
-// 0), every other tab is -1, and ArrowLeft/ArrowRight/Home/End both
-// move focus AND fire onChange in one step, same as a native radio
-// group under arrow keys.
+// WAI-ARIA tabs pattern, selection-follows-focus: only the active tab has
+// tabIndex 0 (others -1), and ArrowLeft/Right/Home/End move focus and fire
+// onChange in one step, like a native radio group.
 export default function Tabs<T extends string>({ label, tabs, active, onChange, className = '' }: TabsProps<T>) {
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([])
 

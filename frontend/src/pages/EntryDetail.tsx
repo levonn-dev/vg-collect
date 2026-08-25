@@ -18,11 +18,10 @@ import { releaseYear } from '../lib/format'
 import { refetchWarning, renderQueryState } from '../lib/queryBoundary'
 import { entryCover, entrySecondary, entrySecondaryLang, entryTitle, entryTitleLang, titleFormFor } from '../lib/productTitle'
 import { resolveApiError } from '../lib/resolveApiError'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
-// invalid_product_change is left out: EntryForm carries no
-// product-repoint control (that only exists in the wizard's
-// ConfirmStep), so a plain save can never submit the product_id
-// change that code answers.
+// invalid_product_change omitted: EntryForm has no product-repoint
+// control (only ConfirmStep does), so a save never triggers it.
 const saveEntryErrorCodes: Record<string, MessageDescriptor> = {
   entry_not_found: msg`This entry no longer exists.`,
   unknown_pricing_product: msg`That price source no longer exists in the catalog.`,
@@ -41,8 +40,9 @@ export default function EntryDetail() {
   const location = useLocation()
   const queryClient = useQueryClient()
   const entry = useQuery({ queryKey: ['entry', id], queryFn: () => fetchEntry(id) })
-  // The wizard lands here with navigation state after a create; the
-  // banner confirms the add without a layout jump elsewhere.
+  useDocumentTitle(entry.data ? entryTitle(entry.data, form) : t`Entry`)
+  // Wizard lands here with navigation state after a create; banner
+  // confirms without a layout jump.
   const justAdded = Boolean((location.state as { justAdded?: boolean } | null)?.justAdded)
 
   const save = useMutation({
@@ -68,19 +68,19 @@ export default function EntryDetail() {
       loading: <Trans>Loading entry...</Trans>,
       error: <Trans>The entry cannot be loaded right now. Please try again.</Trans>,
       notFound: entry.isError && entry.error instanceof ApiError && entry.error.status === 404
-        ? <main className="py-8"><p role="alert"><Trans>This entry does not exist (it may have been deleted).</Trans></p></main>
+        ? <main id="main-content" tabIndex={-1} className="py-8"><p role="alert"><Trans>This entry does not exist (it may have been deleted).</Trans></p></main>
         : undefined,
     })
   }
 
   const e = entry.data
   const cover = entryCover(e)
-  // The entry's own credit snapshot (IGDB role split, community
-  // gap-fill, or the user's custom facts - the server derives it).
+  // Entry's own credit snapshot (IGDB role split, community gap-fill,
+  // or custom facts; server derives it).
   const developerNames = (e.developers ?? []).join(', ')
   const publisherNames = (e.publishers ?? []).join(', ')
   return (
-    <main className="py-6" aria-label={t`Entry detail`}>
+    <main id="main-content" tabIndex={-1} className="py-6" aria-label={t`Entry detail`}>
       {refetchWarning(entry)}
       {justAdded && (
         <p role="status" className="mb-4 rounded bg-green-50 p-3 text-sm text-green-800">

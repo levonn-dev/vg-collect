@@ -11,16 +11,11 @@ interface ViewPickerProps {
   onApply: (next: ListState) => void
 }
 
-// ViewPicker persists whole list states (filters, sort, group, mode)
-// as shelves: pick a saved shelf, save the current state as a new
-// one, or update/delete the active one. The params JSON is the
-// codec's serialization, so a shelf saved on one device restores
-// identically on another. This is the quick-row only - the per-shelf
-// management list (badge, VisibilityControl, copy-link button) lives
-// in ShelfManager, the Shelves tab's own component, which runs its
-// own me/views queries rather than receiving this component's. The
-// API still calls these views (SavedView, fetchViews, toViewParams,
-// ...); this component's copy calls them shelves.
+// params JSON is the codec's serialization, so a shelf saved on one device
+// restores identically on another. Quick-row only; ShelfManager (Shelves tab)
+// owns the management list with its own queries.
+// API calls these views (SavedView, fetchViews, ...); this component's copy
+// calls them shelves.
 export default function ViewPicker({ state, onApply }: ViewPickerProps) {
   const { t } = useLingui()
   const queryClient = useQueryClient()
@@ -38,9 +33,8 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
     mutationFn: () => {
       const active = views.data?.find((v) => v.id === state.viewId)
       if (!active) throw new Error('no active shelf')
-      // The full-replacement PUT carries the shelf's OWN existing
-      // visibility forward - omitting it would default the row back
-      // to private on every plain "Update shelf" click.
+      // Full-replacement PUT carries the shelf's own existing visibility
+      // forward; omitting it would default the row back to private.
       return updateView(active.id, active.name, toViewParams(state), active.visibility)
     },
     onSuccess: invalidate,
@@ -62,9 +56,8 @@ export default function ViewPicker({ state, onApply }: ViewPickerProps) {
   }
 
   const error = save.error ?? update.error ?? remove.error
-  // Each mutation's error otherwise lingers until that same mutation
-  // fires again, so an unrelated later success would still show the
-  // previous failure - reset all three before any new action starts.
+  // Each mutation's error otherwise lingers until it fires again, so an
+  // unrelated success would still show a previous failure; reset all three first.
   const resetErrors = () => {
     save.reset()
     update.reset()

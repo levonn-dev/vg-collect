@@ -21,18 +21,15 @@ import Recommendations from './pages/Recommendations'
 import SharedShelf from './pages/SharedShelf'
 import Terms from './pages/Terms'
 
-// Admin is the one route regular users never visit, and its panels are
-// a fifth of the page code - code-split so they ride their own chunk.
-// The null fallback is a sub-perceptible blank between click and
-// chunk; a spinner string here would also drag a new msgid through
-// both catalogs for a moderator-only flash.
+// Admin's panels are a fifth of the page code and regular users never
+// visit; code-split, null fallback (a spinner would drag a new msgid
+// through both catalogs).
 const Admin = lazy(() => import('./pages/Admin'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // /api/me and the provider list change rarely; a non-zero default
-      // stops a refetch on every window focus across all pages.
+      // /api/me and providers change rarely; skips a refetch on every window focus.
       staleTime: 5 * 60 * 1000,
       // 401 means "go log in", not "retry harder".
       retry: (failureCount, error) =>

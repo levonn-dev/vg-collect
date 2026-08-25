@@ -14,17 +14,14 @@ import { parameters } from '../gen/facets'
 import { pathsApiExploreGetParametersQuerySortValues } from '../api/schema'
 import { refetchWarning, renderQueryState } from '../lib/queryBoundary'
 import { tabButtonId } from '../lib/tabs'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 const EXPLORE_SORTS = pathsApiExploreGetParametersQuerySortValues
 const USER_SEARCH_Q_MAX = parameters.userSearchQ.maxLength
 
-// Tabs.tsx renders whatever label string each caller hands it (no
-// i18n awareness of its own - see components/Tabs.tsx); the table
-// stays msg descriptors at module scope (same shape as SearchPicker's
-// kindLabels) and gets resolved into the plain strings Tab<T> expects
-// down in the component body, where i18n is available. Labels keyed
-// by the generated EXPLORE_SORTS values rather than a second
-// hand-typed key list.
+// Tabs.tsx has no i18n of its own, so labels stay msg descriptors at
+// module scope (same shape as SearchPicker's kindLabels), resolved in
+// the component body. Keyed by the generated EXPLORE_SORTS values.
 const sortLabels: Record<ExploreSort, MessageDescriptor> = {
   recent: msg`Recent`,
   top: msg`Top`,
@@ -36,20 +33,17 @@ const PANEL_IDS: Record<ExploreSort, string> = {
 const SORT_TABS: { key: ExploreSort; label: MessageDescriptor; panelId: string }[] =
   EXPLORE_SORTS.map((key) => ({ key, label: sortLabels[key], panelId: PANEL_IDS[key] }))
 
-// The pause after the last keystroke before /api/search/users fires -
-// long enough that ordinary typing never triggers a call per letter.
+// Pause after the last keystroke before /api/search/users fires; long
+// enough to skip per-letter calls.
 const SEARCH_DEBOUNCE_MS = 300
 const SEARCH_MIN_CHARS = 2
 
-// Explore is the discovery surface: a people-search box (its own
-// debounced query, independent of the tabs below) over a shelf
-// browser with two sorts. recent pages the full listed-shelf stream
-// newest-first (worklist idiom: useInfiniteQuery + a Load more
-// button); top is social's fixed all-time leaderboard, no deeper
-// page. Only the active tab's query is enabled, so switching tabs
-// fires exactly one new request, not two on mount.
+// People search (own debounced query) over a shelf browser with two
+// sorts: recent pages newest-first, top is a fixed leaderboard with no
+// deeper page. Only the active tab's query is enabled.
 export default function Explore() {
   const { t, i18n } = useLingui()
+  useDocumentTitle(t`Explore`)
   const [tab, setTab] = useState<ExploreSort>('recent')
   const [searchText, setSearchText] = useState('')
   const [query, setQuery] = useState('')
@@ -83,7 +77,7 @@ export default function Explore() {
   const shelves = tab === 'recent' ? recent.data?.pages.flatMap((p) => p.shelves) : top.data?.shelves
 
   return (
-    <main aria-label={t`Explore`} className="py-6">
+    <main id="main-content" tabIndex={-1} aria-label={t`Explore`} className="py-6">
       <h2 className="mb-4 text-2xl font-bold"><Trans>Explore</Trans></h2>
 
       <div className="max-w-sm">

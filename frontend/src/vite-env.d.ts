@@ -8,8 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_SITE_SOURCE_URL?: string
   readonly VITE_SITE_DATA_SOURCES?: string
   readonly VITE_SITE_AUTH_PROVIDERS?: string
-  // Stamped onto browser telemetry as service.version when set; see
-  // telemetry.ts. Unset means no version attribute is emitted.
+  // Stamped as service.version when set (see telemetry.ts); unset means no version attribute.
   readonly VITE_BUILD_VERSION?: string
 }
 

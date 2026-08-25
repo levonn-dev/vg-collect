@@ -27,8 +27,7 @@ function renderDetail(id: string, qc = new QueryClient({ defaultOptions: { queri
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  // Order matters: cleanup() before activate() - see EntryTable.test.tsx's
-  // afterEach for why (I18nProvider update outside act otherwise).
+  // Order matters: cleanup() before activate() (see EntryTable.test.tsx).
   cleanup()
   i18n.activate('en')
 })
@@ -38,9 +37,8 @@ function activateJa() {
   i18n.activate('ja')
 }
 
-// JP-trio fixture (see EntryTable.test.tsx / productTitle.test.ts);
-// cover_url is also set so the localized-cover assertion proves
-// precedence, not absence.
+// JP-trio fixture (see productTitle.test.ts); cover_url is also set so
+// the localized-cover assertion proves precedence, not absence.
 const jp: Partial<Entry> = {
   display_name: 'Trials of Mana',
   localized_name: '聖剣伝説 3',
@@ -50,9 +48,8 @@ const jp: Partial<Entry> = {
   region: 'ntsc_j',
 }
 
-// Every product-backed fixture here also drives ApprovalNotice's own
-// submission fetch; answer it with "no submission" so the banner
-// stays hidden and each test can assert its own concern undisturbed.
+// Product-backed fixtures also drive ApprovalNotice's submission
+// fetch; answer "no submission" so the banner stays hidden.
 const noSubmission = () => problemResponse(404, 'submission_not_found', 'x')
 
 it('renders the catalog header and the form for a product-backed entry', async () => {
@@ -155,10 +152,8 @@ it('a first-load failure shows the full error UI, with the main landmark intact'
 it('a background refetch failure keeps showing the entry and shows the inline warning, not the hard error', async () => {
   const e = entryFixture({ display_name: 'Chrono Trigger' })
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  // Pre-seeded so the query already has data at mount; the entry
-  // endpoint then 500s the fetch this mount still triggers (default
-  // staleTime treats cached data as stale), landing exactly on the
-  // isError-with-data state this test targets.
+  // Pre-seeded so the query has data at mount; the entry endpoint then
+  // 500s the refetch, landing on isError-with-data.
   qc.setQueryData(['entry', e.id], e)
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
     if (requestPath(url).startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
@@ -202,9 +197,8 @@ it('deletes after confirmation and navigates home', async () => {
 it('invalidates dashboard/recommendations and drops the entry cache on delete', async () => {
   const e = entryFixture()
   vi.spyOn(window, 'confirm').mockReturnValue(true)
-  // The mock 404s the entry once deleted, like the real server: the
-  // removeQueries call races the still-mounted observer's refetch, and
-  // a mock that kept serving the entry would let that refetch
+  // Mock 404s the entry once deleted, like the real server: removeQueries
+  // races the still-mounted observer's refetch, which would otherwise
   // repopulate the cache and flake the drop assertion below.
   let deleted = false
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
@@ -323,9 +317,8 @@ it('renders the native title and ja lang under the ja locale', async () => {
   expect(screen.getByText('聖剣伝説 3')).toHaveAttribute('lang', 'ja')
 })
 
-// Name-only korea shape: the ko-KR bundle carries no transliteration,
-// so under the en locale the canonical title leads and the native
-// title moves to the secondary line with its own lang tag.
+// Name-only korea shape: ko-KR bundle has no transliteration, so under
+// en the canonical title leads, native moves to the secondary line.
 const kr: Partial<Entry> = {
   display_name: 'Trials of Mana',
   localized_name: '성검전설 3',

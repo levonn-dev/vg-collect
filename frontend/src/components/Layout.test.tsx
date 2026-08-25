@@ -7,8 +7,7 @@ import { fxRatesFixture, jsonResponse, meFixture, problemResponse, requestPath }
 import { renderWithI18n } from '../test/i18n'
 import Layout from './Layout'
 
-// Renders the query string react-router actually landed on so a test
-// can assert the exact ?next= value the 401 branch built.
+// Renders the landed query string so a test can assert the exact ?next= value.
 function LoginProbe() {
   const location = useLocation()
   return <div>login-page{location.search}</div>
@@ -47,6 +46,21 @@ it('renders the chrome and the routed page for a signed-in user', async () => {
   expect(screen.getByText('@alice')).toBeInTheDocument()
   expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Collection' })).toBeInTheDocument()
+})
+
+it('tabs to a skip link before anything else, targeting #main-content', async () => {
+  // Fresh Response per call: staleTime 0 triggers a background /api/me
+  // refetch, and a Response body can only be read once.
+  vi.stubGlobal('fetch', vi.fn((path: unknown) => {
+    if (requestPath(path) === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
+    return Promise.resolve(jsonResponse(200, me))
+  }))
+  renderLayout()
+  await screen.findByText('page-content')
+  await userEvent.tab()
+  const skipLink = screen.getByRole('link', { name: 'Skip to content' })
+  expect(skipLink).toHaveAttribute('href', '#main-content')
+  expect(document.activeElement).toBe(skipLink)
 })
 
 it('renders the Explore nav link after Add', async () => {
@@ -90,8 +104,7 @@ it('renders the avatar without a referrer and falls back to an initial on load f
   const img = document.querySelector('img')
   expect(img).toHaveAttribute('src', 'https://lh3.example/avatar=s96-c')
   expect(img).toHaveAttribute('referrerpolicy', 'no-referrer')
-  // Avatar hosts flake; a failed load must degrade to the initial
-  // instead of a stuck blank image.
+  // Avatar hosts flake; a failed load must degrade to the initial, not a blank.
   fireEvent.error(img!)
   expect(document.querySelector('img')).toBeNull()
   expect(screen.getByText('a', { selector: 'span' })).toBeInTheDocument()
@@ -119,9 +132,8 @@ it('carries the attempted deep path as ?next= on the login redirect', async () =
 })
 
 it('consumes a stashed next path once the profile resolves', async () => {
-  // Per-path responses, freshly built each call: CurrencySelect fetches
-  // /api/fx alongside /api/me, and a shared mockResolvedValue Response
-  // cannot have its body read twice.
+  // Fresh Response per path: CurrencySelect also fetches /api/fx, and a
+  // shared Response can't have its body read twice.
   sessionStorage.setItem('vg_next', '/entries/abc')
   vi.stubGlobal('fetch', vi.fn((path: unknown) => {
     if (requestPath(path) === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
@@ -132,13 +144,9 @@ it('consumes a stashed next path once the profile resolves', async () => {
   expect(sessionStorage.getItem('vg_next')).toBeNull()
 })
 
-// Home is the real '/' page (not the dummy div renderLayout uses
-// above): it redirects on mount to the user's landing_page
-// preference. The binding requirement is that a stashed next path
-// still wins over that redirect. Today that only holds because
-// Home's <Navigate> effect - a descendant of Layout, nested under it
-// via Outlet - fires before Layout's own stash effect above, so
-// mount the real pair together instead of proving each half alone.
+// Home redirects on mount to the landing_page pref; a stashed next path must
+// still win. That holds only because Home's <Navigate> effect (a Layout
+// descendant via Outlet) fires before Layout's stash effect, so mount both.
 function renderLayoutWithHome() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(['me'], meFixture({ landing_page: 'collection' }))
@@ -184,11 +192,8 @@ it('shows an error state on non-auth failures', async () => {
 })
 
 it('logs out and navigates to login', async () => {
-  // Routed by path rather than call order: CurrencySelect (mounted in
-  // the header once /api/me resolves) fetches /api/fx, and, because
-  // this client's default staleTime is 0, its own /api/me observer
-  // triggers a background refetch too - so /api/me must tolerate
-  // being called more than once.
+  // Routed by path, not call order: CurrencySelect also fetches /api/fx, and
+  // staleTime 0 triggers a background /api/me refetch too.
   const fetchMock = vi.fn((path: unknown) => {
     if (requestPath(path) === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
     if (requestPath(path) === '/api/auth/logout') return Promise.resolve(new Response(null, { status: 204 }))
@@ -204,9 +209,8 @@ it('logs out and navigates to login', async () => {
 })
 
 it('clears the cache and navigates to login even when the logout request fails', async () => {
-  // onSettled fires on both success and failure - the cache-clear and
-  // navigate-away must happen unconditionally either way, since a
-  // failed logout still leaves the session gone or unreachable.
+  // onSettled fires on success and failure alike; a failed logout still
+  // leaves the session gone or unreachable.
   const fetchMock = vi.fn((path: unknown) => {
     if (requestPath(path) === '/api/fx') return Promise.resolve(jsonResponse(200, fxRatesFixture()))
     if (requestPath(path) === '/api/auth/logout') return Promise.resolve(new Response('x', { status: 500 }))
@@ -214,6 +218,9 @@ it('clears the cache and navigates to login even when the logout request fails',
   })
   vi.stubGlobal('fetch', fetchMock)
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // clear() on the still-mounted me observer triggers a refetch that races
+  // navigate's unmount, so assert the clear ran, not the post-clear cache.
+  const clearSpy = vi.spyOn(qc, 'clear')
   renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/']}>
@@ -230,7 +237,7 @@ it('clears the cache and navigates to login even when the logout request fails',
   expect(qc.getQueryData(['me'])).toBeDefined()
   await userEvent.click(screen.getByRole('button', { name: 'Log out' }))
   expect(await screen.findByText('login-page')).toBeInTheDocument()
-  expect(qc.getQueryData(['me'])).toBeUndefined()
+  expect(clearSpy).toHaveBeenCalled()
 })
 
 it('shows the Admin nav link only for the admin role', async () => {

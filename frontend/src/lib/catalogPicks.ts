@@ -7,21 +7,18 @@ export interface GamePick {
   name: string
   platformId: number
   platformName: string
-  // Platform-first region seeding: the matched-region mapping when the
-  // clicked chip's own region set contains it, else the UI locale's
-  // home region when the set contains that, else the chip's earliest
-  // release region, else the matched mapping alone (unmappable chip),
-  // else nothing (the wizard defaults ntsc_u).
+  // Region seeding precedence: matched-region mapping if in the chip's
+  // set, else UI locale's home region if in the set, else chip's
+  // earliest release, else the matched mapping alone, else nothing.
   suggestedRegion?: EntryRegion | 'region_free'
-  // The clicked chip's mapped region list (absent when it has none):
-  // drives the details step's grouped Region select.
+  // Clicked chip's mapped region list (absent if none); drives the
+  // Region select's grouping.
   regions?: EntryRegion[]
-  // The result's localization bundles, verbatim: the details heading
-  // derives the region-appropriate identity from them.
+  // Result's localization bundles verbatim; details heading derives
+  // region-appropriate identity from them.
   localizations?: { region: string; name?: string; translit?: string; cover_url?: string }[]
-  // The chip's own artwork and release date, carried through so a
-  // based-add (CustomStep) can prefill the custom form's cover and
-  // release date fields without a second lookup.
+  // Chip's artwork/release date, carried through so based-add
+  // (CustomStep) can prefill without a second lookup.
   coverUrl?: string
   firstReleaseDate?: string
 }
@@ -31,9 +28,8 @@ export interface HardwarePick {
   pcProductId: number
   name: string
   category: string
-  // The listing's own region, derived from its console-name axis: a
-  // PriceCharting listing prices exactly one region, so the wizard
-  // seeds its region default with it.
+  // Derived from the listing's console-name axis; a PC listing prices
+  // exactly one region.
   suggestedRegion: 'ntsc_u' | 'ntsc_j' | 'pal'
 }
 
@@ -52,9 +48,8 @@ export interface CommunityPick {
   // Same based-add prefill purpose as GamePick's fields above.
   coverUrl?: string
   firstReleaseDate?: string
-  // The community facts region, entry vocabulary (open-world; see
-  // regionLabelText) - seeds the wizard's region default the same way
-  // suggestedRegion does for game/hardware picks.
+  // Entry-vocabulary region (open-world; regionLabelText); seeds the
+  // default like suggestedRegion does.
   region?: string
   // Curated credit lists, for based-add prefill.
   developers?: string[]
@@ -63,19 +58,16 @@ export interface CommunityPick {
 
 export type CatalogPick = GamePick | HardwarePick | PCListingPick | CommunityPick
 
-// The picker's full user-entered state, snapshotable by a caller that
-// unmounts this component (the add wizard's step machine) and handed
-// back as initialState so Back lands on the same query and results.
+// Snapshotable so a caller that unmounts this (add wizard's step
+// machine) can restore it as initialState on Back.
 export interface SearchPickerState {
   kind: SearchKind
   text: string
   submitted: string
 }
 
-// communityPickOf turns a community search result into a CommunityPick.
-// SearchResultRow's two community branches (platform-tagged and bare)
-// both call it, so the payload they emit stays identical by
-// construction instead of by copy-paste discipline between the two.
+// Shared by SearchResultRow's two community branches, so their
+// payload stays identical by construction.
 export function communityPickOf(result: SearchResult): CommunityPick {
   return {
     kind: 'community',

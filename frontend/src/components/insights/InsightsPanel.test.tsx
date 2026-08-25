@@ -3,7 +3,7 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { ListState } from '../../lib/listParams'
-import { defaultListState } from '../../lib/listParams'
+import { defaultListState, toFilterQuery } from '../../lib/listParams'
 import { dashboardFixture, jsonResponse, requestPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import InsightsPanel from './InsightsPanel'
@@ -35,8 +35,10 @@ function stubApi(overrides: Partial<Record<'dashboard' | 'history' | 'recs', unk
   }))
 }
 
-function renderPanel(state: ListState = defaultListState()) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function renderPanel(
+  state: ListState = defaultListState(),
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   return renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
@@ -96,6 +98,24 @@ it('degrades the value card when pricing is unavailable', async () => {
   })
   renderPanel()
   expect(await screen.findByRole('alert')).toHaveTextContent(/value unavailable right now/i)
+})
+
+it('a background refetch failure keeps the stat cards and shows the inline warning, not the hard error', async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const state = defaultListState()
+  // Pre-seeded so data exists at mount; the endpoint then 500s the refetch
+  // (default staleTime treats cached data as stale), landing on isError-with-data.
+  qc.setQueryData(['dashboard', toFilterQuery(state).toString()], dashboardFixture())
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
+    const u = requestPath(url)
+    if (u.startsWith('/api/dashboard')) return Promise.resolve(jsonResponse(500, {}))
+    return Promise.resolve(jsonResponse(404, {}))
+  }))
+  renderPanel(state, qc)
+  const warning = await screen.findByText(/last refresh failed/i)
+  expect(warning).toHaveAttribute('role', 'status')
+  expect(screen.getByText('42')).toBeInTheDocument()
+  expect(screen.queryByText(/stats cannot be loaded/i)).not.toBeInTheDocument()
 })
 
 it('reports when stats cannot be loaded without blocking the page', async () => {

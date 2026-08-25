@@ -10,9 +10,8 @@ import { regionLabelText } from '../../lib/regionLabels'
 import MappingFix from './MappingFix'
 import PromotePanel from './PromotePanel'
 
-// ProductLookup is the remap reach: wrong mappings surface while
-// looking at an entry, where the product id is at hand; pasting it
-// here brings up the product regardless of matching state.
+// Remap reach: paste a product id (found while viewing an entry) to bring it
+// up regardless of matching state.
 export default function ProductLookup() {
   const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
@@ -34,9 +33,8 @@ export default function ProductLookup() {
     void queryClient.invalidateQueries({ queryKey: ['admin'] })
   }
 
-  // Hoisted rather than called inline in the Trans below: lingui's
-  // message-expression lint wants a plain variable there, not a
-  // function call (see PromotePanel's listingName for the same idiom).
+  // Hoisted, not called inline in Trans: lingui's message-expression lint
+  // wants a plain variable, not a function call.
   const communityRegion = product.isSuccess && product.data.origin === 'community' ? product.data.community?.region : undefined
   const regionLabel = communityRegion ? regionLabelText(i18n, communityRegion) : undefined
 
@@ -48,8 +46,7 @@ export default function ProductLookup() {
         onSubmit={(e) => {
           e.preventDefault()
           const next = input.trim()
-          // Resubmitting the id already shown is a refresh request; a
-          // same-value setId would be a no-op and serve stale cache.
+          // Resubmitting the shown id is a refresh; same-value setId would be a no-op.
           if (next === id) {
             void product.refetch()
           } else {
@@ -99,10 +96,8 @@ export default function ProductLookup() {
             </p>
           )}
           {product.data.origin === 'community' ? (
-            // Key on the product id: switching to another (cached)
-            // community product reconciles this panel in place otherwise,
-            // leaking the attached-listing and picking state across
-            // products. Remounting on id change resets it cleanly.
+            // Key on product id: without it, switching to another cached
+            // community product reconciles in place, leaking picking state.
             <PromotePanel
               key={product.data.id}
               product={product.data}

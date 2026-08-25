@@ -44,3 +44,12 @@ it('calls onClose when the Close button is clicked', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Close' }))
   expect(onClose).toHaveBeenCalledTimes(1)
 })
+
+it('calls onClose on Escape (WAI-ARIA APG dialog keyboard convention)', async () => {
+  const onClose = vi.fn()
+  renderDialog(onClose)
+  // Focus starts on the input (see the mount-focus test above); Escape
+  // must close from anywhere inside the dialog, not just the button.
+  await userEvent.keyboard('{Escape}')
+  expect(onClose).toHaveBeenCalledTimes(1)
+})

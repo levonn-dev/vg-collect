@@ -1,7 +1,6 @@
 import { expect, test } from './fixtures'
 
-// The login page itself is under test here - the one place the suite
-// drives the rendered fixture links instead of the programmatic login.
+// Only place the suite drives the rendered fixture links, not programmatic login.
 test.use({ storageState: { cookies: [], origins: [] } })
 
 test('dev fixture login round-trip through the gateway', async ({ page }) => {

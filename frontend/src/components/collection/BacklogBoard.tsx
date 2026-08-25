@@ -68,19 +68,12 @@ function SortableRow({
   )
 }
 
-// BacklogBoard renders the backlog in pure rank order (the query layer
-// pins order=asc for rank reads) and turns drops into single reorder
-// calls. Optimistic: the cached page reorders immediately; a failure
-// refetches. 409 conflicting_order means the list moved somewhere else
-// (another tab, another device) - refetch and say so.
-//
-// entries is always one PAGE_SIZE page of a possibly much larger
-// backlog, so a move landing on the visible top/bottom slot cannot in
-// general be resolved to a correct after_id/before_id - the true
-// neighbor may sit on an unfetched adjacent page. page/totalCount let
-// the board tell a page-local edge apart from the true global edge
-// (see lib/reorder's crossesUnknownEdge): everywhere else, a move
-// stays a page-local, always-safe operation.
+// Pure rank order (query layer pins order=asc). Optimistic: cached page
+// reorders immediately, failure refetches; 409 conflicting_order means the
+// list moved elsewhere.
+// entries is one PAGE_SIZE page of a larger backlog, so a move at the visible
+// edge may need a neighbor on an unfetched page; page/totalCount let
+// crossesUnknownEdge tell a page-local edge from the true global edge.
 export default function BacklogBoard({ entries, page, totalCount }: { entries: Entry[]; page: number; totalCount: number }) {
   const { t } = useLingui()
   const queryClient = useQueryClient()
@@ -96,8 +89,8 @@ export default function BacklogBoard({ entries, page, totalCount }: { entries: E
       setConflict(null)
       await queryClient.cancelQueries({ queryKey: ['entries'] })
       const previous = queryClient.getQueriesData<EntryList>({ queryKey: ['entries'] })
-      // Optimistically reorder every cached entries page (only the
-      // active one is mounted; the rest invalidate below anyway).
+      // Reorders every cached entries page; only the active one is mounted,
+      // rest invalidate below.
       queryClient.setQueriesData<EntryList>({ queryKey: ['entries'] }, (old) => {
         if (!old?.entries) return old
         const current = old.entries
@@ -148,11 +141,8 @@ export default function BacklogBoard({ entries, page, totalCount }: { entries: E
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
           <ul className="flex flex-col gap-2">
             {entries.map((e) => {
-              // A row's own Up/Down is disabled whenever that specific
-              // move is impossible (moveByOffset null, the page's own
-              // bound) or would write a false global edge on this page
-              // (see crossesUnknownEdge) - the same guard submit()
-              // applies, computed ahead of the click so the button
+              // Disabled when the move is impossible or crosses an unknown edge
+              // (same guard submit() applies), computed ahead so the button
               // reflects it instead of silently no-opping.
               const up = moveByOffset(ids, e.id, -1)
               const down = moveByOffset(ids, e.id, 1)

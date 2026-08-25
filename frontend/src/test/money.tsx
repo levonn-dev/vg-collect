@@ -5,12 +5,9 @@ import { render } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { fxRatesFixture, meFixture } from './fixtures'
 
-// renderWithMoney renders under a QueryClientProvider whose cache is
-// pre-seeded with the profile and the rate snapshot, so components
-// using useDisplayMoney resolve synchronously with no fetch stubs.
-// staleTime Infinity stops the seeded queries from refetching (there
-// is no fetch stub to answer them). rates: false simulates the
-// rates-unavailable fallback.
+// Cache pre-seeded with profile and rate snapshot, so useDisplayMoney
+// resolves with no fetch stubs; staleTime Infinity stops refetch.
+// rates: false simulates the unavailable fallback.
 export function renderWithMoney(
   ui: ReactElement,
   opts: { currency?: string; rates?: boolean } = {},

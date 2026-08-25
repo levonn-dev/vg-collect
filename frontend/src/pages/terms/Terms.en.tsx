@@ -1,16 +1,15 @@
 import { site } from '../../lib/site'
 
 // Boilerplate terms for a self-hosted instance, not legal advice.
-// Operators deploying publicly should have this reviewed. Statements
-// about deletion and content must track actual app behavior; change
-// the Last updated date when the text changes.
+// Deletion/content statements must track actual app behavior; move
+// the Last updated date on change.
 export default function TermsEn() {
   const s = site()
   const providers =
     s.authProviders.map((p) => p.label).join(' or ') || 'a third-party sign-in provider'
   const contact = s.contact || 'the operator of this instance'
   return (
-    <main aria-label="Terms of service" className="mx-auto w-full max-w-2xl p-6">
+    <main id="main-content" tabIndex={-1} aria-label="Terms of service" className="mx-auto w-full max-w-2xl p-6">
       <h2 className="mb-4 text-2xl font-bold">Terms of service</h2>
       <div className="flex flex-col gap-4 text-sm text-gray-700">
         <section aria-label="Acceptance">

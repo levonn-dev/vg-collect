@@ -1,9 +1,8 @@
-// UI labels quoted here must match the rendered app; when a label
-// changes, this copy changes with it. Deployment facts (which
-// providers run) live on the About page, not here.
+// UI labels quoted here must match the rendered app. Deployment facts
+// (which providers run) live on the About page, not here.
 export default function HelpEn() {
   return (
-    <main aria-label="Help" className="mx-auto w-full max-w-2xl p-6">
+    <main id="main-content" tabIndex={-1} aria-label="Help" className="mx-auto w-full max-w-2xl p-6">
       <h2 className="mb-4 text-2xl font-bold">Help</h2>
       <div className="flex flex-col gap-6 text-sm text-gray-700">
         <section aria-labelledby="shelves-from-tags">

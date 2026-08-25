@@ -25,10 +25,8 @@ function renderPicker(value: PlatformValue = { platformName: '' }) {
   return onChange
 }
 
-// Harness wires PlatformPicker as a real controlled component (value
-// state feeds back from onChange), so a test can drive a pick and then
-// observe the confirmed-state re-render. renderPicker's static value
-// prop cannot show this: nothing ever supplies it a new value.
+// Wires PlatformPicker as a real controlled component so a test can drive a
+// pick and observe the confirmed-state re-render; renderPicker's static value can't.
 function Harness({ initial, spy }: { initial: PlatformValue; spy: (v: PlatformValue) => void }) {
   const [value, setValue] = useState(initial)
   return (

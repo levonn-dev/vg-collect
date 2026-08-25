@@ -14,10 +14,8 @@ const view = {
   created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
 }
 
-// ShelfManager reads ['me'] both for the note logic and the copy-link
-// handle; seed it with meFixture's own default (a private profile) so
-// a test only has to override profile_visibility when the scenario
-// needs something else.
+// Reads ['me'] for both the note logic and copy-link handle; seed with
+// meFixture's default (private) so tests only override what they need.
 function renderManager(me = meFixture()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(['me'], me)
@@ -62,9 +60,8 @@ it('copies the handle-and-slug share link for a non-private shelf', async () => 
 it('withholds the copy-link button for a non-private shelf until the signed-in handle has loaded', async () => {
   const listed = { ...view, visibility: 'listed' as const }
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
-  // No ['me'] seed here (unlike renderManager), and /api/me hangs - the
-  // handle read is still pending, so there is nothing to build a share
-  // link out of yet even though the shelf itself already qualifies.
+  // No ['me'] seed; /api/me hangs, so the handle read stays pending with
+  // nothing to build a share link from, even though the shelf qualifies.
   vi.stubGlobal('fetch', vi.fn((path: unknown) =>
     requestPath(path) === '/api/me' ? new Promise(() => {}) : Promise.resolve(jsonResponse(200, { views: [listed] }))))
   renderWithI18n(

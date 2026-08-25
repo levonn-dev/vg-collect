@@ -16,8 +16,7 @@ const renderGrid = (entries = [entryFixture()], opts: { currency?: string } = {}
   )
 
 afterEach(() => {
-  // Order matters: cleanup() before activate() - see EntryTable.test.tsx's
-  // afterEach for why (I18nProvider update outside act otherwise).
+  // cleanup() before activate(): otherwise I18nProvider updates outside act.
   cleanup()
   i18n.activate('en')
 })
@@ -27,9 +26,8 @@ function activateJa() {
   i18n.activate('ja')
 }
 
-// JP-trio fixture (see EntryTable.test.tsx / productTitle.test.ts);
-// cover_url is also set so the localized-cover assertion proves
-// precedence, not absence.
+// JP-trio fixture; cover_url is also set so the localized-cover assertion
+// proves precedence, not absence.
 const jp: Partial<Entry> = {
   display_name: 'Trials of Mana',
   localized_name: '聖剣伝説 3',
@@ -93,12 +91,8 @@ it('renders a SharedEntry card read-only (no link, no fabricated value) without 
   expect(screen.getByText('Someone Elses Game')).toBeInTheDocument()
   expect(screen.queryByRole('link')).not.toBeInTheDocument()
   expect(document.querySelector('svg[data-icon="game"]')).toBeInTheDocument()
-  // The actual "no fabricated value" check: a SharedEntry carries no
-  // price fields, so rowMeta falls back to '-' rather than calling
-  // money.entryValue on a row that has nothing for it to format - a
-  // full Entry row with a price renders a $-prefixed string (see
-  // "shows value and pin state" above), so a $ anywhere here would be
-  // a fabricated figure.
+  // SharedEntry carries no price fields, so rowMeta falls back to '-' instead
+  // of calling money.entryValue; a $ anywhere here would be a fabricated figure.
   expect(screen.queryByText(/\$/)).not.toBeInTheDocument()
 })
 

@@ -1,10 +1,8 @@
 import { useLingui } from '@lingui/react/macro'
 import { useEffect, useState } from 'react'
 
-// The inline script in index.html applies the initial theme class
-// before first paint (stored choice, else system preference, else
-// dark). This control flips and persists it; until the user chooses,
-// live system-preference changes keep being followed.
+// index.html's inline script sets the initial theme pre-paint (stored, else
+// system, else dark); this flips/persists it, following system changes until then.
 export default function ThemeToggle() {
   const { t } = useLingui()
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))

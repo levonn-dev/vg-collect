@@ -25,9 +25,8 @@ it('shows the banner for an approved, un-acked submission and acks on dismiss', 
     .fn()
     .mockResolvedValueOnce(sub({}))
     .mockResolvedValueOnce(new Response(null, { status: 204 }))
-    // A successful ack invalidates ['submission', entryId], so a third
-    // call (the background refetch) follows; the acked submission is
-    // what a real server would answer with from here on.
+    // Successful ack invalidates ['submission', entryId], so a third call
+    // (background refetch) follows; the acked submission answers from here on.
     .mockResolvedValue(sub({ resolution_ack_at: '2026-07-19T00:00:00Z' }))
   vi.stubGlobal('fetch', fetchMock)
   renderNotice()
@@ -47,8 +46,8 @@ it('re-shows the banner when the ack request fails', async () => {
   renderNotice()
   const dismiss = await screen.findByRole('button', { name: 'Dismiss approval notice' })
   await userEvent.click(dismiss)
-  // onError resets dismissed to false; the cache was never invalidated
-  // (no onSuccess ran), so the still-un-acked submission renders again.
+  // onError resets dismissed to false; cache was never invalidated, so the
+  // still-un-acked submission renders again.
   expect(await screen.findByRole('status')).toBeInTheDocument()
   expect(await screen.findByRole('button', { name: 'Dismiss approval notice' })).toBeInTheDocument()
 })
@@ -63,9 +62,8 @@ it('a successful ack invalidates the cache so a remount does not re-flash the ba
   const { unmount, qc } = renderNotice()
   const dismiss = await screen.findByRole('button', { name: 'Dismiss approval notice' })
   await userEvent.click(dismiss)
-  // Let the post-ack invalidation's background refetch land in the
-  // cache before the remount, so the cache itself (not component state)
-  // is what the remount below reads from.
+  // Lets the post-ack invalidation's background refetch land before remount,
+  // so the remount reads from cache, not component state.
   await new Promise((r) => setTimeout(r, 0))
   unmount()
 
@@ -74,11 +72,9 @@ it('a successful ack invalidates the cache so a remount does not re-flash the ba
       <ApprovalNotice entryId="e1" />
     </QueryClientProvider>,
   )
-  // No await: a fresh mount's first synchronous render reads the query
-  // cache as-is. Without the onSuccess invalidation, the cache would
-  // still hold the un-acked submission and this first render would
-  // flash the banner again (react-query's own refetch-on-mount would
-  // only fix it a tick later).
+  // No await: a fresh mount's first synchronous render reads the cache as-is.
+  // Without the onSuccess invalidation, the cache would still hold the
+  // un-acked submission and flash the banner (refetch-on-mount fixes it later).
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
 })
 

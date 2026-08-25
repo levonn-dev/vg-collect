@@ -4,11 +4,8 @@ import { updateMe, type Me } from '../api/me'
 import { useFxRates } from '../lib/useDisplayMoney'
 import { useMe } from '../lib/useMe'
 
-// CurrencySelect sets the profile's display currency from the app
-// header. The choice is optimistic: the cache flips immediately so
-// every price re-renders at once, and a failed save rolls back. While
-// rates are unavailable the app can only render USD, so the control
-// pins there and says why.
+// Optimistic: cache flips immediately and rolls back on save failure. Pinned
+// to USD while rates are unavailable (title attr explains why).
 export default function CurrencySelect() {
   const { t } = useLingui()
   const queryClient = useQueryClient()

@@ -5,12 +5,8 @@ import { EntryCreate } from '../gen/facets'
 const CREDIT_NAME_MAX = EntryCreate.properties.developers.items.maxLength
 const CREDITS_MAX = EntryCreate.properties.developers.maxItems
 
-// StringListInput edits an ordered list of short text values (credit
-// company names): one text input per element with its own remove
-// button, plus an add button appending an empty row. Blank rows are
-// the caller's to drop at submit time - mid-edit emptiness is a
-// normal typing state, not an error. The row cap mirrors the
-// contract's maxItems on credit lists.
+// Blank rows are the caller's to drop at submit time; mid-edit emptiness is a
+// normal typing state, not an error. Row cap mirrors the contract's maxItems.
 export default function StringListInput({ label, addLabel, values, onChange }: {
   label: string
   addLabel: string
@@ -18,18 +14,11 @@ export default function StringListInput({ label, addLabel, values, onChange }: {
   onChange: (v: string[]) => void
 }) {
   const { t } = useLingui()
-  // Row identity lives here, keyed separately from `values` itself, so
-  // removing one row does not make React reuse the next row's DOM node
-  // (and its just-clicked focus) for a different value - a position
-  // (index) key would silently retarget the Remove button onto the
-  // wrong credit. IDs are minted from the current id set itself (one
-  // past its running max), not a ref counter or a random source: React
-  // may re-run a render, and neither a ref write nor a non-deterministic
-  // draw is safe to do there. A length mismatch against `values` means
-  // the caller replaced the whole list itself (e.g. CustomStep's
-  // applyBase prefill) rather than going through add/remove below;
-  // every row is new either way, so minting a fresh id set for the new
-  // length is correct, not a loss of identity.
+  // ids is keyed separately from values: an index key would let React reuse a
+  // DOM node (and its focus) for a different value after a remove.
+  // Minted from current max+1, not a ref counter/random source (unsafe during
+  // a re-run render). A length mismatch means the caller replaced the whole
+  // list (e.g. CustomStep's prefill); minting fresh ids there is correct.
   const [ids, setIds] = useState<number[]>(() => values.map((_, i) => i))
   if (ids.length !== values.length) {
     setIds(values.map((_, i) => i))

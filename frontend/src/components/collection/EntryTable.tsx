@@ -10,24 +10,18 @@ import { isFullEntry, rowMeta, type EntryRow } from './rowMeta'
 
 interface EntryTableProps {
   entries: EntryRow[]
-  // pinSlot lets the page swap the static star for an interactive
-  // control without this table knowing about mutations.
+  // pinSlot lets the page swap the static star for an interactive control
+  // without this table knowing about mutations.
   pinSlot?: (e: Entry) => ReactNode
-  // linkTo lets shared pages retarget or suppress row links; null
-  // renders plain text.
+  // linkTo lets shared pages retarget or suppress row links; null renders plain text.
   linkTo?: (e: EntryRow) => string | null
-  // Adds a leading rank column, 1-based over this render's own
-  // entries array - the shared-shelf backlog-rank view's only use.
+  // numbered adds a leading rank column, 1-based over this render's entries.
   numbered?: boolean
-  // shared hides the owner-only columns (Status, Rating, Paid, Value)
-  // entirely - SharedEntry never carries those fields, so the
-  // alternative (rendering every row's cell as a bare '-') is just
-  // dead columns on a page the viewer does not own.
+  // shared hides owner-only columns (Status, Rating, Paid, Value) entirely;
+  // SharedEntry never carries those fields, so a bare '-' would be dead columns.
   shared?: boolean
-  // selectable adds the leading checkbox column (header select-all
-  // plus one checkbox per row) for Collection's bulk-edit mode. It
-  // defaults off and is never combined with shared - a shared page
-  // never offers selection over rows the viewer does not own.
+  // selectable adds the leading checkbox column for bulk-edit mode; never
+  // combined with shared - a shared page never offers selection.
   selectable?: boolean
   selected?: ReadonlySet<string>
   onToggleSelect?: (id: string) => void
@@ -40,15 +34,12 @@ export default function EntryTable({
   const money = useDisplayMoney()
   const currency = money.currency
   const form = titleFormFor(i18n.locale)
-  // Only meaningful while selectable (nothing reads them otherwise),
-  // so these skip re-deriving that from selectable itself.
+  // Only meaningful while selectable; skips re-deriving that from selectable itself.
   const selectedCount = entries.filter((e) => selected?.has(e.id)).length
   const allSelected = entries.length > 0 && selectedCount === entries.length
   const someSelected = selectedCount > 0 && !allSelected
-  // Bulk-toggles every row of THIS table's own entries through the same
-  // per-id callback the row checkboxes use, so the shared selection Set
-  // only ever grows or shrinks by ids this table actually owns - a
-  // sibling group's table (or a later page) is untouched either way.
+  // Toggles this table's own rows through the row checkboxes' callback, so the
+  // shared selection Set only grows/shrinks by ids this table owns.
   const toggleAll = () => {
     if (!onToggleSelect) return
     for (const e of entries) {
@@ -85,12 +76,9 @@ export default function EntryTable({
       <tbody>
         {entries.map((e, i) => {
           const meta = rowMeta(e, money, i18n, { pinSlot, pinTrailingSpace: true })
-          // Same value the row title renders (entryTitle(e, form)), not
-          // the raw display_name - the checkbox must announce whatever
-          // text is actually on screen. The interpolated identifier
-          // stays named displayName on purpose: the msgid ("Select
-          // {displayName}") is keyed off that source-expression name, so
-          // renaming it would churn the catalog for zero benefit.
+          // Same value the row title renders (entryTitle), not raw display_name:
+          // the checkbox must announce what's on screen. Kept named displayName
+          // since the msgid ("Select {displayName}") is keyed off that name.
           const displayName = entryTitle(e, form)
           return (
             <tr key={e.id} className="border-b border-gray-100">

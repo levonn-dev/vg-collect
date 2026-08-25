@@ -1,32 +1,20 @@
 import { acceptNext, expect, loginAs, test } from './fixtures'
 
-// Admin console coverage across three tests. The worker's own family
-// fixture carries no admin role, so the first test needs no login of
-// its own - it proves the admin surface stays hidden from the default
-// session. The other two switch to the fixed admin fixture via
-// loginAs, which logs in fresh each time; task e2e grants the admin
-// role before Playwright starts, and a fresh login is what puts the
-// role in the JWT.
-//
-// Determinism note: the add wizard does not carry the "Edition or
-// variant" text into the PRODUCT. Console resolve keys identity on
-// (pc_product_id, region, edition, variant) and the wizard sends only
-// pc_product_id (see resolveRequestFor), so the stamp lands on the
-// ENTRY - giving each run a unique, self-cleaning entry - while the
-// product converges on one shared identity. Product-level determinism
-// therefore comes from the clear -> re-map round trip restoring the
-// mapping every run (the same trick the bruno admin flow uses), not
-// from a per-run product family. The product id AND name are captured
-// from the resolve response so the spec follows whatever gamecube
-// variant the live search actually returns rather than assuming one.
+// Worker fixture carries no admin role; the other two tests loginAs
+// admin fresh (task e2e grants the role before Playwright starts, and
+// a fresh login is required to put it in the JWT).
+
+// Determinism: resolve keys on (pc_product_id, region, edition, variant)
+// and the wizard sends only pc_product_id, so the stamp lands on the
+// entry (self-cleaning) while the product converges on one shared id
+// via the clear -> re-map round trip below.
 const stamp = `e2e-admin-${Date.now()}`
 
 test('non-admin never sees the admin surface', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0)
-  // A deep link renders nothing admin-shaped either: the page guard
-  // redirects home (the server would answer 403 regardless), which
-  // then resolves through the landing-page redirect to /feed.
+  // Deep link redirects home (guard, then landing redirect to /feed);
+  // server would 403 regardless.
   await page.goto('/admin')
   await expect(page).toHaveURL('/feed')
 })
@@ -37,20 +25,15 @@ test('admin fixes a cleared mapping end to end', async ({ page }) => {
   await loginAs(page, 'admin')
   await expect(page.getByRole('link', { name: 'Admin' })).toBeVisible()
 
-  // --- Create the fixture hardware entry through the add wizard,
-  // capturing the resolved product's id and name. first(): real
-  // hardware search returns colored and bundled variants, and the only
-  // bare "Add Gamecube System" hit is a bracketed edition listing, so
-  // the resolved product name is not a plain "Gamecube System".
+  // first(): search returns colored/bundled variants too; the bare
+  // hit is a bracketed edition listing.
   await page.getByRole('link', { name: 'Add', exact: true }).click()
   await page.getByRole('radio', { name: /hardware/i }).check()
   await page.getByRole('searchbox', { name: /search for games and hardware/i }).fill('gamecube system')
   await page.getByRole('button', { name: 'Search', exact: true }).click()
   await page.getByRole('button', { name: /Add Gamecube System/ }).first().click()
   await page.getByLabel('Edition or variant').fill(stamp)
-  // The wizard resolves on the confirm step's mount - right after
-  // Continue - so arm the wait first. Find and create both answer 200
-  // through the same product writer.
+  // Resolves on confirm-step mount; arm the wait before clicking Continue.
   const resolveDone = page.waitForResponse(
     (r) => r.url().includes('/api/products/resolve') && r.request().method() === 'POST' && r.status() === 200,
   )
@@ -70,10 +53,8 @@ test('admin fixes a cleared mapping end to end', async ({ page }) => {
   const lookup = page.getByRole('region', { name: 'Product lookup' })
   await lookup.getByRole('textbox', { name: 'Product id' }).fill(productId)
   await lookup.getByRole('button', { name: 'Look up' }).click()
-  // A mapped product resolved: Clear exists only when a mapping is
-  // present, so its visibility is the "found it, and it is mapped"
-  // signal. The name shows in two places here, so asserting it by text
-  // would be ambiguous under strict mode.
+  // Clear button visible only when mapped. Name appears twice here, so
+  // assert by button, not text.
   await expect(lookup.getByRole('button', { name: 'Clear mapping' })).toBeVisible()
 
   acceptNext(page)
@@ -82,40 +63,31 @@ test('admin fixes a cleared mapping end to end', async ({ page }) => {
   await expect(lookup.getByText('held')).toBeVisible()
   await expect(lookup.getByText(/unmatched/i)).toBeVisible()
 
-  // --- The cleared product surfaces in the worklist, badged held. The
-  // stamp is an entry fact, not a product one, so the row is found by
-  // the product name; "held" marks the deliberate clear this run just
-  // made, so in a clean stack this is the one held row and it is ours
-  // (the round trip below restores the mapping, keeping re-runs clean).
+  // Stamp is entry-only, so find by product name + held badge; the
+  // round trip below restores the mapping for re-runs.
   const worklist = page.getByRole('region', { name: 'Unmatched products' })
   const fixtureRow = worklist.locator('tbody tr').filter({ hasText: productName }).filter({ hasText: 'held' })
   await expect(fixtureRow).toHaveCount(1)
 
   // --- Fix it from the worklist through the listing picker.
   await fixtureRow.getByRole('button', { name: 'Fix mapping' }).click()
-  // MappingFix opens for our product (its aria-label region) inside the
-  // worklist; only one fix panel is open at a time.
+  // MappingFix opens in its own aria-label region; only one fix panel open at a time.
   const fixPanel = worklist.locator(`[aria-label="Fix mapping for ${productName}"]`)
   await expect(fixPanel).toBeVisible()
   await fixPanel.getByRole('button', { name: 'Choose listing' }).click()
   const matchDialog = page.getByRole('dialog', { name: 'Match a price listing' })
   await matchDialog.getByRole('searchbox', { name: 'Search for PriceCharting' }).fill(productName)
   await matchDialog.getByRole('button', { name: 'Search', exact: true }).click()
-  // The listing name equals the product name for hardware, so the pick
-  // is name-exact; first() guards against regional prints of the same
-  // listing surfacing more than once.
+  // Listing name equals product name for hardware; first() guards
+  // regional-print duplicates.
   await matchDialog.getByRole('button', { name: `Use ${productName}`, exact: true }).first().click()
 
-  // The re-set lifts the hold and the row leaves the worklist (a
-  // matched product is not unmatched). Wait out the moderated set's
-  // provider round trip and the list refetch.
+  // Re-set lifts the hold; row leaves the worklist once matched.
   await expect(
     worklist.locator('tbody tr').filter({ hasText: productName }).filter({ hasText: 'held' }),
   ).toHaveCount(0, { timeout: 30_000 })
 
-  // --- Cleanup: delete the fixture entry. The catalog product persists
-  // by design, mapped again, which is exactly what the next run finds.
-  // Mirrors the entry delete at the end of the collection journey.
+  // Product persists mapped by design; only the entry is cleaned up.
   await page.goto(entryURL)
   acceptNext(page)
   await page.getByRole('button', { name: 'Delete entry' }).click()
@@ -127,18 +99,9 @@ test('the maintenance grid offers every lever', async ({ page }) => {
   await page.goto('/admin')
   await expect(page.getByRole('heading', { name: 'Admin' })).toBeVisible()
 
-  // Render-only: this test asserts that every lever card is on the
-  // page, it never clicks one. Entry resnapshot rewrites every
-  // game-backed entry's release date, localized presentation trio, and
-  // credits from its product's current data; the three normalizers
-  // rewrite platform/region tags catalog-wide; entry rematch resets
-  // mapping state the same way the mapping-fix journey above depends
-  // on. Any of those firing mid-suite would rewrite state that
-  // parallel tests are reading their own captured values from, making
-  // them flaky depending on run order - so their firing stays out of
-  // this suite. Catalog refresh's own firing is already covered by the
-  // candidate-sweep test in submissions.spec.ts, so nothing is lost by
-  // leaving all six cards unfired here.
+  // Render-only: never clicks a lever. Firing one would rewrite
+  // catalog-wide state parallel tests read their own captured values
+  // from; catalog refresh is already exercised in submissions.spec.ts.
   const maintenance = page.getByRole('region', { name: 'Maintenance' })
   const leverTitles = [
     'Catalog refresh',

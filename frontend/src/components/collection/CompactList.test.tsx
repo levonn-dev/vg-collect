@@ -8,8 +8,7 @@ import { renderWithMoney } from '../../test/money'
 import CompactList from './CompactList'
 
 afterEach(() => {
-  // Order matters: cleanup() before activate() - see EntryTable.test.tsx's
-  // afterEach for why (I18nProvider update outside act otherwise).
+  // cleanup() before activate(): otherwise I18nProvider updates outside act.
   cleanup()
   i18n.activate('en')
 })

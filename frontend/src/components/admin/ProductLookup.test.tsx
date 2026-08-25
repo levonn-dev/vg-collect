@@ -86,9 +86,8 @@ it('resets the promote panel state when the lookup target changes', async () => 
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
     const u = requestPath(url)
     if (u.startsWith('/api/search')) {
-      // Only the listing-attach picker (pc_listing) surfaces the listing;
-      // the game picker's own auto-fired search stays empty so the "Use"
-      // button is unambiguous.
+      // Only the listing-attach picker (pc_listing) surfaces the listing; the
+      // game picker's search stays empty so "Use" is unambiguous.
       if (u.includes('type=pc_listing'))
         return Promise.resolve(jsonResponse(200, {
           degraded: false,
@@ -110,16 +109,13 @@ it('resets the promote panel state when the lookup target changes', async () => 
     await user.click(screen.getByRole('button', { name: 'Look up' }))
   }
   renderLookup()
-  // Warm pB into the query cache first: switching to a CACHED product
-  // keeps the panel mounted (isSuccess never flips false), which is the
-  // path that leaks state; a never-seen product reloads and remounts on
-  // its own.
+  // Warm pB first: switching to a cached product keeps the panel mounted
+  // (isSuccess never flips false), the leak path a fresh product avoids.
   await lookUp('pB')
   expect(await screen.findByText('Repro Beta')).toBeInTheDocument()
   await lookUp('pA')
   expect(await screen.findByText('Repro Alpha')).toBeInTheDocument()
-  // Open the picker and attach a listing (the pc_listing search seeds
-  // from the candidate name and auto-fires).
+  // Attach a listing; the pc_listing search seeds from the candidate name.
   await user.click(screen.getByRole('button', { name: 'Promote to provider identity' }))
   await user.click(screen.getByRole('button', { name: /attach a price listing/i }))
   await user.click(await screen.findByRole('button', { name: 'Use Chrono Listing' }))

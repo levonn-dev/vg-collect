@@ -3,8 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 
 type CopyState = 'idle' | 'copied' | 'failed'
 
-// How long the transient Copied/Copy failed text shows before the
-// button reverts to its resting label.
+// How long the transient Copied/Copy failed text shows before reverting.
 const REVERT_MS = 2000
 
 interface CopyButtonProps {
@@ -13,29 +12,10 @@ interface CopyButtonProps {
   className?: string
 }
 
-// CopyButton is the shared copy-to-clipboard control (ShelfManager's
-// per-shelf link, Account's profile link): a click copies `text` and
-// the button's own visible text swaps to Copied - or Copy failed, on
-// a rejected clipboard write, with no unhandled rejection either way
-// - for REVERT_MS before reverting. The button's accessible name
-// stays fixed at `label` throughout (aria-label, not its swapping
-// text content), so callers can hold or re-query the element by one
-// stable name across a click. The transient state is announced
-// instead through a visually-hidden role="status" SIBLING, not a
-// child - nesting a live region inside a button fights the button's
-// own children-are-presentational semantics across screen readers.
-// That sibling stays mounted for the whole lifetime of the button
-// (rather than inserted only while transient, the way Account's own
-// "Saved." confirmation works) so a screen reader has one stable live
-// region to read the change from. Re-clicking while still within an
-// earlier window restarts the revert timer cleanly instead of letting
-// an earlier one revert the state out from under the new click:
-// settle() always clears whatever timer is pending before scheduling
-// its own, whether that timer came from this same click's copy() or
-// from an EARLIER click that is still in flight when this one
-// settles. A mounted flag (also flipped in the unmount cleanup below)
-// keeps a clipboard promise that resolves after unmount from touching
-// state or scheduling a timer nothing would ever clear.
+// aria-label stays fixed at label so callers query one stable name across clicks.
+// role=status is a sibling: nesting inside the button breaks its semantics for
+// screen readers, so it stays mounted permanently as the one live region.
+// mounted guards a clipboard promise settling after unmount from touching state.
 export default function CopyButton({ text, label, className = '' }: CopyButtonProps) {
   const { t } = useLingui()
   const resolvedLabel = label ?? t`Copy link`

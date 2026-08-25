@@ -5,19 +5,17 @@ import { useMe } from '../lib/useMe'
 import AppBar from './AppBar'
 import Footer from './Footer'
 import Logo from './Logo'
+import SkipLink from './SkipLink'
 
-// PublicShell frames every page reachable without a session. The
-// session probe shares Layout's ['me'] cache and never gates render:
-// pages paint immediately with the brand-only header (backend down
-// included), and a resolved session only upgrades the chrome to the
-// signed-in app bar so the header does not change with the route
-// after sign-in. min-h-screen plus flex-1 keeps the footer at the
-// viewport bottom on short pages and lets Login center vertically.
+// Shares Layout's ['me'] cache; never gates render, so pages paint even with
+// the backend down, upgrading to the signed-in app bar once resolved.
+// min-h-screen + flex-1 pins the footer to viewport bottom and lets Login center.
 export default function PublicShell() {
   const { t } = useLingui()
   const me = useMe()
   return (
     <div className="mx-auto flex min-h-screen max-w-6xl flex-col p-4">
+      <SkipLink />
       {me.data ? (
         <AppBar me={me.data} />
       ) : (
@@ -25,8 +23,7 @@ export default function PublicShell() {
           className="flex items-center gap-2 border-b border-gray-200 pb-3"
           aria-label={t`App bar`}
         >
-          {/* min-h-9 matches the authed app bar's tallest chip (Avatar
-              h-8 in its py-0.5 link) so both headers line up. */}
+          {/* min-h-9 matches the authed app bar's Avatar chip (h-8 + py-0.5). */}
           <Link to="/" className="flex min-h-9 items-center gap-2">
             <Logo />
             <h1 className="text-xl font-bold">{site().name}</h1>

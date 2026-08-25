@@ -7,9 +7,8 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  // e2e/ and playwright.config.ts run under Playwright's own toolchain
-  // and are outside the app/node tsconfig projects, so the type-checked
-  // lint cannot resolve them; Playwright type-checks them at run time.
+  // e2e/ and playwright.config.ts are outside the tsconfig projects;
+  // Playwright type-checks them at run time.
   globalIgnores([
     'dist',
     'coverage',
@@ -34,8 +33,7 @@ export default defineConfig([
       },
     },
   },
-  // no-unlocalized-strings is deliberately off: on this codebase it is all
-  // false positives (route paths, classNames, API field names) that no
-  // ignore config fully silences.
+  // no-unlocalized-strings off: all false positives here (route paths,
+  // classNames, API field names).
   lingui.configs['flat/recommended'],
 ])

@@ -14,15 +14,12 @@ import { componentsParametersTabValues } from '../api/schema'
 import { refetchWarning, renderQueryState } from '../lib/queryBoundary'
 import { relativeTime } from '../lib/relativeTime'
 import { tabButtonId } from '../lib/tabs'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
-// Tabs.tsx renders whatever label string each caller hands it (no
-// i18n awareness of its own - see components/Tabs.tsx); the table
-// stays msg descriptors at module scope (same shape as Explore's
-// SORT_TABS) and gets resolved into the plain strings Tab<T> expects
-// down in the component body, where i18n is available. Labels keyed
-// by the generated schema's tab values rather than a second hand-typed
-// key list; this file's own FEED_TABS name (the rendered tab list, not
-// the wire values) predates the generator and stays put.
+// Tabs.tsx has no i18n of its own, so labels stay msg descriptors at
+// module scope (same shape as Explore's SORT_TABS), resolved in the
+// component body. Keyed by the generated schema's tab values, not a
+// hand-typed list.
 const tabLabels: Record<FeedTab, MessageDescriptor> = {
   following: msg`Following`,
   you: msg`You`,
@@ -38,33 +35,19 @@ function shelfHref(shelf: ShelfCardData): string {
   return `/u/${shelf.owner.handle}/shelves/${shelf.slug}`
 }
 
-// Each feed row is one translated sentence - a single Trans per verb
-// with the chips and the shelf link inside it as component
-// placeholders - so the locale controls the whole word order:
-// Japanese needs SOV with its particles flush against the names,
-// which a fixed actor/verb/target sequence of flex items cannot
-// express. The sentence span must flow as inline text, never as a
-// flex container: bare words inside a flex box become anonymous flex
-// items and gap spacing opens around the particles. align-middle
-// keeps the inline-flex chips optically centered on the text line;
-// their natural baseline is the avatar image's bottom edge, which
-// would hang the sentence text below the handles.
+// One Trans per verb sentence, chips as placeholders, so locale
+// controls word order (Japanese SOV can't fit a flex sequence). Stays
+// inline text, never flex (bare words open particle gaps). align-middle
+// centers chips on the baseline (else the avatar's bottom edge).
 const SENTENCE_CLASS = 'text-gray-500 [&>a]:align-middle'
 
-// The shelf link states its ink explicitly because it sits inside the
-// gray-500 sentence span and would otherwise inherit it; gray-900
-// matches UserChip's own handle color, so names and shelf titles read
-// as one tier against the connective words.
+// States its own ink (else inherits gray-500 from the sentence span);
+// gray-900 matches UserChip's handle color.
 const SHELF_LINK_CLASS = 'font-medium text-gray-900 hover:underline'
 
-// FeedRow renders one activity row by verb. actor always attaches;
-// shelf/followed_user/comment_excerpt ride along only for the verbs
-// whose payload carries them (see FeedItem) - the bff's fill loop
-// drops a row entirely when its object fails the tab's gating rule
-// rather than send a shelf verb with no shelf, but each branch still
-// guards its field before use so a malformed row degrades to nothing
-// instead of crashing the list. The excerpt clamps to two lines via
-// line-clamp-2 (same idiom as CoverGrid's card titles).
+// actor always attaches; shelf/followed_user/comment_excerpt ride only
+// for verbs whose payload carries them. Each branch guards its field,
+// so a malformed row degrades to nothing instead of crashing.
 function FeedRow({ item }: { item: FeedItem }) {
   const when = <span className="ml-auto shrink-0 text-xs text-gray-400">{relativeTime(item.created_at)}</span>
 
@@ -122,15 +105,12 @@ function FeedRow({ item }: { item: FeedItem }) {
   )
 }
 
-// Feed is the /feed page: Following (everyone you follow, all four
-// verbs - the deliberate no-algorithm discovery mechanism) and You
-// (activity on your own shelves, the notifications stand-in until a
-// real inbox lands). A single cursor-infinite query keyed on the tab
-// covers both - switching tabs is just a fresh queryKey, no dual-query
-// juggling since (unlike Explore) nothing else on this page runs
-// independently of the active tab.
+// Following (everyone you follow, all four verbs) and You (own-shelf
+// activity, notifications stand-in). Single cursor-infinite query
+// keyed on tab; switching is just a fresh queryKey.
 export default function Feed() {
   const { t, i18n } = useLingui()
+  useDocumentTitle(t`Feed`)
   const [tab, setTab] = useState<FeedTab>('following')
   const query = useInfiniteQuery({
     queryKey: ['feed', tab],
@@ -141,7 +121,7 @@ export default function Feed() {
   const items = query.data?.pages.flatMap((p) => p.items) ?? []
 
   return (
-    <main aria-label={t`Feed`} className="py-6">
+    <main id="main-content" tabIndex={-1} aria-label={t`Feed`} className="py-6">
       <h2 className="mb-4 text-2xl font-bold"><Trans>Feed</Trans></h2>
 
       <Tabs

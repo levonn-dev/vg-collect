@@ -14,31 +14,23 @@ import { regionLabelText } from '../../lib/regionLabels'
 import LoadMoreButton from '../LoadMoreButton'
 import ReviewPanel, { verdictErrorMessage } from './ReviewPanel'
 
-// SubmitterCell resolves a row's user_id against the batched profile
-// cards: a listed or unlisted handle links to the public profile, a
-// private handle shows as plain text since there is no page to send an
-// admin to, and a missing card - the batch still loading, erroring, or
-// the id simply absent from the response - falls back to the short id
-// so the cell is never blank.
+// Private handle shows as plain text (no public page); a missing card
+// (loading/error/absent) falls back to the short id so the cell is never blank.
 function SubmitterCell({ card, userId }: { card?: ProfileCard; userId: string }) {
   if (!card) return <span className="font-mono text-xs">{userId.slice(0, 8)}</span>
   if (card.profile_visibility === 'private') return <span>{card.handle}</span>
   return <Link to={`/u/${card.handle}`} className="underline hover:text-gray-600">{card.handle}</Link>
 }
 
-// SubmissionsQueue pages the pending catalog submissions oldest
-// first. Proposals are live (the row shows the entry's CURRENT
-// fields); a verdict invalidates the admin queries so resolved rows
-// leave the list.
+// Rows show the entry's CURRENT fields (live); a verdict invalidates admin
+// queries so resolved rows leave the list.
 export default function SubmissionsQueue() {
   const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
   const [reviewing, setReviewing] = useState<AdminSubmission | null>(null)
-  // A transient notice the panel carries up on close: a raced 409
-  // unmounts the panel before its inline message paints, so the reason
-  // is shown here, at the queue, after the row leaves. The error is
-  // what is held, not its message, so a locale switch while the notice
-  // is up rephrases it instead of leaving stale text on screen.
+  // A raced 409 unmounts the panel before its inline message paints, so the
+  // reason shows here after the row leaves. Holds the error, not a rendered
+  // message, so a locale switch rephrases it instead of leaving stale text.
   const [notice, setNotice] = useState<ApiError | null>(null)
   const list = useInfiniteQuery({
     queryKey: ['admin', 'submissions'],
@@ -47,10 +39,8 @@ export default function SubmissionsQueue() {
     getNextPageParam: (last, pages) => offsetNextPageParam(last, pages, (p) => p.submissions.length),
   })
 
-  // Hoisted above the isPending/isError returns below, alongside the
-  // profile-cards query: hooks must run unconditionally on every
-  // render, so nothing that calls useQuery/useState can sit after an
-  // early return.
+  // Hoisted above the early returns below: hooks must run unconditionally, so
+  // nothing calling useQuery/useState can sit after one.
   const rows = list.data?.pages.flatMap((p) => p.submissions) ?? []
   const ids = [...new Set(rows.map((s) => s.user_id))]
   const profiles = useQuery({
@@ -130,10 +120,8 @@ export default function SubmissionsQueue() {
         </tbody>
       </table>
       <LoadMoreButton query={list} className="mt-2" />
-      {/* key={reviewing.id}: without it, switching the reviewed row while
-          the panel is open reuses the same mounted instance, so its
-          prefilled fields and adopt view carry over from the old row
-          instead of resetting for the new one. */}
+      {/* key={reviewing.id}: without it, switching rows reuses the same
+          mounted instance, carrying prefilled fields/adopt view along. */}
       {reviewing && <ReviewPanel key={reviewing.id} submission={reviewing} onDone={done} />}
     </section>
   )

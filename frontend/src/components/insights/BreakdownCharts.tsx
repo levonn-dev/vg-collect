@@ -33,8 +33,8 @@ function CountList({
 
 export default function BreakdownCharts({ dashboard }: { dashboard: Dashboard }) {
   const { t } = useLingui()
-  // Top platforms by count; the tail folds visually into the page's
-  // filterable list rather than an unreadable chart.
+  // Top platforms by count; the tail folds into the page's filterable list
+  // rather than an unreadable chart.
   const platforms = dashboard.by_platform.slice(0, 10)
   return (
     <div className="grid gap-4 md:grid-cols-3">

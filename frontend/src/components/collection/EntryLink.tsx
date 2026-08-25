@@ -4,25 +4,19 @@ import type { EntryRow } from './rowMeta'
 
 interface EntryLinkProps {
   entry: EntryRow
-  // linkTo lets shared pages retarget or suppress row links; null
-  // renders plain text. Same contract as EntryTable/CompactList/
-  // CoverGrid's own linkTo prop - this component only resolves it.
+  // linkTo lets shared pages retarget or suppress row links; null renders
+  // plain text. Same contract as EntryTable/CompactList/CoverGrid's own prop.
   linkTo?: (e: EntryRow) => string | null
-  // EntryTable and CompactList wrap the title in an inline span;
-  // CoverGrid wraps a whole cover-plus-title block, which needs the
-  // block-level tag Tailwind's own "block" utility on its plain
-  // branch already assumed.
+  // EntryTable/CompactList wrap the title inline (span); CoverGrid wraps a
+  // whole cover-plus-title block, which needs the block-level tag.
   as?: 'span' | 'div'
   plainClassName: string
   linkClassName: string
   children: ReactNode
 }
 
-// EntryLink resolves the link-or-plain-title conditional EntryTable,
-// CompactList, and CoverGrid all repeat: linkTo(e) === null renders
-// plain text (a read-only shared view of a row the viewer does not
-// own), anything else - including the unset default - renders a Link
-// to the entry detail page or the caller's own target.
+// linkTo(e) === null renders plain text (read-only shared view); anything
+// else, including the unset default, renders a Link.
 export default function EntryLink({ entry, linkTo, as = 'span', plainClassName, linkClassName, children }: EntryLinkProps) {
   if (linkTo?.(entry) === null) {
     const Wrapper = as

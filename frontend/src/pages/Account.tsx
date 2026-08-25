@@ -10,6 +10,7 @@ import SectionLabel from '../components/SectionLabel'
 import { confirmThen } from '../lib/confirm'
 import { btnPrimary } from '../lib/formStyles'
 import { devFixtures, providerNames } from '../lib/providers'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { useMe } from '../lib/useMe'
 
 const linkErrorMessages: Record<string, MessageDescriptor> = {
@@ -18,11 +19,11 @@ const linkErrorMessages: Record<string, MessageDescriptor> = {
   link_failed: msg`Linking failed. Please try again.`,
 }
 
-// Account is the self-service page: profile fields, linked provider
-// logins (link, unlink), and account deletion. Link buttons are full
-// navigations like login: the OAuth dance needs real redirects.
+// Self-service page: profile, linked logins, account deletion. Link
+// buttons are full navigations like login (OAuth needs real redirects).
 export default function Account() {
   const { i18n } = useLingui()
+  useDocumentTitle(t(i18n)`Account`)
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -42,7 +43,7 @@ export default function Account() {
   const email = me.data?.email
 
   return (
-    <main className="flex flex-col gap-8 py-6">
+    <main id="main-content" tabIndex={-1} className="flex flex-col gap-8 py-6">
       <h2 className="text-2xl font-bold"><Trans>Account</Trans></h2>
 
       {linked && (

@@ -63,10 +63,8 @@ it('a background refetch failure keeps showing the entries and shows the inline 
   const entries = [entryFixture({ display_name: 'Chrono Trigger' })]
   const entriesKey = ['entries', toQuery(defaultListState()).toString()]
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  // Pre-seeded so the query already has data at mount; the entries
-  // endpoint then 500s the fetch this mount still triggers (default
-  // staleTime treats cached data as stale), landing exactly on the
-  // isError-with-data state this test targets.
+  // Pre-seeded so the query has data at mount; the entries endpoint
+  // then 500s the refetch, landing on isError-with-data.
   qc.setQueryData(entriesKey, listFixture(entries))
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
     const u = requestPath(url)
@@ -117,9 +115,8 @@ it('shows a reset link (not a blank range) for a page beyond the real total, and
     if (u.startsWith('/api/tags')) return Promise.resolve(jsonResponse(200, { tags: [] }))
     if (u.startsWith('/api/views')) return Promise.resolve(jsonResponse(200, { views: [] }))
     if (u.startsWith('/api/dashboard')) return Promise.resolve(jsonResponse(200, dashboardFixture()))
-    // total_count (1) only fits on page 0; the stale page=5 request
-    // gets a real, nonzero total back with an empty page of entries -
-    // exactly what the server answers for an out-of-range offset.
+    // total_count (1) only fits on page 0; stale page=5 gets a real,
+    // nonzero total back with an empty page (the out-of-range answer).
     return Promise.resolve(jsonResponse(200, u.includes('offset=') ? listFixture([], { total_count: 1 }) : listFixture(realEntries)))
   })
   vi.stubGlobal('fetch', fetchMock)

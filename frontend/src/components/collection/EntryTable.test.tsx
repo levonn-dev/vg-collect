@@ -18,10 +18,8 @@ const renderTable = (entries: Entry[], opts: { currency?: string } = {}) =>
   )
 
 afterEach(() => {
-  // Unmount before touching the singleton (this hook runs ahead of
-  // RTL's auto-cleanup; re-activating against a mounted tree is an
-  // I18nProvider update outside act), then leave en active for every
-  // other file sharing the module-level singleton.
+  // Runs ahead of RTL's cleanup, else I18nProvider updates outside act;
+  // leaves en active for the shared module-level singleton.
   cleanup()
   i18n.activate('en')
 })
@@ -31,9 +29,8 @@ function activateJa() {
   i18n.activate('ja')
 }
 
-// The JP trio: a region-localized entry carrying both a native-script
-// title and its transliteration plus its own box art, matching the
-// fixture productTitle.test.ts exercises.
+// Region-localized entry with a native-script title, transliteration, and its
+// own box art.
 const jp: Partial<Entry> = {
   display_name: 'Trials of Mana',
   localized_name: '聖剣伝説 3',
@@ -120,9 +117,8 @@ it('falls back to a dash in the status, rating, and paid columns for a SharedEnt
   )
   const row = screen.getAllByRole('row')[1]
   const cells = within(row).getAllByRole('cell')
-  // Name, Platform, Status, Packaging, Rating, Paid, Value - Status/
-  // Rating/Paid (indices 2, 4, 5) are the columns a SharedEntry cannot
-  // fill; Packaging (index 3) IS in the whitelist and still renders.
+  // indices 2/4/5 (Status/Rating/Paid) are columns SharedEntry can't fill;
+  // index 3 (Packaging) is in the whitelist and still renders.
   expect(cells[2]).toHaveTextContent('-')
   expect(cells[3]).toHaveTextContent('cib')
   expect(cells[4]).toHaveTextContent('-')
@@ -147,8 +143,7 @@ it('omits the Status, Rating, Paid, and Value columns entirely when shared, keep
   expect(screen.getByRole('columnheader', { name: 'Platform' })).toBeInTheDocument()
   expect(screen.getByRole('columnheader', { name: 'Packaging' })).toBeInTheDocument()
 
-  // No dead '-' cells left standing in their place: the row is exactly
-  // Name, Platform, Packaging - not those three plus dashes.
+  // No dead '-' cells: the row is exactly Name, Platform, Packaging.
   const row = screen.getAllByRole('row')[1]
   const cells = within(row).getAllByRole('cell')
   expect(cells).toHaveLength(3)
@@ -189,9 +184,8 @@ it('the header checkbox is unchecked, indeterminate, or checked to match none/so
   const b = entryFixture({ display_name: 'B' })
   const selectAll = () => screen.getByRole<HTMLInputElement>('checkbox', { name: 'Select all' })
 
-  // Three separate mounts (not rerender): renderWithMoney's own
-  // QueryClientProvider wraps only the tree passed to IT, so a plain
-  // rerender call - bypassing that helper - would drop the provider.
+  // Three separate mounts, not rerender: renderWithMoney's QueryClientProvider
+  // wraps only the tree passed to it, so rerender would drop the provider.
   const none = renderWithMoney(
     <MemoryRouter>
       <EntryTable entries={[a, b]} selectable selected={new Set()} onToggleSelect={vi.fn()} />

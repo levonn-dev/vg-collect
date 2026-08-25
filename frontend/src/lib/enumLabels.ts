@@ -4,13 +4,10 @@ import type { Product } from '../api/catalog'
 import type { SavedView } from '../api/collection'
 import type { Condition, ItemType, Packaging, Status } from './listParams'
 
-// Each map is typed as Record<Enum, MessageDescriptor> against the
-// listParams enum types, so a future enum member fails to compile at
-// the map that is missing it, instead of quietly rendering blank.
+// Typed as Record<Enum, MessageDescriptor>: a new enum member fails to
+// compile here, not renders blank.
 
-// statusLabels: the Title-case form (EntryTable's status column,
-// CompactList's status span, BulkEditBar's status <select>, and
-// FilterBar's status filter chips).
+// Title-case form (EntryTable, CompactList, BulkEditBar, FilterBar status UI).
 export const statusLabels: Record<Status, MessageDescriptor> = {
   backlog: msg`Backlog`,
   playing: msg`Playing`,
@@ -20,10 +17,8 @@ export const statusLabels: Record<Status, MessageDescriptor> = {
   shelved: msg`Shelved`,
 }
 
-// statusWireLabels: identity-preserving - CopyDetailsFields' status <select>
-// and the dashboard's by-status breakdown have never been prettified,
-// so the label text is the raw wire value. An unknown future wire
-// value falls back to rendering itself raw at the call site.
+// Identity-preserving: CopyDetailsFields select and dashboard
+// breakdown show the raw wire value, never prettified.
 export const statusWireLabels: Record<Status, MessageDescriptor> = {
   backlog: msg`backlog`,
   playing: msg`playing`,
@@ -33,8 +28,8 @@ export const statusWireLabels: Record<Status, MessageDescriptor> = {
   shelved: msg`shelved`,
 }
 
-// conditionLabels: the Title-case form shared by CopyDetailsFields'
-// condition selects and FilterBar's condition filter chips.
+// Title-case form shared by CopyDetailsFields' condition selects and
+// FilterBar's chips.
 export const conditionLabels: Record<Condition, MessageDescriptor> = {
   mint: msg`Mint`,
   near_mint: msg`Near mint`,
@@ -44,40 +39,33 @@ export const conditionLabels: Record<Condition, MessageDescriptor> = {
   poor: msg`Poor`,
 }
 
-// packagingWireLabels: identity-preserving, like statusWireLabels -
-// EntryTable's packaging column and CopyDetailsFields' packaging <select>
-// have never been prettified.
+// Identity-preserving like statusWireLabels: EntryTable column and
+// CopyDetailsFields select, never prettified.
 export const packagingWireLabels: Record<Packaging, MessageDescriptor> = {
   sealed: msg`sealed`,
   cib: msg`cib`,
   loose: msg`loose`,
 }
 
-// packagingChipLabels: the Title-case form FilterBar's packaging
-// filter chips use - a genuinely different casing from
-// packagingWireLabels above, not a duplicate of it.
+// Title-case form for FilterBar's chips; a different casing from
+// packagingWireLabels, not a duplicate.
 export const packagingChipLabels: Record<Packaging, MessageDescriptor> = {
   sealed: msg`Sealed`,
   cib: msg`CIB`,
   loose: msg`Loose`,
 }
 
-// itemTypeWireLabels: identity-preserving, like statusWireLabels - the
-// EntryDetail byline and the dashboard's by-item-type breakdown have
-// never been prettified.
+// Identity-preserving like statusWireLabels: EntryDetail byline and
+// dashboard breakdown, never prettified.
 export const itemTypeWireLabels: Record<ItemType, MessageDescriptor> = {
   game: msg`game`,
   console: msg`console`,
   accessory: msg`accessory`,
 }
 
-// productTypeWireLabels: a Product's own type field (PromoteCandidates,
-// UnmatchedWorklist, ProductLookup, ConfirmStep) reaches one more value
-// than ItemType above - pc_listing, a priced catalog listing rather than
-// a collectible item - so it cannot just reuse itemTypeWireLabels.
-// game/console/accessory stay identity-preserving like itemTypeWireLabels;
-// pc_listing takes the same noun ManualMatchPicker's prose already uses
-// for the concept, since the bare wire word is not a real word to show.
+// Product's type field adds pc_listing over ItemType (a priced listing,
+// not a collectible), so it can't reuse itemTypeWireLabels; pc_listing
+// borrows ManualMatchPicker's noun since the bare wire word isn't real.
 export const productTypeWireLabels: Record<Product['type'], MessageDescriptor> = {
   game: msg`game`,
   console: msg`console`,
@@ -85,24 +73,18 @@ export const productTypeWireLabels: Record<Product['type'], MessageDescriptor> =
   pc_listing: msg`price listing`,
 }
 
-// Visibility covers shelves and saved views alike (SavedView's own
-// field), the same three-value wire enum VisibilityControl and
-// ShelfManager both render - SavedView['visibility'] stands in for the
-// type rather than duplicating that literal union a third time.
+// Covers shelves and saved views (SavedView['visibility']) rather than
+// duplicating the literal union.
 
-// visibilityLabels: the Title-case form VisibilityControl's
-// lock/link/globe segmented control uses for its button aria-labels.
+// Title-case form for VisibilityControl's lock/link/globe control aria-labels.
 export const visibilityLabels: Record<SavedView['visibility'], MessageDescriptor> = {
   private: msg`Private`,
   unlisted: msg`Unlisted`,
   listed: msg`Listed`,
 }
 
-// visibilityWireLabels: identity-preserving - ShelfManager's own shelf
-// list has never been prettified, so its visibility badge stays the
-// raw wire value. A genuinely different casing from visibilityLabels
-// above, not a duplicate: VisibilityControl and ShelfManager are two
-// different pieces of UI that happen to share the same enum.
+// Identity-preserving for ShelfManager's badge, never prettified; a
+// different casing from visibilityLabels, not a duplicate.
 export const visibilityWireLabels: Record<SavedView['visibility'], MessageDescriptor> = {
   private: msg`private`,
   unlisted: msg`unlisted`,

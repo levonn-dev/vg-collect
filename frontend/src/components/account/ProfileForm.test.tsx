@@ -6,9 +6,8 @@ import { jsonResponse, meFixture, problemResponse, requestPath } from '../../tes
 import { renderWithI18n } from '../../test/i18n'
 import ProfileForm from './ProfileForm'
 
-// stubFetch mocks fetch for ProfileForm's PATCH /api/me save call - the
-// me object itself arrives as a prop, so there is nothing else for
-// this component to fetch.
+// Mocks the PATCH /api/me save call; me arrives as a prop, so there's
+// nothing else for this component to fetch.
 function stubFetch(response: Response = jsonResponse(200, meFixture())) {
   const fetchMock = vi.fn().mockResolvedValue(response)
   vi.stubGlobal('fetch', fetchMock)

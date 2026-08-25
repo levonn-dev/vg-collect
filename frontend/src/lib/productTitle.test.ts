@@ -17,17 +17,15 @@ it('native form prefers native script', () => {
   expect(entryTitle(jp, 'native')).toBe('聖剣伝説 3')
 })
 
-// The translit form never falls back to the native script: a Latin-
-// preferring locale gets the canonical name when no romanization
-// exists, and the native title moves to the secondary line instead.
+// translit never falls back to native script; canonical name shows
+// instead, native moves to secondary.
 it('missing translit falls back to canonical, never native script', () => {
   expect(entryTitle({ ...jp, localized_name_translit: undefined }, 'translit')).toBe('Trials of Mana')
   expect(entryTitle({ display_name: 'Trials of Mana' }, 'translit')).toBe('Trials of Mana')
 })
 
-// The native-form chain keeps both fallbacks: a transliteration is
-// still the localized identity (and already Latin), so it beats the
-// canonical name when the native field is missing.
+// native form falls to translit before canonical: translit is still
+// the localized identity.
 it('missing native falls back to translit then canonical', () => {
   expect(entryTitle({ ...jp, localized_name: undefined }, 'native')).toBe('Seiken Densetsu 3')
   expect(entryTitle({ display_name: 'Trials of Mana' }, 'native')).toBe('Trials of Mana')
@@ -58,25 +56,21 @@ it('lang rides the chosen form', () => {
   expect(entryTitleLang({ display_name: 'x' }, 'native')).toBeUndefined()
 })
 
-// entryTitleLang has to name the language of whatever text actually
-// renders, not the form that was requested: a translit-form fallback
-// renders the canonical name (no tag), and a native-form fallback to
-// the transliteration renders Latin script, so it keeps '-Latn'.
+// Lang follows what actually renders, not the requested form:
+// translit->canonical has no tag, native->translit keeps -Latn.
 it('lang follows the field actually chosen, not the requested form', () => {
   expect(entryTitleLang({ ...jp, localized_name_translit: undefined }, 'translit')).toBeUndefined()
   expect(entryTitleLang({ ...jp, localized_name: undefined }, 'native')).toBe('ja-Latn')
 })
 
-// A localized title with no region, or with a region REGION_LANGS
-// does not map, still has no known language to name - undefined for
-// both, not just the unset-region case.
+// No region, or a region REGION_LANGS doesn't map: both are
+// undefined, not just the unset case.
 it('lang is undefined when the region has no mapping, even with a localized title', () => {
   expect(entryTitleLang({ display_name: 'Trials of Mana', localized_name: '聖剣伝説 3' }, 'native')).toBeUndefined()
   expect(entryTitleLang({ display_name: 'Trials of Mana', localized_name: '聖剣伝説 3', region: 'pal' }, 'native')).toBeUndefined()
 })
 
-// A region mapping alone is not enough: the rendered text also has to
-// actually be the localized field for a lang tag to make sense.
+// A region mapping alone isn't enough: the text also has to be the localized field.
 it('lang is undefined for a canonical title even when the region maps', () => {
   expect(entryTitleLang({ display_name: 'Trials of Mana', region: 'ntsc_j' }, 'native')).toBeUndefined()
 })
@@ -141,9 +135,8 @@ it('REGION_PLATFORMS pins the verified JP-market platform ids', () => {
   expect(REGION_PLATFORMS).toEqual({ 99: 'ntsc_j', 58: 'ntsc_j', 51: 'ntsc_j' })
 })
 
-// regionTitle picks the wizard-heading identity for a selected entry
-// region from a search result's bundles: chain lookup, then the same
-// form precedence and -Latn lang rules the entry surfaces use.
+// Chain lookup, then the same form precedence and -Latn rules
+// entryTitleLang uses.
 const bundles = [
   { region: 'ja-JP', name: '聖剣伝説 2', translit: 'Seiken Densetsu 2' },
   { region: 'EU' },
@@ -167,10 +160,8 @@ it('regionTitle: native form picks the native script with the bare tag', () => {
     .toEqual({ text: '聖剣伝説 2', lang: 'ja' })
 })
 
-// The native form still falls across to the transliteration (Latin
-// script, but the localized identity); the translit form does NOT
-// fall to native script - it goes canonical instead, so a Latin-
-// preferring locale is never fronted by CJK.
+// native falls to translit (still localized, already Latin); translit
+// never falls to native, goes canonical instead.
 it('regionTitle: only the native form falls back across forms', () => {
   expect(regionTitle('X', [{ region: 'ja-JP', name: '聖剣伝説 2' }], 'ntsc_j', 'translit'))
     .toEqual({ text: 'X' })

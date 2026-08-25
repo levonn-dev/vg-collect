@@ -8,11 +8,9 @@ interface LikeButtonProps {
   count: number
 }
 
-// LikeButton mirrors FollowButton: a dedicated PUT/DELETE edge, no
-// local optimistic count. count is read straight off the caller's
-// props and only moves once the invalidated summary re-fetches - a
-// deliberate optimistic-free tradeoff so a failed request never
-// leaves a stale, too-high count on screen.
+// No local optimistic count: count is read off props and only moves once
+// the invalidated summary re-fetches, so a failed request never leaves a
+// stale, too-high count.
 export default function LikeButton({ shelfId, viewerLikes, count }: LikeButtonProps) {
   const { t } = useLingui()
   const queryClient = useQueryClient()

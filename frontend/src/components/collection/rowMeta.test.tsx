@@ -5,9 +5,8 @@ import type { Entry } from '../../api/collection'
 import type { DisplayMoney } from '../../lib/useDisplayMoney'
 import { rowMeta } from './rowMeta'
 
-// rowMeta only ever calls money.entryValue - the rest of DisplayMoney
-// exists purely to satisfy the interface for this direct, no-render
-// unit test.
+// rowMeta only ever calls money.entryValue; the rest exists to satisfy the
+// interface for this direct, no-render unit test.
 function moneyStub(entryValue: (e: Entry) => string | null): DisplayMoney {
   return {
     currency: 'USD',

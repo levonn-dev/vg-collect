@@ -1,13 +1,8 @@
 import { expect, loginAs, test } from './fixtures'
 
-// Runs against the live dev stack through the gateway port-forward
-// (task run, then task e2e). The public pages need no session, so the
-// file opts every test out of the worker's storageState; the help leg
-// logs in with the worker identity via the dev provider (one
-// /api/auth hit; the gateway caps that bucket at 240/min per IP on
-// this dev stack, far tighter in production).
-// Credit lines are not asserted here on purpose: their presence
-// varies with the operator's .env, and unit tests own that logic.
+// Public pages need no session; opts out of the worker's storageState.
+// help logs in separately (240/min/IP dev cap). Credit lines aren't
+// asserted here: presence varies by operator .env, unit tests own that.
 test.use({ storageState: { cookies: [], origins: [] } })
 
 test('about, terms, and privacy render logged out with the footer', async ({ page }) => {

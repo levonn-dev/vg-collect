@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { jsonResponse } from '../test/fixtures'
 import { renderWithI18n } from '../test/i18n'
@@ -42,6 +43,15 @@ it('renders page, brand header, and footer before the session probe settles', ()
   expect(screen.getByRole('heading', { name: 'vgkeep' })).toBeInTheDocument()
   expect(screen.getByRole('contentinfo', { name: 'Site footer' })).toBeInTheDocument()
   expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull()
+})
+
+it('tabs to a skip link before anything else, targeting #main-content', async () => {
+  stubPendingFetch()
+  renderShell()
+  await userEvent.tab()
+  const skipLink = screen.getByRole('link', { name: 'Skip to content' })
+  expect(skipLink).toHaveAttribute('href', '#main-content')
+  expect(document.activeElement).toBe(skipLink)
 })
 
 it('keeps the brand-only header and hides Help when the probe answers 401', async () => {

@@ -5,9 +5,8 @@ import { renderWithI18n } from '../test/i18n'
 import LocaleSwitch from './LocaleSwitch'
 import { setLocale, type Locale } from '../lib/locale'
 
-// setLocale persists a device-local choice and swaps the singleton's
-// catalog; what most of this file asserts is the argument the picker
-// hands it, so the module's own work is stubbed out by default.
+// setLocale persists a device-local choice and swaps the i18n singleton's
+// catalog; stubbed by default so tests assert only the argument passed.
 vi.mock('../lib/locale', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../lib/locale')>()
   return { ...mod, setLocale: vi.fn().mockResolvedValue(undefined) }
@@ -15,10 +14,8 @@ vi.mock('../lib/locale', async (importOriginal) => {
 
 type LocaleModule = typeof import('../lib/locale')
 
-// A rejected loader is what an unreachable catalog chunk looks like to
-// setLocale, and CATALOG_LOADERS is the only seam that produces one
-// without a network. The entry is restored even when run throws, and so
-// is the storage key setLocale writes before it activates.
+// CATALOG_LOADERS is the only seam to simulate an unreachable catalog chunk
+// without a network; restores the entry and the storage key even if run throws.
 async function withFailingJaCatalog(
   loaders: LocaleModule['CATALOG_LOADERS'],
   run: () => Promise<void>,
@@ -63,18 +60,15 @@ describe('LocaleSwitch', () => {
   })
 
   it('snaps back to the active locale when the switch fails', async () => {
-    // A failed switch leaves the previous locale active, so the picker
-    // has to keep showing that locale rather than the one that was
-    // picked. Runs the module's own setLocale for this one call,
-    // against a catalog chunk that cannot load.
+    // A failed switch must leave the previous locale showing. Runs the
+    // module's real setLocale against a catalog chunk that can't load.
     const locale = await vi.importActual<LocaleModule>('../lib/locale')
     vi.mocked(setLocale).mockImplementationOnce(locale.setLocale)
     renderWithI18n(<LocaleSwitch />)
     const select = screen.getByRole('combobox', { name: 'Language' })
     await withFailingJaCatalog(locale.CATALOG_LOADERS, async () => {
       await userEvent.selectOptions(select, 'ja')
-      // The persisted choice is what proves the module's own setLocale
-      // ran here instead of this file's stub.
+      // Persisted choice proves the module's real setLocale ran, not the stub.
       expect(localStorage.getItem('locale')).toBe('ja')
       await waitFor(() => expect(select).toHaveValue('en'))
     })

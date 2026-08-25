@@ -3,12 +3,8 @@ import type { ReactNode } from 'react'
 type SectionLabelElement = 'h3' | 'p' | 'legend'
 type SectionLabelSize = 'xs' | 'sm'
 
-// SIZES maps each named size to its literal Tailwind class: Tailwind's
-// build only picks up classes it can find as literal strings in
-// source, so `text-${size}` would silently drop out of the compiled
-// CSS the moment a size value stopped also appearing verbatim
-// elsewhere in the app. Same reasoning as Avatar.tsx's SIZES table and
-// DismissibleNotice.tsx's TONES table.
+// Tailwind only picks up literal class strings; `text-${size}` would drop
+// from the build the moment the value stops appearing verbatim elsewhere.
 const SIZES: Record<SectionLabelSize, string> = {
   xs: 'text-xs',
   sm: 'text-sm',
@@ -17,25 +13,18 @@ const SIZES: Record<SectionLabelSize, string> = {
 interface SectionLabelProps {
   as: SectionLabelElement
   size: SectionLabelSize
-  // Every site is font-semibold except Login/Account's "Dev fixtures"
-  // caption, which sits under a divider as a lighter secondary hint
-  // rather than opening its own section.
+  // Every site is font-semibold except Login/Account's "Dev fixtures" caption
+  // (a lighter secondary hint, not a section opener).
   bold?: boolean
-  // The one thing that differs beyond size/weight/element: a top
-  // margin (mb-1/mb-2/mb-3), FilterBar/BulkEditBar's float-left mr-2
-  // (the legend floats beside its fieldset's own first row), or
-  // nothing (PricingPanel, ValueOverTime, StatCards sit flush against
-  // their section's own padding). Prepended ahead of the shared
-  // classes, same convention as LoadMoreButton's className.
+  // Only value that differs beyond size/weight/element: mb-1/mb-2/mb-3, or
+  // FilterBar/BulkEditBar's float-left mr-2 (legend floats beside the
+  // fieldset's first row). Prepended ahead of the shared classes.
   className?: string
   children: ReactNode
 }
 
-// SectionLabel is the uppercase, tracking-wide caption shared by every
-// section heading, stat label, and fieldset legend: a page's h3
-// subsection title, a stat card's label, and a filter fieldset's
-// legend all read as the same small-caps-style caption, just at a
-// different size/weight/element/margin per site.
+// Uppercase, tracking-wide caption shared by section headings, stat labels,
+// and fieldset legends, varying only in size/weight/element/margin per site.
 export default function SectionLabel({ as: Tag, size, bold = true, className, children }: SectionLabelProps) {
   return (
     <Tag

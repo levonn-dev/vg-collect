@@ -1,9 +1,7 @@
 import { site } from '../../lib/site'
 
-// Privacy statements here must track actual app behavior: what the
-// stores keep, what deletion removes, and which third parties see
-// browser traffic. Not legal advice; operators deploying publicly
-// should have it reviewed. Move the Last updated date on change.
+// Must track actual app behavior (stores, deletion, third-party
+// traffic); not legal advice. Move the Last updated date on change.
 export default function PrivacyEn() {
   const s = site()
   const providers =
@@ -11,7 +9,7 @@ export default function PrivacyEn() {
   const igdbActive = s.dataSources.some((d) => d.key === 'igdb')
   const contact = s.contact || 'the operator of this instance'
   return (
-    <main aria-label="Privacy policy" className="mx-auto w-full max-w-2xl p-6">
+    <main id="main-content" tabIndex={-1} aria-label="Privacy policy" className="mx-auto w-full max-w-2xl p-6">
       <h2 className="mb-4 text-2xl font-bold">Privacy policy</h2>
       <div className="flex flex-col gap-4 text-sm text-gray-700">
         <section aria-label="What is stored">

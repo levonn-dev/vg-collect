@@ -10,11 +10,8 @@ import RegionPicker from '../catalog/RegionPicker'
 
 const RATING_MAX = EntryCreate.properties.rating.maximum
 
-// CopyDetailsFields is the copy-details cluster the add wizard's
-// details step and the entry editor both collect: one component, so
-// the two forms cannot drift apart field by field. It is controlled
-// and hands every edit back as the full next value; hosts fold that
-// into their own state (and their own bookkeeping) with one spread.
+// One component shared by the wizard's details step and the entry editor, so
+// they can't drift field by field. Controlled: hands back the full next value.
 
 export interface CopyDetailsValues {
   region: string
@@ -38,31 +35,29 @@ export interface CopyDetailsValues {
 interface CopyDetailsFieldsProps {
   value: CopyDetailsValues
   onChange: (next: CopyDetailsValues) => void
-  // Label only: the price-paid field is stamped with this currency by
-  // the host's wire mapper, never edited here.
+  // Label only: price-paid is stamped with this currency by the host's wire
+  // mapper, never edited here.
   currencyLabel: string
-  // The hosts word the edition field differently (variant-flavored in
-  // the wizard, catalog-flavored in the editor), so both arrive
-  // pre-translated.
+  // Hosts word the edition field differently (variant-flavored in the
+  // wizard, catalog-flavored in the editor), so both arrive pre-translated.
   editionLabel: string
   editionPlaceholder: string
-  // Groups the Region select by a platform's own region set; absent
-  // renders the flat select. Only the wizard has a pick to group by.
+  // Groups Region by a platform's own region set; absent renders the flat
+  // select (wizard only).
   regionGroup?: { platformName: string; regions: EntryRegion[] }
-  // Extra controls for the acquisition row - the wizard slots its
+  // Extra controls for the acquisition row; the wizard slots its
   // price-listing match block here.
   children?: ReactNode
 }
 
-// currencyLabel arrives renamed: the price-paid label interpolates it
-// as {currency}, the placeholder name every translation keys on.
+// currencyLabel arrives renamed: the price-paid label interpolates it as
+// {currency}, the placeholder every translation keys on.
 export function CopyDetailsFields({ value, onChange, currencyLabel: currency, editionLabel, editionPlaceholder, regionGroup, children }: CopyDetailsFieldsProps) {
   const { t, i18n } = useLingui()
   const set = <K extends keyof CopyDetailsValues>(key: K, v: CopyDetailsValues[K]) =>
     onChange({ ...value, [key]: v })
-  // Packaging implies the flags: loose is by definition unboxed, while
-  // cib and sealed come boxed with a manual. The gated condition
-  // selects follow the flags; either can still be corrected by hand.
+  // Packaging implies the flags: loose is unboxed; cib/sealed come boxed
+  // with a manual. Gated condition selects follow the flags but can be corrected.
   const setPackaging = (packaging: Packaging) =>
     onChange(
       packaging === 'loose'

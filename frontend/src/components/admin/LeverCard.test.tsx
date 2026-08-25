@@ -1,4 +1,5 @@
-import { fireEvent, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { renderWithI18n } from '../../test/i18n'
 import LeverCard from './LeverCard'
 
@@ -9,12 +10,12 @@ const base = {
   pending: false,
 }
 
-it('renders the labeled card and fires the action', () => {
+it('renders the labeled card and fires the action', async () => {
   const onRun = vi.fn()
   renderWithI18n(<LeverCard {...base} onRun={onRun} />)
   expect(screen.getByRole('region', { name: 'Sweep things' })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Sweep things', level: 4 })).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Run the sweep' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Run the sweep' }))
   expect(onRun).toHaveBeenCalledTimes(1)
 })
 

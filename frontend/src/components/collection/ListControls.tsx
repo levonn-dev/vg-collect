@@ -19,13 +19,9 @@ const sortLabels: Record<Sort, MessageDescriptor> = {
   backlog_rank: msg`Backlog order`,
 }
 
-// defaultSortLabels: the "(default)" - suffixed sibling of sortLabels
-// for the blank/no-sort option below, which mirrors whatever the
-// server falls back to when sort is left off the request. Keyed by
-// DEFAULT_SORT rather than assuming created_at by hand, so a generated
-// default change lands here instead of silently going stale; a
-// default with no dedicated phrasing yet falls back to its plain
-// sortLabels entry.
+// "(default)"-suffixed sibling of sortLabels for the blank/no-sort option,
+// mirroring the server's own fallback. Keyed by DEFAULT_SORT (generated), not
+// a hardcoded created_at, so a default change here can't silently go stale.
 const defaultSortLabels: Partial<Record<Sort, MessageDescriptor>> = {
   created_at: msg`Date added (default)`,
 }
@@ -38,10 +34,8 @@ const groupLabels: Record<GroupBy, MessageDescriptor> = {
   tag: msg`Tag`,
 }
 
-// The nine chip dimensions FilterBar renders behind the Filters
-// disclosure. Sort/order/group/mode/page are list-shape controls, not
-// filters, so they never count toward the badge even though sort and
-// group also drive Clear filters' visibility below.
+// The nine chip dimensions FilterBar renders; sort/order/group/mode/page are
+// list-shape controls, not filters, so they never count toward the badge.
 const FILTER_DIMENSIONS = [
   'status', 'itemType', 'packaging', 'region', 'developer', 'publisher', 'itemCondition', 'platformId', 'tagId',
 ] as const satisfies readonly (keyof ListState)[]
@@ -52,27 +46,19 @@ function activeFilterCount(state: ListState): number {
 
 interface ListControlsProps {
   state: ListState
-  // Mode changes bypass the page reset that filter/sort/group changes
-  // get (mode never changes which entries match), exactly as Collection
-  // wired the standalone mode toggle before this row absorbed it - so
-  // this takes the raw setter, not the page-resetting onChange below.
+  // Mode changes bypass the page reset filter/sort/group get (mode never
+  // changes which entries match), so this takes the raw setter, not onChange.
   onApply: (next: ListState) => void
   onChange: (next: ListState) => void
   filtersOpen: boolean
   onToggleFilters: () => void
-  // Bulk edit only makes sense over the table view's row furniture
-  // (grid/compact have none, and the backlog drag board is its own
-  // surface with no checkboxes either) - Collection owns the mode
-  // state itself and gates rendering, this row only shows the toggle.
+  // Bulk edit only makes sense over the table view's rows (grid/compact and
+  // the backlog board have no checkboxes); this row only shows the toggle.
   bulkMode: boolean
   onToggleBulk: () => void
-  // Collection passes !boardActive: the backlog drag board takes over
-  // the table's own spot (independent of display mode) and has no row
-  // checkboxes, so a toggle that flips aria-pressed with no visible
-  // bulk UI behind it would be misleading. Bulk mode already active
-  // when the board takes over stays paused underneath, unaffected by
-  // this - the button just disappears along with the bar/checkboxes,
-  // and leaving the board restores all three together.
+  // !boardActive: the backlog board takes over the table's spot with no
+  // checkboxes, so the toggle would be misleading if shown. Active bulk mode
+  // stays paused underneath and restores when the board is left.
   bulkAvailable: boolean
 }
 

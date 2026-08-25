@@ -7,11 +7,9 @@ import { jsonResponse, meFixture, requestPath } from '../../test/fixtures'
 import { renderWithI18n } from '../../test/i18n'
 import CommentList from './CommentList'
 
-// Same route-map idiom as Profile.test/Explore.test: fetch is
-// dispatched by matching prefix, and any URL nothing stubbed fails
-// the test in afterEach. A route's value may be a plain body (always
-// 200), a Response (explicit status), or an array of either consumed
-// in call order (the load-more test's second page).
+// Fetch dispatched by matching prefix; an unstubbed URL fails the test in
+// afterEach. A route's value is a plain body (200), a Response (explicit
+// status), or an array consumed in call order (load-more test's second page).
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
   const counts: Record<string, number> = {}
@@ -79,18 +77,15 @@ it('shows an empty state with no comments', async () => {
 it('renders each live comment with its body, and the neutral placeholder identity when hydration has not attached an author (fail-open)', async () => {
   stubFetch({
     '/api/me': meFixture({ id: 'visitor', handle: 'visitor' }),
-    // author_id is present but author is not: the shape a card-fetch
-    // fail-open leaves behind (see composeCommentsPage in the bff).
+    // author_id present but author is not: the shape a card-fetch fail-open leaves behind.
     '/api/shelves/s1/comments': { comments: [comment({ body: 'Great collection' })] },
   })
   renderList()
   expect(await screen.findByText('Great collection')).toBeInTheDocument()
   expect(screen.getByText('just now')).toBeInTheDocument()
   expect(screen.getByText('Member')).toBeInTheDocument()
-  // Regex, not the old bare 'Delete'/'Remove': the accessible name now
-  // carries the comment body too, and an exact-string match here would
-  // find nothing regardless of whether a button wrongly rendered,
-  // silently defeating this absence check.
+  // Regex, not bare 'Delete'/'Remove': the accessible name carries the
+  // comment body too; an exact match would find nothing either way, defeating this check.
   expect(screen.queryByRole('button', { name: /^Delete/ })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /^Remove/ })).not.toBeInTheDocument()
 })
@@ -107,26 +102,6 @@ it('renders a hydrated authors real chip, linking to their public profile', asyn
   await screen.findByText('Great collection')
   const link = screen.getByRole('link', { name: '@Bob_Prime' })
   expect(link).toHaveAttribute('href', '/u/Bob_Prime')
-  expect(screen.queryByText('Member')).not.toBeInTheDocument()
-})
-
-it('shows a Deleted user placeholder for a purge-anonymized comment', async () => {
-  stubFetch({
-    '/api/me': meFixture({ id: 'visitor', handle: 'visitor' }),
-    '/api/shelves/s1/comments': {
-      comments: [
-        comment({
-          // The wire shape a purge-anonymized comment sends: author_id
-          // itself comes back null (required+nullable in the schema).
-          author_id: null,
-          body: 'Anonymized comment',
-        }),
-      ],
-    },
-  })
-  renderList()
-  await screen.findByText('Anonymized comment')
-  expect(screen.getByText('Deleted user')).toBeInTheDocument()
   expect(screen.queryByText('Member')).not.toBeInTheDocument()
 })
 
@@ -195,6 +170,22 @@ it('lets the shelf owner remove someone elses comment immediately, after confirm
   await waitFor(() => expect(fetchMock.mock.calls.some(
     (c) => requestPath(c[0]) === '/api/comments/c1' && (c[0] as Request).method === 'DELETE',
   )).toBe(true))
+  confirmSpy.mockRestore()
+})
+
+it('shows a visible error and keeps the row when the owner-moderated DELETE fails', async () => {
+  const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  stubFetch({
+    '/api/me': meFixture({ id: 'owner1', handle: 'owner' }),
+    '/api/shelves/s1/comments': { comments: [comment({ author_id: 'other1', body: 'Spam' })] },
+    '/api/comments/c1': jsonResponse(500, {}),
+  })
+  renderList('owner1')
+  await screen.findByText('Spam')
+  await userEvent.click(screen.getByRole('button', { name: 'Remove comment: Spam' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(/could not be removed/i)
+  expect(screen.getByText('Spam')).toBeInTheDocument()
   confirmSpy.mockRestore()
 })
 

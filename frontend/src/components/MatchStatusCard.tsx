@@ -6,23 +6,16 @@ import PriceTriple from './PriceTriple'
 
 interface MatchStatusCardProps {
   pc: NonNullable<Product['pricecharting']>
-  // No default: PricingPanel's own price display passes true, the add
-  // wizard's confirm step passes false (prices never show there before
-  // the entry exists) - a default would let one site drift silently.
+  // No default: PricingPanel passes true, the wizard's confirm step passes
+  // false (no entry yet); a default would let one site drift silently.
   showPrices: boolean
-  // Trailing content each call site owns (ConfirmStep's "Change
-  // listing" button); that button is not a byte-identical twin of
-  // anything on the PricingPanel side, so it stays out of this
-  // component rather than becoming a second prop.
+  // Trailing content each caller owns (ConfirmStep's Change-listing button);
+  // not shared with PricingPanel, so it stays out of a dedicated prop.
   children?: ReactNode
 }
 
-// MatchStatusCard is the green "Priced as ..." status card shared by
-// the entry page's pricing panel and the add wizard's confirm step.
-// Renders entirely through Trans, which subscribes to the locale
-// context itself and does not depend on its caller re-rendering to
-// stay live (contrast rowMeta.tsx, a non-component helper with no such
-// subscription of its own).
+// Renders entirely through Trans, which subscribes to the locale context
+// itself, so it stays live without depending on the caller re-rendering.
 export default function MatchStatusCard({ pc, showPrices, children }: MatchStatusCardProps) {
   const money = useDisplayMoney()
   const pcName = pc.pc_name

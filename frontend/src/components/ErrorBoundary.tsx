@@ -10,19 +10,11 @@ interface ErrorBoundaryState {
   crashed: boolean
 }
 
-// Two deliberate exceptions to how the rest of this app is built:
-//
-// 1. The fallback below is hard-coded English, not <Trans>/t/msg. A
-//    render crash can originate inside the i18n runtime itself (a bad
-//    catalog, a broken provider); a fallback that depended on that
-//    same runtime could fail to render right when it matters most.
-//
-// 2. componentDidCatch records kind=boundary with no double-count
-//    guard against the window 'error' listener in telemetry.ts:
-//    React routes boundary-caught errors through the root's
-//    onCaughtError (default: console.error only); only errors no
-//    boundary catches dispatch the window ErrorEvent that listener
-//    sees. The two counts are disjoint by construction.
+// Fallback text is hard-coded English, not i18n: a crash can originate inside
+// the i18n runtime itself.
+// componentDidCatch's boundary count can't double-count telemetry.ts's window
+// 'error' listener: React fires onCaughtError, not a window ErrorEvent, for
+// caught errors.
 export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { crashed: false }
 
@@ -30,10 +22,8 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
     return { crashed: true }
   }
 
-  // No error message or stack recorded here - cardinality (free-text
-  // messages as a metric attribute), and the trace pipeline already
-  // carries that detail for whichever request was in flight, same
-  // reasoning as the window listeners in telemetry.ts.
+  // No message or stack recorded: cardinality risk as a metric attribute, and
+  // the trace pipeline already carries that detail.
   componentDidCatch(): void {
     recordUncaughtError('boundary')
   }

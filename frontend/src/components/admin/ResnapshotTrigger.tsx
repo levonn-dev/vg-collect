@@ -3,10 +3,8 @@ import { useMutation } from '@tanstack/react-query'
 import { runResnapshot } from '../../api/admin'
 import LeverCard from './LeverCard'
 
-// ResnapshotTrigger fires the same sweep the operator lever runs:
-// every game-backed entry's release date, localized presentation
-// trio, and credit arrays recomputed from its product's current
-// data. Synchronous - the counts come back in the response.
+// Recomputes every entry's release date, presentation trio, and credits from
+// its product's current data. Synchronous: counts come back in the response.
 export default function ResnapshotTrigger() {
   const { t } = useLingui()
   const run = useMutation({ mutationFn: runResnapshot })

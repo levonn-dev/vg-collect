@@ -1,11 +1,8 @@
 import type { Entry, EntryUpdate } from '../api/collection'
 
-// entryToUpdate builds the full-replacement PUT payload from an entry.
-// The update contract replaces ALL mutable state (an absent optional
-// field is cleared), so every mutation - a pin toggle, a pricing-mode
-// switch - starts from this faithful baseline and overrides one field.
-// Custom entries (no product_id) additionally own their display
-// fields; on product-backed entries those must not be sent.
+// PUT is full-replacement (absent field clears); every mutation starts
+// from this baseline. Custom entries (no product_id) additionally own
+// display fields, which product-backed entries must not send.
 export function entryToUpdate(e: Entry): EntryUpdate {
   const u: EntryUpdate = {
     region: e.region,

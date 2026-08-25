@@ -31,9 +31,8 @@ afterEach(() => {
 it('applies a shelf: decoded state plus the view id', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { views: [view] })))
   const onApply = renderPicker()
-  // The select is present from the first render (its label is static);
-  // wait for the fetched option itself before choosing it, otherwise
-  // selectOptions can run before the shelf list has loaded.
+  // select is present from the first render (static label); wait for the
+  // fetched option before choosing, or selectOptions can run before load.
   await screen.findByRole('option', { name: view.name })
   await userEvent.selectOptions(screen.getByLabelText('Shelf'), 'v1')
   expect(onApply).toHaveBeenCalledWith({ ...savedState, viewId: 'v1' })
@@ -108,8 +107,8 @@ it('clears a stale save error once a later, different action succeeds', async ()
   renderPicker({ ...savedState, viewId: 'v1' })
   await userEvent.click(await screen.findByRole('button', { name: /save shelf/i }))
   expect(await screen.findByRole('alert')).toHaveTextContent(/already in use/i)
-  // A later, unrelated mutation (update, not save) succeeding must not
-  // leave the earlier save failure on screen.
+  // A later unrelated mutation (update) succeeding must not leave the
+  // earlier save failure on screen.
   await userEvent.click(screen.getByRole('button', { name: /update shelf/i }))
   await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
 })

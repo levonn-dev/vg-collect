@@ -10,20 +10,16 @@ import { rowMeta, type EntryRow } from './rowMeta'
 interface CoverGridProps {
   entries: EntryRow[]
   pinSlot?: (e: Entry) => ReactNode
-  // linkTo lets shared pages retarget or suppress row links; null
-  // renders plain text.
+  // linkTo lets shared pages retarget or suppress row links; null renders plain text.
   linkTo?: (e: EntryRow) => string | null
   // shared omits the value line - a SharedEntry carries no price data.
   shared?: boolean
 }
 
 export default function CoverGrid({ entries, pinSlot, linkTo, shared }: CoverGridProps) {
-  // CoverGrid has no translated string of its own, but useLingui()
-  // is still required here: rowMeta's pin badge needs a live i18n
-  // (see rowMeta.tsx), and this call is what subscribes CoverGrid to
-  // locale changes so a mounted grid - e.g. SharedShelf's read-only
-  // view, which passes no pinSlot - re-renders that badge instead of
-  // going stale after a live locale switch.
+  // No translated string of its own, but useLingui() subscribes CoverGrid to
+  // locale changes so rowMeta's pin badge (which needs live i18n) re-renders
+  // on a switch instead of going stale.
   const { i18n } = useLingui()
   const money = useDisplayMoney()
   const form = titleFormFor(i18n.locale)

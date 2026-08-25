@@ -10,16 +10,12 @@ import SubmissionsQueue from './SubmissionsQueue'
 
 function renderQueue() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } })
-  // Reviewing a row mounts ReviewPanel, whose PlatformPicker fires a
-  // ['platforms'] fetch on mount. Several tests below queue exact,
-  // order-sensitive fetch responses (the submissions-list route below)
-  // for the submissions-list and verdict calls; seed platforms
-  // fresh+stale-proof so that extra fetch never consumes one of those
-  // routes' slots.
+  // ReviewPanel's PlatformPicker fires a ['platforms'] fetch on mount; seed it
+  // fresh+stale-proof so it never consumes a slot from the order-sensitive
+  // submissions-list/verdict route queues below.
   qc.setQueryData(['platforms'], { platforms: [] })
-  // SubmitterCell links a listed card to /u/:handle via react-router's
-  // Link, which throws outside a Router - every render needs one, not
-  // just the tests that assert on a rendered link.
+  // SubmitterCell's Link throws outside a Router, so every render needs
+  // one, not just tests asserting on a link.
   renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
@@ -29,16 +25,11 @@ function renderQueue() {
   )
 }
 
-// Fetch is routed per endpoint (first matching prefix wins) so each test
-// declares exactly the calls it expects; a URL nothing stubbed is
-// recorded and fails the test in afterEach (Admin.test's idiom). A
-// route's value may be a plain body (always 200), a Response (explicit
-// status), or an array of either consumed in call order - the last
-// entry repeats once exhausted, which the multi-page verdict test below
-// needs. '/api/admin/submissions?' and '/api/admin/submissions/' are
-// deliberately distinct prefixes: the list call always carries a query
-// string (offset=...) and the verdict call is always a sub-path
-// (/{id}/verdict), so the two never collide regardless of key order.
+// Routed by first matching prefix; an unstubbed URL fails the test in afterEach.
+// A route's value is a plain body (200), a Response (explicit status), or an
+// array consumed in call order (last entry repeats once exhausted).
+// '.../submissions?' and '.../submissions/' are distinct prefixes (list always
+// has a query string, verdict is always a sub-path) so they never collide.
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
   const counts: Record<string, number> = {}
@@ -61,10 +52,8 @@ function stubFetch(routes: Record<string, unknown>) {
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  // Tests share the module-level singleton; leave en active for the
-  // rest of this file and every other one. Unmount first: this hook
-  // runs ahead of RTL's auto-cleanup, and re-activating against a
-  // mounted tree is an I18nProvider update outside act.
+  // Shared singleton; leave en active for the suite. Unmount first, ahead of
+  // RTL's cleanup, else I18nProvider updates outside act.
   cleanup()
   i18n.activate('en')
   const missed = unstubbed
@@ -79,8 +68,7 @@ const row = (id: string, name: string) => ({
   created_at: '2026-07-17T00:00:00Z', updated_at: '2026-07-17T00:00:00Z',
 })
 
-// No cards resolved: every row in these tests falls back to its short
-// id, which is fine - none of them assert on the submitter cell.
+// No cards resolved; fine since none of these tests assert on the submitter cell.
 const noCards = { profiles: [] }
 
 // raceVerdict opens the row's panel and approves it into the 409.
@@ -178,8 +166,8 @@ it('resets every prefilled field and the adopt view when the reviewed row change
     '/api/admin/submissions?': { submissions: [row('s1', 'Alpha One'), row('s2', 'Beta Two')], total_count: 2 },
     '/api/shared/profiles/by-ids': noCards,
     '/api/search': { degraded: false, results: [] },
-    // The adopt view's SearchPicker renders prices via useDisplayMoney,
-    // which unconditionally loads the viewer's currency + rates on mount.
+    // The adopt view's SearchPicker renders prices via useDisplayMoney, which
+    // loads currency+rates on mount.
     '/api/me': {},
     '/api/fx': {},
   })
@@ -190,9 +178,8 @@ it('resets every prefilled field and the adopt view when the reviewed row change
   await user.click(screen.getByRole('button', { name: 'Adopt existing product' }))
   expect(screen.getByLabelText('Product id')).toBeInTheDocument()
 
-  // Reviewing a different row without closing the panel first used to
-  // carry over the first row's open adopt search and stale name field,
-  // since the panel mounted without a key.
+  // Without a key the panel would carry over the first row's open adopt
+  // search and stale name field.
   await user.click(screen.getAllByRole('button', { name: 'Review' })[1])
   expect(screen.queryByLabelText('Product id')).not.toBeInTheDocument()
   expect(screen.getByLabelText('Name')).toHaveValue('Beta Two')
@@ -207,8 +194,8 @@ it('carries the raced-verdict message to a queue notice after the panel closes',
   })
   renderQueue()
   await raceVerdict()
-  // The panel unmounts on the raced 409, so its own inline message never
-  // paints; the notice lives at the queue and is seen after the close.
+  // Panel unmounts on the raced 409 before its inline message paints; the
+  // notice lives at the queue.
   const notice = await screen.findByText('Another admin already resolved this submission.')
   expect(notice).toBeInTheDocument()
   expect(notice).toHaveAttribute('role', 'status')
@@ -225,9 +212,8 @@ it('rephrases a standing notice when the locale changes', async () => {
   renderQueue()
   await raceVerdict()
   await screen.findByText('Another admin already resolved this submission.')
-  // The notice can outlive the language it was raised in: the queue
-  // holds the error, so switching catalogs has to rewrite the text
-  // rather than leave the old language on screen.
+  // Queue holds the error, not rendered text, so switching catalogs rewrites
+  // the notice instead of leaving stale language.
   act(() => {
     i18n.load('ja', jaMessages)
     i18n.activate('ja')
@@ -237,10 +223,9 @@ it('rephrases a standing notice when the locale changes', async () => {
 })
 
 it('resolves a verdict and the row leaves the list', async () => {
-  // The submissions-list endpoint alone stays order-sensitive (row present,
-  // then empty after the post-verdict invalidation refetch); the panel's own
-  // duplicates search, profile cards, and the verdict POST are matched by
-  // URL prefix so they never consume one of the list's ordered slots.
+  // Only the submissions-list endpoint is order-sensitive (row, then empty
+  // after the post-verdict refetch); other calls match by prefix so they
+  // never consume a list slot.
   stubFetch({
     '/api/admin/submissions?': [
       { submissions: [row('s1', 'Repro Alpha')], total_count: 1 },

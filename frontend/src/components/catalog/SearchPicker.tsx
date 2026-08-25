@@ -12,27 +12,21 @@ import SearchResultRow from './SearchResultRow'
 
 interface SearchPickerProps {
   initialQuery?: string
-  // The last-reported onStateChange snapshot; wins over initialQuery
-  // when present.
+  // Last-reported onStateChange snapshot; wins over initialQuery when present.
   initialState?: SearchPickerState
   onPick: (pick: CatalogPick) => void
   footer?: ReactNode
-  // Which search kinds to offer; the add wizard keeps the default,
-  // the proxy picker adds the all-of-PriceCharting kind.
+  // Which search kinds to offer; the proxy picker adds pc_listing.
   kinds?: SearchKind[]
-  // The community lane is shown by default (add wizard + admin adopt
-  // surface it); the price proxy picker hides it, since community
-  // products are priceless and cannot serve as a price source.
+  // Shown by default (wizard + admin adopt); price proxy picker hides it
+  // since community products are priceless.
   communityLane?: 'shown' | 'hidden'
-  // Fires on every kind/text/submit change with the full next state,
-  // so the caller's snapshot is always current.
+  // Fires on every kind/text/submit change with the full next state.
   onStateChange?: (s: SearchPickerState) => void
 }
 
-// pc_listing's label/noun is the PriceCharting brand name - a proper
-// noun that never translates - so it stays a plain string while
-// game/hardware translate; the two tables below therefore mix
-// MessageDescriptor and string values.
+// pc_listing's label/noun is the PriceCharting brand name, a proper noun that
+// never translates, so the tables below mix MessageDescriptor and string values.
 const kindLabels: Record<SearchKind, MessageDescriptor | string> = {
   game: msg`Games`,
   hardware: msg`Hardware`,
@@ -43,9 +37,8 @@ const kindPlaceholders: Record<SearchKind, MessageDescriptor> = {
   hardware: msg`Console or accessory...`,
   pc_listing: msg`Any listing (games, variants, hardware)...`,
 }
-// The search box's aria-label names the kinds on offer: "games and
-// hardware" (default two kinds, pinned by the add wizard's tests and
-// e2e steps) or an Oxford-comma list once PriceCharting joins in.
+// aria-label names the kinds on offer: "games and hardware" by default
+// (pinned by tests/e2e), an Oxford-comma list once PriceCharting joins.
 const kindNouns: Record<SearchKind, MessageDescriptor | string> = {
   game: msg`games`,
   hardware: msg`hardware`,
@@ -54,11 +47,9 @@ const kindNouns: Record<SearchKind, MessageDescriptor | string> = {
 function resolveKindText(v: MessageDescriptor | string, i18n: I18n): string {
   return typeof v === 'string' ? v : i18n._(v)
 }
-// searchBoxLabel is a plain function, not a component: it cannot call
-// useLingui() itself, so its i18n comes from the caller's own hook
-// (same reasoning as rowMeta - see components/collection/rowMeta.tsx)
-// rather than the @lingui/core singleton, which would not force a
-// re-render of SearchPicker on a later locale switch.
+// Plain function, not a component: can't call useLingui() itself, so i18n
+// comes from the caller's hook, not the @lingui/core singleton (which
+// wouldn't force a re-render on a later locale switch).
 function searchBoxLabel(kinds: SearchKind[], i18n: I18n): string {
   const nouns = kinds.map((k) => resolveKindText(kindNouns[k], i18n))
   if (nouns.length < 2) {
@@ -75,10 +66,8 @@ function searchBoxLabel(kinds: SearchKind[], i18n: I18n): string {
   return t(i18n)`Search for ${allButLast}, and ${last}`
 }
 
-// SearchPicker is the shared catalog-search surface: the add wizard's
-// first step and the pricing proxy picker. Picking a game means
-// picking a platform (a product is game-on-platform); hardware and
-// pc_listing picks are the listing itself.
+// Picking a game means picking a platform (a product is game-on-platform);
+// hardware and pc_listing picks are the listing itself.
 export default function SearchPicker({ initialQuery = '', initialState, onPick, footer, kinds = ['game', 'hardware'], communityLane = 'shown', onStateChange }: SearchPickerProps) {
   const { t, i18n } = useLingui()
   const [kind, setKind] = useState<SearchKind>(initialState?.kind ?? kinds[0])
@@ -91,10 +80,8 @@ export default function SearchPicker({ initialQuery = '', initialState, onPick, 
     queryFn: () => searchCatalog(kind, submitted),
     enabled: submitted !== '',
   })
-  // The hidden-lane filter drops community rows client-side (ProxyPicker's
-  // price-source picker); the "no results" message below must react to
-  // this filtered list too, or an all-community answer would render
-  // neither the message nor any rows.
+  // Hidden-lane filter drops community rows client-side; "no results" reacts
+  // to the filtered list too, or an all-community answer shows neither.
   const rows = (search.data?.results ?? []).filter(
     (r) => communityLane === 'shown' || r.origin !== 'community',
   )

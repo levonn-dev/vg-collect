@@ -10,15 +10,10 @@ import { refetchWarning, renderQueryState } from '../../lib/queryBoundary'
 import LoadMoreButton from '../LoadMoreButton'
 import PromotePanel from './PromotePanel'
 
-// PromoteCandidates pages through every community product the
-// nightly sweep flagged with a plausible provider match. found_at
-// marks the sweep's LAST CONFIRMATION of a candidate, not its first
-// discovery - the sweep re-confirms every candidate nightly and
-// rewrites the whole array, so the column reads "Last confirmed",
-// never "found". Promoting or dismissing changes the list itself, so a
-// successful review invalidates admin queries and loaded pages
-// refetch with their stored pageParam (rows that got promoted, or
-// whose last candidate got dismissed, leave the list).
+// found_at marks the sweep's LAST CONFIRMATION, not first discovery (the
+// sweep rewrites the whole array nightly); the column reads "Last confirmed".
+// Promoting/dismissing invalidates admin queries; loaded pages refetch with
+// their stored pageParam.
 export default function PromoteCandidates() {
   const { t, i18n } = useLingui()
   const queryClient = useQueryClient()
@@ -47,10 +42,8 @@ export default function PromoteCandidates() {
 
   const rows = list.data.pages.flatMap((p) => p.products)
   const total = list.data.pages[0].total_count
-  // Derive the open row from live data so a dismiss (which invalidates
-  // and refetches) refreshes the panel's candidates in place; when the
-  // product leaves the list (promoted, or its last candidate dismissed)
-  // the panel closes on its own.
+  // Derived from live data so a dismiss refreshes the panel's candidates in
+  // place; the panel closes on its own once the product leaves the list.
   const reviewing = reviewingId === null ? null : (rows.find((r) => r.product.id === reviewingId) ?? null)
 
   return (
@@ -96,11 +89,8 @@ export default function PromoteCandidates() {
         </tbody>
       </table>
       <LoadMoreButton query={list} className="mt-2" />
-      {/* key={reviewing.product.id}: without it, switching the reviewed
-          row while the panel is open reconciles the same PromotePanel
-          instance in place, leaking its attached-listing/picking state
-          across products (see ProductLookup and SubmissionsQueue for the
-          same pattern). */}
+      {/* key={reviewing.product.id}: without it, switching rows reconciles the
+          same PromotePanel in place, leaking attached-listing/picking state. */}
       {reviewing && <PromotePanel key={reviewing.product.id} product={reviewing.product} candidates={reviewing.candidates} onDone={done} />}
     </section>
   )

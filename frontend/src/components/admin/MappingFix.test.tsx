@@ -108,10 +108,8 @@ it('renders the identity_taken conflict with the server-named holder', async () 
   expect(alert).toHaveTextContent(/holder: 8563fd43/i)
 })
 
-// Regression for the resolveApiError refactor: identity_taken prefers
-// e.message over its own fixed text, but only when the server actually
-// sent one - an empty detail must still fall through to the fixed
-// text, not render a blank alert.
+// identity_taken prefers e.message, but only when the server sent one; an
+// empty detail falls through to the fixed text, not a blank alert.
 it('falls back to the fixed identity_taken text when the server sends no detail', async () => {
   const user = userEvent.setup()
   vi.spyOn(window, 'confirm').mockReturnValue(true)

@@ -73,8 +73,8 @@ it('game promote with an attached listing posts all three ids', async () => {
   const onDone = vi.fn()
   renderPanel(communityGame, [candidate], onDone)
   await userEvent.click(screen.getByRole('button', { name: 'Promote to provider identity' }))
-  // Attach the listing first: the game pick fires the promote, so the
-  // optional pc_product_id must already be on state when it does.
+  // Attach the listing first: the game pick fires the promote, so
+  // pc_product_id must already be on state.
   await userEvent.click(screen.getByRole('button', { name: /attach a price listing/i }))
   const dialog = await screen.findByRole('dialog', { name: 'Match a price listing' })
   await userEvent.click(await within(dialog).findByRole('button', { name: 'Use Chrono Trigger Listing' }))
@@ -111,9 +111,8 @@ it('clearing an attached listing reverts the promote body to the two-id shape', 
   const dialog = await screen.findByRole('dialog', { name: 'Match a price listing' })
   await userEvent.click(await within(dialog).findByRole('button', { name: 'Use Chrono Trigger Listing' }))
   expect(screen.getByText('Listing: Chrono Trigger Listing')).toBeInTheDocument()
-  // Clear drops the attached listing back to null; the reappeared "Attach"
-  // button proves the panel returned to the no-listing branch, so the
-  // eventual game pick's promote body must fall back to the two-id shape.
+  // Clear drops the listing to null; the reappeared "Attach" button proves
+  // the no-listing branch, so the promote body falls back to the two-id shape.
   await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
   expect(screen.queryByText('Listing: Chrono Trigger Listing')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: /attach a price listing/i })).toBeInTheDocument()
@@ -178,10 +177,8 @@ it('renders the identity_taken holder detail verbatim', async () => {
   expect(alert).toHaveTextContent(/holder: 8563fd43/i)
 })
 
-// Regression for the resolveApiError refactor: identity_taken prefers
-// e.message over its own fixed text, but only when the server actually
-// sent one - an empty detail must still fall through to the fixed
-// text, not render a blank alert.
+// identity_taken prefers e.message, but only when the server sent one; an
+// empty detail falls through to the fixed text, not a blank alert.
 it('falls back to the fixed identity_taken text when the server sends no detail', async () => {
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   const fetchMock = vi.fn().mockImplementation((url: unknown) => {
@@ -259,9 +256,8 @@ it('dismiss posts the pair and keeps the panel open', async () => {
   await userEvent.click(screen.getAllByRole('button', { name: 'Dismiss' })[0])
   expect(calledPath(fetchMock, 0)).toBe('/api/admin/products/p1/promote-candidates/dismiss')
   expect(await putBody(fetchMock.mock.calls[0][0])).toEqual({ provider: 'igdb', provider_id: 1011 })
-  // Wait for the mutation to settle (the button re-enables), then prove
-  // dismiss did NOT close: other candidates remain, so the panel stays
-  // and the parent's invalidation refreshes the list in place.
+  // Waits for the mutation to settle (button re-enables), then proves dismiss
+  // did not close the panel while other candidates remain.
   await waitFor(() => expect(screen.getAllByRole('button', { name: 'Dismiss' })[0]).not.toBeDisabled())
   expect(onDone).not.toHaveBeenCalled()
   expect(screen.getByLabelText('Promote Repro Alpha')).toBeInTheDocument()

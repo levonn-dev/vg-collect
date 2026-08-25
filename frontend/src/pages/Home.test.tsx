@@ -1,17 +1,16 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { meFixture } from '../test/fixtures'
+import { renderWithI18n } from '../test/i18n'
 import Home from './Home'
 
-// staleTime: Infinity keeps the seeded ['me'] cache from triggering a
-// background refetch through the real fetch (the same trick
-// useDisplayMoney.test.tsx and ViewPicker.test.tsx use to seed a
-// cache hit without stubbing a network call).
+// staleTime: Infinity keeps the seeded ['me'] cache from refetching
+// through the real fetch (same trick as useDisplayMoney.test.tsx).
 function renderHome(landingPage: 'collection' | 'feed' | 'explore') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(['me'], meFixture({ landing_page: landingPage }))
-  return render(
+  return renderWithI18n(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/']}>
         <Routes>

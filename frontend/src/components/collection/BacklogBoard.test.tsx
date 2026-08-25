@@ -13,10 +13,8 @@ const entries = [
   entryFixture({ display_name: 'Third', backlog_rank: 'n' }),
 ]
 
-// Defaults render a single, full page (page 0, totalCount ==
-// entries.length) - both edges are the true global edges, matching
-// every pre-existing test below. Tests for the page-edge guard itself
-// pass an explicit page/totalCount that put the fixture mid-backlog.
+// Default page 0, totalCount == entries.length: both edges are the true
+// global edges. Page-edge tests pass an explicit page/totalCount instead.
 function renderBoard(page = 0, totalCount = entries.length) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return renderWithI18n(
@@ -72,9 +70,8 @@ it('edge moves are disabled', () => {
   expect(screen.getByRole('button', { name: 'Move Third down' })).toBeDisabled()
 })
 
-// page 1 (the second page, 0-based) of a backlog far bigger than this
-// fixture's 3 rows: neither visible edge is the true global edge, so
-// a move landing on either one cannot be resolved to a real neighbor.
+// page 1 of a backlog far bigger than this fixture: neither visible edge is
+// the true global edge, so a move there can't resolve to a real neighbor.
 it('on a non-edge page, the Up button on the first visible row is disabled', () => {
   vi.stubGlobal('fetch', vi.fn())
   renderBoard(1, 500)
@@ -86,13 +83,10 @@ it('on a non-edge page, a drag to the top slot sends no request', async () => {
   vi.stubGlobal('fetch', fetchMock)
   renderBoard(1, 500)
   stubRowRects()
-  // Second (row index 1, rect center 70) dragged up onto First's slot
-  // (row index 0, rect center 20): landing there would compute
-  // after_id: null, which on this page is a page-local top, not the
-  // backlog's true front.
+  // Second dragged onto First's slot computes after_id: null, a page-local
+  // top here, not the backlog's true front.
   dragHandle('Drag Second', -50)
-  // Give the guarded drop the same async onMutate hop a real submit
-  // needs, so a regression (a fired request) would have time to show up.
+  // Same async onMutate hop a real submit needs, so a regression would have time to show up.
   await new Promise((resolve) => setTimeout(resolve, 20))
   expect(fetchMock).not.toHaveBeenCalled()
 })
@@ -117,9 +111,8 @@ it('a 409 conflict reports and recovers', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent(/changed somewhere else/i)
 })
 
-// The page feeds BacklogBoard from the ['entries'] query, so the
-// optimistic cache reorder only shows up as a re-render when the
-// board sits under that same seam; this harness mirrors it.
+// The optimistic cache reorder only shows up as a re-render when the board
+// sits under the same ['entries'] query seam; this harness mirrors it.
 function BoardFromCache() {
   const list = useQuery({
     queryKey: ['entries'],
@@ -131,8 +124,7 @@ function BoardFromCache() {
 }
 
 it('a move reorders the rendered rows and locks the buttons before the server answers', async () => {
-  // The reorder POST never settles, so an order change can only be the
-  // optimistic cache apply, never an invalidation refetch.
+  // POST never settles, so an order change can only be the optimistic apply.
   const fetchMock = vi.fn().mockImplementation((url: unknown) =>
     (url as Request).method === 'POST'
       ? new Promise<Response>(() => {})
@@ -152,16 +144,13 @@ it('a move reorders the rendered rows and locks the buttons before the server an
   expect(rowNames()).toEqual(['First', 'Second', 'Third'])
   await userEvent.click(screen.getByRole('button', { name: 'Move Second up' }))
   expect(rowNames()).toEqual(['Second', 'First', 'Third'])
-  // 'First' sits mid-list after the optimistic move, so neither edge
-  // flag applies - only the in-flight lock can disable its buttons.
+  // 'First' sits mid-list after the move, so only the in-flight lock disables it.
   expect(screen.getByRole('button', { name: 'Move First up' })).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Move First down' })).toBeDisabled()
 })
 
-// The drag handle carries no `disabled` attribute while a reorder is
-// pending (only the Move buttons do), so proving the guard needs an
-// actual drag: stub every row's rect so closestCenter resolves to a
-// distinct, deterministic neighbor instead of jsdom's zero-sized default.
+// Drag handle carries no disabled attribute (only Move buttons do), so
+// proving the guard needs a real drag; stub rects for a deterministic neighbor.
 function stubRowRects() {
   screen.getAllByRole('listitem').forEach((li, i) => {
     const top = i * 50
@@ -187,8 +176,7 @@ it('a drag submitted while a reorder is pending is a no-op', async () => {
   dragHandle('Drag First', 100)
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
   dragHandle('Drag First', 100)
-  // Give the guarded second attempt the same async onMutate hop the
-  // first one needed, so a regression would have time to show up.
+  // Same async onMutate hop the first attempt needed, so a regression would have time to show up.
   await new Promise((resolve) => setTimeout(resolve, 20))
   expect(fetchMock).toHaveBeenCalledTimes(1)
 })
@@ -210,8 +198,8 @@ it('a failed reorder restores the pre-drag order before any refetch resolves', a
   const rowNames = () => screen.getAllByRole('link').map((a) => a.textContent)
   await screen.findByRole('button', { name: 'Move Second up' })
   await userEvent.click(screen.getByRole('button', { name: 'Move Second up' }))
-  // The third fetch call (the onSettled refetch) never resolves, so a
-  // restored order can only be the onError rollback.
+  // Third fetch (onSettled refetch) never resolves, so a restored order can
+  // only be the onError rollback.
   await waitFor(() => expect(rowNames()).toEqual(['First', 'Second', 'Third']))
   expect(await screen.findByRole('alert')).toHaveTextContent(/could not be saved/i)
 })

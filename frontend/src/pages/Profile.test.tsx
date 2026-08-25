@@ -19,10 +19,9 @@ function renderProfile(handle = 'Alice_Prime') {
   )
 }
 
-// Same route-map idiom as Admin.test/Explore.test: fetch is dispatched
-// by matching prefix, and any URL nothing stubbed fails the test in
-// afterEach. A route's value may be a plain body (always 200) or a
-// Response for an explicit status (the 404/502 tests).
+// Same route-map idiom as Admin.test/Explore.test: prefix-matched
+// dispatch, unstubbed URLs fail in afterEach. Value is a plain body
+// (200) or a Response for an explicit status (404/502 tests).
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
   const impl = vi.fn().mockImplementation((url: unknown) => {
@@ -91,10 +90,8 @@ it('singularizes a one-follower count and pluralizes a multi-shelf heading', asy
 })
 
 it('hides the follow button while the viewer identity is still resolving, not just once known non-owner', async () => {
-  // /api/me never resolves; /api/profiles/Alice_Prime does. isOwner
-  // defaults to true (hidden) until me.data proves otherwise, so a
-  // visitor's Follow button never flashes on before the owner check
-  // catches up.
+  // /api/me never resolves; isOwner defaults to true (hidden) until
+  // me.data proves otherwise, so Follow never flashes on early.
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) =>
     requestPath(url).startsWith('/api/profiles/')
       ? Promise.resolve(jsonResponse(200, profilePage()))
@@ -117,9 +114,8 @@ it('renders the avatar image without a referrer, falling back to the initial on 
   })
   renderProfile()
   const heading = await screen.findByRole('heading', { name: '@Alice_Prime' })
-  // Scoped to the header: the shelf grid's own UserChip byline renders
-  // the same fallback initial for the same handle, so an unscoped
-  // query would match both once the header's avatar also falls back.
+  // Scoped to the header: the shelf grid's UserChip byline renders the
+  // same fallback initial, so an unscoped query would match both.
   const headerEl = heading.closest('header')!
   const header = within(headerEl)
   const img = headerEl.querySelector('img')!

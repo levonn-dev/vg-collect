@@ -20,9 +20,7 @@ function renderAdmin() {
   )
 }
 
-// Fetch is routed per endpoint (first matching prefix wins) so each
-// test declares exactly the calls it expects; a URL nothing stubbed
-// is recorded and fails the test in afterEach.
+// Routed per endpoint, first matching prefix wins; unstubbed URLs fail in afterEach.
 let unstubbed: string[] = []
 function stubFetch(routes: Record<string, unknown>) {
   const impl = vi.fn().mockImplementation((url: unknown) => {

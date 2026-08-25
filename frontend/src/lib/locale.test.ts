@@ -11,12 +11,9 @@ import {
   setLocale,
 } from './locale'
 
-// Isolates activateBoot/setLocale's telemetry calls from
-// initTelemetry's no-op-before-init state, the same way
-// ProsePage.test.tsx and LocaleSwitch.test.tsx mock their own
-// sibling-module dependency - what's under test here is which
-// function gets called with which arguments, not the counters
-// themselves (telemetry.test.ts covers those directly).
+// Isolates telemetry calls from initTelemetry's no-op-before-init
+// state (same pattern as ProsePage/LocaleSwitch tests); asserts which
+// function is called, not the counters (telemetry.test.ts covers those).
 vi.mock('../telemetry', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../telemetry')>()
   return {
@@ -31,9 +28,8 @@ function stubLanguage(tag: string) {
   vi.spyOn(window.navigator, 'language', 'get').mockReturnValue(tag)
 }
 
-// A rejected loader is what an unreachable catalog chunk looks like to
-// this module, and CATALOG_LOADERS is the only seam that can produce
-// one without a network. The entry is restored even when run throws.
+// Rejected loader simulates an unreachable chunk; CATALOG_LOADERS is
+// the only seam that can produce one without a network.
 async function withFailingJaCatalog(run: () => Promise<void>): Promise<void> {
   const loader = CATALOG_LOADERS.ja
   CATALOG_LOADERS.ja = () => Promise.reject(new Error('chunk unreachable'))
@@ -135,8 +131,7 @@ describe('setLocale', () => {
     await setLocale('en')
     await withFailingJaCatalog(() => setLocale('ja'))
     expect(i18n.locale).toBe('en')
-    // <html lang> names the language actually on screen. A failed
-    // switch leaves English text, so it must still name English.
+    // <html lang> names the language on screen; a failed switch leaves English text.
     expect(document.documentElement.lang).toBe('en')
     expect(recordCatalogFailure).toHaveBeenCalledTimes(1)
     expect(recordCatalogFailure).toHaveBeenCalledWith('switch', 'ja')
@@ -159,8 +154,7 @@ describe('activateBoot', () => {
   })
 
   it('falls back to the static en catalog when a locale chunk fails to load', async () => {
-    // An unregistered locale has no CATALOG_LOADERS entry, so
-    // dynamicActivate rejects the way an unreachable chunk does.
+    // Unregistered locale has no CATALOG_LOADERS entry, so dynamicActivate rejects.
     await activateBoot('xx' as never, 'stored')
     expect(i18n.locale).toBe('en')
   })

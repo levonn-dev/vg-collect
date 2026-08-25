@@ -1,11 +1,5 @@
-// offsetNextPageParam is the shared getNextPageParam reducer for every
-// list paged by a running offset against a total_count carried on the
-// last page: sum what has loaded so far and hand back that running
-// offset as the next pageParam, or undefined once loaded has caught
-// up with total_count. countPage stays a caller-supplied callback
-// because "how many rows did this page contribute" differs by
-// response shape (a flat array on most lists, entries-or-groups on a
-// shared shelf's grouped view).
+// Sums loaded rows into the next offset, undefined once caught up with
+// total_count; countPage varies by response shape (flat vs grouped).
 export function offsetNextPageParam<Page extends { total_count: number }>(
   last: Page,
   pages: Page[],

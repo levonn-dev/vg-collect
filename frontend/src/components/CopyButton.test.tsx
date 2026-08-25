@@ -9,10 +9,7 @@ function stubClipboard(writeText: (text: string) => Promise<void>) {
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
 }
 
-// A click's resulting setState comes off a resolved-mock promise's
-// .then(), a microtask - two pumps is the same idiom Explore.test's
-// in-flight regression and CommentList's own use to let one settle
-// mid-act.
+// Two microtask pumps: setState resolves via the mocked promise's .then().
 async function click(button: HTMLElement) {
   await act(async () => {
     button.click()
@@ -43,18 +40,15 @@ it('keeps a stable accessible name across a click while its visible text and a s
   const writeText = vi.fn().mockResolvedValue(undefined)
   stubClipboard(writeText)
   renderWithI18n(<CopyButton text="https://example.test/shelf" />)
-  // Held from before the click and re-asserted after: the accessible
-  // name is aria-label, not the swapping text content, so the same
-  // query still matches the same element post-click.
+  // aria-label doesn't swap with text, so the same query matches post-click.
   const button = screen.getByRole('button', { name: 'Copy link' })
 
   await click(button)
   expect(writeText).toHaveBeenCalledWith('https://example.test/shelf')
   expect(screen.getByRole('button', { name: 'Copy link' })).toBe(button)
   expect(button).toHaveTextContent('Copied')
-  // The announcement lives in a sibling status region, not nested
-  // inside the button - a status nested in a button fights the
-  // button's own children-are-presentational semantics.
+  // Sibling status region: nested in the button it would fight
+  // presentational-children semantics.
   expect(within(button).queryByRole('status')).not.toBeInTheDocument()
   expect(screen.getByRole('status')).toHaveTextContent('Copied')
 
@@ -71,8 +65,7 @@ it('announces Copy failed through the revert window on a rejected write, with no
   renderWithI18n(<CopyButton text="https://example.test/shelf" />)
   const button = screen.getByRole('button', { name: 'Copy link' })
 
-  // No unhandled rejection reaching here (vitest fails the run on one
-  // by default) is itself part of the proof.
+  // No unhandled rejection reaching here is itself part of the proof.
   await click(button)
   expect(button).toHaveTextContent('Copy failed')
   expect(screen.getByRole('status')).toHaveTextContent('Copy failed')
@@ -99,10 +92,8 @@ it('re-clicking mid-window restarts the revert timer instead of letting the stal
   })
   await click(button)
 
-  // The first window's own expiry has now fully elapsed (1000ms twice
-  // over since the first click), but the restarted window only has
-  // 1000ms behind it - a stacked, uncleared first timer would have
-  // reverted this to the resting label already.
+  // 2000ms has elapsed since the first click (its own timer would have fired),
+  // but the restarted timer is only 1000ms in.
   act(() => {
     vi.advanceTimersByTime(REVERT_MS / 2)
   })
@@ -116,10 +107,8 @@ it('re-clicking mid-window restarts the revert timer instead of letting the stal
 })
 
 it("a later overlapping click's settle clears an earlier still-pending click's timer instead of leaving it to fire on its own", async () => {
-  // Reproduces the clobber: click A, then click B before A's write
-  // has resolved - copy()'s own clearTimeout has nothing pending to
-  // clear yet at either click, so this depends entirely on settle()
-  // itself clearing a timer set by an earlier, still-in-flight click.
+  // Click B before A resolves: copy()'s clearTimeout has nothing pending yet,
+  // so only settle() clearing A's earlier timer prevents the clobber.
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   let resolveA: () => void = () => {}
   let resolveB: () => void = () => {}
@@ -139,17 +128,15 @@ it("a later overlapping click's settle clears an earlier still-pending click's t
   })
   expect(writeText).toHaveBeenCalledTimes(2)
 
-  // A resolves first: its settle() starts a revert timer 2000ms out
-  // from right now.
+  // A resolves first; its settle() starts a 2000ms revert timer.
   await act(async () => {
     resolveA()
     await Promise.resolve()
     await Promise.resolve()
   })
 
-  // 500ms later, B resolves too: its settle() must clear A's pending
-  // timer, not just overwrite the ref on top of it, before starting
-  // its own 2000ms-out timer.
+  // 500ms later B resolves; its settle() must clear A's pending timer before
+  // starting its own.
   act(() => {
     vi.advanceTimersByTime(500)
   })
@@ -159,10 +146,8 @@ it("a later overlapping click's settle clears an earlier still-pending click's t
     await Promise.resolve()
   })
 
-  // 1600ms further on: 2100ms since A settled (100ms past A's own
-  // revert point) but only 1600ms since B settled (still inside B's
-  // window). An uncleared A timer would fire here and revert the
-  // label early, out from under B.
+  // 2100ms since A settled (past A's revert point) but only 1600ms since B;
+  // an uncleared A timer would revert the label early, out from under B.
   act(() => {
     vi.advanceTimersByTime(1600)
   })
@@ -212,10 +197,8 @@ it('unmounting while a click\'s clipboard write is still pending drops the resul
   const errorSpy = vi.spyOn(console, 'error')
   act(() => unmount())
 
-  // The write resolves only after unmount: settle() must see the
-  // mounted flag is false and bail out before touching state or
-  // scheduling a new revert timer - otherwise that timer leaks, since
-  // nothing is left to ever clear it.
+  // Write resolves after unmount; settle() must see mounted=false and bail
+  // before scheduling a timer nothing would ever clear.
   await act(async () => {
     resolveWrite()
     await Promise.resolve()

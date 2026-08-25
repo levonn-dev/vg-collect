@@ -11,9 +11,8 @@ function LocationProbe() {
   return <output aria-label="location">{location.pathname}</output>
 }
 
-// Each test stubs fetch for the providers call before rendering; this
-// wrapper layers the session probe's /api/me on top (signed out by
-// default) so Login's own query never swallows the providers response.
+// Layers the session probe's /api/me on top of the providers stub
+// (signed out by default), so Login's own query never swallows it.
 function renderLogin(path = '/login', { authed = false } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const providersFetch = window.fetch
@@ -33,10 +32,9 @@ function renderLogin(path = '/login', { authed = false } = {}) {
   )
 }
 
-// jsdom does not implement real cross-page navigation; clicking a
-// login link would otherwise log a noisy "not implemented" warning
-// once its default action runs. The stash handler under test still
-// fires - only the browser's own follow-the-link behavior is skipped.
+// jsdom has no real cross-page navigation; a clicked login link would
+// log a noisy warning. The stash handler under test still fires; only
+// the browser's follow-the-link behavior is skipped.
 function clickWithoutNavigating(link: HTMLElement) {
   link.addEventListener('click', (e) => e.preventDefault())
   return userEvent.click(link)

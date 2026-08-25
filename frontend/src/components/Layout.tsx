@@ -5,19 +5,16 @@ import { ApiError } from '../api/client'
 import { useMe } from '../lib/useMe'
 import AppBar from './AppBar'
 import Footer from './Footer'
+import SkipLink from './SkipLink'
 
-// Layout is the authenticated shell: it gates on /api/me (401 bounces
-// to login), then renders the app bar and the routed page. Every
-// signed-in page nests under it.
+// Authenticated shell: gates on /api/me (401 bounces to login).
 export default function Layout() {
   const me = useMe()
   const navigate = useNavigate()
   const location = useLocation()
 
-  // Login stashes an intended destination to sessionStorage before an
-  // OAuth round trip (the gateway always redirects back to /, so the
-  // SPA has to re-apply it). Consumed once, here, right after the
-  // profile that proves the session landed resolves.
+  // vg_next: login stashes the intended destination before OAuth (gateway
+  // always redirects to /); consumed once here after the session resolves.
   useEffect(() => {
     if (!me.data) return
     const stashed = sessionStorage.getItem('vg_next')
@@ -27,7 +24,9 @@ export default function Layout() {
     }
   }, [me.data, navigate])
 
-  if (me.isPending) return <main className="p-8"><Trans>Loading...</Trans></main>
+  if (me.isPending) {
+    return <main id="main-content" tabIndex={-1} className="p-8"><Trans>Loading...</Trans></main>
+  }
   if (me.isError) {
     if (me.error instanceof ApiError && me.error.status === 401) {
       const next =
@@ -37,7 +36,7 @@ export default function Layout() {
       return <Navigate to={`/login${next}`} replace />
     }
     return (
-      <main className="p-8">
+      <main id="main-content" tabIndex={-1} className="p-8">
         <p role="alert"><Trans>Something went wrong. Please try again.</Trans></p>
       </main>
     )
@@ -45,6 +44,7 @@ export default function Layout() {
 
   return (
     <div className="mx-auto max-w-6xl p-4">
+      <SkipLink />
       <AppBar me={me.data} />
       <Outlet />
       <Footer showHelp />

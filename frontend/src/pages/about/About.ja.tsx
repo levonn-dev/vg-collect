@@ -1,11 +1,9 @@
 import { i18n } from '@lingui/core'
 import { site } from '../../lib/site'
 
-// Japanese About page; mirrors About.en slot for slot, and a
-// structural change there lands here in the same change. Deployment
-// facts (operator, contact, active sources) come from site();
-// everything else describes the software and holds for every
-// instance.
+// Mirrors About.en slot for slot; a structural change there lands here
+// too. Deployment facts come from site(), everything else describes
+// the software.
 const SOURCE_NOTES: Record<string, string> = {
   igdb: 'タイトル、プラットフォーム、ジャンル、発売日、カバーアートはIGDBのカタログに由来します。カバー画像はIGDBから直接読み込まれます。',
   pricecharting:
@@ -17,7 +15,7 @@ const SOURCE_NOTES: Record<string, string> = {
 export default function AboutJa() {
   const s = site()
   return (
-    <main aria-label="このサイトについて" className="mx-auto w-full max-w-2xl p-6">
+    <main id="main-content" tabIndex={-1} aria-label="このサイトについて" className="mx-auto w-full max-w-2xl p-6">
       <h2 className="mb-4 text-2xl font-bold">{s.name}について</h2>
       <div className="flex flex-col gap-4 text-sm text-gray-700">
         <p>

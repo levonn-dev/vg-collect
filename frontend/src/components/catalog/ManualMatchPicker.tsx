@@ -5,17 +5,14 @@ import type { CatalogPick } from '../../lib/catalogPicks'
 import SearchPicker from './SearchPicker'
 
 interface ManualMatchPickerProps {
-  // Seeds the listing search (the game's name) so matching starts from
-  // relevant candidates; the console column disambiguates.
+  // Seeds the listing search (game name); console column disambiguates.
   initialQuery: string
   onPick: (m: ManualMatch) => void
   onClose: () => void
 }
 
-// ManualMatchPicker chooses the exact PriceCharting listing for a game
-// being added. Search only - no resolve here; the choice rides the
-// game resolve, which lands on that listing's own product (game
-// identity is listing-keyed). Same dialog shell as ProxyPicker.
+// Search only, no resolve: the choice rides the game resolve, which lands on
+// that listing's own product (game identity is listing-keyed).
 export default function ManualMatchPicker({ initialQuery, onPick, onClose }: ManualMatchPickerProps) {
   const { t } = useLingui()
 

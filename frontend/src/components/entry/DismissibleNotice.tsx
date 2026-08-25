@@ -3,10 +3,8 @@ import type { ReactNode } from 'react'
 
 type NoticeTone = 'green' | 'amber'
 
-// Full class strings per tone, not a color-token interpolated into a
-// shared template: Tailwind's build only picks up classes it can find
-// as literal strings in source, so bg-${tone}-50 would silently drop
-// out of the compiled CSS. Same reasoning as Avatar.tsx's SIZES table.
+// Full class strings per tone, not interpolated: Tailwind only picks up
+// literal class strings, so bg-${tone}-50 would silently drop from the build.
 const TONES: Record<NoticeTone, { container: string; button: string }> = {
   green: {
     container: 'mb-4 flex items-start justify-between gap-3 rounded bg-green-50 p-3 text-sm text-green-800',
@@ -25,9 +23,8 @@ interface DismissibleNoticeProps {
   children: ReactNode
 }
 
-// DismissibleNotice is the banner shell ApprovalNotice and
-// RegionMismatchBanner both render around useDismissibleAck's state:
-// a role="status" bar with the caller's message and a Dismiss button.
+// Banner shell ApprovalNotice/RegionMismatchBanner render around
+// useDismissibleAck's state: a role=status bar with a message and Dismiss.
 export default function DismissibleNotice({ tone, dismissLabel, onDismiss, children }: DismissibleNoticeProps) {
   const cls = TONES[tone]
   return (

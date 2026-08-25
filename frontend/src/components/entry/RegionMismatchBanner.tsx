@@ -13,21 +13,15 @@ interface RegionMismatchBannerProps {
   regionMismatchAckAt?: string
 }
 
-// RegionMismatchBanner flags an entry whose matched price listing
-// prices a different region than the entry itself: a hand-picked
-// match, or an entry left over from before region-aware matching.
-// Dismissing stamps region_mismatch_ack_at server-side for the
-// CURRENT (region, product) choice, so the banner does not reappear
-// until either changes there. Shares useDismissibleAck's optimistic
-// -dismiss-with-rollback mechanics and DismissibleNotice's markup with
-// ApprovalNotice; only the initial-data query and the ack call differ.
+// Dismissing stamps region_mismatch_ack_at server-side for the CURRENT
+// (region, product) pair, so the banner reappears if either changes.
+// Shares useDismissibleAck's mechanics and DismissibleNotice's markup with
+// ApprovalNotice; only the initial-data query and ack call differ.
 export default function RegionMismatchBanner({ entryId, productId, region, regionMismatchAckAt }: RegionMismatchBannerProps) {
   const { t } = useLingui()
-  // Same query key and retry semantics as PricingPanel's own product
-  // fetch, deliberately not ApprovalNotice's retry:false: sharing the
-  // cache entry lets the two dedupe one fetch instead of two when both
-  // are mounted for the same entry, and the render guard below already
-  // keeps a pending/error read from flashing anything.
+  // Same query key/retry as PricingPanel's product fetch (not ApprovalNotice's
+  // retry:false), so both dedupe one fetch when mounted together; the render
+  // guard below already keeps a pending/error read from flashing.
   const product = useQuery({
     queryKey: ['product', productId],
     queryFn: () => fetchProduct(productId),

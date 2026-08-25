@@ -10,9 +10,8 @@ afterEach(() => {
 
 it('boots into the app shell', async () => {
   window.history.pushState({}, '', '/login')
-  // Logged-out boot: the shell's session probe must get a 401, not a
-  // providers-shaped body - the singleton QueryClient would cache it
-  // as a Me and poison every later test in this file.
+  // Session probe must get a 401; the singleton QueryClient would
+  // cache a providers-shaped body as Me, poisoning later tests.
   vi.stubGlobal('fetch', vi.fn((input: unknown) => {
     const url = requestPath(input)
     if (url === '/api/auth/providers') return Promise.resolve(jsonResponse(200, { providers: [] }))
@@ -30,22 +29,16 @@ it('does not retry a 401 and routes to login', async () => {
   // The login route renders its own provider buttons region.
   expect(await screen.findByText('Track your game collection.')).toBeInTheDocument()
   // 401 must not be retried: each shell probes /api/me exactly once
-  // (Layout's gate, then PublicShell's header probe after the
-  // redirect). Retries would push this past two. Polled rather than
-  // asserted instantly: the header probe lands a beat after the login
-  // screen paints, later still on a loaded or coverage-instrumented
-  // run.
+  // (Layout's gate, PublicShell's header probe); retries would push
+  // past two. Polled since the header probe lands a beat later.
   const meCalls = () => fetchMock.mock.calls.filter((c) => requestPath(c[0]) === '/api/me')
   await waitFor(() => expect(meCalls()).toHaveLength(2))
 })
 
-// The header's CurrencySelect fetches /api/fx on every authenticated
-// page; without a rates-shaped stub it renders past an empty body and
-// crashes reading .rates off it, taking the whole shell down. App's
-// QueryClient is a module singleton shared by every test in this
-// file (no per-test reset), and fx's staleTime is an hour, so a bad
-// body cached by one test would poison every later one too - every
-// authenticated-page test here must stub /api/fx explicitly.
+// CurrencySelect fetches /api/fx on every authenticated page and
+// crashes without a rates-shaped stub. App's QueryClient is a module
+// singleton (no per-test reset, 1h staleTime), so every test here must
+// stub /api/fx.
 const fxRates = { base: 'USD', date: '2026-01-01', rates: { EUR: 0.9 } }
 
 it('renders the account page inside the shell', async () => {

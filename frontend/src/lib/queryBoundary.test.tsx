@@ -2,13 +2,9 @@ import { render, screen } from '@testing-library/react'
 import { renderWithI18n } from '../test/i18n'
 import { refetchWarning, renderQueryState } from './queryBoundary'
 
-// The three states a query can be in from this helper's point of view:
-// pending (no data yet), a first-load error (isError, no prior data -
-// nothing to fall back on), and a refetch error (isError, but data
-// from a prior successful fetch is still there). A clean success
-// shares the refetch error's "let the caller's real content through"
-// outcome, so it rides along with that group below rather than getting
-// a fourth bucket of its own.
+// Three states: pending, first-load error (no prior data), and
+// refetch error (isError, prior data still present). Clean success
+// shares the refetch error's outcome, so it has no fourth bucket.
 const pending = { isPending: true, isError: false, data: undefined }
 const loadError = { isPending: false, isError: true, data: undefined }
 const refetchError = { isPending: false, isError: true, data: 'stale data' }
@@ -26,8 +22,7 @@ it('page size wraps a first-load error in py-8 with the given role, role never o
   render(
     <>{renderQueryState(loadError, { size: 'page', loading: 'Loading...', error: 'Failed.', role: 'alert' })}</>,
   )
-  // An explicit role overrides an element's implicit ARIA role, so the
-  // alert must live on an inner element - <main> keeps its landmark role.
+  // Explicit role overrides implicit ARIA role, so alert lives on an inner element.
   const main = screen.getByRole('main')
   expect(main.className).toBe('py-8')
   expect(main).not.toHaveAttribute('role')

@@ -4,9 +4,8 @@ import type { Entry } from '../../api/collection'
 import { updateEntry } from '../../api/collection'
 import { entryToUpdate } from '../../lib/entryUpdate'
 
-// PinStar flips pinned through the full-replacement PUT: the payload
-// is the faithful baseline with one field changed, so a quick toggle
-// never clears anything else.
+// Flips pinned through the full-replacement PUT: the payload is the faithful
+// baseline with one field changed, so a toggle never clears anything else.
 export default function PinStar({ entry }: { entry: Entry }) {
   const { t } = useLingui()
   const queryClient = useQueryClient()

@@ -1,5 +1,7 @@
+import { useLingui } from '@lingui/react/macro'
 import { Navigate } from 'react-router'
 import { landingPageValues } from '../api/schema'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { useMe } from '../lib/useMe'
 
 type LandingPage = (typeof landingPageValues)[number]
@@ -10,12 +12,12 @@ const targets: Record<LandingPage, string> = {
   explore: '/explore',
 }
 
-// Home is the bare "/" entry: it carries no content of its own, only a
-// redirect to the signed-in user's landing_page preference. Layout has
-// already resolved ['me'] before this ever mounts, so this read is a
-// cache hit; render nothing while it is not yet available rather than
-// flash a loading state under the redirect.
+// Redirects to the user's landing_page preference. Layout already
+// resolved ['me'] before mount, so this is a cache hit; renders
+// nothing meanwhile, avoiding a loading flash.
 export default function Home() {
+  const { t } = useLingui()
+  useDocumentTitle(t`Home`)
   const me = useMe()
   if (!me.data) return null
   return <Navigate to={targets[me.data.landing_page]} replace />

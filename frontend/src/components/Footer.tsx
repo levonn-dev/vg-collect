@@ -3,12 +3,8 @@ import { Link } from 'react-router'
 import { site } from '../lib/site'
 import LocaleSwitch from './LocaleSwitch'
 
-// Footer renders on every page: page links, one credit line per data
-// source this deployment runs, and the operator line when one is
-// configured. A build with no VITE_SITE_* values shows links only.
-// It is also the language switcher's only mount point, and it renders
-// in both shells, so a visitor with no session can still switch
-// languages on the public pages.
+// Only mount point for LocaleSwitch, rendered in both shells so a signed-out
+// visitor can still switch languages. No VITE_SITE_* values shows links only.
 export default function Footer({ showHelp = false }: { showHelp?: boolean }) {
   const { t, i18n } = useLingui()
   const s = site()
@@ -19,8 +15,7 @@ export default function Footer({ showHelp = false }: { showHelp?: boolean }) {
       className="mt-8 border-t border-gray-200 pt-4 pb-2 text-xs text-gray-500"
     >
       <div className="flex items-start justify-between gap-4">
-        {/* The switcher sits beside the nav, not inside it: it is a
-            control, not a page link. */}
+        {/* Beside the nav, not inside it: a control, not a page link. */}
         <nav aria-label={t`Site`} className="flex flex-wrap gap-x-4 gap-y-1">
           <Link to="/about" className="hover:text-gray-900">
             <Trans>About</Trans>

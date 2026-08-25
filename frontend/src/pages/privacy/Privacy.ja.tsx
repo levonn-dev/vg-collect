@@ -1,10 +1,7 @@
 import { site } from '../../lib/site'
 
-// Japanese Privacy page; mirrors Privacy.en section for section.
-// Privacy statements here must track actual app behavior: what the
-// stores keep, what deletion removes, and which third parties see
-// browser traffic. Not legal advice; operators deploying publicly
-// should have it reviewed. Move the Last updated date on change.
+// Mirrors Privacy.en section for section. Must track actual app
+// behavior; not legal advice. Move the Last updated date on change.
 export default function PrivacyJa() {
   const s = site()
   const providers =
@@ -12,7 +9,7 @@ export default function PrivacyJa() {
   const igdbActive = s.dataSources.some((d) => d.key === 'igdb')
   const contact = s.contact || 'このインスタンスの運営者'
   return (
-    <main aria-label="プライバシーポリシー" className="mx-auto w-full max-w-2xl p-6">
+    <main id="main-content" tabIndex={-1} aria-label="プライバシーポリシー" className="mx-auto w-full max-w-2xl p-6">
       <h2 className="mb-4 text-2xl font-bold">プライバシーポリシー</h2>
       <div className="flex flex-col gap-4 text-sm text-gray-700">
         <section aria-label="保存される情報">
