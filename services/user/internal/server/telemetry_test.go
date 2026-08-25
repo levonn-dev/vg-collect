@@ -18,21 +18,15 @@ import (
 	"github.com/levonn-dev/vgkeep/services/user/internal/store"
 )
 
-// ============================================================================
-// Telemetry unit layer (no Docker, runs under -short)
+// ---- Telemetry unit layer (no Docker, runs under -short) ----
 //
-// These tests pin the domain counters (vg.user.account.upserts,
-// vg.user.currency.seeds, vg.user.account.deletes) and the log events
-// (store error, account created, account deleted) added for the runbook.
-// server.New registers its instruments against the global meter provider,
-// so captureTelemetry must run BEFORE newUnitServer: it swaps in an SDK
-// provider with a manual reader, plus a record-capturing default slog
-// handler, and restores both on cleanup.
-// ============================================================================
+// Pins the domain counters and log events added for the runbook.
+// server.New registers instruments against the global meter provider, so
+// captureTelemetry must run BEFORE newUnitServer, to swap in the SDK's
+// manual-reader provider and a capturing slog handler (restored on cleanup).
 
-// logCapture is a slog.Handler that records every log record under a
-// mutex (handlers log from the httptest server's goroutine). WithAttrs
-// drops pre-bound attrs; only per-call attrs are asserted here.
+// logCapture is a slog.Handler recording every log record under a mutex
+// (handlers log from the httptest goroutine); WithAttrs drops pre-bound attrs.
 type logCapture struct {
 	mu   sync.Mutex
 	recs []slog.Record
@@ -50,9 +44,8 @@ func (c *logCapture) Handle(_ context.Context, r slog.Record) error {
 func (c *logCapture) WithAttrs([]slog.Attr) slog.Handler { return c }
 func (c *logCapture) WithGroup(string) slog.Handler      { return c }
 
-// find returns the level and flattened attrs of the first captured
-// record with the given message. String rendering is enough for the
-// bounded field values under test.
+// find returns the level and flattened attrs of the first record matching
+// msg; string rendering is enough for the bounded field values under test.
 func (c *logCapture) find(msg string) (slog.Level, map[string]string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -70,9 +63,8 @@ func (c *logCapture) find(msg string) (slog.Level, map[string]string, bool) {
 	return 0, nil, false
 }
 
-// captureTelemetry adapts metrictest.Install for this package's tests,
-// which also need the record-capturing default slog handler swapped
-// in and restored on the same cleanup.
+// captureTelemetry adapts metrictest.Install, also swapping in the
+// record-capturing slog handler and restoring both on cleanup.
 func captureTelemetry(t *testing.T) (*sdkmetric.ManualReader, *logCapture) {
 	t.Helper()
 	reader := metrictest.Install(t)
@@ -110,7 +102,7 @@ func TestUpsertTelemetry_Created(t *testing.T) {
 		},
 	}
 	srv, a := newUnitServer(t, st)
-	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc", "service"),
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.serviceToken(t, "svc:auth"),
 		map[string]string{"email": "a@example.com", "display_name": "Alice", "locale_hint": "de-DE"})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
@@ -143,7 +135,7 @@ func TestUpsertTelemetry_Existing(t *testing.T) {
 		},
 	}
 	srv, a := newUnitServer(t, st)
-	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc", "service"),
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.serviceToken(t, "svc:auth"),
 		map[string]string{"email": "a@example.com", "display_name": "Alice", "locale_hint": "de-DE"})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
@@ -182,7 +174,7 @@ func TestUpsertTelemetry_SeedSourceByHintClass(t *testing.T) {
 				},
 			}
 			srv, a := newUnitServer(t, st)
-			resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc", "service"), tc.body)
+			resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.serviceToken(t, "svc:auth"), tc.body)
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("status = %d, want 200", resp.StatusCode)
 			}
@@ -191,7 +183,7 @@ func TestUpsertTelemetry_SeedSourceByHintClass(t *testing.T) {
 	}
 }
 
-func TestUpsertTelemetry_StoreErrorLog(t *testing.T) {
+func TestUpsertTelemetry_HandlerErrorLog(t *testing.T) {
 	reader, logs := captureTelemetry(t)
 	st := &stubStore{
 		upsert: func(context.Context, string, string, *string, string) (store.User, bool, error) {
@@ -199,21 +191,21 @@ func TestUpsertTelemetry_StoreErrorLog(t *testing.T) {
 		},
 	}
 	srv, a := newUnitServer(t, st)
-	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc", "service"),
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.serviceToken(t, "svc:auth"),
 		map[string]string{"email": "a@example.com", "display_name": "Alice"})
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", resp.StatusCode)
 	}
 
-	level, attrs, ok := logs.find("store error")
+	level, attrs, ok := logs.find("handler error")
 	if !ok {
-		t.Fatal("no store error record on the 500 path")
+		t.Fatal("no handler error record on the 500 path")
 	}
 	if level != slog.LevelError {
-		t.Fatalf("store error level = %v, want ERROR", level)
+		t.Fatalf("handler error level = %v, want ERROR", level)
 	}
 	if attrs["op"] != "upsert" || attrs["err"] == "" {
-		t.Fatalf("store error attrs = %v, want op=upsert with err", attrs)
+		t.Fatalf("handler error attrs = %v, want op=upsert with err", attrs)
 	}
 	// A failed upsert has no outcome; the counter must not move.
 	if pts := metrictest.Int64Points(t, reader, "vg.user.account.upserts"); len(pts) != 0 {
@@ -221,23 +213,23 @@ func TestUpsertTelemetry_StoreErrorLog(t *testing.T) {
 	}
 }
 
-func TestGetTelemetry_StoreErrorLog(t *testing.T) {
+func TestGetTelemetry_HandlerErrorLog(t *testing.T) {
 	_, logs := captureTelemetry(t)
 	st := &stubStore{
 		get: func(context.Context, uuid.UUID) (store.User, error) { return store.User{}, errStubUser },
 	}
 	srv, a := newUnitServer(t, st)
-	resp := do(t, "GET", srv.URL+"/users/"+uuid.NewString(), a.token(t, "svc", "service"), nil)
+	resp := do(t, "GET", srv.URL+"/users/"+uuid.NewString(), a.serviceToken(t, "svc"), nil)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", resp.StatusCode)
 	}
-	_, attrs, ok := logs.find("store error")
+	_, attrs, ok := logs.find("handler error")
 	if !ok || attrs["op"] != "get" || attrs["err"] == "" {
-		t.Fatalf("store error record = %v (found %v), want op=get with err", attrs, ok)
+		t.Fatalf("handler error record = %v (found %v), want op=get with err", attrs, ok)
 	}
 }
 
-func TestUpdateTelemetry_StoreErrorLog(t *testing.T) {
+func TestUpdateTelemetry_HandlerErrorLog(t *testing.T) {
 	_, logs := captureTelemetry(t)
 	st := &stubStore{
 		update: func(context.Context, uuid.UUID, *string, *string, *string, *string, *string, time.Duration) (store.User, error) {
@@ -251,9 +243,9 @@ func TestUpdateTelemetry_StoreErrorLog(t *testing.T) {
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", resp.StatusCode)
 	}
-	_, attrs, ok := logs.find("store error")
+	_, attrs, ok := logs.find("handler error")
 	if !ok || attrs["op"] != "update" || attrs["err"] == "" {
-		t.Fatalf("store error record = %v (found %v), want op=update with err", attrs, ok)
+		t.Fatalf("handler error record = %v (found %v), want op=update with err", attrs, ok)
 	}
 }
 
@@ -299,7 +291,7 @@ func TestDeleteTelemetry_OutcomeAndLog(t *testing.T) {
 	}
 }
 
-func TestDeleteTelemetry_StoreErrorLog(t *testing.T) {
+func TestDeleteTelemetry_HandlerErrorLog(t *testing.T) {
 	reader, logs := captureTelemetry(t)
 	st := &stubStore{
 		delete: func(context.Context, uuid.UUID) (bool, error) { return false, errStubUser },
@@ -310,26 +302,23 @@ func TestDeleteTelemetry_StoreErrorLog(t *testing.T) {
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", resp.StatusCode)
 	}
-	_, attrs, ok := logs.find("store error")
+	_, attrs, ok := logs.find("handler error")
 	if !ok || attrs["op"] != "delete" || attrs["err"] == "" {
-		t.Fatalf("store error record = %v (found %v), want op=delete with err", attrs, ok)
+		t.Fatalf("handler error record = %v (found %v), want op=delete with err", attrs, ok)
 	}
 	if pts := metrictest.Int64Points(t, reader, "vg.user.account.deletes"); len(pts) != 0 {
 		t.Fatalf("account.deletes incremented on the error path: %v", pts)
 	}
 }
 
-// TestUnitInternalErrorLogCarriesCause pins the shared 500 helper
-// itself (the four *_StoreErrorLog tests above already pin each call
-// site's own op/detail pairing): the problem body carries the generic
-// detail text, distinct from the log line's op label and cause,
-// exactly as collection's h.internalError - the model this and
-// enrichment's helper share - established.
+// Pins the shared 500 helper itself (the four *_HandlerErrorLog tests
+// above already pin each call site's op/detail): the problem body carries
+// generic detail text, distinct from the log line's op label and cause.
 func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 	_, logs := captureTelemetry(t)
 	st := &stubStore{get: func(context.Context, uuid.UUID) (store.User, error) { return store.User{}, errStubUser }}
 	srv, a := newUnitServer(t, st)
-	resp := do(t, "GET", srv.URL+"/users/"+uuid.NewString(), a.token(t, "svc", "service"), nil)
+	resp := do(t, "GET", srv.URL+"/users/"+uuid.NewString(), a.serviceToken(t, "svc"), nil)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", resp.StatusCode)
 	}
@@ -344,8 +333,8 @@ func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 		t.Fatalf("problem = %+v, want code internal, detail %q", p, "get failed")
 	}
 
-	level, attrs, ok := logs.find("store error")
+	level, attrs, ok := logs.find("handler error")
 	if !ok || level != slog.LevelError || attrs["op"] != "get" || attrs["err"] == "" {
-		t.Fatalf("store error record = %v (found %v), want ERROR op=get with err", attrs, ok)
+		t.Fatalf("handler error record = %v (found %v), want ERROR op=get with err", attrs, ok)
 	}
 }

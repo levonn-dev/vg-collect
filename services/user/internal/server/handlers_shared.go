@@ -9,13 +9,10 @@ import (
 	"github.com/levonn-dev/vgkeep/services/user/internal/store"
 )
 
-// The /shared handlers serve any authenticated caller: no sub-scoping,
-// visibility-filtered, ProfileCard projection only (never email or
-// roles). Unknown and private answer the same 404 so resolution is
-// not an existence oracle. GetSharedProfilesByIds' ids (maxItems: 100)
-// and SearchSharedProfiles' q (maxLength: 64) size limits api/user.yaml
-// declares are enforced by specval's request-validation middleware
-// ahead of these handlers, so neither handler checks them directly.
+// /shared handlers serve any authenticated caller: no sub-scoping,
+// ProfileCard projection only (never email or roles). Unknown and private
+// answer the same 404 (anti-oracle). ids (maxItems: 100) and q
+// (maxLength: 64) are enforced by specval, not checked here.
 
 const searchLimit = 20
 

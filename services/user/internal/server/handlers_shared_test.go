@@ -63,10 +63,8 @@ func TestUnitSharedProfile_VisibilityGate(t *testing.T) {
 			}
 			bodies[name] = p
 		}
-		// The leak this endpoint exists to prevent: private and unknown
-		// must be indistinguishable by the response BODY, not merely by
-		// status code - a differing code or detail would let a caller
-		// tell "exists but private" apart from "does not exist".
+		// private and unknown must be indistinguishable by the response body,
+		// not just status - a differing body would let a caller detect existence.
 		if bodies["private"] != bodies["missing"] {
 			t.Fatalf("problem bodies differ: private=%+v missing=%+v", bodies["private"], bodies["missing"])
 		}
@@ -136,12 +134,9 @@ func TestUnitSharedSearch_FoldsQuery(t *testing.T) {
 }
 
 func TestUnitSharedSearch_FoldedEmptyQuery_SkipsStore(t *testing.T) {
-	// A query that folds to "" (NormalizeHandle strips underscores, so an
-	// underscores-only query folds to empty) short-circuits to an empty
-	// result before the store is touched -- the empty stubStore
-	// (searchListed left nil) proves it: a call would panic "unexpected
-	// SearchListed". See SearchSharedProfiles' folded == "" branch in
-	// handlers_shared.go.
+	// A query that folds to "" (NormalizeHandle strips underscores) short-
+	// circuits before the store is touched; the empty stubStore
+	// (searchListed nil) would panic if it were, proving the branch fires.
 	srv, a := newUnitServer(t, &stubStore{})
 	resp := do(t, "GET", srv.URL+"/shared/profiles/search?q=_", a.token(t, "viewer"), nil)
 	if resp.StatusCode != http.StatusOK {
@@ -170,10 +165,9 @@ func TestUnitSharedSearch_StoreError_InternalServerError(t *testing.T) {
 	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }
 
-// TestUnitSharedSearch_StoreErrorLog pins that the 500 branch now logs
-// its cause via h.internalError, like every handler in handlers.go,
-// instead of a bare problem() call with no server-side trace.
-func TestUnitSharedSearch_StoreErrorLog(t *testing.T) {
+// Pins that the 500 branch logs its cause via h.internalError, like every
+// handler in handlers.go, not a bare problem() call with no server trace.
+func TestUnitSharedSearch_HandlerErrorLog(t *testing.T) {
 	_, logs := captureTelemetry(t)
 	st := &stubStore{searchListed: func(context.Context, string, int) ([]store.User, error) {
 		return nil, errStubUser
@@ -183,16 +177,15 @@ func TestUnitSharedSearch_StoreErrorLog(t *testing.T) {
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", resp.StatusCode)
 	}
-	_, attrs, ok := logs.find("store error")
+	_, attrs, ok := logs.find("handler error")
 	if !ok || attrs["op"] != "shared_search" || attrs["err"] == "" {
-		t.Fatalf("store error record = %v (found %v), want op=shared_search with err", attrs, ok)
+		t.Fatalf("handler error record = %v (found %v), want op=shared_search with err", attrs, ok)
 	}
 }
 
 func TestUnitSharedSearch_QueryTooLong_BadRequest(t *testing.T) {
-	// api/user.yaml declares maxLength: 64 on q; specval's request-
-	// validation middleware now rejects 65+ bytes ahead of this
-	// handler (the empty stubStore proves the store is never touched).
+	// maxLength: 64 on q (api/user.yaml); specval rejects 65+ bytes before
+	// this handler runs (the empty stubStore proves it).
 	q := strings.Repeat("a", 65)
 	srv, a := newUnitServer(t, &stubStore{})
 	resp := do(t, "GET", srv.URL+"/shared/profiles/search?q="+q, a.token(t, "viewer"), nil)
@@ -209,11 +202,9 @@ func TestUnitSharedProfile_StoreError_InternalServerError(t *testing.T) {
 	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }
 
-// TestUnitSharedProfile_StoreErrorLog pins that the 500 branch now
-// logs its cause via h.internalError, like every handler in
-// handlers.go, instead of a bare problem() call with no server-side
-// trace.
-func TestUnitSharedProfile_StoreErrorLog(t *testing.T) {
+// Pins that the 500 branch logs its cause via h.internalError, like every
+// handler in handlers.go, not a bare problem() call with no server trace.
+func TestUnitSharedProfile_HandlerErrorLog(t *testing.T) {
 	_, logs := captureTelemetry(t)
 	st := &stubStore{getByHandle: func(context.Context, string) (store.User, error) {
 		return store.User{}, errStubUser
@@ -223,9 +214,9 @@ func TestUnitSharedProfile_StoreErrorLog(t *testing.T) {
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", resp.StatusCode)
 	}
-	_, attrs, ok := logs.find("store error")
+	_, attrs, ok := logs.find("handler error")
 	if !ok || attrs["op"] != "shared_profile" || attrs["err"] == "" {
-		t.Fatalf("store error record = %v (found %v), want op=shared_profile with err", attrs, ok)
+		t.Fatalf("handler error record = %v (found %v), want op=shared_profile with err", attrs, ok)
 	}
 }
 
@@ -239,10 +230,9 @@ func TestUnitSharedByIds_StoreError_InternalServerError(t *testing.T) {
 	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }
 
-// TestUnitSharedByIds_StoreErrorLog pins that the 500 branch now logs
-// its cause via h.internalError, like every handler in handlers.go,
-// instead of a bare problem() call with no server-side trace.
-func TestUnitSharedByIds_StoreErrorLog(t *testing.T) {
+// Pins that the 500 branch logs its cause via h.internalError, like every
+// handler in handlers.go, not a bare problem() call with no server trace.
+func TestUnitSharedByIds_HandlerErrorLog(t *testing.T) {
 	_, logs := captureTelemetry(t)
 	st := &stubStore{getByIDs: func(context.Context, []uuid.UUID) ([]store.User, error) {
 		return nil, errStubUser
@@ -252,16 +242,15 @@ func TestUnitSharedByIds_StoreErrorLog(t *testing.T) {
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", resp.StatusCode)
 	}
-	_, attrs, ok := logs.find("store error")
+	_, attrs, ok := logs.find("handler error")
 	if !ok || attrs["op"] != "shared_by_ids" || attrs["err"] == "" {
-		t.Fatalf("store error record = %v (found %v), want op=shared_by_ids with err", attrs, ok)
+		t.Fatalf("handler error record = %v (found %v), want op=shared_by_ids with err", attrs, ok)
 	}
 }
 
 func TestUnitSharedByIds_TooManyIds_BadRequest(t *testing.T) {
-	// api/user.yaml declares maxItems: 100 on ids; specval's request-
-	// validation middleware now rejects 101+ entries ahead of this
-	// handler (the empty stubStore proves the store is never touched).
+	// maxItems: 100 on ids (api/user.yaml); specval rejects 101+ entries
+	// before this handler runs (the empty stubStore proves it).
 	q := url.Values{}
 	for range 101 {
 		q.Add("ids", uuid.New().String())

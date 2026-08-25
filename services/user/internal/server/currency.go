@@ -2,11 +2,9 @@ package server
 
 import "golang.org/x/text/language"
 
-// currencyByRegion maps ISO 3166 regions to the currency a new
-// account defaults to. The set matches the ECB reference list the fx
-// provider serves, plus USD; anything unmapped falls back to USD.
-// Bulgaria adopted the euro on 2026-01-01, so BG maps to EUR rather
-// than the now-retired BGN.
+// currencyByRegion maps ISO 3166 regions to a new account's default
+// currency, matching the ECB reference list plus USD (unmapped falls back
+// to USD). Bulgaria adopted the euro on 2026-01-01, replacing BGN.
 var currencyByRegion = map[string]string{
 	// eurozone
 	"AT": "EUR", "BE": "EUR", "BG": "EUR", "CY": "EUR", "DE": "EUR", "EE": "EUR",
@@ -22,13 +20,10 @@ var currencyByRegion = map[string]string{
 	"SG": "SGD", "TH": "THB", "TR": "TRY", "US": "USD", "ZA": "ZAR",
 }
 
-// currencyForLocale derives a new account's default currency from a
-// BCP 47 tag ("de-DE" -> EUR; bare "de" infers DE via the likely
-// subtag). Absent, unparseable, or unmapped hints default to USD.
-// source reports how the currency was chosen and is the bounded label
-// set of the vg.user.currency.seeds counter: "locale" when the hint
-// parsed and its region mapped (a US hint mapping to USD counts),
-// "fallback" otherwise.
+// currencyForLocale derives a default currency from a BCP 47 tag ("de-DE"
+// -> EUR; bare "de" via the likely subtag); absent, unparseable, or
+// unmapped hints default to USD. source is the vg.user.currency.seeds
+// label ("locale" if the hint mapped, "fallback" otherwise).
 func currencyForLocale(hint string) (currency, source string) {
 	if hint == "" {
 		return "USD", "fallback"

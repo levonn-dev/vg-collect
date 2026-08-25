@@ -1,10 +1,7 @@
--- Handles replace display_name as the single user identity. Case and
--- underscores are decoration: uniqueness and lookup fold via handle_key.
--- Backfill derives from display_name (underscore transform), falls back
--- to the email local part, dedupes on the folded key with a numeric
--- suffix. Dev-tier data volumes; the dedupe pass walks rows oldest
--- first and probes each candidate against a running claimed-key set,
--- so a bumped value can never collide with another row's key.
+-- Handles replace display_name as the identity; case/underscores are
+-- decoration, folding via handle_key. Backfill derives from display_name,
+-- falls back to the email local part, then dedupes via a numeric suffix,
+-- walking rows oldest-first against a running claimed-key set so no two rows collide.
 ALTER TABLE users ADD COLUMN handle text;
 ALTER TABLE users ADD COLUMN handle_changed_at timestamptz;
 ALTER TABLE users ADD COLUMN profile_visibility text NOT NULL DEFAULT 'private'
@@ -22,18 +19,12 @@ WHERE handle IS NULL OR length(replace(handle, '_', '')) < 2;
 UPDATE users SET handle = 'collector'
 WHERE handle IS NULL OR length(replace(handle, '_', '')) < 2;
 
--- Walk rows oldest-first, probing each row's own derived value (then
--- numeric suffixes) against a running set of already-claimed fold
--- keys. A candidate is only accepted once confirmed collision-free
--- against every row decided so far, so a suffixed value can never
--- land on a key another row already holds - unlike a single-pass
--- partition dedupe, which fixes suffixes from stale sibling counts
--- and can walk two different partitions onto the same folded key.
--- claimed starts pre-loaded with the reserved handle folds (mirrors
--- services/user/internal/store/handle.go's ReservedHandles) so a
--- display_name that derives to one of them, e.g. "Search", probes
--- straight past it to a suffixed value - the app's mint path already
--- refuses these, and the backfill must not be the one way around it.
+-- Walks rows oldest-first, accepting a candidate only once confirmed
+-- collision-free against every row decided so far (unlike a single-pass
+-- partition dedupe, which can walk two partitions onto the same folded
+-- key from stale sibling counts). claimed starts pre-loaded with the
+-- reserved handle folds (handle.go's ReservedHandles), so a reserved-word
+-- derivation probes past it like any other collision.
 DO $$
 DECLARE
     r RECORD;
@@ -53,11 +44,9 @@ BEGIN
         LOOP
             fold := lower(replace(candidate, '_', ''));
             EXIT WHEN NOT (fold = ANY(claimed));
-            -- rtrim mirrors services/user/internal/store/store.go's Upsert
-            -- probe loop exactly: a clamp that lands mid-underscore-run
-            -- must drop the trailing underscore before the suffix digits
-            -- land, or the backfill and the app mint the same collision
-            -- into two different (though same-folding) handles.
+            -- rtrim mirrors store.go's Upsert probe loop: a clamp landing
+            -- mid-underscore-run must drop the trailing underscore before the suffix
+            -- digits land, or backfill and app-mint the same collision differently.
             candidate := rtrim(left(base, 30 - length(attempt::text)), '_') || attempt::text;
             attempt := attempt + 1;
         END LOOP;

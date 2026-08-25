@@ -1,7 +1,5 @@
-// Validator-path pins: each case drives a request through the full
-// handler stack (real router, real jwtauth, no hand-faked wiring) and
-// asserts the status and problem code specval's request-validation
-// middleware answers with.
+// Each case drives a request through the full handler stack and asserts
+// the status/code specval answers with.
 package server_test
 
 import (
@@ -14,8 +12,7 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 )
 
-// TestValidatorPath_UpdateUser_HandleTooShort pins the Handle
-// schema's minLength(2) contract cap.
+// TestValidatorPath_UpdateUser_HandleTooShort pins Handle's minLength(2) cap.
 func TestValidatorPath_UpdateUser_HandleTooShort(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{})
 	uid := uuid.NewString()
@@ -23,8 +20,8 @@ func TestValidatorPath_UpdateUser_HandleTooShort(t *testing.T) {
 	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
-// TestValidatorPath_UpdateUser_HandleBadChars pins the Handle schema's
-// pattern contract (alphanumeric plus interior underscores only).
+// TestValidatorPath_UpdateUser_HandleBadChars pins Handle's pattern
+// (alphanumeric plus interior underscores only).
 func TestValidatorPath_UpdateUser_HandleBadChars(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{})
 	uid := uuid.NewString()
@@ -32,8 +29,7 @@ func TestValidatorPath_UpdateUser_HandleBadChars(t *testing.T) {
 	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
-// TestValidatorPath_UpdateUser_BadProfileVisibilityEnum pins
-// UpdateUserRequest.profile_visibility's enum contract.
+// TestValidatorPath_UpdateUser_BadProfileVisibilityEnum pins profile_visibility's enum.
 func TestValidatorPath_UpdateUser_BadProfileVisibilityEnum(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{})
 	uid := uuid.NewString()
@@ -41,11 +37,8 @@ func TestValidatorPath_UpdateUser_BadProfileVisibilityEnum(t *testing.T) {
 	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
-// TestValidatorPath_UpdateUser_AvatarUrlOversize pins the
-// UpdateUserRequest.avatar_url maxLength(2048) contract cap: the
-// validator rejects an oversize URL before the handler runs (the
-// handler keeps only the scheme/host parse, which the string schema
-// cannot express).
+// TestValidatorPath_UpdateUser_AvatarUrlOversize pins avatar_url's
+// maxLength(2048); the handler keeps only the scheme/host parse.
 func TestValidatorPath_UpdateUser_AvatarUrlOversize(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{})
 	uid := uuid.NewString()
@@ -54,8 +47,7 @@ func TestValidatorPath_UpdateUser_AvatarUrlOversize(t *testing.T) {
 	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
-// TestValidatorPath_UpdateUser_BadCurrencyEnum pins CurrencyCode's
-// pattern contract (3-letter uppercase).
+// TestValidatorPath_UpdateUser_BadCurrencyEnum pins CurrencyCode's pattern (3-letter uppercase).
 func TestValidatorPath_UpdateUser_BadCurrencyEnum(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{})
 	uid := uuid.NewString()

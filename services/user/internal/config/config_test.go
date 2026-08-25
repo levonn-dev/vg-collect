@@ -20,11 +20,9 @@ func TestLoad(t *testing.T) {
 }
 
 func TestLoad_MissingRequired(t *testing.T) {
-	// t.Setenv can only represent a present value, so this unsets each
-	// var afterward to prove required's own absent-only failure mode;
-	// notEmpty (also set on both fields here) separately catches a
-	// present-but-empty value. t.Setenv registers cleanup before
-	// os.Unsetenv so the env is restored correctly at test end.
+	// t.Setenv can't represent "unset", so this Unsets each var after to
+	// test required's absent-only mode (notEmpty separately catches
+	// present-but-empty). t.Setenv's cleanup still restores the env at test end.
 	for _, k := range []string{"DATABASE_URL", "JWKS_URL"} {
 		t.Setenv(k, "")
 		if err := os.Unsetenv(k); err != nil {

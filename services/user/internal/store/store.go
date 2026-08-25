@@ -15,6 +15,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 )
 
 var ErrNotFound = errors.New("user not found")
@@ -26,26 +28,6 @@ type querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
-// scanAll drains rows into a slice, closing them once done. seed is
-// the starting value the caller appends onto - nil for rolesQ (a
-// role-less user reports nil, not []) versus []T{} for the two
-// batch-user readers below, so callers keep their own zero-row
-// contract instead of scanAll picking one for everybody; every site
-// in this package reports rows.Err() raw, so that part is not a
-// parameter. scan keeps its own error-wrap text.
-func scanAll[T any](rows pgx.Rows, seed []T, scan func(pgx.Rows) (T, error)) ([]T, error) {
-	defer rows.Close()
-	out := seed
-	for rows.Next() {
-		x, err := scan(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, x)
-	}
-	return out, rows.Err()
-}
-
 // rolesQ loads a user's roles; nil for a role-less user (handlers
 // normalize to [] at the JSON boundary).
 func rolesQ(ctx context.Context, q querier, id uuid.UUID) ([]string, error) {
@@ -54,7 +36,7 @@ func rolesQ(ctx context.Context, q querier, id uuid.UUID) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: roles: %w", err)
 	}
-	return scanAll(rows, nil, func(r pgx.Rows) (string, error) {
+	return pgkit.ScanAll(rows, nil, func(r pgx.Rows) (string, error) {
 		var role string
 		if err := r.Scan(&role); err != nil {
 			return "", fmt.Errorf("store: scan role: %w", err)
@@ -90,14 +72,10 @@ func scanUser(row pgx.Row) (User, error) {
 	return u, err
 }
 
-// Upsert creates the user on first login; an existing account is
-// returned untouched. The displayNameSeed (the provider's name) is
-// used only to derive the minted handle on the create path; logins
-// never overwrite a handle. Collisions on the folded handle key are
-// deduped by appending a numeric suffix and retrying. A returning
-// user is resolved with one indexed SELECT by email; the derive +
-// dedupe-probe + insert path below runs only on a first-ever login,
-// never wasted on the common case of a row that already exists.
+// Upsert creates the user on first login; an existing account is returned
+// untouched, and displayNameSeed never overwrites an existing handle.
+// Handle-key collisions dedupe via a numeric suffix. A returning user costs
+// one indexed SELECT; the derive/dedupe/insert path only runs on first login.
 func (s *Store) Upsert(ctx context.Context, email, displayNameSeed string, avatarURL *string, preferredCurrency string) (User, bool, error) {
 	var u User
 	created := true
@@ -114,11 +92,9 @@ func (s *Store) Upsert(ctx context.Context, email, displayNameSeed string, avata
 			if ReservedHandles[NormalizeHandle(base)] {
 				base = base + "1"
 			}
-			// Find a free folded key BEFORE inserting: a unique-violation
-			// error would abort the whole transaction, so the dedupe loop
-			// must be SELECT-based. The residual insert race is
-			// astronomically rare here and simply errors the login, which
-			// retries.
+			// Find a free key BEFORE inserting: a unique-violation would abort
+			// the transaction, so the dedupe loop is SELECT-based. The
+			// residual insert race is rare and simply errors the login, which retries.
 			handle := base
 			for attempt := 2; ; attempt++ {
 				var taken bool
@@ -144,10 +120,8 @@ func (s *Store) Upsert(ctx context.Context, email, displayNameSeed string, avata
 				RETURNING `+userCols,
 				email, handle, avatarURL, preferredCurrency))
 			if errors.Is(err, pgx.ErrNoRows) {
-				// Lost the race to a concurrent create between the
-				// SELECT above and this INSERT: the account exists now,
-				// so fall back to the same re-SELECT a plain conflict
-				// always used.
+				// Lost the race to a concurrent create between the SELECT and
+				// this INSERT; fall back to the same re-SELECT a plain conflict always used.
 				created = false
 				u, err = scanUser(tx.QueryRow(ctx,
 					`SELECT `+userCols+` FROM users WHERE email = $1`, email))
@@ -180,12 +154,9 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
 }
 
-// Update edits the self-serviceable fields. Nil keeps the current
-// value; empty avatarURL clears it. A handle change (any change to the
-// typed form, including decoration-only) stamps handle_changed_at and
-// is refused with ErrHandleCooldown when the previous change is
-// younger than cooldown; ErrHandleTaken when another account owns the
-// folded key.
+// Update edits self-serviceable fields; nil keeps the current value,
+// empty avatarURL clears it. Any handle change (incl. decoration-only)
+// stamps handle_changed_at; ErrHandleCooldown if too recent, ErrHandleTaken if the key's owned.
 func (s *Store) Update(ctx context.Context, id uuid.UUID, handle, avatarURL, preferredCurrency, profileVisibility, landingPage *string, cooldown time.Duration) (User, error) {
 	var u User
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -246,10 +217,8 @@ func (s *Store) Update(ctx context.Context, id uuid.UUID, handle, avatarURL, pre
 	return u, nil
 }
 
-// Delete removes the account row (roles cascade). Deleting a missing
-// user is a no-op: account deletion retries must converge. The deleted
-// result reports whether a row was removed; false means the account
-// was already gone.
+// Delete removes the account row (roles cascade); deleting a missing user
+// is a no-op so retries converge. Reports whether a row was removed.
 func (s *Store) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
 	tag, err := s.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
 	if err != nil {
@@ -275,9 +244,8 @@ func (s *Store) Get(ctx context.Context, id uuid.UUID) (User, error) {
 	return u, nil
 }
 
-// GetByHandle resolves a folded handle key to its user, any
-// visibility; the handler applies the visibility gate so unknown and
-// private stay indistinguishable at one place.
+// GetByHandle resolves a folded handle key to its user at any visibility;
+// the handler applies the visibility gate, so unknown/private stay indistinguishable.
 func (s *Store) GetByHandle(ctx context.Context, foldedHandle string) (User, error) {
 	u, err := scanUser(s.pool.QueryRow(ctx,
 		`SELECT `+userCols+` FROM users WHERE handle_key = $1`, foldedHandle))
@@ -298,7 +266,7 @@ func (s *Store) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: get by ids: %w", err)
 	}
-	return scanAll(rows, []User{}, func(r pgx.Rows) (User, error) {
+	return pgkit.ScanAll(rows, []User{}, func(r pgx.Rows) (User, error) {
 		u, err := scanUser(r)
 		if err != nil {
 			return User{}, fmt.Errorf("store: scan user: %w", err)
@@ -307,19 +275,15 @@ func (s *Store) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]User, error) {
 	})
 }
 
-// escapeLike escapes the LIKE metacharacters backslash and % in a raw
-// query fragment before it is spliced into '%' || $1 || '%', so a
-// literal % in a search term can never act as a wildcard. Underscore
-// needs no escaping here: NormalizeHandle already strips it from
-// every handle_key, so it never survives into a folded query.
+// escapeLike escapes backslash and % before splicing into '%' || $1 ||
+// '%', so a literal % in a search term can't wildcard. Underscore needs no
+// escaping: NormalizeHandle already strips it from every handle_key.
 func escapeLike(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`).Replace(s)
 }
 
 // SearchListed substring-matches listed profiles on the folded key
-// (search "aliceprime" finds a_l_i_c_e_p_r_i_m_e). The query is
-// LIKE-escaped so a literal % typed by the caller matches itself
-// instead of wildcarding the rest of handle_key.
+// (e.g. "aliceprime" finds a_l_i_c_e_p_r_i_m_e); LIKE-escaped via escapeLike.
 func (s *Store) SearchListed(ctx context.Context, foldedQuery string, limit int) ([]User, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+userCols+` FROM users
@@ -328,7 +292,7 @@ func (s *Store) SearchListed(ctx context.Context, foldedQuery string, limit int)
 	if err != nil {
 		return nil, fmt.Errorf("store: search listed: %w", err)
 	}
-	return scanAll(rows, []User{}, func(r pgx.Rows) (User, error) {
+	return pgkit.ScanAll(rows, []User{}, func(r pgx.Rows) (User, error) {
 		u, err := scanUser(r)
 		if err != nil {
 			return User{}, fmt.Errorf("store: scan user: %w", err)

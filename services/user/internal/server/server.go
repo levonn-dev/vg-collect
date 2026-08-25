@@ -17,11 +17,9 @@ import (
 	"github.com/levonn-dev/vgkeep/services/user/internal/store"
 )
 
-// Store is the persistence surface the handlers consume. The sentinel error
-// store.ErrNotFound is returned as-is; handlers branch on it via errors.Is.
-// Upsert reports whether this call created the account; Delete reports
-// whether a row was removed (false: already gone). Both feed the outcome
-// labels on the domain counters.
+// Store is the persistence surface the handlers consume. ErrNotFound is
+// returned as-is (handlers branch via errors.Is). Upsert/Delete report
+// whether this call created/removed a row, feeding the counter outcome labels.
 type Store interface {
 	Upsert(ctx context.Context, email, displayNameSeed string, avatarURL *string, preferredCurrency string) (u store.User, created bool, err error)
 	Get(ctx context.Context, id uuid.UUID) (store.User, error)
@@ -32,14 +30,16 @@ type Store interface {
 	SearchListed(ctx context.Context, foldedQuery string, limit int) ([]store.User, error)
 }
 
-// The concrete *store.Store must satisfy the Store interface above. main.go
-// passes the same concrete type into New, so this assertion also documents
-// the production wiring.
+// Documents the production wiring: main.go passes the same concrete
+// *store.Store into New.
 var _ Store = (*store.Store)(nil)
 
 // Options carries tunables that vary between environments.
 type Options struct {
-	Logger *slog.Logger
+	// HandleChangeCooldown gates how often a handle may change (passed to
+	// Store.Update); the Tilt dev stack overrides it to 5s for e2e's 429 test.
+	HandleChangeCooldown time.Duration
+	Logger               *slog.Logger
 }
 
 // Handlers owns the backing store and the domain counters for every HTTP
@@ -53,15 +53,13 @@ type Handlers struct {
 	accountDeletes metric.Int64Counter
 }
 
-// New builds a Handlers wired to the given store; cooldown gates how often
-// a caller may change their handle (passed through to Store.Update). The
-// OTel counters are best-effort: a registration failure is logged but does
-// not prevent startup (every increment site guards the nil).
-func New(st Store, cooldown time.Duration, opts Options) *Handlers {
+// New builds a Handlers wired to the given store. OTel counters are
+// best-effort: a registration failure logs but never blocks startup.
+func New(st Store, opts Options) *Handlers {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
-	h := &Handlers{store: st, logger: opts.Logger, handleCooldown: cooldown}
+	h := &Handlers{store: st, logger: opts.Logger, handleCooldown: opts.HandleChangeCooldown}
 	m := otel.Meter("github.com/levonn-dev/vgkeep/services/user")
 	h.accountUpserts = vgotel.CounterLogged(m, opts.Logger, "vg.user.account.upserts",
 		"Login-path profile upserts by outcome (created or existing)", "{upsert}")
@@ -77,13 +75,10 @@ func problem(w http.ResponseWriter, r *http.Request, status int, code, detail st
 	httpkit.WriteProblemFields(w, r, status, code, detail)
 }
 
-// internalError answers a 500 and logs its cause: op is a stable,
-// grep-able label for the failing operation (the log's "op" key);
-// detail is the response's human-readable text. The two vary
-// independently. Same shape as collection, social, and enrichment's
-// h.internalError.
+// internalError logs the cause under a stable "op" label and answers a
+// 500 with a separate human-readable detail (they vary independently).
 func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, op, detail string, err error) {
-	h.logger.ErrorContext(r.Context(), "store error", "op", op, "err", err)
+	h.logger.ErrorContext(r.Context(), "handler error", "op", op, "err", err)
 	problem(w, r, http.StatusInternalServerError, "internal", detail)
 }
 

@@ -15,10 +15,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/user/migrations"
 )
 
-// newTestDB resets the shared pgtest container to an empty public
-// schema, so this package's from-scratch and partial-version migration
-// steps always start from a blank slate, whether or not another test
-// in this binary already ran.
+// newTestDB resets the shared pgtest container to an empty public schema,
+// so migration steps always start from a blank slate regardless of prior tests.
 func newTestDB(t *testing.T) string {
 	t.Helper()
 	ctx := context.Background()
@@ -37,13 +35,10 @@ func newTestDB(t *testing.T) string {
 	return url
 }
 
-// TestHandleBackfillCollisionFree drives the schema to just before the
-// handle backfill (000003), seeds three users whose derived handles
-// collide across dedupe partitions in a way a single-pass suffix pass
-// cannot resolve ("Alice", "Alice!!!", "Alice2" all fold toward
-// "alice"/"alice2"), then migrates up and checks the backfill lands on
-// unique, deterministic handles instead of aborting the CREATE UNIQUE
-// INDEX.
+// Seeds three users whose derived handles collide across dedupe
+// partitions ("Alice", "Alice!!!", "Alice2" all fold toward
+// "alice"/"alice2") in a way a single-pass suffix cannot resolve, then
+// checks migration 000003 lands on unique handles without aborting the CREATE UNIQUE INDEX.
 func TestHandleBackfillCollisionFree(t *testing.T) {
 	url := newTestDB(t)
 	src, err := iofs.New(migrations.FS, ".")
@@ -105,12 +100,10 @@ func TestHandleBackfillCollisionFree(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("rows = %d, want 3", len(got))
 	}
-	// "Alice" keeps its unsuffixed value (oldest, so it claims "alice"
-	// first). "Alice!!!" also folds to "alice", loses the race, and
-	// claims "alice2" - which is what "Alice2" would have kept
-	// untouched under the old buggy single-pass dedupe. Since "Alice2"
-	// is processed last and finds "alice2" already claimed, it must
-	// itself probe to "alice22". No two rows ever share a fold key.
+	// "Alice" claims "alice" first (oldest). "Alice!!!" also folds to "alice",
+	// loses the race, and claims "alice2" (which "Alice2" alone would have
+	// kept under the old buggy dedupe). "Alice2", processed last, finds
+	// "alice2" taken and probes to "alice22". No two rows share a fold key.
 	want := []row{
 		{"alice1@example.com", "Alice", "alice"},
 		{"alice2@example.com", "Alice2", "alice2"},
@@ -130,12 +123,9 @@ func TestHandleBackfillCollisionFree(t *testing.T) {
 	}
 }
 
-// TestHandleBackfillReservedFold seeds a single user whose display_name
-// derives to a reserved handle fold ("Search" folds to "search", one of
-// the ReservedHandles in services/user/internal/store/handle.go) and
-// checks the 000003 backfill suffixes it instead of minting the
-// reserved handle itself - the app's mint path already refuses these;
-// the backfill must refuse them too.
+// Seeds a user whose display_name derives to a reserved fold ("Search"
+// -> "search", see ReservedHandles in handle.go); the 000003 backfill must
+// suffix it instead of minting the reserved handle, matching the app's mint path.
 func TestHandleBackfillReservedFold(t *testing.T) {
 	url := newTestDB(t)
 	src, err := iofs.New(migrations.FS, ".")
@@ -183,16 +173,10 @@ func TestHandleBackfillReservedFold(t *testing.T) {
 	}
 }
 
-// TestHandleBackfillSuffixBoundaryMatchesAppDerivation pins the
-// dedupe-suffix clamp at its exact boundary: a display_name whose
-// derived handle is exactly 30 characters with an underscore at
-// position 29 clamps (for the length-1 suffix "2") right at that
-// underscore. services/user/internal/store/store.go's Upsert probe
-// loop always trims a trailing underscore a clamp exposes before
-// appending the suffix digit; the backfill must land on the identical
-// string ("...A2"), not the pre-fix "...A_2" - the fold is the same
-// either way, but the stored typed form would otherwise diverge from
-// what the app would have minted for the same input.
+// Pins the suffix clamp boundary: a 30-char handle with an underscore at
+// position 29 clamps there for the length-1 suffix "2". Upsert's probe
+// loop trims the trailing underscore the clamp exposes before appending
+// the suffix; the backfill must match ("...A2", not "...A_2") for app parity.
 func TestHandleBackfillSuffixBoundaryMatchesAppDerivation(t *testing.T) {
 	url := newTestDB(t)
 	src, err := iofs.New(migrations.FS, ".")
@@ -223,9 +207,8 @@ func TestHandleBackfillSuffixBoundaryMatchesAppDerivation(t *testing.T) {
 	if _, err := conn.Exec(ctx, insert, "boundary1@example.com", displayName, base); err != nil {
 		t.Fatal(err)
 	}
-	// Same display_name derives the same 30-char handle, so this row
-	// collides with row 1's claimed fold and must probe to a suffixed
-	// value.
+	// Same display_name derives the same handle, so this row collides with
+	// row 1's claimed fold and must probe to a suffixed value.
 	if _, err := conn.Exec(ctx, insert, "boundary2@example.com", displayName, base.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}

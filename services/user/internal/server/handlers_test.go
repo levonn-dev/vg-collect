@@ -46,11 +46,18 @@ func (a authEnv) token(t *testing.T, sub string, roles ...string) string {
 	return a.env.Token(t, sub, roles...)
 }
 
+// serviceToken mints a JWT carrying token_use=service (no roles) for sub,
+// mirroring auth's internal service-token endpoint.
+func (a authEnv) serviceToken(t *testing.T, sub string) string {
+	t.Helper()
+	return a.env.ServiceToken(t, sub)
+}
+
 func newTestServer(t *testing.T) (*httptest.Server, authEnv) {
 	t.Helper()
 	st := newTestStore(t)
 	a := newAuthEnv(t)
-	h := server.New(st, time.Hour, server.Options{})
+	h := server.New(st, server.Options{HandleChangeCooldown: time.Hour})
 	router, err := server.NewRouter(h, a.v, slog.Default(), func(context.Context) error { return nil })
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +88,11 @@ func TestUpsert_Authz(t *testing.T) {
 	if resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "u1", "user"), body); resp.StatusCode != 403 {
 		t.Fatalf("user role: %d, want 403", resp.StatusCode)
 	}
-	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc:auth", "service"), body)
+	// roles=["service"] with no token_use no longer satisfies the machine gate.
+	if resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc:auth", "service"), body); resp.StatusCode != 403 {
+		t.Fatalf("legacy roles-only service claim: %d, want 403", resp.StatusCode)
+	}
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.serviceToken(t, "svc:auth"), body)
 	if resp.StatusCode != 200 {
 		t.Fatalf("service role: %d, want 200", resp.StatusCode)
 	}
@@ -103,7 +114,10 @@ func TestUpsert_Authz(t *testing.T) {
 		if resp := do(t, "GET", srv.URL+"/users/"+created.ID, a.token(t, "someone-else", "user"), nil); resp.StatusCode != 403 {
 			t.Fatalf("other: %d, want 403", resp.StatusCode)
 		}
-		resp := do(t, "GET", srv.URL+"/users/00000000-0000-0000-0000-000000000000", a.token(t, "svc:auth", "service"), nil)
+		if resp := do(t, "GET", srv.URL+"/users/"+created.ID, a.token(t, "someone-else", "service"), nil); resp.StatusCode != 403 {
+			t.Fatalf("legacy roles-only service claim: %d, want 403", resp.StatusCode)
+		}
+		resp := do(t, "GET", srv.URL+"/users/00000000-0000-0000-0000-000000000000", a.serviceToken(t, "svc:auth"), nil)
 		if resp.StatusCode != 404 {
 			t.Fatalf("unknown: %d, want 404", resp.StatusCode)
 		}
@@ -113,23 +127,49 @@ func TestUpsert_Authz(t *testing.T) {
 	})
 }
 
+// Pins the split between UpsertUser (only auth's own service token may
+// upsert) and GetUser (any service token may read); a CronJob-shaped
+// token carries token_use=service like auth's, but a different subject.
+func TestMachineGate_NonAuthServiceTokenSubjectPin(t *testing.T) {
+	srv, a := newTestServer(t)
+	cronTok := a.serviceToken(t, "svc:catalog-refresh")
+	body := map[string]string{"email": "cron@example.com", "display_name": "Cron"}
+
+	if resp := do(t, "POST", srv.URL+"/internal/users/upsert", cronTok, body); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("non-auth service token upsert: %d, want 403", resp.StatusCode)
+	}
+
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.serviceToken(t, "svc:auth"), body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("upsert: %d", resp.StatusCode)
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp := do(t, "GET", srv.URL+"/users/"+created.ID, cronTok, nil); resp.StatusCode != http.StatusOK {
+		t.Fatalf("non-auth service token get: %d, want 200", resp.StatusCode)
+	}
+}
+
 func TestUpsert_BadRequest(t *testing.T) {
 	srv, a := newTestServer(t)
-	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc:auth", "service"),
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.serviceToken(t, "svc:auth"),
 		map[string]string{"email": "", "display_name": ""})
 	if resp.StatusCode != 400 {
 		t.Fatalf("empty fields: %d, want 400", resp.StatusCode)
 	}
 }
 
-// TestUpsertUser_InvalidAvatarUrlStoresAvatarless pins the drop-not-
-// fail handling of a bad OIDC picture claim: unlike UpdateUser (which
-// 400s), the login-path upsert has no browser to hand a 400 back to,
-// so an invalid avatar_url must never fail the account create - it is
-// stored as absent instead.
+// Pins drop-not-fail handling of a bad OIDC picture claim: unlike
+// UpdateUser (400s), the login-path upsert has no browser to 400, so an
+// invalid avatar_url is stored as absent instead of failing the create.
 func TestUpsertUser_InvalidAvatarUrlStoresAvatarless(t *testing.T) {
 	srv, a := newTestServer(t)
-	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc:auth", "service"),
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.serviceToken(t, "svc:auth"),
 		map[string]string{"email": "badavatar@example.com", "display_name": "Bad Avatar", "avatar_url": "ftp://not-http"})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (an invalid avatar_url must never fail the login upsert)", resp.StatusCode)
@@ -161,7 +201,7 @@ func TestHealthEndpointsUnauthenticated(t *testing.T) {
 
 func TestGetUser_MalformedUUIDIsProblemJSON(t *testing.T) {
 	srv, a := newTestServer(t)
-	resp := do(t, "GET", srv.URL+"/users/not-a-uuid", a.token(t, "svc:auth", "service"), nil)
+	resp := do(t, "GET", srv.URL+"/users/not-a-uuid", a.serviceToken(t, "svc:auth"), nil)
 	if resp.StatusCode != 400 {
 		t.Fatalf("status = %d, want 400", resp.StatusCode)
 	}
@@ -177,7 +217,7 @@ func TestUpsert_MalformedJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+a.token(t, "svc:auth", "service"))
+	req.Header.Set("Authorization", "Bearer "+a.serviceToken(t, "svc:auth"))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -194,7 +234,7 @@ func TestUpsert_MalformedJSON(t *testing.T) {
 
 func TestReadyz_FailsWhenHealthcheckFails(t *testing.T) {
 	a := newAuthEnv(t)
-	h := server.New(nil, time.Hour, server.Options{}) // store is nil; health check errors before any store call
+	h := server.New(nil, server.Options{HandleChangeCooldown: time.Hour}) // store is nil; health check errors before any store call
 	router, err := server.NewRouter(h, a.v, slog.Default(), func(context.Context) error {
 		return errors.New("db down")
 	})
@@ -217,7 +257,7 @@ func TestReadyz_FailsWhenHealthcheckFails(t *testing.T) {
 func TestGetUser_AdminCanReadAnyUser(t *testing.T) {
 	srv, a := newTestServer(t)
 	body := map[string]string{"email": "b@example.com", "display_name": "Bob"}
-	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc:auth", "service"), body)
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.serviceToken(t, "svc:auth"), body)
 	if resp.StatusCode != 200 {
 		t.Fatalf("upsert: %d", resp.StatusCode)
 	}
@@ -239,7 +279,7 @@ func TestUpdateUser_SelfOnlyAndValidation(t *testing.T) {
 		"email": "neo@example.com", "display_name": "Thomas Anderson",
 		"avatar_url": "https://img.example/neo.png",
 	}
-	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc:auth", "service"), body)
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.serviceToken(t, "svc:auth"), body)
 	if resp.StatusCode != 200 {
 		t.Fatalf("upsert: %d", resp.StatusCode)
 	}
@@ -257,7 +297,7 @@ func TestUpdateUser_SelfOnlyAndValidation(t *testing.T) {
 	})
 
 	t.Run("service token forbidden, self only", func(t *testing.T) {
-		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, "svc:auth", "service"),
+		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.serviceToken(t, "svc:auth"),
 			map[string]string{"handle": "Hacker"})
 		reqtest.AssertProblem(t, resp, http.StatusForbidden, "forbidden")
 	})
@@ -286,10 +326,8 @@ func TestUpdateUser_SelfOnlyAndValidation(t *testing.T) {
 		wantUnitProblemDetail(t, resp, http.StatusBadRequest, "invalid_body", "avatar_url")
 	})
 
-	// common.yaml's Handle pattern
-	// (^[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?$) requires alnum
-	// first/last characters, so the whitespace-padded case below 400s
-	// instead of being trimmed.
+	// common.yaml's Handle pattern (^[a-zA-Z0-9](?:[a-zA-Z0-9_]{0,28}[a-zA-Z0-9])?$)
+	// requires alnum first/last chars, so whitespace-padded handles 400 instead of trimming.
 	t.Run("clean handle updates, keeps avatar", func(t *testing.T) {
 		resp := do(t, "PATCH", srv.URL+"/users/"+created.ID, a.token(t, created.ID, "user"),
 			map[string]string{"handle": "Neo"})
@@ -379,7 +417,7 @@ func TestUpdateUser_SelfOnlyAndValidation(t *testing.T) {
 func TestDeleteUser_SelfOnlyIdempotent(t *testing.T) {
 	srv, a := newTestServer(t)
 	body := map[string]string{"email": "dave@example.com", "display_name": "Dave"}
-	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.token(t, "svc:auth", "service"), body)
+	resp := do(t, "POST", srv.URL+"/internal/users/upsert", a.serviceToken(t, "svc:auth"), body)
 	if resp.StatusCode != 200 {
 		t.Fatalf("upsert: %d", resp.StatusCode)
 	}
@@ -404,27 +442,15 @@ func TestDeleteUser_SelfOnlyIdempotent(t *testing.T) {
 	}
 }
 
-// ============================================================================
-// Fast unit layer (no Docker, runs under -short)
+// ---- Fast unit layer (no Docker, runs under -short) ----
 //
-// The tests below drive the real handlers and real router with the in-memory
-// stubStore defined just below. Claims reach the handlers through the real
-// jwtauth.Middleware -- jwtauth's context key is unexported, so there is no
-// direct context injection path. Instead, each test mints a real Ed25519 token
-// via the existing newAuthEnv/authEnv.token helper (in-process JWKS over
-// httptest; fast; no network outside the process) and hits the router over
-// httptest. The store is the only collaborator stubbed out. No Docker, no
-// Postgres, no testing.Short() skip.
-//
-// Each test asserts the distinctive outcome of its branch: exact HTTP status
-// AND the problem code from the response body where applicable; for success,
-// the response body fields. A test that only checks the status code would
-// survive handler regressions silently; these do not.
-// ============================================================================
+// jwtauth's context key is unexported, so each test mints a real Ed25519
+// token via newAuthEnv/authEnv.token rather than injecting claims directly;
+// the store is the only stubbed collaborator. Each test asserts exact
+// status AND problem code, not just status, so regressions can't hide.
 
-// stubStore implements server.Store via function fields. A method whose
-// field is nil panics with a clear message -- an unexpected collaborator call
-// is a loud test failure, not a silent zero value.
+// stubStore implements server.Store via function fields; a nil field
+// panics with a clear message instead of a silent zero value.
 type stubStore struct {
 	upsert       func(ctx context.Context, email, displayName string, avatarURL *string, preferredCurrency string) (store.User, bool, error)
 	get          func(ctx context.Context, id uuid.UUID) (store.User, error)
@@ -486,13 +512,12 @@ func (s *stubStore) SearchListed(ctx context.Context, foldedQuery string, limit 
 	return s.searchListed(ctx, foldedQuery, limit)
 }
 
-// newUnitServer builds a test HTTP server wired to the given stub store.
-// Claims travel through the real jwtauth.Middleware, so each test calls
-// a.token(...) to mint a valid signed JWT for the role(s) under test.
+// newUnitServer wires a test HTTP server to the stub store; claims travel
+// through the real jwtauth.Middleware, so tests mint a real JWT via a.token.
 func newUnitServer(t *testing.T, st server.Store) (*httptest.Server, authEnv) {
 	t.Helper()
 	a := newAuthEnv(t)
-	h := server.New(st, time.Hour, server.Options{})
+	h := server.New(st, server.Options{HandleChangeCooldown: time.Hour})
 	router, err := server.NewRouter(h, a.v, slog.Default(), func(context.Context) error { return nil })
 	if err != nil {
 		t.Fatal(err)
@@ -502,10 +527,8 @@ func newUnitServer(t *testing.T, st server.Store) (*httptest.Server, authEnv) {
 	return srv, a
 }
 
-// wantUnitProblemDetail is reqtest.AssertProblem plus a substring check
-// on the detail message, for validation branches where the field name
-// matters - the one piece of this file's problem-assertion helpers
-// reqtest.AssertProblem's plain 3-part contract doesn't cover.
+// wantUnitProblemDetail is reqtest.AssertProblem plus a substring check on
+// detail, for validation branches where the field name matters.
 func wantUnitProblemDetail(t *testing.T, resp *http.Response, wantStatus int, wantCode, detailSubstr string) {
 	t.Helper()
 	p := reqtest.AssertProblem(t, resp, wantStatus, wantCode)
@@ -533,7 +556,7 @@ func TestUnitUpsert_MalformedJSON_BadRequest(t *testing.T) {
 	// A service-role token with a syntactically invalid body must get 400.
 	srv, a := newUnitServer(t, &stubStore{})
 	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
-		a.token(t, "svc", "service"), "{not json}")
+		a.serviceToken(t, "svc:auth"), "{not json}")
 	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
@@ -541,7 +564,7 @@ func TestUnitUpsert_EmptyEmail_BadRequest(t *testing.T) {
 	// Missing email (empty string) must get 400 before the store is called.
 	srv, a := newUnitServer(t, &stubStore{})
 	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
-		a.token(t, "svc", "service"),
+		a.serviceToken(t, "svc:auth"),
 		map[string]string{"email": "", "display_name": "Alice"})
 	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
@@ -550,7 +573,7 @@ func TestUnitUpsert_EmptyDisplayName_BadRequest(t *testing.T) {
 	// Missing display_name must get 400 before the store is called.
 	srv, a := newUnitServer(t, &stubStore{})
 	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
-		a.token(t, "svc", "service"),
+		a.serviceToken(t, "svc:auth"),
 		map[string]string{"email": "a@example.com", "display_name": ""})
 	reqtest.AssertProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
@@ -564,7 +587,7 @@ func TestUnitUpsert_StoreError_InternalServerError(t *testing.T) {
 	}
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
-		a.token(t, "svc", "service"),
+		a.serviceToken(t, "svc:auth"),
 		map[string]string{"email": "a@example.com", "display_name": "Alice"})
 	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }
@@ -583,7 +606,7 @@ func TestUnitUpsert_Success_ReturnsAPIUser(t *testing.T) {
 	}
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
-		a.token(t, "svc", "service"),
+		a.serviceToken(t, "svc:auth"),
 		map[string]string{"email": "a@example.com", "display_name": "Alice"})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
@@ -611,8 +634,7 @@ func TestUnitUpsert_Success_ReturnsAPIUser(t *testing.T) {
 	}
 }
 
-// TestUnitUpsert_LocaleHintSeedsCurrency pins that the handler maps
-// the hint and the store receives the derived currency.
+// Pins that the handler maps the hint and the store receives the derived currency.
 func TestUnitUpsert_LocaleHintSeedsCurrency(t *testing.T) {
 	var gotCurrency string
 	st := &stubStore{
@@ -623,7 +645,7 @@ func TestUnitUpsert_LocaleHintSeedsCurrency(t *testing.T) {
 	}
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "POST", srv.URL+"/internal/users/upsert",
-		a.token(t, "svc", "service"),
+		a.serviceToken(t, "svc:auth"),
 		map[string]string{"email": "d@example.com", "display_name": "Dora", "locale_hint": "de-DE"})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status: %d", resp.StatusCode)
@@ -665,7 +687,7 @@ func TestUnitGetUser_NotFound_404(t *testing.T) {
 	srv, a := newUnitServer(t, st)
 	// Service role bypasses the authz guard.
 	resp := do(t, "GET", srv.URL+"/users/"+targetID.String(),
-		a.token(t, "svc", "service"), nil)
+		a.serviceToken(t, "svc"), nil)
 	reqtest.AssertProblem(t, resp, http.StatusNotFound, "user_not_found")
 }
 
@@ -680,7 +702,7 @@ func TestUnitGetUser_StoreError_InternalServerError(t *testing.T) {
 	}
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "GET", srv.URL+"/users/"+targetID.String(),
-		a.token(t, "svc", "service"), nil)
+		a.serviceToken(t, "svc"), nil)
 	reqtest.AssertProblem(t, resp, http.StatusInternalServerError, "internal")
 }
 
@@ -696,7 +718,7 @@ func TestUnitGetUser_SelfRead_OK(t *testing.T) {
 		},
 	}
 	srv, a := newUnitServer(t, st)
-	// Token subject matches the requested userId -- the authz guard passes.
+	// Token subject matches the requested userId; the authz guard passes.
 	resp := do(t, "GET", srv.URL+"/users/"+userID.String(),
 		a.token(t, userID.String(), "user"), nil)
 	if resp.StatusCode != http.StatusOK {
@@ -726,7 +748,7 @@ func TestUnitGetUser_ServiceRole_CanReadAny(t *testing.T) {
 	}
 	srv, a := newUnitServer(t, st)
 	resp := do(t, "GET", srv.URL+"/users/"+targetID.String(),
-		a.token(t, "svc-identity", "service"), nil)
+		a.serviceToken(t, "svc-identity"), nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("service read: status = %d, want 200", resp.StatusCode)
 	}
@@ -753,11 +775,9 @@ func TestUnitGetUser_AdminRole_CanReadAny(t *testing.T) {
 
 // --- UpdateUser unit branch matrix ---
 //
-// The self-only guard, the validation branches, the trim/clear semantics
-// and the not-found branch are all exercised end-to-end (real store, real
-// persistence) by TestUpdateUser_SelfOnlyAndValidation above. The two
-// tests below cover what that docker-backed test cannot reach: the
-// malformed-JSON decode error and a generic store failure.
+// TestUpdateUser_SelfOnlyAndValidation above covers the self-only guard,
+// validation, and trim/clear semantics end-to-end; the two tests below
+// cover what that docker-backed test cannot: malformed JSON and a generic store failure.
 
 func TestUnitUpdateUser_MalformedJSON_BadRequest(t *testing.T) {
 	// A self token with a syntactically invalid body must get 400, and the
@@ -820,10 +840,8 @@ func TestUnitUpdateUser_PreferredCurrencyValidation(t *testing.T) {
 }
 
 func TestUnitUpdateUser_InvalidProfileVisibility(t *testing.T) {
-	// A profile_visibility outside {private, unlisted, listed} must be
-	// rejected before the store is called (the empty stubStore proves
-	// it): otherwise only the DB CHECK constraint would catch it and
-	// the client would see a 500 instead of a 400.
+	// profile_visibility outside {private, unlisted, listed} must 400 before
+	// the store call (empty stubStore proves it), or the DB CHECK would 500 it.
 	srv, a := newUnitServer(t, &stubStore{})
 	uid := uuid.NewString()
 	resp := do(t, "PATCH", srv.URL+"/users/"+uid, a.token(t, uid),
@@ -832,10 +850,8 @@ func TestUnitUpdateUser_InvalidProfileVisibility(t *testing.T) {
 }
 
 func TestUnitUpdateUser_InvalidLandingPage(t *testing.T) {
-	// A landing_page outside {collection, feed, explore} must be
-	// rejected before the store is called (the empty stubStore proves
-	// it): otherwise only the DB CHECK constraint would catch it and
-	// the client would see a 500 instead of a 400.
+	// landing_page outside {collection, feed, explore} must 400 before the
+	// store call (empty stubStore proves it), or the DB CHECK would 500 it.
 	srv, a := newUnitServer(t, &stubStore{})
 	uid := uuid.NewString()
 	resp := do(t, "PATCH", srv.URL+"/users/"+uid, a.token(t, uid),
@@ -845,9 +861,8 @@ func TestUnitUpdateUser_InvalidLandingPage(t *testing.T) {
 
 // --- DeleteUser unit branch matrix ---
 //
-// The self-only guard and idempotent success are exercised end-to-end by
-// TestDeleteUser_SelfOnlyIdempotent above. The test below covers the one
-// branch that requires a store failure: the generic 500.
+// TestDeleteUser_SelfOnlyIdempotent above covers the self-only guard and
+// idempotent success end-to-end; the test below covers the generic 500.
 
 func TestUnitDeleteUser_StoreError_InternalServerError(t *testing.T) {
 	// A generic (non-sentinel) store error must surface as 500 internal.

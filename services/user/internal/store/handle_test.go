@@ -2,9 +2,8 @@ package store
 
 import "testing"
 
-// The fold is the identity rule: decoration (case, underscores) never
-// distinguishes handles. This pin must match the SQL generated column
-// lower(replace(handle, '_', empty)) in migration 000003 exactly.
+// decoration (case, underscores) never distinguishes handles; this must
+// match migration 000003's lower(replace(handle, '_', empty)) exactly.
 func TestNormalizeHandle_FoldEquivalence(t *testing.T) {
 	cases := []string{"alice_prime", "Alice_Prime", "AlicePrime", "ALICEPRIME", "a_l_i_c_e_p_r_i_m_e"}
 	want := "aliceprime"
@@ -54,10 +53,9 @@ func TestReservedHandles_CheckedOnFold(t *testing.T) {
 	if !ReservedHandles[NormalizeHandle("Ad_Min")] {
 		t.Fatal("Ad_Min must fold to the reserved key admin")
 	}
-	// search is reserved because the /shared/profiles/search route is a
-	// literal path segment that Go's ServeMux always prefers over the
-	// /shared/profiles/{handle} wildcard; a claimable "search" handle
-	// could never be resolved.
+	// search is reserved because Go's ServeMux prefers the literal
+	// /shared/profiles/search route over the /shared/profiles/{handle}
+	// wildcard; a claimable "search" handle could never resolve.
 	if !ReservedHandles[NormalizeHandle("search")] {
 		t.Fatal("search must be reserved")
 	}

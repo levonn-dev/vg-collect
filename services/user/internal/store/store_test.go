@@ -179,9 +179,8 @@ func TestStorePreferredCurrencyLifecycle(t *testing.T) {
 	}
 }
 
-// TestUpdate_LandingPage pins the DB default (every account, including
-// ones created before this column existed, reads "feed") and the
-// Update COALESCE semantics: a value changes it, nil leaves it alone.
+// Pins the DB default (every account, incl. pre-migration rows, reads
+// "feed") and Update's COALESCE semantics: a value changes it, nil doesn't.
 func TestUpdate_LandingPage(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -270,13 +269,10 @@ func TestUpsert_MintsAndDedupesHandles(t *testing.T) {
 	}
 }
 
-// TestUpsert_MintsHandleAwayFromReservedWord pins the live signup
-// path's reserved-handle avoidance (Upsert's own base+"1" branch, not
-// the separate migration 000003 backfill that covers the same idea
-// for pre-existing rows). A display_name that derives straight to a
-// reserved fold - "Search", which would otherwise shadow the
-// /shared/profiles/search route (see ReservedHandles in handle.go) -
-// must never mint the bare reserved handle.
+// Pins Upsert's own base+"1" reserved-avoidance branch (distinct from
+// migration 000003's backfill for pre-existing rows). A display_name
+// deriving straight to "Search" must never mint the bare reserved handle,
+// which would shadow /shared/profiles/search.
 func TestUpsert_MintsHandleAwayFromReservedWord(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -338,13 +334,10 @@ func TestUpdate_HandleCooldownAndTaken(t *testing.T) {
 	}
 }
 
-// TestUpdate_DecorationOnlyRenameIsGatedByCooldown pins a subtle edge
-// of the same-user path: Update gates on a plain Go string comparison
-// against the current TYPED handle, not the folded identity key. So a
-// same-user rename that only changes case/underscores (the fold key
-// is unchanged - "alice_prime" and "Alice_Prime" both fold to
-// "aliceprime") still counts as a change and is cooldown-gated exactly
-// like a full rename would be; there is no decoration-only exemption.
+// Update gates on a plain string comparison against the current TYPED
+// handle, not the folded key, so a decoration-only rename ("alice_prime"
+// vs "Alice_Prime", same fold) still counts as a change and is
+// cooldown-gated; there is no decoration-only exemption.
 func TestUpdate_DecorationOnlyRenameIsGatedByCooldown(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -361,9 +354,8 @@ func TestUpdate_DecorationOnlyRenameIsGatedByCooldown(t *testing.T) {
 		t.Fatalf("minted = %+v", got)
 	}
 
-	// A decoration-only rename of the CURRENT handle, inside the same
-	// cooldown window: same folded identity, different typed string ->
-	// still gated.
+	// A decoration-only rename of the current handle, inside the cooldown
+	// window: same folded identity, different typed string -> still gated.
 	decorationOnly := "alice_prime"
 	if _, err := s.Update(ctx, u.ID, &decorationOnly, nil, nil, nil, nil, time.Hour); !errors.Is(err, store.ErrHandleCooldown) {
 		t.Fatalf("decoration-only rename inside cooldown: err = %v, want ErrHandleCooldown", err)
@@ -402,10 +394,8 @@ func TestSharedReads_VisibilityAndFold(t *testing.T) {
 	if found2, _ := s.SearchListed(ctx, "bobfixture", 20); len(found2) != 0 {
 		t.Fatalf("private profile leaked into search: %v", found2)
 	}
-	// unlisted is link-only (reachable by exact handle - see
-	// TestUnitSharedProfile_VisibilityGate's "unlisted resolves by
-	// exact handle" case - but not by search); the live e2e suite also
-	// pins this end to end.
+	// unlisted is link-only (reachable by exact handle, not search - see
+	// TestUnitSharedProfile_VisibilityGate); the e2e suite pins this too.
 	if found3, _ := s.SearchListed(ctx, "carolhidden", 20); len(found3) != 0 {
 		t.Fatalf("unlisted profile leaked into search: %v", found3)
 	}
@@ -417,13 +407,10 @@ func TestSharedReads_VisibilityAndFold(t *testing.T) {
 	}
 }
 
-// TestSearchListed_EscapesLikeMetacharacters pins that a literal % or
-// \ typed into a search query can never act as SQL LIKE syntax.
-// Unescaped, "ali%prime" would match "aliceprime" (% wildcarding the
-// gap between "ali" and "prime"); escaped, it is a literal substring
-// that alice's handle does not contain, so it must find nothing - the
-// same for a stray backslash. An ordinary substring query must still
-// match exactly as before.
+// Pins that a literal % or \ can't act as SQL LIKE syntax: unescaped,
+// "ali%prime" would wildcard-match "aliceprime"; escaped, it's a literal
+// substring alice's handle lacks, so it must find nothing. Ordinary
+// substring search still works.
 func TestSearchListed_EscapesLikeMetacharacters(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
