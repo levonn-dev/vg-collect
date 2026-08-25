@@ -6,12 +6,9 @@ import (
 	"testing"
 )
 
-// The alias table bridges two vocabularies it does not own: IGDB
-// platform names on the key side, PriceCharting console-name spellings
-// on the value side. The provider fixtures are captures of those
-// vocabularies, so every key and value must appear there - an entry
-// this test cannot find is an invented spelling that would silently
-// never match.
+// The alias table bridges two vocabularies it doesn't own: IGDB
+// platform names (keys) and PriceCharting console spellings (values).
+// Every key/value must appear in the fixtures, or it's an invented spelling that never matches.
 func loadCorpus(t *testing.T) (platformNames, consoleNames []string) {
 	t.Helper()
 	var ig struct {
@@ -81,11 +78,9 @@ func TestConsoleAliases_MatchFixtureCorpora(t *testing.T) {
 		}
 	}
 
-	// The reverse direction: every corpus platform must reach at least
-	// one corpus console spelling in some region class, so no fixture
-	// platform silently prices nothing. A JP-market fixture platform
-	// prices nothing in the base class by design, so the reachability
-	// promise is per some class.
+	// Reverse direction: every corpus platform must reach at least one
+	// console spelling in some region class (a JP-market platform prices
+	// nothing in the base class by design, so reachability is per-class).
 	for _, pn := range platformNames {
 		matched := false
 		for _, cn := range consoleNames {

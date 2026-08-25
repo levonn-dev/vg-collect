@@ -12,20 +12,18 @@ import (
 	"time"
 
 	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
 
-// ---------------------------------------------------------------
 // Recommendations
-// ---------------------------------------------------------------
 
 func TestRecommendations_EndToEndOverFixtures(t *testing.T) {
 	s := newStack(t)
-	// A Zelda/Souls library: candidates must come from similar_games
-	// edges, exclude owned ids, and carry display metadata fetched
-	// into igdb_raw on demand.
+	// A Zelda/Souls library: candidates come from similar_games edges,
+	// exclude owned ids, and carry display metadata fetched into igdb_raw.
 	body := map[string]any{"library": []map[string]any{
 		{"igdb_game_id": 1001, "rating": 10},        // OoT, loved
 		{"igdb_game_id": 1042},                      // Dark Souls
@@ -59,9 +57,8 @@ func TestRecommendations_EndToEndOverFixtures(t *testing.T) {
 			linkToPast = &rec
 		}
 	}
-	// OoT (weight 2.0) links 1002/1003/1004/1035/1037: at least one of
-	// its edges must outrank anything reachable only through the
-	// dropped Chrono Cross (weight 0.5).
+	// OoT (weight 2.0) links 1002/1003/1004/1035/1037: at least one edge
+	// must outrank anything reachable only through dropped Chrono Cross (weight 0.5).
 	if _, ok := seen[1002]; !ok {
 		t.Fatalf("expected a strong Zelda edge in %v", seen)
 	}
@@ -88,8 +85,7 @@ func TestRecommendations_EmptyLibrary(t *testing.T) {
 func TestRecommendations_SparseLibraryUsesGenreFallback(t *testing.T) {
 	s := newStack(t)
 	// Pokemon Emerald's only edge is FireRed: the pool is far below the
-	// limit, so the genre profile (RPG) must top it up with well-rated
-	// RPG fixtures the user does not own.
+	// limit, so the genre profile (RPG) must top it up with unowned RPG fixtures.
 	body := map[string]any{"library": []map[string]any{{"igdb_game_id": 1020, "rating": 9}}}
 	resp := s.do(http.MethodPost, "/recommendations:score", s.userToken(), body)
 	out := decodeBody[api.ScoreResponse](t, resp)
@@ -103,13 +99,9 @@ func TestRecommendations_SparseLibraryUsesGenreFallback(t *testing.T) {
 	}
 }
 
-// TestUnitRecommendations_LibraryTooLargeRejected pins the contract's
-// maxItems bound: one entry past the 2500-item cap answers 400 before
-// any store or provider call (the zero-field stubs would panic if
-// reached). The validation middleware (libs/go/specval, wired into
-// every route on this router) enforces the cap in its generic
-// invalid_body voice; the handler performs no library-size check of
-// its own.
+// Pins the contract's maxItems bound: one entry past the 2500-item
+// cap answers 400 before any store/provider call (zero-field stubs
+// would panic if reached); specval enforces the cap, not the handler.
 func TestUnitRecommendations_LibraryTooLargeRejected(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
@@ -120,19 +112,15 @@ func TestUnitRecommendations_LibraryTooLargeRejected(t *testing.T) {
 	}
 	rec := serveUnit(t, h, env, http.MethodPost, "/recommendations:score", tok,
 		map[string]any{"library": library})
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("want 400, got %d %s", rec.Code, rec.Body.String())
-	}
-	if !strings.Contains(rec.Body.String(), "invalid_body") || !strings.Contains(rec.Body.String(), "library") {
-		t.Fatalf("want an invalid_body problem naming library, got %s", rec.Body.String())
+	p := reqtest.AssertProblemRec(t, rec, http.StatusBadRequest, "invalid_body")
+	if !strings.Contains(p.Detail, "library") {
+		t.Fatalf("want the invalid_body problem to name library, got %q", p.Detail)
 	}
 }
 
-// TestUnitRecommendations_DegradedOnMetadataFetchFailure covers the
-// owned-game metadata fetch failing outright: igdb_raw has nothing for
-// the owned id, and the provider (GamesByIDs) is down too, so the
-// first ensureRaw call degrades before any candidate or genre logic
-// ever runs.
+// Covers the owned-game metadata fetch failing outright: igdb_raw has
+// nothing for the owned id, and GamesByIDs is down too, so the first
+// ensureRaw call degrades before any candidate/genre logic runs.
 func TestUnitRecommendations_DegradedOnMetadataFetchFailure(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
@@ -157,20 +145,16 @@ func TestUnitRecommendations_DegradedOnMetadataFetchFailure(t *testing.T) {
 	}
 }
 
-// TestUnitRecommendations_DegradedOnGenreFallbackFailure covers the
-// other degraded trigger: the owned game's metadata fetch succeeds (via
-// igdb_raw, no provider call needed) with a genre but no similar_games
-// edges, so the edge-derived candidate pool stays empty (below limit)
-// and the genre-profile fallback must run -- where PopularGames then
-// fails, which is the branch this test exists to exercise.
+// Covers the other degraded trigger: the owned game has a genre but
+// no similar_games edges, so the candidate pool stays empty and the
+// genre-profile fallback runs, where PopularGames then fails.
 func TestUnitRecommendations_DegradedOnGenreFallbackFailure(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
 	st := &stubStore{
 		rawByIDs: func(context.Context, []int64) ([]store.RawGame, error) {
-			// Owned, with a genre but an empty similar_games list: no
-			// edges means CandidateIDs stays empty, forcing the
-			// genre-profile fallback below.
+			// Owned, genre but empty similar_games: CandidateIDs stays
+			// empty, forcing the genre-profile fallback below.
 			return []store.RawGame{{
 				GameID: 1001,
 				Game:   igdb.Game{ID: 1001, Name: "Owned", Genres: []igdb.Named{{ID: 12, Name: "Role-playing (RPG)"}}},
@@ -197,20 +181,13 @@ func TestUnitRecommendations_DegradedOnGenreFallbackFailure(t *testing.T) {
 	}
 }
 
-// TestUnitRecommendations_LimitOverMaxRejected pins the contract's
-// bound on limit (1-50): specval (wired into every route on this
-// router) rejects an out-of-range limit before the handler ever
-// computes an effective limit.
+// Pins the contract's bound on limit (1-50): specval rejects an
+// out-of-range limit before the handler computes an effective one.
 func TestUnitRecommendations_LimitOverMaxRejected(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
 	h := newUnitHandlers(&stubStore{}, &stubGames{}, nil, newStubCache())
 	rec := serveUnit(t, h, env, http.MethodPost, "/recommendations:score", tok,
 		map[string]any{"library": []map[string]any{{"igdb_game_id": 1}}, "limit": 999})
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("want 400, got %d %s", rec.Code, rec.Body.String())
-	}
-	if !strings.Contains(rec.Body.String(), "invalid_body") {
-		t.Fatalf("want an invalid_body problem, got %s", rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusBadRequest, "invalid_body")
 }

@@ -17,11 +17,9 @@ import (
 
 const defaultBaseURL = "https://www.pricecharting.com"
 
-// Client is the real keyed PriceCharting client. The documented API
-// budget is 1 call per second; past it "your calls will be blocked and
-// your account permissions revoked if it persists", so the limiter
-// enforces exactly that. Bulk needs beyond the per-call API are what
-// the provider's daily CSV download is for, not a faster limiter.
+// Client is the real keyed PriceCharting client, limited to the
+// documented 1 call/s budget (past it, calls block and the account
+// risks revocation). Bulk needs go through the provider's CSV download instead.
 type Client struct {
 	httpc   *http.Client
 	limiter *rate.Limiter
@@ -43,10 +41,8 @@ func NewClient(apiKey string) *Client {
 }
 
 // get performs one keyed GET and returns the raw body with the HTTP
-// status. Error answers carry the JSON envelope on 400/500-range
-// statuses (404 for an unknown id, 403 for a bad token), so a non-200
-// body is still worth decoding; only transport and read failures
-// error here.
+// status. Error answers carry the JSON envelope even on 400/500-range
+// statuses, so a non-200 body is still worth decoding.
 func (c *Client) get(ctx context.Context, path string, params url.Values) ([]byte, int, error) {
 	if err := c.limiter.Wait(ctx); err != nil {
 		return nil, 0, fmt.Errorf("pricecharting: limiter: %w", err)
@@ -70,9 +66,8 @@ func (c *Client) get(ctx context.Context, path string, params url.Values) ([]byt
 	return body, resp.StatusCode, nil
 }
 
-// Search queries /api/products (multiple results, prices included).
-// A zero-hit query is success with an empty products array, not an
-// error envelope.
+// Search queries /api/products (multiple results, prices included);
+// a zero-hit query is success with an empty array, not an error envelope.
 func (c *Client) Search(ctx context.Context, q string) ([]Product, error) {
 	raw, httpStatus, err := c.get(ctx, "/api/products", url.Values{"q": {q}})
 	if err != nil {
@@ -96,21 +91,18 @@ func (c *Client) Search(ctx context.Context, q string) ([]Product, error) {
 }
 
 // notFoundMessage is the live API's envelope wording for an unknown
-// product id; any other non-success message (e.g. "Unknown access
-// token") is a provider error, not a missing product.
+// id; any other message is a provider error, not a missing product.
 const notFoundMessage = "no such product"
 
 // Product fetches one product by id. Only the unknown-id wording maps
-// to ErrNotFound, so a credential outage surfaces as an error (502 at
-// the handlers) instead of a phantom 404.
+// to ErrNotFound, so a credential outage surfaces as an error, not a phantom 404.
 func (c *Client) Product(ctx context.Context, id int64) (Product, error) {
 	raw, httpStatus, err := c.get(ctx, "/api/product", url.Values{"id": {strconv.FormatInt(id, 10)}})
 	if err != nil {
 		return Product{}, err
 	}
-	// Two passes over the same bytes: the product fields sit beside
-	// status in one flat object, and embedding Product here would
-	// promote its UnmarshalJSON over the envelope fields.
+	// Two passes over the same bytes: product fields sit beside status
+	// in one flat object; embedding Product would shadow the envelope's UnmarshalJSON.
 	var env struct {
 		Status       string `json:"status"`
 		ErrorMessage string `json:"error-message"`

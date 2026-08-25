@@ -123,11 +123,9 @@ func TestClient_GamesByIDsChunkErrorPropagates(t *testing.T) {
 	}
 }
 
-// TestClient_SearchLocalizationsQuoteStripAndShape pins the
-// game_localizations where-body shape after the quote/backslash strip
-// (see SearchLocalizations for why), distinct game ids in response
-// order, and the empty-after-strip short-circuit that must not spend
-// a provider call.
+// Pins the game_localizations where-body shape after the
+// quote/backslash strip, distinct ids in response order, and the
+// empty-after-strip short-circuit that must not spend a provider call.
 func TestClient_SearchLocalizationsQuoteStripAndShape(t *testing.T) {
 	var body string
 	var calls atomic.Int64
@@ -191,12 +189,9 @@ func TestClient_PopularGames_ExcludesClientSide(t *testing.T) {
 	}
 }
 
-// TestClient_PopularGames_LimitClauseCappedForLargeExcludeSet pins
-// that the constructed limit clause stays within maxIDsPerQuery (the
-// documented IGDB ceiling) even when the caller's exclude set is much
-// larger: recommendations callers can pass thousands of excluded ids
-// (a large library plus the candidate cap), and limit+len(excludeIDs)
-// must never reach the provider unclamped.
+// Pins that the constructed limit clause stays within maxIDsPerQuery
+// even with a much larger exclude set (recommendations callers can
+// pass thousands): limit+len(excludeIDs) must never reach the provider unclamped.
 func TestClient_PopularGames_LimitClauseCappedForLargeExcludeSet(t *testing.T) {
 	var body string
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -252,10 +247,8 @@ func TestClient_TokenFailureSurfaces(t *testing.T) {
 	c, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`[]`))
 	})
-	// A bare http.HandlerFunc has no router, so appending a bogus path to
-	// tokenURL still reaches the same handler and still succeeds -- it
-	// cannot induce a failure. Point at a dedicated token fake that always
-	// fails instead.
+	// A bare http.HandlerFunc has no router, so a bogus tokenURL path
+	// still succeeds; point at a dedicated token fake that always fails.
 	failingTokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
@@ -287,12 +280,9 @@ func TestClient_GameDecodesReleaseDates(t *testing.T) {
 	}
 }
 
-// TestGame_ReleaseDatesSentinel pins the fetched-but-none sentinel at
-// the plain decode boundary (no client involved): an explicit empty
-// array decodes to a non-nil empty slice, while an absent key decodes
-// to nil. gamePayloadFor and NewIGDBMeta rely on telling these two
-// states apart ("IGDB listed no dated rows" vs "this raw doc predates
-// the feature").
+// Pins the fetched-but-none sentinel at the plain decode boundary: an
+// explicit empty array decodes non-nil, an absent key decodes nil.
+// gamePayloadFor and NewIGDBMeta rely on telling these states apart.
 func TestGame_ReleaseDatesSentinel(t *testing.T) {
 	var withEmpty Game
 	if err := json.Unmarshal([]byte(`{"id":1,"name":"A","release_dates":[]}`), &withEmpty); err != nil {

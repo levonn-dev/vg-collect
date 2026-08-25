@@ -25,9 +25,8 @@ const (
 	platformFields = "name,abbreviation,generation,platform_logo.image_id"
 )
 
-// Client is the real IGDB v4 client: a cached Twitch client-credentials
-// app token behind a client-side limiter matching the documented
-// 4 req/s budget (429s beyond it).
+// Client is the real IGDB v4 client: a cached Twitch app token behind
+// a client-side limiter matching the documented 4 req/s budget.
 type Client struct {
 	httpc    *http.Client
 	limiter  *rate.Limiter
@@ -57,8 +56,7 @@ func NewClient(clientID, clientSecret string) *Client {
 }
 
 // appToken returns the cached app token, refetching inside a 60s
-// expiry margin. Signing keys never touch this service; the token is
-// plain client-credentials.
+// expiry margin (plain client-credentials; no signing keys here).
 func (c *Client) appToken(ctx context.Context) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -151,12 +149,9 @@ func (c *Client) SearchGames(ctx context.Context, q string, limit int) ([]Game, 
 	return out, nil
 }
 
-// SearchLocalizations finds games by localized (native-script) title:
-// IGDB's search index covers name + alternative_names but NOT
-// game_localizations, so native-script queries need this where-filter
-// leg. Returns distinct game ids; double quotes and backslashes are
-// stripped from the query (a quote would close the APICalypse string
-// literal, and a trailing backslash would escape that closing quote).
+// SearchLocalizations finds games by localized title: IGDB's search
+// index covers name + alternative_names but NOT game_localizations.
+// Returns distinct ids; quotes/backslashes strip (would break the APICalypse string).
 func (c *Client) SearchLocalizations(ctx context.Context, q string, limit int) ([]int64, error) {
 	clean := strings.ReplaceAll(strings.ReplaceAll(q, `"`, ""), `\`, "")
 	if strings.TrimSpace(clean) == "" {
@@ -204,8 +199,7 @@ func (c *Client) GamesByIDs(ctx context.Context, ids []int64) ([]Game, error) {
 }
 
 // PopularGames backs the genre-profile fallback: well-rated games in
-// any of the genres. The where-clause exclusion is capped at 100 ids
-// (APICalypse bodies should stay bounded); the rest filters here.
+// any genre; the where-clause exclusion caps at 100 ids, the rest filters here.
 func (c *Client) PopularGames(ctx context.Context, genreIDs []int64, excludeIDs []int64, limit int) ([]Game, error) {
 	if len(genreIDs) == 0 {
 		return nil, nil
@@ -218,11 +212,8 @@ func (c *Client) PopularGames(ctx context.Context, genreIDs []int64, excludeIDs 
 		}
 		where += fmt.Sprintf(" & id != (%s)", intsCSV(capped))
 	}
-	// limit grows with the caller's full exclude count (headroom for the
-	// client-side filter below), but the API rejects any limit over
-	// maxIDsPerQuery outright - the same ceiling the where-clause id cap
-	// above respects. A large library's exclude set must not push this
-	// past it.
+	// limit grows with the exclude count (headroom for the client-side
+	// filter), capped at maxIDsPerQuery, the API's hard ceiling.
 	queryLimit := min(limit+len(excludeIDs), maxIDsPerQuery)
 	body := fmt.Sprintf("fields %s; where %s; sort total_rating desc; limit %d;", gameFields, where, queryLimit)
 	var out []Game

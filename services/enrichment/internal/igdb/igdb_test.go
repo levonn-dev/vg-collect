@@ -93,9 +93,8 @@ func TestBundleLocalizations(t *testing.T) {
 	}
 }
 
-// A ja-JP row's Name is authoritative even when an alt in the same tag
-// family also carries a native-script (non-romanized) name: the row
-// wins and the alt is dropped rather than overwriting it.
+// A ja-JP row's Name is authoritative even when an alt in the same
+// tag family also carries a native-script name: the row wins.
 func TestBundleLocalizations_RowBeatsAlt(t *testing.T) {
 	g := Game{
 		GameLocalizations: []GameLocalization{{Name: "ロックマン", Region: LocalizationRegion{Identifier: "ja-JP"}}},

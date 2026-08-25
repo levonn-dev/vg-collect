@@ -13,8 +13,7 @@ import (
 )
 
 // idsToStrings converts product_ids to the string form the store
-// layer takes - the shared tail of BatchPrices and BatchPriceHistory.
-// product_ids' maxItems (500, the request cap) is specval's job.
+// layer takes (shared tail of BatchPrices and BatchPriceHistory).
 func idsToStrings(ids []openapi_types.UUID) []string {
 	out := make([]string, len(ids))
 	for i, id := range ids {
@@ -23,9 +22,8 @@ func idsToStrings(ids []openapi_types.UUID) []string {
 	return out
 }
 
-// GetFxLatest serves the provider's cached rate snapshot. Rates power
-// display-side conversion in the SPA only; nothing stored ever
-// depends on them, so a failure here degrades display to USD.
+// GetFxLatest serves the provider's cached rate snapshot; rates power
+// display-side conversion only, so a failure here degrades display to USD.
 func (h *Handlers) GetFxLatest(w http.ResponseWriter, r *http.Request) {
 	rates, err := h.fxRates.Latest(r.Context())
 	if err != nil {
@@ -35,9 +33,8 @@ func (h *Handlers) GetFxLatest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, api.FXRates{Base: rates.Base, Date: rates.Date, Rates: rates.Rates})
 }
 
-// BatchPrices reads current prices straight from the catalog (the
-// daily refresh keeps them fresh). Unknown ids are absent from the map;
-// unmatched products carry unmatched=true and no price fields.
+// BatchPrices reads current prices straight from the catalog. Unknown
+// ids are absent from the map; unmatched products carry unmatched=true.
 func (h *Handlers) BatchPrices(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req api.PricesBatchRequest
@@ -66,9 +63,7 @@ func (h *Handlers) BatchPrices(w http.ResponseWriter, r *http.Request) {
 }
 
 // BatchPriceHistory returns each requested product's snapshot series
-// inside the window, oldest first (the collection dashboard's
-// value-over-time composition reads it). Unknown ids and products with
-// no in-window points are absent from the map.
+// inside the window, oldest first. Unknown/pointless ids are absent from the map.
 func (h *Handlers) BatchPriceHistory(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req api.PriceHistoryRequest
@@ -76,10 +71,8 @@ func (h *Handlers) BatchPriceHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ids := idsToStrings(req.ProductIds)
-	// days' range (1-365) is specval's job; only the default-when-absent
-	// case needs handling here (the contract's default:90 is documentation
-	// - the request validator does not rewrite an absent field into the
-	// body, so an omitted days still reaches here as nil).
+	// days' range is specval's job; the contract's default:90 is
+	// documentation only (the validator doesn't rewrite an absent field), so handle it here.
 	days := 90
 	if req.Days != nil {
 		days = *req.Days

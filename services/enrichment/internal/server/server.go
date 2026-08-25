@@ -1,7 +1,6 @@
 // Package server maps HTTP (generated ServerInterface) onto the
-// catalog: search, resolve, product reads, batch prices,
-// recommendation scoring, and the price-refresh runner shared by the
-// admin trigger and the CronJob's internal endpoint.
+// catalog: search, resolve, reads, batch prices, recommendations, and
+// the price-refresh runner shared by the admin trigger and CronJob.
 package server
 
 import (
@@ -137,9 +136,8 @@ type Handlers struct {
 	productTTL       time.Duration
 	igdbRefreshAfter time.Duration
 
-	// Domain instruments, registered best-effort in New; the emission
-	// helpers below guard the nils, so a telemetry hiccup never blocks
-	// serving (the bff cache counter set the pattern).
+	// Domain instruments, registered best-effort in New; emission
+	// helpers guard the nils so a telemetry hiccup never blocks serving.
 	cacheFailOpen             metric.Int64Counter
 	searchRequests            metric.Int64Counter
 	localizationLeg           metric.Int64Counter
@@ -154,15 +152,10 @@ type Handlers struct {
 	// triggers answer 409.
 	refreshing atomic.Bool
 
-	// refreshStepStamps holds each step's last-completion unix time in
-	// seconds, keyed by step name: recordRefreshStepDuration stamps it,
-	// the refreshLastCompleted gauge callback reads it
-	// (observeRefreshLastCompleted). A sync.Map, not a fixed-size
-	// struct, so a step this process has never completed is simply
-	// absent from it - the callback then observes nothing for that
-	// step, never a false zero, which is what makes the gauge survive a
-	// pod replacement: Prometheus keeps the last real sample a prior
-	// process already pushed.
+	// refreshStepStamps holds each step's last-completion unix seconds
+	// (recordRefreshStepDuration writes, observeRefreshLastCompleted
+	// reads). Unrun steps stay absent, not a false zero: the gauge then
+	// keeps reporting a prior process's last real value across restarts.
 	refreshStepStamps sync.Map
 
 	// now is a test seam (staleness math and snapshot stamps).
@@ -201,17 +194,12 @@ func New(st Store, games GameProvider, prices PriceProvider, fxRates FXProvider,
 		"Auto-match fallback name-form searches by outcome", "{search}")
 	h.refreshItems = vgotel.CounterLogged(meter, opts.Logger, "vg.enrichment.refresh.items",
 		"Nightly refresh items by step and outcome", "{item}")
-	// Explicit boundaries: the SDK defaults top out at 10s and would
-	// flatten every multi-minute refresh step into the last bucket
-	// (the same shared DurationBuckets tuple collection's
-	// rematch.duration histogram uses).
+	// Explicit boundaries: SDK defaults top out at 10s and would
+	// flatten every multi-minute step into the last bucket.
 	h.refreshStepDuration = vgotel.HistogramLogged(meter, opts.Logger, "vg.enrichment.refresh.step_duration",
 		"Elapsed seconds per catalog refresh step", "s", vgotel.DurationBuckets...)
-	// Direct SDK registration (not vgotel.Histogram/Counter): an
-	// Observable gauge needs RegisterCallback, which those wrappers do
-	// not expose. Mirrors libs/go/pgkit's pool gauges and this same
-	// service's auth/collection siblings (signing-keys, pending-
-	// submissions).
+	// Direct SDK registration, not vgotel.Histogram/Counter: an
+	// Observable gauge needs RegisterCallback, which those wrappers don't expose.
 	var err error
 	if h.refreshLastCompleted, err = meter.Float64ObservableGauge("vg.enrichment.refresh.last_completed",
 		metric.WithDescription("Unix time a catalog refresh step last completed, labeled by step"),
@@ -234,22 +222,16 @@ func problem(w http.ResponseWriter, r *http.Request, status int, code, detail st
 	httpkit.WriteProblemFields(w, r, status, code, detail)
 }
 
-// internalError answers a 500 and logs its cause: op is a stable,
-// grep-able label for the failing operation (the log's "op" key);
-// detail is the response's human-readable text. The two vary
-// independently.
+// internalError answers a 500 and logs its cause; op is a stable,
+// grep-able label (the log's "op" key), detail is the response text.
 func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, op, detail string, err error) {
-	h.logger.ErrorContext(r.Context(), "store error", "op", op, "err", err)
+	h.logger.ErrorContext(r.Context(), "handler error", "op", op, "err", err)
 	problem(w, r, http.StatusInternalServerError, "internal", detail)
 }
 
-// requireService answers false (and writes the 403 problem) unless
-// the verified claims are a service token (token_use=service): the
-// guard on POST /internal/refresh, the catalog-refresh CronJob's
-// machine-only trigger. Same claims-access path and problem shape as
-// the admin-role gates elsewhere in this file (jwtauth already ran
-// ahead of every handler, so a missing claims value here would be a
-// minting bug, not a caller error).
+// requireService answers false (writes the 403 problem) unless the
+// verified claims are a service token (token_use=service): the guard
+// on POST /internal/refresh, the CronJob's machine-only trigger.
 func (h *Handlers) requireService(w http.ResponseWriter, r *http.Request) bool {
 	claims, _ := jwtauth.FromContext(r.Context())
 	if !claims.IsService() {
@@ -259,31 +241,16 @@ func (h *Handlers) requireService(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// requireAdminOrService admits an admin user or a service token - the
-// guard on POST /internal/normalize-community-regions, this service's
-// twin of collection's admin-or-service levers (normalize-platforms,
-// normalize-regions): the nightly job runs it as a service token
-// alongside those, and an operator can also trigger it with the admin
-// role. Same claims-access path and 403 problem shape as
-// requireService above.
+// requireAdminOrService admits an admin user or a service token: the
+// guard on POST /internal/normalize-community-regions.
 func (h *Handlers) requireAdminOrService(w http.ResponseWriter, r *http.Request) bool {
 	return jwtauth.RequireAdminOrService(w, r, problem)
 }
 
-// requireAdmin answers false (and writes the 403 problem) unless the
-// verified claims carry the admin role: the guard on every admin-only
-// product and community-catalog lever (CreateCommunityProduct, the
-// unmatched/community/promote-candidate worklists, promote, dismiss,
-// the mapping fix, delete, and the immediate refresh trigger). Same
-// claims-access path and problem shape as requireService and
-// requireAdminOrService above.
+// requireAdmin answers false (writes the 403 problem) unless the
+// verified claims carry the admin role.
 func (h *Handlers) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
-	claims, _ := jwtauth.FromContext(r.Context())
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
-		return false
-	}
-	return true
+	return jwtauth.RequireAdmin(w, r, problem)
 }
 
 // failOpen records a Valkey failure the caller is about to treat as a
@@ -305,14 +272,9 @@ func (h *Handlers) countLocalizationLeg(ctx context.Context, outcome string) {
 }
 
 // countMatch records one auto-match attempt's outcome; source names
-// the calling flow (resolve today; the label stays for future
-// flows), region the clamped entry region that steered acceptance
-// ("none" when the resolve carried no region). The resolve request's
-// region is free text (maxLength 32, no enum), so anything outside
-// regionkit.KnownRegions clamps to "none" too - matching already
-// treats an unrecognized region as base region (see match.go's
-// acceptedConsoles), so "none" stays honest, and an authenticated
-// user cannot mint an unbounded label series by varying the string.
+// the calling flow, region is the clamped entry region ("none" if
+// absent or unrecognized). The resolve region is free text, so
+// clamping outside regionkit.KnownRegions caps the metric's label cardinality.
 func (h *Handlers) countMatch(ctx context.Context, source, outcome, region string) {
 	if !regionkit.KnownRegions[region] {
 		region = "none"
@@ -333,26 +295,17 @@ func (h *Handlers) countRefreshItem(ctx context.Context, step, outcome string) {
 	vgotel.Count(ctx, h.refreshItems, attribute.String("step", step), attribute.String("outcome", outcome))
 }
 
-// recordRefreshStepDuration records one catalog refresh step's
-// elapsed seconds and stamps its completion time for the
-// refreshLastCompleted gauge (observeRefreshLastCompleted). Every step
-// defers it, so an aborted or stopped-early step still reports and
-// both series stay an honest the-step-ran signal.
+// recordRefreshStepDuration records a step's elapsed seconds and
+// stamps its completion time; every step defers this call.
 func (h *Handlers) recordRefreshStepDuration(ctx context.Context, step string, seconds float64) {
 	vgotel.Record(ctx, h.refreshStepDuration, seconds, attribute.String("step", step))
 	h.refreshStepStamps.Store(step, h.now().Unix())
 }
 
-// observeRefreshLastCompleted reports each catalog refresh step's
-// last-completion unix time, stamped by recordRefreshStepDuration. A
-// step refreshStepStamps has never stamped (never completed in this
-// process) is skipped entirely rather than reported as zero: the
-// stalled-refresh alert's last_over_time query already treats an
-// absent series as "never happened", which is the truth for a step
-// this process has not run yet - and, across a pod replacement, the
-// prior process's own last real sample is still what Prometheus falls
-// back on, since a gauge (unlike a counter's increase()) re-reports
-// its last-known value on every export interval.
+// observeRefreshLastCompleted reports each step's last-completion
+// unix time. An unrun step is skipped, not zero: the stalled-refresh
+// alert treats absent as "never happened," and the gauge keeps
+// re-reporting its last value across a pod replacement.
 func (h *Handlers) observeRefreshLastCompleted(_ context.Context, o metric.Observer) error {
 	h.refreshStepStamps.Range(func(key, value any) bool {
 		o.ObserveFloat64(h.refreshLastCompleted, float64(value.(int64)), metric.WithAttributes(attribute.String("step", key.(string))))
@@ -361,18 +314,14 @@ func (h *Handlers) observeRefreshLastCompleted(_ context.Context, o metric.Obser
 	return nil
 }
 
-// countNormalizeCommunityRegions records one normalize-community-
-// regions sweep row's outcome: normalized (promoted), skipped (no
-// fold/synonym match), or failed (the store write errored) - the
-// same three-way split collection's normalize-regions counter uses.
+// countNormalizeCommunityRegions records one sweep row's outcome:
+// normalized, skipped (no fold/synonym match), or failed (write error).
 func (h *Handlers) countNormalizeCommunityRegions(ctx context.Context, outcome string) {
 	vgotel.Count(ctx, h.normalizeCommunityRegions, attribute.String("outcome", outcome))
 }
 
 var _ api.ServerInterface = (*Handlers)(nil)
 
-// maxBodyBytes caps request bodies at the router's specval layer; the
-// largest legitimate body is a recommendations-scoring request
-// carrying the caller's full owned library (handlers_recommendations.go's
-// own DecodeBody call uses the same 256KiB cap directly).
+// maxBodyBytes caps request bodies at the router's specval layer
+// (256KiB covers the largest legitimate body: a full owned library).
 const maxBodyBytes = 256 << 10

@@ -1,10 +1,8 @@
 // Package cache is the enrichment service's Valkey surface: the 24h
-// search query cache and the short product read cache. Values are
-// marshaled response bodies, so a hit costs no recompute. FAIL-OPEN
-// DECISIONS BELONG TO CALLERS: errors are returned verbatim and every
-// handler treats them as a miss (log + continue). Misses are nil, not
-// errors. No per-operation timeouts here (network-level timeouts
-// belong to the client options).
+// search cache and short product cache, storing marshaled response
+// bodies. FAIL-OPEN DECISIONS BELONG TO CALLERS: errors return
+// verbatim (handlers treat as a miss); misses are nil, not errors.
+// No per-operation timeouts; those belong to the client options.
 package cache
 
 import (
@@ -29,10 +27,8 @@ func New(rdb *redis.Client) *Cache {
 	return &Cache{rdb: rdb}
 }
 
-// searchKey hashes the (caller-normalized) query so keys stay clean
-// regardless of query content or length. The version segment bumps
-// whenever the cached result schema changes; old entries simply age
-// out via TTL rather than being decoded under the new shape.
+// searchKey hashes the (caller-normalized) query so keys stay clean.
+// The version segment bumps on schema change; old entries age out via TTL.
 func searchKey(kind, q string) string {
 	sum := sha256.Sum256([]byte(q))
 	return "search:v3:" + kind + ":" + hex.EncodeToString(sum[:])

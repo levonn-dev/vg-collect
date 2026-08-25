@@ -31,8 +31,7 @@ func (a *authEnv) validator() *jwtauth.Validator {
 }
 
 // serviceToken mints a valid access JWT carrying token_use=service (no
-// roles) for sub, mirroring how auth's internal service-token endpoint
-// mints a machine credential for the catalog-refresh CronJob.
+// roles) for sub, a machine credential like the catalog-refresh CronJob's.
 func (a *authEnv) serviceToken(t *testing.T, sub string) string {
 	t.Helper()
 	return a.env.ServiceToken(t, sub)

@@ -36,10 +36,8 @@ func normQuery(q string) string {
 }
 
 // matchNamesFor returns the auto-match target forms for a game in an
-// entry region: the region's chained transliteration first when a
-// bundle carries one (it becomes the primary provider query), then
-// the canonical name. Base regions and games without a bundle keep
-// the canonical name alone - zero extra provider calls.
+// entry region: the chained transliteration first when a bundle has
+// one (primary query), else just the canonical name.
 func matchNamesFor(g igdb.Game, region string) []string {
 	for _, id := range regionQueryChains[region] {
 		for _, b := range igdb.BundleLocalizations(g) {
@@ -63,16 +61,13 @@ func matchCandidates(results []common.SearchResult) []match.Candidate {
 	return cands
 }
 
-// SearchCatalog is the discovery search: query cache in front of the
-// provider, never DB-first (the lazily-built catalog is incomplete by
-// construction). Provider down + cache cold degrades to a local name
-// match, flagged and uncached.
+// SearchCatalog is the discovery search: cache in front of the
+// provider, never DB-first (catalog is incomplete by construction).
+// Provider-down + cold-cache degrades to a local name match, uncached.
 func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params api.SearchCatalogParams) {
 	ctx := r.Context()
-	// q's blank-after-trim guard stays: the contract's minLength:1 on q
-	// catches a literal empty string but not a whitespace-only one (see
-	// collection's validateEntryInput comment for the identical gap on
-	// region). type's enum is specval's job now.
+	// q's blank-after-trim guard stays: minLength:1 catches empty but
+	// not whitespace-only; type's enum is specval's job.
 	q := strings.TrimSpace(params.Q)
 	if q == "" {
 		problem(w, r, http.StatusBadRequest, "invalid_param", "q must not be empty")
@@ -149,10 +144,8 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 }
 
 // communityResult maps an admin-minted community product onto the
-// unified search shape. type stays the provider discriminator (game
-// vs hardware); item_type carries the finer community kind for the
-// pick, and origin marks the row so the SPA renders the community tag
-// and builds a CommunityPick.
+// unified search shape. type stays the game/hardware discriminator;
+// item_type carries the finer kind; origin marks the row as community.
 func communityResult(p store.Product) common.SearchResult {
 	res := common.SearchResult{Name: p.Name}
 	if p.Type == "game" {
@@ -196,15 +189,11 @@ func communityResult(p store.Product) common.SearchResult {
 	return res
 }
 
-// interleaveCommunityResults merges the community lane into the one
-// results list and writes the answer. Community mints are scored
-// against the query by the same name similarity the provider order
-// uses and merged descending; a provider result precedes a community
-// result of equal score (providers are the canonical catalog). The
-// merge runs on the by-value copy AFTER cache resolution, so the
-// provider cache stays a provider-only unit and a fresh mint still
-// appears immediately. Game and hardware searches only; pc_listing
-// picks price anchors, which community products never have.
+// interleaveCommunityResults merges the community lane into results:
+// community mints score by the same name similarity as provider
+// order and merge in descending score (ties favor the provider row).
+// Runs on the by-value copy AFTER cache resolution, so the provider
+// cache stays provider-only and a fresh mint appears immediately.
 func (h *Handlers) interleaveCommunityResults(ctx context.Context, w http.ResponseWriter, kind, q string, out api.SearchResults) {
 	var types []string
 	switch kind {
@@ -218,10 +207,8 @@ func (h *Handlers) interleaveCommunityResults(ctx context.Context, w http.Respon
 	}
 	comm, err := h.store.SearchCommunityProducts(ctx, types, q, communityLaneLimit)
 	if err != nil {
-		// Fail open like every other collaborator in this path: the
-		// community lane is an optional overlay on results, so a store
-		// fault degrades to the provider-only answer already in out
-		// rather than discarding it behind a 500.
+		// Fail open: the community lane is an optional overlay, so a
+		// store fault degrades to the provider-only answer already in out.
 		h.failOpen(ctx, "community_search", err)
 		writeJSON(w, http.StatusOK, out)
 		return
@@ -242,9 +229,8 @@ func (h *Handlers) interleaveCommunityResults(ctx context.Context, w http.Respon
 	for _, p := range comm {
 		merged = append(merged, scored{res: communityResult(p), score: match.Score(q, p.Name), provider: false})
 	}
-	// Descending score; on a tie the provider row precedes the community
-	// row. SliceStable preserves provider order and the store's name-asc
-	// community order among otherwise-equal rows.
+	// Descending score; ties favor the provider row. SliceStable keeps
+	// provider order and the store's name-asc community order otherwise.
 	sort.SliceStable(merged, func(i, j int) bool {
 		if merged[i].score != merged[j].score {
 			return merged[i].score > merged[j].score
@@ -264,10 +250,8 @@ func (h *Handlers) searchGames(ctx context.Context, q string) ([]common.SearchRe
 	if err != nil {
 		return nil, err
 	}
-	// Non-latin queries get the supplementary localization leg; latin
-	// queries stay on the primary search alone (see hasNonLatinLetter).
-	// A leg or fetch failure serves the primary results as-is - this is a
-	// best-effort widening, never a hard dependency.
+	// Non-latin queries get the supplementary localization leg (see
+	// hasNonLatinLetter); a leg/fetch failure just serves primary results.
 	if hasNonLatinLetter(q) {
 		ids, lerr := h.games.SearchLocalizations(ctx, q, searchLimit)
 		switch {
@@ -316,11 +300,9 @@ func (h *Handlers) searchGames(ctx context.Context, q string) ([]common.SearchRe
 	return out, nil
 }
 
-// rankExactFirst floats exact-name matches (normalized, so brackets,
-// articles and possessives fold) to the top of the provider's
-// relevance order - IGDB ranks loosely on exactness - with the rating
-// count ordering the exacts so the widely known release leads.
-// Everything else keeps provider order.
+// rankExactFirst floats exact-name matches (normalized: brackets,
+// articles, possessives fold) to the top, since IGDB ranks loosely on
+// exactness; exacts sort by rating count so the known release leads.
 func rankExactFirst(q string, games []igdb.Game) []igdb.Game {
 	exactName := func(g igdb.Game) bool {
 		if match.SameName(g.Name, q) {
@@ -349,11 +331,9 @@ func rankExactFirst(q string, games []igdb.Game) []igdb.Game {
 }
 
 // matchedRegion reports which region's localized title recognized the
-// query, or "" when the canonical name did (or nothing did). Equality
-// and containment over normQuery-folded strings - never the Dice
-// scorer, which is whitespace-token-shaped and cannot grade CJK text.
-// Guards: latin queries need 3+ runes, non-latin 2+ (so one
-// character cannot annotate everything it appears in).
+// query, or "" if the canonical name did (or nothing did). Containment
+// over normQuery-folded strings, never the Dice scorer (whitespace-token
+// shaped, can't grade CJK). Guards: 3+ runes latin, 2+ non-latin.
 func matchedRegion(q string, g igdb.Game) string {
 	nq := normQuery(q)
 	minRunes := 3
@@ -387,10 +367,8 @@ func asciiOnlyQuery(s string) bool {
 	return true
 }
 
-// hasNonLatinLetter gates the supplementary localization leg: IGDB's
-// own search already matches latin names and alternative names, so
-// only queries carrying a non-latin letter (kana, Han, Hangul, ...)
-// pay the extra provider call.
+// hasNonLatinLetter gates the supplementary localization leg: IGDB
+// already matches latin names, so only non-latin queries pay the extra call.
 func hasNonLatinLetter(s string) bool {
 	for _, r := range s {
 		if unicode.IsLetter(r) && !unicode.Is(unicode.Latin, r) {
@@ -401,15 +379,10 @@ func hasNonLatinLetter(s string) bool {
 }
 
 // platformReleaseRegions returns the distinct canonical regions this
-// game released in on one platform, ordered by that region's earliest
-// release date on the platform (a dateless row still asserts the
-// region: it sorts after every dated region, ties broken
-// alphabetically). Unlike platformReleaseDates, this is
-// platform-exact: JP twin platforms (Famicom/NES, Super
-// Famicom/SNES) are deliberately NOT folded together here, because a
-// search result badges the actual physical release per platform row,
-// not the collector's-console equivalence platformReleaseDates folds
-// for the product projection's single scoped date.
+// game released in on one platform, ordered by earliest release date
+// (dateless sorts last, alpha tiebreak). Unlike platformReleaseDates,
+// this is platform-exact: JP twins (Famicom/NES, Super Famicom/SNES)
+// are NOT folded here, since a search result badges the actual physical release.
 func platformReleaseRegions(g igdb.Game, platformID int64) []string {
 	type regionSpan struct {
 		earliest time.Time
@@ -465,9 +438,8 @@ func gameResult(g igdb.Game) common.SearchResult {
 		prs := make([]common.PlatformRef, 0, len(g.Platforms))
 		for _, p := range g.Platforms {
 			pr := common.PlatformRef{IgdbPlatformId: p.ID, Name: p.Name}
-			// platformReleaseRegions stays plain []string (a pure, wire-type-free
-			// helper covered by its own unit test below); the wire enum
-			// conversion happens only here, at the common.PlatformRef boundary.
+			// platformReleaseRegions stays plain []string (pure, testable);
+			// the wire enum conversion happens only here.
 			if regions := platformReleaseRegions(g, p.ID); len(regions) > 0 {
 				wire := make([]common.ReleaseRegion, len(regions))
 				for i, r := range regions {
@@ -540,13 +512,10 @@ func (h *Handlers) searchHardware(ctx context.Context, q string) ([]common.Searc
 }
 
 // searchPCListings is the all-of-PriceCharting search behind the
-// proxy picker: no category filter (game listings included - the
-// point is variant rows IGDB does not separate), with the provider's
-// per-listing prices passed through so prints are tellable apart.
+// proxy picker: no category filter (surfaces variant rows IGDB doesn't separate).
 func (h *Handlers) searchPCListings(ctx context.Context, q string) ([]common.SearchResult, error) {
-	// The provider's tokenizer misses possessive-less listing names
-	// when the query keeps the possessive; the bare form returns the
-	// superset, so every pc_listing query drops it.
+	// The provider's tokenizer misses possessive-less listing names when
+	// the query keeps the possessive, so every pc_listing query drops it.
 	prods, err := h.prices.Search(ctx, match.ProviderQuery(q))
 	if err != nil {
 		return nil, err
@@ -561,9 +530,8 @@ func (h *Handlers) searchPCListings(ctx context.Context, q string) ([]common.Sea
 	return out, nil
 }
 
-// pcListingResult maps one PC listing - live (provider) or cached
-// (a product's stored mapping, on the degraded path) - onto the wire
-// shape.
+// pcListingResult maps one PC listing (live or a product's cached
+// mapping on the degraded path) onto the wire shape.
 func pcListingResult(id int64, name, console, category string, q store.PriceQuote) common.SearchResult {
 	res := common.SearchResult{
 		Type: common.SearchResultType("pc_listing"), Name: name,
@@ -584,11 +552,8 @@ func localResults(kind string, prods []store.Product) []common.SearchResult {
 	out := make([]common.SearchResult, 0, len(prods))
 	if kind == "pc_listing" {
 		// Degraded: any product's stored mapping is a known listing. A
-		// resolved game/hardware product can carry the same
-		// pc_product_id as a separate pc_listing anchor product (two
-		// independent resolves; nothing ties their identities
-		// together), so an order-preserving de-dupe keeps one row per
-		// listing.
+		// game/hardware product can share pc_product_id with a separate
+		// pc_listing anchor (independent resolves), so de-dupe keeps one row.
 		seen := make(map[int64]bool, len(prods))
 		for _, p := range prods {
 			if p.PriceCharting == nil || seen[p.PriceCharting.PCProductID] {
@@ -644,10 +609,8 @@ func localResults(kind string, prods []store.Product) []common.SearchResult {
 }
 
 // searchPCListingsCached is the resolve-side twin of the pc_listing
-// search endpoint: same cache key, same cached body shape, same
-// degraded discipline (a provider failure answers the caller and is
-// never cached). Auto-match runs on every no-pick game resolve, so
-// repeat adds of a family are a cache hit instead of a provider call.
+// search endpoint: same cache key/shape, same never-cache-on-failure
+// discipline. Repeat adds of a family hit cache instead of the provider.
 func (h *Handlers) searchPCListingsCached(ctx context.Context, q string) ([]common.SearchResult, error) {
 	nq := normQuery(q)
 	if body, err := h.cache.GetSearch(ctx, "pc_listing", nq); err != nil {

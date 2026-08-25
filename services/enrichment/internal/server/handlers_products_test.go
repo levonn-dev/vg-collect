@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
@@ -33,9 +34,7 @@ func TestUnitGetProduct_NotFoundAndCacheHit(t *testing.T) {
 	tok := env.token(t, "u1", []string{"user"})
 
 	rec := serveUnit(t, h, env, http.MethodGet, "/products/33333333-3333-3333-3333-333333333333", tok, nil)
-	if rec.Code != http.StatusNotFound || !bytes.Contains(rec.Body.Bytes(), []byte("product_not_found")) {
-		t.Fatalf("not found: %d %s", rec.Code, rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusNotFound, "product_not_found")
 
 	// A cached body short-circuits the store entirely.
 	c.prods["44444444-4444-4444-4444-444444444444"] = []byte(`{"id":"44444444-4444-4444-4444-444444444444"}`)
@@ -93,13 +92,10 @@ func TestUnitGetProduct_StaleIGDBRefetchAndStaleServeOnError(t *testing.T) {
 	}
 }
 
-// TestUnitGetProduct_StaleRefetchNilPlatformRebuildsAtPlatformZero pins
-// refreshIGDBIfStale's defensive nil-Platform branch: a stale
-// igdb-bearing product somehow missing its platform ref (games always
-// carry one today; this documents the fallback rather than a reachable
-// state) still refetches and rebuilds instead of panicking on a nil
-// dereference, scoping the platform-id-0 release table to nothing and
-// falling back to the game-level scalar.
+// Pins refreshIGDBIfStale's defensive nil-Platform branch: a stale
+// product missing its platform ref (not reachable today, but
+// documented) still refetches without a nil dereference, scoping the
+// platform-id-0 release table to nothing and falling back to the game-level scalar.
 func TestUnitGetProduct_StaleRefetchNilPlatformRebuildsAtPlatformZero(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
@@ -157,9 +153,8 @@ func TestUnitGetProduct_FreshIGDBSkipsProviderRefetch(t *testing.T) {
 			Genres: []store.Genre{}, Themes: []string{}, Franchises: []string{}, SimilarGames: []int64{}, Companies: []store.Company{}},
 	}
 	st := &stubStore{getProduct: func(context.Context, string) (store.Product, error) { return prod, nil }}
-	// gamesByIDs, upsertRaw and setIGDB are all left nil: a fresh
-	// product must not touch the provider or the store's write paths,
-	// and every stub panics loudly if called unexpectedly.
+	// gamesByIDs/upsertRaw/setIGDB left nil: a fresh product must not
+	// touch the provider or store writes; unset stubs panic if called.
 	games := &stubGames{}
 	h := newUnitHandlers(st, games, nil, newStubCache())
 
@@ -169,10 +164,8 @@ func TestUnitGetProduct_FreshIGDBSkipsProviderRefetch(t *testing.T) {
 	}
 }
 
-// TestUnitGetProduct_ReleaseDatesMapped pins toAPIProduct's release_dates
-// projection: a populated per-region table serves as rows on the wire,
-// and an empty table (fetched, but IGDB listed no dated rows for the
-// platform) serves the field absent rather than an empty array.
+// Pins toAPIProduct's release_dates projection: a populated table
+// serves as rows; an empty (fetched-none) table serves the field absent, not [].
 func TestUnitGetProduct_ReleaseDatesMapped(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
@@ -271,11 +264,9 @@ func TestResolve_GameCreatesMatchedProductIdempotently(t *testing.T) {
 	}
 }
 
-// TestResolve_GameLocalizationsMapped pins toAPIProduct's localizations
-// projection for a real fixture: game 1001 (Ocarina of Time) carries one
-// IGDB game_localizations row (ja-JP) that BundleLocalizations merges
-// with the alternative_names romanization tag, and toAPIProduct must
-// serve that bundle on the wire unchanged.
+// Pins toAPIProduct's localizations projection: fixture game 1001
+// (Ocarina of Time) has a ja-JP game_localizations row merged with an
+// alternative_names romanization tag; the bundle must serve unchanged.
 func TestResolve_GameLocalizationsMapped(t *testing.T) {
 	s := newStack(t)
 
@@ -300,16 +291,13 @@ func TestResolve_GameLocalizationsMapped(t *testing.T) {
 	}
 }
 
-// A JP-region no-pick resolve queries by the translit form and lands
-// the Super Famicom listing for a SNES pick (gate via the JP twin
-// table), forking a sibling member and leaving ntsc_u resolves on the
-// base listing.
+// A JP-region no-pick resolve queries by translit and lands the Super
+// Famicom listing for a SNES pick (JP twin gate), forking a sibling member.
 func TestResolve_RegionJPLandsJPListing(t *testing.T) {
 	s := newStack(t)
 
-	// Secret of Mana (fixture 1016) on SNES (19): its ja-JP alternative
-	// name "Seiken Densetsu 2" is the aligned translit pair with the
-	// Super Famicom fixture listing 5101.
+	// Secret of Mana (fixture 1016/SNES 19): ja-JP name "Seiken Densetsu
+	// 2" aligns with the Super Famicom fixture listing 5101.
 	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
 		"type": "game", "igdb_game_id": 1016, "platform_igdb_id": 19, "region": "ntsc_j",
 	})
@@ -382,12 +370,9 @@ func TestResolve_RegionIgnoredOnPickerPathAndUnknownIsBase(t *testing.T) {
 		t.Fatalf("the picked listing must win regardless of region: %+v", picked.Pricecharting)
 	}
 
-	// Unknown region value: byte-equal to a regionless resolve of the
-	// same identity. A throwaway resolve creates the product first, so
-	// both calls below take the find path - a fresh create's in-memory
-	// timestamps are never byte-identical to a found doc's Mongo-
-	// round-tripped ones, regardless of region, so comparing a create
-	// against a find would prove nothing about region.
+	// Unknown region: byte-equal to a regionless resolve. A throwaway
+	// resolve creates the product first so both calls below take the
+	// find path (a fresh create's timestamps never byte-match a found doc's).
 	warm := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
 		"type": "game", "igdb_game_id": 1016, "platform_igdb_id": 19,
 	})
@@ -428,18 +413,14 @@ func TestResolve_RegionIgnoredOnPickerPathAndUnknownIsBase(t *testing.T) {
 	}
 }
 
-// The fallback leg: a JP-region resolve whose translit query surfaces
-// nothing the gate admits re-searches by the canonical name and finds
-// the hybrid-named JP listing; the second leg rides the pc_listing
-// search cache.
+// The fallback leg: a JP resolve whose translit query surfaces
+// nothing admitted re-searches by canonical name and hits the hybrid JP listing.
 func TestResolve_RegionFallbackSearchFindsHybridListing(t *testing.T) {
 	s := newStack(t)
 	ctx := context.Background()
 
-	// Mega Man 2 (fixture 1024) on NES (18): its ja-JP romanization
-	// "Rockman 2" matches no fixture listing, but the canonical name
-	// "Mega Man 2" hits the Famicom-console fixture 5105 that the
-	// ntsc_j gate admits for an NES pick.
+	// Mega Man 2 (fixture 1024/NES 18): ja-JP "Rockman 2" matches no
+	// listing, but canonical "Mega Man 2" hits Famicom fixture 5105.
 	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), map[string]any{
 		"type": "game", "igdb_game_id": 1024, "platform_igdb_id": 18, "region": "ntsc_j",
 	})
@@ -466,23 +447,17 @@ func TestResolve_RegionFallbackSearchFindsHybridListing(t *testing.T) {
 	}
 }
 
-// TestResolve_HealsPreFeatureRawReleaseDates pins gamePayloadFor's
-// self-heal: a raw doc predating this feature (no release_dates key on
-// the stored game subdocument at all, decoding to a nil Go slice) does
-// not satisfy the read, so one provider refetch repairs it and the
-// healed rows reach the resolved product. A raw doc UpsertRaw already
-// normalized to the empty-but-fetched marker satisfies the read and
-// skips the provider entirely.
+// Pins gamePayloadFor's self-heal: a raw doc predating this feature
+// (no release_dates key, decodes nil) fails the read, so one refetch
+// repairs it. A raw already normalized to the empty-but-fetched
+// marker satisfies the read and skips the provider entirely.
 func TestResolve_HealsPreFeatureRawReleaseDates(t *testing.T) {
 	s := newStack(t)
 	ctx := context.Background()
 	const platformID = 8801
 
-	// Bypass UpsertRaw's normalization: insert the raw doc through the
-	// Mongo handle directly, omitting release_dates so it decodes as
-	// nil rather than the empty-array fetched-but-none marker. Every
-	// other field (platforms included) is what a real pre-feature
-	// payload would already carry - release_dates is the only new one.
+	// Bypass UpsertRaw's normalization: insert directly, omitting
+	// release_dates so it decodes nil, not the fetched-but-none marker.
 	const staleGameID = 93340
 	if _, err := s.mdb.Collection("igdb_raw").InsertOne(ctx, bson.M{
 		"_id": staleGameID,
@@ -510,13 +485,9 @@ func TestResolve_HealsPreFeatureRawReleaseDates(t *testing.T) {
 				},
 			}}, nil
 		},
-		// The stack's platform catalog is cold on a fresh container;
-		// resolve's platformLogoFor triggers one refresh (best-effort,
-		// unrelated to this test). A non-empty answer lets UpsertPlatforms
-		// stamp fetched_at so the catalog reads warm from then on -
-		// otherwise every resolve call re-triggers this same provider
-		// call, and the counter-case below overrides games with a stub
-		// that has no platforms field.
+		// Platform catalog is cold on a fresh container; platformLogoFor
+		// triggers one refresh here (best-effort). A non-empty answer lets
+		// UpsertPlatforms warm the catalog so later resolves don't re-trigger it.
 		platforms: func(context.Context) ([]igdb.Platform, error) {
 			return []igdb.Platform{{ID: platformID, Name: "Test Platform"}}, nil
 		},
@@ -545,12 +516,9 @@ func TestResolve_HealsPreFeatureRawReleaseDates(t *testing.T) {
 	}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	// Seed the platform catalog directly instead of leaning on the
-	// healed case above having already warmed it through its
-	// games.platforms stub: this case must hold on its own (e.g. if it
-	// were the only one to run), and resolveGame's platformLogoFor call
-	// would otherwise hit a cold catalog and reach for h.games.Platforms
-	// below, which panics.
+	// Seed the platform catalog directly rather than relying on the
+	// case above having warmed it: this case must hold standalone, or
+	// platformLogoFor hits a cold catalog and panics on h.games.Platforms.
 	if err := s.store.UpsertPlatforms(ctx, []igdb.Platform{{ID: platformID, Name: "Test Platform"}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -564,12 +532,9 @@ func TestResolve_HealsPreFeatureRawReleaseDates(t *testing.T) {
 	}
 }
 
-// TestResolve_HealsBelowVersionRaw pins gamePayloadFor's version-based
-// heal: a raw doc that already carries a real release table (so the
-// nil-table check alone would treat it as fetched) but predates
-// fields_version tracking - and the localization arrays that generation
-// added - is still a miss. One refetch repairs it and the healed
-// localizations reach the minted product.
+// Pins gamePayloadFor's version-based heal: a raw doc with a real
+// release table but predating fields_version (and the localization
+// arrays that generation added) is still a miss; one refetch repairs it.
 func TestResolve_HealsBelowVersionRaw(t *testing.T) {
 	s := newStack(t)
 	ctx := context.Background()
@@ -577,10 +542,8 @@ func TestResolve_HealsBelowVersionRaw(t *testing.T) {
 	const platformID = 8802
 	naDate := time.Date(2003, time.September, 9, 0, 0, 0, 0, time.UTC)
 
-	// Hand-write the raw doc: release_dates is real (the nil-table case
-	// is TestResolve_HealsPreFeatureRawReleaseDates's job), but
-	// fields_version and the localization arrays a newer generation added
-	// are absent - the below-version case this test exists for.
+	// Hand-write the raw doc: release_dates is real, but fields_version
+	// and the newer-generation localization arrays are absent (the below-version case).
 	if _, err := s.mdb.Collection("igdb_raw").InsertOne(ctx, bson.M{
 		"_id": gid,
 		"game": bson.M{
@@ -593,9 +556,8 @@ func TestResolve_HealsBelowVersionRaw(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// Pre-warm the platform catalog: resolve's platformLogoFor otherwise
-	// reaches for h.games.Platforms below, which this stub does not
-	// carry (matching the counter-case in HealsPreFeatureRawReleaseDates).
+	// Pre-warm the platform catalog: platformLogoFor otherwise reaches
+	// for h.games.Platforms, which this stub doesn't carry.
 	if err := s.store.UpsertPlatforms(ctx, []igdb.Platform{{ID: platformID, Name: "Test Platform"}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -630,9 +592,8 @@ func TestResolve_HealsBelowVersionRaw(t *testing.T) {
 
 func TestResolve_GameManualMatchMintsExactAnchor(t *testing.T) {
 	s := newStack(t)
-	// 6001 is the Super Nintendo System fixture - a listing the game
-	// auto-match would never pick for Chrono Trigger (it maps to 5011),
-	// so the stored mapping proves the manual path ran.
+	// 6001 is the Super Nintendo System fixture, a listing auto-match
+	// would never pick for Chrono Trigger (maps to 5011): proves the manual path ran.
 	body := map[string]any{"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19, "pc_product_id": 6001}
 	resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), body)
 	if resp.StatusCode != http.StatusOK {
@@ -665,10 +626,8 @@ func TestResolve_GameManualMatchMintsExactAnchor(t *testing.T) {
 	}
 }
 
-// Listing-keyed identity end to end: no-pick resolves converge on the
-// auto-matched member; a manual pick of a DIFFERENT listing is a
-// distinct member of the same family; the same pick converges; and
-// request region/edition/variant are ignored for games.
+// Listing-keyed identity end to end: no-pick resolves converge; a
+// manual pick of a different listing is a distinct family member; region/edition/variant are ignored.
 func TestResolve_GameConvergesPerListing(t *testing.T) {
 	s := newStack(t)
 
@@ -709,9 +668,8 @@ func TestResolve_GameConvergesPerListing(t *testing.T) {
 	}
 }
 
-// A hint the candidates cannot carry keeps the resolve conservative:
-// it lands on the family's single unmatched member (both times), and
-// the plain resolve still lands on the matched member beside it.
+// A hint no candidate carries keeps the resolve conservative: it
+// lands on the family's unmatched member (both times); a plain resolve still lands matched.
 func TestResolve_MatchHintBelowThresholdLandsUnmatchedMember(t *testing.T) {
 	s := newStack(t)
 
@@ -801,11 +759,7 @@ func TestResolve_ErrorTaxonomy(t *testing.T) {
 	}
 	for _, tc := range cases {
 		resp := s.do(http.MethodPost, "/products/resolve", s.userToken(), tc.body)
-		body, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if resp.StatusCode != tc.code || !bytes.Contains(body, []byte(tc.want)) {
-			t.Fatalf("%s: %d %s (want %d %s)", tc.name, resp.StatusCode, body, tc.code, tc.want)
-		}
+		reqtest.AssertProblem(t, resp, tc.code, tc.want)
 	}
 }
 
@@ -826,18 +780,13 @@ func TestUnitResolve_UpstreamDown(t *testing.T) {
 	h := newUnitHandlers(st, games, nil, newStubCache())
 	rec := serveUnit(t, h, env, http.MethodPost, "/products/resolve", tok,
 		map[string]any{"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19})
-	if rec.Code != http.StatusBadGateway || !bytes.Contains(rec.Body.Bytes(), []byte("upstream_unavailable")) {
-		t.Fatalf("igdb down: %d %s", rec.Code, rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusBadGateway, "upstream_unavailable")
 }
 
-// A pre-feature raw (present, nil release table) with the provider down
-// is a usable stale payload: gamePayloadFor serves it - the projection
-// just misses per-region dates - rather than erroring, matching the
-// read path's serve-stale posture. The nightly reprojection refetches
-// nil-table raws, so the minted product heals on the next refresh. This is
-// the counterpart to TestUnitResolve_UpstreamDown (no raw -> the error
-// stands).
+// A pre-feature raw (nil release table) with the provider down is
+// still usable stale (misses only per-region dates), matching the
+// read path's serve-stale posture; the nightly reprojection heals it
+// later. Counterpart to TestUnitResolve_UpstreamDown (no raw -> error).
 func TestUnitResolve_PreFeatureRawServesStaleWhenProviderDown(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
@@ -888,12 +837,9 @@ func TestUnitResolve_PreFeatureRawServesStaleWhenProviderDown(t *testing.T) {
 	}
 }
 
-// TestUnitResolve_BelowVersionRawServesStaleWhenProviderDown pins the
-// stale-serve arm for the new miss reason: a raw already carrying a
-// real release table (the nil-table check alone would treat it as a
-// hit) but below fields_version is still a miss, and when the provider
-// is down for the repair attempt the existing stale-serve arm must
-// still serve it rather than fail resolve outright.
+// Pins the stale-serve arm for a below-fields_version raw (a real
+// release table, but the nil-table check alone would treat it as a
+// hit): the provider being down for the repair attempt must still serve it.
 func TestUnitResolve_BelowVersionRawServesStaleWhenProviderDown(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
@@ -940,11 +886,8 @@ func TestUnitResolve_BelowVersionRawServesStaleWhenProviderDown(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("below-version raw must resolve from the stale payload when the provider is down: %d %s", rec.Code, rec.Body.String())
 	}
-	// The differentiator from the pre-existing hit path: a below-version
-	// raw with a real release table must still attempt (and fail) a
-	// refetch, not serve straight from the read like an already-current
-	// raw would. Without the version check this raw satisfies the old
-	// nil-table-only hit condition and calls never fires.
+	// Differentiator from the nil-table case: a below-version raw with
+	// a real table must still attempt (and fail) a refetch, not serve straight from the read.
 	if calls != 1 {
 		t.Fatalf("below-version raw must attempt exactly one refetch before falling back to stale, got %d", calls)
 	}
@@ -1005,13 +948,10 @@ func TestUnitResolve_PriceProviderDownStillCreatesUnmatched(t *testing.T) {
 	}
 }
 
-// TestUnitResolve_LostRaceDoesNotDoubleSnapshot guards the fix for a
-// lost create race: two concurrent resolves for the same identity
-// both build a matched product, but store.CreateProduct's duplicate-
-// key path converges the loser onto the winner's document (a
-// different id than the loser passed in). The handler must recognize
-// that convergence and skip the initial-snapshot append, since the
-// winner already appended its own.
+// Guards a lost create race: two concurrent resolves converge via
+// store.CreateProduct's duplicate-key path onto the winner's document
+// (a different id than the loser passed in). The handler must skip
+// the initial-snapshot append then, since the winner already appended its own.
 func TestUnitResolve_LostRaceDoesNotDoubleSnapshot(t *testing.T) {
 	env := newAuthEnv(t)
 	tok := env.token(t, "u1", []string{"user"})
@@ -1024,10 +964,8 @@ func TestUnitResolve_LostRaceDoesNotDoubleSnapshot(t *testing.T) {
 	}}
 	body := map[string]any{"type": "game", "igdb_game_id": 1011, "platform_igdb_id": 19}
 
-	// Lost race: CreateProduct's stub plays the duplicate-key
-	// convergence path by handing back a different id than it was
-	// passed (the winner's document), the same shape store.go's real
-	// FindProduct-on-duplicate-key fallback produces.
+	// Lost race: CreateProduct's stub hands back a different id than
+	// passed (the winner's doc), mirroring store.go's real fallback.
 	var passedID string
 	var snapshotCalls int
 	catalogStub := func(context.Context) ([]store.CatalogPlatform, error) {
@@ -1042,10 +980,8 @@ func TestUnitResolve_LostRaceDoesNotDoubleSnapshot(t *testing.T) {
 		upsertRaw: func(context.Context, []igdb.Game, time.Time) error { return nil },
 		createProduct: func(_ context.Context, p store.Product) (store.Product, error) {
 			passedID = p.ID
-			// Lost race: the winner's doc comes back under another id.
-			// Listing-keyed identity means the loser and the winner
-			// scored the same auto-match before racing to create, so
-			// the winner's doc already carries that same mapping.
+			// Winner's doc returns under another id; listing-keyed identity
+			// means loser and winner scored the same auto-match before racing.
 			winner := p
 			winner.ID = "77777777-7777-7777-7777-777777777777"
 			return winner, nil
@@ -1180,9 +1116,7 @@ func TestUnitResolve_GameManualMatchErrors(t *testing.T) {
 		return pricecharting.Product{}, pricecharting.ErrNotFound
 	}}
 	rec := serveUnit(t, newUnitHandlers(st, games, prices, newStubCache()), env, http.MethodPost, "/products/resolve", tok, body)
-	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "unknown_pc_product") {
-		t.Fatalf("unknown listing: %d %s", rec.Code, rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusNotFound, "unknown_pc_product")
 
 	// Provider down -> 502 upstream_unavailable.
 	prices.product = func(context.Context, int64) (pricecharting.Product, error) {
@@ -1201,17 +1135,12 @@ func TestUnitResolve_GameManualMatchErrors(t *testing.T) {
 	rec = serveUnit(t, newUnitHandlers(noRaw, noGames, &stubPrices{}, newStubCache()),
 		env, http.MethodPost, "/products/resolve", tok,
 		map[string]any{"type": "game", "igdb_game_id": 999999, "platform_igdb_id": 19, "pc_product_id": 7042})
-	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "unknown_game") {
-		t.Fatalf("unknown game must win: %d %s", rec.Code, rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusNotFound, "unknown_game")
 }
 
 // The hint reweights scoring (score-only): with unbracketed variant
-// candidates, the hint flips the winner and the stored confidence is
-// the score, not 1.0. The variant candidate carries an extra token
-// ("cartridge") the hint alone does not cover, so the winning score
-// is a genuine partial match rather than a coincidental 1.0 - unlike
-// a manual match, which always stores exactly 1.0 by construction.
+// candidates, it flips the winner and stores the score, not 1.0 (the
+// variant's extra "cartridge" token keeps it a genuine partial match).
 func TestUnitResolve_MatchHintFlipsTheWinner(t *testing.T) {
 	env := newAuthEnv(t)
 	game := igdb.Game{ID: 1005, Name: "Super Mario 64", Platforms: []igdb.Named{{ID: 4, Name: "Nintendo 64"}}}
@@ -1441,23 +1370,14 @@ func TestAdminMapping_CorrectVerifyClearAndErrors(t *testing.T) {
 
 	// Error taxonomy.
 	resp = s.do(http.MethodPut, "/admin/products/"+id+"/pricecharting", s.adminToken(), map[string]any{"pc_product_id": 999999})
-	body, _ := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound || !bytes.Contains(body, []byte("unknown_pc_product")) {
-		t.Fatalf("unknown mapping: %d %s", resp.StatusCode, body)
-	}
+	reqtest.AssertProblem(t, resp, http.StatusNotFound, "unknown_pc_product")
 	ghost := "99999999-9999-9999-9999-999999999999"
 	resp = s.do(http.MethodPut, "/admin/products/"+ghost+"/pricecharting", s.adminToken(), map[string]any{"pc_product_id": 5017})
-	body, _ = io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound || !bytes.Contains(body, []byte("product_not_found")) {
-		t.Fatalf("ghost product: %d %s", resp.StatusCode, body)
-	}
+	reqtest.AssertProblem(t, resp, http.StatusNotFound, "product_not_found")
 }
 
-// Mapping changes are identity moves: a taken listing answers 409 on
-// set, a clear that would collide with the family's unmatched member
-// answers 409 too, and a successful clear sets match_hold.
+// Mapping changes are identity moves: a taken listing (set) or a
+// colliding clear both answer 409; a successful clear sets match_hold.
 func TestAdminMapping_IdentityTakenAndHold(t *testing.T) {
 	s := newStack(t)
 	ctx := context.Background()
@@ -1472,21 +1392,17 @@ func TestAdminMapping_IdentityTakenAndHold(t *testing.T) {
 	// Set: the target listing is already carried by the matched member.
 	resp = s.do(http.MethodPut, "/admin/products/"+unmatched.Id.String()+"/pricecharting",
 		s.adminToken(), map[string]any{"pc_product_id": 5005})
-	body, _ := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusConflict || !bytes.Contains(body, []byte("identity_taken")) ||
-		!bytes.Contains(body, []byte("already carries that listing")) {
-		t.Fatalf("taken listing: want 409 identity_taken with the set-collision detail, got %d %s", resp.StatusCode, body)
+	p := reqtest.AssertProblem(t, resp, http.StatusConflict, "identity_taken")
+	if !strings.Contains(p.Detail, "already carries that listing") {
+		t.Fatalf("set-collision detail: %q", p.Detail)
 	}
 
 	// Clear: the family already has an unmatched member.
 	resp = s.do(http.MethodPut, "/admin/products/"+matched.Id.String()+"/pricecharting",
 		s.adminToken(), map[string]any{"pc_product_id": nil})
-	body, _ = io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusConflict || !bytes.Contains(body, []byte("identity_taken")) ||
-		!bytes.Contains(body, []byte("clearing would collide")) {
-		t.Fatalf("colliding clear: want 409 identity_taken with the clear-collision detail, got %d %s", resp.StatusCode, body)
+	p = reqtest.AssertProblem(t, resp, http.StatusConflict, "identity_taken")
+	if !strings.Contains(p.Detail, "clearing would collide") {
+		t.Fatalf("clear-collision detail: %q", p.Detail)
 	}
 
 	// A collision-free clear lands, unmaps, and holds.
@@ -1516,9 +1432,8 @@ func TestAdminMapping_IdentityTakenAndHold(t *testing.T) {
 	}
 }
 
-// TestAdminMapping_ConflictNamesHolder pins that both identity_taken
-// arms name the product already holding the identity, so an admin can
-// look the holder up instead of guessing which member has the listing.
+// Pins that both identity_taken arms name the product already
+// holding the identity, so an admin can look it up instead of guessing.
 func TestAdminMapping_ConflictNamesHolder(t *testing.T) {
 	s := newStack(t)
 	ctx := context.Background()
@@ -1550,33 +1465,23 @@ func TestAdminMapping_ConflictNamesHolder(t *testing.T) {
 	// names the matched holder.
 	resp := s.do(http.MethodPut, "/admin/products/"+unmatched.ID+"/pricecharting", s.adminToken(),
 		map[string]any{"pc_product_id": 5005})
-	body, _ := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusConflict || !bytes.Contains(body, []byte("identity_taken")) {
-		t.Fatalf("set collision: %d %s", resp.StatusCode, body)
-	}
-	if !bytes.Contains(body, []byte(matched.ID)) || !bytes.Contains(body, []byte("Holder Game")) {
-		t.Fatalf("set-collision detail must name the holder: %s", body)
+	p := reqtest.AssertProblem(t, resp, http.StatusConflict, "identity_taken")
+	if !strings.Contains(p.Detail, matched.ID) || !strings.Contains(p.Detail, "Holder Game") {
+		t.Fatalf("set-collision detail must name the holder: %q", p.Detail)
 	}
 
 	// Clear collision: clearing the matched member while the family
 	// already has an unmatched member names that member.
 	resp = s.do(http.MethodPut, "/admin/products/"+matched.ID+"/pricecharting", s.adminToken(),
 		map[string]any{"pc_product_id": nil})
-	body, _ = io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("clear collision: %d %s", resp.StatusCode, body)
-	}
-	if !bytes.Contains(body, []byte(unmatched.ID)) {
-		t.Fatalf("clear-collision detail must name the unmatched member: %s", body)
+	p = reqtest.AssertProblem(t, resp, http.StatusConflict, "identity_taken")
+	if !strings.Contains(p.Detail, unmatched.ID) {
+		t.Fatalf("clear-collision detail must name the unmatched member: %q", p.Detail)
 	}
 }
 
-// TestAdminMapping_HoldUnmatched pins the parking lever the admin UI
-// exposes on unmatched residue: PUT null on an already-unmatched
-// product answers 200 with match_hold set, idempotently - no identity
-// collision, because the clear changes nothing the unique index sees.
+// Pins the parking lever: PUT null on an already-unmatched product
+// answers 200 with match_hold set, idempotently (no identity collision).
 func TestAdminMapping_HoldUnmatched(t *testing.T) {
 	s := newStack(t)
 	ctx := context.Background()
@@ -1629,11 +1534,7 @@ func TestAdminDeleteProduct(t *testing.T) {
 
 	// Non-admin: 403, nothing deleted.
 	resp := s.do(http.MethodDelete, "/admin/products/"+orphan.ID, s.userToken(), nil)
-	body, _ := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden || !bytes.Contains(body, []byte("forbidden")) {
-		t.Fatalf("non-admin: %d %s", resp.StatusCode, body)
-	}
+	reqtest.AssertProblem(t, resp, http.StatusForbidden, "forbidden")
 
 	// Admin on unmatched: 204 and the product is gone.
 	resp = s.do(http.MethodDelete, "/admin/products/"+orphan.ID, s.adminToken(), nil)
@@ -1647,19 +1548,11 @@ func TestAdminDeleteProduct(t *testing.T) {
 
 	// Repeat: 404 product_not_found.
 	resp = s.do(http.MethodDelete, "/admin/products/"+orphan.ID, s.adminToken(), nil)
-	body, _ = io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound || !bytes.Contains(body, []byte("product_not_found")) {
-		t.Fatalf("second delete: %d %s", resp.StatusCode, body)
-	}
+	reqtest.AssertProblem(t, resp, http.StatusNotFound, "product_not_found")
 
 	// Matched: 409 product_matched, survives.
 	resp = s.do(http.MethodDelete, "/admin/products/"+matched.ID, s.adminToken(), nil)
-	body, _ = io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusConflict || !bytes.Contains(body, []byte("product_matched")) {
-		t.Fatalf("matched delete: %d %s", resp.StatusCode, body)
-	}
+	reqtest.AssertProblem(t, resp, http.StatusConflict, "product_matched")
 	if _, err := s.store.GetProduct(ctx, matched.ID); err != nil {
 		t.Fatalf("matched product must survive: %v", err)
 	}
@@ -1676,10 +1569,5 @@ func TestUnitAdminMapping_CommunityRefused(t *testing.T) {
 
 	rec := serveUnit(t, h, env, http.MethodPut, "/admin/products/"+comm.ID+"/pricecharting", admin,
 		map[string]any{"pc_product_id": 5005})
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("community mapping: %d, want 409", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), "product_not_provider") {
-		t.Fatalf("code missing: %s", rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusConflict, "product_not_provider")
 }

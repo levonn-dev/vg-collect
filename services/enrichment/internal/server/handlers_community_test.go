@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
@@ -49,11 +49,7 @@ func TestAdminUnmatchedWorklist(t *testing.T) {
 
 	// Non-admin: 403 with the forbidden code.
 	resp := s.do(http.MethodGet, "/admin/products/unmatched", s.userToken(), nil)
-	body, _ := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden || !bytes.Contains(body, []byte("forbidden")) {
-		t.Fatalf("non-admin: %d %s", resp.StatusCode, body)
-	}
+	reqtest.AssertProblem(t, resp, http.StatusForbidden, "forbidden")
 
 	// Admin: the full envelope, oldest first, held item flagged.
 	page := decodeBody[api.UnmatchedProductsPage](t,
@@ -115,11 +111,7 @@ func TestAdminCommunityWorklist(t *testing.T) {
 
 	// Non-admin: 403 with the forbidden code.
 	resp := s.do(http.MethodGet, "/admin/products/community", s.userToken(), nil)
-	body, _ := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden || !bytes.Contains(body, []byte("forbidden")) {
-		t.Fatalf("non-admin: %d %s", resp.StatusCode, body)
-	}
+	reqtest.AssertProblem(t, resp, http.StatusForbidden, "forbidden")
 
 	// Admin: the full envelope, oldest first, provider product excluded.
 	page := decodeBody[api.CommunityProductsPage](t,
@@ -143,10 +135,8 @@ func TestAdminCommunityWorklist(t *testing.T) {
 		t.Fatalf("paged: total=%d %+v", paged.TotalCount, paged.Products)
 	}
 
-	// Out-of-bounds limits reject rather than clamping: the contract's
-	// bound (1-500) is specval's job now (TestValidatorPath_
-	// ListCommunityProducts_LimitOverMax_ClampReversal in
-	// validator_pins_test.go pins it directly).
+	// Out-of-bounds limits reject rather than clamping (1-500, specval's
+	// job); TestValidatorPath_ListCommunityProducts_LimitOverMax_ClampReversal pins it directly.
 	if resp := s.do(http.MethodGet, "/admin/products/community?limit=0", s.adminToken(), nil); resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("limit=0 must be rejected: %d", resp.StatusCode)
 	}
@@ -218,6 +208,9 @@ func TestUnitCreateCommunityProduct(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
+	if loc := rec.Header().Get("Location"); loc != "/products/"+out.Id.String() {
+		t.Fatalf("Location = %q, want /products/%s", loc, out.Id)
+	}
 	if out.Origin == nil || string(*out.Origin) != "community" {
 		t.Fatalf("response origin missing: %+v", out.Origin)
 	}
@@ -235,9 +228,8 @@ func TestUnitCreateCommunityProduct(t *testing.T) {
 	}
 }
 
-// TestUnitCreateCommunityProduct_CreditCaps pins the manual caps the
-// router does not enforce: more than 10 names or a name over 120
-// runes is a 400.
+// Pins the manual caps the router does not enforce: more than 10
+// names or a name over 120 runes is a 400.
 func TestUnitCreateCommunityProduct_CreditCaps(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -260,11 +252,9 @@ func TestUnitCreateCommunityProduct_CreditCaps(t *testing.T) {
 	}
 }
 
-// TestUnitCreateCommunityProduct_MinimalBodyOmitsCommunityBlock pins the
-// type+name-only mint: with neither platform_name nor
-// first_release_date present, the handler must leave Community nil
-// (not a zero-valued block), and the response must omit it entirely
-// rather than emit an empty community object.
+// Pins the type+name-only mint: with neither platform_name nor
+// first_release_date present, Community must stay nil, and the
+// response must omit it entirely, not emit an empty object.
 func TestUnitCreateCommunityProduct_MinimalBodyOmitsCommunityBlock(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -296,11 +286,8 @@ func TestUnitCreateCommunityProduct_MinimalBodyOmitsCommunityBlock(t *testing.T)
 	}
 }
 
-// TestUnitCreateCommunityProduct_WhitespaceRegionOmitsCommunityBlock
-// pins the hasRegion gate against a whitespace-only region: the gate
-// must trim before checking, or " " (not equal to "") would slip
-// through and mint an otherwise-empty community block that exists for
-// no visible reason.
+// Pins the hasRegion gate against a whitespace-only region: the gate
+// must trim before checking, or " " would slip through and mint an empty block.
 func TestUnitCreateCommunityProduct_WhitespaceRegionOmitsCommunityBlock(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -332,11 +319,8 @@ func TestUnitCreateCommunityProduct_WhitespaceRegionOmitsCommunityBlock(t *testi
 	}
 }
 
-// TestUnitCreateCommunityProduct_WhitespaceRegionWithOtherFact pins
-// the other side of the same gate: a whitespace-only region alongside
-// a real community fact still builds the block (platform_name alone
-// earns it), but the region itself must land empty rather than
-// storing the untrimmed whitespace.
+// The other side of the same gate: a whitespace-only region beside a
+// real fact still builds the block, but the region itself lands empty, not untrimmed.
 func TestUnitCreateCommunityProduct_WhitespaceRegionWithOtherFact(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -372,11 +356,8 @@ func TestUnitCreateCommunityProduct_WhitespaceRegionWithOtherFact(t *testing.T) 
 	}
 }
 
-// TestUnitCreateCommunityProduct_WhitespacePlatformNameOmitsCommunityBlock
-// pins the hasPlatformName gate against a whitespace-only platform_name: the
-// gate must trim before checking, or "  " (not equal to "") would slip
-// through and mint an otherwise-empty community block that exists for
-// no visible reason.
+// Pins the hasPlatformName gate against a whitespace-only value: the
+// gate must trim before checking, or it would slip through and mint an empty block.
 func TestUnitCreateCommunityProduct_WhitespacePlatformNameOmitsCommunityBlock(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -408,11 +389,8 @@ func TestUnitCreateCommunityProduct_WhitespacePlatformNameOmitsCommunityBlock(t 
 	}
 }
 
-// TestUnitCreateCommunityProduct_WhitespacePlatformNameWithOtherFact pins
-// the other side of the same gate: a whitespace-only platform_name alongside
-// a real community fact still builds the block (region alone earns it), but
-// the platform_name itself must land empty rather than storing the untrimmed
-// whitespace.
+// The other side of the same gate: a whitespace-only platform_name
+// beside a real fact still builds the block, but lands empty, not untrimmed.
 func TestUnitCreateCommunityProduct_WhitespacePlatformNameWithOtherFact(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -448,10 +426,8 @@ func TestUnitCreateCommunityProduct_WhitespacePlatformNameWithOtherFact(t *testi
 	}
 }
 
-// TestUnitCreateCommunityProduct_MalformedBodyIs400 mirrors the
-// bad-body idiom in TestUnitBatchPrices_CapAndBadBody: serveUnit's
-// body param always marshals valid JSON, so a deliberately malformed
-// payload needs a raw request built by hand.
+// Mirrors TestUnitBatchPrices_CapAndBadBody: serveUnit's body param
+// always marshals valid JSON, so a malformed payload needs a hand-built request.
 func TestUnitCreateCommunityProduct_MalformedBodyIs400(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -514,12 +490,9 @@ func TestUnitCreateCommunityProduct_Cover(t *testing.T) {
 	}
 }
 
-// TestUnitCreateCommunityProduct_CoverOnlyMint pins the `|| hasCover`
-// gate term in CreateCommunityProduct: a mint with ONLY a cover (no
-// platform_name, no first_release_date) must still build the
-// community facts block. TestUnitCreateCommunityProduct_Cover above
-// always pairs its cover with platform_name, so that gate term stays
-// unpinned without this case.
+// Pins the `|| hasCover` gate term: a mint with ONLY a cover must
+// still build the community facts block (the sibling cover test
+// always pairs cover with platform_name, leaving this term unpinned).
 func TestUnitCreateCommunityProduct_CoverOnlyMint(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -555,9 +528,8 @@ func TestUnitCreateCommunityProduct_CoverOnlyMint(t *testing.T) {
 	}
 }
 
-// TestUnitCreateCommunityProduct_CoverLengthBoundary pins the
-// contract's cover_url maxLength:512 boundary through the full
-// handler stack.
+// Pins the contract's cover_url maxLength:512 boundary through the
+// full handler stack.
 func TestUnitCreateCommunityProduct_CoverLengthBoundary(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -589,14 +561,9 @@ func TestUnitCreateCommunityProduct_CoverLengthBoundary(t *testing.T) {
 	}
 }
 
-// TestCreateCommunityProduct_RegionInBlock pins that a community
-// mint's region lands in the community facts block, not the
-// top-level region field: community products carry no provider
-// hardware identity, so region is a curated entry-vocabulary fact
-// that belongs alongside the other community facts, not the field
-// hardware identity uses (migration 000006 moved existing data to
-// match; TestMigration_CommunityRegionMovesIntoBlock in the store
-// package proves that rename against pre-migration documents).
+// Pins that a community mint's region lands in the community facts
+// block, not the top-level field: community docs carry no provider
+// hardware identity, so region is curated, not identity.
 func TestCreateCommunityProduct_RegionInBlock(t *testing.T) {
 	s := newStack(t)
 
@@ -678,21 +645,16 @@ func TestPromoteCommunityProduct(t *testing.T) {
 	// adjudicates and the detail names the holder.
 	resp = s.do(http.MethodPost, "/admin/products/"+second+"/promote", s.adminToken(),
 		map[string]any{"igdb_game_id": 1011, "platform_igdb_id": 19})
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("twin promote: %d", resp.StatusCode)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), "identity_taken") || !strings.Contains(string(body), first) {
-		t.Fatalf("twin detail must carry the code and name the holder: %s", body)
+	p := reqtest.AssertProblem(t, resp, http.StatusConflict, "identity_taken")
+	if !strings.Contains(p.Detail, first) {
+		t.Fatalf("twin detail must name the holder: %q", p.Detail)
 	}
 }
 
-// TestUnitPromoteHardware_HappyPathBuildsAnchorAndSnapshots pins the
-// console/accessory promote branch: PromoteProduct must receive the pc
-// anchor built from the fetched listing (verified=true, unlike a plain
-// resolve's machine-made anchor) and carry no igdb/platform anchors
-// (those are the game branch's job), and a successful anchor promote
-// must append exactly one snapshot.
+// Pins the console/accessory promote branch: PromoteProduct must
+// receive the pc anchor built from the fetched listing
+// (verified=true, unlike a plain resolve's anchor), no igdb/platform
+// anchors, and the anchor promote must append exactly one snapshot.
 func TestUnitPromoteHardware_HappyPathBuildsAnchorAndSnapshots(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -764,13 +726,9 @@ func TestUnitPromoteHardware_HappyPathBuildsAnchorAndSnapshots(t *testing.T) {
 	}
 }
 
-// TestUnitPromoteGame_UnknownGameIs404 pins the game branch's
-// gamePayloadFor unknown-game outcome (raw miss, then a provider fetch
-// that returns zero games) routing through resolveError's *resolveErr
-// path onto 404 unknown_game - the same taxonomy the resolve flow's
-// TestResolve_ErrorTaxonomy pins for /products/resolve, but promote has
-// its own call site (h.resolveError(w, r, gerr) in PromoteProduct) that
-// needs its own direct proof.
+// Pins the game branch's unknown-game outcome (raw miss, then a
+// provider fetch returning zero games) routing to 404 unknown_game
+// via PromoteProduct's own resolveError call site.
 func TestUnitPromoteGame_UnknownGameIs404(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -785,16 +743,12 @@ func TestUnitPromoteGame_UnknownGameIs404(t *testing.T) {
 	rec := serveUnit(t, h, env, http.MethodPost, "/admin/products/"+comm.ID+"/promote", admin,
 		map[string]any{"igdb_game_id": 999999, "platform_igdb_id": 19})
 
-	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "unknown_game") {
-		t.Fatalf("unknown game: %d %s", rec.Code, rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusNotFound, "unknown_game")
 }
 
-// TestUnitPromoteGame_ProviderOutageIs502 pins the game branch's
-// upstream_unavailable outcome: no raw on file and the provider fetch
-// itself failing (not just returning zero games) must answer 502, not
-// the 500 a raw-read/DB fault earns (TestUnitPromoteGame_RawFaultIsInternal
-// pins that adjacent branch).
+// Pins the game branch's upstream_unavailable outcome: no raw on
+// file and the provider fetch itself failing must answer 502, not the
+// 500 a raw-read/DB fault earns (see TestUnitPromoteGame_RawFaultIsInternal).
 func TestUnitPromoteGame_ProviderOutageIs502(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -811,18 +765,12 @@ func TestUnitPromoteGame_ProviderOutageIs502(t *testing.T) {
 	rec := serveUnit(t, h, env, http.MethodPost, "/admin/products/"+comm.ID+"/promote", admin,
 		map[string]any{"igdb_game_id": 1011, "platform_igdb_id": 19})
 
-	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "upstream_unavailable") {
-		t.Fatalf("provider outage: %d %s", rec.Code, rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusBadGateway, "upstream_unavailable")
 }
 
-// TestUnitPromoteHardware_UnknownPCProductIs404 pins the hardware
-// branch's own unknown-listing outcome: the pc anchor fetch answering
-// pricecharting.ErrNotFound maps to 404 unknown_pc_product (the same
-// code TestResolve_ErrorTaxonomy pins for /products/resolve's hardware
-// path; promote's console/accessory case shares the same
-// h.prices.Product call shape but needs its own direct proof since it
-// is a distinct call site in PromoteProduct).
+// Pins the hardware branch's unknown-listing outcome: the pc anchor
+// fetch answering pricecharting.ErrNotFound maps to 404
+// unknown_pc_product, a distinct call site from /products/resolve's.
 func TestUnitPromoteHardware_UnknownPCProductIs404(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -836,22 +784,17 @@ func TestUnitPromoteHardware_UnknownPCProductIs404(t *testing.T) {
 	rec := serveUnit(t, h, env, http.MethodPost, "/admin/products/"+comm.ID+"/promote", admin,
 		map[string]any{"pc_product_id": 999999})
 
-	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "unknown_pc_product") {
-		t.Fatalf("unknown pc product: %d %s", rec.Code, rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusNotFound, "unknown_pc_product")
 }
 
-// TestUnitPromoteGame_RawFaultIsInternal pins the promote game branch's
-// non-resolveErr fallthrough onto 500 internal, matching the resolve
-// idiom: a raw-read Mongo fault is an internal DB error, never the 502
-// upstream_unavailable a provider outage earns.
+// Pins the promote game branch's non-resolveErr fallthrough to 500:
+// a raw-read Mongo fault is internal, never the 502 a provider outage earns.
 func TestUnitPromoteGame_RawFaultIsInternal(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
 	comm := store.Product{ID: uuid.NewString(), Type: "game", Name: "Chrono Trigger Repro", Origin: "community"}
-	// rawByIDs faults with a plain error (a Mongo fault), which
-	// gamePayloadFor wraps as a non-resolveErr; games/prices stay empty
-	// because reaching a provider here would be the wrong path.
+	// rawByIDs faults with a plain error, which gamePayloadFor wraps as
+	// a non-resolveErr; games/prices stay empty since reaching a provider would be wrong.
 	st := &stubStore{
 		getProduct: func(context.Context, string) (store.Product, error) { return comm, nil },
 		rawByIDs:   func(context.Context, []int64) ([]store.RawGame, error) { return nil, errors.New("mongo unreachable") },
@@ -861,15 +804,9 @@ func TestUnitPromoteGame_RawFaultIsInternal(t *testing.T) {
 	rec := serveUnit(t, h, env, http.MethodPost, "/admin/products/"+comm.ID+"/promote", admin,
 		map[string]any{"igdb_game_id": 1011, "platform_igdb_id": 19})
 
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("raw-read fault: %d, want 500", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), "internal") {
-		t.Fatalf("want code internal: %s", rec.Body.String())
-	}
-	if strings.Contains(rec.Body.String(), "upstream_unavailable") {
-		t.Fatalf("DB fault must not be classified as an upstream 502: %s", rec.Body.String())
-	}
+	// AssertProblemRec's exact code match rules out the upstream_unavailable
+	// classification a provider outage would earn.
+	reqtest.AssertProblemRec(t, rec, http.StatusInternalServerError, "internal")
 }
 
 func TestUnitPromoteCandidates_ListAndDismiss(t *testing.T) {

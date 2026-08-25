@@ -14,10 +14,8 @@ import (
 //go:embed fixtures.json
 var fixturesJSON []byte
 
-// Stub serves the embedded fixture products with prices computed by a
-// deterministic walk seeded by product id and the UTC day: stable
-// across restarts (no request-time randomness), moving day to day so
-// daily snapshots show movement.
+// Stub serves the embedded fixture products with prices from a
+// deterministic id+UTC-day walk: stable across restarts, moving day to day.
 type Stub struct {
 	products []Product
 	byID     map[int64]Product
@@ -42,10 +40,8 @@ func NewStub() (*Stub, error) {
 }
 
 // Search approximates the real endpoint's fuzziness: a hit when the
-// folded query contains the folded product name or vice versa, so both
-// "zelda" and the full IGDB spelling "The Legend of Zelda: Ocarina of
-// Time" find "Legend of Zelda Ocarina of Time". Results are priced as
-// of today.
+// folded query contains the folded name or vice versa (so "zelda" and
+// the full IGDB spelling both find it). Results are priced as of today.
 func (s *Stub) Search(_ context.Context, q string) ([]Product, error) {
 	needle := fold(q)
 	if needle == "" {
@@ -62,8 +58,7 @@ func (s *Stub) Search(_ context.Context, q string) ([]Product, error) {
 }
 
 // fold lowercases, folds punctuation to spaces, collapses runs, and
-// drops a leading article. Containment-grade only; the scoring-grade
-// normalization (roman numerals, brackets) lives in internal/match.
+// drops a leading article (containment-grade; scoring-grade lives in internal/match).
 func fold(s string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(s) {
@@ -99,8 +94,7 @@ func (s *Stub) priced(p Product) Product {
 
 // walkPrices derives the day's prices for a product id: an id-seeded
 // base in [5.00, 149.99] modulated by a sinusoid over the day index
-// (id-seeded period and phase, +/-15%). Same id + same UTC day =>
-// same prices.
+// (+/-15%, id-seeded period/phase). Same id + day => same prices.
 func walkPrices(id int64, at time.Time) (loose, cib, brandNew int64) {
 	h := fnv.New64a()
 	_, _ = fmt.Fprintf(h, "%d", id)

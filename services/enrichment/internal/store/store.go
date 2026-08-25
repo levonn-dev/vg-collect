@@ -1,7 +1,5 @@
 // Package store owns the enrichment service's MongoDB documents and
-// queries. No other package writes queries against these collections.
-// It persists provider payload types (igdb.Game) directly: quarantining
-// third-party data in document shape is this service's purpose.
+// queries; no other package writes queries against these collections.
 package store
 
 import (
@@ -21,14 +19,11 @@ import (
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 )
 
-// ErrNotFound is the sentinel for a missing document; handlers branch
-// on it via errors.Is.
+// ErrNotFound is the sentinel for a missing document; handlers branch via errors.Is.
 var ErrNotFound = errors.New("store: not found")
 
 // ErrIdentityTaken is the sentinel for a mapping write the unique
-// identity indexes refuse: another product already carries the
-// resulting identity (a taken listing, or a clear that would mint a
-// second unmatched member for one family).
+// identity indexes refuse: another product already owns the identity.
 var ErrIdentityTaken = errors.New("store: identity taken")
 
 const (
@@ -44,14 +39,8 @@ type Store struct{ db *mongo.Database }
 // New builds a Store over the migrated database handle.
 func New(db *mongo.Database) *Store { return &Store{db: db} }
 
-// findAll runs a Mongo find and drains it into a slice - the driver's
-// find-then-cur.All-then-wrap skeleton every unpaginated reader below
-// repeats. Every one of those readers wraps both the Find-issue error
-// and a cur.All decode error under the exact same op text, so findAll
-// bakes that one convention in rather than taking two op parameters.
-// A zero-match result is nil: var out []T left untouched by cur.All
-// when the cursor yields no documents, matching every reader's prior
-// hand-written form (none of them pre-allocated with make).
+// findAll runs a Mongo find and drains it into a slice, wrapping the
+// Find/decode errors under one op text. Zero matches yields nil, not [].
 func findAll[T any](ctx context.Context, col *mongo.Collection, filter bson.D, opts *options.FindOptions, op string) ([]T, error) {
 	cur, err := col.Find(ctx, filter, opts)
 	if err != nil {
@@ -64,12 +53,8 @@ func findAll[T any](ctx context.Context, col *mongo.Collection, filter bson.D, o
 	return out, nil
 }
 
-// findPage is findAll's counted, sorted/skipped/limited sibling - the
-// admin worklist pagination shape - reporting the total alongside the
-// page. countOp and findOp wrap separately: two of this package's
-// three paginated readers use different text for a CountDocuments
-// failure than for the find/decode failure, one uses the same text
-// for both; passing both lets each call site keep its own wording.
+// findPage is findAll's paginated sibling, also returning the total
+// match count; countOp/findOp let each caller word the two errors differently.
 func findPage[T any](ctx context.Context, col *mongo.Collection, filter bson.D, opts *options.FindOptions, countOp, findOp string) ([]T, int64, error) {
 	total, err := col.CountDocuments(ctx, filter)
 	if err != nil {
@@ -90,9 +75,8 @@ type Platform struct {
 	LogoURL string `bson:"logo_url,omitempty"`
 }
 
-// CatalogPlatform is one cached platform-catalog row. LogoURL is the
-// ready display string precomputed at upsert (the raw IGDB image id
-// is not kept).
+// CatalogPlatform is one cached platform-catalog row; LogoURL is
+// precomputed at upsert (the raw IGDB image id is not kept).
 type CatalogPlatform struct {
 	ID           int64  `bson:"_id"`
 	Name         string `bson:"name"`
@@ -122,10 +106,8 @@ type MetaReleaseDate struct {
 	Date   time.Time `bson:"date"`
 }
 
-// MetaLocalization is one region's presentation of the game: IGDB
-// region identifier (ja-JP, EU, ko-KR - open-world, stored verbatim),
-// native-script name, latin transliteration, and regional box art.
-// Fields are independently optional; readers fall back per field.
+// MetaLocalization is one region's presentation: IGDB region id
+// stored verbatim (ja-JP, EU, ko-KR); fields are independently optional.
 type MetaLocalization struct {
 	Region   string `bson:"region"`
 	Name     string `bson:"name,omitempty"`
@@ -158,9 +140,8 @@ type PriceQuote struct {
 	NewCents   *int64 `bson:"new_cents,omitempty"`
 }
 
-// PCMeta is the PriceCharting mapping + current prices, refreshed on
-// the daily cadence via SetCurrentPrices (partial update). A product
-// without a PCMeta is unmatched (below-threshold, never guessed).
+// PCMeta is the PriceCharting mapping + current prices, refreshed
+// daily via SetCurrentPrices. A product without one is unmatched.
 type PCMeta struct {
 	PCProductID     int64      `bson:"pc_product_id"`
 	PCName          string     `bson:"pc_name"`
@@ -171,16 +152,9 @@ type PCMeta struct {
 	AsOf            time.Time  `bson:"as_of"`
 }
 
-// CommunityMeta carries the facts curated at community mint time.
-// Retained after promotion as gap-fill: provider blocks win per-field
-// where present, these fill what providers do not supply. Region
-// lives here rather than on Product: community products carry no
-// provider hardware identity, so their region is a curated
-// entry-vocabulary fact like platform name, not identity (migration
-// 000006 moved it out of the top-level field). Product.Region stays
-// "" on these docs - always-present, never absent - matching the
-// document-shape-stability rule Product's own doc comment states for
-// region/edition/variant.
+// CommunityMeta carries community-mint facts, kept after promotion
+// as gap-fill (provider fields win). Region lives here, not on
+// Product: community docs carry no provider hardware identity.
 type CommunityMeta struct {
 	PlatformName     string    `bson:"platform_name,omitempty"`
 	Region           string    `bson:"region,omitempty"`
@@ -191,8 +165,7 @@ type CommunityMeta struct {
 }
 
 // PromoteCandidate is one sweep hit: a provider item whose name
-// plausibly matches a community product. Flag only - promotion is
-// always a human verdict.
+// plausibly matches a community product; promotion is a human verdict.
 type PromoteCandidate struct {
 	Provider   string    `bson:"provider"`
 	ProviderID int64     `bson:"provider_id"`
@@ -208,11 +181,9 @@ type CandidateRef struct {
 }
 
 // Product is the canonical catalog document, lazily created on user
-// selection. Game identity is listing-keyed (igdb game, platform,
-// PriceCharting listing; a missing mapping is the family's single
-// unmatched member). Region/edition/variant are always present
-// (empty string = unspecified): they are part of hardware identity
-// and vestigial on games (kept for document-shape stability).
+// selection. Identity keys on (igdb game, platform, pc listing); a
+// missing mapping is the family's unmatched member. Region/edition/
+// variant stay always-present (empty = unspecified) for shape stability.
 type Product struct {
 	ID            string    `bson:"_id"`
 	Type          string    `bson:"type"`
@@ -223,21 +194,16 @@ type Product struct {
 	Variant       string    `bson:"variant"`
 	IGDB          *IGDBMeta `bson:"igdb,omitempty"`
 	PriceCharting *PCMeta   `bson:"pricecharting,omitempty"`
-	// MatchHold marks a deliberate admin mapping clear: a hold pins
-	// the mapping against automated change; matching runs only with
-	// a region in hand and lands on sibling members. Any mapping set
-	// lifts it.
+	// MatchHold pins a deliberate admin mapping clear against automated
+	// rematching; any mapping set lifts it.
 	MatchHold bool `bson:"match_hold,omitempty"`
-	// Origin separates provider-identified products from admin-minted
-	// community products. Community docs live outside the identity
-	// indexes (their curated name is their identity), never join the
-	// admin worklist, and surface via the search community lane until
-	// promoted.
+	// Origin separates provider-identified from admin-minted community
+	// products; community docs sit outside the identity indexes (name
+	// is their identity) and surface via community search until promoted.
 	Origin    string         `bson:"origin"`
 	Community *CommunityMeta `bson:"community,omitempty"`
-	// PromoteCandidates is the sweep's flag-only output, stored
-	// sorted best-first (index 0 is the worklist sort key).
-	// DismissedCandidates silences pairs permanently.
+	// PromoteCandidates is stored sorted best-first (index 0 is the
+	// worklist sort key); DismissedCandidates silences pairs permanently.
 	PromoteCandidates   []PromoteCandidate `bson:"promote_candidates,omitempty"`
 	DismissedCandidates []CandidateRef     `bson:"dismissed_candidates,omitempty"`
 	CreatedAt           time.Time          `bson:"created_at"`
@@ -245,9 +211,9 @@ type Product struct {
 }
 
 // ProductKey is the identity a resolve request maps to: games key on
-// (igdb_game_id, platform, pc listing - 0 means the unmatched
-// member); console/accessory key on pc_product_id with
-// region/edition/variant; pc_listing keys on pc_product_id alone.
+// (igdb_game_id, platform, pc listing; 0 = unmatched member);
+// console/accessory on pc_product_id + region/edition/variant;
+// pc_listing on pc_product_id alone.
 type ProductKey struct {
 	Type           string
 	IGDBGameID     int64
@@ -268,11 +234,8 @@ func (k ProductKey) filter() bson.D {
 		}
 	}
 	if k.Type == "game" {
-		// The listing is the member differentiator; a zero PCProductID
-		// addresses the family's unmatched member (bson null matches a
-		// missing subdocument, which is also how the unique index sees
-		// it). Region/edition/variant are entry-level facts, not game
-		// identity.
+		// Zero PCProductID addresses the unmatched member (bson null
+		// matches a missing subdocument, mirroring the unique index).
 		pcID := any(k.PCProductID)
 		if k.PCProductID == 0 {
 			pcID = nil
@@ -308,9 +271,7 @@ func keyOf(p Product) ProductKey {
 }
 
 // NewIGDBMeta projects a raw IGDB payload onto the product
-// subdocument, scoping the release table to the product's platform:
-// the scalar becomes the platform's earliest date (game-level when the
-// platform has no dated rows).
+// subdocument, scoped to the platform (game-level date if none dated).
 func NewIGDBMeta(g igdb.Game, platformIGDBID int64, fetchedAt time.Time) IGDBMeta {
 	m := IGDBMeta{
 		GameID:           g.ID,
@@ -352,31 +313,25 @@ func NewIGDBMeta(g igdb.Game, platformIGDBID int64, fetchedAt time.Time) IGDBMet
 	return m
 }
 
-// SameProjection reports whether two projections are identical ignoring
-// FetchedAt: the reprojection's diff gate, so a rebuild that only
-// re-stamps the fetch time is not a write. A nil ReleaseDates compares
-// UNEQUAL to an empty one - that exact difference is a pre-feature
-// projection (one that never carried a release table) which must be
-// rebuilt, not skipped.
+// SameProjection reports whether two projections are identical
+// ignoring FetchedAt, so a rebuild that only re-stamps fetch time is
+// not a write. nil ReleaseDates compares UNEQUAL to an empty one on
+// purpose: that forces a rebuild of pre-release-table projections.
 func (m IGDBMeta) SameProjection(o IGDBMeta) bool {
 	m.FetchedAt, o.FetchedAt = time.Time{}, time.Time{}
 	return reflect.DeepEqual(m, o)
 }
 
-// platformReleaseDates keeps one platform's concrete-dated rows, the
-// earliest per region, sorted by date then region so the stored
-// document shape is deterministic. It also folds in the platform's JP
-// regional twin: IGDB models Super Nintendo (19) and Super Famicom (58)
-// as separate platforms (likewise NES/Family Computer), so a SNES
-// product's japan date rides the Super Famicom platform id and would
-// otherwise never appear here.
+// platformReleaseDates keeps the earliest dated row per region for
+// one platform, sorted by date then region for a deterministic shape.
+// It also folds in the JP twin platform (see igdb.TwinPlatformID),
+// since Japan dates ride the twin id, not the product's own platform.
 func platformReleaseDates(g igdb.Game, platformIGDBID int64) []MetaReleaseDate {
 	twin := igdb.TwinPlatformID(platformIGDBID)
 	earliest := map[string]time.Time{}
 	for _, rd := range g.ReleaseDates {
-		// A platform-0 row matches no real platform; skipping it also
-		// defends the pid=0 (no-platform) product, where a bare equality
-		// check would otherwise fold every dateless-platform row in.
+		// Platform-0 rows match no real platform; skipping also guards
+		// the pid=0 product from folding in every dateless-platform row.
 		if rd.Platform == 0 || rd.Date == 0 {
 			continue
 		}
@@ -421,11 +376,9 @@ func (s *Store) FindProduct(ctx context.Context, key ProductKey) (Product, error
 	return p, nil
 }
 
-// CreateProduct inserts p (minting its id and timestamps) and returns
-// it. When a concurrent resolve already created the same identity, the
-// unique index rejects the insert and the winner's document is
-// returned instead: find-or-create converges on one product per
-// identity.
+// CreateProduct inserts p (minting id and timestamps) and returns it.
+// A concurrent duplicate identity returns the winner's document
+// instead (find-or-create via the unique index).
 func (s *Store) CreateProduct(ctx context.Context, p Product) (Product, error) {
 	if p.ID == "" {
 		p.ID = uuid.NewString()
@@ -476,11 +429,10 @@ func (s *Store) SetIGDB(ctx context.Context, id string, m IGDBMeta) error {
 	return nil
 }
 
-// SetPriceCharting replaces the product's mapping; nil clears it (the
-// product becomes unmatched). A mapping change is an identity move
-// for games, so a write the unique index refuses surfaces
-// ErrIdentityTaken. Clearing sets match_hold - a future automated
-// match must not undo a deliberate clear - and any set lifts it.
+// SetPriceCharting replaces the product's mapping; nil clears it
+// (product becomes unmatched). A refused unique-index write surfaces
+// ErrIdentityTaken (mapping changes move game identity). Clearing sets
+// match_hold so automated matching won't undo it; any set lifts it.
 func (s *Store) SetPriceCharting(ctx context.Context, id string, m *PCMeta) error {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	update := bson.D{
@@ -512,11 +464,9 @@ func (s *Store) SetPriceCharting(ctx context.Context, id string, m *PCMeta) erro
 	return nil
 }
 
-// PromoteProduct atomically attaches provider anchors and flips a
-// community product to provider origin. The update's re-entry into
-// the identity indexes adjudicates twins: a duplicate key surfaces as
-// ErrIdentityTaken and nothing changes. Candidate bookkeeping is
-// cleared - the catalog refresh and the mapping fix own the product from here.
+// PromoteProduct atomically attaches provider anchors, flips a
+// community product to provider origin, and clears its candidates.
+// A duplicate identity returns ErrIdentityTaken; nothing changes.
 func (s *Store) PromoteProduct(ctx context.Context, id string, igdbMeta *IGDBMeta, platform *Platform, pc *PCMeta) error {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	set := bson.D{
@@ -553,9 +503,8 @@ func (s *Store) PromoteProduct(ctx context.Context, id string, igdbMeta *IGDBMet
 	return nil
 }
 
-// SetCurrentPrices updates the mapped product's current prices (the
-// daily price refresh's partial update). ErrNotFound covers both a missing
-// product and an unmatched one.
+// SetCurrentPrices updates the mapped product's current prices.
+// ErrNotFound covers both a missing product and an unmatched one.
 func (s *Store) SetCurrentPrices(ctx context.Context, id string, q PriceQuote, asOf time.Time) error {
 	filter := bson.D{
 		{Key: "_id", Value: id},
@@ -578,20 +527,17 @@ func (s *Store) SetCurrentPrices(ctx context.Context, id string, q PriceQuote, a
 }
 
 // ListPriced returns every product with a PriceCharting mapping, in
-// stable id order (the daily price refresh's worklist; the catalog is small by
-// construction).
+// stable id order (catalog is small by construction; unpaginated).
 func (s *Store) ListPriced(ctx context.Context) ([]Product, error) {
 	filter := bson.D{{Key: "pricecharting.pc_product_id", Value: bson.D{{Key: "$exists", Value: true}}}}
 	return findAll[Product](ctx, s.db.Collection(colProducts), filter,
 		options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}), "list priced")
 }
 
-// DeleteUnmatchedProduct permanently removes a product and its price
-// snapshots, but only while it is unmatched - a priced identity can
-// never vanish out from under the catalog (clear first). The deleted
-// bool reports whether the conditional delete landed; false means the
-// product is missing or matched, and the caller classifies. Entry
-// references are the caller's problem: this service cannot see them.
+// DeleteUnmatchedProduct removes a product and its snapshots only
+// while unmatched (a priced identity must be cleared first). The
+// deleted bool is false for both missing and matched products; the
+// caller must classify which. Entry references are the caller's problem.
 func (s *Store) DeleteUnmatchedProduct(ctx context.Context, id string) (bool, error) {
 	res, err := s.db.Collection(colProducts).DeleteOne(ctx, bson.D{
 		{Key: "_id", Value: id},
@@ -610,14 +556,10 @@ func (s *Store) DeleteUnmatchedProduct(ctx context.Context, id string) (bool, er
 	return true, nil
 }
 
-// ListUnmatchedProducts returns one page of the admin worklist: every
-// provider-origin product with no PriceCharting mapping, regardless of
-// type and INCLUDING match_hold products (a hold pins the mapping
-// against automated change; an admin revisiting a deliberate clear is
-// deliberate here). Community products never carry a provider
-// mapping, so they ride the promote worklist, not this one. Sorted
-// oldest updated_at first with _id as the tiebreak so offset pages
-// stay deterministic; the second return is the full filtered count.
+// ListUnmatchedProducts pages provider-origin products with no
+// PriceCharting mapping, INCLUDING match_hold ones (an admin
+// revisiting a clear is intended). Sorted oldest updated_at first,
+// _id tiebreak, deterministic; also returns the filtered total.
 func (s *Store) ListUnmatchedProducts(ctx context.Context, limit, offset int) ([]Product, int64, error) {
 	filter := bson.D{
 		{Key: "origin", Value: "provider"},
@@ -629,18 +571,10 @@ func (s *Store) ListUnmatchedProducts(ctx context.Context, limit, offset int) ([
 		SetLimit(int64(limit)), "list unmatched products", "list unmatched products")
 }
 
-// ListIGDBProducts returns every product carrying an IGDB projection,
-// in stable _id order: the reprojection's worklist. Uncapped, like
-// ListPriced - a full nightly sweep rather than a capped window, because
-// the reprojection is read-cheap (Mongo reads plus a DeepEqual diff gate; a
-// provider call fires only for the missing/nil-table raw set, which
-// drains to zero) so sweeping the whole catalog is the honest shape.
-// It does not filter on the release table: reprojection rebuilds each
-// projection from the raw payload and writes only when it actually
-// changed, so already-healed products must still be revisited (any
-// future projection-logic change then self-deploys on the very next
-// reprojection, instead of waiting for a capped window to drain past
-// them).
+// ListIGDBProducts returns every product with an IGDB projection,
+// uncapped like ListPriced (reprojection is read-cheap; a provider
+// call fires only for missing/nil-table raw data). Unfiltered on the
+// release table, so a projection-logic change self-deploys next run.
 func (s *Store) ListIGDBProducts(ctx context.Context) ([]Product, error) {
 	return findAll[Product](ctx, s.db.Collection(colProducts),
 		bson.D{{Key: "igdb", Value: bson.D{{Key: "$exists", Value: true}}}},
@@ -654,19 +588,11 @@ func (s *Store) ProductsByIDs(ctx context.Context, ids []string) ([]Product, err
 		bson.D{{Key: "_id", Value: bson.D{{Key: "$in", Value: ids}}}}, nil, "products by ids")
 }
 
-// SearchByName is the degraded-mode fallback: a case-insensitive
-// substring match over the local provider catalog, over the canonical
-// name or either localization field (native-script name or latin
-// transliteration) - the same fields the live non-latin search leg
-// covers, so a provider outage does not also lose native-script
-// finds. A collection scan is accepted here (small catalog,
-// cold-cache-and-provider-down only). Provider-origin only: this
-// fallback stands in for provider search, so community docs (which
-// have no provider identity) must not surface here as dead rows.
-// types scopes the match server-side, ahead of the limit - mirroring
-// SearchCommunityProducts - so a query whose top name-sorted matches
-// skew toward another kind cannot crowd the caller's requested kind
-// out of the capped result window.
+// SearchByName is the degraded-mode fallback: substring match over
+// name and localization fields, mirroring what live search covers so
+// an outage doesn't lose native-script finds. Collection scan is
+// accepted (small catalog). Provider-origin only; types filters
+// server-side, ahead of the limit, so it can't crowd out the requested kind.
 func (s *Store) SearchByName(ctx context.Context, types []string, q string, limit int) ([]Product, error) {
 	rx := bson.D{{Key: "$regex", Value: regexp.QuoteMeta(q)}, {Key: "$options", Value: "i"}}
 	filter := bson.D{
@@ -682,11 +608,8 @@ func (s *Store) SearchByName(ctx context.Context, types []string, q string, limi
 		options.Find().SetSort(bson.D{{Key: "name", Value: 1}}).SetLimit(int64(limit)), "search by name")
 }
 
-// SearchCommunityProducts is the search community lane: a name match
-// over admin-minted community products only (provider products reach
-// search through their providers). Case-insensitive substring; the
-// community population is tiny by construction, so the unindexed
-// regex is fine.
+// SearchCommunityProducts matches community products by name
+// (case-insensitive substring; unindexed regex is fine, population is tiny).
 func (s *Store) SearchCommunityProducts(ctx context.Context, types []string, q string, limit int) ([]Product, error) {
 	filter := bson.D{
 		{Key: "origin", Value: "community"},
@@ -700,25 +623,18 @@ func (s *Store) SearchCommunityProducts(ctx context.Context, types []string, q s
 		options.Find().SetSort(bson.D{{Key: "name", Value: 1}}).SetLimit(int64(limit)), "search community")
 }
 
-// CommunityRegionRef is one community product's curated region string
-// and id - the normalize-community-regions sweep's selection unit
-// (enrichment's twin of collection's OpenRegionEntryRef, scoped to
-// the community subset it owns).
+// CommunityRegionRef is one community product's curated region
+// string and id (twin of collection's OpenRegionEntryRef).
 type CommunityRegionRef struct {
 	ID     string
 	Region string
 }
 
-// ListCommunityRegionDocs lists every community product whose curated
-// region sits outside the known set - the normalize-community-regions
-// sweep's worklist. known is regionkit.KnownRegions, built by the
-// caller (InternalNormalizeCommunityRegions in handlers_admin.go);
-// excluding rows whose region already exactly matches a known value,
-// not just the empty/missing ones, is what lets a second sweep settle
-// to zero - mirroring collection's ListOpenRegionEntries, whose
-// `WHERE NOT (region = ANY($1))` does the equivalent exclusion. A
-// synonym like "usa" is not itself a known value, so it stays selected
-// until the fold in the handler promotes it.
+// ListCommunityRegionDocs lists community products whose curated
+// region is outside known (regionkit.KnownRegions from the caller).
+// Excluding exact known matches, not just empty ones, lets repeated
+// runs converge to zero; a synonym like "usa" stays selected until
+// the handler folds it in.
 func (s *Store) ListCommunityRegionDocs(ctx context.Context, known []string) ([]CommunityRegionRef, error) {
 	nin := bson.A{"", nil}
 	for _, k := range known {
@@ -731,9 +647,8 @@ func (s *Store) ListCommunityRegionDocs(ctx context.Context, known []string) ([]
 	opts := options.Find().
 		SetProjection(bson.D{{Key: "community.region", Value: 1}}).
 		SetSort(bson.D{{Key: "_id", Value: 1}})
-	// findAll's T is this projection's own shape, not CommunityRegionRef:
-	// the still-needed field remap (Community.Region -> Region) happens
-	// below, the one part of this method findAll cannot absorb.
+	// findAll's T is this projection's shape, not CommunityRegionRef;
+	// the Community.Region -> Region remap below is what findAll can't absorb.
 	type regionDoc struct {
 		ID        string        `bson:"_id"`
 		Community CommunityMeta `bson:"community"`
@@ -749,19 +664,12 @@ func (s *Store) ListCommunityRegionDocs(ctx context.Context, known []string) ([]
 	return out, nil
 }
 
-// SetCommunityRegion rewrites one community product's curated region
-// to its normalized form. Matched-count unchecked, the same tier
-// ReplacePromoteCandidates above uses: a doc that left the community
-// origin or vanished between the sweep's list and this write is a
-// silent no-op, not an error - so the caller's "normalized" count
-// means an error-free write, not a confirmed row change.
+// SetCommunityRegion rewrites one community product's curated region.
+// Matched-count is unchecked: a doc that left community origin or
+// vanished between list and write is a silent no-op, not an error.
 func (s *Store) SetCommunityRegion(ctx context.Context, id, region string) error {
-	// Scoped to origin community, the same guard ReplacePromoteCandidates
-	// uses above: a promote can flip this doc to provider between the
-	// sweep's list and this write, and an unscoped-by-origin write would
-	// still land, leaving a community.region field as invisible residue
-	// on a now-provider doc (nothing reads community.* off a provider
-	// doc, but nothing clears it either).
+	// Origin-scoped, like ReplacePromoteCandidates: a promote racing
+	// this write is a no-op, not stray residue on a provider doc.
 	_, err := s.db.Collection(colProducts).UpdateOne(ctx,
 		bson.D{{Key: "_id", Value: id}, {Key: "origin", Value: "community"}},
 		bson.D{
@@ -784,12 +692,9 @@ func (s *Store) ListCommunityProducts(ctx context.Context) ([]Product, error) {
 		options.Find().SetSort(bson.D{{Key: "updated_at", Value: 1}, {Key: "_id", Value: 1}}), "list community")
 }
 
-// ListCommunityProductsPage returns one page of the admin community
-// listing: every admin-minted, un-promoted community product (promote
-// flips origin to provider, which is how a product leaves this set).
-// Sorted oldest updated_at first with _id as the tiebreak so offset
-// pages stay deterministic, matching ListUnmatchedProducts; the second
-// return is the full filtered count.
+// ListCommunityProductsPage pages un-promoted community products
+// (promote flips origin to provider, leaving this set). Sorted oldest
+// updated_at first, _id tiebreak, deterministic; returns filtered count too.
 func (s *Store) ListCommunityProductsPage(ctx context.Context, limit, offset int) ([]Product, int64, error) {
 	filter := bson.D{{Key: "origin", Value: "community"}}
 	return findPage[Product](ctx, s.db.Collection(colProducts), filter, options.Find().
@@ -799,19 +704,13 @@ func (s *Store) ListCommunityProductsPage(ctx context.Context, limit, offset int
 }
 
 // ReplacePromoteCandidates swaps a product's candidate set (caller
-// filters dismissed pairs and sorts best-first). No updated_at bump:
-// sweep bookkeeping is not a product edit. Origin-guarded to community,
-// so a doc promoted mid-sweep is a silent no-op, not an error.
+// filters dismissed pairs, sorts best-first). No updated_at bump.
+// Origin-guarded to community: a doc promoted mid-write is a no-op.
 func (s *Store) ReplacePromoteCandidates(ctx context.Context, id string, cands []PromoteCandidate) error {
 	update := bson.D{{Key: "$set", Value: bson.D{{Key: "promote_candidates", Value: cands}}}}
 	if len(cands) == 0 {
 		update = bson.D{{Key: "$unset", Value: bson.D{{Key: "promote_candidates", Value: ""}}}}
 	}
-	// A promote can flip this doc to provider between the sweep's list
-	// and this write; scoping the filter to community turns that race
-	// into a no-op instead of stamping candidates onto a now-provider
-	// doc as permanent invisible residue (the list query filters origin
-	// community, so nothing would ever surface or clear them).
 	if _, err := s.db.Collection(colProducts).UpdateOne(ctx,
 		bson.D{{Key: "_id", Value: id}, {Key: "origin", Value: "community"}}, update); err != nil {
 		return fmt.Errorf("store: replace candidates: %w", err)
@@ -820,9 +719,8 @@ func (s *Store) ReplacePromoteCandidates(ctx context.Context, id string, cands [
 }
 
 // ListPromoteCandidateProducts pages community products carrying
-// candidates, strongest top candidate first (candidates are stored
-// sorted, so promote_candidates.0.score sorts the list), _id
-// tiebreak. productID narrows to one product when non-empty.
+// candidates, strongest first (promote_candidates.0.score), _id
+// tiebreak; productID narrows to one product when non-empty.
 func (s *Store) ListPromoteCandidateProducts(ctx context.Context, limit, offset int, productID string) ([]Product, int64, error) {
 	filter := bson.D{
 		{Key: "origin", Value: "community"},

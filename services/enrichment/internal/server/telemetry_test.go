@@ -1,9 +1,6 @@
 // Telemetry emission tests: the domain instruments registered in New
-// (attribute derivation and outcome classification at each emission
-// site) and the catalog refresh's started line. Metrics are read back
-// through an SDK manual reader swapped in as the global provider; the
-// package's tests never run parallel, so the swap cannot bleed across
-// tests.
+// and the catalog refresh's started line. Metrics read back through
+// an SDK manual reader swapped in globally; tests never run parallel.
 package server
 
 import (
@@ -101,12 +98,9 @@ func TestUnitTelemetry_SearchAnswersByKindAndSource(t *testing.T) {
 	}
 }
 
-// The supplementary localization leg counts exactly one outcome per
-// non-latin query: merged (a leg id got folded into the results, or
-// every leg id was already present), empty (the leg found nothing), or
-// error (the leg or its follow-up GamesByIDs fetch failed). Each
-// scenario uses a distinct query string so the search cache cannot
-// turn a later call into a no-op cache hit that skips the leg.
+// The localization leg counts exactly one outcome per non-latin
+// query: merged, empty, or error. Each scenario uses a distinct query
+// string so the search cache can't turn a later call into a no-op hit.
 func TestUnitTelemetry_LocalizationLegOutcomes(t *testing.T) {
 	reader := metrictest.Install(t)
 	env := newAuthEnv(t)
@@ -149,11 +143,9 @@ func TestUnitTelemetry_LocalizationLegOutcomes(t *testing.T) {
 	}
 }
 
-// TestUnitTelemetry_LocalizationLegMergedSkipsFetchWhenNothingMissing
-// pins the merged outcome's other branch: every leg id is already
-// present in the primary results, so no GamesByIDs fetch is needed -
-// the nil gamesByIDs field would panic if the code fetched anyway,
-// so this test cannot pass by accident.
+// Pins the merged outcome's other branch: every leg id is already
+// present in the primary results, so no GamesByIDs fetch is needed
+// (the nil gamesByIDs field would panic if the code fetched anyway).
 func TestUnitTelemetry_LocalizationLegMergedSkipsFetchWhenNothingMissing(t *testing.T) {
 	reader := metrictest.Install(t)
 	env := newAuthEnv(t)
@@ -238,15 +230,11 @@ func TestUnitTelemetry_MatchOutcomesBySourceAndOutcome(t *testing.T) {
 	}
 }
 
-// countMatch's region label mirrors the entry region that steered
-// acceptance: the same Super Famicom candidate matches under ntsc_j
-// (the JP twin table admits the console) but clears no gate under
-// base region, landing below_threshold with the label defaulted to
-// "none". A third call passes an unrecognized free-text region (the
-// resolve request's region is maxLength-32 free text, not an enum) -
-// matching still treats it as base region, and the label must clamp
-// to "none" too rather than minting its own series, or an
-// authenticated user could mint unbounded label cardinality.
+// countMatch's region label mirrors the entry region: the same Super
+// Famicom candidate matches under ntsc_j but clears no gate under
+// base region (below_threshold, label "none"). An unrecognized
+// free-text region also clamps to "none" rather than minting its own
+// series, or an authenticated user could mint unbounded label cardinality.
 func TestUnitTelemetry_MatchOutcomesCarriesRegionLabel(t *testing.T) {
 	reader := metrictest.Install(t)
 	loose := int64(3500)
@@ -284,17 +272,11 @@ func TestUnitTelemetry_MatchOutcomesCarriesRegionLabel(t *testing.T) {
 	}
 }
 
-// The fallback leg's own outcome counter: matched when the merged
-// results clear the threshold after the fallback search lands,
-// still_empty when it fires but nothing clears (both searches empty),
-// and error when the fallback search itself fails. Each case uses a
-// primary query the stub never answers, so the gate-admitted count
-// after the primary leg is always zero and the fallback always fires.
-// A fourth call whose two name forms are identical (matchNamesFor
-// hands back the same translit and canonical text) proves the
-// no-fire guard: an identical form offers nothing a re-search could
-// find, so the fallback must sit out entirely and the counter's
-// total must stay exactly 3 - not gain a fourth still_empty.
+// The fallback leg's outcome counter: matched, still_empty (both
+// searches empty), or error (fallback search fails). Each case's
+// primary query never answers, so the fallback always fires. A fourth
+// call with identical translit/canonical forms proves the no-fire
+// guard: the fallback sits out, so the total stays exactly 3.
 func TestUnitTelemetry_FallbackSearchOutcomes(t *testing.T) {
 	reader := metrictest.Install(t)
 	loose := int64(3500)
@@ -486,9 +468,7 @@ func TestUnitTelemetry_RefreshItemsSweep(t *testing.T) {
 }
 
 // Normalize-community-regions rows: a reviewed synonym promotes, an
-// unreviewed string is skipped, and a store-write fault is failed -
-// counted separately from skipped so scanned can exceed their sum
-// (the posture collection's sibling counter documents).
+// unreviewed string skips, a store-write fault fails (counted separately, so scanned can exceed their sum).
 func TestUnitTelemetry_NormalizeCommunityRegions(t *testing.T) {
 	reader := metrictest.Install(t)
 	st := &stubStore{
@@ -521,9 +501,8 @@ func TestUnitTelemetry_NormalizeCommunityRegions(t *testing.T) {
 	if counts["scanned"] != 3 || counts["normalized"] != 1 || counts["skipped"] != 1 {
 		t.Fatalf("counts = %+v, want scanned 3 normalized 1 skipped 1", counts)
 	}
-	// The write failure (p-write-fail) lands in neither counter, so
-	// scanned outruns their sum - the response-side proof of the same
-	// divergence the failed metric outcome below records.
+	// The write failure lands in neither counter, so scanned outruns
+	// their sum: the response-side proof of the divergence the metric below records.
 	if counts["scanned"] <= counts["normalized"]+counts["skipped"] {
 		t.Fatalf("scanned (%d) must exceed normalized+skipped (%d) when a write fails", counts["scanned"], counts["normalized"]+counts["skipped"])
 	}
@@ -569,9 +548,8 @@ func TestUnitTelemetry_RefreshStepDurationPerStep(t *testing.T) {
 	}
 }
 
-// A step that aborts on its list read still records: the count series
-// is the refresh-happened signal for the stalled-refresh alert, so an
-// abort must not go silent.
+// A step that aborts on its list read still records: the count
+// series is the refresh-happened signal for the stalled-refresh alert.
 func TestUnitTelemetry_RefreshStepDurationRecordedOnAbort(t *testing.T) {
 	reader := metrictest.Install(t)
 	st := &stubStore{listPriced: func(context.Context) ([]store.Product, error) { return nil, errors.New("mongo down") }}
@@ -585,14 +563,10 @@ func TestUnitTelemetry_RefreshStepDurationRecordedOnAbort(t *testing.T) {
 	}
 }
 
-// The restart-proof refresh-last-completed gauge observes exactly the
-// unix time recordRefreshStepDuration's own h.now() stamped for the
-// step it just ran. Unlike the step_duration counter above (whose
-// increase() sees nothing until this process's own first measurement),
-// an OTel gauge re-reports the same last-known value on every export
-// interval, so Prometheus already holds a real sample to fall back on
-// across a pod replacement - the property the stalled-refresh alert's
-// last_over_time query depends on.
+// The refresh-last-completed gauge observes the unix time
+// recordRefreshStepDuration stamped. Unlike a counter's increase(), a
+// gauge re-reports its last-known value every export interval, so
+// Prometheus already has a real sample across a pod replacement.
 func TestUnitTelemetry_RefreshLastCompletedObservesStampedStep(t *testing.T) {
 	reader := metrictest.Install(t)
 	h := newUnitHandlers(&stubStore{}, nil, nil, newStubCache())
@@ -608,12 +582,9 @@ func TestUnitTelemetry_RefreshLastCompletedObservesStampedStep(t *testing.T) {
 	}
 }
 
-// A step recordRefreshStepDuration has never stamped in this process
-// yields no observation at all - never a false zero. This is what
-// makes a fresh process (right after a pod replacement) safe: every
-// step stays absent until its own first completion, matching the
-// alert's absent-series treatment instead of forcing it to special-
-// case a synthetic zero.
+// A never-stamped step yields no observation, never a false zero:
+// this keeps a fresh process (post pod-replacement) safe, since every
+// step stays absent until its own first completion.
 func TestUnitTelemetry_RefreshLastCompletedOmitsNeverStampedStep(t *testing.T) {
 	reader := metrictest.Install(t)
 	h := newUnitHandlers(&stubStore{}, nil, nil, newStubCache())
@@ -683,11 +654,9 @@ func TestUnitTelemetry_CatalogRefreshStartedLogsTrigger(t *testing.T) {
 	}
 }
 
-// TestUnitInternalErrorLogCarriesCause pins the shared 500 helper: the
-// problem body carries only a generic detail text, while the log line
-// carries the op and cause the client never sees (docs/runbooks/enrichment.md's
-// 5xx triage reads it from there). Mirrors collection's
-// TestUnitInternalErrorLogCarriesCause.
+// Pins the shared 500 helper: the problem body carries only a
+// generic detail text, while the log line carries the op and cause
+// the client never sees.
 func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 	env := newAuthEnv(t)
 	boom := errors.New("mongo exploded")
@@ -717,20 +686,15 @@ func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 	}
 
 	logged := buf.String()
-	if !strings.Contains(logged, `"msg":"store error"`) || !strings.Contains(logged, `"level":"ERROR"`) ||
+	if !strings.Contains(logged, `"msg":"handler error"`) || !strings.Contains(logged, `"level":"ERROR"`) ||
 		!strings.Contains(logged, `"op":"batch_prices"`) || !strings.Contains(logged, "mongo exploded") {
-		t.Fatalf("store error log line missing or wrong shape: %s", logged)
+		t.Fatalf("handler error log line missing or wrong shape: %s", logged)
 	}
 }
 
-// TestUnitRequireAdmin_Guards names requireAdmin itself as the
-// mechanism, the way TestUnitInternalNormalizeCommunityRegions_Guards
-// already does for requireAdminOrService: a plain user is forbidden,
-// an admin passes. CreateCommunityProduct (POST /admin/products) is
-// the representative site; every one of the nine callers also has
-// its own per-handler RBAC test (e.g. TestUnitCreateCommunityProduct,
-// TestRefresh_AdminRBACAndConflict), so this test's job is pinning
-// the shared gate by name, not reproving RBAC per site.
+// Names requireAdmin itself as the mechanism: a plain user is
+// forbidden, an admin passes, using CreateCommunityProduct as the
+// representative site (other callers have their own per-handler RBAC tests).
 func TestUnitRequireAdmin_Guards(t *testing.T) {
 	env := newAuthEnv(t)
 	h := newUnitHandlers(&stubStore{createProduct: func(_ context.Context, p store.Product) (store.Product, error) {
@@ -741,9 +705,7 @@ func TestUnitRequireAdmin_Guards(t *testing.T) {
 
 	user := env.token(t, "u1", []string{"user"})
 	rec := serveUnit(t, h, env, http.MethodPost, "/admin/products", user, body)
-	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "forbidden") {
-		t.Fatalf("non-admin: %d %s", rec.Code, rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusForbidden, "forbidden")
 
 	admin := env.token(t, "a1", []string{"admin"})
 	rec = serveUnit(t, h, env, http.MethodPost, "/admin/products", admin, body)
@@ -753,8 +715,7 @@ func TestUnitRequireAdmin_Guards(t *testing.T) {
 }
 
 // stubErrMeterProvider hands out a meter that refuses every
-// registration this service performs; the noop embeds satisfy the
-// rest of the interfaces.
+// registration; noop embeds satisfy the rest of the interfaces.
 type stubErrMeterProvider struct{ noop.MeterProvider }
 
 func (stubErrMeterProvider) Meter(string, ...metric.MeterOption) metric.Meter {
@@ -815,10 +776,8 @@ func TestUnitTelemetry_RegistrationFailureIsBestEffort(t *testing.T) {
 	}
 }
 
-// TestUnitTelemetry_NilLoggerDoesNotPanic pins the constructor's
-// tolerate-nil idiom (shared across services): with every registration
-// failing, as above, but Options.Logger left nil this time, New must
-// still complete instead of panicking on the nil logger.
+// Pins the constructor's tolerate-nil idiom: with every registration
+// failing and Options.Logger left nil, New must still complete, not panic.
 func TestUnitTelemetry_NilLoggerDoesNotPanic(t *testing.T) {
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(stubErrMeterProvider{})

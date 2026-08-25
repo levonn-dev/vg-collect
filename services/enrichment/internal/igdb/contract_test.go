@@ -16,16 +16,11 @@ import (
 // the named vocabulary schema that is the one authored home of the enum.
 const releaseRegionSchemaRef = "#/components/schemas/ReleaseRegion"
 
-// TestReleaseRegionEnum_MatchesGeneratedTable is the anti-drift guard for
-// api/domain.yaml's release_regions rows: oapi-codegen cannot read
-// domain.yaml, so api/common.yaml hand-types the same ten names once as
-// the ReleaseRegion vocabulary schema, and PlatformRef.release_regions and
-// ReleaseDate.region both $ref it. This test parses api/common.yaml off
-// disk on every run - not a hardcoded name list, which would only catch a
-// name removed from domain.yaml, never one added without a matching row -
-// and diffs its enum against regionkit.ReleaseRegionNames in both
-// directions. It also fails if either wire site stops $ref-ing the
-// vocabulary schema and inlines its own enum instead.
+// The anti-drift guard for api/domain.yaml's release_regions rows:
+// oapi-codegen can't read domain.yaml, so api/common.yaml hand-types
+// the names once as the ReleaseRegion schema, which two wire sites
+// $ref. Parses common.yaml off disk (catches additions too) and fails
+// if either site stops $ref-ing and inlines its own enum.
 func TestReleaseRegionEnum_MatchesGeneratedTable(t *testing.T) {
 	generated := sortedReleaseRegionNames()
 	contract := parseReleaseRegionContract(t)
@@ -42,10 +37,8 @@ func TestReleaseRegionEnum_MatchesGeneratedTable(t *testing.T) {
 	}
 }
 
-// sortedReleaseRegionNames reads regionkit.ReleaseRegionNames (generated
-// from api/domain.yaml's release_regions rows) as a sorted name list, so
-// it compares against a contract enum regardless of either side's
-// declaration order.
+// sortedReleaseRegionNames reads regionkit.ReleaseRegionNames as a
+// sorted list, so comparison ignores either side's declaration order.
 func sortedReleaseRegionNames() []string {
 	names := make([]string, 0, len(regionkit.ReleaseRegionNames))
 	for _, name := range regionkit.ReleaseRegionNames {
@@ -55,9 +48,8 @@ func sortedReleaseRegionNames() []string {
 	return names
 }
 
-// releaseRegionContract holds what this test reads straight out of
-// api/common.yaml: the ReleaseRegion vocabulary enum (sorted) and the two
-// wire sites' $ref targets.
+// releaseRegionContract holds what this test reads from
+// api/common.yaml: the sorted ReleaseRegion enum and both $ref targets.
 type releaseRegionContract struct {
 	enum                 []string
 	platformRefItemsRef  string
@@ -65,12 +57,8 @@ type releaseRegionContract struct {
 }
 
 // releaseRegionContractSchema is the minimal shape needed to reach
-// components.schemas.ReleaseRegion.enum and the $ref at each of its two
-// wire sites. This is a plain (non-strict) decode: every other key in the
-// document - paths, the rest of the schemas - is ignored, since this test
-// only cares about reading these fields live, not about flagging unrelated
-// contract typos (that is domaingen's job for domain.yaml, not this test's
-// job for the OpenAPI doc).
+// ReleaseRegion.enum and its two wire sites' $ref (a plain, non-strict
+// decode; other contract typos are domaingen's job, not this test's).
 type releaseRegionContractSchema struct {
 	Components struct {
 		Schemas struct {
@@ -97,12 +85,9 @@ type releaseRegionContractSchema struct {
 	} `yaml:"components"`
 }
 
-// parseReleaseRegionContract reads and decodes api/common.yaml from disk
-// and returns the ReleaseRegion vocabulary enum (sorted) plus the two wire
-// sites' $ref targets. An absent ReleaseRegion schema or an absent/empty
-// enum key is a hard failure, never an empty comparison: the guard must
-// fail loudly if its authored home moves rather than silently pass two
-// empty lists against each other.
+// parseReleaseRegionContract reads api/common.yaml and returns the
+// sorted enum plus both $ref targets. An absent schema or empty enum
+// is a hard failure, never a silent empty-vs-empty pass.
 func parseReleaseRegionContract(t *testing.T) releaseRegionContract {
 	t.Helper()
 	data, err := os.ReadFile(repoPath(t, "api", "common.yaml"))
@@ -125,11 +110,9 @@ func parseReleaseRegionContract(t *testing.T) releaseRegionContract {
 	}
 }
 
-// repoPath resolves a path relative to the repo root, anchored on this test
-// file's own compiled-in source location (runtime.Caller) rather than the
-// process working directory - correct regardless of the directory `go
-// test`/`go vet` happen to be invoked from. This file lives at
-// services/enrichment/internal/igdb/, four directories below the repo root.
+// repoPath resolves a path relative to the repo root, anchored on
+// this file's compiled-in source location (runtime.Caller), correct
+// regardless of `go test`'s working directory.
 func repoPath(t *testing.T, parts ...string) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -140,11 +123,9 @@ func repoPath(t *testing.T, parts ...string) string {
 	return filepath.Join(append([]string{root}, parts...)...)
 }
 
-// assertSameRegionNames reports each direction's set difference through
-// its own t.Errorf: a name only in the contract enum (a missing
-// domain.yaml row) and a name only in the generated table (a missing
-// api/common.yaml entry) are both visible in one run instead of the first
-// masking the other.
+// assertSameRegionNames reports each direction's set difference via
+// its own t.Errorf, so a name missing from domain.yaml and one missing
+// from api/common.yaml are both visible in one run, not masking each other.
 func assertSameRegionNames(t *testing.T, field string, contract, generated []string) {
 	t.Helper()
 	if only := setDiff(contract, generated); len(only) > 0 {

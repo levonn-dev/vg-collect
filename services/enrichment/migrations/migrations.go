@@ -1,6 +1,5 @@
 // Package migrations embeds this service's schema migrations (JSON
-// arrays of MongoDB runCommand documents) for mongokit.Migrate (run
-// via the `migrate` subcommand / init container).
+// runCommand arrays) for mongokit.Migrate, run via the `migrate` subcommand.
 package migrations
 
 import "embed"

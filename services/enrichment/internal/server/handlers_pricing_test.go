@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/fx"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
@@ -135,10 +136,8 @@ func TestUnitBatchPriceHistoryRejectsBadInput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// serveUnit marshals its body param through json.Marshal, which
-	// cannot produce a deliberately malformed payload or a pre-built
-	// literal array of quoted ids; post issues the raw body exactly
-	// like the bad-body case in TestUnitBatchPrices_CapAndBadBody above.
+	// serveUnit's body param always marshals valid JSON, so post issues
+	// the raw body directly (as TestUnitBatchPrices_CapAndBadBody does).
 	post := func(body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/products/price-history:batch", bytes.NewReader([]byte(body)))
 		req.Header.Set("Authorization", "Bearer "+tok)
@@ -164,12 +163,7 @@ func TestUnitBatchPriceHistoryRejectsBadInput(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := post(tc.body)
-			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("status %d, want 400", rec.Code)
-			}
-			if !strings.Contains(rec.Body.String(), "invalid_body") {
-				t.Fatalf("problem code missing: %s", rec.Body)
-			}
+			reqtest.AssertProblemRec(t, rec, http.StatusBadRequest, "invalid_body")
 		})
 	}
 }
@@ -190,17 +184,14 @@ func TestUnitBatchPriceHistoryStoreFailureIs500(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------
 // FX rates
-// ---------------------------------------------------------------
 
 func TestUnitGetFxLatest_ServesSnapshot(t *testing.T) {
 	rates := &stubFX{latest: func(context.Context) (fx.Rates, error) {
 		return fx.Rates{Base: "USD", Date: "2026-07-01", Rates: map[string]float64{"EUR": 0.5, "JPY": 150}}, nil
 	}}
-	// Build the server through this file's usual harness, substituting
-	// the fx stub; then issue an authed GET /fx/latest the same way the
-	// neighboring GET tests do.
+	// Build the server via the usual harness, substituting the fx stub,
+	// then issue an authed GET /fx/latest.
 	rec := doAuthedFxRequest(t, rates)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: %d body %s", rec.Code, rec.Body.String())
@@ -223,10 +214,5 @@ func TestUnitGetFxLatest_ColdFailureAnswers502(t *testing.T) {
 		return fx.Rates{}, errors.New("upstream down")
 	}}
 	rec := doAuthedFxRequest(t, rates)
-	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("status: %d, want 502", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), "upstream_unavailable") {
-		t.Fatalf("problem code missing: %s", rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusBadGateway, "upstream_unavailable")
 }

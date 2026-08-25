@@ -1,6 +1,5 @@
 // Admin and CronJob levers: the catalog refresh trigger and its
-// price, reprojection and candidate-sweep steps, and community region
-// normalization.
+// price, reprojection and candidate-sweep steps, and community region normalization.
 
 package server
 
@@ -32,11 +31,9 @@ func (h *Handlers) TriggerRefresh(w http.ResponseWriter, r *http.Request) {
 	h.startRefresh(w, r, "admin")
 }
 
-// InternalRefresh is the CronJob's trigger. Contract-described and
-// served by the generated mux behind the blanket JWT middleware,
-// service-token-gated in the handler (operators use TriggerRefresh's
-// admin-role gate on /admin/refresh instead); the NetworkPolicy is the
-// outer layer.
+// InternalRefresh is the CronJob's trigger: service-token-gated in
+// the handler (operators use TriggerRefresh's admin-role gate
+// instead); the NetworkPolicy is the outer layer.
 func (h *Handlers) InternalRefresh(w http.ResponseWriter, r *http.Request) {
 	if !h.requireService(w, r) {
 		return
@@ -45,19 +42,16 @@ func (h *Handlers) InternalRefresh(w http.ResponseWriter, r *http.Request) {
 }
 
 // startRefresh answers 202 and detaches the catalog refresh via
-// httpkit.TriggerDetached: at polite provider rates a real catalog
-// outlives the server's write timeout, so the summary goes to the
-// log, not the response. One refresh at a time (409
-// refresh_in_progress on conflict).
+// httpkit.TriggerDetached: it outlives the write timeout at polite
+// provider rates, so the summary goes to the log. One at a time (409 on conflict).
 func (h *Handlers) startRefresh(w http.ResponseWriter, r *http.Request, trigger string) {
 	started := httpkit.TriggerDetached(w, r, httpkit.TriggerDetachedOptions{
 		Guard:          &h.refreshing,
 		ConflictCode:   "refresh_in_progress",
 		ConflictDetail: "a catalog refresh is already running",
 		Started: func() {
-			// The started line pairs with the per-step finished
-			// summaries: a start with no finishes inside the budget
-			// marks a hung refresh.
+			// Pairs with the per-step finished summaries: a start with no
+			// finishes inside the budget marks a hung refresh.
 			h.logger.InfoContext(r.Context(), "catalog refresh started", "trigger", trigger)
 		},
 		Budget:   refreshBudget,
@@ -79,11 +73,10 @@ func (h *Handlers) startRefresh(w http.ResponseWriter, r *http.Request, trigger 
 	writeJSON(w, http.StatusAccepted, api.RefreshAccepted{Status: "started"})
 }
 
-// runRefresh walks every mapped product: current prices updated, one
-// snapshot appended, failures counted and skipped (the walk finishes
-// what it can). Orphaned products keep snapshotting by design. Once
-// the budget expires, the ctx.Err() check between products stops the
-// walk instead of burning a failure for every remaining product.
+// runRefresh walks every mapped product: prices updated, one snapshot
+// appended, failures counted and skipped. Orphaned products keep
+// snapshotting by design. On budget expiry, ctx.Err() stops the walk
+// instead of failing every remaining product.
 func (h *Handlers) runRefresh(ctx context.Context) {
 	start := h.now()
 	defer func() { h.recordRefreshStepDuration(ctx, "prices", h.now().Sub(start).Seconds()) }()
@@ -126,9 +119,8 @@ func (h *Handlers) runRefresh(ctx context.Context) {
 			continue
 		}
 		snapshots++
-		// ok means the full item landed: price written and snapshot
-		// appended (a failed invalidate below is a cache event, not an
-		// item failure).
+		// "ok" means price written + snapshot appended; a failed
+		// invalidate below is a cache event, not an item failure.
 		h.countRefreshItem(ctx, "prices", "ok")
 		if err := h.cache.InvalidateProduct(ctx, p.ID); err != nil {
 			h.failOpen(ctx, "refresh_invalidate", err)
@@ -139,22 +131,12 @@ func (h *Handlers) runRefresh(ctx context.Context) {
 		"failures", failures, "duration_ms", h.now().Sub(start).Milliseconds())
 }
 
-// runReprojection sweeps every igdb-bearing product nightly (an
-// uncapped ListIGDBProducts read, mirroring the price refresh's posture)
-// and rebuilds each one's projection from its raw payload, writing only
-// the ones that actually changed. The raws hold the full unfiltered
-// release table, so a projection-logic change (like the JP-twin fold)
-// redeploys here with zero provider calls; only raws below
-// fields_version (nil release table, or missing fields a newer
-// generation added) or ids with no raw at all are refetched - a set
-// that drains to zero as the catalog heals, which bounds the provider
-// cost of a full sweep. A rebuild sourced from an existing raw keeps
-// that raw's fetch stamp - the projection changed, not the provider
-// data - so read-path staleness math stays honest. The diff gate
-// (SameProjection) makes steady state write-free: once every raw is
-// healed and every projection matches, the nightly sweep reads Mongo
-// and writes nothing.
-// Detached-execution conventions match runRefresh.
+// runReprojection nightly-sweeps every igdb-bearing product (uncapped,
+// like the price refresh), rebuilding each projection from raw and
+// writing only diffs (SameProjection gates steady state write-free).
+// Only stale/missing raws (below fields_version) refetch, a set that
+// drains to zero as the catalog heals. A rebuild keeps the raw's
+// existing fetch stamp, so staleness math stays honest.
 func (h *Handlers) runReprojection(ctx context.Context) {
 	start := h.now()
 	defer func() { h.recordRefreshStepDuration(ctx, "reprojection", h.now().Sub(start).Seconds()) }()
@@ -167,9 +149,7 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 		return
 	}
 
-	// A raw below fields_version - nil release table, or missing fields
-	// a newer generation added - must be refetched, never reprojected
-	// as-is; an id with no raw at all is fetched too.
+	// Below fields_version, missing, or no raw at all: refetch, don't reproject as-is.
 	ids := make([]int64, 0, len(prods))
 	seen := make(map[int64]bool, len(prods))
 	for _, p := range prods {
@@ -207,9 +187,8 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 			return
 		}
 		for _, g := range games {
-			// Match UpsertRaw's persisted shape: a fetched game listing no
-			// rows is fetched-none ([]), not pre-feature (nil), so the
-			// loop below reprojects rather than re-skips it.
+			// Match UpsertRaw's shape: a fetched listing with no rows is
+			// fetched-none ([]), not pre-feature (nil), so it reprojects, not re-skips.
 			if g.ReleaseDates == nil {
 				g.ReleaseDates = []igdb.ReleaseDate{}
 			}
@@ -225,9 +204,8 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 			break
 		}
 		processed++
-		// Defensive: ListIGDBProducts filters on the igdb subdoc, so a
-		// nil projection here should not happen - skip it rather than
-		// deref, for loop-consistency.
+		// Defensive: ListIGDBProducts filters on igdb subdoc, so nil
+		// here shouldn't happen; skip rather than deref.
 		if p.IGDB == nil {
 			missing++
 			h.countRefreshItem(ctx, "reprojection", "skipped")
@@ -235,10 +213,8 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 				"product", p.ID)
 			continue
 		}
-		// A missing raw (provider never returned it) or one still on the
-		// pre-feature nil table (a refetch the provider could not honor)
-		// carries no honest release data: skip rather than reproject a
-		// nil table as a fetched-none empty. The next reprojection retries.
+		// A missing raw, or one still nil-table after refetch, carries
+		// no honest release data: skip it; the next reprojection retries.
 		raw, ok := rawByID[p.IGDB.GameID]
 		if !ok || raw.Game.ReleaseDates == nil {
 			missing++
@@ -251,9 +227,8 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 		if p.Platform != nil {
 			pid = p.Platform.IGDBID
 		}
-		// raw.FetchedAt is the honest stamp: freshly fetched raws carry
-		// `now` (set at merge above); existing raws keep their stored
-		// stamp, so a projection-only rebuild does not fake freshness.
+		// raw.FetchedAt is honest: fresh raws carry `now`, existing raws
+		// keep their stored stamp, so a rebuild never fakes freshness.
 		meta := store.NewIGDBMeta(raw.Game, pid, raw.FetchedAt)
 		if meta.SameProjection(*p.IGDB) {
 			// diff gate: nothing changed, no write, no invalidate
@@ -277,13 +252,10 @@ func (h *Handlers) runReprojection(ctx context.Context) {
 		"missing", missing, "failures", failures, "duration_ms", h.now().Sub(start).Milliseconds())
 }
 
-// runCandidateSweep is the catalog refresh's community pass: for each community
-// product, name-search the promote-relevant provider (games need igdb
-// identity to promote, hardware needs a listing) and stash flag-only
-// candidates at the same never-guess threshold. Never attaches: a
-// repro shares its name with the original it reproduces, so a
-// high-scoring match has an elevated false-positive base rate here -
-// providers propose, admins decide. Dismissed pairs stay silent.
+// runCandidateSweep name-searches each community product's
+// promote-relevant provider and stashes flag-only candidates at the
+// match threshold; never attaches (a repro shares its name with the
+// original, an elevated false-positive risk). Dismissed pairs stay silent.
 func (h *Handlers) runCandidateSweep(ctx context.Context) {
 	start := h.now()
 	defer func() { h.recordRefreshStepDuration(ctx, "sweep", h.now().Sub(start).Seconds()) }()
@@ -357,39 +329,13 @@ func (h *Handlers) runCandidateSweep(ctx context.Context) {
 	h.logger.InfoContext(ctx, "candidate sweep complete", "swept", swept, "flagged", flagged, "failed", failed)
 }
 
-// InternalNormalizeCommunityRegions promotes free-text community
-// product regions into the known set: every community product whose
-// curated community.region sits outside regionkit.KnownRegions is
-// folded (lowercase, trimmed) against the known values and
-// regionkit.RegionSynonyms - exact-or-synonym, never fuzzy, so an
-// unreviewed string is left as typed rather than misfiled. This is
-// enrichment's twin of
-// collection's normalize-regions lever, scoped to the community
-// products this service owns, but with no fetch arm: a community
-// product carries no provider identity to re-fetch and no release-
-// date/localization snapshot to re-pick, so promotion is a plain
-// community.region field rewrite (no 502 - nothing here calls out to
-// another service). Re-runnable: promoted rows leave the selection
-// set - though "normalized" here counts an error-free write, not a
-// confirmed row change (SetCommunityRegion skips the matched-count
-// check, the same store-tier convention as collection's
-// PromoteEntryRegion); a write failure logs and counts only in the
-// failed metric outcome, so scanned can exceed normalized+skipped.
-// Guard: admin role or service token (the nightly job runs this
-// alongside collection's platform/region levers).
-//
-// Contract-described; the bff relays POST /api/admin/normalize-community-regions
-// to this endpoint via the Admin page button, and the gateway publishes the relay
-// path. For offline testing against the enrichment service directly, with
-// the dev stack up and the admin fixture role already granted (task
-// grant-fixture-admin):
-//
-//	kubectl -n vgkeep port-forward svc/enrichment 8086:8080 &
-//	TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
-//	  -H 'Content-Type: application/json' -d '{"user":"admin"}' \
-//	  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
-//	curl -s -X POST http://localhost:8086/internal/normalize-community-regions \
-//	  -H "Authorization: Bearer $TOKEN"
+// InternalNormalizeCommunityRegions folds each community region
+// outside regionkit.KnownRegions against known values and
+// regionkit.RegionSynonyms (exact-or-synonym only, never fuzzy) and
+// rewrites it in place; no fetch arm since community products carry
+// no provider identity. Re-runnable; "normalized" counts an
+// error-free write, not a confirmed row change, so scanned can exceed
+// normalized+skipped. Guard: admin role or service token.
 //
 // Answers {"scanned":N,"normalized":N,"skipped":N}.
 func (h *Handlers) InternalNormalizeCommunityRegions(w http.ResponseWriter, r *http.Request) {

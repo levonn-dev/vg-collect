@@ -1,16 +1,9 @@
 package store
 
 // White-box (package store, not store_test): findAll/findPage are
-// unexported, so pinning their own contract directly - independent
-// of any one caller's filter/projection shape - needs a test inside
-// the package. Their callers' own black-box tests in
-// store_test.go already re-verify the same contract end to end
-// (ListPriced, ListUnmatchedProducts, and friends); this one isolates
-// the two generics themselves against a scratch collection, so a
-// future change to their op-wrap or zero-match behavior fails here
-// first. A dedicated collection name (never touched by any other
-// test in this package) keeps this test independent of the
-// products-collection reset every other test in this package does.
+// unexported, so pinning their contract directly needs a test inside
+// the package, isolated on a scratch collection. A dedicated
+// collection name keeps it independent of the products-collection reset every other test does.
 
 import (
 	"context"
@@ -71,10 +64,8 @@ func TestFindAll_AssemblesInOrder(t *testing.T) {
 	}
 }
 
-// TestFindAll_ZeroMatchesIsNil pins the package's convention (matching
-// every one of its ten converted call sites): a zero-match result is
-// nil, not an empty slice - cur.All leaves a `var out []T` destination
-// untouched when the cursor yields no documents.
+// Pins the package's convention: a zero-match result is nil, not []
+// (cur.All leaves `var out []T` untouched when the cursor yields nothing).
 func TestFindAll_ZeroMatchesIsNil(t *testing.T) {
 	col := findAllTestCollection(t)
 	got, err := findAll[findAllDoc](context.Background(), col,
@@ -87,10 +78,8 @@ func TestFindAll_ZeroMatchesIsNil(t *testing.T) {
 	}
 }
 
-// TestFindAll_WrapsFindIssueError pins the op-wrap on a real
-// Find-issue failure: an invalid filter operator is rejected by the
-// server (not the driver locally), giving a genuine wrapped error
-// without needing to fake the driver.
+// Pins the op-wrap on a real Find-issue failure: an invalid filter
+// operator is server-rejected, giving a genuine wrapped error without faking the driver.
 func TestFindAll_WrapsFindIssueError(t *testing.T) {
 	col := findAllTestCollection(t)
 	_, err := findAll[findAllDoc](context.Background(), col,
@@ -107,11 +96,8 @@ func errorHasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
 
-// TestFindPage_CountAndFindOpsWrapIndependently pins the reason
-// findPage takes two op strings instead of one: ListPromoteCandidateProducts
-// uses different text for its count failure than its find failure,
-// while the other two paginated readers reuse the same text for both -
-// both shapes must stay reachable through the same generic.
+// Pins why findPage takes two op strings: some callers word count vs
+// find failures differently, others reuse one text; both shapes must work.
 func TestFindPage_CountAndFindOpsWrapIndependently(t *testing.T) {
 	col := findAllTestCollection(t)
 	mustInsert(t, col, findAllDoc{ID: "a", N: 1}, findAllDoc{ID: "b", N: 2}, findAllDoc{ID: "c", N: 3})
@@ -129,10 +115,8 @@ func TestFindPage_CountAndFindOpsWrapIndependently(t *testing.T) {
 		t.Fatalf("page = %+v, want %+v", page, want)
 	}
 
-	// The find-issue leg wraps under findOp, not countOp: forcing a
-	// server-side filter error only on the find (the count succeeds
-	// against the same filter first) proves the two ops are not
-	// aliases of one shared parameter.
+	// The find-issue leg wraps under findOp, not countOp: the count
+	// succeeds against the same filter first, proving the two ops aren't aliased.
 	_, _, err = findPage[findAllDoc](context.Background(), col,
 		bson.D{{Key: "n", Value: bson.D{{Key: "$badOperator", Value: 1}}}}, nil, "count op", "find op")
 	if err == nil {

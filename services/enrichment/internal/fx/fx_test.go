@@ -30,8 +30,7 @@ func TestStubServesFixtureSnapshot(t *testing.T) {
 }
 
 // upstream returns a test server mimicking frankfurter.dev and a call
-// counter. The extra "amount" field mirrors the real payload and must
-// be ignored by decoding.
+// counter; the extra "amount" field mirrors the real payload and must be ignored.
 func upstream(t *testing.T, status *atomic.Int32) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var calls atomic.Int32

@@ -14,15 +14,11 @@ import (
 )
 
 // RawFieldsVersion stamps which gameFields generation fetched a raw
-// payload. Raws below the current version predate fields the
-// projection needs and must be refetched, not reprojected; bump it
-// whenever gameFields widens.
+// payload; bump it whenever gameFields widens (older raws refetch, not reproject).
 const RawFieldsVersion = 2
 
-// RawGame is the igdb_raw document: the full provider payload keyed by
-// IGDB game id, shared across products (one IGDB game fans out to N
-// PriceCharting-grained products) and holding recommendation
-// candidates that are not products yet.
+// RawGame is the igdb_raw document: the full provider payload keyed
+// by IGDB game id, shared across products and unmade recommendation candidates.
 type RawGame struct {
 	GameID        int64     `bson:"_id"`
 	Game          igdb.Game `bson:"game"`
@@ -37,9 +33,8 @@ func (s *Store) UpsertRaw(ctx context.Context, games []igdb.Game, fetchedAt time
 	}
 	models := make([]mongo.WriteModel, 0, len(games))
 	for _, g := range games {
-		// A nil table would persist as bson null and read back as
-		// pre-feature "never fetched"; the empty array is the honest
-		// fetched-but-none marker the heal paths key on.
+		// A nil table persists as bson null (reads as pre-feature); the
+		// empty array is the honest fetched-but-none marker heal paths key on.
 		if g.ReleaseDates == nil {
 			g.ReleaseDates = []igdb.ReleaseDate{}
 		}
@@ -73,10 +68,8 @@ func (s *Store) RawByIDs(ctx context.Context, ids []int64) ([]RawGame, error) {
 }
 
 // UpsertPlatforms replaces the IGDB platform catalog (fetched
-// wholesale; consoles borrow names from it where matchable).
-// `logo_url` is persisted as a precomputed display string; the raw
-// image id is not kept. fetched_at rides on each doc for the
-// staleness check.
+// wholesale). logo_url is a precomputed display string, not the raw
+// image id; fetched_at rides on each doc for the staleness check.
 func (s *Store) UpsertPlatforms(ctx context.Context, ps []igdb.Platform, fetchedAt time.Time) error {
 	if len(ps) == 0 {
 		return nil
@@ -117,9 +110,8 @@ func (s *Store) ListPlatforms(ctx context.Context) ([]CatalogPlatform, error) {
 }
 
 // PlatformsFetchedAt returns the oldest fetch stamp across the
-// catalog (ascending sort, first doc), which is the conservative
-// staleness signal (a partially-refreshed catalog reads as stale).
-// Zero time = never fetched.
+// catalog (conservative: a partially-refreshed catalog reads as
+// stale). Zero time = never fetched.
 func (s *Store) PlatformsFetchedAt(ctx context.Context) (time.Time, error) {
 	var doc struct {
 		FetchedAt time.Time `bson:"fetched_at"`

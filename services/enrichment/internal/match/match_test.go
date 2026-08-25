@@ -123,9 +123,8 @@ func TestBest(t *testing.T) {
 	}
 }
 
-// TestBest_EmptyNames is the defensive counterpart: no name form to
-// score against at all (nil names, no hint) must stay unmatched
-// rather than panic, even with a console-eligible candidate present.
+// The defensive counterpart: no name form at all (nil names, no
+// hint) must stay unmatched rather than panic, even with a console-eligible candidate.
 func TestBest_EmptyNames(t *testing.T) {
 	cands := []Candidate{{PCProductID: 1, Name: "Chrono Trigger", ConsoleName: "Super Nintendo"}}
 	got := Best(nil, "", "Super Nintendo Entertainment System", "", cands)
@@ -135,10 +134,8 @@ func TestBest_EmptyNames(t *testing.T) {
 }
 
 func TestBest_ApostropheVariantsMatchThroughNormalize(t *testing.T) {
-	// The lower-level Normalize coverage proves straight/curly
-	// apostrophes and a dropped apostrophe all fold to the same token;
-	// this drives that through Best() itself, with an unrelated
-	// neighbor present so the win is non-vacuous.
+	// Normalize already proves straight/curly/dropped apostrophes fold
+	// to the same token; this drives that through Best() with an unrelated neighbor present.
 	cands := []Candidate{
 		{PCProductID: 41, Name: "Demon\u2019s Souls", ConsoleName: "PlayStation"}, // curly apostrophe (Go unicode escape keeps the source ASCII)
 		{PCProductID: 42, Name: "Chrono Cross", ConsoleName: "PlayStation"},       // unrelated neighbor
@@ -216,8 +213,7 @@ func TestBest_HintReachesBracketedVariant(t *testing.T) {
 
 func TestBest_PossessiveMatchesDroppedForm(t *testing.T) {
 	// PriceCharting's NA listing drops the possessive entirely
-	// (evidence: /api/products, 2026-07-15 - "Michael Jackson
-	// Moonwalker" on Sega Genesis, id 9334).
+	// (verified: "Michael Jackson Moonwalker" on Sega Genesis, id 9334).
 	got := Best([]string{"Michael Jackson's Moonwalker"}, "", "Sega Mega Drive/Genesis", "",
 		[]Candidate{{PCProductID: 9334, Name: "Michael Jackson Moonwalker", ConsoleName: "Sega Genesis"}})
 	if !got.OK || got.PCProductID != 9334 || got.Confidence != 1.0 {

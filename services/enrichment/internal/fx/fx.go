@@ -1,8 +1,7 @@
 // Package fx speaks the frankfurter.dev exchange-rate API: shared
-// types, a real credential-less client with a TTL cache that serves
-// stale on upstream failure, and a stub over embedded fixtures. The
-// mode switch (FX_MODE) picks which one main.go wires in. Rates are
-// target-units-per-USD; USD itself never appears in the map.
+// types, a real credential-less client (TTL cache, serves stale on
+// failure), and a stub over fixtures; FX_MODE picks which wires in.
+// Rates are target-units-per-USD; USD itself never appears in the map.
 package fx
 
 // Rates is one daily snapshot of USD-based exchange rates.

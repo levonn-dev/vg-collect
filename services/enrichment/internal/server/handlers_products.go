@@ -25,8 +25,7 @@ import (
 )
 
 // GetProduct is the identity lookup: Valkey, then Mongo, refetching a
-// stale IGDB projection inline best-effort (stale serves when the
-// provider is down). Prices refresh on the daily cadence only.
+// stale IGDB projection best-effort (serves stale if the provider is down).
 func (h *Handlers) GetProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
 	ctx := r.Context()
 	id := productId.String()
@@ -51,9 +50,8 @@ func (h *Handlers) GetProduct(w http.ResponseWriter, r *http.Request, productId 
 	h.writeProduct(ctx, w, r, p)
 }
 
-// refreshIGDBIfStale refetches an out-of-date IGDB projection
-// (populated backwards into igdb_raw + the product), serving the stale
-// copy on any failure.
+// refreshIGDBIfStale refetches an out-of-date IGDB projection into
+// igdb_raw + the product, serving the stale copy on any failure.
 func (h *Handlers) refreshIGDBIfStale(ctx context.Context, p store.Product) store.Product {
 	if p.IGDB == nil || h.now().Sub(p.IGDB.FetchedAt) < h.igdbRefreshAfter {
 		return p
@@ -243,12 +241,9 @@ func quoteOf(p pricecharting.Product) store.PriceQuote {
 }
 
 // ResolveProduct is find-or-create for a search selection. Game
-// identity is listing-keyed - (igdb game, platform, PriceCharting
-// listing) - so game resolves route through resolveGame, which picks
-// the listing (the user's manual match, or auto-match by plain name)
-// BEFORE the lookup. Hardware identity is unchanged: an existing
-// identity returns as-is; a miss fetches the PriceCharting product
-// and borrows IGDB platform metadata where a console mapping exists.
+// identity is listing-keyed, so resolveGame picks the listing (manual
+// or auto-match) BEFORE the lookup. Hardware identity is unchanged: a
+// miss fetches the PriceCharting product and borrows IGDB platform metadata.
 func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req api.ResolveRequest
@@ -257,11 +252,8 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 	}
 	typ := string(req.Type)
 
-	// type's enum (game, console, accessory, pc_listing) is specval's
-	// job; no default arm needed below (specval guarantees typ is one
-	// of the four before this handler ever runs). Each arm's own
-	// pc_product_id requirement is a cross-field rule the flat request
-	// schema cannot express, so it stays.
+	// type's enum is specval's job (no default arm needed); each arm's
+	// own pc_product_id requirement is a cross-field rule specval can't express.
 	var key store.ProductKey
 	switch typ {
 	case "game":
@@ -302,10 +294,8 @@ func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 }
 
 // resolveGame picks the listing, then finds-or-creates the (game,
-// platform, listing) member. Request edition/variant are ignored
-// (entry-level facts); region is a MATCHING input only - it steers
-// which listing auto-match lands on and never joins identity or the
-// stored product. The picker path ignores it entirely.
+// platform, listing) member. Region is a MATCHING input only: it
+// steers auto-match but never joins identity or the stored product.
 func (h *Handlers) resolveGame(w http.ResponseWriter, r *http.Request, req api.ResolveRequest) {
 	ctx := r.Context()
 	if req.IgdbGameId == nil || req.PlatformIgdbId == nil {
@@ -419,32 +409,25 @@ func (h *Handlers) buildGameProduct(ctx context.Context, key store.ProductKey) (
 }
 
 // gamePayloadFor returns the game payload for scoring and projection:
-// igdb_raw when present (no provider call - names are stable), else a
-// GamesByIDs fetch populated backwards into igdb_raw. The returned
-// time is the payload's fetch stamp, so a raw-sourced product keeps
-// an honest IGDBMeta.FetchedAt for the read path's staleness refresh.
+// igdb_raw when present, else a GamesByIDs fetch populated back into
+// igdb_raw. Returned time is the payload's fetch stamp (for FetchedAt).
 func (h *Handlers) gamePayloadFor(ctx context.Context, gameID int64) (igdb.Game, time.Time, error) {
 	raws, err := h.store.RawByIDs(ctx, []int64{gameID})
 	if err != nil {
 		return igdb.Game{}, time.Time{}, fmt.Errorf("raw read: %w", err)
 	}
-	// A raw doc without a release table predates this feature, and one
-	// below fields_version predates fields a newer generation added;
-	// either way one refetch repairs it (UpsertRaw stamps the empty
-	// array and the current version from then on, so a fetched-but-none
-	// current raw does not refetch forever).
+	// A raw doc without a release table, or below fields_version,
+	// predates a feature; one refetch repairs it (UpsertRaw stamps
+	// both from then on, so a fetched current raw won't refetch forever).
 	if len(raws) == 1 && raws[0].Game.ReleaseDates != nil && raws[0].FieldsVersion >= store.RawFieldsVersion {
 		return raws[0].Game, raws[0].FetchedAt, nil
 	}
 	games, err := h.games.GamesByIDs(ctx, []int64{gameID})
 	if err != nil {
-		// Provider down. A pre-feature raw (present, nil release table)
-		// is still a usable stale payload - its projection just misses
-		// the per-region dates - so serve it, matching
-		// refreshIGDBIfStale's serve-stale degrade. This is safe because
-		// the nightly reprojection refetches nil-table raws, so a product
-		// minted from this stale copy is repaired on the next refresh. With
-		// no raw at all there is nothing to serve, so the error stands.
+		// Provider down: a pre-feature raw (nil release table) is still
+		// usable stale (missing only per-region dates), matching
+		// refreshIGDBIfStale's degrade; the nightly reprojection repairs
+		// it later. With no raw at all, the error stands.
 		if len(raws) == 1 {
 			h.logger.WarnContext(ctx, "pre-feature raw refetch failed; serving stale payload", "game", gameID, "err", err)
 			return raws[0].Game, raws[0].FetchedAt, nil
@@ -462,8 +445,7 @@ func (h *Handlers) gamePayloadFor(ctx context.Context, gameID int64) (igdb.Game,
 }
 
 // platformOf checks the release-platform membership a game resolve
-// promises (the payload's platform list carries names only; logos
-// come from the platform catalog at create time).
+// promises; logos come from the platform catalog at create time, not this payload.
 func platformOf(g igdb.Game, platformID int64) (*store.Platform, error) {
 	for _, pl := range g.Platforms {
 		if pl.ID == platformID {
@@ -492,16 +474,11 @@ func (h *Handlers) manualMatch(ctx context.Context, pcID int64) (*store.PCMeta, 
 	}, nil
 }
 
-// autoMatchGame scores the family's listing candidates; nil when the
-// provider is degraded or nothing the region admits clears the
-// threshold (never guessed - the resolve then lands on the unmatched
-// member). names come from matchNamesFor: names[0] is the primary
-// provider query; when the region gate admits nothing from it and a
-// second form exists, one fallback search runs with the alternate
-// form - PriceCharting files JP listings under romaji or hybrid
-// names, so either query can be the one that hits. Both legs ride the
-// shared pc_listing search cache. source names the calling flow on
-// the outcome counter; region rides it as a label.
+// autoMatchGame scores the family's listing candidates; nil means
+// degraded or below threshold (never guessed). names[0] is the
+// primary query; a second search with names[1] fires only if the
+// region gate empties it and a second form exists (PriceCharting
+// files JP listings under romaji/hybrid names). Both legs are cached.
 func (h *Handlers) autoMatchGame(ctx context.Context, source string, names []string, hint, platformName, region string) *store.PCMeta {
 	results, err := h.searchPCListingsCached(ctx, names[0])
 	if err != nil {
@@ -511,8 +488,7 @@ func (h *Handlers) autoMatchGame(ctx context.Context, source string, names []str
 	}
 	fallbackFired := false
 	// names[1] != names[0] guards a bundle whose transliteration equals
-	// the canonical name: it offers no alternate form, so re-searching
-	// it would just repeat the primary query the gate already rejected.
+	// the canonical name (no alternate form, so re-searching would repeat the rejected query).
 	if len(names) > 1 && names[1] != names[0] && len(match.FilterConsole(platformName, region, matchCandidates(results))) == 0 {
 		fb, fbErr := h.searchPCListingsCached(ctx, names[1])
 		if fbErr != nil {
@@ -552,13 +528,9 @@ func (h *Handlers) autoMatchGame(ctx context.Context, source string, names []str
 }
 
 // createAndServe inserts the built product and serves the outcome.
-// The id is pre-minted at this single call site: CreateProduct mints
-// only when p.ID == "", so a duplicate-key convergence (a concurrent
-// resolve already won the identity) is detectable by an id mismatch -
-// the winner's document never carries this id, and the winner already
-// appended its own initial snapshot, so only the winning create
-// snapshots. There is no fill step: every path that reaches here
-// already carries its full identity, mapping included.
+// The id is pre-minted here, so a concurrent-create convergence is
+// detectable by an id mismatch; only the winning create appends the
+// initial snapshot (the loser's document never carries this id).
 func (h *Handlers) createAndServe(ctx context.Context, w http.ResponseWriter, r *http.Request, p store.Product) {
 	p.ID = uuid.NewString()
 	created, err := h.store.CreateProduct(ctx, p)
@@ -598,20 +570,17 @@ func (h *Handlers) buildHardwareProduct(ctx context.Context, typ string, key sto
 		Region:   key.Region, Edition: key.Edition, Variant: key.Variant,
 		PriceCharting: &store.PCMeta{
 			PCProductID: pc.ID, PCName: pc.Name, ConsoleName: pc.ConsoleName,
-			// The user picked this exact product from hardware search:
-			// exact by construction, but still machine-made (not
-			// admin-verified).
+			// User-picked from hardware search: exact by construction, but
+			// still machine-made (not admin-verified).
 			MatchConfidence: 1.0, Verified: false,
 			Current: quoteOf(pc), AsOf: h.now(),
 		},
 	}, nil
 }
 
-// identityKey addresses the slot in prod's identity family that
-// carries listing pcID (0 = the family's unmatched member, for game
-// products). Identity-conflict holder lookups use it; the hardware
-// filter takes the id literally, so a hardware unmatched slot is not
-// addressable and that lookup simply misses.
+// identityKey addresses the slot in prod's identity family carrying
+// listing pcID (0 = unmatched member, games only). Hardware's filter
+// takes the id literally, so a hardware unmatched slot just misses.
 func identityKey(prod store.Product, pcID int64) store.ProductKey {
 	k := store.ProductKey{
 		Type: prod.Type, PCProductID: pcID,
@@ -627,8 +596,7 @@ func identityKey(prod store.Product, pcID int64) store.ProductKey {
 }
 
 // withHolder appends the conflicting identity's current holder to an
-// identity_taken detail so the admin can look it up instead of
-// guessing. Best-effort: a missed lookup leaves the detail as-is.
+// identity_taken detail (best-effort; a missed lookup leaves it as-is).
 func withHolder(ctx context.Context, st Store, detail string, key store.ProductKey) string {
 	holder, err := st.FindProduct(ctx, key)
 	if err != nil {
@@ -718,11 +686,9 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 	h.writeProduct(ctx, w, r, p)
 }
 
-// DeleteProduct is the residue mop: it permanently removes an
-// unmatched product (and its snapshots) that exploration or stale
-// matching left behind. Matched products refuse - clear first - and
-// the bff verified no entries reference the product before calling,
-// because entries are invisible from here.
+// DeleteProduct permanently removes an unmatched product and its
+// snapshots. Matched products refuse (clear first); the bff must
+// verify no entries reference it first, since entries are invisible here.
 func (h *Handlers) DeleteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
 	ctx := r.Context()
 	if !h.requireAdmin(w, r) {

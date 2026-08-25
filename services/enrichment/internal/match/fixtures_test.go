@@ -9,10 +9,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
 )
 
-// TestFixtures_EveryGameResolvesExceptTheUnmatchedOne drives each
-// fixture game through the same search+score path the resolve handler
-// uses. It pins the fixture datasets to the scorer: renaming a fixture
-// on either side, or lowering the fixture count, fails here.
+// Drives each fixture game through the same search+score path the
+// resolve handler uses, pinning the fixture datasets to the scorer.
 func TestFixtures_EveryGameResolvesExceptTheUnmatchedOne(t *testing.T) {
 	ctx := context.Background()
 	games, err := igdb.NewStub()

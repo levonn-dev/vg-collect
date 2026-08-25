@@ -19,9 +19,8 @@ func newTestPCClient(t *testing.T, h http.HandlerFunc) *Client {
 	return reqtest.NewTestClient(t, h, func(baseURL string) *Client {
 		c := NewClient("test-key")
 		c.baseURL = baseURL
-		// The production budget is 1 call per second (pinned by its
-		// own test); paying it here would cost a wall-clock second
-		// per call.
+		// Production budget is 1 call/s (pinned by its own test); paying
+		// it here would cost a wall-clock second per call.
 		c.limiter = rate.NewLimiter(rate.Inf, 1)
 		return c
 	})
@@ -61,10 +60,8 @@ func TestClient_SearchDecodesPennies(t *testing.T) {
 
 func TestClient_ProductNotFoundAndErrors(t *testing.T) {
 	c := newTestPCClient(t, func(w http.ResponseWriter, r *http.Request) {
-		// Envelope wordings, HTTP statuses, and the string id mirror
-		// the live API: an unknown id answers 404 with the envelope in
-		// the body. The 200-status variant guards against the provider
-		// drifting back to the envelope-only signaling its docs imply.
+		// Envelope wording/status/string-id mirror the live API (404 +
+		// envelope for unknown id); the 200-status variant guards against envelope-only signaling.
 		switch {
 		case strings.Contains(r.URL.RawQuery, "id=404404"):
 			w.WriteHeader(http.StatusNotFound)

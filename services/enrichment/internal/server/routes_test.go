@@ -16,9 +16,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
 
-// newBareRouter builds a router with nil collaborators: routing and
-// auth-gating tests never reach them (the skeleton handlers answer
-// before any collaborator call).
+// newBareRouter builds a router with nil collaborators: routing/auth
+// tests never reach them (skeleton handlers answer before any collaborator call).
 func newBareRouter(t *testing.T, ready func(context.Context) error) (http.Handler, *authEnv) {
 	t.Helper()
 	env := newAuthEnv(t)
@@ -68,12 +67,9 @@ func TestRoutes_APIRequiresBearer(t *testing.T) {
 		t.Fatalf("tokenless: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
 
-	// A nil Cache panics on the handler's first call, so the authorized
-	// case needs real (stub) collaborators behind the router instead of
-	// newBareRouter's nil ones. Stubbing a game provider that serves
-	// this exact query and requiring a genuine 200 with a non-empty
-	// result proves the request cleared the JWT boundary and was served
-	// by the live handler: a valid bearer token makes 401 impossible.
+	// A nil Cache panics on first call, so the authorized case needs
+	// stub collaborators instead of newBareRouter's nil ones. A genuine
+	// 200 with non-empty results proves the request cleared the JWT boundary.
 	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
 		return []igdb.Game{{ID: 1029, Name: "Zelda"}}, nil
 	}}
@@ -103,10 +99,7 @@ func TestRoutes_APIRequiresBearer(t *testing.T) {
 }
 
 // /internal/refresh sits behind the same blanket JWT guard as every
-// other route: a bearer-less request 401s with missing_token before
-// InternalRefresh's own requireService check ever runs. The service-
-// token boundary itself (a service token 202s, a plain user token is
-// refused) is exercised fully in the handler tests.
+// route: a bearer-less request 401s before requireService ever runs.
 func TestRoutes_InternalRefreshRequiresBearer(t *testing.T) {
 	router, _ := newBareRouter(t, nil)
 	rec := httptest.NewRecorder()

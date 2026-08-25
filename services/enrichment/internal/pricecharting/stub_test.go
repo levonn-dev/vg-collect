@@ -69,9 +69,8 @@ func TestStub_PriceWalkDeterministic(t *testing.T) {
 		t.Fatal("distinct ids should not share a price curve point")
 	}
 
-	// The walk moves across days for at least one nearby day (period
-	// is at least 20 days, so two consecutive days on a sine cannot
-	// both be stationary).
+	// The walk moves across at least one nearby day (period is at
+	// least 20 days, so two consecutive days on a sine can't both be stationary).
 	d, _ := newStubAt(t, day2).Product(context.Background(), 5011)
 	e, _ := newStubAt(t, day2.Add(24*time.Hour)).Product(context.Background(), 5011)
 	if *d.LoosePriceCents == *a.LoosePriceCents && *e.LoosePriceCents == *d.LoosePriceCents {

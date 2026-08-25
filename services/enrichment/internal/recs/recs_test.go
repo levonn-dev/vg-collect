@@ -3,9 +3,8 @@ package recs
 import "testing"
 
 func TestOwnerWeights_ThroughScore(t *testing.T) {
-	// Three owners of the same edge with the three weight cases:
-	// rated 9 (2.0), plain (1.0), dropped (0.5). No genre data, so the
-	// candidate's score is exactly the weight of its owner.
+	// Three owners, three weight cases: rated 9 (2.0), plain (1.0),
+	// dropped (0.5). No genre data, so score equals the owner's weight.
 	meta := map[int64]Meta{
 		1: {Similar: []int64{101}},
 		2: {Similar: []int64{102}},
@@ -34,9 +33,8 @@ func TestOwnerWeights_ThroughScore(t *testing.T) {
 }
 
 func TestOwnerWeight_Rating8BoundaryThroughScore(t *testing.T) {
-	// Pins the >= 8 threshold exactly: a rating of 8 must land on the
-	// lifted (2.0) side. The nearest neighbor below - 7, the field is an
-	// integer 1-10 - must stay at 1.0, so the pin is not vacuous.
+	// Pins the >= 8 threshold exactly: rating 8 lifts to 2.0, 7 (the
+	// nearest integer below) stays at 1.0, so the pin isn't vacuous.
 	meta := map[int64]Meta{
 		1: {Similar: []int64{201}},
 		2: {Similar: []int64{202}},

@@ -1,14 +1,10 @@
-// Validator-path pins: each case drives a request through the FULL
-// handler stack (real router, real jwtauth, no hand-faked wiring) and
-// asserts the status + problem code specval's request-validation
-// middleware answers with.
+// Validator-path pins: each case drives a request through the full
+// handler stack and asserts the status + code specval's
+// request-validation middleware answers with.
 //
-// TestValidatorPath_ListCommunityProducts_LimitOverMax_ClampReversal
-// carries "ClampReversal" in its name because the community list's
-// limit parameter used to silently clamp an out-of-range value into
-// bounds instead of rejecting it (the clamp helper it called has
-// since been deleted). The contract's declared bound (1-500) is
-// specval's job now: an out-of-range limit 400s invalid_param.
+// ClampReversal (in TestValidatorPath_ListCommunityProducts_LimitOverMax_ClampReversal)
+// names a real behavior change: the community list's limit used to
+// silently clamp out-of-range values instead of rejecting them; specval now 400s invalid_param.
 package server
 
 import (

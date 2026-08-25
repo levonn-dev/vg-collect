@@ -1,7 +1,6 @@
 // Package pricecharting speaks the PriceCharting API: shared types, a
-// real keyed client, and a stub over embedded fixtures with a
-// deterministic date-seeded price walk. The mode switch
-// (PRICECHARTING_MODE) picks which one main.go wires in.
+// real keyed client, and a stub over fixtures with a deterministic
+// date-seeded price walk; PRICECHARTING_MODE picks which main.go wires in.
 package pricecharting
 
 import (
@@ -17,8 +16,7 @@ import (
 var ErrNotFound = errors.New("pricecharting: product not found")
 
 // Product mirrors the API's product object: hyphenated field names,
-// prices as integer pennies (nil = the provider lists no price for
-// that condition).
+// prices as integer pennies (nil = no listed price for that condition).
 type Product struct {
 	ID              int64  `json:"id"`
 	Name            string `json:"product-name"`
@@ -30,8 +28,7 @@ type Product struct {
 }
 
 // UnmarshalJSON tolerates both id encodings: the live API serializes
-// ids as JSON strings on /api/product and /api/products alike, while
-// the embedded fixtures use numbers.
+// ids as strings; embedded fixtures use numbers.
 func (p *Product) UnmarshalJSON(b []byte) error {
 	type product Product // methodless clone: a plain decode, no recursion
 	var aux struct {

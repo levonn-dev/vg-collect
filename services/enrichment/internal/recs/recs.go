@@ -1,7 +1,5 @@
-// Package recs implements the heuristic recommendation scoring. Pure
-// data-in/data-out: the caller gathers metadata (and fetches gaps)
-// before scoring. The service stays user-agnostic - the library
-// summary arrives per request and is never stored.
+// Package recs implements the heuristic recommendation scoring: pure
+// data-in/data-out, user-agnostic (the library summary is never stored).
 package recs
 
 import "sort"
@@ -26,8 +24,7 @@ type Scored struct {
 }
 
 // ownerWeight: dropped 0.5; rating >= 8 lifts to 2.0; otherwise 1.0.
-// Dropped wins over a high rating - abandonment is the stronger
-// signal.
+// Dropped wins over a high rating (abandonment is the stronger signal).
 func ownerWeight(g LibraryGame) float64 {
 	if g.Status == "dropped" {
 		return 0.5
@@ -47,8 +44,7 @@ func ownedSet(lib []LibraryGame) map[int64]bool {
 }
 
 // CandidateIDs gathers similar_games edges from the library, excludes
-// owned ids, and returns them by total incoming edge weight (desc, id
-// asc on ties), capped. The cap bounds the metadata-fetch budget.
+// owned ids, returns them by weight desc/id asc, capped (bounds fetch budget).
 func CandidateIDs(lib []LibraryGame, meta map[int64]Meta, cap int) []int64 {
 	owned := ownedSet(lib)
 	weight := map[int64]float64{}
@@ -81,8 +77,7 @@ func CandidateIDs(lib []LibraryGame, meta map[int64]Meta, cap int) []int64 {
 }
 
 // TopGenres returns the library's most frequent genre ids (weighted by
-// owner weight, ties by id), up to n - the genre-profile fallback's
-// query input.
+// owner weight, ties by id), up to n: the genre-profile fallback's query input.
 func TopGenres(lib []LibraryGame, meta map[int64]Meta, n int) []int64 {
 	weight := map[int64]float64{}
 	for _, g := range lib {
@@ -111,12 +106,10 @@ func TopGenres(lib []LibraryGame, meta map[int64]Meta, n int) []int64 {
 	return ids
 }
 
-// Score ranks candidates. Edge score: the sum of owner weights of
-// library games whose similar_games include the candidate. Genre
-// bonus: 0.5 x the weighted fraction of the library sharing each of
-// the candidate's genres (fallback candidates with no edges rank on
-// this alone). Owned ids never score. Deterministic: score desc, id
-// asc.
+// Score ranks candidates. Edge score: sum of owner weights of library
+// games whose similar_games include the candidate. Genre bonus: 0.5 x
+// the weighted fraction of the library sharing each genre (fallback
+// candidates with no edges rank on this alone). Deterministic: score desc, id asc.
 func Score(lib []LibraryGame, meta map[int64]Meta, candidates []int64) []Scored {
 	owned := ownedSet(lib)
 

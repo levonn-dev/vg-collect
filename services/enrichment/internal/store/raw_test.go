@@ -54,8 +54,7 @@ func TestRaw_UpsertReplaceAndMissingAbsent(t *testing.T) {
 }
 
 // The release_dates sentinel is load-bearing: bson-absent reads as
-// pre-feature "never fetched", so a nil table must normalize to an
-// explicit empty list (fetched-but-none) before it is persisted.
+// pre-feature "never fetched", so a nil table normalizes to empty before persisting.
 func TestRaw_UpsertNormalizesNilReleaseDatesToEmpty(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
@@ -83,10 +82,8 @@ func TestRaw_UpsertReplaceDropsFieldsAbsentFromReplacement(t *testing.T) {
 	ctx := context.Background()
 	at := time.Date(2026, 7, 1, 6, 0, 0, 0, time.UTC)
 
-	// Seed a doc carrying a field the RawGame struct does not define, as
-	// a stand-in for a document written under a since-dropped schema
-	// field. UpsertRaw's ReplaceOneModel must replace the whole
-	// document, not $set-merge it, so the field must vanish.
+	// Seed a field RawGame doesn't define (stand-in for a dropped
+	// schema field); ReplaceOneModel replaces the whole doc, not $set-merges, so it must vanish.
 	if _, err := mdb.Collection("igdb_raw").InsertOne(ctx, bson.D{
 		{Key: "_id", Value: int64(1011)},
 		{Key: "game", Value: bson.D{{Key: "id", Value: int64(1011)}, {Key: "name", Value: "Chrono Trigger"}}},
@@ -109,9 +106,8 @@ func TestRaw_UpsertReplaceDropsFieldsAbsentFromReplacement(t *testing.T) {
 	}
 }
 
-// FieldsVersion lets later reprojection tell a raw doc fetched under
-// the current gameFields generation from one that predates it (which
-// must be refetched, not reprojected).
+// FieldsVersion lets reprojection tell a raw doc fetched under the
+// current gameFields generation from one that predates it (refetch, not reproject).
 func TestRaw_UpsertStampsFieldsVersion(t *testing.T) {
 	s, mdb := newTestStore(t)
 	ctx := context.Background()
@@ -129,9 +125,8 @@ func TestRaw_UpsertStampsFieldsVersion(t *testing.T) {
 		t.Fatalf("want fields_version %d, got %+v", store.RawFieldsVersion, got)
 	}
 
-	// A doc written before this field existed (hand-inserted, no
-	// fields_version key) must read back the zero value: "predates the
-	// feature", the sentinel the refetch sweep keys on.
+	// A doc predating this field (no fields_version key) reads back
+	// zero: the sentinel the refetch sweep keys on.
 	if _, err := mdb.Collection("igdb_raw").InsertOne(ctx, bson.D{
 		{Key: "_id", Value: int64(3002)},
 		{Key: "game", Value: bson.D{{Key: "id", Value: int64(3002)}, {Key: "name", Value: "Legacy Game"}}},

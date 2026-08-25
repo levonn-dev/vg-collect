@@ -10,8 +10,7 @@ import (
 )
 
 // Snapshot is one point in the price_snapshots time-series, keyed by
-// our product id (the metaField). Appends are the only write shape:
-// the series stays delta-friendly for a future notifications feature.
+// our product id (the metaField); appends are the only write shape.
 type Snapshot struct {
 	ProductID  string    `bson:"product_id"`
 	CapturedAt time.Time `bson:"captured_at"`
@@ -29,9 +28,8 @@ func (s *Store) AppendSnapshot(ctx context.Context, snap Snapshot) error {
 	return nil
 }
 
-// SnapshotsSince returns each product's snapshots captured at or after
-// since, oldest first, grouped by product id. Ids without in-window
-// points are absent from the map.
+// SnapshotsSince returns each product's snapshots at or after since,
+// oldest first; ids without in-window points are absent from the map.
 func (s *Store) SnapshotsSince(ctx context.Context, ids []string, since time.Time) (map[string][]Snapshot, error) {
 	out := map[string][]Snapshot{}
 	if len(ids) == 0 {

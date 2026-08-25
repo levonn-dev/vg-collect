@@ -24,18 +24,15 @@ const (
 )
 
 // ScoreRecommendations scores unowned games against the caller's
-// library summary. User-agnostic: nothing here is stored per-user;
-// igdb_raw is the shared metadata cache that fetches populate.
+// library summary; user-agnostic, nothing here is stored per-user.
 func (h *Handlers) ScoreRecommendations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req api.ScoreRequest
 	if !httpkit.DecodeBody(w, r, 256*1024, &req) {
 		return
 	}
-	// limit is already known within the contract's 1-50 bound by the
-	// time this runs (specval; ScoreRequest.limit carries minimum 1,
-	// maximum 50 in api/enrichment.yaml). Only the default-when-absent
-	// case needs handling here.
+	// limit is already within the contract's 1-50 bound (specval); only
+	// the default-when-absent case is handled here.
 	limit := recsDefaultLimit
 	if req.Limit != nil {
 		limit = *req.Limit
@@ -151,9 +148,7 @@ func toRecsMeta(rg store.RawGame) recs.Meta {
 }
 
 // ensureRaw returns raw payloads for ids, reading igdb_raw first and
-// fetching gaps through the provider (populated backwards). The bool
-// reports a failed gap-fetch (degraded); ids the provider does not
-// know stay absent silently.
+// fetching gaps (populated back). Bool reports a failed gap-fetch; unknown ids stay absent.
 func (h *Handlers) ensureRaw(ctx context.Context, ids []int64) (map[int64]store.RawGame, bool, error) {
 	out := make(map[int64]store.RawGame, len(ids))
 	if len(ids) == 0 {

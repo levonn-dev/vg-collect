@@ -31,10 +31,8 @@ func TestUnitListPlatforms_JoinsAliasesSortsAndCaches(t *testing.T) {
 			return []store.CatalogPlatform{
 				{ID: 19, Name: "Super Nintendo Entertainment System"},
 				{ID: 18, Name: "Nintendo Entertainment System"},
-				// An alias-less platform: PlatformAliases returns nil, which
-				// must still serialize as [] - the contract types aliases a
-				// required string[], and the picker filters over it with no
-				// null guard.
+				// Alias-less: PlatformAliases returns nil, which must still
+				// serialize as [] (the contract requires string[], no null guard).
 				{ID: 23, Name: "Dreamcast"},
 			}, nil
 		},

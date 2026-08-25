@@ -20,9 +20,7 @@ import (
 
 // CreateCommunityProduct mints an anchor-less product from an
 // approved catalog submission. Community identity is the curated
-// name: no identity-index membership, no uniqueness machinery - the
-// review panel's search is the dedup check. Variant stays empty (the
-// single edition field carries the entry idiom's note).
+// name (no uniqueness machinery); the review panel's search is the dedup check.
 func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdmin(w, r) {
 		return
@@ -31,12 +29,8 @@ func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request
 	if !httpkit.DecodeBody(w, r, 16*1024, &req) {
 		return
 	}
-	// type's enum, developers/publishers' maxItems/maxLength, and
-	// cover_url's https-shape pattern are specval's job now (the
-	// contract carries all three). name keeps its blank-after-trim
-	// guard: the contract's minLength:1 catches a literal empty string
-	// but not "   " - see collection's validateEntryInput comment for
-	// the identical gap on region.
+	// type/developers/publishers/cover_url validation is specval's job.
+	// name keeps its blank-after-trim guard: minLength:1 misses "   ".
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "name must not be empty")
@@ -49,15 +43,10 @@ func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request
 		p.Edition = *req.Edition
 	}
 	hasCover := req.CoverUrl != nil && *req.CoverUrl != ""
-	// Trimmed, not the raw value: a whitespace-only region must not by
-	// itself earn an otherwise-empty community block (cm.Region below
-	// trims too, so an untrimmed check here would mint a block whose
-	// only field renders as empty anyway).
+	// Trimmed: a whitespace-only region must not by itself earn an
+	// otherwise-empty community block (cm.Region below trims too).
 	hasRegion := req.Region != nil && strings.TrimSpace(*req.Region) != ""
-	// Trimmed, not the raw value: a whitespace-only platform_name must not
-	// by itself earn an otherwise-empty community block (cm.PlatformName
-	// below trims too, so an untrimmed check here would mint a block whose
-	// only field renders as empty anyway).
+	// Same: a whitespace-only platform_name must not earn the block alone.
 	hasPlatformName := req.PlatformName != nil && strings.TrimSpace(*req.PlatformName) != ""
 	if hasPlatformName || req.FirstReleaseDate != nil || hasCover || hasRegion || devs != nil || pubs != nil {
 		cm := &store.CommunityMeta{Developers: devs, Publishers: pubs}
@@ -80,19 +69,18 @@ func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request
 		h.internalError(w, r, "community_product_create", "create failed", err)
 		return
 	}
+	w.Header().Set("Location", "/products/"+created.ID)
 	writeJSON(w, http.StatusCreated, toAPIProduct(created))
 }
 
 // ListUnmatchedProducts serves the admin worklist: every unmatched
-// product regardless of type, including held ones - surfacing
-// deliberate clears is the point.
+// product, including held ones (surfacing deliberate clears is the point).
 func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request, params api.ListUnmatchedProductsParams) {
 	if !h.requireAdmin(w, r) {
 		return
 	}
-	// limit/offset are already known within the contract's 1-500/>=0
-	// bounds by the time this runs (specval rejects out-of-bounds
-	// values). Only the default-when-absent case needs handling here.
+	// limit/offset are already within the contract's 1-500/>=0 bounds
+	// (specval's job); only the default-when-absent case is handled here.
 	limit := 200
 	if params.Limit != nil {
 		limit = *params.Limit
@@ -114,10 +102,8 @@ func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request,
 }
 
 // ListCommunityProducts serves the admin community listing: every
-// admin-minted, un-promoted community product, so an admin can find
-// and remove ones no entry references. Unlike ListUnmatchedProducts,
-// origin community is the filter (not the absence of a mapping -
-// community products never carry one).
+// un-promoted community product, so an admin can find and remove ones
+// no entry references. Filters on origin, not mapping absence.
 func (h *Handlers) ListCommunityProducts(w http.ResponseWriter, r *http.Request, params api.ListCommunityProductsParams) {
 	if !h.requireAdmin(w, r) {
 		return
@@ -206,10 +192,8 @@ func (h *Handlers) DismissPromoteCandidate(w http.ResponseWriter, r *http.Reques
 }
 
 // PromoteProduct attaches provider anchors to a community product and
-// flips it to provider origin in place: the id stays stable, so every
-// adopter upgrades through live reads. The identity index adjudicates
-// the re-entry - a twin answers 409 with the holder named and nothing
-// changes (true merge is deliberately not automated).
+// flips it to provider origin in place: the id stays stable. A twin
+// identity answers 409 with the holder named; true merge is not automated.
 func (h *Handlers) PromoteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
 	ctx := r.Context()
 	if !h.requireAdmin(w, r) {
@@ -247,12 +231,9 @@ func (h *Handlers) PromoteProduct(w http.ResponseWriter, r *http.Request, produc
 		}
 		g, fetchedAt, gerr := h.gamePayloadFor(ctx, *req.IgdbGameId)
 		if gerr != nil {
-			// Same taxonomy the resolve flow consumes: a *resolveErr
-			// carries unknown_game (404) or upstream_unavailable (502),
-			// while a raw read/upsert fault is an internal DB error, not a
-			// provider outage. resolveError is that exact classifier, so
-			// reuse it rather than re-deriving a mapping that would slot
-			// the DB fault under a misleading 502.
+			// Same taxonomy the resolve flow consumes: *resolveErr carries
+			// unknown_game/upstream_unavailable, a raw fault is internal.
+			// Reuse resolveError rather than re-deriving that mapping.
 			h.resolveError(w, r, gerr)
 			return
 		}

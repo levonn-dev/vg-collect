@@ -1,7 +1,6 @@
 // Package igdb speaks the IGDB v4 API: shared response types, a real
-// client (Twitch app token + APICalypse + client-side rate limit), and
-// a stub client over embedded fixtures. The mode switch (IGDB_MODE)
-// picks which one main.go wires in; both expose the same method set.
+// client (Twitch app token + APICalypse + rate limit), and a stub over
+// embedded fixtures; IGDB_MODE picks which main.go wires in.
 package igdb
 
 import (
@@ -33,8 +32,7 @@ type InvolvedCompany struct {
 }
 
 // ReleaseDate is one row of the per-platform, per-region release
-// table. Platform and Region arrive unexpanded (raw IGDB ids; Region
-// is the release_region catalog id, mapped to a name via RegionName).
+// table; Platform and Region arrive as raw IGDB ids (Region via RegionName).
 type ReleaseDate struct {
 	Date     int64 `json:"date,omitempty" bson:"date,omitempty"`
 	Platform int64 `json:"platform,omitempty" bson:"platform,omitempty"`
@@ -120,29 +118,24 @@ func (g Game) ReleaseDate() time.Time {
 	return time.Unix(g.FirstReleaseDate, 0).UTC().Truncate(24 * time.Hour)
 }
 
-// RegionName resolves the region enum against regionkit.ReleaseRegionNames
-// (generated from api/domain.yaml's release_regions rows); ok=false
-// means an enum value this service does not know (skip the row).
+// RegionName resolves the region enum against regionkit.ReleaseRegionNames;
+// ok=false means an unknown enum value (skip the row).
 func RegionName(r int) (string, bool) {
 	name, ok := regionkit.ReleaseRegionNames[r]
 	return name, ok
 }
 
-// altTagRule mines a region's titles out of the free-text
-// alternative_names comment taxonomy: comments starting with prefix
-// feed the region's bundle; the exclude substring drops English
-// translations ("Japanese title - translated"), which are neither the
-// native form nor a transliteration.
+// altTagRule mines a region's titles from the free-text
+// alternative_names comment taxonomy: prefix selects the region;
+// exclude drops English translations ("...- translated").
 type altTagRule struct {
 	prefix  string
 	exclude string
 }
 
-// altTagFamilies is the per-region mining table; regions without a
-// family (EU) mine nothing and use their row fields alone. IGDB files
-// Chinese titles under script-explicit comments, so the two scripts
-// mine into separate identifiers and an entry region's chain decides
-// their precedence.
+// altTagFamilies is the per-region mining table; regions without one
+// (EU) use their row fields alone. Chinese titles split into two
+// script-explicit identifiers (zh-CN/zh-TW); the entry region's chain decides precedence.
 var altTagFamilies = map[string]altTagRule{
 	"ja-JP": {prefix: "japanese title", exclude: "translat"},
 	"ko-KR": {prefix: "korean title", exclude: "translat"},
@@ -151,11 +144,9 @@ var altTagFamilies = map[string]altTagRule{
 	"pt-BR": {prefix: "portuguese title", exclude: "translat"},
 }
 
-// LocalizationBundle is one region's presentation of a game, merged
-// from its game_localizations row (authoritative for the native name
-// and cover) and tag-family alternative names (ASCII names fill the
-// transliteration slot; non-Latin names fall back into the native
-// slot when the row has none).
+// LocalizationBundle is one region's presentation, merged from its
+// game_localizations row (authoritative for name/cover) and tag-family
+// alternative names (ASCII fills translit; non-Latin backfills name).
 type LocalizationBundle struct {
 	Region   string
 	Name     string
@@ -229,22 +220,16 @@ func BundleLocalizations(g Game) []LocalizationBundle {
 }
 
 // TwinPlatformID returns the JP regional twin of a platform id, or 0
-// when the platform has none (regionkit.TwinPlatformIDs, generated
-// from api/domain.yaml platforms[].twin_igdb_id). The store folds a
-// twin's release rows into its sibling's projection so a SNES product
-// still shows its japan (Super Famicom) date.
+// (regionkit.TwinPlatformIDs, from api/domain.yaml twin_igdb_id).
+// Symmetric pairing folds a twin's release rows into its sibling's
+// projection (a SNES product shows its Super Famicom japan date).
 //
-// The pairing is symmetric (a lookup from either side yields the
-// other): a Super Nintendo product (19) and its Super Famicom (58)
-// counterpart are the same console to a collector, but the japan
-// release row rides the Famicom platform id; same for NES (18) and
-// Family Computer (99). These two pairs are the complete set (full
-// 220-row catalog swept 2026-07-16): IGDB keeps every other
-// regional-name pair as ONE combined entry (Sega Mega Drive/Genesis
-// 29, Master System/Mark III 64, TurboGrafx-16/PC Engine 86 and its
-// CD 150), and the remaining JP-flavored entries are different
-// devices with their own libraries (Famicom Disk System 51,
-// SuperGrafx 128, Satellaview 306, 64DD 416), which must NOT fold.
+// The complete set: SNES(19)/Super Famicom(58) and NES(18)/Family
+// Computer(99). Every other regional-name pair is already ONE combined
+// IGDB entry (Genesis 29, Master System 64, TurboGrafx-16/PC Engine 86
+// +CD 150); the remaining JP-flavored ids are different devices with
+// their own libraries and must NOT fold (Famicom Disk System 51,
+// SuperGrafx 128, Satellaview 306, 64DD 416).
 func TwinPlatformID(id int64) int64 {
 	return regionkit.TwinPlatformIDs[id]
 }

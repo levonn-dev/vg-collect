@@ -20,9 +20,7 @@ type Config struct {
 	MongoURL string `env:"MONGO_URL,required,notEmpty"`
 	MongoDB  string `env:"MONGO_DB"  envDefault:"enrichment"`
 	// Optional credential pair composed into MongoURL's userinfo (see
-	// mongokit.ComposeURL) rather than arriving pre-embedded. Must be
-	// both set or both empty; when empty, MongoURL is used exactly as
-	// given, which may itself already carry inline credentials.
+	// mongokit.ComposeURL); must be both set or both empty.
 	MongoUsername string `env:"MONGO_USERNAME"`
 	MongoPassword string `env:"MONGO_PASSWORD"`
 

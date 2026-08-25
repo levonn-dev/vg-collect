@@ -1,6 +1,5 @@
 // Package match scores PriceCharting candidates against a product's
-// name and platform. Pure string logic; the confidence threshold gates
-// auto-matching (below it, products stay unmatched - never guessed).
+// name and platform; below Threshold, products stay unmatched, never guessed.
 package match
 
 import (
@@ -14,8 +13,7 @@ import (
 const Threshold = 0.75
 
 // consoleAliases maps normalized IGDB platform names to normalized
-// PriceCharting console-name spellings. Platforms without an entry
-// fall back to name equality.
+// PriceCharting console-name spellings; unmapped platforms fall back to name equality.
 var consoleAliases = map[string][]string{
 	"nintendo entertainment system":       {"nes"},
 	"super nintendo entertainment system": {"super nintendo"},
@@ -37,10 +35,8 @@ var consoleAliases = map[string][]string{
 }
 
 // jpConsoleAliases maps normalized IGDB platform names to the
-// distinct-name JP market spellings PriceCharting files JP listings
-// under instead of a "jp " prefix (the Famicom-family markets).
-// Platforms without an entry take the "jp " prefix rule in
-// acceptedConsoles.
+// distinct-name JP spellings PriceCharting uses instead of a "jp "
+// prefix (Famicom-family markets); others take the prefix rule.
 var jpConsoleAliases = map[string][]string{
 	"nintendo entertainment system":       {"famicom"},
 	"family computer":                     {"famicom"},
@@ -49,12 +45,9 @@ var jpConsoleAliases = map[string][]string{
 	"family computer disk system":         {"famicom disk system"},
 }
 
-// acceptedConsoles is the region-parameterized acceptance set: which
-// normalized console-name spellings can price a platform for an entry
-// region. Base regions (ntsc_u, region_free, empty or unknown values)
-// keep the pre-region behavior. Acceptance is strict per class - a JP
-// resolve never accepts the NA listing - so a missing regional listing
-// lands unmatched, never wrong-region.
+// acceptedConsoles is the region-parameterized acceptance set for a
+// platform. Base regions (ntsc_u, region_free, empty/unknown) keep
+// pre-region behavior; acceptance is strict, so a JP resolve never accepts NA.
 func acceptedConsoles(normPlatform, region string) []string {
 	base, ok := consoleAliases[normPlatform]
 	if !ok {
@@ -82,9 +75,8 @@ func prefixed(p string, names []string) []string {
 }
 
 // romanNumerals canonicalizes numeral tokens so "Final Fantasy VII"
-// and "Final Fantasy 7" agree. Known tradeoff: "x" conflates with
-// "10" (Mega Man X vs Mega Man 10); the per-console filter and the
-// threshold absorb it in practice.
+// and "Final Fantasy 7" agree. Known tradeoff: "x" conflates with "10"
+// (Mega Man X vs 10); the per-console filter and threshold absorb it.
 var romanNumerals = map[string]string{
 	"i": "1", "ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6",
 	"vii": "7", "viii": "8", "ix": "9", "x": "10", "xi": "11",
@@ -92,9 +84,8 @@ var romanNumerals = map[string]string{
 }
 
 // Normalize lowercases, strips bracketed segments and punctuation
-// (apostrophes are removed rather than space-folded, so a possessive's
-// letters join: "Demon's" -> "demons"), drops a leading article, and
-// canonicalizes roman numerals.
+// (apostrophes join rather than space-fold: "Demon's" -> "demons"),
+// drops a leading article, and canonicalizes roman numerals.
 func Normalize(name string) string {
 	s := stripBrackets(strings.ToLower(name))
 	var b strings.Builder
@@ -124,9 +115,7 @@ func Normalize(name string) string {
 
 // dropPossessive removes apostrophe-s suffixes ("Jackson's" ->
 // "Jackson"). PriceCharting is inconsistent about possessives across
-// listings (Demons Souls keeps the s, Michael Jackson Moonwalker
-// drops it), so both the scorer and the provider query need the
-// dropped form available.
+// listings, so both the scorer and the provider query need this form.
 func dropPossessive(s string) string {
 	r := []rune(s)
 	var b strings.Builder
@@ -141,18 +130,15 @@ func dropPossessive(s string) string {
 	return b.String()
 }
 
-// ProviderQuery rewrites a catalog name for the provider's search
-// engine: possessive suffixes drop to the bare token, which
-// PriceCharting's tokenizer matches under both of its naming
-// conventions (a possessive query misses listings named without the
-// possessive; the bare query returns the superset).
+// ProviderQuery rewrites a catalog name for the provider's search:
+// possessive suffixes drop to the bare token, since a possessive query
+// misses listings named without one (the bare query returns the superset).
 func ProviderQuery(name string) string {
 	return dropPossessive(name)
 }
 
-// forms returns the normalized name in its apostrophe-join form and,
-// when the raw text carries a possessive, the possessive-dropped form
-// too, so scoring can meet either provider convention.
+// forms returns the normalized name, plus its possessive-dropped form
+// when the raw text carries one, so scoring can meet either provider convention.
 func forms(s string) []string {
 	joined := Normalize(s)
 	if dropped := Normalize(dropPossessive(s)); dropped != joined {
@@ -242,9 +228,8 @@ func dice(a, b string) float64 {
 }
 
 // ConsoleMatches reports whether a PriceCharting console-name can
-// price the IGDB platform for the given entry region (hard filter: a
-// perfect name on the wrong console is never a match). Region "" is
-// the base class.
+// price the IGDB platform for the entry region (hard filter: a
+// perfect name on the wrong console never matches). Region "" is the base class.
 func ConsoleMatches(platformName, consoleName, region string) bool {
 	p, c := Normalize(platformName), Normalize(consoleName)
 	return slices.Contains(acceptedConsoles(p, region), c)
@@ -268,19 +253,12 @@ type Result struct {
 }
 
 // Best picks the highest-scoring candidate the region's console
-// acceptance admits. names carries the target name forms (the primary
-// query form first, e.g. a JP transliteration, then the canonical
-// name); every form contributes its possessive variants and the best
-// pair wins, so a romaji listing scores against the translit while a
-// canonically named listing keeps scoring against the canonical name.
-// A non-empty hint is variant text qualifying every target: scoring
-// compares "name hint" strictly, and candidate names keep their
-// bracketed segments as plain tokens (PriceCharting brackets its
-// variants), so the hinted listing can win while candidates without
-// the hinted tokens lose score; a hint nothing carries keeps the
-// product unmatched rather than guessing the plain listing. Without a
-// hint, bracketed segments stay stripped on both sides. Deterministic
-// tie-break: lower pc id.
+// acceptance admits. names carries target forms, primary first (e.g.
+// JP transliteration, then canonical). A non-empty hint qualifies
+// every target ("name hint", strict) and keeps candidate brackets as
+// tokens (PriceCharting brackets variants), so a hinted listing can
+// win but an unmatched hint stays unmatched rather than guessing.
+// Ties break on lower pc id.
 func Best(names []string, hint, platformName, region string, cands []Candidate) Result {
 	hinted := Normalize(keepBracketContent(hint)) != ""
 	var targets []string
@@ -313,10 +291,8 @@ func Best(names []string, hint, platformName, region string, cands []Candidate) 
 	return best
 }
 
-// FilterConsole returns the candidates the region's console acceptance
-// admits for the platform. The auto-match fallback decision reads the
-// survivor count before scoring: an empty result means the primary
-// query surfaced nothing the region can price.
+// FilterConsole returns the candidates the region's console
+// acceptance admits; an empty result gates the auto-match fallback search.
 func FilterConsole(platformName, region string, cands []Candidate) []Candidate {
 	out := make([]Candidate, 0, len(cands))
 	for _, c := range cands {
@@ -329,19 +305,14 @@ func FilterConsole(platformName, region string, cands []Candidate) []Candidate {
 
 // Score is the plain name-similarity score, with the same
 // normalization Best applies. Exposed for the community candidate
-// sweep, which compares provider names against curated community
-// names without listing or console context; Threshold applies at the
-// call site.
+// sweep, which has no listing/console context; Threshold applies at the call site.
 func Score(a, b string) float64 {
 	return maxDice(forms(a), forms(b))
 }
 
 // platformAbbreviations maps normalized IGDB platform names to the
-// short forms collectors actually type. It complements consoleAliases
-// (which holds PriceCharting console-name spellings); both feed the one
-// exported PlatformAliases, so the platforms endpoint and the
-// collection normalize lever share a single alias source and no call
-// site ever hard-codes an abbreviation.
+// short forms collectors actually type; it complements consoleAliases,
+// both feeding PlatformAliases so no call site hard-codes an abbreviation.
 var platformAbbreviations = map[string][]string{
 	"nintendo entertainment system":       {"nes"},
 	"super nintendo entertainment system": {"snes"},
@@ -363,11 +334,9 @@ var platformAbbreviations = map[string][]string{
 	"sega mega drive genesis":             {"genesis", "mega drive"},
 }
 
-// PlatformAliases returns the known alternate spellings and
-// abbreviations for an IGDB platform name (the caller does the
-// case-insensitive comparison). It unions the PriceCharting console
-// spellings with the curated abbreviation table, both keyed by the
-// normalized name, so alias knowledge lives in exactly one place.
+// PlatformAliases returns known alternate spellings and abbreviations
+// for an IGDB platform name (caller does case-insensitive comparison).
+// Unions consoleAliases with the abbreviation table.
 func PlatformAliases(name string) []string {
 	n := Normalize(name)
 	seen := map[string]bool{}

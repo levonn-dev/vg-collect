@@ -4,12 +4,10 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -27,9 +25,7 @@ import (
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
 
-// ---------------------------------------------------------------
 // Refresh runner + admin endpoints
-// ---------------------------------------------------------------
 
 // doInternal drives the CronJob path: a Bearer service token instead
 // of a user's own.
@@ -87,11 +83,9 @@ func TestRefresh_InternalWalksCatalogAndSnapshots(t *testing.T) {
 	}
 }
 
-// TestRefresh_WalksPCListingProducts pins that the daily refresh is not
-// scoped to "game" products: ListPriced filters on the PriceCharting
-// mapping existing at all, so a pc_listing price-anchor product (no
-// igdb subdoc, created straight off a listing id) must be walked and
-// snapshotted exactly like a resolved game.
+// Pins that the daily refresh is not scoped to "game" products:
+// ListPriced filters on the mapping existing at all, so a pc_listing
+// anchor product (no igdb subdoc) must be walked and snapshotted too.
 func TestRefresh_WalksPCListingProducts(t *testing.T) {
 	s := newStack(t)
 	created := decodeBody[api.Product](t,
@@ -124,11 +118,7 @@ func TestRefresh_AdminRBACAndConflict(t *testing.T) {
 
 	// Non-admin: 403 with the forbidden code.
 	resp := s.do(http.MethodPost, "/admin/refresh", s.userToken(), nil)
-	body, _ := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden || !bytes.Contains(body, []byte("forbidden")) {
-		t.Fatalf("non-admin: %d %s", resp.StatusCode, body)
-	}
+	reqtest.AssertProblem(t, resp, http.StatusForbidden, "forbidden")
 
 	// Admin: accepted.
 	resp = s.do(http.MethodPost, "/admin/refresh", s.adminToken(), nil)
@@ -139,16 +129,10 @@ func TestRefresh_AdminRBACAndConflict(t *testing.T) {
 	reqtest.WaitFor(t, 10*time.Second, func() bool { return !s.h.refreshing.Load() })
 }
 
-// TestUnitInternalRefresh_RequiresServiceToken pins the service-token
-// guard: a bearer-less request never reaches the handler (jwtauth
-// 401s first, see
-// TestRoutes_InternalRefreshRequiresBearer); a plain user's own
-// access token clears jwtauth but is forbidden by requireService; an
-// ADMIN token is forbidden too - requireService is service-only, the
-// distinguishing case from requireAdminOrService (collection's guard
-// on its admin-or-service levers), so this pins that swapping one
-// for the other here would not go unnoticed; a minted service token
-// (token_use=service) is accepted and 202s.
+// Pins the service-token guard: a bearer-less request 401s at jwtauth
+// (see TestRoutes_InternalRefreshRequiresBearer); a user or ADMIN
+// token is forbidden (requireService is service-only, unlike
+// requireAdminOrService); a minted service token is accepted (202).
 func TestUnitInternalRefresh_RequiresServiceToken(t *testing.T) {
 	env := newAuthEnv(t)
 	h := New(&stubStore{
@@ -160,14 +144,11 @@ func TestUnitInternalRefresh_RequiresServiceToken(t *testing.T) {
 		})
 
 	rec := serveInternal(t, h, env, env.token(t, "11111111-1111-1111-1111-111111111111", []string{"user"}))
-	if rec.Code != http.StatusForbidden || !bytes.Contains(rec.Body.Bytes(), []byte("forbidden")) {
-		t.Fatalf("plain user token: %d %s", rec.Code, rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusForbidden, "forbidden")
 
+	// An admin token must also be refused: requireService is service-only.
 	rec = serveInternal(t, h, env, env.token(t, "22222222-2222-2222-2222-222222222222", []string{"user", "admin"}))
-	if rec.Code != http.StatusForbidden || !bytes.Contains(rec.Body.Bytes(), []byte("forbidden")) {
-		t.Fatalf("admin token must also be refused (service-only guard): %d %s", rec.Code, rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusForbidden, "forbidden")
 
 	rec = serveInternal(t, h, env, env.serviceToken(t, "svc:catalog-refresh"))
 	if rec.Code != http.StatusAccepted {
@@ -197,9 +178,7 @@ func TestUnitRefresh_ConflictWhileRunning(t *testing.T) {
 	}
 	<-started
 	rec = serveInternal(t, h, env, tok)
-	if rec.Code != http.StatusConflict || !bytes.Contains(rec.Body.Bytes(), []byte("refresh_in_progress")) {
-		t.Fatalf("concurrent trigger: %d %s", rec.Code, rec.Body.String())
-	}
+	reqtest.AssertProblemRec(t, rec, http.StatusConflict, "refresh_in_progress")
 	close(release)
 	reqtest.WaitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 
@@ -262,9 +241,8 @@ func TestUnitRunRefresh_StopsEarlyOnContextCancellation(t *testing.T) {
 	prices := &stubPrices{product: func(context.Context, int64) (pricecharting.Product, error) {
 		calls++
 		if calls == 2 {
-			// The budget expires partway through the refresh (after the
-			// 2nd of 5 products): the next iteration's ctx.Err() check
-			// must stop the refresh instead of visiting the rest.
+			// Budget expires after the 2nd of 5 products: the next
+			// iteration's ctx.Err() check must stop the refresh, not visit the rest.
 			cancel()
 		}
 		return pricecharting.Product{ID: 1, Name: "P", ConsoleName: "C"}, nil
@@ -293,9 +271,8 @@ func TestUnitRefresh_RefreshPanicIsContained(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("trigger before the panicking refresh: %d", rec.Code)
 	}
-	// If the panic escaped the goroutine, the whole test binary would
-	// already be dead here; reaching this line at all is part of the
-	// proof.
+	// If the panic escaped the goroutine, the test binary would
+	// already be dead here; reaching this line is part of the proof.
 	reqtest.WaitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 
 	// The guard reset after the panic: a second trigger is accepted
@@ -308,12 +285,10 @@ func TestUnitRefresh_RefreshPanicIsContained(t *testing.T) {
 	reqtest.WaitFor(t, 5*time.Second, func() bool { return !h.refreshing.Load() })
 }
 
-// The reprojection's core repair: a pre-feature product (no raw
-// held yet) is healed via a nil-table-raw refetch. Its SetIGDB call
-// carries a non-nil release table whose scalar is the folded earliest
-// date, the refetched game lands in igdb_raw via UpsertRaw, the rebuilt
-// product's cache entry is invalidated immediately, and - because the
-// data was freshly fetched - the projection carries `now` as its stamp.
+// The reprojection's core repair: a pre-feature product (no raw yet)
+// heals via a refetch. SetIGDB carries a non-nil release table (the
+// folded earliest date), the game lands in igdb_raw, the cache
+// invalidates, and the freshly-fetched projection carries `now`.
 func TestUnitReprojection_HealsPreFeatureProduct(t *testing.T) {
 	prod := store.Product{
 		ID: "p-preheal", Type: "game", Name: "Chrono Trigger",
@@ -377,8 +352,7 @@ func TestUnitReprojection_HealsPreFeatureProduct(t *testing.T) {
 }
 
 // Three products sharing one game id, none with a raw yet, must cost
-// exactly one GamesByIDs call (the distinct-ids batching), and all
-// three must still get their projection rebuilt.
+// exactly one GamesByIDs call, and all three still get their projection rebuilt.
 func TestUnitReprojection_BatchesSharedGameID(t *testing.T) {
 	const shared = int64(1011)
 	prods := []store.Product{
@@ -416,8 +390,7 @@ func TestUnitReprojection_BatchesSharedGameID(t *testing.T) {
 }
 
 // A product whose game the provider no longer knows is skipped, not
-// failed: no SetIGDB call (a nil stub field panics if it is), and the
-// reprojection still finishes cleanly.
+// failed: no SetIGDB call (a nil stub field panics), reprojection finishes cleanly.
 func TestUnitReprojection_MissingGameSkipsWithoutSetIGDB(t *testing.T) {
 	prod := store.Product{ID: "p-missing", Type: "game", Platform: &store.Platform{IGDBID: 19}, IGDB: &store.IGDBMeta{GameID: 9999}}
 	st := &stubStore{
@@ -438,8 +411,7 @@ func TestUnitReprojection_MissingGameSkipsWithoutSetIGDB(t *testing.T) {
 }
 
 // The diff gate: a product whose stored projection already equals the
-// one rebuilt from its raw is left untouched - no SetIGDB, no cache
-// invalidation - so a steady-state reprojection (raw unchanged) writes nothing.
+// rebuilt one is left untouched (no SetIGDB, no cache invalidation).
 func TestUnitReprojection_DiffGateSkipsUnchangedProjection(t *testing.T) {
 	rawStamp := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 	g := igdb.Game{
@@ -473,12 +445,9 @@ func TestUnitReprojection_DiffGateSkipsUnchangedProjection(t *testing.T) {
 	}
 }
 
-// The fold reproject: a product healed before the twin fold carries an
-// unfolded projection (its japan date rides the Super Famicom platform,
-// invisible then). The reprojection rebuilds it from the raw - now folding the
-// twin row in - and, because the raw was not refetched, keeps the raw's
-// own fetch stamp rather than bumping freshness the provider did not
-// earn.
+// A product healed before the twin fold carries an unfolded
+// projection (japan rode the invisible Super Famicom platform then).
+// Reprojection folds the twin row in but keeps the raw's own fetch stamp (no refetch).
 func TestUnitReprojection_FoldsTwinRowKeepingRawStamp(t *testing.T) {
 	rawStamp := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 	japanDate := time.Unix(794880000, 0).UTC().Truncate(24 * time.Hour)
@@ -536,13 +505,10 @@ func TestUnitReprojection_FoldsTwinRowKeepingRawStamp(t *testing.T) {
 	}
 }
 
-// TestReprojection_HealsBelowVersionRaw pins the reprojection's version-based
-// heal: a raw doc that already carries a real release table (so the
-// pre-feature nil-table check alone would miss it) but predates
-// fields_version tracking - and the localization arrays that generation
-// added - is still refetched. The refetch replaces it with a
-// current-version raw and the rebuilt projection carries the healed
-// localizations.
+// Pins the reprojection's version-based heal: a raw with a real
+// release table (so the nil-table check alone would miss it) but
+// predating fields_version (and the localization arrays that
+// generation added) is still refetched; the rebuilt projection carries the healed localizations.
 func TestReprojection_HealsBelowVersionRaw(t *testing.T) {
 	s := newStack(t)
 	ctx := context.Background()
@@ -550,10 +516,8 @@ func TestReprojection_HealsBelowVersionRaw(t *testing.T) {
 	const platformID = 8801
 	naDate := time.Date(2001, time.June, 20, 0, 0, 0, 0, time.UTC)
 
-	// Hand-write the raw doc: release_dates is real (not the pre-feature
-	// nil case the sibling reprojection test covers), but fields_version
-	// and the localization arrays a newer generation added are absent - the
-	// below-version case this test exists for.
+	// Hand-write the raw doc: release_dates is real, but fields_version
+	// and the newer-generation localization arrays are absent (the below-version case).
 	if _, err := s.mdb.Collection("igdb_raw").InsertOne(ctx, bson.M{
 		"_id": gid,
 		"game": bson.M{
@@ -618,11 +582,8 @@ func TestReprojection_HealsBelowVersionRaw(t *testing.T) {
 	}
 }
 
-// TestUnitReprojection_StopsEarlyOnContextCancellation mirrors
-// TestUnitRunRefresh_StopsEarlyOnContextCancellation for the
-// reprojection step's identical stop-early guard: once the budget
-// expires partway through the walk, the next product's ctx.Err()
-// check must stop the loop instead of rebuilding the rest.
+// Mirrors TestUnitRunRefresh_StopsEarlyOnContextCancellation for
+// reprojection: budget expiry mid-walk must stop the loop via ctx.Err(), not rebuild the rest.
 func TestUnitReprojection_StopsEarlyOnContextCancellation(t *testing.T) {
 	prods := make([]store.Product, 5)
 	raws := make([]store.RawGame, 5)
@@ -633,10 +594,8 @@ func TestUnitReprojection_StopsEarlyOnContextCancellation(t *testing.T) {
 			Platform: &store.Platform{IGDBID: 19},
 			IGDB:     &store.IGDBMeta{GameID: gid, Name: "Stored"},
 		}
-		// A nil-vs-empty ReleaseDates mismatch against the stored
-		// projection (which carries none) is enough to force every
-		// rebuild to differ, without needing a refetch: raws are already
-		// current-version and non-nil, so fetchIDs stays empty.
+		// A nil-vs-empty ReleaseDates mismatch forces every rebuild to
+		// differ without a refetch (raws are already current-version, non-nil).
 		raws[i] = store.RawGame{GameID: gid, Game: igdb.Game{ID: gid, Name: "Rebuilt", ReleaseDates: []igdb.ReleaseDate{}}, FieldsVersion: store.RawFieldsVersion}
 	}
 	st := &stubStore{
@@ -665,9 +624,8 @@ func TestUnitReprojection_StopsEarlyOnContextCancellation(t *testing.T) {
 	}
 }
 
-// The nightly catalog refresh's second pass is wired into startRefresh: an
-// internal refresh trigger must reach ListIGDBProducts, not just the
-// price pass.
+// The nightly refresh's second pass is wired into startRefresh: an
+// internal trigger must reach ListIGDBProducts, not just the price pass.
 func TestUnitRefresh_InternalTriggerRunsReprojection(t *testing.T) {
 	env := newAuthEnv(t)
 	var called bool
@@ -727,17 +685,11 @@ func TestUnitCandidateSweep_FlagsAndSkipsDismissed(t *testing.T) {
 	}
 }
 
-// TestUnitCandidateSweep_HardwareFlagsSkipsDismissedAndSortsBestFirst
-// pins the sweep's console/accessory branch (candidates sourced from
-// h.prices.Search and scored via match.Score against the community
-// product's name, mirroring the game branch's igdb search but over
-// PriceCharting listings), plus the write-side ordering: with multiple
-// surviving candidates, ReplacePromoteCandidates must receive them
-// sorted best-first. That sort is runCandidateSweep's own
-// sort.SliceStable call before the store write - store.ReplacePromoteCandidates
-// itself is a plain $set with no ordering logic (see store.go), so this
-// is the correct seam for the ordering assertion, not a store-level
-// test.
+// Pins the sweep's console/accessory branch: candidates come from
+// h.prices.Search, scored via match.Score (mirrors the game branch's
+// igdb search). Plus the write-side ordering: ReplacePromoteCandidates
+// must receive candidates sorted best-first, since runCandidateSweep
+// itself sorts (store.ReplacePromoteCandidates is a plain $set).
 func TestUnitCandidateSweep_HardwareFlagsSkipsDismissedAndSortsBestFirst(t *testing.T) {
 	comm := store.Product{
 		ID: uuid.NewString(), Type: "console", Name: "Nintendo 64 Console", Origin: "community",
@@ -786,11 +738,8 @@ func TestUnitCandidateSweep_HardwareFlagsSkipsDismissedAndSortsBestFirst(t *test
 	}
 }
 
-// TestUnitCandidateSweep_StopsEarlyOnContextCancellation mirrors
-// TestUnitRunRefresh_StopsEarlyOnContextCancellation for the candidate
-// sweep's identical stop-early guard: once the budget expires partway
-// through the sweep, the next product's ctx.Err() check must stop the
-// loop instead of searching the rest.
+// Mirrors TestUnitRunRefresh_StopsEarlyOnContextCancellation for the
+// candidate sweep: budget expiry mid-sweep must stop via ctx.Err(), not search the rest.
 func TestUnitCandidateSweep_StopsEarlyOnContextCancellation(t *testing.T) {
 	comm := make([]store.Product, 5)
 	for i := range comm {
@@ -806,9 +755,8 @@ func TestUnitCandidateSweep_StopsEarlyOnContextCancellation(t *testing.T) {
 	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
 		calls++
 		if calls == 2 {
-			// The budget expires partway through (after the 2nd of 5
-			// products): the next iteration's ctx.Err() check must stop
-			// the sweep instead of searching the rest.
+			// Budget expires after the 2nd of 5 products: the next
+			// iteration's ctx.Err() check must stop the sweep, not search the rest.
 			cancel()
 		}
 		return nil, nil
@@ -824,13 +772,10 @@ func TestUnitCandidateSweep_StopsEarlyOnContextCancellation(t *testing.T) {
 
 // ---- InternalNormalizeCommunityRegions ----
 
-// TestUnitInternalNormalizeCommunityRegions_PromotesFoldMatchSkipsUnknown
-// pins the fold+synonym promotion (enrichment's twin of collection's
-// normalize-regions lever, scoped to the community products this
-// service owns): a reviewed synonym promotes through regionkit's synonym table,
-// a graduated region promotes through its identity fold, an
-// unreviewed string is left untouched, and the response counts all
-// three.
+// Pins the fold+synonym promotion: a reviewed synonym promotes
+// through regionkit's synonym table, a graduated region promotes
+// through its identity fold, an unreviewed string is left untouched,
+// and the response counts all three.
 func TestUnitInternalNormalizeCommunityRegions_PromotesFoldMatchSkipsUnknown(t *testing.T) {
 	env := newAuthEnv(t)
 	promoted := "p-japan"
@@ -872,9 +817,8 @@ func TestUnitInternalNormalizeCommunityRegions_PromotesFoldMatchSkipsUnknown(t *
 	}
 }
 
-// TestUnitInternalNormalizeCommunityRegions_Guards mirrors collection's
-// normalize-regions guard tests: a service token (the nightly job's
-// own credential) passes, a plain user token is forbidden.
+// A service token (the nightly job's own credential) passes; a plain
+// user token is forbidden.
 func TestUnitInternalNormalizeCommunityRegions_Guards(t *testing.T) {
 	env := newAuthEnv(t)
 	st := &stubStore{listCommunityRegionDocs: func(context.Context, []string) ([]store.CommunityRegionRef, error) { return nil, nil }}
@@ -893,17 +837,11 @@ func TestUnitInternalNormalizeCommunityRegions_Guards(t *testing.T) {
 	}
 }
 
-// TestUnitInternalNormalizeCommunityRegions_SettlesToZeroOnSecondRun
-// pins the sweep's re-runnability. The stub plays the store's own
-// exclusion contract: it hands back a row only while its region is
-// not itself one of the known values passed in - exactly what the
-// real Mongo filter now does - so this proves the handler correctly
-// threads regionkit.KnownRegions through as that known set. A row
-// starting on a reviewed synonym ("Japan") is promoted and counted the
-// first run; already holding its canonical form ("ntsc_j") on the
-// second run, it never reaches SetCommunityRegion and never counts
-// toward normalized again - unlike a fold-only guard, which would
-// still fetch and re-check the dead row every time.
+// Pins the sweep's re-runnability. The stub mirrors the store's real
+// exclusion filter (hands back a row only while unknown), proving the
+// handler threads regionkit.KnownRegions through correctly. A row
+// promoted to "ntsc_j" the first run never reaches SetCommunityRegion
+// again the second (it's already known).
 func TestUnitInternalNormalizeCommunityRegions_SettlesToZeroOnSecondRun(t *testing.T) {
 	env := newAuthEnv(t)
 	const id = "p-japan"

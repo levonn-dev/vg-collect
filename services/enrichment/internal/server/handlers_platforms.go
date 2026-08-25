@@ -16,10 +16,8 @@ import (
 )
 
 // ListPlatforms serves the platform catalog joined with alias
-// knowledge, for the custom-entry picker and the normalize lever. The
-// answer is cached 24h (the search-cache idiom): reference data that
-// only changes when the platform sweep lands new rows, so a cold build
-// fetches wholesale through ensurePlatforms and the rest read Valkey.
+// knowledge, for the custom-entry picker and normalize lever. Cached
+// 24h; a cold build fetches wholesale via ensurePlatforms.
 func (h *Handlers) ListPlatforms(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if body, err := h.cache.GetPlatforms(ctx); err != nil {
@@ -37,10 +35,8 @@ func (h *Handlers) ListPlatforms(w http.ResponseWriter, r *http.Request) {
 	}
 	out := api.PlatformCatalog{Platforms: make([]common.CatalogPlatform, 0, len(cats))}
 	for _, c := range cats {
-		// PlatformAliases returns nil for a platform with no known
-		// aliases; the contract types aliases a required string[], so
-		// coalesce to [] rather than marshal a null the picker cannot
-		// filter over.
+		// PlatformAliases returns nil for no known aliases; coalesce to
+		// [] since the contract requires string[], not null.
 		al := match.PlatformAliases(c.Name)
 		if al == nil {
 			al = []string{}
@@ -63,9 +59,8 @@ func (h *Handlers) ListPlatforms(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
-// ensurePlatforms serves the cached IGDB platform catalog, fetching it
-// wholesale on first need or after the staleness horizon (stale serves
-// when the provider is down).
+// ensurePlatforms serves the cached IGDB platform catalog, fetching
+// wholesale on first need or after staleness (serves stale if the provider is down).
 func (h *Handlers) ensurePlatforms(ctx context.Context) ([]store.CatalogPlatform, error) {
 	at, err := h.store.PlatformsFetchedAt(ctx)
 	if err != nil {

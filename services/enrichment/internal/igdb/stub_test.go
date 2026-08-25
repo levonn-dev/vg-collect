@@ -80,10 +80,8 @@ func TestStub_SearchGames(t *testing.T) {
 	}
 }
 
-// TestStub_SearchLocalizations pins the fixture behavior against the
-// real fixture data: game 1001's ja-JP game_localizations row carries
-// the query as a substring, while its canonical Name does not (so a
-// hit here proves the localization-row match, not a Name match).
+// Pins fixture behavior: game 1001's ja-JP game_localizations row
+// carries the query, but its canonical Name doesn't, so a hit proves the row match.
 func TestStub_SearchLocalizations(t *testing.T) {
 	s := newStub(t)
 	got, err := s.SearchLocalizations(context.Background(), "ゼルダの伝説", 20)
@@ -99,10 +97,8 @@ func TestStub_SearchLocalizations(t *testing.T) {
 	}
 }
 
-// TestStub_SearchLocalizations_CaseInsensitiveAndLimit builds a
-// synthetic stub (kana has no case, so the embedded fixtures cannot
-// exercise case-folding) to pin case-insensitive substring matching,
-// fixture order, and the limit independently of fixture content.
+// Builds a synthetic stub (kana has no case, so embedded fixtures
+// can't exercise case-folding) to pin case-insensitivity, order, and limit.
 func TestStub_SearchLocalizations_CaseInsensitiveAndLimit(t *testing.T) {
 	s := &Stub{games: []Game{
 		{ID: 1, GameLocalizations: []GameLocalization{{Name: "Alpha Quest", Region: LocalizationRegion{Identifier: "EU"}}}},
@@ -139,11 +135,9 @@ func TestStub_PopularGames_SortedAndFiltered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Independently verified against fixtures.json: every genre-12 game
-	// except the excluded 1011, sorted by total_rating desc with id asc
-	// as the tiebreak PopularGames itself applies (the fixture data hits
-	// a three-way 93.0 tie among 1002/1014/1021, which is why the id
-	// tiebreak matters for this exact sequence to be deterministic).
+	// Verified against fixtures.json: every genre-12 game except 1011,
+	// sorted by total_rating desc/id asc. The fixtures hit a three-way
+	// 93.0 tie among 1002/1014/1021, so the id tiebreak matters here.
 	wantIDs := []int64{1001, 1004, 1002, 1014, 1021}
 	if len(got) != len(wantIDs) {
 		t.Fatalf("want %d games, got %d: %+v", len(wantIDs), len(got), got)

@@ -1,0 +1,11 @@
+[
+  {
+    "createIndexes": "products",
+    "indexes": [
+      {
+        "key": { "origin": 1, "pricecharting": 1, "updated_at": 1, "_id": 1 },
+        "name": "products_unmatched_worklist"
+      }
+    ]
+  }
+]

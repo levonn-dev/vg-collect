@@ -26,11 +26,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 }
 
-// TestLoad_MissingRequired pins that a genuinely absent MONGO_URL
-// fails config loading. caarlos0/env's required tag fires only on an
-// absent key, never a present-but-empty one, so this unsets rather
-// than sets "" - t.Setenv can only represent "present with this
-// value", never "absent".
+// Pins that a genuinely absent MONGO_URL fails loading. The required
+// tag fires only on an absent key, not present-but-empty, so this
+// unsets rather than sets "" (t.Setenv can't represent "absent").
 func TestLoad_MissingRequired(t *testing.T) {
 	prev, had := os.LookupEnv("MONGO_URL")
 	if err := os.Unsetenv("MONGO_URL"); err != nil {

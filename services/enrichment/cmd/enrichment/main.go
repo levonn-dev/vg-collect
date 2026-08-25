@@ -1,7 +1,5 @@
-// The enrichment service: the catalog + pricing quarantine for all
-// third-party data (IGDB metadata, PriceCharting prices).
-// `enrichment migrate` runs schema migrations and exits (init
-// container mode).
+// The enrichment service: the catalog + pricing quarantine for
+// third-party data. `enrichment migrate` runs migrations and exits.
 package main
 
 import (

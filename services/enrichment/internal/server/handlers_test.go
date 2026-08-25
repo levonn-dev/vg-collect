@@ -25,9 +25,7 @@ import (
 	"github.com/levonn-dev/vgkeep/services/enrichment/migrations"
 )
 
-// ---------------------------------------------------------------
 // Stub doubles (function fields; a nil field panics loudly).
-// ---------------------------------------------------------------
 
 // stubStore implements Store via function fields.
 type stubStore struct {
@@ -412,11 +410,9 @@ func (s *stubFX) Latest(ctx context.Context) (fx.Rates, error) {
 	return s.latest(ctx)
 }
 
-// newUnitHandlers builds Handlers over stubs with fast defaults. Every
-// caller here is indifferent to FX, so the fx collaborator is always
-// the zero-configured stub; tests that care about FX behavior build
-// Handlers directly (see doAuthedFxRequest) so they can supply their
-// own configured stub instead.
+// newUnitHandlers builds Handlers over stubs with fast defaults.
+// Callers indifferent to FX get the zero-configured stub; tests that
+// care build Handlers directly (see doAuthedFxRequest).
 func newUnitHandlers(st Store, games GameProvider, prices PriceProvider, c Cache) *Handlers {
 	return New(st, games, prices, &stubFX{}, c, Options{
 		SearchCacheTTL:   time.Hour,
@@ -439,13 +435,9 @@ func serveUnit(t *testing.T, h *Handlers, env *authEnv, method, path, token stri
 	return rec
 }
 
-// doAuthedFxRequest builds Handlers the same way newUnitHandlers does
-// (same TTLs, internal secret and discard logger) but with rates as
-// the fx collaborator instead of the default stub, mints the usual
-// test JWT, and serves an authed GET /fx/latest through NewRouter --
-// mirroring TestUnitGetProduct_NotFoundAndCacheHit's harness (same
-// validator, logger and ready func), the nearest existing authed GET
-// test in this file.
+// doAuthedFxRequest builds Handlers like newUnitHandlers but with
+// rates as the fx collaborator, mints the usual test JWT, and serves
+// an authed GET /fx/latest through NewRouter.
 func doAuthedFxRequest(t *testing.T, rates FXProvider) *httptest.ResponseRecorder {
 	t.Helper()
 	env := newAuthEnv(t)
@@ -459,10 +451,8 @@ func doAuthedFxRequest(t *testing.T, rates FXProvider) *httptest.ResponseRecorde
 	return serveUnit(t, h, env, http.MethodGet, "/fx/latest", tok, nil)
 }
 
-// ---------------------------------------------------------------
 // Integration stack: real Mongo + Valkey + fixture providers behind
 // the real router. Skipped under -short.
-// ---------------------------------------------------------------
 
 type stack struct {
 	t      *testing.T
@@ -474,29 +464,14 @@ type stack struct {
 	client *http.Client
 }
 
-// newStack shares one MongoDB container across this whole package via
-// mongotest.URL (the Valkey half below uses the same shared-container
-// pattern via valkeytest.URL) and still owns the drop + re-migrate
-// reset, so every test opens on a fresh, fully migrated database
-// regardless of what an earlier test left behind.
+// newStack shares one MongoDB container across the package via
+// mongotest.FreshDB (Valkey shares similarly via valkeytest.URL);
+// FreshDB resets each test to a fresh migrated db.
 func newStack(t *testing.T) *stack {
 	t.Helper()
 	ctx := context.Background()
 
-	url := mongotest.URL(t)
-	mclient, err := mongokit.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = mclient.Disconnect(context.Background()) })
-	db := mongotest.DBName(t)
-	if err := mclient.Database(db).Drop(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err := mongokit.Migrate(ctx, url, db, migrations.FS, "."); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	mdb := mclient.Database(db)
+	mdb := mongotest.FreshDB(t, migrations.FS, ".")
 	st := store.New(mdb)
 
 	rdb, err := valkeykit.Connect(ctx, valkeytest.URL(t))
@@ -504,10 +479,8 @@ func newStack(t *testing.T) *stack {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = rdb.Close() })
-	// Reset: flush whatever the previous test cached so each test
-	// starts on an empty cache. FlushDB, not FlushAll: the URL is
-	// scoped to this binary's own database on the shared server, and
-	// FlushAll would wipe every other binary's data too.
+	// FlushDB, not FlushAll: the URL scopes to this binary's own
+	// database on the shared server; FlushAll would wipe every other binary's data.
 	if err := rdb.FlushDB(ctx).Err(); err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +505,7 @@ func newStack(t *testing.T) *stack {
 		Logger:           slog.New(slog.DiscardHandler),
 	})
 	router, err := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler),
-		func(c context.Context) error { return mongokit.Health(c, mclient) })
+		func(c context.Context) error { return mongokit.Health(c, mdb.Client()) })
 	if err != nil {
 		t.Fatal(err)
 	}

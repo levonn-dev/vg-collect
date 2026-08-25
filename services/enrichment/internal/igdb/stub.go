@@ -13,8 +13,7 @@ import (
 var fixturesJSON []byte
 
 // Stub serves the embedded fixture catalog: ~50 well-known games with
-// interlinked similar_games edges plus the platform table. It keeps
-// `task run` and e2e fully credential-less.
+// interlinked similar_games edges, keeping `task run` and e2e credential-less.
 type Stub struct {
 	games     []Game
 	byID      map[int64]Game
@@ -54,9 +53,7 @@ func (s *Stub) SearchGames(_ context.Context, q string, limit int) ([]Game, erro
 }
 
 // SearchLocalizations is a case-insensitive substring match over each
-// fixture game's game_localizations[].name, in fixture order (mirrors
-// the real endpoint: the game_localizations rows themselves, never the
-// merged/translit-mined bundle).
+// fixture's game_localizations[].name (mirrors the real endpoint's raw rows, not the merged bundle).
 func (s *Stub) SearchLocalizations(_ context.Context, q string, limit int) ([]int64, error) {
 	needle := strings.ToLower(strings.TrimSpace(q))
 	var out []int64

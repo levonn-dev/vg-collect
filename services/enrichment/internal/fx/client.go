@@ -14,16 +14,13 @@ import (
 
 const defaultBaseURL = "https://api.frankfurter.dev"
 
-// refreshAfter is how long a snapshot is served before the next call
-// triggers an upstream refresh. The upstream publishes ECB reference
-// rates once per business day, so an hour is generous.
+// refreshAfter is how long a snapshot is served before refetching;
+// ECB reference rates publish once per business day, so an hour is generous.
 const refreshAfter = time.Hour
 
-// Client is the real frankfurter.dev client (no credentials). One
-// snapshot is cached in memory: fresher than refreshAfter is served
-// as-is, older triggers a refetch, and a failed refetch keeps serving
-// the stale snapshot (hours-old rates beat no rates). Only a cold
-// cache surfaces the upstream error.
+// Client is the real frankfurter.dev client (no credentials): one
+// in-memory snapshot, refetched past refreshAfter. A failed refetch
+// keeps serving stale (hours-old rates beat none); only a cold cache errors.
 type Client struct {
 	httpc   *http.Client
 	baseURL string

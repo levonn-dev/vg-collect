@@ -20,32 +20,11 @@ import (
 	"github.com/levonn-dev/vgkeep/services/enrichment/migrations"
 )
 
-// newTestStore returns a Store on a freshly migrated database plus the
-// raw database handle for direct assertions. mongotest.URL shares one
-// container across this whole package and skips under -short; this
-// function still owns the drop-database + re-migrate reset, so every
-// test still opens on a fresh, fully migrated database regardless of
-// what an earlier test left behind.
+// newTestStore returns a Store plus the raw db handle, on a freshly
+// migrated database (mongotest.FreshDB resets between tests; skips under -short).
 func newTestStore(t *testing.T) (*store.Store, *mongo.Database) {
 	t.Helper()
-	ctx := context.Background()
-	url := mongotest.URL(t)
-	client, err := mongokit.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
-	// Reset: drop everything the previous test left (the migration
-	// version collection included) and re-run the embedded migrations,
-	// so each test opens on a fresh, fully migrated database.
-	db := mongotest.DBName(t)
-	if err := client.Database(db).Drop(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err := mongokit.Migrate(ctx, url, db, migrations.FS, "."); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	mdb := client.Database(db)
+	mdb := mongotest.FreshDB(t, migrations.FS, ".")
 	return store.New(mdb), mdb
 }
 
@@ -100,8 +79,7 @@ func TestProduct_FindCreateGet(t *testing.T) {
 }
 
 // Game identity is listing-keyed: members converge per (game,
-// platform, listing), the unmatched member (no mapping) is the
-// family's singleton, and variant text plays no identity role.
+// platform, listing); the unmatched member is the family's singleton.
 func TestProduct_GameMembersAreListingKeyed(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
@@ -160,10 +138,8 @@ func TestProduct_GameMembersAreListingKeyed(t *testing.T) {
 	}
 }
 
-// The find-or-create race: concurrent resolves of one identity must
-// converge on a single product. This is a genuine guard - without the
-// unique identity index the count would exceed 1, and without the
-// duplicate-key re-find CreateProduct would surface errors.
+// Concurrent resolves of one identity must converge on a single
+// product (unique index + duplicate-key re-find in CreateProduct).
 func TestProduct_ConcurrentCreate_SingleWinner(t *testing.T) {
 	s, mdb := newTestStore(t)
 	ctx := context.Background()
@@ -265,9 +241,8 @@ func TestProduct_SubdocUpdates(t *testing.T) {
 	}
 }
 
-// Mapping writes are identity moves: a taken (game, platform,
-// listing) slot surfaces ErrIdentityTaken, clears set the walk hold,
-// and any set lifts it.
+// Mapping writes are identity moves: a taken slot surfaces
+// ErrIdentityTaken; clears set MatchHold, any set lifts it.
 func TestProduct_MappingWritesHoldAndIdentityTaken(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
@@ -321,13 +296,9 @@ func TestProduct_MappingWritesHoldAndIdentityTaken(t *testing.T) {
 	}
 }
 
-// The reprojection walk's worklist: ListIGDBProducts returns every
-// igdb-bearing product - including ones that already carry a release
-// table (the walk reprojects them from raw and writes only on a diff,
-// so a pre-feature filter would wrongly skip an already-healed product
-// that a projection-logic change now needs to revisit) - excludes
-// hardware (no igdb subdoc), sorts by _id ascending, and is uncapped: a
-// full nightly sweep, mirroring ListPriced's posture.
+// ListIGDBProducts returns every igdb-bearing product, including ones
+// with a release table already (unfiltered so a future projection
+// change still revisits them), excludes hardware, sorted by _id.
 func TestProduct_ListIGDBProducts(t *testing.T) {
 	s, mdb := newTestStore(t)
 	ctx := context.Background()
@@ -379,12 +350,8 @@ func TestProduct_ListIGDBProducts(t *testing.T) {
 }
 
 // seedPreFeatureProduct inserts a game product whose igdb subdoc
-// predates the release-dates feature: the release_dates key is
-// entirely absent (not null, not an empty array). SetIGDB cannot
-// produce this shape anymore (it always writes the field post-feature),
-// so this bypasses the store's write path via the raw collection
-// handle, following the same direct-insert pattern as
-// TestMigration_ListingKeyedIdentityDeletesTupleResidue's seed helper.
+// predates the release-dates feature (release_dates key absent, not
+// empty), bypassing SetIGDB via a direct collection insert.
 func seedPreFeatureProduct(t *testing.T, mdb *mongo.Database, id string, gameID, platformID int64, fetchedAt time.Time) {
 	t.Helper()
 	now := time.Now().UTC().Truncate(time.Millisecond)
@@ -435,11 +402,8 @@ func TestProduct_ByIDsAndSearch(t *testing.T) {
 	}
 }
 
-// TestSearchByName_MatchesLocalizationNameAndTranslit is the degraded
-// path's other half: a query that hits neither the canonical Name nor
-// any Name substring still finds the product via its stored
-// igdb.localizations native name or transliteration (case-insensitive,
-// like the canonical-name match).
+// Confirms SearchByName also matches via igdb.localizations native
+// name or transliteration when the canonical Name misses.
 func TestSearchByName_MatchesLocalizationNameAndTranslit(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
@@ -474,9 +438,8 @@ func TestSnapshotsSinceWindowsAndOrders(t *testing.T) {
 	base := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
 	cents := func(v int64) *int64 { return &v }
 
-	// Two products; product A has an old point outside the window, two
-	// inside (inserted newest-first to prove the read sorts), product B
-	// one point. A third id is never written.
+	// Product A: one point outside the window, two inside (inserted
+	// newest-first, to prove the read sorts); product B has one point.
 	for _, snap := range []store.Snapshot{
 		{ProductID: "prod-a", CapturedAt: base.AddDate(0, 0, -40), LooseCents: cents(1000)},
 		{ProductID: "prod-a", CapturedAt: base.AddDate(0, 0, -1), LooseCents: cents(1300)},
@@ -598,11 +561,9 @@ func TestNewIGDBMeta_NoPlatformRowsFallsBackToGameLevel(t *testing.T) {
 	}
 }
 
-// The JP-twin fold: a Super Famicom (58) row is visible on a SNES (19)
-// product and vice versa; Family Computer (99) folds into NES (18) both
-// ways; an unrelated platform's row never folds; a platform-0 row is
-// dropped even when it would be the earliest; and the scalar is the
-// earliest across the folded set.
+// JP-twin fold: Super Famicom (58) rows appear on a SNES (19) product
+// and vice versa (same for NES 18 / Family Computer 99); unrelated
+// platforms and platform-0 rows never fold; scalar is the folded earliest.
 func TestNewIGDBMeta_FoldsTwinPlatformRows(t *testing.T) {
 	japan := time.Unix(794880000, 0).UTC().Truncate(24 * time.Hour)
 	na := time.Unix(809049600, 0).UTC().Truncate(24 * time.Hour)
@@ -654,10 +615,8 @@ func TestNewIGDBMeta_FoldsTwinPlatformRows(t *testing.T) {
 	}
 }
 
-// The localization bundles derived from a game's rows and alternative
-// names land in the projection 1:1; a game with no localization data
-// projects an empty, non-nil slice (matches the ReleaseDates and
-// SimilarGames convention: absent-but-fetched, not pre-feature).
+// Localization bundles land in the projection 1:1; a game with none
+// projects an empty, non-nil slice (matches ReleaseDates/SimilarGames).
 func TestNewIGDBMeta_Localizations(t *testing.T) {
 	g := igdb.Game{
 		ID: 1011, Name: "Chrono Trigger",
@@ -683,10 +642,8 @@ func TestNewIGDBMeta_Localizations(t *testing.T) {
 	}
 }
 
-// SameProjection is the reprojection walk's diff gate: two projections
-// that differ only by FetchedAt are the same; differing rows are not;
-// and a nil release table is NOT the same as an empty one (that exact
-// difference is a pre-feature projection due for a rebuild).
+// SameProjection ignores FetchedAt; differing rows compare unequal;
+// nil release table is NOT equal to an empty one (pre-feature marker).
 func TestIGDBMeta_SameProjection(t *testing.T) {
 	base := store.IGDBMeta{
 		GameID: 1011, Name: "Chrono Trigger",
@@ -728,10 +685,8 @@ func TestIGDBMeta_SameProjection(t *testing.T) {
 	}
 }
 
-// The listing-keyed migration deletes only game products whose
-// region/edition/variant forked identity (raw-API dev residue);
-// clean game products and hardware survive with their ids, and the
-// rebuilt index enforces the family singleton.
+// Deletes only game products whose region/edition/variant forked
+// identity; clean games and hardware survive; rebuilt index enforces the singleton.
 func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
 	if testing.Short() {
 		t.Skip("requires docker")
@@ -742,9 +697,8 @@ func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
-	// A migration-mechanics test needs a virgin database, not a virgin
-	// server: drop the binary's database so the pinned partial migrate
-	// below starts from nothing an earlier test left behind.
+	// Needs a virgin database, not just a virgin server: drop it so the
+	// pinned partial migrate below starts clean.
 	db := mongotest.DBName(t)
 	if err := client.Database(db).Drop(ctx); err != nil {
 		t.Fatal(err)
@@ -790,11 +744,8 @@ func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
 	seed("residue-region", "game", "pal", "", "", 1005, 4)
 	seed("keeper-hardware", "console", "pal", "", "", 0, 19)
 
-	// Pinned to version 4, not Up(): this test asserts migration 000004's
-	// behavior specifically, and Up() would silently also run every later
-	// migration (e.g. 000005's origin backfill/index rebuild), which
-	// would change what the final duplicate-key assertion below is
-	// actually exercising.
+	// Pinned to version 4, not Up(): Up() would also run later
+	// migrations and change what the duplicate-key assertion below exercises.
 	if err := m.Migrate(4); err != nil {
 		t.Fatalf("migrate to listing-keyed state: %v", err)
 	}
@@ -826,15 +777,10 @@ func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
 	}
 }
 
-// TestMigration_CommunityRegionMovesIntoBlock pins migration 000006's
-// exact behavior against pre-migration documents: a community
-// product's top-level region (the old mint's shape) must land under
-// community.region, a sibling community fact already in the block
-// must survive untouched, and every path this migration does not
-// target - already-empty region, a doc with no region key at all, and
-// provider-origin docs - must come out matching what the "region is
-// always present" shape rule requires without gaining a community
-// block they never had.
+// Pins migration 000006: a community product's top-level region
+// moves to community.region, a sibling community fact survives
+// untouched, and untouched paths (already-empty region, no region
+// key, provider docs) come out matching the always-present shape rule.
 func TestMigration_CommunityRegionMovesIntoBlock(t *testing.T) {
 	if testing.Short() {
 		t.Skip("requires docker")
@@ -845,9 +791,8 @@ func TestMigration_CommunityRegionMovesIntoBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
-	// A migration-mechanics test needs a virgin database, not a virgin
-	// server: drop the binary's database so the pinned partial migrate
-	// below starts from nothing an earlier test left behind.
+	// Needs a virgin database, not just a virgin server: drop it so the
+	// pinned partial migrate below starts clean.
 	db := mongotest.DBName(t)
 	if err := client.Database(db).Drop(ctx); err != nil {
 		t.Fatal(err)
@@ -868,10 +813,8 @@ func TestMigration_CommunityRegionMovesIntoBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Pinned to version 5, not Up(): this seeds the shape the old
-	// (pre-000006) community mint actually wrote, so migrating to 6
-	// below exercises the rename against real pre-migration documents
-	// rather than documents newer code already writes correctly.
+	// Pinned to version 5: seeds the pre-000006 mint shape so migrating
+	// to 6 exercises the rename against real old documents, not new ones.
 	if err := m.Migrate(5); err != nil {
 		t.Fatalf("migrate to pre-region-block state: %v", err)
 	}
@@ -952,10 +895,8 @@ func TestMigration_CommunityRegionMovesIntoBlock(t *testing.T) {
 		t.Fatalf("provider-hardware: must not gain a community block, got %+v", providerHardware["community"])
 	}
 
-	// down.json must undo the rename: 000006 is this service's first
-	// migration to move data into a nested path, worth confirming the
-	// reverse dotted-path rename restores the top-level field (rather
-	// than erroring, or leaving the value split across both places).
+	// down.json must undo the rename: confirms the reverse dotted-path
+	// rename restores the top-level field, not split across both.
 	if err := m.Migrate(5); err != nil {
 		t.Fatalf("down to pre-region-block state: %v", err)
 	}
@@ -997,9 +938,8 @@ func TestListUnmatchedProducts(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// A deliberate clear sets match_hold; held products MUST appear in
-	// the admin worklist regardless (a hold only pins the mapping
-	// against automated change, it does not hide the product here).
+	// A deliberate clear sets match_hold; held products MUST still
+	// appear in the worklist (the hold pins the mapping, not visibility).
 	if err := s.SetPriceCharting(ctx, heldConsole.ID, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -1025,6 +965,31 @@ func TestListUnmatchedProducts(t *testing.T) {
 	}
 	if total2 != 2 || len(page2) != 1 || page2[0].ID != heldConsole.ID {
 		t.Fatalf("offset page wrong: total=%d page=%+v", total2, page2)
+	}
+}
+
+// TestListUnmatchedProducts_Indexed pins the migration-backed index
+// so a growing worklist cannot regress into an unindexed sort.
+func TestListUnmatchedProducts_Indexed(t *testing.T) {
+	_, mdb := newTestStore(t)
+	ctx := context.Background()
+
+	cur, err := mdb.Collection("products").Indexes().List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for cur.Next(ctx) {
+		var idx bson.M
+		if err := cur.Decode(&idx); err != nil {
+			t.Fatal(err)
+		}
+		if idx["name"] == "products_unmatched_worklist" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("products_unmatched_worklist index missing")
 	}
 }
 
@@ -1082,9 +1047,8 @@ func TestCommunityOrigin_TwinsInsertAndExclusions(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
 
-	// Two anchor-less community games: identical null identity keys.
-	// Outside the identity index they must both insert as distinct
-	// docs (name is community identity; no uniqueness machinery).
+	// Two anchor-less community games with identical null identity
+	// keys must both insert distinct (name is community identity).
 	c1, err := s.CreateProduct(ctx, store.Product{Type: "game", Name: "Repro Alpha", Origin: "community"})
 	if err != nil {
 		t.Fatal(err)
@@ -1169,10 +1133,8 @@ func TestListCommunityProductsPage(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
 
-	// Creation order fixes updated_at order: communityA is oldest. The
-	// sleep guards against a same-millisecond tie (updated_at truncates
-	// to the millisecond; _id is a random UUID, not a real tiebreak for
-	// creation order).
+	// Creation order fixes updated_at order; the sleep guards a
+	// same-millisecond tie (updated_at truncates to ms, _id is a random UUID).
 	communityA, err := s.CreateProduct(ctx, store.Product{Type: "game", Name: "Community Alpha", Origin: "community"})
 	if err != nil {
 		t.Fatal(err)
@@ -1292,9 +1254,8 @@ func TestPromoteProduct_FlipAndTwinGuard(t *testing.T) {
 		t.Fatalf("failed promote must not flip: %q", still.Origin)
 	}
 
-	// A promoted (now provider) product no longer matches the
-	// community guard: promoting it again reports not-found to the
-	// caller (the handler translates via its origin check first).
+	// A promoted product no longer matches the community guard;
+	// re-promoting it reports ErrNotFound (handler translates via origin check).
 	if err := s.PromoteProduct(ctx, c1.ID, &meta, &plat, nil); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("re-promote = %v, want ErrNotFound", err)
 	}
@@ -1413,13 +1374,10 @@ func TestCommunityCover_RoundTrips(t *testing.T) {
 	}
 }
 
-// TestStore_ListCommunityRegionDocs pins the normalize-community-
-// regions sweep's selection: community docs whose curated region sits
-// outside the known set, and only those - a regionless community doc
-// has nothing to fold against, a doc already holding a known region
-// has nothing left to promote (excluding it is what lets a second
-// sweep settle to zero, mirroring collection's ListOpenRegionEntries),
-// and a provider doc is out of scope regardless of shape.
+// TestStore_ListCommunityRegionDocs pins the selection: community
+// docs whose curated region is outside known, and only those (a
+// regionless doc has nothing to fold, a known-region doc has nothing
+// left to promote, a provider doc is out of scope).
 func TestStore_ListCommunityRegionDocs(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
@@ -1469,9 +1427,8 @@ func TestStore_ListCommunityRegionDocs(t *testing.T) {
 	}
 }
 
-// TestStore_SetCommunityRegion pins the sweep's write: the curated
-// region rewrites to the canonical form and updated_at bumps, the
-// same shape SetIGDB and its siblings use.
+// TestStore_SetCommunityRegion pins the write: curated region
+// rewrites to canonical form and updated_at bumps.
 func TestStore_SetCommunityRegion(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
@@ -1501,12 +1458,9 @@ func TestStore_SetCommunityRegion(t *testing.T) {
 	}
 }
 
-// TestStore_SetCommunityRegion_OriginLeftCommunityIsNoOp pins the race
-// the origin scope in the write's filter closes: a doc promoted to
-// provider between the sweep's list and this write must not have its
-// community.region rewritten - the promote path owns the doc now, and
-// nothing reads community.* off a provider doc, but a stray write
-// there would still be silent, permanent residue.
+// TestStore_SetCommunityRegion_OriginLeftCommunityIsNoOp pins the
+// race guard: a doc promoted to provider between list and write must
+// not have community.region rewritten (would be silent residue).
 func TestStore_SetCommunityRegion_OriginLeftCommunityIsNoOp(t *testing.T) {
 	s, mdb := newTestStore(t)
 	ctx := context.Background()
@@ -1519,10 +1473,8 @@ func TestStore_SetCommunityRegion_OriginLeftCommunityIsNoOp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Stand-in for a promote landing between the sweep's list and this
-	// write: flip origin directly rather than going through the real
-	// promote path, which is irrelevant to what SetCommunityRegion itself
-	// must guard against.
+	// Stand-in for a promote landing mid-write: flip origin directly
+	// rather than exercising the real promote path (irrelevant here).
 	if _, err := mdb.Collection("products").UpdateByID(ctx, created.ID,
 		bson.D{{Key: "$set", Value: bson.D{{Key: "origin", Value: "provider"}}}}); err != nil {
 		t.Fatal(err)

@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
+	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/pricecharting"
@@ -55,12 +56,9 @@ func TestSearch_GameThroughStubAndCache(t *testing.T) {
 	}
 }
 
-// TestSearch_GameResultCarriesReleaseRegions pins gameResult's platform
-// refs: OoT (fixture 1001) has three dated release_dates rows on
-// platform 4 (Nintendo 64) - japan, north_america, then europe by
-// date - so the platform ref's release_regions must carry that exact
-// order. Hardware results never carry a platform ref at all, so
-// release_regions can never leak onto them.
+// Pins gameResult's platform refs: OoT (fixture 1001) has three dated
+// rows on platform 4 (japan, north_america, europe by date), so
+// release_regions must carry that order. Hardware carries no platform ref.
 func TestSearch_GameResultCarriesReleaseRegions(t *testing.T) {
 	s := newStack(t)
 
@@ -100,12 +98,9 @@ func TestSearch_GameResultCarriesReleaseRegions(t *testing.T) {
 	}
 }
 
-// TestSearch_GameResultCarriesBundlesWithoutAnnotation asserts a
-// canonical-name search returns the game's localization bundles but no
-// matched_region: the query recognized the canonical name, so nothing
-// needs flagging or preselecting. The stub provider matches Name only,
-// so this exercises the canonical-match path; matchedRegion's own
-// containment/translit logic is unit-tested directly.
+// A canonical-name search returns localization bundles but no
+// matched_region (canonical name needs no flagging). matchedRegion's
+// own containment/translit logic is unit-tested directly elsewhere.
 func TestSearch_GameResultCarriesBundlesWithoutAnnotation(t *testing.T) {
 	s := newStack(t)
 
@@ -189,15 +184,10 @@ func TestUnitSearch_DegradedFallsBackToCatalog(t *testing.T) {
 	}
 }
 
-// TestUnitSearch_DegradedDoesNotStarveRequestedKind pins that the
-// degraded fallback's store call scopes by kind before its row limit,
-// not after. The stub plays the store's own type filter: it only
-// keeps types-matching rows, then applies limit - exactly what the
-// real Mongo query now does before its $limit stage - so a top-N
-// window stuffed with 20 hardware name matches (which would have
-// crowded out the one game match under the old unscoped-then-Go-
-// filtered query) still surfaces it once the handler passes the
-// correct kind-scoped types through.
+// Pins that the degraded fallback scopes by kind before its row
+// limit, not after (mirrors the real Mongo query's filter-then-$limit
+// order). A top-N window stuffed with 20 hardware matches must still
+// surface the one game match once the handler passes kind-scoped types.
 func TestUnitSearch_DegradedDoesNotStarveRequestedKind(t *testing.T) {
 	env := newAuthEnv(t)
 	hit := store.Product{
@@ -309,17 +299,15 @@ func TestUnitSearch_ExactNameRanksFirst(t *testing.T) {
 	for _, r := range res.Results {
 		got = append(got, *r.IgdbGameId)
 	}
-	// 4 and 3 both normalize to the query (brackets strip); the rating
-	// count puts the widely known release first. 1 and 2 keep provider
-	// order.
+	// 4 and 3 both normalize to the query (brackets strip); rating
+	// count puts the widely known release first, 1 and 2 keep provider order.
 	if want := []int64{4, 3, 1, 2}; !slices.Equal(got, want) {
 		t.Fatalf("rank order: got %v, want %v", got, want)
 	}
 }
 
 // The provider's tokenizer misses possessive-less listing names when
-// the query carries the possessive; the outgoing query drops it
-// (evidence: /api/products probes, 2026-07-15).
+// the query carries the possessive; the outgoing query drops it (verified against the live API).
 func TestUnitSearch_PCQueryDropsPossessive(t *testing.T) {
 	env := newAuthEnv(t)
 	var gotQ string
@@ -385,9 +373,8 @@ func TestMatchedRegion(t *testing.T) {
 	}
 }
 
-// TestGameResult_MapsLocalizationBundles pins gameResult's localization
-// mapping: the same non-empty-only pointer idiom toAPIProduct uses,
-// never a pointer to an empty string.
+// Pins gameResult's localization mapping: the same non-empty-only
+// pointer idiom toAPIProduct uses, never a pointer to an empty string.
 func TestGameResult_MapsLocalizationBundles(t *testing.T) {
 	g := igdb.Game{ID: 1016, Name: "Secret of Mana",
 		AlternativeNames: []igdb.AlternativeName{{Name: "Seiken Densetsu 2", Comment: "Japanese title - romanization"}},
@@ -420,10 +407,8 @@ func TestGameResult_MapsLocalizationBundles(t *testing.T) {
 	}
 }
 
-// TestPlatformReleaseRegions pins platformReleaseRegions's contract
-// (see its doc for the ordering and twin-platform rules) against the
-// Mr. Gimmick NES/Famicom shape, Puyo Puyo SUN's repeated-region
-// shape, dedup, and the platform-0 / unknown-region edge cases.
+// Pins platformReleaseRegions's contract against the Mr. Gimmick
+// NES/Famicom shape, Puyo Puyo SUN's repeated regions, dedup, and edge cases.
 func TestPlatformReleaseRegions(t *testing.T) {
 	day := func(y int, m time.Month, d int) int64 {
 		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC).Unix()
@@ -532,11 +517,9 @@ func TestPlatformReleaseRegions(t *testing.T) {
 	}
 }
 
-// TestUnitSearch_LocalizationExactNameRanksFirst extends the
-// exact-match float-to-top treatment to a region bundle's name or
-// transliteration: a game whose own name is not exact but whose
-// localized title exactly matches the query ranks with the other
-// exacts, ahead of plain provider-order matches.
+// Extends the exact-match float-to-top treatment to a localized title:
+// a game whose own name isn't exact but whose bundle name/translit
+// matches ranks with the other exacts, ahead of provider-order matches.
 func TestUnitSearch_LocalizationExactNameRanksFirst(t *testing.T) {
 	env := newAuthEnv(t)
 	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
@@ -569,12 +552,9 @@ func TestUnitSearch_LocalizationExactNameRanksFirst(t *testing.T) {
 	}
 }
 
-// TestSearch_NonLatinQueryReachesViaLocalizationLeg proves the
-// supplementary leg end to end over the real stub: "ゼルダの伝説" is not
-// a substring of fixture 1001's canonical Name ("The Legend of Zelda:
-// Ocarina of Time"), so the primary provider search alone finds
-// nothing - only the leg's match against the ja-JP game_localizations
-// row surfaces the game.
+// Proves the supplementary leg end to end: the query is not a
+// substring of fixture 1001's canonical Name, so only the leg's match
+// against the ja-JP game_localizations row surfaces the game.
 func TestSearch_NonLatinQueryReachesViaLocalizationLeg(t *testing.T) {
 	s := newStack(t)
 	resp := s.do(http.MethodGet, "/search?type=game&q="+url.QueryEscape("ゼルダの伝説"), s.userToken(), nil)
@@ -590,9 +570,8 @@ func TestSearch_NonLatinQueryReachesViaLocalizationLeg(t *testing.T) {
 	}
 }
 
-// TestUnitSearch_LatinQueryNeverCallsLocalizationLeg proves the
-// non-latin trigger gate (hasNonLatinLetter): an all-latin query must
-// cost zero SearchLocalizations calls.
+// Proves the non-latin trigger gate (hasNonLatinLetter): an all-latin
+// query must cost zero SearchLocalizations calls.
 func TestUnitSearch_LatinQueryNeverCallsLocalizationLeg(t *testing.T) {
 	env := newAuthEnv(t)
 	var legCalls int
@@ -617,11 +596,9 @@ func TestUnitSearch_LatinQueryNeverCallsLocalizationLeg(t *testing.T) {
 	}
 }
 
-// TestUnitSearch_LocalizationLegErrorServesPrimaryResults proves the
-// leg's failure mode: a SearchLocalizations error must never degrade
-// or fail the request - the primary provider's results still serve,
-// unflagged. legCalls pins that the leg actually ran (not merely
-// absent) so this test cannot pass by accident.
+// Proves the leg's failure mode: a SearchLocalizations error must
+// never degrade or fail the request (primary results still serve,
+// unflagged); legCalls pins that the leg actually ran.
 func TestUnitSearch_LocalizationLegErrorServesPrimaryResults(t *testing.T) {
 	env := newAuthEnv(t)
 	var legCalls int
@@ -675,8 +652,9 @@ func TestUnitSearch_BadParams(t *testing.T) {
 	// The accepted-kinds message must list all three wire kinds (now in
 	// specval's canonical "must be one of" voice).
 	rec := serveUnit(t, h, env, http.MethodGet, "/search?type=amiibo&q=zelda", tok, nil)
-	if !strings.Contains(rec.Body.String(), "type must be one of game, hardware, pc_listing") {
-		t.Fatalf("accepted-kinds message stale: %s", rec.Body.String())
+	p := reqtest.AssertProblemRec(t, rec, http.StatusBadRequest, "invalid_param")
+	if !strings.Contains(p.Detail, "type must be one of game, hardware, pc_listing") {
+		t.Fatalf("accepted-kinds message stale: %q", p.Detail)
 	}
 }
 
@@ -758,13 +736,10 @@ func TestUnitSearch_PCListingsDegradedFallsBackToMappings(t *testing.T) {
 	}
 }
 
-// TestUnitSearch_PCListingsDegradedDedupesSharedPCProductID pins the
-// degraded local-fallback dedupe: a resolved game product that
-// auto-matched to a PriceCharting listing, and a separate pc_listing
-// anchor product created straight off that same listing id, are two
-// distinct local documents with no identity tying them together -
-// both can match the query text and both carry the same
-// pc_product_id, so the fallback must collapse them to one row.
+// Pins the degraded local-fallback dedupe: a resolved game product
+// and a separate pc_listing anchor product can share the same
+// pc_product_id with no identity tying them together, so the fallback
+// must collapse them to one row.
 func TestUnitSearch_PCListingsDegradedDedupesSharedPCProductID(t *testing.T) {
 	env := newAuthEnv(t)
 	st := &stubStore{}
@@ -852,18 +827,16 @@ func TestUnitSearch_InterleavesCommunityAndKeepsCacheProviderOnly(t *testing.T) 
 		first.CoverUrl == nil || *first.CoverUrl != "https://img.example/ct.jpg" {
 		t.Fatalf("community pick fields missing: %+v", first)
 	}
-	// The community region is entry vocabulary meant to seed the
-	// wizard's region field straight from the search result, so a
-	// community hit must carry it as its own top-level fact.
+	// Community region seeds the wizard's region field straight from
+	// the search result, so a community hit carries it as its own top-level fact.
 	if first.Region == nil || *first.Region != "pal" {
 		t.Fatalf("community row must carry region pal, got %+v", first.Region)
 	}
 	if out.Results[1].Origin != nil {
 		t.Fatalf("provider item must have no origin: %+v", out.Results[1])
 	}
-	// A provider game's region data lives in its localization bundles,
-	// not a single top-level field - carrying one here would claim a
-	// provider result has exactly one region when it may ship several.
+	// A provider game's region data lives in localization bundles, not
+	// a top-level field (a provider result may ship several regions).
 	if out.Results[1].Region != nil {
 		t.Fatalf("provider row must not carry region, got %+v", out.Results[1].Region)
 	}
@@ -884,13 +857,9 @@ func TestUnitSearch_InterleavesCommunityAndKeepsCacheProviderOnly(t *testing.T) 
 	}
 }
 
-// TestUnitSearch_InterleaveTieBreakProviderWinsEqualScore pins the
-// provider-wins-on-a-tie branch in interleaveCommunityResults: a
-// provider result and a community product with the identical name
-// score exactly equal against the query, and the sort must still place
-// the provider row first. TestUnitSearch_InterleavesCommunityAndKeepsCacheProviderOnly
-// above uses a weaker-scoring provider name, so the tie branch itself
-// stays unpinned without this case.
+// Pins the provider-wins-on-a-tie branch in interleaveCommunityResults:
+// a provider result and community product scoring exactly equal must
+// still place the provider row first (the sibling test only covers a near-miss).
 func TestUnitSearch_InterleaveTieBreakProviderWinsEqualScore(t *testing.T) {
 	env := newAuthEnv(t)
 	user := env.token(t, uuid.NewString(), []string{"user"})
@@ -902,9 +871,8 @@ func TestUnitSearch_InterleaveTieBreakProviderWinsEqualScore(t *testing.T) {
 	st := &stubStore{searchCommunityProducts: func(_ context.Context, types []string, _ string, limit int) ([]store.Product, error) {
 		return []store.Product{comm}, nil
 	}}
-	// The provider result carries the exact same name as the community
-	// product, so match.Score computes the identical value for both
-	// against the same query - a genuine tie, not a near-miss.
+	// Same name as the community product, so match.Score computes an
+	// identical value for both: a genuine tie, not a near-miss.
 	games := &stubGames{searchGames: func(context.Context, string, int) ([]igdb.Game, error) {
 		return []igdb.Game{{ID: 4242, Name: "Chrono Trigger"}}, nil
 	}}
@@ -929,12 +897,9 @@ func TestUnitSearch_InterleaveTieBreakProviderWinsEqualScore(t *testing.T) {
 	}
 }
 
-// TestUnitSearch_CommunityLaneErrorFailsOpen pins the community lane's
-// fail-open contract: SearchCatalog is otherwise entirely fail-open
-// (cache errors go through h.failOpen, a down provider degrades to the
-// local catalog), so a community store fault must not throw away the
-// provider results already resolved in out - it degrades to a
-// provider-only 200, not the lone hard 500 in this handler.
+// Pins the community lane's fail-open contract: SearchCatalog is
+// otherwise entirely fail-open, so a community store fault must
+// degrade to a provider-only 200, not throw away results already in out.
 func TestUnitSearch_CommunityLaneErrorFailsOpen(t *testing.T) {
 	env := newAuthEnv(t)
 	user := env.token(t, uuid.NewString(), []string{"user"})
@@ -962,11 +927,8 @@ func TestUnitSearch_CommunityLaneErrorFailsOpen(t *testing.T) {
 	}
 }
 
-// TestUnitSearch_CommunityLaneHardwareTypes pins
-// interleaveCommunityResults's hardware branch: a hardware-kind search
-// must scope the community lane query to exactly [console accessory],
-// never the bare "hardware" wire kind (which is not a stored product
-// type).
+// Pins interleaveCommunityResults's hardware branch: a hardware-kind
+// search scopes the lane to [console accessory], never the bare "hardware" wire kind.
 func TestUnitSearch_CommunityLaneHardwareTypes(t *testing.T) {
 	env := newAuthEnv(t)
 	user := env.token(t, uuid.NewString(), []string{"user"})
@@ -1013,15 +975,10 @@ func TestUnitSearch_NoLaneForPCListings(t *testing.T) {
 	}
 }
 
-// TestUnitSearch_NoLaneForPCListingsOnCacheHit is the cache-hit twin of
-// TestUnitSearch_NoLaneForPCListings: the pc_listing default branch in
-// interleaveCommunityResults is reached from two call sites in
-// SearchCatalog (the early return on a cache hit, and the fall-through
-// after a fresh provider search); this pins the first one specifically,
-// priming the cache with a real request and then proving the second
-// request never touches the provider (would degrade if it did) or the
-// community store (left with no searchCommunityProducts stub; a call
-// would panic).
+// The cache-hit twin of TestUnitSearch_NoLaneForPCListings: the
+// pc_listing branch in interleaveCommunityResults is reached from two
+// SearchCatalog call sites (cache hit vs fresh search); this pins the
+// cache-hit one, proving neither the provider nor community store is touched.
 func TestUnitSearch_NoLaneForPCListingsOnCacheHit(t *testing.T) {
 	env := newAuthEnv(t)
 	user := env.token(t, uuid.NewString(), []string{"user"})
