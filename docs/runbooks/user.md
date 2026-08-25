@@ -260,7 +260,7 @@ cause anywhere:
 
 | Event             | Level | Fields                                                                                                             | Emission site                                                                                      |
 | ----------------- | ----- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `store error`     | ERROR | `op` = `upsert` \| `get` \| `update` \| `delete` \| `shared_profile` \| `shared_by_ids` \| `shared_search`, `err` | each handler path that answers a 500, logged with the request context before the problem response |
+| `handler error`     | ERROR | `op` = `upsert` \| `get` \| `update` \| `delete` \| `shared_profile` \| `shared_by_ids` \| `shared_search`, `err` | each handler path that answers a 500, logged with the request context before the problem response |
 | `account created` | INFO  | `user_id`, `preferred_currency`, `currency_source`                                                                | `UpsertUser`, created branch only                                                                  |
 | `account deleted` | INFO  | `user_id`, `outcome`                                                                                              | `DeleteUser`                                                                                       |
 
@@ -475,7 +475,7 @@ status" with
 sum(rate(http_server_request_duration_seconds_count{service_name="user", http_route="POST /internal/users/upsert", http_response_status_code=~"5.."}[5m]))
 ```
 
-and in "Recent error and warn logs" by `store error` lines with `op=upsert`.
+and in "Recent error and warn logs" by `handler error` lines with `op=upsert`.
 The vg-user-upsert-5xx rule pages when 5xx exceed 20 percent of
 upsert requests:
 

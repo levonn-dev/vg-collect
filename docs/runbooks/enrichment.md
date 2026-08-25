@@ -222,15 +222,18 @@ region, edition, variant), both scoped to `origin: "provider"`, and
 `products_pc_listing_identity` on pricecharting.pc_product_id (partial
 filter type: "pc_listing", unscoped by origin - a community product
 can never be type pc_listing), plus a plain `products_name` index for
-the degraded local search. Community products (`origin: "community"`)
-sit outside the origin-scoped identity indexes on purpose: their
-identity is the curated name, and the promote flow re-enters them
-through the index.
+the degraded local search and `products_unmatched_worklist` on
+(origin, pricecharting, updated_at, _id) covering the admin unmatched
+worklist's filter+sort so a growing backlog cannot outgrow Mongo's
+in-memory sort cap. Community products (`origin: "community"`) sit
+outside the origin-scoped identity indexes on purpose: their identity
+is the curated name, and the promote flow re-enters them through the
+index.
 `igdb_raw` is the shared raw-payload cache (recommendations and
 reprojection read it; every provider fetch populates it
 backwards). `platforms` caches the IGDB platform catalog wholesale.
 `price_snapshots` is append-only, keyed (product_id, captured_at);
-snapshots survive product mapping changes by design. Six migrations
+snapshots survive product mapping changes by design. Seven migrations
 to date; the down files exist and are exercised by the migrate
 tooling, not by hand.
 
@@ -249,22 +252,27 @@ and everything rebuilds from providers and Mongo. Keys:
 `platforms:v1` (24h). The redis_exporter sidecar serves 9121
 (`service` label `enrichment-valkey`).
 
-Pool metrics: the valkeykit client registers the shared pool
-instruments, scoped to this service by the `service_name` resource
-attribute:
+Pool metrics: the mongokit and valkeykit clients each register the
+shared pool instruments, scoped to this service by the `service_name`
+resource attribute:
 
-| OTel name                            | Prometheus name                      | Answers                                        |
-| ------------------------------------ | ------------------------------------ | ---------------------------------------------- |
-| `vg.valkeykit.pool.hits`             | `vg_valkeykit_pool_hits_total`       | acquires served by a free connection           |
-| `vg.valkeykit.pool.misses`           | `vg_valkeykit_pool_misses_total`     | acquires that dialed a new connection          |
-| `vg.valkeykit.pool.timeouts`         | `vg_valkeykit_pool_timeouts_total`   | callers that gave up waiting (hard saturation) |
-| `vg.valkeykit.pool.connections`      | `vg_valkeykit_pool_connections`      | open connections                               |
-| `vg.valkeykit.pool.connections.idle` | `vg_valkeykit_pool_connections_idle` | idle headroom                                  |
+| OTel name                            | Prometheus name                      | Answers                                                |
+| ------------------------------------ | ------------------------------------ | ------------------------------------------------------ |
+| `vg.mongokit.pool.connections`       | `vg_mongokit_pool_connections`       | open connections                                       |
+| `vg.mongokit.pool.connections.idle`  | `vg_mongokit_pool_connections_idle`  | idle headroom                                          |
+| `vg.mongokit.pool.connections.max`   | `vg_mongokit_pool_connections_max`   | configured pool ceiling                                |
+| `vg.mongokit.pool.acquires`          | `vg_mongokit_pool_acquires_total`    | cumulative successful checkouts                        |
+| `vg.mongokit.pool.cleared`           | `vg_mongokit_pool_cleared_total`     | pool-cleared events (network error or topology change) |
+| `vg.valkeykit.pool.hits`             | `vg_valkeykit_pool_hits_total`       | acquires served by a free connection                   |
+| `vg.valkeykit.pool.misses`           | `vg_valkeykit_pool_misses_total`     | acquires that dialed a new connection                  |
+| `vg.valkeykit.pool.timeouts`         | `vg_valkeykit_pool_timeouts_total`   | callers that gave up waiting (hard saturation)         |
+| `vg.valkeykit.pool.connections`      | `vg_valkeykit_pool_connections`      | open connections                                       |
+| `vg.valkeykit.pool.connections.idle` | `vg_valkeykit_pool_connections_idle` | idle headroom                                          |
 
 There are no `vg.pgkit.pool.*` series for this service: enrichment has
-no Postgres. The Mongo driver exposes no app-side pool gauges here;
-server-side `mongodb_ss_connections{conn_type="current"}` from the
-exporter covers connection counting.
+no Postgres. Server-side `mongodb_ss_connections{conn_type="current"}`
+from the exporter covers the same connection counting from the
+server's point of view.
 
 ## Telemetry
 
@@ -282,6 +290,7 @@ Emitted today (Prometheus-side names):
 | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------- | ------------------------ |
 | `http_server_request_duration_seconds_{count,sum,bucket}`                                                                                    | otelhttp middleware          | `http_route`, `http_response_status_code` (+ `service_name="enrichment"` resource attr) | RED for every route      |
 | `go_goroutine_count`, `go_memory_used_bytes`                                                                                                 | otel runtime instrumentation | `service_name`                                                                          | runtime health           |
+| `vg_mongokit_pool_*` (table above)                                                                                                           | mongokit                     | none                                                                                    | client pool health       |
 | `vg_valkeykit_pool_*` (table above)                                                                                                          | valkeykit                    | none                                                                                    | client pool health       |
 | `mongodb_up`, `mongodb_ss_opcounters`, `mongodb_ss_connections`, `mongodb_ss_mem_resident`                                                   | mongo exporter sidecar       | `service="enrichment-mongo"`                                                            | server-side Mongo health |
 | `redis_memory_used_bytes`, `redis_keyspace_hits_total`, `redis_keyspace_misses_total`, `redis_evicted_keys_total`, `redis_connected_clients` | redis exporter sidecar       | `service="enrichment-valkey"`                                                           | server-side cache health |
@@ -370,14 +379,14 @@ Log additions (slog, JSON, trace ids attached):
 | -------------------------------------- | ----- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `catalog refresh started`              | INFO  | `trigger` = admin or internal      | `startRefresh`, immediately after winning the in-flight guard                                                |
 | `normalize-community-regions complete` | INFO  | `scanned`, `normalized`, `skipped` | `InternalNormalizeCommunityRegions`, before writing the response                                             |
-| `store error`                          | ERROR | `op`, `err`                        | `internalError`, the shared 500 helper every handler file's error branches now route through (29 call sites) |
+| `handler error`                          | ERROR | `op`, `err`                        | `internalError`, the shared 500 helper every handler file's error branches now route through (29 call sites) |
 
 The refresh-started line pairs with the existing per-step "finished"
 summaries: a started line without finished lines inside the 30m
 budget is the signature of a hung refresh. Everything else the
 refresh needs is already logged (finished summaries with counts,
 stopped-early warns, per-product failure warns, panic containment).
-`store error` is the general line every route's 500 now emits (see
+`handler error` is the general line every route's 500 now emits (see
 failure mode 1 below): `op` names the failing operation, the same
 labeling idiom `cache.fail_open`'s `op` attribute already uses, so a
 500 traces to its cause without cross-referencing which route or
@@ -671,12 +680,12 @@ Logs:
 Confirm on the "5xx ratio" panel or "5xx ratio by service" on
 vg-overview; the shared triage in
 [stack.md](stack.md#1-service-5xx-ratio-above-5-percent) applies.
-Every 500 logs a `store error` line at ERROR carrying the failing
+Every 500 logs a `handler error` line at ERROR carrying the failing
 operation and cause (`op`, `err`) - read it first rather than
 inferring the cause from the affected route alone:
 
 ```logql
-{service_name="enrichment"} |= "store error"
+{service_name="enrichment"} |= "handler error"
 ```
 
 (the "Recent error and warn logs" panel, or the Log additions row under
@@ -1002,7 +1011,10 @@ backoffLimit 2, activeDeadlineSeconds 900 for the curl pod itself,
 which now runs two `&&`-joined hops after the token exchange
 (`--max-time 60` each): the refresh trigger - detached and budgeted at
 30m inside the service - then normalize-community-regions, which runs
-to completion synchronously before the pod exits.
+to completion synchronously before the pod exits. The script runs
+under `set -e -o pipefail`, so a failed token exchange (the `sed`
+after the curl piping into it) aborts the job instead of running the
+later hops on an empty token.
 
 Datastore restarts: Mongo restarting takes enrichment unready until
 the ping passes again (failure mode 2). Valkey restarting costs

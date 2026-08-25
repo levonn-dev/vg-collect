@@ -176,9 +176,12 @@ per genuine follow or like action, written in the same transaction as
 the edge and kept even after the edge is retracted, so the rolling-24h
 cap counts actions rather than currently-held edges; every insert
 opportunistically deletes rows older than 48h so the table self-
-retains with no background job). Two migrations so far (`000001_init`,
-`000002_cap_events`), embedded in the binary and applied by the init
-container or `task social:db:migrate`.
+retains with no background job). Three migrations so far
+(`000001_init`, `000002_cap_events`, `000003_comments_author_idx` -
+widens `comments_author_idx` to `(author_id, created_at DESC)` so the
+cap's rolling-24h count is index-bounded, matching
+`cap_events_user_kind_idx`'s shape), embedded in the binary and
+applied by the init container or `task social:db:migrate`.
 
 Connection facts: TLS `verify-full` against the cert-manager-issued
 `social-pg-tls` cert (ClusterIssuer `vg-ca`, 90-day duration, renewed
@@ -257,7 +260,7 @@ label values.
 JSON on stdout plus OTLP to Loki, label `service_name="social"`, trace
 and span ids attached by the shared slog handler. Existing events:
 `http request` (INFO: method, path, status, duration_ms, once per
-request), `social service listening` (INFO: addr), `store error`
+request), `social service listening` (INFO: addr), `handler error`
 (ERROR: `op` = `follow` \| `unfollow` \| `profile_summary` \| `like` \|
 `unlike` \| `shelf_summaries` \| `list_comments` \| `create_comment` \|
 `delete_comment` \| `comments_by_ids` \| `feed` \| `record_publish` \|
@@ -523,7 +526,7 @@ and status" for `upstream_error` 502s clustering on
 `PUT /follows/{userId}`, `PUT /likes/{shelfId}`, and
 `POST /shelves/{shelfId}/comments` specifically; reads like `GET
 /feed` and `GET /shelves/summary` stay healthy, since they only touch
-social-pg. No `store error` log line accompanies these 502s - the
+social-pg. No `handler error` log line accompanies these 502s - the
 request never reaches the store - so its absence alongside a write-502
 spike is the confirming tell, not a contradiction. Then check the
 named dependency directly: that service's own pods and 5xx ratio on

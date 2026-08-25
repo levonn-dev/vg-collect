@@ -20,9 +20,7 @@ script:post-response {
   if (res.status === 200) {
     bru.setEnvVar("access_token", res.body.access_token);
     bru.setEnvVar("refresh_token", res.body.refresh_token);
-    // Plain base64 with the url-safe chars mapped back: the CLI's
-    // script sandbox rejects the "base64url" encoding name that the
-    // desktop app accepts, and JWT payloads never carry padding.
+    // CLI script sandbox rejects Buffer's base64url encoding name; JWT payloads carry no padding.
     const b64 = res.body.access_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
     const payload = JSON.parse(Buffer.from(b64, "base64").toString());
     bru.setEnvVar("user_id", payload.sub);

@@ -64,13 +64,14 @@ social, and collection-rematch pods, and the datastore policies admit
 only collection pods plus the Prometheus exporter ports (9187, 9121)
 from vg-platform. The one cron workload, collection-rematch
 (`0 7 * * *`, an hour after enrichment's catalog refresh), exchanges
-the shared internal secret for a service JWT at auth and presents a
-normal bearer to a nightly chain in dependency order:
-`/internal/normalize-platforms`, then `/internal/normalize-regions`,
-then `/internal/rematch-entries` (`&&`-joined, so a failed step stops
-the chain); every other endpoint is request-driven. Enrichment hops
-always relay the calling user's own bearer; there is no service
-credential.
+the shared internal secret for a service JWT at auth (`set -e
+-o pipefail`, so a failed exchange stops the job instead of chaining
+an empty bearer into the first curl) and presents a normal bearer to a
+nightly chain in dependency order: `/internal/normalize-platforms`,
+then `/internal/normalize-regions`, then `/internal/rematch-entries`
+(`&&`-joined, so a failed step stops the chain); every other endpoint
+is request-driven. Enrichment hops always relay the calling user's own
+bearer; there is no service credential.
 
 The dashboard read is the hot path with the most moving parts:
 
@@ -183,7 +184,9 @@ transitions into listed, and a generated `slug_key` fold backing the
 per-user unique slug index), and `catalog_submissions`
 (lifecycle rows kept as history; partial unique index enforces one
 pending submission per entry; `(user_id, created_at)` serves the abuse
-caps and `(status, created_at)` the admin queue). Fourteen embedded
+caps, `(status, created_at)` the admin queue, and
+`(user_id, entry_id, created_at DESC)` the entry page's
+latest-submission read). Fifteen embedded
 migrations under `services/collection/migrations/`, applied by the
 init container (see migrate mode above). Connections use TLS
 verify-full against the in-cluster CA (secret `collection-pg-tls`);
@@ -316,7 +319,7 @@ Domain lifecycle and outcome events (same pipeline and labels):
 
 | Event                        | Level | Fields                                                      | Site                                                                                                                                                                                                                                                  |
 | ---------------------------- | ----- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| store error                  | ERROR | op, err                                                     | a shared helper in server.go used by every branch that answers 500 (op is a stable per-operation label; err is the cause, which the response never carries); without this line the error-logs panel and the vg-loki-errors rule see nothing for a 500 |
+| handler error                | ERROR | op, err                                                     | a shared helper in server.go used by every branch that answers 500 (op is a stable per-operation label; err is the cause, which the response never carries); without this line the error-logs panel and the vg-loki-errors rule see nothing for a 500 |
 | submission created           | INFO  | submission_id, entry_id                                     | CreateSubmission success path                                                                                                                                                                                                                         |
 | submission cap hit           | WARN  | user_id, cap (pending or rate)                              | CreateSubmission cap branches; identifies who is hitting the abuse caps                                                                                                                                                                               |
 | submission verdict           | INFO  | submission_id, entry_id, action, product_id (when resolved) | SubmitVerdict reject arm and adoptAndApprove; the admin audit trail                                                                                                                                                                                   |

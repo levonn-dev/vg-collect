@@ -728,12 +728,13 @@ for d in auth bff collection enrichment social user; do kubectl -n vgkeep rollou
 ```
 
 Pool gauges emit without traffic, expecting pg series for auth,
-collection, social, user and valkey series for bff, collection,
-enrichment:
+collection, social, user, valkey series for bff, collection,
+enrichment, and a mongo series for enrichment:
 
 ```bash
 curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum by (service_name) (vg_pgkit_pool_connections)'
 curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum by (service_name) (vg_valkeykit_pool_connections)'
+curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum by (service_name) (vg_mongokit_pool_connections)'
 ```
 
 One domain counter through the dev fixture login, expecting a nonzero

@@ -269,7 +269,7 @@ Emission sites for the three domain counters beyond `fail_open`:
 ### Logs
 
 Lines worth knowing: `http request` (INFO, one per request: `method`,
-`path`, `status`, `duration_ms`), `dependency unavailable; failing open` (ERROR,
+`path`, `status`, `duration_ms`), `dependency unavailable; failing open` (WARN,
 `op`, `err`), `login failed` (WARN, `err`), `token refresh failed` (WARN,
 `err`), `refresh chain revocation failed` (ERROR, `err`), `cookie seal failed`
 (ERROR, `err`), `bff listening` (INFO, `addr`, `serve_static`). All are JSON
@@ -490,7 +490,7 @@ fail-open events by op" panel, or:
 sum by (op) (increase(vg_bff_cache_fail_open_total[5m]))
 ```
 
-plus the ERROR line `dependency unavailable; failing open`. Many ops firing at
+plus the WARN line `dependency unavailable; failing open`. Many ops firing at
 once means Valkey itself is down (check the `bff-valkey` pod); a single op
 firing points at one code path.
 

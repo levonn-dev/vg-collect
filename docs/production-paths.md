@@ -122,7 +122,15 @@ by helm: the helm show crds | kubectl apply --server-side line has to
 be re-run by hand on every chart version bump, or the next upgrade
 fails against stale CRDs. NetworkPolicies throughout the repo are
 ingress-only; an egress-lockdown pass is the documented next hardening
-step, not yet done. A service that imports otelhttp directly (bff,
+step, not yet done. App pods and the two trigger CronJobs run a
+restricted securityContext (runAsNonRoot pinned to the image's numeric
+nonroot uid so the kubelet can verify it - 65532 for the distroless
+services, 100:101 for the curl-based CronJobs; a non-numeric image USER
+alone fails admission - no privilege escalation, all capabilities
+dropped, read-only root filesystem, RuntimeDefault seccomp) and their
+ServiceAccounts do not automount a token; the
+datastore StatefulSets stay root because the tls-perms init container
+chowns cert material. A service that imports otelhttp directly (bff,
 enrichment) pins its own version rather than trusting a
 transitive resolution, because a transitively-resolved older version
 once regressed response handling; a service that never imports it
@@ -135,4 +143,7 @@ whichever shape matches how it reaches otelhttp.
 The coverage gate is enforced as a required status check via branch
 protection, not just a step that can fail silently. Cluster e2e remains
 local-only by design; a kind/k3d job is the extension point if that
-ever needs to run in CI.
+ever needs to run in CI. Third-party actions are pinned to commit SHAs
+(with a version comment) rather than moving tags, the workflow declares
+`contents: read` least-privilege permissions, and the verify job carries
+a timeout so a wedged step fails fast instead of holding a runner.

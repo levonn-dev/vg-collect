@@ -324,7 +324,7 @@ line and panic reports:
 | Event                      | Level | Fields                                                                                    | Emitted from                                                                                                                        |
 | -------------------------- | ----- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `provider request failed`  | ERROR | `provider`, `err` (the ProviderError string carries op and status)                        | 502 branches of `OauthStart`, `OauthLinkStart`, `OauthCallback`                                                                     |
-| `auth store error`         | ERROR | `op`, `err`                                                                               | every handler branch that answers 500 `internal`                                                                                    |
+| `handler error`         | ERROR | `op`, `err`                                                                               | every handler branch that answers 500 `internal`                                                                                    |
 | `user service unavailable` | ERROR | `op`, `err`                                                                               | user-service failure branches of `completeLogin`, `completeLink`, `RefreshToken` (502 `user_service_error`, 503 `user_unavailable`) |
 | `refresh reuse detected`   | WARN  | `user_id` (empty on the revoked-family short-circuit, which never learns it), `jti_count` | both reuse branches of `RefreshToken`                                                                                               |
 
@@ -590,7 +590,7 @@ rollback.
 
 ### 4. Postgres down or saturated
 
-Symptom: every route 500s, `/readyz` answers 503, `auth store error`
+Symptom: every route 500s, `/readyz` answers 503, `handler error`
 logs; the four Postgres panels ("PG pool connections", "PG pool mean
 acquire wait", "PG server connections vs max", "PG transactions")
 flatline or spike. auth-pg is single-replica: while
