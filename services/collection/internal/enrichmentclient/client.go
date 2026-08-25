@@ -1,8 +1,7 @@
-// Package enrichmentclient calls the enrichment service with the
-// calling user's own Bearer token (uniform bearer hops: there is no
-// service credential; the NetworkPolicy plus JWT validation cover the
-// hop). It returns typed data: entry creation snapshots catalog facts
-// from the product, and value composition consumes the price map.
+// Package enrichmentclient calls the enrichment service with the calling
+// user's own Bearer token (no service credential; NetworkPolicy plus JWT
+// validation cover the hop). Entry creation snapshots catalog facts from the
+// product; value composition consumes the price map.
 package enrichmentclient
 
 import (
@@ -62,9 +61,8 @@ func (c *Client) GetProduct(ctx context.Context, bearer string, id uuid.UUID) (e
 	}
 }
 
-// Resolve finds-or-creates the canonical product for an identity. The
-// region-aware repoint paths use it to land an entry's region-correct
-// sibling member; the caller's own bearer rides the hop.
+// Resolve finds-or-creates the canonical product for an identity, used by
+// region-aware repoint paths to land an entry's region-correct sibling member.
 func (c *Client) Resolve(ctx context.Context, bearer string, req enrichapi.ResolveRequest) (enrichapi.Product, error) {
 	resp, err := c.api.ResolveProductWithResponse(ctx, req, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -101,11 +99,9 @@ func (c *Client) ListPlatforms(ctx context.Context, bearer string) ([]Platform, 
 	return out, nil
 }
 
-// CreateCommunityProduct asks enrichment to mint an anchor-less
-// community product (approve_new's first phase). The admin's own
-// bearer carries the role; enrichment enforces it again, so an
-// unexpected 403 here is configuration skew and reads as
-// unavailability.
+// CreateCommunityProduct asks enrichment to mint an anchor-less community
+// product (approve_new's first phase); the admin's bearer carries the role.
+// An unexpected 403 here is configuration skew, read as unavailability.
 func (c *Client) CreateCommunityProduct(ctx context.Context, bearer string, req enrichapi.CreateCommunityProductJSONRequestBody) (enrichapi.Product, error) {
 	resp, err := c.api.CreateCommunityProductWithResponse(ctx, req, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -117,9 +113,8 @@ func (c *Client) CreateCommunityProduct(ctx context.Context, bearer string, req 
 	return *resp.JSON201, nil
 }
 
-// BatchPrices fetches current prices for a set of product ids in one
-// or more contract-sized chunks (ids are deduplicated first) and
-// merges the maps. An empty id set makes no call.
+// BatchPrices fetches current prices for a set of product ids in
+// contract-sized chunks (deduplicated first) and merges the maps; an empty id set makes no call.
 func (c *Client) BatchPrices(ctx context.Context, bearer string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error) {
 	uniq := make([]uuid.UUID, 0, len(ids))
 	seen := make(map[uuid.UUID]bool, len(ids))
@@ -146,9 +141,8 @@ func (c *Client) BatchPrices(ctx context.Context, bearer string, ids []uuid.UUID
 	return out, nil
 }
 
-// PriceHistory fetches snapshot series for a set of product ids in one
-// or more contract-sized chunks (ids are deduplicated first) and
-// merges the maps. An empty id set makes no call.
+// PriceHistory fetches snapshot series for a set of product ids in
+// contract-sized chunks (deduplicated first) and merges the maps; an empty id set makes no call.
 func (c *Client) PriceHistory(ctx context.Context, bearer string, ids []uuid.UUID, days int) (map[string][]enrichapi.PricePoint, error) {
 	uniq := make([]uuid.UUID, 0, len(ids))
 	seen := make(map[uuid.UUID]bool, len(ids))

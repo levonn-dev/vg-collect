@@ -34,12 +34,9 @@ func toAPIView(v store.View) (api.SavedView, error) {
 // maxViewParamsBytes caps the opaque view document.
 const maxViewParamsBytes = 8192
 
-// viewBody decodes and validates a ViewCreate; the marshaled params
-// come back for storage, along with the resolved visibility (default
-// private). name's minLength/maxLength, and visibility's enum, are
-// specval's job now; name keeps its blank-after-trim guard (minLength
-// alone does not catch "   ", only a literal empty string - see
-// validateTagName's comment for the sibling gap on tag names).
+// viewBody decodes and validates a ViewCreate, returning marshaled params and
+// resolved visibility (default private). name keeps its blank-after-trim
+// guard, since minLength alone doesn't catch "   " (same gap as validateTagName).
 func viewBody(w http.ResponseWriter, r *http.Request) (api.ViewCreate, []byte, string, bool) {
 	var body api.ViewCreate
 	if !httpkit.DecodeBody(w, r, maxBodyBytes, &body) {

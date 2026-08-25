@@ -16,15 +16,13 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/contract/common"
 	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
-	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/enrichmentclient"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-// Submission abuse caps (contract-documented). Cancelled rows persist
-// precisely so the rolling window counts every creation - a
-// cancel/recreate loop cannot evade it.
+// Submission abuse caps (contract-documented). Cancelled rows persist so the
+// rolling window counts every creation; a cancel/recreate loop cannot evade it.
 const (
 	submissionPendingCap = 10
 	submissionDailyCap   = 20
@@ -124,12 +122,10 @@ func (h *Handlers) GetSubmission(w http.ResponseWriter, r *http.Request, entryId
 	writeJSON(w, http.StatusOK, toAPISubmission(sub))
 }
 
-// AckSubmissionResolution stamps the caller's approved submission for
-// the entry so the approval banner stops reappearing. The two-step
-// ownership idiom mirrors GetSubmission: a foreign or missing entry is
-// entry_not_found, an entry with no approved submission is
-// submission_not_found. Idempotent - an already-acked submission is a
-// 204 no-op.
+// AckSubmissionResolution stamps the approval so its banner stops
+// reappearing. Mirrors GetSubmission's ownership idiom: a foreign/missing
+// entry is entry_not_found, no approved submission is submission_not_found.
+// Idempotent (204 no-op).
 func (h *Handlers) AckSubmissionResolution(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
 	userID, _, ok := h.caller(w, r)
 	if !ok {
@@ -181,15 +177,11 @@ func (h *Handlers) CancelSubmission(w http.ResponseWriter, r *http.Request, entr
 
 // ListSubmissions pages the pending queue with live proposals.
 func (h *Handlers) ListSubmissions(w http.ResponseWriter, r *http.Request, params api.ListSubmissionsParams) {
-	claims, _ := jwtauth.FromContext(r.Context())
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	if !h.requireAdmin(w, r) {
 		return
 	}
-	// limit/offset are already known within the contract's 1-500/>=0
-	// bounds by the time this runs (specval; api/collection.yaml
-	// declares both on ListSubmissions). Only the default-when-absent
-	// case needs handling here.
+	// limit/offset are already known within the contract's 1-500/>=0 bounds
+	// (specval); only the default-when-absent case needs handling here.
 	limit := 200
 	if params.Limit != nil {
 		limit = *params.Limit
@@ -232,16 +224,12 @@ func (h *Handlers) ListSubmissions(w http.ResponseWriter, r *http.Request, param
 	writeJSON(w, http.StatusOK, page)
 }
 
-// SubmitVerdict resolves one pending submission. approve_new is the
-// two-phase orchestration: mint (or reuse a prior attempt's recorded
-// mint), record on the still-pending row, then adopt+approve - a
-// crash between phases retries without twin mints. The only orphan
-// window is mint-succeeds-before-record; the guarded product delete
-// mops it.
+// SubmitVerdict resolves one pending submission. approve_new is two-phase:
+// mint (or reuse a prior recorded mint), record on the still-pending row, then
+// adopt+approve, so a crash between phases retries without twin mints. The
+// only orphan window (mint succeeds before record) is mopped by the guarded product delete.
 func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submissionId openapi_types.UUID) {
-	claims, _ := jwtauth.FromContext(r.Context())
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	if !h.requireAdmin(w, r) {
 		return
 	}
 	_, bearer, ok := h.caller(w, r)
@@ -296,10 +284,9 @@ func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submiss
 			problem(w, r, http.StatusBadRequest, "invalid_body", "approve_new requires product")
 			return
 		}
-		// Reuse the id a prior approve_new minted and recorded, so a retry
-		// never double-mints. Corner: if that recorded product was deleted
-		// before the retry, approve_new 404s here; reject, or approve_existing
-		// (which overwrites the recorded id), is the escape.
+		// Reuse the id a prior approve_new minted and recorded, so a retry never
+		// double-mints. If that product was deleted before the retry, approve_new
+		// 404s here; reject or approve_existing (overwrites the id) is the escape.
 		productID := sub.ProductID
 		if productID == nil {
 			minted, err := h.enrichment.CreateCommunityProduct(r.Context(), bearer, mintRequest(*body.Product))
@@ -322,10 +309,9 @@ func (h *Handlers) SubmitVerdict(w http.ResponseWriter, r *http.Request, submiss
 	}
 }
 
-// adoptAndApprove is the shared verdict tail: fetch the product,
-// snapshot it onto the submitter's entry, resolve the row - one
-// transaction for the last two. action names the verdict arm for the
-// admin audit log.
+// adoptAndApprove is the shared verdict tail: fetch the product, snapshot it
+// onto the entry, resolve the row (one transaction for the last two); action
+// names the verdict arm for the admin audit log.
 func (h *Handlers) adoptAndApprove(w http.ResponseWriter, r *http.Request, bearer string, sub store.Submission, productID uuid.UUID, action string) {
 	product, err := h.enrichment.GetProduct(r.Context(), bearer, productID)
 	if errors.Is(err, enrichmentclient.ErrUnknownProduct) {

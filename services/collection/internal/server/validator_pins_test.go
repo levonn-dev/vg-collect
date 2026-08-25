@@ -1,9 +1,6 @@
-// Validator-path pins: each case drives a request through the FULL
-// handler stack (real router, real jwtauth, no hand-faked wiring) and
-// asserts the status + problem code specval's request-validation
-// middleware answers with. TestValidatorPath_ListEntries_LimitOverMax
-// is the one case whose enforcement mechanism never changed - see its
-// comment.
+// Validator-path pins: each case drives a request through the FULL handler
+// stack (real router, real jwtauth) and asserts the status + problem code
+// specval's request-validation middleware answers with.
 package server_test
 
 import (
@@ -53,12 +50,9 @@ func TestValidatorPath_BulkUpdateEntries_TooManyEntryIDs(t *testing.T) {
 	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
-// TestValidatorPath_ListEntries_LimitOverMax pins the entries list's
-// limit maximum(500) contract cap: specval's request-validation
-// middleware rejects an out-of-range limit before listParams ever
-// runs. Unlike enrichment's community-list clamp reversal,
-// collection's list params were never a silent clamp, so this pin's
-// outcome never changed - only which layer enforces it did.
+// TestValidatorPath_ListEntries_LimitOverMax pins the limit maximum(500)
+// contract cap: specval rejects an out-of-range limit before listParams runs.
+// Unlike enrichment's community-list clamp reversal, this outcome never changed, only which layer enforces it.
 func TestValidatorPath_ListEntries_LimitOverMax(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 	resp := do(t, http.MethodGet, srv.URL+"/entries?limit=9999", a.token(t, uuid.NewString()), nil)

@@ -14,13 +14,13 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 )
 
-// View is a saved list configuration; Params is the frontend's opaque
-// JSON document, stored and returned verbatim. Slug/Visibility/
-// PublishedAt are the sharing layer: a view whose effective
-// visibility (min of owner profile and view) is non-private is a
-// "shelf" on the social surface.
+// View is a saved list configuration; Params is the frontend's opaque JSON
+// document, stored and returned verbatim. Slug/Visibility/PublishedAt are the
+// sharing layer; a non-private effective visibility (min of owner profile and view) makes it a "shelf".
 type View struct {
 	ID          uuid.UUID
 	UserID      uuid.UUID
@@ -49,7 +49,7 @@ func (s *Store) ListViews(ctx context.Context, userID uuid.UUID) ([]View, error)
 	if err != nil {
 		return nil, fmt.Errorf("store: list views: %w", err)
 	}
-	return scanAll(rows, []View{}, "", func(r pgx.Rows) (View, error) {
+	return pgkit.ScanAll(rows, []View{}, func(r pgx.Rows) (View, error) {
 		v, err := scanView(r)
 		if err != nil {
 			return View{}, fmt.Errorf("store: scan view: %w", err)
@@ -58,9 +58,8 @@ func (s *Store) ListViews(ctx context.Context, userID uuid.UUID) ([]View, error)
 	})
 }
 
-// slugConstraint is the per-user folded-slug unique index; a
-// violation there dedupes with a suffix, while a name violation is
-// the user-facing ErrNameTaken.
+// slugConstraint is the per-user folded-slug unique index; a violation there
+// dedupes with a suffix, while a name violation is the user-facing ErrNameTaken.
 const slugConstraint = "saved_views_user_slug_key_idx"
 
 func slugViolation(err error) bool {
@@ -98,13 +97,11 @@ func (s *Store) CreateView(ctx context.Context, userID uuid.UUID, name string, p
 	}
 }
 
-// UpdateView replaces a view's name, params, and visibility. A name
-// change re-derives the slug (old links break; documented trade); an
-// unchanged name keeps the stored slug verbatim, so a params- or
-// visibility-only save can never silently move the row onto a
-// different suffix (e.g. one a sibling's deletion just freed) and
-// break a shared link that the name change never touched. A
-// transition into listed stamps published_at.
+// UpdateView replaces a view's name, params, and visibility. A name change
+// re-derives the slug (old links break, a documented trade); an unchanged name
+// keeps the stored slug verbatim, so a params/visibility-only save never moves
+// onto a freed suffix and breaks an untouched shared link. A transition into
+// listed stamps published_at.
 func (s *Store) UpdateView(ctx context.Context, userID, id uuid.UUID, name string, params []byte, visibility string) (View, error) {
 	var currentName, currentSlug string
 	err := s.pool.QueryRow(ctx,
@@ -168,11 +165,9 @@ func (s *Store) DeleteView(ctx context.Context, userID, id uuid.UUID) error {
 	return nil
 }
 
-// SeedDefaultViews gives a zero-view user the two starter shelves.
-// ON CONFLICT DO NOTHING makes it safe to race and safe to re-run;
-// the caller triggers it only when ListViews found nothing, so
-// deleting every view brings the defaults back (factory-reset
-// semantics, documented).
+// SeedDefaultViews gives a zero-view user the two starter shelves. ON
+// CONFLICT DO NOTHING makes it safe to race and re-run; the caller triggers it
+// only when ListViews found nothing, so deleting every view brings defaults back.
 func (s *Store) SeedDefaultViews(ctx context.Context, userID uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO saved_views (user_id, name, params, slug)
@@ -214,12 +209,9 @@ func (s *Store) GetSharedShelfBySlug(ctx context.Context, ownerID uuid.UUID, fol
 	return v, nil
 }
 
-// ListListedShelves pages listed views, newest publish first - the
-// Explore-recent (unfiltered) and profile-page (owner-scoped) reads
-// share this one method on a nil-slice contract: a nil or empty
-// ownerIDs lists across every listed owner; a non-empty one scopes
-// the page to just those owners (the caller passes only owners whose
-// profile is listed, when scoping).
+// ListListedShelves pages listed views, newest publish first; Explore-recent
+// (unfiltered) and profile-page (owner-scoped) reads share this on a nil-slice
+// contract: nil/empty ownerIDs lists every listed owner, non-empty scopes to those.
 func (s *Store) ListListedShelves(ctx context.Context, ownerIDs []uuid.UUID, limit, offset int) ([]View, int, error) {
 	where := "visibility = 'listed'"
 	args := []any{}
@@ -245,14 +237,11 @@ func (s *Store) ListListedShelves(ctx context.Context, ownerIDs []uuid.UUID, lim
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: list listed shelves: %w", err)
 	}
-	// On a trailing rows.Err(), this returns (out, total, err) - the
-	// real total plus whatever shelves had already been scanned;
-	// matching the two earlier error branches' (nil, 0, err) only on a
-	// scan error. seed []View{} is non-nil, so scanAll only ever
-	// returns a nil slice here via its own scan-closure short-circuit;
-	// a nil out is therefore an unambiguous signal that this was a
-	// scan error, not a trailing one.
-	out, err := scanAll(rows, []View{}, "", func(r pgx.Rows) (View, error) {
+	// On a trailing rows.Err(), this returns (out, total, err): the real total
+	// plus already-scanned shelves, unlike the earlier (nil, 0, err) scan-error
+	// branches. seed []View{} is non-nil, so ScanAll only returns nil here via
+	// its own short-circuit; nil out unambiguously signals a scan error, not a trailing one.
+	out, err := pgkit.ScanAll(rows, []View{}, func(r pgx.Rows) (View, error) {
 		v, err := scanView(r)
 		if err != nil {
 			return View{}, fmt.Errorf("store: scan shelf: %w", err)
@@ -274,7 +263,7 @@ func (s *Store) SharedShelvesByIDs(ctx context.Context, ids []uuid.UUID) ([]View
 	if err != nil {
 		return nil, fmt.Errorf("store: shelves by ids: %w", err)
 	}
-	return scanAll(rows, []View{}, "", func(r pgx.Rows) (View, error) {
+	return pgkit.ScanAll(rows, []View{}, func(r pgx.Rows) (View, error) {
 		v, err := scanView(r)
 		if err != nil {
 			return View{}, fmt.Errorf("store: scan shelf: %w", err)

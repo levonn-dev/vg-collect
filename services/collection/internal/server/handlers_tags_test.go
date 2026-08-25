@@ -57,9 +57,8 @@ func TestUnitTags(t *testing.T) {
 			http.StatusBadRequest, "invalid_body")
 	})
 
-	// TestUnitTags/create_cap_exceeded_429 pins the per-user tag cap's
-	// status, code, and detail (the delegated status/code choice mirrors
-	// the social service's edge caps: 429 code cap_exceeded).
+	// TestUnitTags/create_cap_exceeded_429 pins the per-user tag cap's status,
+	// code, and detail: 429, code cap_exceeded (mirrors the social service's edge caps).
 	t.Run("create cap exceeded 429", func(t *testing.T) {
 		st := &stubStore{createTag: func(context.Context, uuid.UUID, string) (store.Tag, error) {
 			return store.Tag{}, store.ErrUserTagCapExceeded
@@ -150,9 +149,8 @@ func TestUnitTags(t *testing.T) {
 	})
 }
 
-// TestUnitCreateTag_NameCapCountsRunesNotBytes pins that the 50-character
-// cap counts runes, not bytes: 50 multibyte characters (each of these
-// three bytes in UTF-8) is exactly at the cap and must pass; 51 fails.
+// TestUnitCreateTag_NameCapCountsRunesNotBytes pins the 50-char cap as runes,
+// not bytes: 50 3-byte-UTF-8 characters must pass; 51 fails.
 func TestUnitCreateTag_NameCapCountsRunesNotBytes(t *testing.T) {
 	st := &stubStore{createTag: func(_ context.Context, _ uuid.UUID, name string) (store.Tag, error) {
 		return store.Tag{ID: uuid.New(), Name: name}, nil

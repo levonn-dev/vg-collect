@@ -36,8 +36,7 @@ func TestSubmissions_LifecycleCapsAndQueue(t *testing.T) {
 		t.Fatalf("double submit = %v, want ErrSubmissionPending", err)
 	}
 
-	// Cancel is a status flip; the row persists and a fresh
-	// submission is allowed again.
+	// Cancel is a status flip; the row persists and a fresh submission is allowed again.
 	if err := s.CancelSubmission(ctx, userID, custom.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -57,8 +56,7 @@ func TestSubmissions_LifecycleCapsAndQueue(t *testing.T) {
 	}
 
 	// The caps' counting queries: one pending, two created in-window
-	// (cancelled rows count - cancel/recreate must not reset the
-	// window).
+	// (cancelled rows count; cancel/recreate must not reset the window).
 	if n, err := s.CountPendingSubmissions(ctx, userID); err != nil || n != 1 {
 		t.Fatalf("pending count = %d (%v), want 1", n, err)
 	}
@@ -94,8 +92,7 @@ func TestSubmissions_LifecycleCapsAndQueue(t *testing.T) {
 		t.Fatalf("re-reject = %v, want ErrSubmissionResolved", err)
 	}
 
-	// Approve adopts: the entry flips product-backed and the
-	// submission resolves, atomically.
+	// Approve adopts: the entry flips product-backed and the submission resolves, atomically.
 	sub3, err := s.CreateSubmission(ctx, userID, custom.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -139,8 +136,7 @@ func TestSubmissions_LifecycleCapsAndQueue(t *testing.T) {
 	}
 }
 
-// TestCountAllPendingSubmissions pins the review-queue gauge query:
-// pending rows count across users, resolved rows do not.
+// TestCountAllPendingSubmissions pins the review-queue gauge: pending rows count across users, resolved rows do not.
 func TestCountAllPendingSubmissions(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -169,16 +165,10 @@ func TestCountAllPendingSubmissions(t *testing.T) {
 	}
 }
 
-// TestApproveSubmission_PreservesUserOwnedFields guards ApproveSubmission's
-// documented contract - "the entry keeps every user-owned field
-// (acquisition, tags, rank, pricing)" - against a regression that widens
-// the adoption UPDATE onto a column it must leave alone. The fixture sets
-// one value per category (acquisition, condition, pricing, rank) BEFORE
-// approval; every one of them must read back unchanged afterward, even
-// though the catalog fields did change. It also pins the opposite rule for
-// region_mismatch_ack_at: adoption changes product_id like any other
-// re-match, so the ack must clear, not survive alongside the other
-// user-owned fields.
+// TestApproveSubmission_PreservesUserOwnedFields guards that approval keeps
+// every user-owned field (acquisition, tags, rank, pricing) unchanged even
+// though catalog fields change; region_mismatch_ack_at is the opposite rule,
+// since adoption changes product_id like any re-match, so the ack must clear.
 func TestApproveSubmission_PreservesUserOwnedFields(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -233,8 +223,7 @@ func TestApproveSubmission_PreservesUserOwnedFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The catalog side actually changed - the preservation check below
-	// is meaningless if adoption silently no-oped.
+	// The catalog side actually changed; the preservation check below is meaningless if adoption no-oped.
 	if adopted.ProductID == nil || *adopted.ProductID != productID ||
 		adopted.DisplayName != "Curated Name" ||
 		adopted.PlatformName == nil || *adopted.PlatformName != "SNES" ||
@@ -295,13 +284,9 @@ func TestApproveSubmission_PreservesUserOwnedFields(t *testing.T) {
 	}
 }
 
-// TestApproveSubmission_WritesCatalogCredits guards the adoption
-// UPDATE actually persisting the snapshot's developers/publishers: the
-// custom entry seeds its OWN credits, approval carries DIFFERENT ones
-// on the CatalogSnapshot, and only the snapshot's must survive the
-// reload - through the real SQL, not a stub, since a Go-level argument
-// carrying the right value proves nothing about the UPDATE's column
-// list.
+// TestApproveSubmission_WritesCatalogCredits: the custom entry seeds its own
+// credits, approval carries different ones on CatalogSnapshot, and only the
+// snapshot's must survive the reload through real SQL, not a stub.
 func TestApproveSubmission_WritesCatalogCredits(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -340,12 +325,9 @@ func TestApproveSubmission_WritesCatalogCredits(t *testing.T) {
 	}
 }
 
-// TestGetSubmission is GetSubmission's direct exercise: a hit returns
-// the row keyed on id alone (no user scoping - the admin queue reads
-// across users), a miss answers the documented sentinel. GetSubmission
-// returns a plain Submission, not a SubmissionProposal, so there are no
-// proposal fields to assert here; the live-join proposal fields are
-// TestListPendingSubmissions_ReflectsLiveEntryEdits's job below.
+// TestGetSubmission: a hit returns the row keyed on id alone (no user
+// scoping, since the admin queue reads across users), a miss answers the
+// sentinel. Returns a plain Submission, not a SubmissionProposal.
 func TestGetSubmission(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -371,10 +353,9 @@ func TestGetSubmission(t *testing.T) {
 	}
 }
 
-// TestRecordSubmissionProduct_ResolvedGuard: recording on a resolved
-// (here, rejected) row must not silently succeed or move product_id -
-// the approve_new retry path depends on this guard to detect that a
-// concurrent verdict already resolved the row.
+// TestRecordSubmissionProduct_ResolvedGuard: recording on a resolved row must
+// not silently succeed or move product_id, so approve_new retries detect a
+// concurrent verdict already resolved it.
 func TestRecordSubmissionProduct_ResolvedGuard(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -402,12 +383,9 @@ func TestRecordSubmissionProduct_ResolvedGuard(t *testing.T) {
 	}
 }
 
-// TestListPendingSubmissions_ReflectsLiveEntryEdits proves the queue
-// joins the entry LIVE: every mutable proposal column, edited AFTER the
-// submission was filed, must show the edit - not a submit-time
-// snapshot. item_type is excluded: it is immutable at the store layer
-// (UpdateEntry's SET list never touches it), so it cannot be exercised
-// this way.
+// TestListPendingSubmissions_ReflectsLiveEntryEdits proves the queue joins the
+// entry LIVE: every mutable proposal column edited after filing must show the
+// edit. item_type is excluded, since UpdateEntry's SET list never touches it.
 func TestListPendingSubmissions_ReflectsLiveEntryEdits(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

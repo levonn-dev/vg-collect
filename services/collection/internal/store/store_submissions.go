@@ -10,11 +10,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 )
 
-// Submission is one catalog-submission row. Rows persist as history
-// (rejected and cancelled included) so the rolling creation cap
-// counts every attempt; entry deletion cascades them away.
+// Submission is one catalog-submission row; rows persist as history
+// (rejected/cancelled included) so the rolling creation cap counts every attempt.
 type Submission struct {
 	ID              uuid.UUID
 	EntryID         uuid.UUID
@@ -28,9 +29,8 @@ type Submission struct {
 	ResolutionAckAt *time.Time
 }
 
-// SubmissionProposal is one admin-queue row: the submission plus the
-// entry's CURRENT proposal fields (a live reference - user edits flow
-// through until the verdict).
+// SubmissionProposal is one admin-queue row: the submission plus the entry's
+// CURRENT proposal fields (a live reference; edits flow through until the verdict).
 type SubmissionProposal struct {
 	Submission
 	DisplayName      string
@@ -108,9 +108,8 @@ func (s *Store) LatestSubmissionForEntry(ctx context.Context, userID, entryID uu
 	return sub, nil
 }
 
-// LatestApprovedSubmissionForEntry is the approval banner's read: the
-// newest APPROVED row for the caller's entry (there is at most one -
-// approval turns the entry product-backed, which cannot resubmit).
+// LatestApprovedSubmissionForEntry is the approval banner's read: the newest
+// APPROVED row (at most one, since approval makes the entry product-backed).
 func (s *Store) LatestApprovedSubmissionForEntry(ctx context.Context, userID, entryID uuid.UUID) (Submission, error) {
 	row := s.pool.QueryRow(ctx, `
 		SELECT `+submissionCols+` FROM catalog_submissions
@@ -126,9 +125,8 @@ func (s *Store) LatestApprovedSubmissionForEntry(ctx context.Context, userID, en
 	return sub, nil
 }
 
-// AckSubmissionResolution stamps the acknowledgement time once. The
-// guard (resolution_ack_at IS NULL) makes a repeat a harmless no-op
-// that never moves the original stamp.
+// AckSubmissionResolution stamps the ack time once; the guard
+// (resolution_ack_at IS NULL) makes a repeat a harmless no-op.
 func (s *Store) AckSubmissionResolution(ctx context.Context, id uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE catalog_submissions
@@ -140,9 +138,8 @@ func (s *Store) AckSubmissionResolution(ctx context.Context, id uuid.UUID) error
 	return nil
 }
 
-// CancelSubmission flips the caller's pending submission to
-// cancelled. A status change, not a delete: the row keeps counting
-// toward the rolling creation cap.
+// CancelSubmission flips the caller's pending submission to cancelled (a
+// status change, not a delete): the row keeps counting toward the rolling cap.
 func (s *Store) CancelSubmission(ctx context.Context, userID, entryID uuid.UUID) error {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE catalog_submissions
@@ -182,9 +179,8 @@ func (s *Store) CountPendingSubmissions(ctx context.Context, userID uuid.UUID) (
 	return n, nil
 }
 
-// CountAllPendingSubmissions serves the review-queue gauge: pending
-// rows across every user (the (status, created_at) index keeps it an
-// index scan).
+// CountAllPendingSubmissions serves the review-queue gauge: pending rows
+// across every user (the (status, created_at) index keeps it an index scan).
 func (s *Store) CountAllPendingSubmissions(ctx context.Context) (int64, error) {
 	var n int64
 	if err := s.pool.QueryRow(ctx,
@@ -206,9 +202,8 @@ func (s *Store) CountSubmissionsSince(ctx context.Context, userID uuid.UUID, sin
 	return n, nil
 }
 
-// ListPendingSubmissions pages the admin queue oldest first with the
-// live entry proposal joined on (the cascade guarantees the entry
-// exists while the row does).
+// ListPendingSubmissions pages the admin queue oldest-first with the live
+// entry proposal joined on (the cascade guarantees the entry exists).
 func (s *Store) ListPendingSubmissions(ctx context.Context, limit, offset int) ([]SubmissionProposal, int64, error) {
 	var total int64
 	if err := s.pool.QueryRow(ctx,
@@ -228,7 +223,7 @@ func (s *Store) ListPendingSubmissions(ctx context.Context, limit, offset int) (
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: list queue: %w", err)
 	}
-	out, err := scanAll(rows, nil, "list queue", func(r pgx.Rows) (SubmissionProposal, error) {
+	out, err := pgkit.ScanAll(rows, nil, func(r pgx.Rows) (SubmissionProposal, error) {
 		var p SubmissionProposal
 		if err := r.Scan(&p.ID, &p.EntryID, &p.UserID, &p.Status, &p.RejectReason, &p.ProductID,
 			&p.CreatedAt, &p.UpdatedAt, &p.ReviewedAt,
@@ -239,7 +234,7 @@ func (s *Store) ListPendingSubmissions(ctx context.Context, limit, offset int) (
 		return p, nil
 	})
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("store: list queue: %w", err)
 	}
 	return out, total, nil
 }
@@ -261,9 +256,8 @@ func (s *Store) RejectSubmission(ctx context.Context, id uuid.UUID, reason strin
 	return sub, nil
 }
 
-// RecordSubmissionProduct stores approve_new's minted product id
-// while the row is still pending, so a retry after a mid-way failure
-// adopts without re-minting.
+// RecordSubmissionProduct stores approve_new's minted product id while
+// pending, so a retry after a mid-way failure adopts without re-minting.
 func (s *Store) RecordSubmissionProduct(ctx context.Context, id, productID uuid.UUID) error {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE catalog_submissions
@@ -279,9 +273,8 @@ func (s *Store) RecordSubmissionProduct(ctx context.Context, id, productID uuid.
 }
 
 // ApproveSubmission adopts the product onto the submitter's entry and
-// resolves the submission, in one transaction. The entry keeps every
-// user-owned field (acquisition, tags, rank, pricing); only the
-// catalog snapshot and product_id change.
+// resolves the submission in one transaction; only the catalog snapshot and
+// product_id change (user-owned fields survive).
 func (s *Store) ApproveSubmission(ctx context.Context, id uuid.UUID, snap CatalogSnapshot) (Submission, error) {
 	var out Submission
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -297,9 +290,8 @@ func (s *Store) ApproveSubmission(ctx context.Context, id uuid.UUID, snap Catalo
 		if err != nil {
 			return fmt.Errorf("store: approve submission: %w", err)
 		}
-		// Always a product change (the adopted catalog product replaces
-		// whatever the entry pointed at before), so the region-mismatch
-		// ack unconditionally clears too - same rule as RepointEntry.
+		// Always a product change, so the region-mismatch ack unconditionally
+		// clears too, the same rule as RepointEntry.
 		if _, err := tx.Exec(ctx, `
 			UPDATE entries
 			SET product_id = $2, item_type = $3, display_name = $4,

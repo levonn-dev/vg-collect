@@ -99,10 +99,8 @@ func TestTagsCRUD(t *testing.T) {
 	}
 }
 
-// TestCreateTag_PerUserCap pins the per-user distinct-tag ceiling: the
-// 200th tag succeeds, the 201st answers ErrUserTagCapExceeded, and
-// the count stops climbing (no half-committed row from the rejected
-// attempt). A different user's own cap is untouched by this one.
+// TestCreateTag_PerUserCap pins the per-user cap: the 200th tag succeeds, the
+// 201st answers ErrUserTagCapExceeded with no half-committed row; another user's cap is untouched.
 func TestCreateTag_PerUserCap(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

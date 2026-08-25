@@ -1,15 +1,13 @@
 CREATE TABLE catalog_submissions (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    -- The submission's subject. Entry deletion cascades the rows away
-    -- (subject gone), which is also how a pending submission cancels
-    -- when its entry is deleted.
+    -- The submission's subject; cascade delete also cancels a pending
+    -- submission when its entry is deleted.
     entry_id      uuid NOT NULL REFERENCES entries (id) ON DELETE CASCADE,
     user_id       uuid NOT NULL,
     status        text NOT NULL DEFAULT 'pending'
                   CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
     reject_reason text,
-    -- The verdict's resolved product (minted or existing), recorded
-    -- BEFORE adoption so an approve_new retry never mints twice.
+    -- Verdict's resolved product, recorded before adoption so an approve_new retry never mints twice.
     product_id    uuid,
     created_at    timestamptz NOT NULL DEFAULT now(),
     updated_at    timestamptz NOT NULL DEFAULT now(),

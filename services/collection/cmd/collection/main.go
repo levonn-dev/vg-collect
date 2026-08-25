@@ -1,7 +1,5 @@
-// The collection service: the granular CRUD core of vgkeep
-// (entries, tags, saved views, backlog ordering, dashboard).
-// `collection migrate` runs schema migrations and exits (init
-// container mode).
+// The collection service: the granular CRUD core of vgkeep (entries, tags,
+// saved views, backlog ordering, dashboard). `collection migrate` runs schema migrations and exits.
 package main
 
 import (

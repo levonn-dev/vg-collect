@@ -1,9 +1,8 @@
 package server_test
 
-// Telemetry emission tests: the domain counters, the pending-queue
-// gauge, and the structured log lines the collection runbook documents.
-// Metrics are asserted through a per-test SDK meter provider swapped
-// into the otel global (the pgkit test idiom).
+// Telemetry emission tests: domain counters, the pending-queue gauge, and
+// structured log lines the runbook documents. Metrics assert via a per-test
+// SDK meter provider swapped into the otel global.
 
 import (
 	"bytes"
@@ -39,18 +38,10 @@ import (
 
 const collectionMeter = "github.com/levonn-dev/vgkeep/services/collection"
 
-// TestMain pins the global meter provider to a real (readerless) SDK
-// provider before any test in this package runs. server.New registers
-// this package's pending-submissions Observable gauge on every build,
-// and nearly every test in this package - not just the telemetry ones
-// below - constructs a Handlers. Without this, the default delegating
-// provider would queue every one of those gauge callbacks (each
-// closing over its own test's now-gone stub) and replay all of them
-// into the first manual reader metrictest.Install installs here, so
-// that test's Collect would invoke every earlier test's stub too -
-// most of which never wired countAllPendingSubmissions and panic on
-// the call. Mirrors auth/server's TestMain, needed for the identical
-// reason (its own constructor-registered signing-keys gauge).
+// TestMain pins the global meter provider to a real SDK provider before any
+// test runs: server.New registers a pending-submissions gauge on every build,
+// and the default provider would replay earlier tests' now-gone stub callbacks
+// into the first manual reader, panicking on unwired stubs (mirrors auth/server's TestMain).
 func TestMain(m *testing.M) {
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider())
 	os.Exit(m.Run())
@@ -78,8 +69,7 @@ func counterPoints(t *testing.T, got map[string]metricdata.Metrics, name string)
 	return sum.DataPoints
 }
 
-// counterValue returns the value of the series carrying exactly attrs,
-// 0 when that series was never written.
+// counterValue returns the series matching exactly attrs, or 0 if never written.
 func counterValue(t *testing.T, got map[string]metricdata.Metrics, name string, attrs ...attribute.KeyValue) int64 {
 	t.Helper()
 	want := attribute.NewSet(attrs...)
@@ -91,16 +81,14 @@ func counterValue(t *testing.T, got map[string]metricdata.Metrics, name string, 
 	return 0
 }
 
-// withPendingCount arms the gauge callback that every server.New
-// registers, so collecting metrics never trips the stub's nil panic.
+// withPendingCount arms the gauge callback every server.New registers, avoiding the stub's nil panic.
 func withPendingCount(st *stubStore, n int64) *stubStore {
 	st.countAllPendingSubmissions = func(context.Context) (int64, error) { return n, nil }
 	return st
 }
 
-// TestUnitPricingComposeCounter pins the op per surface and the
-// ok/degraded outcome split, and that a degraded read still answers
-// 200 (the failure mode RED never shows).
+// TestUnitPricingComposeCounter pins the op-per-surface, ok/degraded split;
+// a degraded read still answers 200 (the failure mode RED never shows).
 func TestUnitPricingComposeCounter(t *testing.T) {
 	user := uuid.New()
 	productID := uuid.New()
@@ -120,9 +108,7 @@ func TestUnitPricingComposeCounter(t *testing.T) {
 			}}
 		}},
 		{"list", "/entries", func() *stubStore {
-			return &stubStore{listEntries: func(context.Context, uuid.UUID, store.Filters) ([]store.Entry, error) {
-				return []store.Entry{entry}, nil
-			}}
+			return pagedStub([]store.Entry{entry})
 		}},
 		{"dashboard", "/dashboard", func() *stubStore {
 			return dashboardStore(user, []store.PricingRow{row})
@@ -169,8 +155,7 @@ func TestUnitPricingComposeCounter(t *testing.T) {
 	}
 }
 
-// TestUnitPricingComposeCounter_SkipsWhenNothingPriced pins the ratio
-// hygiene: a read that never calls enrichment must not increment.
+// TestUnitPricingComposeCounter_SkipsWhenNothingPriced: a read that never calls enrichment must not increment.
 func TestUnitPricingComposeCounter_SkipsWhenNothingPriced(t *testing.T) {
 	reader := metrictest.Install(t)
 	disabled := store.Entry{ID: uuid.New(), ItemType: "game", MediaType: "physical",
@@ -243,8 +228,7 @@ func TestUnitCacheLookupAndFailOpenCounters(t *testing.T) {
 			attribute.String("cache", "dashboard"), attribute.String("outcome", "miss")); v != 1 {
 			t.Fatalf("errored lookup must count a miss, got %d", v)
 		}
-		// The GET failed open, the recompute succeeded, and the write
-		// failed open too.
+		// The GET failed open, the recompute succeeded, and the write failed open too.
 		for _, op := range []string{"dashboard_get", "dashboard_put"} {
 			if v := counterValue(t, got, "vg.collection.cache.fail_open", attribute.String("op", op)); v != 1 {
 				t.Fatalf("%s fail-open = %d, want 1", op, v)
@@ -421,24 +405,19 @@ func TestUnitPendingSubmissionsGauge(t *testing.T) {
 	})
 }
 
-// TestUnitRematchMetrics pins the entry rematch's three domain
-// instruments: one triples point per outcome (ok: nothing pending or
-// the triple's resolve succeeded; failed: a member fetch or resolve
-// error), one repoints increment per entry actually repointed, and a
-// duration series that exports once the CAS-gated, now-detached run
-// completes. The trigger answers 202 immediately, so the duration
-// histogram gaining its one point (recorded last, deferred) is the
-// external proof the run has fully finished; every other assertion
-// below only runs once that is true.
+// TestUnitRematchMetrics pins three domain instruments: one triples point per
+// outcome (ok: nothing pending or resolved; failed: fetch/resolve error), one
+// repoints increment per entry actually repointed, and a duration point once
+// the detached run completes. The trigger answers 202 immediately, so the
+// duration histogram's one point (recorded last) is the external proof the run finished.
 func TestUnitRematchMetrics(t *testing.T) {
 	reader := metrictest.Install(t)
 	productBase := uuid.New()
 	productJP := uuid.New()
 	entryOK, entryFail := uuid.New(), uuid.New()
 
-	// Base class is region-correct for neither triple below, so both
-	// land on the resolve leg; ntsc_j succeeds (repoints), pal fails
-	// (the resolve stub errors on it).
+	// Base class is region-correct for neither triple, so both land on the resolve
+	// leg; ntsc_j succeeds (repoints), pal fails (resolve stub errors).
 	baseMember := pricedGameProduct(productBase, "Super Nintendo")
 	jpMember := pricedGameProduct(productJP, "Super Famicom")
 
@@ -499,19 +478,15 @@ func TestUnitRematchMetrics(t *testing.T) {
 	if len(hist.DataPoints) != 1 {
 		t.Fatalf("duration points = %d, want exactly one (the single completed run)", len(hist.DataPoints))
 	}
-	// Widened like enrichment's refresh.step_duration: the SDK defaults
-	// top out at 10s and would flatten a multi-minute run into the last
-	// bucket.
+	// Widened like enrichment's refresh.step_duration: SDK default buckets
+	// top out at 10s and would flatten a multi-minute run into the last bucket.
 	if want := []float64{1, 5, 15, 60, 300, 900, 1800}; !slices.Equal(hist.DataPoints[0].Bounds, want) {
 		t.Fatalf("duration bounds = %v, want %v", hist.DataPoints[0].Bounds, want)
 	}
 }
 
-// TestUnitRematchMetrics_MemberFetchFailureCountsFailedTriple pins
-// that a member-fetch failure (not just a resolve failure -
-// TestUnitRematchMetrics's own pal triple) also counts its triple
-// against triples{outcome=failed}: two triples, one healthy and one
-// whose sole member fetch errors, land ok==1 and failed==1.
+// TestUnitRematchMetrics_MemberFetchFailureCountsFailedTriple: a member-fetch
+// failure (not just resolve) also counts triples{outcome=failed}; ok==1, failed==1.
 func TestUnitRematchMetrics_MemberFetchFailureCountsFailedTriple(t *testing.T) {
 	reader := metrictest.Install(t)
 	productOK := uuid.New()
@@ -567,14 +542,10 @@ func TestUnitRematchMetrics_MemberFetchFailureCountsFailedTriple(t *testing.T) {
 	}
 }
 
-// TestUnitRematchMetrics_ConflictNeverRecordsDuration pins that a
-// 409-refused overlapping trigger never runs, so it must never emit a
-// duration point either (only a CAS-won run does): one completed run
-// plus one concurrent 409 must still export exactly one duration
-// point, not two. The trigger itself answers 202 immediately (the CAS
-// happens before the detach), so the first request no longer blocks -
-// the second (409-refused) trigger only needs to land while the
-// detached sweep is still inside listAutoGameRematchRefs.
+// TestUnitRematchMetrics_ConflictNeverRecordsDuration: a 409-refused trigger
+// never runs, so one completed run plus one concurrent 409 must still export
+// exactly one duration point. The CAS happens before the detach (202
+// immediately), so the second trigger only needs to land inside listAutoGameRematchRefs.
 func TestUnitRematchMetrics_ConflictNeverRecordsDuration(t *testing.T) {
 	reader := metrictest.Install(t)
 	release := make(chan struct{})
@@ -600,8 +571,7 @@ func TestUnitRematchMetrics_ConflictNeverRecordsDuration(t *testing.T) {
 	}
 	close(release)
 
-	// The duration histogram records last (deferred), so waiting for
-	// its one point proves the detached run has fully finished.
+	// The duration histogram records last (deferred), proving the detached run finished.
 	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		m, ok := collectDomainMetrics(t, reader)["vg.collection.rematch.duration"]
 		if !ok {
@@ -625,14 +595,10 @@ func TestUnitRematchMetrics_ConflictNeverRecordsDuration(t *testing.T) {
 	}
 }
 
-// TestUnitRematchMetrics_ResolvedSameIdSkipsRepoint pins the
-// no-in-region-listing convergence case: when the resolve leg's only
-// candidate for the triple is the very same member the entry already
-// sits on (resolved.Id == ref.ProductID), the repoint is a would-be
-// no-op and must never be written. Proven against a row a real
-// repoint would mutate - product_id, updated_at, and the ack stamp
-// RepointEntry always clears - seeded so a wrongly fired repoint
-// would visibly change all three.
+// TestUnitRematchMetrics_ResolvedSameIdSkipsRepoint: when the resolve leg's
+// only candidate equals the entry's current member (resolved.Id ==
+// ref.ProductID), the repoint is a no-op and must never write. Seeded with
+// values RepointEntry always changes, so a wrongly fired repoint would show.
 func TestUnitRematchMetrics_ResolvedSameIdSkipsRepoint(t *testing.T) {
 	reader := metrictest.Install(t)
 	productUnmatched := uuid.New()
@@ -659,9 +625,8 @@ func TestUnitRematchMetrics_ResolvedSameIdSkipsRepoint(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 			repointCalls++
-			// A real repoint would land exactly these three changes; wiring
-			// them here means a wrongly fired call is caught below even if
-			// the call-count assertion were ever weakened.
+			// A real repoint would land exactly these three changes; wiring them here
+			// catches a wrongly fired call even if the call-count assertion weakens.
 			row.productID = productID
 			row.updatedAt = time.Now().UTC()
 			row.ackAt = nil
@@ -704,10 +669,8 @@ func TestUnitRematchMetrics_ResolvedSameIdSkipsRepoint(t *testing.T) {
 		t.Fatalf("the skip must leave the row untouched: %+v", row)
 	}
 	metrics := collectDomainMetrics(t, reader)
-	// A never-incremented counter exports no series at all (the same
-	// posture TestUnitPricingComposeCounter_SkipsWhenNothingPriced
-	// pins), so the repoints count for this run is the metric's
-	// absence, not a zero-valued point.
+	// A never-incremented counter exports no series at all, so this run's repoints
+	// count is the metric's absence, not a zero-valued point.
 	if _, ok := metrics["vg.collection.rematch.repoints"]; ok {
 		t.Fatal("the skipped repoint must not export a repoints count")
 	}
@@ -718,9 +681,8 @@ func TestUnitRematchMetrics_ResolvedSameIdSkipsRepoint(t *testing.T) {
 
 // ---- normalize levers ----
 
-// TestUnitNormalizePlatformsCounter pins the normalize-platforms
-// sweep's outcome counter: a matched free-text platform is normalized,
-// an unmatched one is skipped.
+// TestUnitNormalizePlatformsCounter pins the outcome counter: a matched
+// free-text platform is normalized, an unmatched one is skipped.
 func TestUnitNormalizePlatformsCounter(t *testing.T) {
 	reader := metrictest.Install(t)
 	matched, unmatched := uuid.New(), uuid.New()
@@ -753,9 +715,8 @@ func TestUnitNormalizePlatformsCounter(t *testing.T) {
 	}
 }
 
-// TestUnitNormalizeRegionsCounter pins the normalize-regions sweep's
-// outcome counter: a matched free-text region is normalized, one with
-// no reviewed synonym is skipped.
+// TestUnitNormalizeRegionsCounter pins the outcome counter: a matched
+// free-text region is normalized, one with no reviewed synonym is skipped.
 func TestUnitNormalizeRegionsCounter(t *testing.T) {
 	reader := metrictest.Install(t)
 	matched, unmatched := uuid.New(), uuid.New()
@@ -783,13 +744,9 @@ func TestUnitNormalizeRegionsCounter(t *testing.T) {
 	}
 }
 
-// TestUnitNormalizeRegionsCounter_WriteFailure mirrors enrichment's
-// TestUnitTelemetry_NormalizeCommunityRegions write-failure case: a
-// promotable non-igdb region whose store write errors counts only in
-// the failed metric outcome - PromoteEntryRegion's error path never
-// increments the response's own normalized or skipped counters (see
-// InternalNormalizeRegions), so a write failure is the one way scanned
-// can outrun their sum.
+// TestUnitNormalizeRegionsCounter_WriteFailure: a promotable region whose
+// store write errors counts only in the failed metric outcome, since
+// PromoteEntryRegion's error path never increments normalized or skipped.
 func TestUnitNormalizeRegionsCounter_WriteFailure(t *testing.T) {
 	reader := metrictest.Install(t)
 	failing := uuid.New()
@@ -814,9 +771,8 @@ func TestUnitNormalizeRegionsCounter_WriteFailure(t *testing.T) {
 	if counts["scanned"] != 1 || counts["normalized"] != 0 || counts["skipped"] != 0 {
 		t.Fatalf("counts = %+v, want scanned 1 normalized 0 skipped 0", counts)
 	}
-	// The write failure lands in neither counter, so scanned outruns
-	// their sum - a caller must not read {normalized+skipped==scanned}
-	// as proof every scanned row was fully accounted for.
+	// The write failure lands in neither counter, so scanned outruns their sum;
+	// {normalized+skipped==scanned} is not proof every row was accounted for.
 	if counts["scanned"] <= counts["normalized"]+counts["skipped"] {
 		t.Fatalf("scanned (%d) must exceed normalized+skipped (%d) when a write fails", counts["scanned"], counts["normalized"]+counts["skipped"])
 	}
@@ -828,8 +784,7 @@ func TestUnitNormalizeRegionsCounter_WriteFailure(t *testing.T) {
 }
 
 // stubErrMeterProvider hands out a meter that refuses every counter
-// registration this service performs; the noop embeds satisfy the
-// rest of the interfaces.
+// registration; the noop embeds satisfy the rest of the interfaces.
 type stubErrMeterProvider struct{ noop.MeterProvider }
 
 func (stubErrMeterProvider) Meter(string, ...metric.MeterOption) metric.Meter {
@@ -842,13 +797,9 @@ func (stubErrMeter) Int64Counter(string, ...metric.Int64CounterOption) (metric.I
 	return nil, errors.New("registration refused")
 }
 
-// TestUnitNew_NilLoggerDoesNotPanic pins the constructor's
-// tolerate-nil idiom (shared across services): a caller that leaves
-// Options.Logger nil must not crash New, whose counter registration
-// otherwise logs straight through it. Every registration is forced to
-// fail (a nil store also skips the pending-submissions gauge), so New
-// actually reaches opts.Logger.Error; without the nil-logger guard
-// this call would panic on the nil receiver.
+// TestUnitNew_NilLoggerDoesNotPanic: a nil Options.Logger must not crash New.
+// Every registration is forced to fail (nil store also skips the
+// pending-submissions gauge) so New actually reaches opts.Logger.Error.
 func TestUnitNew_NilLoggerDoesNotPanic(t *testing.T) {
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(stubErrMeterProvider{})
@@ -862,8 +813,7 @@ func TestUnitNew_NilLoggerDoesNotPanic(t *testing.T) {
 
 // ---- log additions ----
 
-// syncBuffer is a mutex-guarded buffer: handler goroutines write log
-// lines while the test goroutine reads them back.
+// syncBuffer is a mutex-guarded buffer: handler goroutines write while the test goroutine reads.
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -919,8 +869,7 @@ func newLoggedServer(t *testing.T, st server.Store, enrich server.Enrichment, c 
 	return srv, a, buf
 }
 
-// TestUnitInternalErrorLogCarriesCause pins the shared 500 helper: the
-// problem body stays generic while the log line carries the cause.
+// TestUnitInternalErrorLogCarriesCause: the problem body stays generic while the log line carries the cause.
 func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 	boom := errors.New("pg exploded")
 	st := &stubStore{getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) {
@@ -930,13 +879,13 @@ func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 	resp := do(t, http.MethodGet, srv.URL+"/entries/"+uuid.NewString(), a.token(t, uuid.NewString()), nil)
 	wantProblem(t, resp, http.StatusInternalServerError, "internal")
 
-	line := findLine(buf.lines(t), "store error")
+	line := findLine(buf.lines(t), "handler error")
 	if line == nil {
-		t.Fatal("no store error log line")
+		t.Fatal("no handler error log line")
 	}
 	if line["level"] != "ERROR" || line["op"] != "get_entry" ||
 		!strings.Contains(fmt.Sprint(line["err"]), "pg exploded") {
-		t.Fatalf("store error line: %v", line)
+		t.Fatalf("handler error line: %v", line)
 	}
 }
 
@@ -992,9 +941,8 @@ func TestUnitSubmissionCreatedAndCapLogs(t *testing.T) {
 	}
 }
 
-// TestUnitSubmissionVerdictLogs pins the admin audit trail: reject
-// logs the action without a product, approvals name the adopted
-// product and the arm that chose it.
+// TestUnitSubmissionVerdictLogs pins the admin audit trail: reject logs the
+// action without a product; approvals name the adopted product and choosing arm.
 func TestUnitSubmissionVerdictLogs(t *testing.T) {
 	subID := uuid.New()
 	userID := uuid.New()
@@ -1059,9 +1007,8 @@ func TestUnitSubmissionVerdictLogs(t *testing.T) {
 	}
 }
 
-// TestUnitLeverCompletionLogs pins the durable outcome lines all
-// three internal levers write before (resnapshot, normalize-platforms)
-// or after (the now-detached rematch) answering.
+// TestUnitLeverCompletionLogs pins the durable outcome lines all three
+// internal levers write, before or after (the detached rematch) answering.
 func TestUnitLeverCompletionLogs(t *testing.T) {
 	st := withPendingCount(&stubStore{
 		listGameBackedRefs:          func(context.Context) ([]store.GameEntryRef, error) { return nil, nil },
@@ -1084,9 +1031,8 @@ func TestUnitLeverCompletionLogs(t *testing.T) {
 		t.Fatalf("rematch-entries: %d, want 202 (the sweep now detaches)", resp.StatusCode)
 	}
 
-	// resnapshot and normalize-platforms are still synchronous, so
-	// their lines are already in buf; the rematch's completion line
-	// lands only once its detached sweep finishes.
+	// resnapshot and normalize-platforms are synchronous, so their lines are
+	// already in buf; the rematch's line lands once its detached sweep finishes.
 	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		return findLine(buf.lines(t), "rematch-entries complete") != nil
 	})

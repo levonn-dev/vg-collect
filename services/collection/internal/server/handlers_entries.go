@@ -23,23 +23,16 @@ import (
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-// validPackaging, validCondition, validStatus, and validItemType check
-// enum membership for the stored-view filter doc in
-// handlers_shelves.go, which erases the wire type before its tolerant
-// parse runs (specval's request-schema validation owns enum
-// membership on every live request field; this is the ONE place that
-// still needs a plain-string check, since a stored view's params blob
-// predates today's contract and is never itself request input). Each
-// wraps the shared vocabulary type's generated Valid() method instead
-// of hand-retyping the allow list.
+// validPackaging, validCondition, validStatus, and validItemType check enum
+// membership for the stored-view filter doc: the one place still needing a
+// plain-string check, since a stored view's params blob predates the contract.
 func validPackaging(s string) bool { return common.Packaging(s).Valid() }
 func validCondition(s string) bool { return common.ItemCondition(s).Valid() }
 func validStatus(s string) bool    { return common.EntryStatus(s).Valid() }
 func validItemType(s string) bool  { return common.ItemType(s).Valid() }
 
-// entryInput is the shared mutable field set of the create and update
-// bodies, unwrapped to plain values (defaults applied) so one
-// validator serves both operations.
+// entryInput is the shared mutable field set of the create and update bodies,
+// unwrapped to plain values so one validator serves both.
 type entryInput struct {
 	Region                     string
 	Edition                    *string
@@ -148,18 +141,9 @@ func updateInput(b api.EntryUpdate) entryInput {
 	}
 }
 
-// validateEntryInput enforces the cross-field and conditional-
-// requirement rules the contract cannot express as flat request
-// schema (specval owns every single-field keyword check on the live
-// request: required, enum, maxLength/maxItems, numeric range, and the
-// currency pattern); a non-empty return is the 400 detail.
-//
-// region's blank-after-trim guard is the one exception: the spec
-// declares region's maxLength but not a minLength (there is no plain
-// JSON Schema keyword for "not just whitespace"), so a whitespace-only
-// region would otherwise pass validation untouched. Tag names, view
-// names, and the community product name have the identical gap
-// (minLength:1 catches a literal empty string but not "   ").
+// validateEntryInput enforces cross-field rules specval's flat schema checks
+// can't; a non-empty return is the 400 detail. region's blank-after-trim guard
+// covers JSON Schema's missing not-blank keyword (tag/view/community-product names share the gap).
 func validateEntryInput(in entryInput) string {
 	if strings.TrimSpace(in.Region) == "" {
 		return "region must not be empty"
@@ -211,9 +195,8 @@ func applyInput(e *store.Entry, in entryInput) {
 	e.Pinned = in.Pinned
 }
 
-// effectiveProductID resolves which product prices an entry: its own
-// (auto; product-backed entries only), the override (proxy), or none
-// (disabled).
+// effectiveProductID resolves which product prices an entry: its own (auto),
+// the override (proxy), or none (disabled).
 func effectiveProductID(mode string, productID *uuid.UUID, pricingProductID *uuid.UUID) *uuid.UUID {
 	switch mode {
 	case "auto":
@@ -334,14 +317,9 @@ func (h *Handlers) invalidateDashboard(ctx context.Context, userID uuid.UUID) {
 	}
 }
 
-// validateCustomFields enforces the either/or between product-backed
-// and custom creation bodies, and custom's own conditional
-// requirements; a non-empty return is the 400 detail. The length/enum
-// keyword checks on these fields (display_name maxLength, item_type
-// enum, platform_name maxLength, cover_url shape) are the contract's
-// job; display_name and platform_name keep their blank-after-trim
-// guard (see validateEntryInput's region comment - minLength alone
-// cannot catch a whitespace-only value).
+// validateCustomFields enforces the either/or between product-backed and
+// custom bodies, plus custom's own conditional requirements; a non-empty
+// return is the 400 detail (blank-after-trim guard per validateEntryInput).
 func validateCustomFields(body api.EntryCreate) string {
 	if body.ProductId != nil {
 		if body.DisplayName != nil || body.ItemType != nil || body.PlatformName != nil ||
@@ -365,12 +343,9 @@ func validateCustomFields(body api.EntryCreate) string {
 	return ""
 }
 
-// CreateEntry adds an entry. Product-backed: catalog facts are
-// snapshotted from the enrichment product (the source of truth; the
-// client never supplies them) - the one operation with a hard
-// enrichment dependency. Custom (no product_id): the user supplies
-// the display facts for an off-catalog item; pricing defaults to
-// disabled and may proxy any catalog product as its price source.
+// CreateEntry adds an entry. Product-backed: catalog facts snapshot from the
+// enrichment product, this create's one hard enrichment dependency. Custom (no
+// product_id): user-supplied display facts, pricing defaults disabled, optionally proxied.
 func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 	userID, bearer, ok := h.caller(w, r)
 	if !ok {
@@ -479,6 +454,7 @@ func (h *Handlers) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.invalidateDashboard(r.Context(), userID)
+	w.Header().Set("Location", "/entries/"+created.ID.String())
 	h.respondEntry(w, r, bearer, created, http.StatusCreated)
 }
 
@@ -500,10 +476,9 @@ func (h *Handlers) GetEntry(w http.ResponseWriter, r *http.Request, entryId open
 	h.respondEntry(w, r, bearer, e, http.StatusOK)
 }
 
-// UpdateEntry replaces the mutable state (the edit form submits the
-// whole entry; absent optional fields clear). media_type and the
-// catalog snapshot are immutable; product_id accepts only the narrow
-// re-match documented on EntryUpdate.
+// UpdateEntry replaces the mutable state; absent optional fields clear.
+// media_type and the catalog snapshot are immutable; product_id accepts only
+// the narrow re-match documented on EntryUpdate.
 func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
 	userID, bearer, ok := h.caller(w, r)
 	if !ok {
@@ -529,9 +504,7 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		return
 	}
 
-	// Custom entries own their display fields (full replacement, like
-	// every mutable field); product-backed entries must not touch the
-	// catalog snapshot.
+	// Custom entries own their display fields; product-backed entries must not touch the catalog snapshot.
 	custom := current.ProductID == nil
 	if !custom && (body.DisplayName != nil || body.PlatformName != nil || body.FirstReleaseDate != nil ||
 		body.CoverUrl != nil || body.PlatformIgdbId != nil || body.Developers != nil || body.Publishers != nil) {
@@ -547,11 +520,8 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 			problem(w, r, http.StatusBadRequest, "invalid_body", "platform_name must not be blank")
 			return
 		}
-		// Full replacement: platform_igdb_id with no usable
-		// platform_name IN THIS BODY is invalid regardless of the
-		// current row - a nil body.PlatformName would clear the name
-		// while keeping the id, tripping the DB's platform pairing
-		// CHECK.
+		// Full replacement: platform_igdb_id needs platform_name in THIS body,
+		// or a nil body.PlatformName clears the name while keeping the id.
 		if body.PlatformIgdbId != nil && (body.PlatformName == nil || strings.TrimSpace(*body.PlatformName) == "") {
 			problem(w, r, http.StatusBadRequest, "invalid_body", "platform_igdb_id requires platform_name")
 			return
@@ -562,19 +532,13 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		}
 	}
 
-	// The snapshotted date and the localized presentation are both
-	// region-scoped: a repoint or a region change re-picks them from
-	// the product. Game-backed entries only - hardware has no igdb
-	// block, and a console's region edit must not depend on enrichment
-	// being up.
+	// Date and localized presentation are region-scoped: a repoint or region
+	// change re-picks them. Game-backed only; hardware has no igdb block.
 	var pickProd *enrichapi.Product
 
-	// Narrow re-match: product_id may move an auto-priced entry off an
-	// unmatched game product onto a product of the same family (same
-	// igdb game and platform). Anything else is invalid_product_change;
-	// the same id as stored is a no-op so full-state resends stay
-	// idempotent. Snapshotted display fields stay: the family shares
-	// name, platform, and cover.
+	// Narrow re-match: product_id may move an unmatched auto-priced entry onto
+	// the same igdb game+platform family; anything else is invalid_product_change.
+	// Stored id is a no-op (idempotent resends); display fields stay unchanged.
 	repoint := false
 	if body.ProductId != nil {
 		if custom {
@@ -620,24 +584,16 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		pickProd = &newProd
 	}
 
-	// A region-only change (no explicit repoint) still needs a fresh
-	// pick: the same product's dates and localized presentation are
-	// keyed by region. Game-backed only - current.IGDBGameID is nil for
-	// hardware and for any product-backed entry with no igdb block.
-	// Auto-priced entries additionally follow their region to the
-	// region-correct sibling member (the listing is game identity, so a
-	// JP copy's price is a different member): guarded by the console
-	// class so a deliberate in-region manual pick is never re-resolved
-	// away, class-compatible members skip the resolve hop, and
-	// current.MatchProvenance == "auto" below additionally fences off a
-	// cross-class pick the user made by hand (the class guard alone
-	// would not stop that case).
+	// A region-only change still needs a fresh pick (dates/localized form are
+	// region-keyed; game-backed only, IGDBGameID nil otherwise). Auto-priced
+	// entries also follow region to the region-correct sibling member, guarded
+	// by console class (a manual in-region pick is never re-resolved) and
+	// MatchProvenance == "auto" (fences off a hand-made cross-class pick).
 	var regionRepoint *uuid.UUID
 	if pickProd == nil && current.ProductID != nil && current.IGDBGameID != nil && in.Region != current.Region {
 		prod, err := h.enrichment.GetProduct(r.Context(), bearer, *current.ProductID)
 		if err != nil {
-			// Products are never deleted, so any failure here reads as
-			// an availability problem, same as the repoint arm.
+			// Products are never deleted, so any failure here is an availability problem.
 			problem(w, r, http.StatusBadGateway, "enrichment_unavailable", "the catalog cannot be reached")
 			return
 		}
@@ -659,13 +615,9 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 		}
 	}
 
-	// A NEW proxy reference must exist in the catalog; proxying to the
-	// entry's own product needs no round-trip (a product-backed entry's
-	// product_id is already known-good). Otherwise, re-validate unless
-	// the stored state is already an active proxy at this target
-	// (validated when that was set) - switching INTO proxy mode always
-	// validates, even if some earlier, never-validated
-	// pricing_product_id happens to match the new one.
+	// A new proxy reference must exist in the catalog; the entry's own product
+	// needs no round-trip. Otherwise re-validate unless already an active proxy
+	// at this target; switching INTO proxy always validates, even on a stale id match.
 	var proxyTarget *enrichapi.Product
 	if in.PricingMode == "proxy" && in.PricingProductID != nil &&
 		(current.ProductID == nil || *in.PricingProductID != *current.ProductID) &&
@@ -683,11 +635,8 @@ func (h *Handlers) UpdateEntry(w http.ResponseWriter, r *http.Request, entryId o
 	}
 
 	e := current
-	// MatchProvenance survives via this struct copy: applyInput and
-	// every arm below leave it alone except the narrow re-match, which
-	// stamps "user" explicitly. TestUpdateEntry_PlainEditPreservesProvenance
-	// pins a plain edit, a display re-pick, and an automated region
-	// repoint all leaving it untouched.
+	// MatchProvenance survives via this struct copy; only the narrow re-match
+	// stamps "user" explicitly, every other arm leaves it untouched.
 	applyInput(&e, in)
 	if repoint {
 		e.ProductID = body.ProductId
@@ -764,11 +713,9 @@ func (h *Handlers) DeleteEntry(w http.ResponseWriter, r *http.Request, entryId o
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// AckEntryRegionMismatch dismisses the region-mismatch banner for the
-// entry's current (region, product_id) choice. Same ownership shape
-// as DeleteEntry: the store's WHERE scopes to the caller, so a
-// foreign or missing entry both surface as 404. Never touches the
-// dashboard cache - the ack changes no aggregated field.
+// AckEntryRegionMismatch dismisses the region-mismatch banner for the entry's
+// current (region, product_id) choice. Same ownership shape as DeleteEntry: a
+// foreign or missing entry both surface as 404. Never touches the dashboard cache.
 func (h *Handlers) AckEntryRegionMismatch(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
 	userID, _, ok := h.caller(w, r)
 	if !ok {
@@ -825,18 +772,12 @@ func (h *Handlers) ReorderEntry(w http.ResponseWriter, r *http.Request, entryId 
 	h.respondEntry(w, r, bearer, moved, http.StatusOK)
 }
 
-// bulkTagArrayCap mirrors the per-entry tag ceiling
-// store.BulkUpdateEntries enforces after the write (store's own
-// entryTagCap) - the same number as add_tag_ids/remove_tag_ids'
-// contract maxItems by design, referenced here for the
-// tag_cap_exceeded message.
+// bulkTagArrayCap mirrors store.BulkUpdateEntries' entryTagCap and the
+// contract's maxItems by design; used for the tag_cap_exceeded message.
 const bulkTagArrayCap = 50
 
-// validateBulkUpdate enforces the one rule the contract cannot: at
-// least one action must be present (array bounds, enum membership,
-// and storage_location's length are specval's job, since they are
-// flat request-schema keywords); a non-empty return is the 400
-// detail.
+// validateBulkUpdate enforces the one rule specval can't: at least one action
+// must be present; a non-empty return is the 400 detail.
 func validateBulkUpdate(body api.BulkUpdateRequest) string {
 	if body.AddTagIds == nil && body.RemoveTagIds == nil && body.Status == nil && body.StorageLocation == nil {
 		return "at least one of add_tag_ids, remove_tag_ids, status, storage_location is required"
@@ -844,12 +785,9 @@ func validateBulkUpdate(body api.BulkUpdateRequest) string {
 	return ""
 }
 
-// BulkUpdateEntries applies a batch of tag/status/storage-location
-// changes across the caller's own entries in one transaction
-// (entry_ids the caller does not own are silently excluded, same
-// ownership-filtering posture as tag attachment). See
-// validateBulkUpdate for the guard rules and store.BulkUpdateEntries
-// for the transaction shape, including the per-entry tag cap.
+// BulkUpdateEntries applies a batch of tag/status/storage-location changes
+// across the caller's own entries in one transaction; entry_ids the caller
+// doesn't own are silently excluded.
 func (h *Handlers) BulkUpdateEntries(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := h.caller(w, r)
 	if !ok {

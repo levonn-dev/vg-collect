@@ -18,11 +18,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/collection/migrations"
 )
 
-// newTestDB resets the shared pgtest container to an empty public
-// schema, so this package's from-scratch, partial-version, and
-// down/up-cycle migration steps always start on the same blank slate
-// the old per-test container gave them, whether or not another test in
-// this binary already ran.
+// newTestDB resets the shared pgtest container to an empty public schema so
+// migration steps always start from a blank slate, regardless of run order.
 func newTestDB(t *testing.T) string {
 	t.Helper()
 	ctx := context.Background()
@@ -112,8 +109,7 @@ func TestSchemaGuards(t *testing.T) {
 
 	// A well-formed backlog game with a rank passes.
 	ok(t, productID, "game", "auto", nil, "backlog", "n", int64(6), "SNES", int64(1000), false, nil, false, nil)
-	// A custom entry (no product) with disabled pricing passes; its
-	// platform may be a bare free-text name.
+	// A custom entry (no product) with disabled pricing and a free-text platform passes.
 	ok(t, nil, "game", "disabled", nil, "beaten", nil, nil, "Homebrew Handheld", nil, false, nil, false, nil)
 	// Backlog without a rank violates the rank invariant.
 	violates(t, productID, "game", "auto", nil, "backlog", nil, nil, nil, nil, false, nil, false, nil)
@@ -174,13 +170,8 @@ func TestSchemaGuards(t *testing.T) {
 	}
 }
 
-// TestSlugBackfillCollisionFree drives the schema to just before the
-// slug backfill (000009), seeds three same-user views whose derived
-// slugs collide across dedupe partitions in a way a single-pass
-// suffix pass cannot resolve ("Games", "Games!!!", "Games2" all fold
-// toward "games"/"games2"), then migrates up and checks the backfill
-// lands on unique, deterministic slugs instead of aborting the
-// CREATE UNIQUE INDEX.
+// TestSlugBackfillCollisionFree pins 000009: seeds views whose derived slugs
+// collide across dedupe partitions, then checks the backfill lands on unique slugs.
 func TestSlugBackfillCollisionFree(t *testing.T) {
 	url := newTestDB(t)
 	src, err := iofs.New(migrations.FS, ".")
@@ -244,12 +235,9 @@ func TestSlugBackfillCollisionFree(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("rows = %d, want 3", len(got))
 	}
-	// "Games" keeps its unsuffixed value (oldest, so it claims "games"
-	// first). "Games!!!" also folds to "games", loses the race, and
-	// claims "games2" - which is what "Games2" would have kept
-	// untouched under the old buggy single-pass dedupe. Since "Games2"
-	// is processed last and finds "games2" already claimed, it must
-	// itself probe to "games22". No two rows ever share a fold key.
+	// Games claims "games" unsuffixed (oldest). Games!!! also folds to "games",
+	// loses, and claims "games2" before Games2 arrives; Games2 then probes past
+	// "games2" to "games22". No two rows share a fold key.
 	want := []row{
 		{"Games", "Games", "games"},
 		{"Games!!!", "Games2", "games2"},
@@ -269,16 +257,9 @@ func TestSlugBackfillCollisionFree(t *testing.T) {
 	}
 }
 
-// TestSlugBackfillSuffixBoundaryMatchesAppDerivation pins the
-// dedupe-suffix clamp at its exact boundary: a name whose derived
-// slug is exactly 30 characters with an underscore at position 29
-// clamps (for the length-1 suffix "2") right at that underscore.
-// services/collection/internal/store/store_views.go's CreateView/UpdateView
-// slug dedupe always trims a trailing underscore a clamp exposes
-// before appending the suffix digit; the backfill must land on the
-// identical string ("...A2"), not the pre-fix "...A_2" - the fold is
-// the same either way, but the stored typed form would otherwise
-// diverge from what the app would have minted for the same input.
+// TestSlugBackfillSuffixBoundaryMatchesAppDerivation pins the clamp at a
+// 30-char slug with an underscore at position 29: after trimming, the
+// backfill must land on "...A2", matching store_views.go's dedupe exactly.
 func TestSlugBackfillSuffixBoundaryMatchesAppDerivation(t *testing.T) {
 	url := newTestDB(t)
 	src, err := iofs.New(migrations.FS, ".")
@@ -304,12 +285,8 @@ func TestSlugBackfillSuffixBoundaryMatchesAppDerivation(t *testing.T) {
 
 	const userID = "11111111-1111-1111-1111-111111111111"
 	base28A := strings.Repeat("A", 28)
-	// Two DISTINCT names (the per-user name uniqueness constraint
-	// forbids literal duplicates) that both derive to the identical
-	// 30-char slug "A...A_Z": name1's doubled underscore collapses to
-	// one in the symbol-run transform, landing on the same text as
-	// name2's single one. Both then clamp(29) exactly on that
-	// underscore.
+	// Distinct names (uniqueness forbids literal dupes) both derive the same
+	// 30-char slug: name1's doubled underscore collapses to match name2's single one.
 	name1 := base28A + "__Z"
 	name2 := base28A + "_Z"
 	const insert = `INSERT INTO saved_views (user_id, name, params, created_at)
@@ -318,9 +295,7 @@ func TestSlugBackfillSuffixBoundaryMatchesAppDerivation(t *testing.T) {
 	if _, err := conn.Exec(ctx, insert, userID, name1, base); err != nil {
 		t.Fatal(err)
 	}
-	// name2 derives the same 30-char slug as name1, so this row
-	// collides with row 1's claimed fold and must probe to a suffixed
-	// value.
+	// name2 derives the same slug as name1, so it collides and must probe to a suffixed value.
 	if _, err := conn.Exec(ctx, insert, userID, name2, base.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
@@ -360,10 +335,8 @@ func TestSlugBackfillSuffixBoundaryMatchesAppDerivation(t *testing.T) {
 	}
 }
 
-// TestEntryLocalizedColumns pins 000010: the region-picked
-// presentation trio lands as nullable text, so a region with no
-// localized presentation stores NULL and display falls back to the
-// canonical snapshot.
+// TestEntryLocalizedColumns pins 000010: the localized-presentation trio
+// lands as nullable text so a region with no localization stores NULL.
 func TestEntryLocalizedColumns(t *testing.T) {
 	url := newTestDB(t)
 	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
@@ -464,9 +437,8 @@ func TestCustomPricingConstraints(t *testing.T) {
 	wantCheck(insert("custom", &neg, &now))
 }
 
-// TestEntryRegionOpenWorld pins 000013: the region CHECK retires, so
-// a free-text value that is not one of the four known regions persists
-// exactly like a known one instead of tripping a 23514 violation.
+// TestEntryRegionOpenWorld pins 000013: a free-text region persists like a
+// known one instead of tripping a 23514 violation, since the CHECK retires.
 func TestEntryRegionOpenWorld(t *testing.T) {
 	url := newTestDB(t)
 	if err := pgkit.Migrate(url, migrations.FS, "."); err != nil {
@@ -488,13 +460,8 @@ func TestEntryRegionOpenWorld(t *testing.T) {
 	}
 }
 
-// TestEntryRegionOpenWorldDownRejects pins 000013's down migration as
-// a real rollback, not a documentation-only stub: stepping back to 12
-// must restore entries_region_check so the same free-text value
-// TestEntryRegionOpenWorld accepts is once again rejected, and
-// stepping back up to 13 must accept it again - proving the round
-// trip is clean rather than leaving some other guard silently doing
-// the down migration's job.
+// TestEntryRegionOpenWorldDownRejects: down to 12 restores entries_region_check
+// (free-text region rejected); back up to 13 accepts it again.
 func TestEntryRegionOpenWorldDownRejects(t *testing.T) {
 	url := newTestDB(t)
 	src, err := iofs.New(migrations.FS, ".")

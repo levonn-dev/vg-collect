@@ -9,6 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 )
 
 // TagRef is a tag as carried on an entry.
@@ -24,19 +26,14 @@ type Tag struct {
 	EntryCount int
 }
 
-// TagCap is the per-user distinct-tag ceiling that bounds CreateTag's
-// only otherwise-uncapped user-writable growth path. Exported so the
-// handler's cap-exceeded detail can name the same number without
-// duplicating the literal.
+// TagCap is the per-user distinct-tag ceiling on CreateTag's only otherwise-
+// uncapped growth path; exported so the handler's cap-exceeded detail can name the same number.
 const TagCap = 200
 
 // CreateTag creates a user-scoped tag; names are unique per user
-// case-insensitively (citext). Enforces TagCap distinct tags per
-// user, count-then-insert inside one transaction: not airtight
-// against a genuine race between two concurrent creates from the same
-// user (no explicit lock), the same best-effort shape as the social
-// service's own edge caps - the abuse case this closes (a user far
-// past a modest static ceiling) has no meaningful path through it.
+// case-insensitively (citext). Enforces TagCap via count-then-insert in one
+// transaction: not airtight against a genuine same-user race (no explicit
+// lock), the same best-effort shape as the social service's own edge caps.
 func (s *Store) CreateTag(ctx context.Context, userID uuid.UUID, name string) (Tag, error) {
 	var t Tag
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -74,7 +71,7 @@ func (s *Store) ListTags(ctx context.Context, userID uuid.UUID) ([]Tag, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: list tags: %w", err)
 	}
-	return scanAll(rows, []Tag{}, "", func(r pgx.Rows) (Tag, error) {
+	return pgkit.ScanAll(rows, []Tag{}, func(r pgx.Rows) (Tag, error) {
 		var t Tag
 		if err := r.Scan(&t.ID, &t.Name, &t.EntryCount); err != nil {
 			return Tag{}, fmt.Errorf("store: scan tag: %w", err)

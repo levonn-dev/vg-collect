@@ -122,13 +122,10 @@ func TestViews_SlugAndVisibility(t *testing.T) {
 	}
 }
 
-// TestUpdateView_UnchangedNameKeepsSlug guards the only-renames-break-
-// links promise: "Games", "Games!", and "Games?" all derive the same
-// base slug, so they dedupe to Games, Games2, and Games3. Deleting
-// Games! frees Games2. A later params/visibility-only save of Games?
-// must not re-derive and silently drop onto the now-free Games2 -
-// that would move Games? out from under anyone who already has its
-// Games3 link.
+// TestUpdateView_UnchangedNameKeepsSlug guards only-renames-break-links:
+// Games/Games!/Games? dedupe to Games/Games2/Games3. Deleting Games! frees
+// Games2; a later params/visibility-only save of Games? must not re-derive
+// onto the now-free Games2, which would move its Games3 link.
 func TestUpdateView_UnchangedNameKeepsSlug(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -189,9 +186,8 @@ func TestSeedDefaultViews(t *testing.T) {
 	if views[1].Name != "Full collection" || views[1].Slug != "Full_Collection" {
 		t.Fatalf("full = %+v", views[1])
 	}
-	// Re-seed inserts nothing while both defaults still exist: the
-	// ON CONFLICT DO NOTHING makes the second call a no-op, not a
-	// duplicate pair.
+	// Re-seed inserts nothing while both defaults still exist: ON CONFLICT DO
+	// NOTHING makes the second call a no-op, not a duplicate pair.
 	if err := s.SeedDefaultViews(ctx, user); err != nil {
 		t.Fatalf("re-seed: %v", err)
 	}
@@ -225,18 +221,15 @@ func TestListListedShelves_And_ByIDs(t *testing.T) {
 	}
 }
 
-// TestListListedShelves_OrderingAndPagination pins the two properties
-// ListListedShelves promises beyond simple owner filtering: newest
-// publish first (published_at DESC), and limit/offset windows that
-// tile the full ordered set without gaps or overlap.
+// TestListListedShelves_OrderingAndPagination pins two properties beyond owner
+// filtering: newest-publish-first, and limit/offset windows tiling the full set without gaps.
 func TestListListedShelves_OrderingAndPagination(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	owner := uuid.New()
 
-	// Staggered publish times: CreateView stamps published_at = now()
-	// at insert, so a short sleep between creates guarantees a strict
-	// order regardless of test-machine speed.
+	// Staggered publish times: CreateView stamps published_at=now() at insert,
+	// so a short sleep between creates guarantees strict order regardless of machine speed.
 	first, err := s.CreateView(ctx, owner, "First", []byte(`{"v":1}`), "listed")
 	if err != nil {
 		t.Fatalf("create first: %v", err)
@@ -264,9 +257,8 @@ func TestListListedShelves_OrderingAndPagination(t *testing.T) {
 		t.Fatalf("order = [%s %s %s], want [Third Second First]", all[0].Name, all[1].Name, all[2].Name)
 	}
 
-	// Page windows tile the ordered set: limit=2 offset=0 is the two
-	// newest; limit=2 offset=2 is the remaining oldest one; total_count
-	// stays the full 3 on every page.
+	// Page windows tile the ordered set: limit=2 offset=0 is the two newest,
+	// offset=2 the remaining oldest; total_count stays 3 on every page.
 	page1, total1, err := s.ListListedShelves(ctx, []uuid.UUID{owner}, 2, 0)
 	if err != nil {
 		t.Fatalf("page1: %v", err)
@@ -283,22 +275,16 @@ func TestListListedShelves_OrderingAndPagination(t *testing.T) {
 	}
 }
 
-// TestListListedShelves_Unfiltered pins the owner_ids-absent
-// contract (Explore-recent's read): a nil ownerIDs slice lists
-// listed shelves across EVERY owner, still excludes unlisted and
-// private rows, still orders newest-publish-first across owners,
-// and still paginates - the same properties
-// TestListListedShelves_OrderingAndPagination pins for the
-// owner-filtered call, now proven for the unfiltered one.
+// TestListListedShelves_Unfiltered pins the owner_ids-absent contract
+// (Explore-recent's read): nil ownerIDs lists across every owner, still
+// excludes unlisted/private, still orders newest-first, still paginates.
 func TestListListedShelves_Unfiltered(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	alice, bob := uuid.New(), uuid.New()
 
-	// Staggered publish times, same idiom as
-	// TestListListedShelves_OrderingAndPagination: CreateView stamps
-	// published_at = now() at insert, so a short sleep between
-	// creates guarantees a strict cross-owner order.
+	// Staggered publish times, same idiom as OrderingAndPagination: CreateView
+	// stamps published_at=now(), so a short sleep guarantees strict cross-owner order.
 	aFirst, err := s.CreateView(ctx, alice, "Alice First", []byte(`{"v":1}`), "listed")
 	if err != nil {
 		t.Fatalf("create alice first: %v", err)
@@ -320,9 +306,8 @@ func TestListListedShelves_Unfiltered(t *testing.T) {
 		t.Fatalf("create bob private: %v", err)
 	}
 
-	// nil ownerIDs: every listed shelf across both owners, newest
-	// publish first, unlisted and private excluded regardless of
-	// owner.
+	// nil ownerIDs: every listed shelf across both owners, newest first,
+	// unlisted/private excluded regardless of owner.
 	all, total, err := s.ListListedShelves(ctx, nil, 20, 0)
 	if err != nil {
 		t.Fatalf("list: %v", err)
@@ -335,9 +320,8 @@ func TestListListedShelves_Unfiltered(t *testing.T) {
 			all[0].Name, all[1].Name, all[2].Name)
 	}
 
-	// limit/offset still tile the unfiltered set: limit=2 offset=0 is
-	// the two newest; limit=2 offset=2 is the remaining oldest one;
-	// total_count stays the full 3 on every page.
+	// limit/offset still tile the unfiltered set: limit=2 offset=0 is the two
+	// newest, offset=2 the remaining oldest; total_count stays 3 on every page.
 	page1, total1, err := s.ListListedShelves(ctx, nil, 2, 0)
 	if err != nil {
 		t.Fatalf("page1: %v", err)

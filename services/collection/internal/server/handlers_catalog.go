@@ -12,10 +12,9 @@ import (
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-// pickReleaseDate resolves an entry's snapshotted date: the first
-// chain hit for its region among the product's per-region dates, else
-// the platform-level scalar. nil (nothing known) stores NULL, exactly
-// today's no-date behavior.
+// pickReleaseDate resolves an entry's snapshotted date: the first chain hit
+// for its region among per-region dates, else the platform-level scalar; nil
+// stores NULL, matching today's no-date behavior.
 func pickReleaseDate(meta *common.IgdbMeta, region string) *time.Time {
 	if meta == nil {
 		return nil
@@ -23,12 +22,9 @@ func pickReleaseDate(meta *common.IgdbMeta, region string) *time.Time {
 	if meta.ReleaseDates != nil {
 		byRegion := make(map[string]time.Time, len(*meta.ReleaseDates))
 		for _, rd := range *meta.ReleaseDates {
-			// Self-defense: keep the earliest date per region rather than
-			// whichever row happens to build last. Enrichment's own
-			// projection already guarantees one earliest-per-region row
-			// today (platformReleaseDates dedupes), but nothing here
-			// enforces that contract against a future producer emitting
-			// duplicate region rows.
+			// Self-defense: keeps the earliest date per region rather than whichever
+			// row builds last. Enrichment's projection dedupes to one earliest-per-region
+			// row today, but nothing here enforces that against a future duplicate-emitting producer.
 			if cur, ok := byRegion[string(rd.Region)]; !ok || rd.Date.Before(cur) {
 				byRegion[string(rd.Region)] = rd.Date.Time
 			}
@@ -42,9 +38,8 @@ func pickReleaseDate(meta *common.IgdbMeta, region string) *time.Time {
 	return dateToTime(meta.FirstReleaseDate)
 }
 
-// pickLocalization resolves an entry's region-picked presentation
-// from the product's localization bundles: nil fields mean "no
-// localized form" and display falls back to the canonical snapshot.
+// pickLocalization resolves an entry's region-picked presentation from the
+// product's localization bundles; nil fields fall back to the canonical snapshot.
 func pickLocalization(meta *common.IgdbMeta, region string) (name, translit, cover *string) {
 	if meta == nil || meta.Localizations == nil {
 		return nil, nil, nil
@@ -69,21 +64,16 @@ func pickLocalization(meta *common.IgdbMeta, region string) (name, translit, cov
 	return nil, nil, nil
 }
 
-// regionCorrectMember reports whether an entry region needs no
-// re-resolve against its product's current mapping: unmatched members
-// always re-resolve; matched ones only when the listing's console
-// class disagrees with the entry region's class. The class guard is
-// what protects a deliberate in-region manual pick (a hand-chosen JP
-// variant listing on an ntsc_j entry) from being swept away.
+// regionCorrectMember reports whether an entry needs no re-resolve: unmatched
+// members always re-resolve; matched ones only when console class disagrees
+// with the region's class, protecting a deliberate in-region manual pick (e.g. a JP variant on ntsc_j).
 func regionCorrectMember(prod *enrichapi.Product, region string) bool {
 	return prod.Pricecharting != nil && regionkit.ConsoleRegion(prod.Pricecharting.ConsoleName) == regionkit.RegionClass(region)
 }
 
-// catalogSnapshot derives the entry snapshot from a product. The
-// precedence rule: provider blocks (platform, igdb) win per-field
-// where present; community facts fill what providers do not supply.
-// Shared by product-backed creation (community-lane picks included)
-// and submission adoption.
+// catalogSnapshot derives the entry snapshot from a product: provider blocks
+// (platform, igdb) win per-field where present, community facts fill the rest.
+// Shared by product-backed creation and submission adoption.
 func catalogSnapshot(product enrichapi.Product, region string) store.CatalogSnapshot {
 	snap := store.CatalogSnapshot{
 		ProductID:   product.Id,
@@ -111,20 +101,17 @@ func catalogSnapshot(product enrichapi.Product, region string) store.CatalogSnap
 	if (snap.CoverURL == nil || *snap.CoverURL == "") && product.Platform != nil {
 		snap.CoverURL = product.Platform.LogoUrl
 	}
-	// A community product's own cover fills in when neither a provider
-	// cover nor a platform logo is present (per-field precedence, same
-	// as platform_name/first_release_date above).
+	// A community product's own cover fills in when neither a provider cover
+	// nor a platform logo is present (same per-field precedence as above).
 	if (snap.CoverURL == nil || *snap.CoverURL == "") && product.Community != nil && product.Community.CoverUrl != nil && *product.Community.CoverUrl != "" {
 		snap.CoverURL = product.Community.CoverUrl
 	}
 	return snap
 }
 
-// pickCredits derives the credit arrays: IGDB company credits split
-// by role in wire order where the product carries them, the community
-// block's curated lists filling per role where the provider left one
-// empty (the same per-field precedence as the cover chain above).
-// Credits are game identity, not region-scoped - no chain table.
+// pickCredits derives credit arrays: IGDB company credits split by role where
+// the product carries them, community curated lists filling gaps (same
+// precedence as the cover chain). Credits are game identity, not region-scoped.
 func pickCredits(product enrichapi.Product) (developers, publishers []string) {
 	if product.Igdb != nil {
 		for _, c := range product.Igdb.Companies {

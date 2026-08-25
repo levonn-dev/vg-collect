@@ -12,15 +12,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/rank"
 )
 
-// Entry is one physical copy. Nullable columns are pointers. A nil
-// ProductID marks a CUSTOM (off-catalog) entry whose display fields
-// are user-owned and editable; on product-backed entries they are
-// creation-time snapshots and UpdateEntry rewrites them with their
-// unchanged current values (product_id stays the live join key for
-// prices).
+// Entry is one physical copy; nullable columns are pointers. A nil ProductID
+// marks a custom (off-catalog) entry with user-owned display fields; on
+// product-backed entries they are creation-time snapshots, rewritten unchanged
+// by UpdateEntry (product_id stays the live join key for prices).
 type Entry struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
@@ -52,14 +51,13 @@ type Entry struct {
 	MatchProvenance  string
 	PricingProductID *uuid.UUID
 
-	// The custom-price pair; the DB CHECKs pair them and require the
-	// value under pricing_mode custom. set_at is computed in SQL.
+	// The custom-price pair; DB CHECKs pair them and require a value under
+	// pricing_mode custom (set_at is computed in SQL).
 	CustomValueCents *int64
 	CustomValueSetAt *time.Time
 
-	// The typed custom-price pair (display metadata; the DB CHECKs
-	// pair them). custom_value_cents stays the USD value all math
-	// uses.
+	// The typed custom-price pair (display metadata; DB CHECKs pair them).
+	// custom_value_cents stays the USD value all math uses.
 	CustomValueEnteredCents    *int64
 	CustomValueEnteredCurrency *string
 
@@ -74,25 +72,19 @@ type Entry struct {
 	ExternalRef *string
 	CoverURL    *string
 
-	// The region-picked presentation snapshot, derived from the
-	// product's localization bundles by the entry's region. All nil
-	// when the region has no localized form; display falls back to
-	// DisplayName / CoverURL.
+	// Region-picked presentation snapshot, derived from the product's
+	// localization bundles; all nil falls back to DisplayName/CoverURL.
 	LocalizedName         *string
 	LocalizedNameTranslit *string
 	LocalizedCoverURL     *string
 
-	// The credit snapshot (developer and publisher company names):
-	// IGDB company credits where the product carries them, the
-	// community block's curated lists as gap-fill, or the user's own
-	// facts on a custom entry. nil = no credits known.
+	// Credit snapshot (developers/publishers): IGDB credits, community curated
+	// lists as gap-fill, or user facts on customs; nil = unknown.
 	Developers []string
 	Publishers []string
 
-	// When the owner dismissed the region-mismatch banner for the
-	// entry's CURRENT (region, product_id) choice. UpdateEntry and
-	// RepointEntry clear it back to nil whenever either changes, so a
-	// new choice notifies once more.
+	// When the owner dismissed the region-mismatch banner for the entry's CURRENT
+	// (region, product_id) choice; UpdateEntry/RepointEntry clear it on either change.
 	RegionMismatchAckAt *time.Time
 
 	Tags []TagRef
@@ -101,8 +93,7 @@ type Entry struct {
 	UpdatedAt time.Time
 }
 
-// entryCols is the canonical SELECT/RETURNING list; scanEntry mirrors
-// its order exactly.
+// entryCols is the canonical SELECT/RETURNING list; scanEntry mirrors its order exactly.
 const entryCols = `id, user_id, product_id, item_type, media_type,
 	display_name, platform_igdb_id, platform_name, first_release_date, igdb_game_id,
 	region, edition, packaging, has_box, has_manual,
@@ -137,8 +128,7 @@ func scanEntry(row pgx.Row) (Entry, error) {
 	return e, err
 }
 
-// maxRank returns the user's highest backlog rank, or "" for an empty
-// backlog (the lower bound for an append-at-end).
+// maxRank returns the user's highest backlog rank, or "" for an empty backlog.
 func maxRank(ctx context.Context, q querier, userID uuid.UUID) (string, error) {
 	var r *string
 	err := q.QueryRow(ctx,
@@ -153,10 +143,8 @@ func maxRank(ctx context.Context, q querier, userID uuid.UUID) (string, error) {
 	return *r, nil
 }
 
-// replaceTags rewrites an entry's tag set. Ownership is validated by
-// the INSERT itself: selecting from the caller's tags means a foreign
-// or unknown id inserts nothing, and the count mismatch surfaces as
-// ErrTagNotFound.
+// replaceTags rewrites an entry's tag set; ownership is validated by the
+// INSERT itself, so a count mismatch surfaces as ErrTagNotFound.
 func replaceTags(ctx context.Context, q querier, userID, entryID uuid.UUID, tagIDs []uuid.UUID) error {
 	if _, err := q.Exec(ctx, `DELETE FROM entry_tags WHERE entry_id = $1`, entryID); err != nil {
 		return fmt.Errorf("store: clear tags: %w", err)
@@ -194,7 +182,7 @@ func loadTags(ctx context.Context, q querier, entryID uuid.UUID) ([]TagRef, erro
 	if err != nil {
 		return nil, fmt.Errorf("store: load tags: %w", err)
 	}
-	return scanAll(rows, []TagRef{}, "", func(r pgx.Rows) (TagRef, error) {
+	return pgkit.ScanAll(rows, []TagRef{}, func(r pgx.Rows) (TagRef, error) {
 		var t TagRef
 		if err := r.Scan(&t.ID, &t.Name); err != nil {
 			return TagRef{}, fmt.Errorf("store: scan tag: %w", err)
@@ -203,9 +191,8 @@ func loadTags(ctx context.Context, q querier, entryID uuid.UUID) ([]TagRef, erro
 	})
 }
 
-// CreateEntry inserts e for e.UserID, assigning an end-of-backlog rank
-// when it arrives in backlog status, and links the given tags. The
-// returned Entry carries the generated id, rank, tags, and timestamps.
+// CreateEntry inserts e for e.UserID, assigning an end-of-backlog rank when it
+// arrives in backlog status, and links the given tags.
 func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (Entry, error) {
 	var out Entry
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -253,12 +240,10 @@ func (s *Store) CreateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 			e.LocalizedName, e.LocalizedNameTranslit, e.LocalizedCoverURL,
 			e.CustomValueCents,
 			e.CustomValueEnteredCents, e.CustomValueEnteredCurrency,
-			// match_provenance and the credit arrays are appended here
-			// rather than placed beside pricing_mode and the localized
-			// trio, where entryCols lists them: inserting them there
-			// would renumber the placeholders already assigned above.
-			// The SELECT/RETURNING and INSERT column orders
-			// deliberately differ.
+			// match_provenance and the credit arrays are appended here, not beside
+			// pricing_mode/localized trio in entryCols, to avoid renumbering
+			// placeholders already assigned above; SELECT/RETURNING and INSERT
+			// orders deliberately differ.
 			e.MatchProvenance, e.Developers, e.Publishers)
 		created, err := scanEntry(row)
 		if err != nil {
@@ -299,13 +284,10 @@ func (s *Store) GetEntry(ctx context.Context, userID, id uuid.UUID) (Entry, erro
 	return e, nil
 }
 
-// UpdateEntry replaces the mutable state of the entry selected by
-// e.ID + e.UserID and rewrites its tag set. The display fields and
-// igdb_game_id ride along (the handler passes them unchanged for
-// product-backed entries; for customs they are user-edited, with the
-// game identity following the pricing proxy). Status transitions
-// manage the rank: entering backlog appends at the end, leaving
-// clears, staying keeps the position.
+// UpdateEntry replaces the mutable state of e.ID+e.UserID and rewrites its tag
+// set; display fields and igdb_game_id ride along unchanged for product-backed
+// entries (user-edited for customs). Status transitions manage the rank:
+// entering backlog appends, leaving clears, staying keeps position.
 func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (Entry, error) {
 	var out Entry
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -400,13 +382,10 @@ func (s *Store) UpdateEntry(ctx context.Context, e Entry, tagIDs []uuid.UUID) (E
 	return out, nil
 }
 
-// BulkActions is the delta a bulk-update applies across a batch of the
-// caller's own entries. A nil Status or StorageLocation leaves that
-// dimension untouched; a nil/empty AddTagIDs or RemoveTagIDs means no
-// tag change on that side. StorageLocation follows the bulk-update's
-// own clearing rule (a non-nil pointer to "" clears the column) -
-// the OPPOSITE of the full-replacement update, where an ABSENT field
-// clears.
+// BulkActions is the delta a bulk-update applies across the caller's entries.
+// A nil Status/StorageLocation or empty AddTagIDs/RemoveTagIDs leaves that
+// dimension untouched. StorageLocation clears via a non-nil pointer to "",
+// the OPPOSITE of full-replacement update's absent-field-clears rule.
 type BulkActions struct {
 	AddTagIDs       []uuid.UUID
 	RemoveTagIDs    []uuid.UUID
@@ -414,21 +393,15 @@ type BulkActions struct {
 	StorageLocation *string
 }
 
-// entryTagCap is the per-entry tag ceiling every tagging path
-// enforces (mirrors EntryCreate/EntryUpdate's tag_ids maxItems); the
-// bulk delta checks it explicitly here since it does not go through
-// replaceTags' full-replacement shape.
+// entryTagCap is the per-entry tag ceiling every tagging path enforces
+// (mirrors the contract's tag_ids maxItems); the bulk delta checks it
+// explicitly since it skips replaceTags' full-replacement shape.
 const entryTagCap = 50
 
-// bulkEnterBacklog is BulkUpdateEntries' status='backlog' arm. A flat
-// `SET status = 'backlog'` cannot stand alone: the entries table
-// CHECKs (status = 'backlog') = (backlog_rank IS NOT NULL), so every
-// entry newly entering needs a rank assigned in the SAME write that
-// flips its status. Entries already in backlog are left untouched
-// entirely (status and rank both already correct - "staying keeps
-// the position", same as UpdateEntry); entries newly entering append
-// at the end, oldest-created first among the batch, each strictly
-// after the last (rank.Between chained off the running max).
+// bulkEnterBacklog is BulkUpdateEntries' status='backlog' arm: a flat SET
+// fails CHECK (status='backlog') = (backlog_rank IS NOT NULL), so newly
+// entering entries get a rank in the same write, oldest-first, each strictly
+// after the last; already-backlog entries are left untouched.
 func bulkEnterBacklog(ctx context.Context, tx pgx.Tx, userID uuid.UUID, entryIDs []uuid.UUID) error {
 	rows, err := tx.Query(ctx, `
 		SELECT id FROM entries
@@ -474,22 +447,12 @@ func bulkEnterBacklog(ctx context.Context, tx pgx.Tx, userID uuid.UUID, entryIDs
 	return nil
 }
 
-// BulkUpdateEntries applies actions across the caller's own entries
-// named in entryIDs, in ONE transaction. entryIDs the caller does not
-// own are silently excluded from every write below (the same
-// ownership posture as tag attachment elsewhere in this file); a
-// foreign id in AddTagIDs/RemoveTagIDs matches nothing for the same
-// reason. If any targeted entry would end up holding more than
-// entryTagCap tags, the whole transaction rolls back with
-// ErrTagCapExceeded - a skipped-entry partial apply is never allowed.
-// Returns the count of entryIDs that are the caller's own, whether or
-// not any field they touch actually changed (idempotent re-runs
-// report the same count). A status change manages backlog_rank like
-// UpdateEntry does (entries table CHECKs status='backlog' exactly
-// when backlog_rank is set, so a bare status write cannot skip this):
-// entering backlog appends each newly-entering entry at the end
-// (oldest-created first among the batch); already-backlog entries
-// keep their position; leaving backlog clears it.
+// BulkUpdateEntries applies actions across entryIDs in ONE transaction;
+// entries/tag ids the caller doesn't own are silently excluded. Exceeding
+// entryTagCap on any targeted entry rolls back the whole transaction with
+// ErrTagCapExceeded, never a partial apply. Returns the count of the caller's
+// own entryIDs regardless of actual change (idempotent re-runs report the
+// same count). A status change manages backlog_rank like UpdateEntry.
 func (s *Store) BulkUpdateEntries(ctx context.Context, userID uuid.UUID, entryIDs []uuid.UUID, actions BulkActions) (int, error) {
 	var count int
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -563,12 +526,9 @@ func (s *Store) BulkUpdateEntries(ctx context.Context, userID uuid.UUID, entryID
 	return count, nil
 }
 
-// AckRegionMismatch stamps the acknowledgement time for the owner's
-// entry, for its current (region, product_id) choice. The ownership
-// WHERE doubles as the existence check, same shape as DeleteEntry;
-// every call restamps now() (no already-acked guard - the exact
-// moment carries no meaning beyond non-null, unlike a submission
-// verdict's acknowledgement).
+// AckRegionMismatch stamps the ack time for the owner's current (region,
+// product_id) choice; the ownership WHERE doubles as the existence check.
+// Every call restamps now() (no already-acked guard; the moment itself carries no meaning).
 func (s *Store) AckRegionMismatch(ctx context.Context, userID, entryID uuid.UUID) error {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE entries SET region_mismatch_ack_at = now(), updated_at = now()
@@ -595,10 +555,8 @@ func (s *Store) DeleteEntry(ctx context.Context, userID, id uuid.UUID) error {
 	return nil
 }
 
-// Reorder moves a backlog entry between two neighbors (either may be
-// nil at a list edge). The entry and neighbors are locked in one
-// deterministic-order statement; the neighbors' ranks must straddle,
-// otherwise the drag was against a list that has moved.
+// Reorder moves a backlog entry between two neighbors (nil at a list edge),
+// locked in one deterministic-order statement; ranks must straddle, or the drag was against a stale list.
 func (s *Store) Reorder(ctx context.Context, userID, entryID uuid.UUID, afterID, beforeID *uuid.UUID) (Entry, error) {
 	var out Entry
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -683,9 +641,9 @@ func (s *Store) Reorder(ctx context.Context, userID, entryID uuid.UUID, afterID,
 	return out, nil
 }
 
-// Filters is the list-matrix input. Multi-value dimensions OR within
-// themselves and AND across; TagIDs requires ALL listed tags. Sort and
-// Order arrive pre-validated against the contract enums.
+// Filters is the list-matrix input: multi-value dimensions OR within
+// themselves and AND across; TagIDs requires ALL listed tags. Sort/Order
+// arrive pre-validated against the contract enums.
 type Filters struct {
 	ItemTypes      []string
 	Statuses       []string
@@ -707,9 +665,8 @@ func (f Filters) Filtered() bool {
 		len(f.Developers)+len(f.Publishers) > 0
 }
 
-// filterWhere builds the WHERE clauses and args every entries query
-// shares: the list and the dashboard aggregates narrow by the same
-// filter matrix.
+// filterWhere builds the WHERE clauses and args every entries query shares:
+// the list and dashboard aggregates narrow by the same filter matrix.
 func filterWhere(userID uuid.UUID, f Filters) ([]string, []any) {
 	where := []string{"user_id = $1"}
 	args := []any{userID}
@@ -735,9 +692,8 @@ func filterWhere(userID uuid.UUID, f Filters) ([]string, []any) {
 	if len(f.PlatformIDs) > 0 {
 		add("platform_igdb_id = ANY($%d)", f.PlatformIDs)
 	}
-	// Overlap, not equality: a filter value matches any entry whose
-	// credit array contains it, so multi-company entries match each of
-	// their companies.
+	// Overlap, not equality: a filter value matches any entry whose credit array
+	// contains it, so multi-company entries match each of their companies.
 	if len(f.Developers) > 0 {
 		add("developers && $%d", f.Developers)
 	}
@@ -762,8 +718,8 @@ func filterWhere(userID uuid.UUID, f Filters) ([]string, []any) {
 	return where, args
 }
 
-// orderClause maps a validated sort dimension onto SQL. The switch is
-// the whitelist: nothing user-supplied is ever concatenated.
+// orderClause maps a validated sort dimension onto SQL; the switch is the
+// whitelist, nothing user-supplied is ever concatenated.
 func orderClause(sort, order string) string {
 	dir := "ASC"
 	if order == "desc" {
@@ -783,27 +739,44 @@ func orderClause(sort, order string) string {
 	case "created_at":
 		return "pinned DESC, created_at " + dir + ", id"
 	case "backlog_rank":
-		// The drag-order read: pure rank order, no pinned prefix, or
-		// the frontend's drop-slot neighbors would disagree with rank
-		// adjacency.
+		// The drag-order read: pure rank order, no pinned prefix, or the frontend's
+		// drop-slot neighbors would disagree with rank adjacency.
 		return "backlog_rank " + dir + " NULLS LAST, created_at DESC, id"
 	default:
-		// "value" sorts in the handler after price composition; this is
-		// the stable base order it starts from.
+		// "value" sorts in the handler after price composition; this is its stable base order.
 		return "pinned DESC, created_at DESC, id"
 	}
 }
 
-// ListEntries runs the filter matrix in SQL and bulk-loads tags.
+// ListEntries fetches the whole filtered+sorted set and bulk-loads tags. The
+// value sort composes prices after the query, so it must see every row and
+// uses this; SQL-orderable sorts should page with ListEntriesPage instead.
 func (s *Store) ListEntries(ctx context.Context, userID uuid.UUID, f Filters) ([]Entry, error) {
+	return s.listEntries(ctx, userID, f, 0, 0)
+}
+
+// ListEntriesPage fetches one page with LIMIT/OFFSET pushed into SQL, for the
+// sort dimensions that order fully in the database. Pair it with
+// CountEntriesFiltered for the total.
+func (s *Store) ListEntriesPage(ctx context.Context, userID uuid.UUID, f Filters, limit, offset int) ([]Entry, error) {
+	return s.listEntries(ctx, userID, f, limit, offset)
+}
+
+// listEntries runs the filter matrix in SQL and bulk-loads tags; limit 0 fetches
+// the whole set (the LIMIT/OFFSET clause is omitted).
+func (s *Store) listEntries(ctx context.Context, userID uuid.UUID, f Filters, limit, offset int) ([]Entry, error) {
 	where, args := filterWhere(userID, f)
 	query := `SELECT ` + entryCols + ` FROM entries WHERE ` +
 		strings.Join(where, " AND ") + ` ORDER BY ` + orderClause(f.Sort, f.Order)
+	if limit > 0 {
+		args = append(args, limit, offset)
+		query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args))
+	}
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: list entries: %w", err)
 	}
-	entries, err := scanAll(rows, []Entry{}, "list entries", func(r pgx.Rows) (Entry, error) {
+	entries, err := pgkit.ScanAll(rows, []Entry{}, func(r pgx.Rows) (Entry, error) {
 		e, err := scanEntry(r)
 		if err != nil {
 			return Entry{}, fmt.Errorf("store: scan entry: %w", err)
@@ -811,7 +784,7 @@ func (s *Store) ListEntries(ctx context.Context, userID uuid.UUID, f Filters) ([
 		return e, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("store: list entries: %w", err)
 	}
 
 	if len(entries) == 0 {
@@ -835,8 +808,7 @@ func (s *Store) ListEntries(ctx context.Context, userID uuid.UUID, f Filters) ([
 	return entries, nil
 }
 
-// loadTagsBulk fetches tags for many entries in one query, each
-// entry's tags ordered by name.
+// loadTagsBulk fetches tags for many entries in one query, each ordered by name.
 func loadTagsBulk(ctx context.Context, q querier, entryIDs []uuid.UUID) (map[uuid.UUID][]TagRef, error) {
 	rows, err := q.Query(ctx, `
 		SELECT et.entry_id, t.id, t.name FROM entry_tags et

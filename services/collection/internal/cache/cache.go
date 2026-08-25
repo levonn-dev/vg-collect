@@ -1,10 +1,7 @@
-// Package cache is the collection service's Valkey surface: the
-// composed dashboard body, cached briefly and invalidated by the
-// owner's own mutations. Values are marshaled response bodies, so a
-// hit costs no recompute. FAIL-OPEN DECISIONS BELONG TO CALLERS:
-// errors are returned verbatim and the handler treats them as a miss
-// (log + continue). Misses are nil, not errors. No per-operation
-// timeouts here (network-level timeouts belong to the client options).
+// Package cache is the collection service's Valkey surface: the composed
+// dashboard body, cached briefly and invalidated by owner mutations. Errors
+// return verbatim (FAIL-OPEN DECISIONS BELONG TO CALLERS); misses are nil, not
+// errors. No per-operation timeouts here (network-level timeouts belong to the client options).
 package cache
 
 import (
@@ -51,9 +48,8 @@ func (c *Cache) PutValueHistory(ctx context.Context, sub string, body []byte, tt
 	return valkeykit.PutBytes(ctx, c.rdb, valueHistoryKey(sub), body, ttl, "cache: put value history")
 }
 
-// InvalidateDashboard drops the user's dashboard-derived entries (the
-// dashboard body and the value-history body): their own mutations must
-// be visible immediately, not after the TTL.
+// InvalidateDashboard drops the user's dashboard-derived entries (dashboard
+// body, value-history body): mutations must be visible immediately, not after the TTL.
 func (c *Cache) InvalidateDashboard(ctx context.Context, sub string) error {
 	if err := c.rdb.Del(ctx, dashboardKey(sub), valueHistoryKey(sub)).Err(); err != nil {
 		return fmt.Errorf("cache: invalidate dashboard: %w", err)

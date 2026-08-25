@@ -18,9 +18,8 @@ import (
 )
 
 // dashboardFilters funnels the dashboard's filter params through the
-// entries-list converter (same dimensions; enum membership is
-// specval's job on both operations alike); sort, order, grouping, and
-// paging ride listParams' defaults and are ignored by the aggregates.
+// entries-list converter; sort/order/grouping/paging ride listParams'
+// defaults and are ignored by the aggregates.
 func dashboardFilters(p api.GetDashboardParams) store.Filters {
 	f, _, _, _ := listParams(api.ListEntriesParams{
 		ItemType:      p.ItemType,
@@ -36,12 +35,10 @@ func dashboardFilters(p api.GetDashboardParams) store.Filters {
 	return f
 }
 
-// GetDashboard composes SQL aggregates with one batched enrichment
-// price call, cached briefly per user. Enrichment being down degrades
-// pricing (available=false) and skips the cache write so recovery is
-// visible immediately. Filtered requests skip the cache both ways:
-// the unfiltered dashboard is the hot default view, while filter
-// combinations are unbounded and cheap to compute live.
+// GetDashboard composes SQL aggregates with one batched enrichment price call,
+// cached briefly per user. A down enrichment degrades pricing and skips the
+// cache write so recovery is immediate. Filtered requests always skip the
+// cache, since combinations are unbounded and cheap to compute live.
 func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params api.GetDashboardParams) {
 	userID, bearer, ok := h.caller(w, r)
 	if !ok {
@@ -174,15 +171,11 @@ func pointForPackaging(packaging string, p enrichapi.PricePoint) *int64 {
 	}
 }
 
-// ComposeValueSeries builds one point per day - the union of snapshot
-// days plus each custom-priced row's set-at day (clamped into the
-// window). Product-priced entries contribute their packaging-matched
-// price from the latest snapshot on or before the day; custom-priced
-// entries contribute their amount from their set-at day forward.
-// Prices carry forward between points; entries with nothing known yet
-// contribute nothing that day. Each product's points are sorted
-// oldest-first internally, regardless of the order series arrives in.
-// Exported for tests.
+// ComposeValueSeries builds one point per day: the union of snapshot days plus
+// each custom-priced row's set-at day (clamped into the window). Product-priced
+// entries contribute their packaging-matched price from the latest snapshot on
+// or before the day; custom-priced entries contribute from their set-at day
+// forward, carrying forward between points. Points sort oldest-first internally, regardless of input order.
 func ComposeValueSeries(rows []store.PricingRow, series map[string][]enrichapi.PricePoint, windowStart time.Time) []common.ValuePoint {
 	for _, points := range series {
 		sort.SliceStable(points, func(i, j int) bool { return points[i].CapturedAt.Before(points[j].CapturedAt) })
@@ -246,11 +239,9 @@ func ComposeValueSeries(rows []store.PricingRow, series map[string][]enrichapi.P
 	return out
 }
 
-// GetValueHistory answers the caller's collection value over the last
-// ninety days: the CURRENT entry set valued at historical snapshot
-// prices (the composition does not reconstruct past collection
-// contents). Cached and invalidated exactly like the dashboard; a
-// degraded answer is served but never cached.
+// GetValueHistory answers the caller's collection value over the last ninety
+// days: the CURRENT entry set valued at historical snapshot prices (past
+// collection contents are not reconstructed). Cached like the dashboard; a degraded answer is never cached.
 func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 	userID, bearer, ok := h.caller(w, r)
 	if !ok {

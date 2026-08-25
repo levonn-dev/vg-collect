@@ -1,15 +1,13 @@
 CREATE TABLE entries (
     id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id            uuid NOT NULL,
-    -- Null = a custom (off-catalog) entry: the user supplies the
-    -- display fields below and prices via proxy or not at all.
+    -- Null = a custom (off-catalog) entry: user supplies display fields below.
     product_id         uuid,
     item_type          text NOT NULL CHECK (item_type IN ('game', 'console', 'accessory')),
     media_type         text NOT NULL DEFAULT 'physical' CHECK (media_type IN ('physical', 'digital')),
 
-    -- Catalog snapshot on product-backed entries (denormalized at
-    -- creation from the enrichment product, immutable); user-owned
-    -- and editable on custom entries.
+    -- Denormalized catalog snapshot on product-backed entries, immutable
+    -- after creation; user-owned and editable on custom entries.
     display_name       text NOT NULL,
     platform_igdb_id   bigint,
     platform_name      text,
@@ -38,8 +36,7 @@ CREATE TABLE entries (
     notes              text,
     storage_location   text,
     pinned             boolean NOT NULL DEFAULT false,
-    -- Lexicographic fractional index; COLLATE "C" so ORDER BY equals
-    -- byte order (the Go generator's comparison).
+    -- Fractional-index rank; COLLATE "C" so ORDER BY matches the Go generator's byte order.
     backlog_rank       text COLLATE "C",
 
     -- Reserved for platform sync; the API constrains to manual/physical.
@@ -49,16 +46,14 @@ CREATE TABLE entries (
     created_at         timestamptz NOT NULL DEFAULT now(),
     updated_at         timestamptz NOT NULL DEFAULT now(),
 
-    -- An igdb platform id never appears without its name; a bare
-    -- name is a custom entry's free-text platform.
+    -- An igdb platform id never appears without its name; a bare name is free-text.
     CHECK (platform_igdb_id IS NULL OR platform_name IS NOT NULL),
-    -- Only games carry an IGDB game id; on a custom entry it exists
-    -- only while a pricing proxy carries the identity (a repro of X
-    -- counts as playing X).
+    -- Only games carry an igdb_game_id; on a custom entry it exists only via
+    -- a pricing proxy (a repro of X counts as playing X).
     CHECK (item_type = 'game' OR igdb_game_id IS NULL),
     CHECK (igdb_game_id IS NULL OR product_id IS NOT NULL OR pricing_mode = 'proxy'),
-    -- Proxy pricing requires its override product; auto pricing
-    -- requires an own product (customs use proxy or disabled).
+    -- Proxy pricing requires pricing_product_id; auto requires product_id
+    -- (customs use proxy or disabled).
     CHECK (pricing_mode <> 'proxy' OR pricing_product_id IS NOT NULL),
     CHECK (pricing_mode <> 'auto' OR product_id IS NOT NULL),
     -- A condition grade only makes sense for a part the copy has.

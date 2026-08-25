@@ -1,9 +1,7 @@
-// Package rank generates lexicographically ordered fractional-index
-// keys for backlog ordering. Keys are non-empty strings over 'a'..'z'
-// that never end in 'a' (the minimum digit), so a strictly-between key
-// exists for every adjacent pair: a reorder is one single-row write
-// and neighbors are never renumbered. Postgres compares the column
-// byte-wise (COLLATE "C"), matching Go string comparison.
+// Package rank generates lexicographically ordered fractional-index keys for
+// backlog ordering. Keys are non-empty strings over 'a'..'z' that never end in
+// 'a' (the minimum digit), so a strictly-between key always exists: a reorder
+// is one single-row write. Postgres compares byte-wise (COLLATE "C"), matching Go string comparison.
 package rank
 
 import (
@@ -16,10 +14,9 @@ const digits = "abcdefghijklmnopqrstuvwxyz"
 
 var errMalformed = errors.New("rank: malformed key")
 
-// Between returns a key strictly between prev and next in byte order.
-// Empty prev means "before everything"; empty next means "after
-// everything"; both empty yields the initial key. It errors when a
-// non-empty key is malformed or prev is not strictly below next.
+// Between returns a key strictly between prev and next in byte order. Empty
+// prev/next means before/after everything; both empty yields the initial key.
+// Errors when a non-empty key is malformed or prev is not strictly below next.
 func Between(prev, next string) (string, error) {
 	if err := validate(prev); err != nil {
 		return "", err
@@ -48,9 +45,8 @@ func validate(key string) error {
 	return nil
 }
 
-// midpoint implements the classic digit-string midpoint: with a < b
-// (empty b acting as an upper infinity) it returns m with a < m < b,
-// never ending in the minimum digit.
+// midpoint implements the classic digit-string midpoint: with a < b (empty b
+// as upper infinity) it returns m with a < m < b, never ending in the minimum digit.
 func midpoint(a, b string) string {
 	if b != "" {
 		// Consume the shared prefix, treating a as padded with minimum

@@ -59,8 +59,8 @@ func TestUnitDashboard_ComposesAndCaches(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	// auto cib 4200 + proxy loose 1500; the absent product is unpriced;
-	// disabled is excluded; "" platform reads Unknown.
+	// auto cib 4200 + proxy loose 1500; the absent product is unpriced, disabled
+	// excluded, "" platform reads Unknown.
 	if got.TotalEntries != 4 || !got.Pricing.Available ||
 		got.Pricing.TotalValueCents == nil || *got.Pricing.TotalValueCents != 5700 ||
 		got.Pricing.PricedEntries != 2 || got.Pricing.UnpricedEntries != 1 || got.Pricing.ExcludedEntries != 1 {
@@ -79,8 +79,7 @@ func TestUnitDashboard_CacheHitShortCircuits(t *testing.T) {
 	user := uuid.New()
 	c := newStubCache()
 	c.bodies[user.String()] = []byte(`{"total_entries":42}`)
-	// A store or enrichment call would panic (all fields nil): the hit
-	// must answer alone.
+	// A store or enrichment call would panic (all fields nil): the hit must answer alone.
 	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, c)
 	resp := do(t, http.MethodGet, srv.URL+"/dashboard", a.token(t, user.String()), nil)
 	body, _ := io.ReadAll(resp.Body)
@@ -145,8 +144,7 @@ func TestUnitDashboard_FilteredComputesLiveAndSkipsCache(t *testing.T) {
 		},
 	}
 	c := newStubCache()
-	// A cached unfiltered dashboard must never answer a filtered
-	// request (and the filtered result must not replace it).
+	// A cached unfiltered dashboard must never answer a filtered request (and must not be replaced by it).
 	sentinel := []byte(`{"total_entries":999}`)
 	c.bodies[user.String()] = sentinel
 	srv, a := newUnitServer(t, st, &stubEnrichment{}, c)
@@ -175,11 +173,9 @@ func TestUnitDashboard_FilteredComputesLiveAndSkipsCache(t *testing.T) {
 	}
 }
 
-// TestUnitDashboard_DeveloperFilterComputesLiveAndSkipsCache mirrors
-// TestUnitDashboard_FilteredComputesLiveAndSkipsCache for the credit
-// filters: a developer-only request must reach the store filter and
-// must compute live rather than answer from the unfiltered cache,
-// which only holds if Filters.Filtered() counts Developers too.
+// TestUnitDashboard_DeveloperFilterComputesLiveAndSkipsCache: a developer-only
+// request must compute live, not answer from the unfiltered cache, which only
+// holds if Filters.Filtered() counts Developers too.
 func TestUnitDashboard_DeveloperFilterComputesLiveAndSkipsCache(t *testing.T) {
 	user := uuid.New()
 	var gotCounts, gotRows *store.Filters
@@ -200,8 +196,7 @@ func TestUnitDashboard_DeveloperFilterComputesLiveAndSkipsCache(t *testing.T) {
 		},
 	}
 	c := newStubCache()
-	// A cached unfiltered dashboard must never answer a developer-only
-	// request (and the live result must not replace it).
+	// A cached unfiltered dashboard must never answer a developer-only request (and must not be replaced).
 	sentinel := []byte(`{"total_entries":999}`)
 	c.bodies[user.String()] = sentinel
 	srv, a := newUnitServer(t, st, &stubEnrichment{}, c)
@@ -229,11 +224,9 @@ func TestUnitDashboard_DeveloperFilterComputesLiveAndSkipsCache(t *testing.T) {
 	}
 }
 
-// region is deliberately absent from this list: it is open-world on
-// this param now, so no string value is a bad enum for it.
+// region is deliberately absent from this list: it is open-world now, so no string is a bad enum for it.
 func TestUnitDashboard_BadFilterRejected(t *testing.T) {
-	// Zero-field stubs prove the 400 answers before any store, cache,
-	// or enrichment work.
+	// Zero-field stubs prove the 400 answers before any store, cache, or enrichment work.
 	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, &stubCache{})
 	for _, q := range []string{"status=queued", "item_type=chair"} {
 		resp := do(t, http.MethodGet, srv.URL+"/dashboard?"+q, a.token(t, uuid.NewString()), nil)
@@ -292,8 +285,7 @@ func TestDashboardInvalidationThroughTheStack(t *testing.T) {
 	if n, _ := dashboard(); n != 0 {
 		t.Fatalf("empty collection: %d", n)
 	}
-	// A second read is served from Valkey: the enrichment fake sees no
-	// second batch call.
+	// A second read is served from Valkey: the enrichment fake sees no second batch call.
 	before := s.enrich.batchHits
 	if n, _ := dashboard(); n != 0 {
 		t.Fatalf("cached read: %d", n)
@@ -311,16 +303,12 @@ func TestDashboardInvalidationThroughTheStack(t *testing.T) {
 		t.Fatalf("post-mutation dashboard must recompose, got %d entries", n)
 	}
 
-	// Degraded pricing is never cached: recovery is visible on the very
-	// next read.
+	// Degraded pricing is never cached: recovery is visible on the very next read.
 	s.enrich.mu.Lock()
 	s.enrich.down = true
 	s.enrich.mu.Unlock()
-	// Invalidate via another mutation so the next read recomposes. A
-	// product-backed create cannot be used here: it fetches the product
-	// from enrichment (a hard dependency), which is down too. A custom
-	// (non-proxied) create has no enrichment dependency and still
-	// invalidates the dashboard cache like any other mutation.
+	// Invalidate via a custom (non-proxied) create, since a product-backed
+	// create needs enrichment, which is down too; custom still invalidates the cache.
 	resp = do(t, http.MethodPost, s.baseURL+"/entries", tok, jsonBody(map[string]any{
 		"display_name": "Offline pickup", "item_type": "game",
 		"region": "ntsc_u", "packaging": "loose",
@@ -411,10 +399,8 @@ func TestComposeValueSeries_SetAtAtMidnightBoundary(t *testing.T) {
 	}
 }
 
-// TestComposeValueSeries_SnapshotCapturedAtMidnightBoundary covers the
-// other captured-at input (a product snapshot, not a custom set-at):
-// existing snapshot fixtures all use 06:00Z, so pin the exact-midnight
-// case too.
+// TestComposeValueSeries_SnapshotCapturedAtMidnightBoundary covers the other
+// captured-at input (a product snapshot): existing fixtures use 06:00Z, so this pins exact-midnight.
 func TestComposeValueSeries_SnapshotCapturedAtMidnightBoundary(t *testing.T) {
 	day := func(s string) time.Time {
 		d, _ := time.Parse(time.RFC3339, s)
@@ -434,10 +420,8 @@ func TestComposeValueSeries_SnapshotCapturedAtMidnightBoundary(t *testing.T) {
 	}
 }
 
-// TestComposeValueSeries_SortsShuffledSeriesDefensively pins that
-// composition does not depend on the caller delivering each product's
-// snapshots oldest-first: a shuffled series composes identically to
-// the same points pre-sorted.
+// TestComposeValueSeries_SortsShuffledSeriesDefensively pins that composition
+// doesn't depend on oldest-first delivery: a shuffled series composes identically to a pre-sorted one.
 func TestComposeValueSeries_SortsShuffledSeriesDefensively(t *testing.T) {
 	day := func(s string) time.Time {
 		d, _ := time.Parse(time.RFC3339, s)
@@ -468,8 +452,8 @@ func TestComposeValueSeries_SortsShuffledSeriesDefensively(t *testing.T) {
 	}
 }
 
-// The pricing rows seed entries the same way the dashboard unit tests
-// do; the enrichment stub answers per-product snapshot series.
+// The pricing rows seed entries the same way the dashboard unit tests do; the
+// enrichment stub answers per-product snapshot series.
 func TestUnitValueHistoryComposesCarriesForwardAndCaches(t *testing.T) {
 	userID := uuid.New()
 	own := uuid.New()
@@ -619,16 +603,14 @@ func TestValueHistoryInvalidationThroughTheStack(t *testing.T) {
 	sub := uuid.New()
 	tok := s.auth.token(t, sub.String())
 
-	// Cold read: empty collection composes an available, empty series
-	// and caches it in the real Valkey.
+	// Cold read: empty collection composes an available, empty series and caches it in real Valkey.
 	resp := do(t, http.MethodGet, s.baseURL+"/dashboard/value-history", tok, nil)
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"points":[]`) {
 		t.Fatalf("cold read: %d %s", resp.StatusCode, body)
 	}
 
-	// A create must invalidate it in Valkey, so the next read sees the
-	// new entry's point (cib packaging -> 4200).
+	// A create must invalidate it in Valkey, so the next read sees the new entry's point (cib -> 4200).
 	resp = do(t, http.MethodPost, s.baseURL+"/entries", tok, createBody(productID, nil))
 	if resp.StatusCode != http.StatusCreated {
 		b, _ := io.ReadAll(resp.Body)

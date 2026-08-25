@@ -1,9 +1,5 @@
--- Shelf sharing: per-view visibility (private < unlisted < listed),
--- published_at (stamped on each transition into listed; drives
--- Explore recent-first), and a URL slug derived from the name.
--- Slugs address, UUIDs identify: slug_key folds case+underscores and
--- is unique per user. Backfill derives slugs from names with a
--- numeric-suffix dedupe (per-user), fallback 'shelf'.
+-- Visibility ordered private < unlisted < listed; published_at stamps the
+-- transition into listed and drives Explore's recent-first sort.
 ALTER TABLE saved_views ADD COLUMN visibility text NOT NULL DEFAULT 'private'
     CHECK (visibility IN ('private', 'unlisted', 'listed'));
 ALTER TABLE saved_views ADD COLUMN published_at timestamptz;
@@ -15,14 +11,8 @@ UPDATE saved_views SET slug = left(
 UPDATE saved_views SET slug = 'shelf'
 WHERE slug IS NULL OR length(replace(slug, '_', '')) < 2;
 
--- Walk rows oldest-first per user, probing each row's own derived
--- value (then numeric suffixes) against a running set of
--- already-claimed fold keys, reset at each user boundary. A candidate
--- is only accepted once confirmed collision-free against every row
--- decided so far for that user, so a suffixed value can never land on
--- a key another row already holds - unlike a single-pass partition
--- dedupe, which fixes suffixes from stale sibling counts and can walk
--- two different partitions onto the same folded key.
+-- Walks rows oldest-first per user, confirming each candidate against every
+-- fold key already claimed for that user so suffixed values never collide.
 DO $$
 DECLARE
     r RECORD;
@@ -44,12 +34,8 @@ BEGIN
         LOOP
             fold := lower(replace(candidate, '_', ''));
             EXIT WHEN NOT (fold = ANY(claimed));
-            -- rtrim mirrors services/collection/internal/store/store_views.go's
-            -- CreateView/UpdateView slug dedupe exactly: a clamp that
-            -- lands mid-underscore-run must drop the trailing underscore
-            -- before the suffix digits land, or the backfill and the app
-            -- mint the same collision into two different (though
-            -- same-folding) slugs.
+            -- Mirrors store_views.go's CreateView/UpdateView clamp: trim the
+            -- trailing underscore before suffix digits, or backfill and app diverge.
             candidate := rtrim(left(base, 30 - length(attempt::text)), '_') || attempt::text;
             attempt := attempt + 1;
         END LOOP;
@@ -61,6 +47,7 @@ BEGIN
 END $$;
 
 ALTER TABLE saved_views ALTER COLUMN slug SET NOT NULL;
+-- Folds so casing/punctuation variants of a slug collide in the unique index below.
 ALTER TABLE saved_views ADD COLUMN slug_key text
     GENERATED ALWAYS AS (lower(replace(slug, '_', ''))) STORED;
 CREATE UNIQUE INDEX saved_views_user_slug_key_idx ON saved_views (user_id, slug_key);

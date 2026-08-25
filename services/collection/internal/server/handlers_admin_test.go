@@ -60,9 +60,8 @@ func TestUnitPurgeUserData(t *testing.T) {
 
 // ---- InternalResnapshot ----
 
-// gameProductWithDates builds a game product carrying the given scalar
-// first_release_date plus optional per-region IGDB dates, driving
-// pickReleaseDate's region-chain resolution in the tests below.
+// gameProductWithDates builds a product with a scalar date plus optional
+// per-region dates, driving pickReleaseDate's region-chain resolution.
 func gameProductWithDates(id uuid.UUID, scalar time.Time, perRegion map[string]time.Time) enrichapi.Product {
 	p := gameProduct(id)
 	sc := openapi_types.Date{Time: scalar}
@@ -77,12 +76,9 @@ func gameProductWithDates(id uuid.UUID, scalar time.Time, perRegion map[string]t
 	return p
 }
 
-// TestUnitInternalResnapshot_HappyPath covers three entries across two
-// products: one product carries two entries (regions ntsc_u and pal),
-// the other carries one (region_free, no per-region rows so it falls
-// back to the scalar). Only the rows whose recomputed pick differs
-// from the stored date are written, and GetProduct is called exactly
-// once per DISTINCT product, not once per entry.
+// TestUnitInternalResnapshot_HappyPath: 3 entries across 2 products (one with
+// 2 entries, one region_free falling back to scalar); only rows whose pick
+// differs get written, and GetProduct is called once per distinct product.
 func TestUnitInternalResnapshot_HappyPath(t *testing.T) {
 	productA, productB := uuid.New(), uuid.New()
 	entry1, entry2, entry3 := uuid.New(), uuid.New(), uuid.New()
@@ -100,8 +96,7 @@ func TestUnitInternalResnapshot_HappyPath(t *testing.T) {
 			Developers: []string{"Square"}, Publishers: []string{"Square"}},
 		// region_free has no chain, falls back to the scalar; unset -> must update.
 		{EntryID: entry3, ProductID: productB, Region: "region_free", FirstReleaseDate: nil},
-		// date matches but the stored credits are stale -> the credit
-		// half of the diff alone must force the write.
+		// Date matches but credits are stale: the credit half alone must force the write.
 		{EntryID: entry4, ProductID: productA, Region: "pal", FirstReleaseDate: new(euDate),
 			Developers: []string{"Stale Studio"}, Publishers: []string{"Square"}},
 	}
@@ -178,11 +173,9 @@ func TestUnitInternalResnapshot_HappyPath(t *testing.T) {
 	}
 }
 
-// TestUnitInternalResnapshot_FailedProductIsPartialProgress covers a
-// product fetch failure: the failed product counts against
-// products_failed and its entries are left untouched, while the other
-// product's entries still update (partial progress, not an
-// all-or-nothing walk).
+// TestUnitInternalResnapshot_FailedProductIsPartialProgress: a failed product
+// counts against products_failed and its entries stay untouched, while the
+// other product's entries still update (not an all-or-nothing walk).
 func TestUnitInternalResnapshot_FailedProductIsPartialProgress(t *testing.T) {
 	productC, productD := uuid.New(), uuid.New()
 	entry4, entry5 := uuid.New(), uuid.New()
@@ -236,9 +229,8 @@ func TestUnitInternalResnapshot_FailedProductIsPartialProgress(t *testing.T) {
 	}
 }
 
-// TestUnitInternalResnapshot_Idempotent runs the handler twice against
-// a stub whose stored state reflects the first run's write: the
-// second run must recompute the identical pick and write nothing.
+// TestUnitInternalResnapshot_Idempotent: a second run against the first run's
+// written state must recompute the same pick and write nothing.
 func TestUnitInternalResnapshot_Idempotent(t *testing.T) {
 	productE := uuid.New()
 	entry6 := uuid.New()
@@ -293,13 +285,9 @@ func TestUnitInternalResnapshot_Idempotent(t *testing.T) {
 	}
 }
 
-// TestUnitInternalResnapshot_LocalizedTrio covers the localized side
-// of the walk: two entries share one product, one ntsc_j and one
-// ntsc_u, and the product carries a ja-JP localization bundle. Both
-// entries' stored date already matches the pick (the product sets no
-// per-region release dates, so both regions fall back to the same
-// scalar), which isolates the write trigger to the localization diff
-// alone. A second run against the now-backfilled state is a no-op.
+// TestUnitInternalResnapshot_LocalizedTrio: 2 entries (ntsc_j, ntsc_u) share
+// one product with a ja-JP bundle; dates already match so only the
+// localization diff triggers the write. A second run is a no-op.
 func TestUnitInternalResnapshot_LocalizedTrio(t *testing.T) {
 	productF := uuid.New()
 	entryJ, entryU := uuid.New(), uuid.New()
@@ -389,17 +377,15 @@ func TestUnitInternalResnapshot_LocalizedTrio(t *testing.T) {
 	}
 }
 
-// A plain user bearer is refused on resnapshot: an all-nil stub
-// store/enrichment panics if the handler ever reaches past the guard,
-// so a silent bypass fails loudly rather than passing.
+// A plain user bearer is refused; an all-nil stub store/enrichment panics if
+// the handler ever reaches past the guard, so a bypass fails loudly.
 func TestUnitInternalResnapshot_NonAdminOrServiceIsForbidden(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", a.token(t, uuid.NewString()), nil)
 	wantProblem(t, resp, http.StatusForbidden, "forbidden")
 }
 
-// A service token passes the admin-or-service guard exactly like an
-// admin bearer does.
+// A service token passes the admin-or-service guard exactly like an admin bearer.
 func TestUnitInternalResnapshot_ServiceTokenIsAccepted(t *testing.T) {
 	st := &stubStore{listGameBackedRefs: func(context.Context) ([]store.GameEntryRef, error) { return nil, nil }}
 	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
@@ -412,10 +398,8 @@ func TestUnitInternalResnapshot_ServiceTokenIsAccepted(t *testing.T) {
 
 // ---- InternalRematchEntries ----
 
-// triggerRematch fires the entry rematch trigger and asserts the 202
-// the detached run answers with. The count trio lands in the
-// completion log and the rematch.* metrics (TestUnitRematchMetrics in
-// telemetry_test.go pins those), not the response.
+// triggerRematch fires the entry rematch and asserts the 202; the count trio
+// lands in the completion log and rematch.* metrics, not the response.
 func triggerRematch(t *testing.T, srv *httptest.Server, bearer string) {
 	t.Helper()
 	resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", bearer, nil)
@@ -425,11 +409,9 @@ func triggerRematch(t *testing.T, srv *httptest.Server, bearer string) {
 	}
 }
 
-// The rematch groups entries into (game, platform, region) triples,
-// resolves once per triple that has a non-compatible entry, repoints
-// only those entries, and detaches (202); the count trio lands in the
-// completion log and the rematch.* metrics, not the response
-// (TestUnitRematchMetrics). Second run is a no-op (idempotence).
+// The rematch groups entries into (game, platform, region) triples, resolves
+// once per triple with a non-compatible entry, repoints only those, and
+// detaches (202); a second run is a no-op.
 func TestInternalRematchEntries_RepointsAndIsIdempotent(t *testing.T) {
 	productBase := uuid.New()
 	productJP := uuid.New()
@@ -441,10 +423,8 @@ func TestInternalRematchEntries_RepointsAndIsIdempotent(t *testing.T) {
 	jpMember.Igdb.FirstReleaseDate = &jpDate
 
 	var mu sync.Mutex
-	// Both entries share one (game, platform, region) triple and start
-	// on the base-class member; RepointEntry mutates this slice in
-	// place so a second run sees the post-repoint state, exactly like
-	// the store's real UPDATE would.
+	// Both entries share one triple, starting on the base-class member;
+	// RepointEntry mutates this slice in place, like the store's real UPDATE.
 	refs := []store.RematchEntryRef{
 		{EntryID: entry1, ProductID: productBase, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
 		{EntryID: entry2, ProductID: productBase, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
@@ -524,12 +504,9 @@ func TestInternalRematchEntries_RepointsAndIsIdempotent(t *testing.T) {
 		t.Fatalf("snapshot must re-pick from the resolved payload: %v", r1.FirstReleaseDate)
 	}
 
-	// Second run: both entries now sit on the class-compatible jp
-	// member, so neither is pending - no resolve, no repoint. The
-	// member fetch is this run's only remaining call before that
-	// decision, so its second cumulative firing proves the run reached
-	// (and, since nothing async follows within the triple, finished)
-	// the no-op path.
+	// Second run: both entries sit on the class-compatible jp member, so neither
+	// is pending: no resolve, no repoint. The member fetch's second cumulative
+	// firing proves the run reached (and finished) the no-op path.
 	triggerRematch(t, srv, tok)
 	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		mu.Lock()
@@ -543,9 +520,8 @@ func TestInternalRematchEntries_RepointsAndIsIdempotent(t *testing.T) {
 	}
 }
 
-// Per-entry guard inside a shared triple: an entry on a
-// class-compatible manual member survives while its neighbor on the
-// unmatched member repoints; non-auto entries are never listed.
+// Per-entry guard in a shared triple: a class-compatible manual member
+// survives while its unmatched neighbor repoints; non-auto entries are never listed.
 func TestInternalRematchEntries_ClassGuardIsPerEntry(t *testing.T) {
 	productManualJP := uuid.New() // entry1's hand-picked, already region-correct member
 	productUnmatched := uuid.New()
@@ -554,11 +530,9 @@ func TestInternalRematchEntries_ClassGuardIsPerEntry(t *testing.T) {
 	manualJP := pricedGameProduct(productManualJP, "Super Famicom") // jp class: already correct for ntsc_j
 	unmatched := gameProduct(productUnmatched)                      // no pricecharting -> never region-correct
 
-	// Both entries share one (game, platform, region) triple. A third,
-	// non-auto entry on the very same triple is deliberately absent
-	// from this list: ListAutoGameRematchRefs' pricing_mode = 'auto'
-	// filter (TestListAutoGameRematchRefs) keeps it out before the
-	// handler ever sees it.
+	// Both entries share one triple; a third non-auto entry on the same triple
+	// is deliberately absent, since ListAutoGameRematchRefs' pricing_mode='auto'
+	// filter keeps it out before the handler sees it.
 	refs := []store.RematchEntryRef{
 		{EntryID: entry1, ProductID: productManualJP, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
 		{EntryID: entry2, ProductID: productUnmatched, IGDBGameID: 1000, PlatformIGDBID: 6, Region: "ntsc_j"},
@@ -623,11 +597,8 @@ func TestInternalRematchEntries_ClassGuardIsPerEntry(t *testing.T) {
 	}
 }
 
-// Cross-triple memoization: two entries seeded on the SAME member but
-// grouped into different (game, platform, region) triples (two
-// regions here) still trigger only one member fetch for that product
-// across the whole run - the resnapshot lever pins its own dedup the
-// same way (TestUnitInternalResnapshot_HappyPath's productCalls check).
+// Cross-triple memoization: two entries on the same member but different
+// triples still trigger only one member fetch for that product across the run.
 func TestInternalRematchEntries_MemberFetchMemoizedAcrossTriples(t *testing.T) {
 	productShared := uuid.New() // both triples start here: base class, region-correct for neither
 	productJP, productPAL := uuid.New(), uuid.New()
@@ -686,10 +657,8 @@ func TestInternalRematchEntries_MemberFetchMemoizedAcrossTriples(t *testing.T) {
 	}
 }
 
-// A failed member fetch or resolve counts the triple failed and the
-// run continues to the next triple; the audit trail is the repoint
-// log below (TestUnitRematchMetrics separately pins the triples.ok /
-// triples.failed counters this scenario would also feed).
+// A failed member fetch or resolve counts the triple failed; the run
+// continues to the next triple.
 func TestInternalRematchEntries_CountsFailuresAndContinues(t *testing.T) {
 	entryA, entryB, entryC := uuid.New(), uuid.New(), uuid.New()
 	productA := uuid.New()                             // triple A: member fetch fails
@@ -752,11 +721,9 @@ func TestInternalRematchEntries_CountsFailuresAndContinues(t *testing.T) {
 	}
 }
 
-// The rematch never lists user rows: a cross-class user entry in a
-// swept triple is neither resolved nor repointed. ListAutoGameRematchRefs'
-// match_provenance = 'auto' filter (TestListAutoGameRematchRefs) keeps
-// it out before the handler ever sees it - the stub below models
-// exactly that pre-filtered list, with only the auto entry present.
+// The rematch never lists user rows: ListAutoGameRematchRefs' match_provenance
+// = 'auto' filter keeps a cross-class user entry out before the handler sees
+// it; the stub models that pre-filtered list.
 func TestInternalRematchEntries_SkipsUserPicks(t *testing.T) {
 	productAuto := uuid.New() // entryAuto's member: unmatched -> needs repoint
 	entryAuto := uuid.New()
@@ -815,29 +782,24 @@ func TestInternalRematchEntries_SkipsUserPicks(t *testing.T) {
 	}
 }
 
-// A non-admin bearer on the entry rematch is forbidden; an all-nil
-// stub store/enrichment panics if the handler ever reaches past the
-// role check, so a silent bypass fails loudly rather than passing.
+// A non-admin bearer is forbidden; an all-nil stub store/enrichment panics if
+// the handler ever reaches past the role check, so a bypass fails loudly.
 func TestInternalRematchEntries_NonAdminIsForbidden(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 	resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", a.token(t, uuid.NewString()), nil)
 	wantProblem(t, resp, http.StatusForbidden, "forbidden")
 }
 
-// A service token passes the admin-or-service guard exactly like an
-// admin bearer does - the CronJob's own credential.
+// A service token passes the admin-or-service guard, the CronJob's own credential.
 func TestInternalRematchEntries_ServiceTokenIsAccepted(t *testing.T) {
 	st := &stubStore{listAutoGameRematchRefs: func(context.Context) ([]store.RematchEntryRef, error) { return nil, nil }}
 	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
 	triggerRematch(t, srv, a.serviceToken(t, "svc:entry-rematch"))
 }
 
-// A concurrent trigger while a run is in flight answers 409
-// rematch_in_progress instead of racing it (mirrors the catalog
-// refresh's single-flight guard): the CAS happens synchronously at
-// the trigger itself, so the first request answers 202 immediately
-// and the second is refused while the detached sweep is still inside
-// listAutoGameRematchRefs.
+// A concurrent trigger answers 409 rematch_in_progress: the CAS happens
+// synchronously at the trigger, so the first request answers 202 immediately
+// and the second is refused while the sweep is still inside listAutoGameRematchRefs.
 func TestInternalRematchEntries_ConcurrentTriggerIs409(t *testing.T) {
 	release := make(chan struct{})
 	started := make(chan struct{})
@@ -858,14 +820,11 @@ func TestInternalRematchEntries_ConcurrentTriggerIs409(t *testing.T) {
 	wantProblem(t, resp, http.StatusConflict, "rematch_in_progress")
 	close(release)
 
-	// The first run's goroutine is unblocked now, but a black-box test
-	// has no direct read on the in-process guard (the catalog
-	// refresh's own detached tests poll one, unexported and
-	// same-package there); retriggering until one is accepted again is
-	// the external equivalent - each 409 in between means the first
-	// run has not reset the guard yet. Swap the stub first: the first
+	// No direct read on the in-process guard from a black-box test, so
+	// retriggering until accepted is the external equivalent (each 409
+	// means the guard has not reset yet). Swap the stub first: the first
 	// run already consumed its one call to the blocking closure, and a
-	// second call to it would close(started) again and panic.
+	// second call would close(started) again and panic.
 	st.listAutoGameRematchRefs = func(context.Context) ([]store.RematchEntryRef, error) { return nil, nil }
 	reqtest.WaitFor(t, 5*time.Second, func() bool {
 		resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", tok, nil)
@@ -955,13 +914,9 @@ func TestNormalizePlatforms_MatchesAliasesSkipsUnknownAdminOnly(t *testing.T) {
 	}
 }
 
-// TestNormalizePlatforms_ServiceToken pins the admin-or-service
-// guard: a service token (the nightly job's own credential, same as
-// normalize-regions and the entry rematch) passes normalize-platforms
-// end to end. Both collaborators are wired with real (non-nil, no-op)
-// stubs rather than left nil, since a service token reaching a nil
-// stub would panic before this test could tell "reached the handler"
-// apart from "the guard let it through and it actually ran".
+// TestNormalizePlatforms_ServiceToken: a service token (the nightly job's
+// credential) passes the admin-or-service guard end to end. Collaborators are
+// real no-op stubs, not nil, so a guard-bypass panic isn't confused with success.
 func TestNormalizePlatforms_ServiceToken(t *testing.T) {
 	st := &stubStore{listNameOnlyPlatformEntries: func(context.Context) ([]store.PlatformEntryRef, error) { return nil, nil }}
 	enr := &stubEnrichment{listPlatforms: func(context.Context, string) ([]enrichmentclient.Platform, error) { return nil, nil }}
@@ -973,11 +928,8 @@ func TestNormalizePlatforms_ServiceToken(t *testing.T) {
 	}
 }
 
-// TestNormalizePlatforms_UpstreamFailures pins that an unreachable
-// enrichment or a failed store list surfaces as a problem+json error,
-// rather than silently reporting 0 matches: an admin trusting the
-// {scanned,normalized,skipped} counts must see 502/500, not a
-// misleadingly clean "nothing matched" 200.
+// TestNormalizePlatforms_UpstreamFailures: an unreachable enrichment or failed
+// store list surfaces as 502/500, not a misleadingly clean 200 with zero counts.
 func TestNormalizePlatforms_UpstreamFailures(t *testing.T) {
 	adminID := uuid.New()
 
@@ -1011,15 +963,10 @@ func TestNormalizePlatforms_UpstreamFailures(t *testing.T) {
 
 // ---- InternalNormalizeRegions ----
 
-// TestNormalizeRegions_PromotesAndRepicks pins the fold+synonym
-// promotion's two write arms: a custom entry (no product) gets a
-// plain region write, a free-text region with no reviewed synonym is
-// left untouched, and an igdb-backed entry additionally re-picks its
-// localized snapshot for the promoted region from a freshly fetched
-// product - the same GetProduct hop the region-edit arm of UpdateEntry
-// uses. A chainless region (korea: no localization or release-date
-// chain) promotes through the same snapshot arm with every localized
-// field empty - the region graduates, its localization does not.
+// TestNormalizeRegions_PromotesAndRepicks: a custom entry gets a plain region
+// write; an unreviewed free-text region is left untouched; an igdb-backed entry
+// also re-picks its localized snapshot via a fresh GetProduct. A chainless
+// region (korea) promotes with every localized field empty.
 func TestNormalizeRegions_PromotesAndRepicks(t *testing.T) {
 	adminID := uuid.New()
 	custom := uuid.New()       // region "Japan", no product -> plain write
@@ -1111,9 +1058,8 @@ func TestNormalizeRegions_PromotesAndRepicks(t *testing.T) {
 	if got.region != "ntsc_j" {
 		t.Fatalf("igdb-backed region = %q, want ntsc_j", got.region)
 	}
-	// wantJP is localizedGameProduct's ja-JP bundle (index 0); comparing
-	// against it directly, rather than a copied literal, keeps this
-	// assertion honest if that fixture ever changes.
+	// wantJP is localizedGameProduct's ja-JP bundle; comparing directly (not a
+	// copied literal) keeps the assertion honest if the fixture changes.
 	wantJP := (*product.Igdb.Localizations)[0]
 	if got.name == nil || wantJP.Name == nil || *got.name != *wantJP.Name {
 		t.Fatalf("localized_name must come from the fetched product's ja-JP bundle: got %v", got.name)
@@ -1126,8 +1072,7 @@ func TestNormalizeRegions_PromotesAndRepicks(t *testing.T) {
 	if kr.region != "korea" {
 		t.Fatalf("korea-backed region = %q, want korea (identity fold)", kr.region)
 	}
-	// korea's chain reads the ko-KR bundle; the fixture row is
-	// name-only, so translit and cover stay empty on the re-pick.
+	// korea's chain reads the ko-KR bundle; the fixture row is name-only, so translit/cover stay empty.
 	wantKO := (*product.Igdb.Localizations)[2]
 	if kr.name == nil || wantKO.Name == nil || *kr.name != *wantKO.Name {
 		t.Fatalf("localized_name must come from the fetched product's ko-KR bundle: got %v", kr.name)
@@ -1137,11 +1082,9 @@ func TestNormalizeRegions_PromotesAndRepicks(t *testing.T) {
 	}
 }
 
-// TestNormalizeRegions_FetchFailureSkips pins the per-row skip: an
-// enrichment outage on one igdb-backed row's product fetch counts
-// against skipped and leaves the row untouched rather than failing the
-// whole sweep - this lever has no whole-run 502 (it has no platform-
-// catalog dependency the way normalize-platforms does).
+// TestNormalizeRegions_FetchFailureSkips: an enrichment outage on one row's
+// fetch counts against skipped and leaves the row untouched, not failing the
+// sweep; this lever has no whole-run 502, unlike normalize-platforms.
 func TestNormalizeRegions_FetchFailureSkips(t *testing.T) {
 	adminID := uuid.New()
 	entry := uuid.New()
@@ -1155,9 +1098,8 @@ func TestNormalizeRegions_FetchFailureSkips(t *testing.T) {
 		listOpenRegionEntries: func(context.Context, []string) ([]store.OpenRegionEntryRef, error) {
 			return refs, nil
 		},
-		// promoteEntryRegion and promoteEntryRegionSnapshot are
-		// deliberately left nil: either being called after a fetch
-		// failure is a bug, and the stub's nil panic catches it loudly.
+		// promoteEntryRegion/Snapshot deliberately nil: either being called after a
+		// fetch failure is a bug the stub's nil panic catches.
 	}
 	enr := &stubEnrichment{
 		getProduct: func(context.Context, string, uuid.UUID) (enrichapi.Product, error) {
@@ -1181,9 +1123,8 @@ func TestNormalizeRegions_FetchFailureSkips(t *testing.T) {
 	}
 }
 
-// TestNormalizeRegions_Guards mirrors the entry rematch's admin-or-
-// service guard tests: a service token (the nightly job's own
-// credential) passes, a plain user token is forbidden.
+// TestNormalizeRegions_Guards: a service token (the nightly job's credential)
+// passes; a plain user token is forbidden.
 func TestNormalizeRegions_Guards(t *testing.T) {
 	st := &stubStore{listOpenRegionEntries: func(context.Context, []string) ([]store.OpenRegionEntryRef, error) { return nil, nil }}
 	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())

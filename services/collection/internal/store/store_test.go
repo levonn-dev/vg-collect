@@ -15,10 +15,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/collection/migrations"
 )
 
-// newTestPool: a fresh, fully migrated database and its own pool.
-// newTestStore wraps it for the common case; the rare test needing SQL
-// the Store's own methods cannot express (a bare INSERT omitting a
-// DEFAULTed column) takes the pool directly.
+// newTestPool: a fresh, fully migrated database and its own pool. newTestStore
+// wraps it for the common case; a test needing SQL the Store can't express takes the pool directly.
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	return pgtest.FreshPool(t, migrations.FS, ".")
@@ -75,13 +73,9 @@ func rankOf(t *testing.T, e store.Entry) string {
 	return *e.BacklogRank
 }
 
-// TestRegionMismatchAck_ClearsOnChoiceChange exercises the once-per-
-// choice reset rule through the real store: a plain edit (notes/
-// status only) carries the stamp forward, while a region change, a
-// product change riding UpdateEntry (the narrow re-match arm and the
-// region-arm repoint both ride this exact statement - the store
-// cannot tell them apart, and does not need to), and RepointEntry
-// (the entry rematch's own write) each clear it back to nil.
+// TestRegionMismatchAck_ClearsOnChoiceChange exercises the once-per-choice
+// reset: a plain edit carries the stamp forward, while a region change, a
+// product change via UpdateEntry, and RepointEntry each clear it to nil.
 func TestRegionMismatchAck_ClearsOnChoiceChange(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -126,8 +120,7 @@ func TestRegionMismatchAck_ClearsOnChoiceChange(t *testing.T) {
 		t.Fatal("a region change must clear the stamp")
 	}
 
-	// Product change via UpdateEntry (the narrow re-match arm and the
-	// region-arm repoint both land here) clears it.
+	// Product change via UpdateEntry (the narrow re-match arm and region-arm repoint both land here) clears it.
 	acked = ack(t)
 	newProduct := uuid.New()
 	acked.ProductID = &newProduct
@@ -252,11 +245,9 @@ func wantNames(t *testing.T, got []store.Entry, want ...string) {
 	}
 }
 
-// insertEntryWithRegion creates a minimal product-backed entry with
-// region overridden - free text or a known value, per the caller. No
-// raw INSERT needed: region has no CHECK restricting it to known
-// values (open-world since migration 000013), so CreateEntry accepts
-// it directly.
+// insertEntryWithRegion creates a minimal product-backed entry with region
+// overridden (free text or known); no raw INSERT needed since region has no
+// CHECK (open-world since migration 000013).
 func insertEntryWithRegion(t *testing.T, s *store.Store, region string) store.Entry {
 	t.Helper()
 	e := baseEntry(uuid.New())

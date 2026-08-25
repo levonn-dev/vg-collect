@@ -38,6 +38,7 @@ type stubStore struct {
 	bulkUpdateEntries func(ctx context.Context, userID uuid.UUID, entryIDs []uuid.UUID, actions store.BulkActions) (int, error)
 	reorder           func(ctx context.Context, userID, entryID uuid.UUID, afterID, beforeID *uuid.UUID) (store.Entry, error)
 	listEntries       func(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.Entry, error)
+	listEntriesPage   func(ctx context.Context, userID uuid.UUID, f store.Filters, limit, offset int) ([]store.Entry, error)
 	librarySummary    func(ctx context.Context, userID uuid.UUID) ([]store.LibraryGame, error)
 	listTags          func(ctx context.Context, userID uuid.UUID) ([]store.Tag, error)
 	createTag         func(ctx context.Context, userID uuid.UUID, name string) (store.Tag, error)
@@ -144,6 +145,13 @@ func (s *stubStore) ListEntries(ctx context.Context, userID uuid.UUID, f store.F
 		panic("unexpected ListEntries")
 	}
 	return s.listEntries(ctx, userID, f)
+}
+
+func (s *stubStore) ListEntriesPage(ctx context.Context, userID uuid.UUID, f store.Filters, limit, offset int) ([]store.Entry, error) {
+	if s.listEntriesPage == nil {
+		panic("unexpected ListEntriesPage")
+	}
+	return s.listEntriesPage(ctx, userID, f, limit, offset)
 }
 
 func (s *stubStore) LibrarySummary(ctx context.Context, userID uuid.UUID) ([]store.LibraryGame, error) {
@@ -592,10 +600,8 @@ func pricedGameProduct(id uuid.UUID, consoleName string) enrichapi.Product {
 	return p
 }
 
-// localizedGameProduct is gameProduct plus per-region presentation
-// bundles: a full ja-JP one (native-script title, transliteration,
-// regional box art), a cover-only EU one, and a name-only ko-KR one -
-// the sparse shapes the provider actually serves.
+// localizedGameProduct is gameProduct plus per-region presentation bundles: a
+// full ja-JP one, a cover-only EU one, and a name-only ko-KR one, the sparse shapes the provider actually serves.
 func localizedGameProduct(id uuid.UUID) enrichapi.Product {
 	p := gameProduct(id)
 	p.Igdb.Localizations = &[]common.Localization{
@@ -639,9 +645,8 @@ func createBody(productID uuid.UUID, mutate func(map[string]any)) *bytes.Reader 
 
 // ---- integration stack (real Postgres + real Valkey + fake enrichment) ----
 
-// stubEnrichmentService is the httptest twin of the enrichment
-// service: contract-shaped answers for the two consumed endpoints,
-// with a mutable product registry and a call counter.
+// stubEnrichmentService is the httptest twin of the enrichment service:
+// contract-shaped answers for the two consumed endpoints, with a mutable registry and call counter.
 type stubEnrichmentService struct {
 	srv *httptest.Server
 
@@ -758,13 +763,9 @@ type stack struct {
 	enrich  *stubEnrichmentService
 }
 
-// newStack wires the full vertical: a Postgres container via pgtest
-// and a Valkey container via valkeytest. The per-test containers this
-// replaces spent most of the package's runtime on boots, and that
-// churn was the bulk of the Docker-daemon load behind the WSL2
-// connection-refused flakes. Each test still gets exactly what the old
-// fixture gave it - a freshly migrated database and an empty cache -
-// via the drop-schema + re-migrate and FlushDB resets below.
+// newStack wires the full vertical via pgtest/valkeytest shared containers,
+// replacing the per-test containers that drove most of the WSL2 Docker-daemon
+// flakes; each test still gets a freshly migrated database and an empty cache via the resets below.
 func newStack(t *testing.T) *stack {
 	t.Helper()
 	ctx := context.Background()
@@ -776,10 +777,9 @@ func newStack(t *testing.T) *stack {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = rdb.Close() })
-	// Reset: flush whatever the previous test cached so each test
-	// starts on an empty cache. FlushDB, not FlushAll: the URL is
-	// scoped to this binary's own database on the shared server, and
-	// FlushAll would wipe every other binary's data too.
+	// Reset: flush whatever the previous test cached so each test starts empty.
+	// FlushDB, not FlushAll: the URL is scoped to this binary's own database on
+	// the shared server, and FlushAll would wipe every other binary's data too.
 	if err := rdb.FlushDB(ctx).Err(); err != nil {
 		t.Fatal(err)
 	}

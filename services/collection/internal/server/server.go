@@ -1,8 +1,6 @@
-// Package server maps HTTP (generated ServerInterface) onto the
-// store, the enrichment client, and the dashboard cache, enforcing
-// per-user scoping from JWT claims. Every route is own-scoped by the
-// token subject except the one admin read: the product-references
-// count backing the catalog's guarded product delete.
+// Package server maps HTTP onto the store, enrichment client, and dashboard
+// cache, enforcing per-user JWT scoping. The one admin read (product-reference
+// count backing the catalog's guarded delete) is the exception.
 package server
 
 import (
@@ -29,10 +27,9 @@ import (
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-// Store is the persistence surface the handlers consume. Sentinel
-// errors (store.ErrNotFound, store.ErrTagNotFound, store.ErrNameTaken,
-// store.ErrNotInBacklog, store.ErrConflictingOrder) are returned as-is;
-// handlers branch via errors.Is.
+// Store is the persistence surface the handlers consume; sentinel errors
+// (ErrNotFound, ErrTagNotFound, ErrNameTaken, ErrNotInBacklog,
+// ErrConflictingOrder) are returned as-is for errors.Is.
 type Store interface {
 	CreateEntry(ctx context.Context, e store.Entry, tagIDs []uuid.UUID) (store.Entry, error)
 	GetEntry(ctx context.Context, userID, id uuid.UUID) (store.Entry, error)
@@ -42,6 +39,7 @@ type Store interface {
 	BulkUpdateEntries(ctx context.Context, userID uuid.UUID, entryIDs []uuid.UUID, actions store.BulkActions) (int, error)
 	Reorder(ctx context.Context, userID, entryID uuid.UUID, afterID, beforeID *uuid.UUID) (store.Entry, error)
 	ListEntries(ctx context.Context, userID uuid.UUID, f store.Filters) ([]store.Entry, error)
+	ListEntriesPage(ctx context.Context, userID uuid.UUID, f store.Filters, limit, offset int) ([]store.Entry, error)
 	LibrarySummary(ctx context.Context, userID uuid.UUID) ([]store.LibraryGame, error)
 	ListTags(ctx context.Context, userID uuid.UUID) ([]store.Tag, error)
 	CreateTag(ctx context.Context, userID uuid.UUID, name string) (store.Tag, error)
@@ -86,8 +84,7 @@ type Store interface {
 	ApproveSubmission(ctx context.Context, id uuid.UUID, snap store.CatalogSnapshot) (store.Submission, error)
 }
 
-// Enrichment is the catalog surface (typed reads with the caller's
-// own bearer relayed on every hop).
+// Enrichment is the catalog surface: typed reads relaying the caller's own bearer on every hop.
 type Enrichment interface {
 	GetProduct(ctx context.Context, bearer string, id uuid.UUID) (enrichapi.Product, error)
 	Resolve(ctx context.Context, bearer string, req enrichapi.ResolveRequest) (enrichapi.Product, error)
@@ -97,8 +94,7 @@ type Enrichment interface {
 	ListPlatforms(ctx context.Context, bearer string) ([]enrichmentclient.Platform, error)
 }
 
-// Cache is the Valkey surface. Errors mean "Valkey is having a
-// moment"; every call site fails open (miss + log).
+// Cache is the Valkey surface; errors mean a moment, every call site fails open (miss + log).
 type Cache interface {
 	GetDashboard(ctx context.Context, sub string) ([]byte, error)
 	PutDashboard(ctx context.Context, sub string, body []byte, ttl time.Duration) error
@@ -107,8 +103,7 @@ type Cache interface {
 	PutValueHistory(ctx context.Context, sub string, body []byte, ttl time.Duration) error
 }
 
-// The concrete types must satisfy the interfaces above; main.go wires
-// these same types, so the assertions document production wiring.
+// The concrete types must satisfy the interfaces above; main.go wires these same types.
 var (
 	_ Store      = (*store.Store)(nil)
 	_ Enrichment = (*enrichmentclient.Client)(nil)
@@ -121,8 +116,7 @@ type Options struct {
 	Logger            *slog.Logger
 }
 
-// Handlers owns the collaborators and knobs for every HTTP handler in
-// the collection service.
+// Handlers owns the collaborators and knobs for every HTTP handler in the service.
 type Handlers struct {
 	store        Store
 	enrichment   Enrichment
@@ -130,8 +124,7 @@ type Handlers struct {
 	logger       *slog.Logger
 	dashboardTTL time.Duration
 
-	// Domain instruments; nil when registration failed (each emission
-	// site guards the nil).
+	// Domain instruments; nil when registration failed (each emission site guards the nil).
 	pricingCompose   metric.Int64Counter
 	cacheLookups     metric.Int64Counter
 	cacheFailOpen    metric.Int64Counter
@@ -143,14 +136,12 @@ type Handlers struct {
 	normalizePlatformsRuns metric.Int64Counter
 	normalizeRegionsRuns   metric.Int64Counter
 
-	// rematching guards the entry rematch: one at a time, concurrent
-	// triggers answer 409 (mirrors enrichment's catalog-refresh guard).
+	// rematching guards the entry rematch: one at a time, concurrent triggers answer 409.
 	rematching atomic.Bool
 }
 
-// New builds a Handlers wired to the given collaborators. The OTel
-// meter is best-effort: an instrument registration failure is logged
-// but never prevents startup.
+// New builds a Handlers wired to the given collaborators; the OTel meter is
+// best-effort, so a registration failure is logged but never blocks startup.
 func New(st Store, enrich Enrichment, c Cache, opts Options) *Handlers {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
@@ -174,10 +165,8 @@ func New(st Store, enrich Enrichment, c Cache, opts Options) *Handlers {
 		submissionEvents: vgotel.CounterLogged(m, opts.Logger, "vg.collection.submissions.events",
 			"Catalog submission lifecycle transitions",
 			"{event}"),
-		// Explicit boundaries: the SDK defaults top out at 10s and would
-		// flatten a multi-minute entry-rematch run into the last bucket
-		// (the same shared DurationBuckets tuple enrichment's
-		// refresh.step_duration histogram uses).
+		// Explicit boundaries: SDK defaults top out at 10s and would flatten a
+		// multi-minute rematch run into the last bucket (shared with enrichment's refresh.step_duration).
 		rematchDuration: vgotel.HistogramLogged(m, opts.Logger, "vg.collection.rematch.duration",
 			"Elapsed seconds per entry-rematch run",
 			"s", vgotel.DurationBuckets...),
@@ -198,9 +187,8 @@ func New(st Store, enrich Enrichment, c Cache, opts Options) *Handlers {
 	return h
 }
 
-// registerPendingGauge reports the all-users pending submission count
-// (the admin review backlog) on every collection cycle. A nil store
-// (router-only construction) registers nothing.
+// registerPendingGauge reports the all-users pending submission count (admin
+// review backlog) every collection cycle; a nil store registers nothing.
 func registerPendingGauge(m metric.Meter, st Store, logger *slog.Logger) {
 	if st == nil {
 		return
@@ -233,16 +221,13 @@ func problem(w http.ResponseWriter, r *http.Request, status int, code, detail st
 	httpkit.WriteProblemFields(w, r, status, code, detail)
 }
 
-// failOpen records a Valkey failure the caller is about to treat as a
-// cache miss (log + metric; the service dashboard watches the metric).
+// failOpen records a Valkey failure the caller treats as a cache miss (log + metric).
 func (h *Handlers) failOpen(ctx context.Context, op string, err error) {
 	valkeykit.FailOpen(ctx, h.logger, h.cacheFailOpen, op, err)
 }
 
-// composeEvent counts one read-time value composition that reached
-// enrichment; err classifies the outcome (ok or degraded). Requests
-// that price nothing never get here, keeping degraded/(ok+degraded)
-// a clean enrichment-hop failure rate.
+// composeEvent counts one read-time value composition that reached enrichment;
+// requests that price nothing never get here, keeping degraded/(ok+degraded) clean.
 func (h *Handlers) composeEvent(ctx context.Context, op string, err error) {
 	outcome := "ok"
 	if err != nil {
@@ -251,11 +236,9 @@ func (h *Handlers) composeEvent(ctx context.Context, op string, err error) {
 	vgotel.Count(ctx, h.pricingCompose, attribute.String("op", op), attribute.String("outcome", outcome))
 }
 
-// cacheLookup counts a cache GET as hit or miss. The surface label is
-// keyed "cache" (not "op") to match the bff's lookups counter, so one
-// key groups cache hit ratios across services; "op" stays the
-// operation key on the fail-open counter. An errored GET is a miss
-// here and additionally a fail-open event at the failOpen site.
+// cacheLookup counts a cache GET as hit or miss. The surface label is keyed
+// "cache" (matching the bff's lookups counter) rather than "op"; an errored
+// GET counts as a miss here and also a fail-open event at the failOpen site.
 func (h *Handlers) cacheLookup(ctx context.Context, cache string, hit bool) {
 	outcome := "miss"
 	if hit {
@@ -264,96 +247,80 @@ func (h *Handlers) cacheLookup(ctx context.Context, cache string, hit bool) {
 	vgotel.Count(ctx, h.cacheLookups, attribute.String("cache", cache), attribute.String("outcome", outcome))
 }
 
-// submissionEvent counts one submission lifecycle transition
-// (created, cancelled, approved, rejected).
+// submissionEvent counts one submission lifecycle transition (created, cancelled, approved, rejected).
 func (h *Handlers) submissionEvent(ctx context.Context, event string) {
 	vgotel.Count(ctx, h.submissionEvents, attribute.String("event", event))
 }
 
-// countRematchTriple records one entry-rematch (game, platform,
-// region) triple's outcome: ok when nothing was pending or the
-// triple's resolve succeeded - a per-entry RepointEntry failure logs
-// and continues rather than flipping this to failed, so the audit log
-// (not this counter) is the honest signal for a partial repoint;
-// failed when the member fetch or the resolve call itself errored.
+// countRematchTriple records one (game, platform, region) triple's outcome: ok
+// when nothing pending or the resolve succeeded (a per-entry repoint failure
+// logs but doesn't flip this to failed); failed on a fetch/resolve error.
 func (h *Handlers) countRematchTriple(ctx context.Context, outcome string) {
 	vgotel.Count(ctx, h.rematchTriples, attribute.String("outcome", outcome))
 }
 
-// countRematchRepoint records one entry the entry rematch actually
-// repointed onto a region-correct sibling member.
+// countRematchRepoint records one entry the rematch repointed onto a region-correct sibling.
 func (h *Handlers) countRematchRepoint(ctx context.Context) {
 	vgotel.Count(ctx, h.rematchRepoints)
 }
 
-// recordRematchDuration records one entry-rematch run's elapsed
-// seconds (the CAS-gated run only; a 409-refused overlap never runs
-// and so never records).
+// recordRematchDuration records one rematch run's elapsed seconds (CAS-gated
+// runs only; a 409-refused overlap never records).
 func (h *Handlers) recordRematchDuration(ctx context.Context, seconds float64) {
 	vgotel.Record(ctx, h.rematchDuration, seconds)
 }
 
-// countNormalizePlatformsRow records one normalize-platforms sweep
-// row's outcome: normalized (stamped), skipped (no alias match), or
-// failed (the store write itself errored) - the same three-way split
-// countNormalizeRegionsRow uses for its sibling lever.
+// countNormalizePlatformsRow records one sweep row's outcome: normalized,
+// skipped (no alias match), or failed (store write errored).
 func (h *Handlers) countNormalizePlatformsRow(ctx context.Context, outcome string) {
 	vgotel.Count(ctx, h.normalizePlatformsRuns, attribute.String("outcome", outcome))
 }
 
-// countNormalizeRegionsRow records one normalize-regions sweep row's
-// outcome: normalized (promoted), skipped (no fold/synonym match), or
-// failed (the product fetch or the store write errored). Only the
-// fetch-failure branch also folds into the response body's skipped
-// count; a store-write failure increments neither normalized nor
-// skipped there (so scanned can exceed their sum) and surfaces only
-// through the warning log line and this failed outcome - matching the
-// platforms lever's response posture.
+// countNormalizeRegionsRow records one sweep row's outcome: normalized,
+// skipped (no fold/synonym match), or failed (fetch or store-write error). Only
+// the fetch failure also folds into the response's skipped count; a
+// store-write failure increments neither there, so scanned can exceed their sum.
 func (h *Handlers) countNormalizeRegionsRow(ctx context.Context, outcome string) {
 	vgotel.Count(ctx, h.normalizeRegionsRuns, attribute.String("outcome", outcome))
 }
 
-// internalError answers a 500 and logs its cause: op is a stable,
-// grep-able label for the failing operation (the log's "op" key);
-// detail is the response's human-readable text. The two vary
-// independently.
+// internalError answers a 500 and logs its cause: op is a stable, grep-able
+// label; detail is the response's human-readable text (they vary independently).
 func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, op, detail string, err error) {
-	h.logger.ErrorContext(r.Context(), "store error", "op", op, "err", err)
+	h.logger.ErrorContext(r.Context(), "handler error", "op", op, "err", err)
 	problem(w, r, http.StatusInternalServerError, "internal", detail)
 }
 
-// bearerToken extracts the raw Authorization bearer, unparsed. caller
-// uses it for its own return value; the internal levers use it
-// directly, since their caller may be a service token whose subject
-// is not a user id (see caller's doc comment).
+// bearerToken extracts the raw Authorization bearer, unparsed; the internal
+// levers use it directly since a service token's subject is not a user id.
 func bearerToken(r *http.Request) string {
 	return strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 }
 
-// caller resolves the authenticated caller: the JWT subject as the
-// owning user id, plus the raw bearer for enrichment hops. Never call
-// this before the caller is known to be a real user: a service
-// token's subject (svc:<name>) is not a uuid, and jwtauth.CallerID
-// answers that with a 500, not a clean 403. Every ordinary route is
-// user-scoped already. Of the internal levers: resnapshot, the entry
-// rematch, normalize-platforms, and normalize-regions all admit a
-// service token, so they read bearerToken directly instead and never
-// call this at all.
+// caller resolves the authenticated user id plus the raw bearer for
+// enrichment hops. Never call before the caller is known to be a real user: a
+// service token's subject (svc:<name>) is not a uuid and trips
+// jwtauth.CallerID's 500, not a clean 403. The four service-token-admitting
+// internal levers read bearerToken directly instead.
 func (h *Handlers) caller(w http.ResponseWriter, r *http.Request) (uuid.UUID, string, bool) {
 	return jwtauth.CallerID(w, r, problem)
 }
 
-// requireAdminOrService admits an admin user or a service token - the
-// guard on every operator lever a CronJob drives: resnapshot, the
-// entry rematch, normalize-platforms, and normalize-regions.
+// requireAdminOrService admits an admin user or a service token: the guard on
+// every operator lever a CronJob drives.
 func (h *Handlers) requireAdminOrService(w http.ResponseWriter, r *http.Request) bool {
 	return jwtauth.RequireAdminOrService(w, r, problem)
 }
 
+// requireAdmin admits an admin user only: the guard on human-only admin
+// surfaces (product reference counts, the submission review queue).
+func (h *Handlers) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
+	return jwtauth.RequireAdmin(w, r, problem)
+}
+
 var _ api.ServerInterface = (*Handlers)(nil)
 
-// maxBodyBytes caps request bodies; the largest legitimate body is an
-// entry update with long notes, far under this.
+// maxBodyBytes caps request bodies; the largest legitimate body (an entry update with long notes) is far under this.
 const maxBodyBytes = 64 * 1024
 
 func datesEqual(a, b *time.Time) bool {

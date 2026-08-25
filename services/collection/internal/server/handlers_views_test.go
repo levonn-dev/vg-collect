@@ -51,11 +51,9 @@ func TestUnitViews(t *testing.T) {
 		big := map[string]any{"name": "big", "params": map[string]any{"blob": strings.Repeat("x", 9000)}}
 		wantProblem(t, do(t, http.MethodPost, srv.URL+"/views", tok, jsonBody(big)),
 			http.StatusBadRequest, "invalid_body")
-		// visibility outside {private, unlisted, listed}: the generated
-		// enum type is a plain string underneath (no UnmarshalJSON
-		// validation), so an invalid value must be rejected here -
-		// otherwise only the DB CHECK constraint would catch it and the
-		// client would see a 500 instead of a 400.
+		// visibility outside {private, unlisted, listed}: the generated enum type
+		// has no UnmarshalJSON validation, so this must reject it, or only the DB
+		// CHECK would catch it and the client would see a 500 instead of a 400.
 		bad := map[string]any{"name": "x", "params": params, "visibility": "public"}
 		wantProblem(t, do(t, http.MethodPost, srv.URL+"/views", tok, jsonBody(bad)),
 			http.StatusBadRequest, "invalid_body")

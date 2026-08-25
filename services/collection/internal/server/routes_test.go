@@ -18,11 +18,9 @@ import (
 	"github.com/levonn-dev/vgkeep/services/collection/internal/server"
 )
 
-// authEnv is an in-process token mint + JWKS: real Ed25519 signatures
-// through the real jwtauth middleware, no auth service needed. The
-// nil-roles-means-"user" default in token is local policy - most
-// callers here want a plain user token and pass no roles at all -
-// jwtauthtest.Env.Token itself leaves roles exactly as passed.
+// authEnv is an in-process token mint + JWKS: real Ed25519 signatures through
+// the real jwtauth middleware, no auth service needed. nil-roles-means-"user"
+// is local policy; jwtauthtest.Env.Token itself leaves roles exactly as passed.
 type authEnv struct {
 	v   *jwtauth.Validator
 	env *jwtauthtest.Env
@@ -43,10 +41,8 @@ func (a authEnv) token(t *testing.T, sub string, roles ...string) string {
 	return a.env.Token(t, sub, roles...)
 }
 
-// serviceToken mints a valid access token carrying token_use=service
-// (no roles) for sub, mirroring auth's internal service-token
-// endpoint - the CronJob credential requireAdminOrService admits
-// alongside an admin bearer.
+// serviceToken mints a valid access token carrying token_use=service (no
+// roles) for sub, the CronJob credential requireAdminOrService admits alongside an admin bearer.
 func (a authEnv) serviceToken(t *testing.T, sub string) string {
 	t.Helper()
 	return a.env.ServiceToken(t, sub)
@@ -139,9 +135,8 @@ func TestUnitAPIRoutesRequireJWT(t *testing.T) {
 		resp := do(t, p.method, srv.URL+p.path, "", nil)
 		wantProblem(t, resp, http.StatusUnauthorized, "missing_token")
 	}
-	// A valid token passes the gate: whatever the handler answers, the
-	// middleware must not (401/403 would mean auth swallowed it). This
-	// assertion survives the skeleton handlers being replaced.
+	// A valid token passes the gate: whatever the handler answers, the middleware
+	// must not (401/403 would mean auth swallowed it).
 	for _, p := range paths {
 		resp := do(t, p.method, srv.URL+p.path, a.token(t, uuid.NewString()), nil)
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
@@ -156,22 +151,17 @@ func TestUnitBadParamIsProblemJSON(t *testing.T) {
 	wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 }
 
-// TestUnitInternalResnapshotRequiresJWT pins that the resnapshot route
-// rides the SAME blanket jwtauth guard as every other route (its own
-// admin-or-service check runs after, inside the handler). A
-// bearer-less request here must 401 like every other route in this
-// file.
+// TestUnitInternalResnapshotRequiresJWT pins that resnapshot rides the SAME
+// blanket jwtauth guard as every other route (its own admin-or-service check
+// runs after, inside the handler); a bearer-less request must 401.
 func TestUnitInternalResnapshotRequiresJWT(t *testing.T) {
 	srv, _ := newUnitServer(t, nil, nil, nil)
 	resp := do(t, http.MethodPost, srv.URL+"/internal/resnapshot", "", nil)
 	wantProblem(t, resp, http.StatusUnauthorized, "missing_token")
 }
 
-// TestUnitInternalRematchEntriesRequiresJWT pins that the entry
-// rematch route rides the SAME blanket jwtauth guard as every other
-// route (its own admin-or-service check runs after, inside the
-// handler). A bearer-less request here must 401 like every other
-// route in this file.
+// TestUnitInternalRematchEntriesRequiresJWT pins that the entry rematch rides
+// the SAME blanket jwtauth guard as every other route; a bearer-less request must 401.
 func TestUnitInternalRematchEntriesRequiresJWT(t *testing.T) {
 	srv, _ := newUnitServer(t, nil, nil, nil)
 	resp := do(t, http.MethodPost, srv.URL+"/internal/rematch-entries", "", nil)

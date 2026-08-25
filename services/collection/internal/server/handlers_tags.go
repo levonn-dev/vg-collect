@@ -19,10 +19,8 @@ func toAPITag(t store.Tag) api.Tag {
 	return api.Tag{Id: t.ID, Name: t.Name, EntryCount: t.EntryCount}
 }
 
-// validateTagName guards the one thing the contract cannot: a
-// whitespace-only name. TagCreate.name declares minLength:1 and
-// maxLength:50 (specval's job), but minLength alone does not catch
-// "   " - only a literal empty string.
+// validateTagName guards the one thing specval can't: a whitespace-only name
+// (minLength:1 catches an empty string but not "   ").
 func validateTagName(name string) string {
 	if strings.TrimSpace(name) == "" {
 		return "name must not be blank"

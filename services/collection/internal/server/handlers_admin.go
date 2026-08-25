@@ -1,6 +1,5 @@
-// Admin and service-token levers: user-data purge, the product-
-// reference count, resnapshot, the entry rematch, and platform and
-// region normalization.
+// Admin and service-token levers: user-data purge, product-reference count,
+// resnapshot, entry rematch, platform and region normalization.
 
 package server
 
@@ -15,7 +14,6 @@ import (
 
 	"github.com/levonn-dev/vgkeep/libs/go/contract/enrichapi"
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
-	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 	"github.com/levonn-dev/vgkeep/libs/go/regionkit"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/gen/api"
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
@@ -35,13 +33,10 @@ func (h *Handlers) PurgeUserData(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// CountProductReferences is the admin delete's safety read: only this
-// service can see entries, so the bff asks here - across all users -
-// before asking enrichment to delete a product.
+// CountProductReferences is the admin delete's safety read: only this service
+// can see entries, so the bff asks here across all users before deleting a product.
 func (h *Handlers) CountProductReferences(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
-	claims, _ := jwtauth.FromContext(r.Context())
-	if !claims.HasRole("admin") {
-		problem(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	if !h.requireAdmin(w, r) {
 		return
 	}
 	n, err := h.store.CountEntriesByProduct(r.Context(), productId)
@@ -54,15 +49,9 @@ func (h *Handlers) CountProductReferences(w http.ResponseWriter, r *http.Request
 	}{n})
 }
 
-// InternalResnapshot recomputes every game-backed entry's
-// product-derived snapshot fields: the region-picked release date,
-// the localized presentation trio (name, transliteration, cover
-// url), and the credit arrays (developers, publishers).
-// Contract-described and served by the generated mux behind the
-// blanket JWT middleware, admin-or-service-gated in the handler
-// (same guard as the entry rematch); the caller's bearer rides the
-// enrichment hops. Idempotent and re-runnable - rows are written only
-// when a recomputed field differs from what is stored.
+// InternalResnapshot recomputes every game-backed entry's region-picked
+// release date, localized presentation trio, and credit arrays from the
+// product. Admin-or-service gated; idempotent, writing only when a field differs.
 func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdminOrService(w, r) {
 		return
@@ -86,8 +75,7 @@ func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 			h.logger.WarnContext(r.Context(), "resnapshot: product fetch failed", "product", pid, "err", err)
 			continue
 		}
-		// Credits are game identity, not region-scoped: one derive
-		// serves every entry in the product's group.
+		// Credits are game identity, not region-scoped: one derive serves the whole group.
 		devs, pubs := pickCredits(prod)
 		for _, ref := range group {
 			pick := pickReleaseDate(prod.Igdb, ref.Region)
@@ -118,34 +106,19 @@ func (h *Handlers) InternalResnapshot(w http.ResponseWriter, r *http.Request) {
 // day-one backfill at the provider's polite request rate).
 const rematchBudget = 30 * time.Minute
 
-// InternalRematchEntries is the entry rematch: it re-resolves
-// auto-priced game-backed entries with their region so each points
-// at its region-correct sibling member (a JP copy's price is a
-// different listing). Grouped by (game, platform, region) - one
-// resolve per triple - with the console-class guard applied per
-// entry, so class-compatible members skip, and user-picked matches
-// (match_provenance) are never swept at all. Idempotent and
-// re-runnable; this rematch is the backfill for entries that predate
-// region-aware matching. Contract-described and served by the
-// generated mux behind the blanket JWT middleware, admin-or-service-
-// gated in the handler; the caller's bearer rides the enrichment
-// hops, captured before the run detaches. Triggering goes through
-// httpkit.TriggerDetached: one run at a time (409 rematch_in_progress
-// on conflict, mirrors the catalog refresh's guard), 202 immediately,
-// sweep detached on its own 30-minute budget - a day-one backfill
-// resolves at the provider's polite rate (1 req/s), which outlives
-// httpkit's 30s write timeout on exactly the runs that matter. Each
-// successful repoint logs entry and old->new product ids - the audit
-// trail that keeps a run reviewable and hand-reversible; the
-// completion log and the rematch.* metrics carry the run's three
-// counts, not the 202 response.
+// InternalRematchEntries re-resolves auto-priced game-backed entries onto their
+// region-correct sibling member, one resolve per (game, platform, region)
+// triple; class-compatible and user-picked matches are never swept. Idempotent
+// backfill for entries predating region-aware matching. httpkit.TriggerDetached
+// admits one run at a time (409 rematch_in_progress), else 202 and a 30-minute
+// detached run at the provider's 1 req/s rate (past httpkit's 30s write timeout).
+// Repoints log entry and old->new product ids; counts land in the completion
+// log and rematch.* metrics, not the response.
 func (h *Handlers) InternalRematchEntries(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdminOrService(w, r) {
 		return
 	}
-	// Captured here, before detaching: the goroutine reuses it for the
-	// enrichment hops, and the request itself is not safe to read from
-	// once this handler has returned.
+	// Captured before detaching: the request is not safe to read once this handler returns.
 	bearer := bearerToken(r)
 	started := httpkit.TriggerDetached(w, r, httpkit.TriggerDetachedOptions{
 		Guard:          &h.rematching,
@@ -167,10 +140,8 @@ func (h *Handlers) InternalRematchEntries(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusAccepted, api.RematchAccepted{Status: "started"})
 }
 
-// runRematch is the entry rematch's sweep body, detached from its
-// trigger request by InternalRematchEntries: ctx is the detached,
-// budget-bound context and bearer was captured from the trigger
-// request before the goroutine started.
+// runRematch is the entry rematch's sweep body: ctx is the detached, budget-bound
+// context; bearer was captured from the trigger request before the goroutine started.
 func (h *Handlers) runRematch(ctx context.Context, bearer string) {
 	start := time.Now()
 	defer func() { h.recordRematchDuration(ctx, time.Since(start).Seconds()) }()
@@ -260,38 +231,21 @@ func (h *Handlers) runRematch(ctx context.Context, bearer string) {
 		"triples_seen", seen, "triples_failed", failed, "entries_repointed", repointed)
 }
 
-// InternalNormalizePlatforms canonicalizes free-text custom-entry
-// platforms: every entry with a platform_name but no platform_igdb_id
-// is matched (case-insensitive, trimmed, exact-or-alias - never fuzzy,
-// so nothing is silently misfiled) against the enrichment platform
-// catalog and stamped with the canonical igdb id + name. Re-runnable:
-// stamped rows leave the selection set. Guard: admin role or service
-// token, since the nightly job runs this alongside normalize-regions
-// and the entry rematch; the mass write stays reviewable through its
-// counts and logs. The caller's bearer rides the enrichment hop.
+// InternalNormalizePlatforms canonicalizes free-text custom-entry platforms:
+// entries with platform_name but no platform_igdb_id match exact-or-alias
+// (never fuzzy) against the enrichment platform catalog and get stamped.
+// Re-runnable; admin-or-service gated (the nightly job runs it alongside
+// normalize-regions and the entry rematch).
 //
-// Contract-described like the other internal levers; the bff relays
-// POST /api/admin/normalize-platforms to this endpoint via the Admin page
-// button, and the gateway publishes the relay path. For offline testing
-// against the collection service directly, with the dev stack up and the
-// admin fixture role already granted (task grant-fixture-admin):
-//
-//	kubectl -n vgkeep port-forward svc/collection 8085:8080 &
-//	TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
-//	  -H 'Content-Type: application/json' -d '{"user":"admin"}' \
-//	  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
-//	curl -s -X POST http://localhost:8085/internal/normalize-platforms \
-//	  -H "Authorization: Bearer $TOKEN"
-//
-// Answers {"scanned":N,"normalized":N,"skipped":N}.
+// Offline test: kubectl port-forward svc/collection 8085:8080, mint a token via
+// POST :8082/oauth/dev/token (task grant-fixture-admin), then POST
+// :8085/internal/normalize-platforms with it. Answers {"scanned":N,"normalized":N,"skipped":N}.
 func (h *Handlers) InternalNormalizePlatforms(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdminOrService(w, r) {
 		return
 	}
-	// Reads bearerToken directly rather than calling caller(), same as
-	// resnapshot and the entry rematch: a service token's subject
-	// (svc:<name>) is not a uuid and would trip caller's internalError
-	// branch. See caller's doc comment.
+	// Reads bearerToken directly, not caller(): a service token's subject
+	// (svc:<name>) is not a uuid and would trip caller's internalError branch.
 	bearer := bearerToken(r)
 	platforms, err := h.enrichment.ListPlatforms(r.Context(), bearer)
 	if err != nil {
@@ -340,41 +294,19 @@ func (h *Handlers) InternalNormalizePlatforms(w http.ResponseWriter, r *http.Req
 	})
 }
 
-// InternalNormalizeRegions promotes free-text entry regions into the
-// known set: every entry whose region sits outside
-// regionkit.KnownRegions is folded (lowercase, trimmed) against the
-// known values and regionkit.RegionSynonyms - exact-or-synonym, never
-// fuzzy, so an unreviewed string is left as typed rather than
-// misfiled. A custom entry (no
-// product) gets a plain region write; a game-backed entry additionally
-// re-picks its release-date and localized snapshot for the promoted
-// region from a fresh product fetch, the same GetProduct hop the
-// region-edit arm of UpdateEntry uses - an enrichment outage skips
-// that row for the next run rather than failing the whole sweep (this
-// lever has no platform-catalog dependency, so no whole-run 502).
-// Re-runnable: promoted rows leave the selection set - though
-// "normalized" here counts an error-free write, not a confirmed row
-// change: PromoteEntryRegion/PromoteEntryRegionSnapshot skip the
-// RowsAffected check (store-tier convention, same as RepointEntry),
-// so a row that vanished mid-sweep still increments it. Guard: admin
-// role or service token (the nightly job runs this ahead of the entry
-// rematch, so a promoted region's pricing class corrects the same
-// night); the caller's bearer rides the one enrichment hop.
+// InternalNormalizeRegions promotes free-text entry regions outside
+// regionkit.KnownRegions via exact-or-synonym fold against
+// regionkit.RegionSynonyms, never fuzzy; unreviewed strings stay as typed.
+// A custom entry gets a plain region write; a game-backed entry also re-picks
+// its release date and localized snapshot via a fresh GetProduct fetch. An
+// enrichment outage skips that row for the next run rather than failing the
+// sweep (no whole-run 502). Re-runnable; "normalized" counts an error-free
+// write, not a confirmed row change (RowsAffected check skipped). Admin-or-service
+// gated; the nightly job runs this ahead of the entry rematch.
 //
-// Contract-described like the other internal levers; the bff relays
-// POST /api/admin/normalize-regions to this endpoint via the Admin page
-// button, and the gateway publishes the relay path. For offline testing
-// against the collection service directly, with the dev stack up and the
-// admin fixture role already granted (task grant-fixture-admin):
-//
-//	kubectl -n vgkeep port-forward svc/collection 8085:8080 &
-//	TOKEN=$(curl -s -X POST http://localhost:8082/oauth/dev/token \
-//	  -H 'Content-Type: application/json' -d '{"user":"admin"}' \
-//	  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
-//	curl -s -X POST http://localhost:8085/internal/normalize-regions \
-//	  -H "Authorization: Bearer $TOKEN"
-//
-// Answers {"scanned":N,"normalized":N,"skipped":N}.
+// Offline test: kubectl port-forward svc/collection 8085:8080, mint a token via
+// POST :8082/oauth/dev/token (task grant-fixture-admin), then POST
+// :8085/internal/normalize-regions with it. Answers {"scanned":N,"normalized":N,"skipped":N}.
 func (h *Handlers) InternalNormalizeRegions(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdminOrService(w, r) {
 		return

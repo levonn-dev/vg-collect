@@ -161,8 +161,7 @@ func TestSubmitVerdict_RejectApproveExistingAndGate(t *testing.T) {
 	srv, a := newUnitServer(t, st, enrich, newStubCache())
 	admin := a.token(t, adminID.String(), "admin")
 
-	// The gate: user role -> 403, store untouched (getSubmission nil
-	// would panic - prove it is never reached with a fresh stub).
+	// The gate: user role -> 403, store untouched (getSubmission nil would panic if reached).
 	gateSrv, ga := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 	resp := do(t, http.MethodPost, gateSrv.URL+"/admin/submissions/"+subID.String()+"/verdict",
 		ga.token(t, uuid.NewString()), jsonBody(map[string]any{"action": "reject", "reason": "x"}))
@@ -179,8 +178,7 @@ func TestSubmitVerdict_RejectApproveExistingAndGate(t *testing.T) {
 		t.Fatalf("reject: %d", resp.StatusCode)
 	}
 
-	// approve_existing validates the target then adopts with the
-	// provider snapshot.
+	// approve_existing validates the target then adopts with the provider snapshot.
 	resp = do(t, http.MethodPost, srv.URL+"/admin/submissions/"+subID.String()+"/verdict", admin,
 		jsonBody(map[string]any{"action": "approve_existing", "product_id": productID.String()}))
 	if resp.StatusCode != http.StatusOK {
@@ -282,8 +280,7 @@ func TestSubmitVerdict_ApproveNewMintRecordAdoptAndRetry(t *testing.T) {
 		t.Fatalf("phases: recorded=%v adopted=%v", recorded, adopted)
 	}
 
-	// Retry with a recorded id: the mint must NOT run again (nil
-	// field would panic), adoption completes.
+	// Retry with a recorded id: the mint must NOT run again (nil field would panic), adoption completes.
 	adopted = false
 	withRecord := pending
 	withRecord.ProductID = &minted
@@ -307,13 +304,10 @@ func TestSubmitVerdict_ApproveNewMintRecordAdoptAndRetry(t *testing.T) {
 	wantProblem(t, resp, http.StatusBadGateway, "enrichment_unavailable")
 }
 
-// TestSubmitVerdict_ApproveEntryVanishedMidRace guards the adoption
-// tail's GetEntry call against the cascade micro-race: if the
-// submission's entry is deleted between GetSubmission and here (the
-// cascade also removes the submission row, but a verdict already in
-// flight holds its own copy), the caller must get a truthful 404, not
-// a mystery 500. approveSubmission stays nil - reaching it would
-// panic, proving the handler returns before ever calling it.
+// TestSubmitVerdict_ApproveEntryVanishedMidRace guards the adoption tail's
+// GetEntry call against a cascade micro-race: if the entry is deleted between
+// GetSubmission and here, the caller must get a truthful 404, not a mystery
+// 500. approveSubmission stays nil; reaching it would panic.
 func TestSubmitVerdict_ApproveEntryVanishedMidRace(t *testing.T) {
 	adminID := uuid.New()
 	subID := uuid.New()

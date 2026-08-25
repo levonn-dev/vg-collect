@@ -68,8 +68,7 @@ func TestCustomEntryLifecycle(t *testing.T) {
 	}
 	rankOf(t, created) // backlog customs rank like any entry
 
-	// The user-owned display fields replace on update, and a proxy
-	// carries the recommendation identity (igdb_game_id) with it.
+	// The user-owned display fields replace on update, and a proxy carries the recommendation identity (igdb_game_id).
 	released := time.Date(1995, time.September, 30, 0, 0, 0, 0, time.UTC)
 	created.DisplayName = "Chrono Trigger (repro cart, v2 patch)"
 	created.PlatformName = new("Super Famicom")
@@ -154,11 +153,9 @@ func TestEntryCoverURLPersistsThroughCreateAndList(t *testing.T) {
 	}
 }
 
-// TestEntryLocalizedFieldsPersistThroughCreateAndUpdate covers the
-// region-picked presentation trio: it round-trips through create and
-// read back, an update rewrites it (a region edit re-picks, including
-// back to nothing), and an entry whose region has no localized
-// presentation stores NULLs.
+// TestEntryLocalizedFieldsPersistThroughCreateAndUpdate covers the localized
+// trio: round-trips through create/read, an update rewrites it (a region edit
+// re-picks, including back to nothing), and no localization stores NULLs.
 func TestEntryLocalizedFieldsPersistThroughCreateAndUpdate(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -186,9 +183,8 @@ func TestEntryLocalizedFieldsPersistThroughCreateAndUpdate(t *testing.T) {
 		t.Fatalf("read back: %v %v %v", got.LocalizedName, got.LocalizedNameTranslit, got.LocalizedCoverURL)
 	}
 
-	// A region edit re-picks: a sparse bundle (cover only) overwrites
-	// the whole trio rather than leaving the previous region's title
-	// behind.
+	// A region edit re-picks: a sparse bundle (cover only) overwrites the whole
+	// trio rather than leaving the previous region's title behind.
 	got.Region = "pal"
 	got.LocalizedName = nil
 	got.LocalizedNameTranslit = nil
@@ -203,8 +199,7 @@ func TestEntryLocalizedFieldsPersistThroughCreateAndUpdate(t *testing.T) {
 			updated.LocalizedName, updated.LocalizedNameTranslit, updated.LocalizedCoverURL)
 	}
 
-	// No localized presentation means NULLs (the ntsc_u and
-	// region_free case, and every hardware entry).
+	// No localized presentation means NULLs (ntsc_u, region_free, and every hardware entry).
 	bare := mustCreate(t, s, baseEntry(userID), nil)
 	if bare.LocalizedName != nil || bare.LocalizedNameTranslit != nil || bare.LocalizedCoverURL != nil {
 		t.Fatalf("no localized snapshot means nulls: %v %v %v",
@@ -275,10 +270,8 @@ func TestUpdateReplacesTagsAndIsScoped(t *testing.T) {
 	}
 }
 
-// TestUpdateEntry_PersistsProductRepoint guards the narrow re-match:
-// the UPDATE must write product_id, both in the row it returns and on
-// a fresh reload (the RETURNING clause and the stored column must
-// agree).
+// TestUpdateEntry_PersistsProductRepoint guards the narrow re-match: the
+// UPDATE must write product_id on both the returned row and a fresh reload.
 func TestUpdateEntry_PersistsProductRepoint(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -300,12 +293,9 @@ func TestUpdateEntry_PersistsProductRepoint(t *testing.T) {
 	}
 }
 
-// TestEntryMatchProvenanceRoundTrip pins match_provenance through the
-// INSERT and through GetEntry - the current-entry read the update
-// handler uses - in both directions: an explicit "user" pick, and the
-// unset-by-the-test case (baseEntry's own "auto"). The store threads
-// whatever it is given; it does not default an empty string itself
-// (the handler maps that, before the store ever sees it).
+// TestEntryMatchProvenanceRoundTrip pins match_provenance through INSERT and
+// GetEntry in both directions (explicit "user", default "auto"). The store
+// threads whatever it's given; it never defaults an empty string itself.
 func TestEntryMatchProvenanceRoundTrip(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -332,14 +322,10 @@ func TestEntryMatchProvenanceRoundTrip(t *testing.T) {
 	}
 }
 
-// TestEntryMatchProvenanceColumnDefault pins the migration's own
-// DEFAULT 'auto' clause directly: CreateEntry always lists
-// match_provenance (TestEntryMatchProvenanceRoundTrip), so only a
-// bare SQL INSERT that omits the column exercises the column default
-// itself. Minimal required columns only - everything else here is
-// either DEFAULTed or nullable, except product_id and a non-backlog
-// status, both needed to clear the entries table's own CHECK
-// constraints without naming match_provenance.
+// TestEntryMatchProvenanceColumnDefault pins the migration's DEFAULT 'auto'
+// directly: since CreateEntry always lists match_provenance, only a bare SQL
+// INSERT omitting the column exercises it. product_id and a non-backlog status
+// are included only to clear the table's other CHECK constraints.
 func TestEntryMatchProvenanceColumnDefault(t *testing.T) {
 	pool := newTestPool(t)
 	ctx := context.Background()
@@ -363,10 +349,8 @@ func TestEntryMatchProvenanceColumnDefault(t *testing.T) {
 	}
 }
 
-// TestAckRegionMismatch_Stamps covers the ack's own write: it stamps
-// now() on the owner's entry and the stamp reads back; a foreign
-// caller's ack is a no-op ErrNotFound (the same ownership-WHERE shape
-// as DeleteEntry).
+// TestAckRegionMismatch_Stamps covers the ack's write: it stamps now() and
+// reads back; a foreign caller's ack is a no-op ErrNotFound (same as DeleteEntry).
 func TestAckRegionMismatch_Stamps(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -534,10 +518,9 @@ func TestListFilters(t *testing.T) {
 	}
 }
 
-// TestListFilters_CreditOverlap pins the credit dimensions: arrays
-// round-trip through create, a filter value matches any entry whose
-// array contains it (overlap, OR within the dimension), the two
-// dimensions AND across, and uncredited entries never match.
+// TestListFilters_CreditOverlap pins the credit dimensions: arrays round-trip
+// through create, a filter value matches any entry whose array contains it
+// (overlap OR within a dimension, AND across dimensions); uncredited entries never match.
 func TestListFilters_CreditOverlap(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -621,14 +604,12 @@ func TestListSorts(t *testing.T) {
 	wantNames(t, list(store.Filters{Sort: "created_at", Order: "asc"}),
 		"Terranigma", "Chrono Trigger", "Alundra", "Super Nintendo", "Controller")
 
-	// backlog_rank is the one sort WITHOUT the pinned prefix: pure
-	// rank order (chrono was created before terra).
+	// backlog_rank is the one sort WITHOUT the pinned prefix: pure rank order (chrono before terra).
 	f := store.Filters{Sort: "backlog_rank", Order: "asc"}
 	f.Statuses = []string{"backlog"}
 	wantNames(t, list(f), "Chrono Trigger", "Terranigma")
 
-	// The value sort falls back to the stable base order here (the
-	// handler re-sorts after price composition).
+	// The value sort falls back to the stable base order here (the handler re-sorts after price composition).
 	wantNames(t, list(store.Filters{Sort: "value", Order: "asc"}),
 		"Terranigma", "Controller", "Super Nintendo", "Alundra", "Chrono Trigger")
 
@@ -644,13 +625,38 @@ func TestListSorts(t *testing.T) {
 	}
 }
 
-// TestBulkUpdateEntries_ScalarActionsAndOwnershipFiltering pins the
-// flat scalar update (status + storage_location, including
-// bulk-update's OWN clearing rule: an explicit empty string clears,
-// an absent field leaves the column untouched - the opposite of the
-// full-replacement update) plus the ownership-filtering posture: ids
-// that are not the caller's own (foreign or unknown) are silently
-// excluded from updated_count and never written.
+// TestListEntriesPage pins the SQL LIMIT/OFFSET pushdown: a page is the right
+// slice of the ordered set, an offset past the end is empty, and tags still ride along.
+func TestListEntriesPage(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	user, _, _ := seedMatrix(t, s)
+	page := func(limit, offset int) []store.Entry {
+		t.Helper()
+		got, err := s.ListEntriesPage(ctx, user, store.Filters{Sort: "name", Order: "asc"}, limit, offset)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	// Full name-asc order: Terranigma (pinned), Alundra, Chrono Trigger, Controller, Super Nintendo.
+	wantNames(t, page(2, 1), "Alundra", "Chrono Trigger")
+	wantNames(t, page(2, 4), "Super Nintendo")
+	if got := page(2, 99); len(got) != 0 {
+		t.Fatalf("offset past the end must be empty, got %d", len(got))
+	}
+	for _, e := range page(5, 0) {
+		if e.Tags == nil {
+			t.Fatal("tags must never be nil")
+		}
+	}
+}
+
+// TestBulkUpdateEntries_ScalarActionsAndOwnershipFiltering pins the flat
+// scalar update (status/storage_location; bulk-update's own clearing rule: an
+// empty string clears, absent leaves untouched, opposite of full-replacement)
+// plus ownership filtering: foreign/unknown ids are silently excluded.
 func TestBulkUpdateEntries_ScalarActionsAndOwnershipFiltering(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -688,8 +694,7 @@ func TestBulkUpdateEntries_ScalarActionsAndOwnershipFiltering(t *testing.T) {
 		t.Fatal("a foreign entry must never be written")
 	}
 
-	// Empty string clears; a field absent from THIS call leaves the
-	// column untouched (status stays "shelved" from the call above).
+	// Empty string clears; a field absent from THIS call leaves the column untouched (status stays "shelved").
 	empty := ""
 	count, err = s.BulkUpdateEntries(ctx, user, []uuid.UUID{created.ID}, store.BulkActions{StorageLocation: &empty})
 	if err != nil || count != 1 {
@@ -707,13 +712,9 @@ func TestBulkUpdateEntries_ScalarActionsAndOwnershipFiltering(t *testing.T) {
 	}
 }
 
-// TestBulkUpdateEntries_EnteringBacklogAppendsAndPreservesPosition
-// pins the other half of backlog_rank management (the entries table
-// CHECKs status='backlog' exactly when backlog_rank is set, so a bare
-// status write cannot skip this): entries newly entering backlog get
-// a fresh rank appended at the end, oldest-created first among the
-// batch, while an entry already in backlog keeps its existing rank
-// untouched.
+// TestBulkUpdateEntries_EnteringBacklogAppendsAndPreservesPosition: entries
+// newly entering backlog get a fresh rank appended at the end (oldest-first in
+// the batch); an entry already in backlog keeps its existing rank.
 func TestBulkUpdateEntries_EnteringBacklogAppendsAndPreservesPosition(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -768,10 +769,8 @@ func TestBulkUpdateEntries_EnteringBacklogAppendsAndPreservesPosition(t *testing
 	}
 }
 
-// TestBulkUpdateEntries_TagAddRemove pins the tag delta across a
-// batch: add_tag_ids attaches to every targeted (owned) entry, a
-// foreign tag id in add_tag_ids matches nothing (same ownership
-// posture as replaceTags), and remove_tag_ids detaches.
+// TestBulkUpdateEntries_TagAddRemove pins the tag delta: add_tag_ids attaches
+// to every owned entry (a foreign tag id matches nothing), remove_tag_ids detaches.
 func TestBulkUpdateEntries_TagAddRemove(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -817,19 +816,16 @@ func TestBulkUpdateEntries_TagAddRemove(t *testing.T) {
 	}
 }
 
-// TestBulkUpdateEntries_PerEntryTagCapRollsBackWholeTransaction pins
-// the all-or-nothing contract: one entry crossing the 50-tag ceiling
-// rolls back the ENTIRE transaction, including the scalar change and
-// the tag adds this call would otherwise have made to an entry that,
-// on its own, would have stayed under the cap.
+// TestBulkUpdateEntries_PerEntryTagCapRollsBackWholeTransaction: one entry
+// crossing the 50-tag ceiling rolls back the ENTIRE transaction, including
+// changes to an entry that alone would have stayed under the cap.
 func TestBulkUpdateEntries_PerEntryTagCapRollsBackWholeTransaction(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	user := uuid.New()
 
-	// 53 distinct tags: 48 pre-attached to the first entry directly at
-	// store level (bypasses the handler's per-call 50 max on
-	// tag_ids), 5 new ones this call adds.
+	// 53 distinct tags: 48 pre-attached at store level (bypasses the handler's
+	// 50 max on tag_ids), 5 new ones this call adds.
 	all := make([]uuid.UUID, 53)
 	for i := range all {
 		tag, err := s.CreateTag(ctx, user, fmt.Sprintf("t%02d", i))
@@ -869,9 +865,7 @@ func TestBulkUpdateEntries_PerEntryTagCapRollsBackWholeTransaction(t *testing.T)
 }
 
 // TestBulkUpdateEntries_IdempotentReRun pins that re-running the same
-// bulk-update reports the same updated_count even when every action
-// was already true (the tag already attached, the fields already
-// holding these values) - the repo's re-runnable-lever posture.
+// bulk-update reports the same updated_count even when every action was already true.
 func TestBulkUpdateEntries_IdempotentReRun(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

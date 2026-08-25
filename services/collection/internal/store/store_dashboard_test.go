@@ -159,6 +159,43 @@ func TestDashboardAggregates(t *testing.T) {
 	}
 }
 
+// TestDashboardCountsTotalMatchesGroupedSums is a smoke pin: Total must equal
+// the sum of ByStatus/ByItemType on a quiet store (doesn't detect a lost snapshot under concurrent writers).
+func TestDashboardCountsTotalMatchesGroupedSums(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	user, _, _ := seedMatrix(t, s)
+
+	counts, err := s.DashboardCounts(ctx, user, store.Filters{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	statusSum := 0
+	for _, n := range counts.ByStatus {
+		statusSum += n
+	}
+	if statusSum != counts.Total {
+		t.Fatalf("sum(ByStatus) = %d, want Total %d", statusSum, counts.Total)
+	}
+
+	itemTypeSum := 0
+	for _, n := range counts.ByItemType {
+		itemTypeSum += n
+	}
+	if itemTypeSum != counts.Total {
+		t.Fatalf("sum(ByItemType) = %d, want Total %d", itemTypeSum, counts.Total)
+	}
+
+	platformSum := 0
+	for _, p := range counts.ByPlatform {
+		platformSum += p.Count
+	}
+	if platformSum != counts.Total {
+		t.Fatalf("sum(ByPlatform) = %d, want Total %d", platformSum, counts.Total)
+	}
+}
+
 func TestDashboardAggregatesFiltered(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

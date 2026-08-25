@@ -1,0 +1,1 @@
+DROP INDEX catalog_submissions_user_entry_created_idx;

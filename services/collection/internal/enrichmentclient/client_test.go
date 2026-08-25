@@ -29,15 +29,12 @@ type stubEnrichment struct {
 	knownProduct uuid.UUID
 	failWith     int // when nonzero, every response is this status
 
-	// createCommunityProduct answers POST /admin/products; a test sets
-	// it before exercising the mint. Dispatched through a closure (not
-	// captured once at mux.HandleFunc time) so a test's reassignment
-	// takes effect on the next request.
+	// createCommunityProduct answers POST /admin/products, set by a test before
+	// exercising the mint; dispatched through a closure so reassignment takes effect on the next request.
 	createCommunityProduct func(w http.ResponseWriter, r *http.Request)
 
-	// resolve answers POST /products/resolve; a test sets it before
-	// exercising Resolve. Same reassignable-closure dispatch as
-	// createCommunityProduct.
+	// resolve answers POST /products/resolve, set by a test before exercising
+	// Resolve; same reassignable-closure dispatch as createCommunityProduct.
 	resolve func(w http.ResponseWriter, r *http.Request)
 }
 

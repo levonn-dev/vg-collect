@@ -1,6 +1,5 @@
-// Tests for admin and maintenance levers: catalog resnapshot and
-// rematch refs, platform and region normalization, and user-data
-// purge.
+// Tests for admin and maintenance levers: catalog resnapshot and rematch
+// refs, platform and region normalization, and user-data purge.
 
 package store_test
 
@@ -13,28 +12,19 @@ import (
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-// TestListGameBackedRefs seeds a product-backed game, a product-backed
-// hardware entry, and a custom entry for TWO different users, plus a
-// second game-backed entry sharing userA's product_id (a second copy
-// of the same cart, different region), then asserts the resnapshot
-// walk sees exactly the game-backed rows from BOTH users (the method
-// is deliberately unscoped) and nothing else, ordered product_id then
-// id (the shared product_id pair exercises the id tie-break), with
-// each row's own region and stored localized trio read back correctly
-// (gameA carries a non-nil trio, the other two rows carry nil - both
-// round trips get exercised).
+// TestListGameBackedRefs seeds product-backed game/hardware/custom entries for
+// two users plus a second game-backed entry sharing userA's product_id
+// (different region), and asserts the walk sees exactly the game-backed rows
+// from both users (deliberately unscoped), ordered product_id then id
+// (tie-break exercised), with each row's region and localized trio read back correctly.
 func TestListGameBackedRefs(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	userA, userB := uuid.New(), uuid.New()
 
-	// seedTrio creates one product-backed game entry (a), one
-	// product-backed hardware entry (b), and one custom entry (c, no
-	// product_id) for one user, returning the game entry so the
-	// assertions below can key off it. name/translit/cover seed the
-	// game entry's stored localized trio (nil for callers that don't
-	// care), exercising both the non-nil and nil round trip through
-	// ListGameBackedRefs.
+	// seedTrio creates a product-backed game (a), hardware (b), and custom (c)
+	// entry for one user, returning a; name/translit/cover seed a's localized
+	// trio (nil for callers that don't care), exercising both round trips.
 	seedTrio := func(user uuid.UUID, released time.Time, name, translit, cover *string) store.Entry {
 		game := baseEntry(user)
 		game.IGDBGameID = new(int64(1000))
@@ -60,11 +50,9 @@ func TestListGameBackedRefs(t *testing.T) {
 	gameA := seedTrio(userA, dateA, jaName, jaTranslit, jaCover)
 	gameB := seedTrio(userB, dateB, nil, nil, nil)
 
-	// A second game-backed entry on gameA's SAME product_id (a second
-	// copy of the same cart), with a different region (pal). This gives
-	// two rows an identical product_id, so the id tie-break in the
-	// ORDER BY actually gets exercised, and it doubles as coverage that
-	// per-entry regions come back correctly rather than just per-product.
+	// A second game-backed entry on gameA's SAME product_id, with a different
+	// region (pal): gives two rows an identical product_id so the id tie-break
+	// in ORDER BY gets exercised, and pins per-entry regions.
 	gameA2 := baseEntry(userA)
 	gameA2.ProductID = gameA.ProductID
 	gameA2.Region = "pal"
@@ -82,13 +70,10 @@ func TestListGameBackedRefs(t *testing.T) {
 		t.Fatalf("expected exactly the 3 game-backed rows (hardware/custom excluded), got %d: %+v", len(refs), refs)
 	}
 
-	// Ordering: product_id then id, checked across every consecutive
-	// pair so the gameA/gameA2 pair (same product_id) actually exercises
-	// the id tie-break instead of only the product_id sort. Postgres
-	// orders uuid by raw bytes, which agrees with the canonical
-	// hyphenated string's byte order (the hyphens sit at the same fixed
-	// positions in every UUID), so comparing the String() form is a
-	// faithful proxy for SQL order.
+	// Ordering: product_id then id, checked pairwise so gameA/gameA2 (same
+	// product_id) exercises the id tie-break. Postgres orders uuid by raw
+	// bytes, which agrees with String()'s byte order (fixed hyphen positions),
+	// a faithful proxy for SQL order.
 	for i := 1; i < len(refs); i++ {
 		prev, cur := refs[i-1], refs[i]
 		if prev.ProductID.String() > cur.ProductID.String() {
@@ -157,10 +142,8 @@ func TestListGameBackedRefs(t *testing.T) {
 	}
 }
 
-// TestSetSnapshotFields covers the resnapshot walk's only write: it
-// rewrites the date and the localized presentation trio in one UPDATE
-// and bumps updated_at, and all-nil arguments clear every column back
-// to NULL.
+// TestSetSnapshotFields covers the resnapshot walk's only write: it rewrites
+// date and localized trio in one UPDATE; all-nil arguments clear every column to NULL.
 func TestSetSnapshotFields(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -216,10 +199,9 @@ func TestSetSnapshotFields(t *testing.T) {
 	}
 }
 
-// TestListAutoGameRematchRefs covers the entry rematch's row source:
-// only auto-priced, game-backed entries that also carry a platform id
-// are listed (a resolve needs game+platform+region), ordered so the
-// rematch's (game, platform, region) grouping is contiguous.
+// TestListAutoGameRematchRefs covers the rematch's row source: only
+// auto-priced, game-backed entries with a platform id are listed, ordered so
+// (game, platform, region) grouping is contiguous.
 func TestListAutoGameRematchRefs(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -237,9 +219,8 @@ func TestListAutoGameRematchRefs(t *testing.T) {
 	a.LocalizedCoverURL = new("https://x/ja-cover.jpg")
 	entryA := mustCreate(t, s, a, nil)
 
-	// (b) pricing_mode proxy, otherwise the same shape as (a) -> excluded
-	// by the auto-only filter even though igdb_game_id/platform_igdb_id
-	// are both present.
+	// (b) pricing_mode proxy, otherwise same shape as (a): excluded by the
+	// auto-only filter even with igdb_game_id/platform_igdb_id both present.
 	b := baseEntry(user)
 	b.IGDBGameID = new(int64(2000))
 	b.PlatformIGDBID = new(int64(7))
@@ -251,10 +232,9 @@ func TestListAutoGameRematchRefs(t *testing.T) {
 	// (c) custom entry (nil product_id) -> excluded.
 	mustCreate(t, s, customEntry(user), nil)
 
-	// (d) auto game-backed, same game+platform as (a) but a second
-	// region -> listed, and gives the ORDER BY's region component (not
-	// just igdb_game_id/platform_igdb_id, which a and d share) something
-	// to actually sort.
+	// (d) auto game-backed, same game+platform as (a) but a second region:
+	// listed, giving the ORDER BY's region component something to sort
+	// (a and d share igdb_game_id/platform_igdb_id).
 	d := baseEntry(user)
 	d.IGDBGameID = new(int64(1000))
 	d.PlatformIGDBID = new(int64(6))
@@ -264,9 +244,8 @@ func TestListAutoGameRematchRefs(t *testing.T) {
 	d.FirstReleaseDate = &dateD
 	entryD := mustCreate(t, s, d, nil)
 
-	// (e) same shape as (a) - auto game-backed, platform id present -
-	// but a user-picked match: excluded even though nothing else about
-	// the row would fail the other predicates.
+	// (e) same shape as (a) but a user-picked match: excluded even though
+	// nothing else about the row fails the other predicates.
 	e := baseEntry(user)
 	e.IGDBGameID = new(int64(1000))
 	e.PlatformIGDBID = new(int64(6))
@@ -282,9 +261,8 @@ func TestListAutoGameRematchRefs(t *testing.T) {
 		t.Fatalf("expected exactly a and d (proxy, custom, and user-picked excluded), got %d: %+v", len(refs), refs)
 	}
 
-	// ntsc_u sorts before pal, so a's row must precede d's: the ordering
-	// actually keys off region, not just igdb_game_id/platform_igdb_id
-	// (both rows share those).
+	// ntsc_u sorts before pal, so a's row must precede d's: ordering keys off
+	// region, not just igdb_game_id/platform_igdb_id (both rows share those).
 	if refs[0].EntryID != entryA.ID || refs[1].EntryID != entryD.ID {
 		t.Fatalf("must be ordered (igdb_game_id, platform_igdb_id, region, id): %+v", refs)
 	}
@@ -314,9 +292,8 @@ func TestListAutoGameRematchRefs(t *testing.T) {
 	}
 }
 
-// TestRepointEntry covers the entry rematch's only write: moving one
-// entry to a sibling member and rewriting its product-derived snapshot
-// fields in the same statement.
+// TestRepointEntry covers the rematch's only write: moving an entry to a
+// sibling member and rewriting its product-derived snapshot in one statement.
 func TestRepointEntry(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -427,9 +404,8 @@ func TestCountEntriesByProduct(t *testing.T) {
 	ctx := context.Background()
 	productID := uuid.New()
 
-	// Two entries on the counted product across DIFFERENT users - the
-	// count is catalog-wide, not caller-scoped - plus unrelated noise
-	// (another product, a custom entry) that must not count.
+	// Two entries on the counted product across DIFFERENT users (count is
+	// catalog-wide, not caller-scoped), plus unrelated noise that must not count.
 	for _, user := range []uuid.UUID{uuid.New(), uuid.New()} {
 		e := baseEntry(user)
 		e.ProductID = new(productID)
@@ -507,10 +483,7 @@ func TestNormalizePlatformStore_SelectAndStamp(t *testing.T) {
 	}
 }
 
-// TestListOpenRegionEntries covers the normalize-regions lever's
-// selection: entries whose region sits outside the known set, sibling
-// to TestNormalizePlatformStore_SelectAndStamp's name-only platform
-// selection.
+// TestListOpenRegionEntries covers the normalize-regions selection: entries whose region sits outside the known set.
 func TestListOpenRegionEntries(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -531,13 +504,9 @@ func TestListOpenRegionEntries(t *testing.T) {
 	}
 }
 
-// TestListOpenRegionEntries_EmptyKnownSelectsAll pins the degenerate
-// case behind the query's NOT (region = ANY($1)): an empty known slice
-// matches nothing under ANY, so NOT flips every row to selected - a
-// true select-all, not a select-none. The only real caller always
-// passes the compile-time four-key set, so this is the trap a future
-// caller passing a different (possibly empty) known set would
-// otherwise fall into unnoticed.
+// TestListOpenRegionEntries_EmptyKnownSelectsAll pins the degenerate case in
+// NOT (region = ANY($1)): an empty slice matches nothing under ANY, so NOT
+// flips every row to selected, a trap for a future caller passing an empty known set.
 func TestListOpenRegionEntries_EmptyKnownSelectsAll(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -561,10 +530,8 @@ func TestListOpenRegionEntries_EmptyKnownSelectsAll(t *testing.T) {
 	}
 }
 
-// TestPromoteEntryRegion_ClearsAck covers the normalize-regions
-// lever's plain write: canonicalizing the region string clears any
-// region-mismatch ack, the same fresh-choice rule RepointEntry and the
-// update arm's CASE apply.
+// TestPromoteEntryRegion_ClearsAck covers the plain write: canonicalizing the
+// region clears any region-mismatch ack, the same fresh-choice rule RepointEntry uses.
 func TestPromoteEntryRegion_ClearsAck(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -592,11 +559,10 @@ func TestPromoteEntryRegion_ClearsAck(t *testing.T) {
 	}
 }
 
-// TestPromoteEntryRegionSnapshot covers the normalize-regions lever's
-// other write: the igdb-backed arm re-picks the product-derived
-// snapshot in the same statement as the region canonicalization, since
-// the newly promoted region may unlock a localization chain the
-// free-text value never had.
+// TestPromoteEntryRegionSnapshot covers the other write: the igdb-backed arm
+// re-picks the product-derived snapshot in the same statement as
+// canonicalization, since the promoted region may unlock a localization
+// chain the free-text value never had.
 func TestPromoteEntryRegionSnapshot(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

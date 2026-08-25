@@ -10,20 +10,20 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 )
 
-// GameEntryRef is the resnapshot walk's row: just enough to recompute
-// one game-backed entry's date pick, localized presentation trio, and
-// credit arrays.
+// GameEntryRef is the resnapshot walk's row: enough to recompute one
+// game-backed entry's date pick, localized trio, and credit arrays.
 type GameEntryRef struct {
 	EntryID          uuid.UUID
 	ProductID        uuid.UUID
 	Region           string
 	FirstReleaseDate *time.Time
 
-	// The entry's currently stored snapshot fields, read back so the
-	// walk can diff a freshly recomputed pick against them and skip an
-	// unchanged row.
+	// The entry's currently stored snapshot fields, read back so the walk can
+	// diff a freshly recomputed pick against them and skip an unchanged row.
 	LocalizedName         *string
 	LocalizedNameTranslit *string
 	LocalizedCoverURL     *string
@@ -31,10 +31,8 @@ type GameEntryRef struct {
 	Publishers            []string
 }
 
-// CountEntriesByProduct counts entries referencing the product across
-// ALL users - the admin delete's safety read (a shared catalog product
-// is deletable only when nobody's entry would dangle). Deliberately
-// unscoped like ListGameBackedRefs; the count is the only fact served.
+// CountEntriesByProduct counts entries referencing the product across ALL
+// users, the admin delete's safety read; deliberately unscoped like ListGameBackedRefs.
 func (s *Store) CountEntriesByProduct(ctx context.Context, productID uuid.UUID) (int64, error) {
 	var n int64
 	if err := s.pool.QueryRow(ctx,
@@ -44,11 +42,10 @@ func (s *Store) CountEntriesByProduct(ctx context.Context, productID uuid.UUID) 
 	return n, nil
 }
 
-// ListGameBackedRefs lists every user's game-backed entries (product
-// and igdb game both present) for the resnapshot walk, current
-// snapshot trio included so the walk can diff against a freshly
-// picked one; deliberately unscoped - the pick derives from product +
-// entry region, nothing user-private.
+// ListGameBackedRefs lists every user's game-backed entries (product and
+// igdb game both present) with their current snapshot trio, for the
+// resnapshot walk to diff against; deliberately unscoped since the pick
+// derives from product + region, nothing user-private.
 func (s *Store) ListGameBackedRefs(ctx context.Context) ([]GameEntryRef, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, product_id, region, first_release_date,
@@ -60,7 +57,7 @@ func (s *Store) ListGameBackedRefs(ctx context.Context) ([]GameEntryRef, error) 
 	if err != nil {
 		return nil, fmt.Errorf("store: list game-backed refs: %w", err)
 	}
-	return scanAll(rows, nil, "list game-backed refs", func(r pgx.Rows) (GameEntryRef, error) {
+	out, err := pgkit.ScanAll(rows, nil, func(r pgx.Rows) (GameEntryRef, error) {
 		var ref GameEntryRef
 		if err := r.Scan(&ref.EntryID, &ref.ProductID, &ref.Region, &ref.FirstReleaseDate,
 			&ref.LocalizedName, &ref.LocalizedNameTranslit, &ref.LocalizedCoverURL,
@@ -69,11 +66,14 @@ func (s *Store) ListGameBackedRefs(ctx context.Context) ([]GameEntryRef, error) 
 		}
 		return ref, nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("store: list game-backed refs: %w", err)
+	}
+	return out, nil
 }
 
-// SetSnapshotFields narrowly rewrites one entry's product-derived
-// snapshot fields (the resnapshot walk's only write): the region-picked
-// date, the localized presentation trio, and the credit arrays.
+// SetSnapshotFields narrowly rewrites one entry's product-derived snapshot
+// fields (the resnapshot walk's only write): date, localized trio, credits.
 func (s *Store) SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d *time.Time, name, translit, cover *string, developers, publishers []string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE entries SET first_release_date = $2, localized_name = $3,
@@ -87,12 +87,9 @@ func (s *Store) SetSnapshotFields(ctx context.Context, entryID uuid.UUID, d *tim
 	return nil
 }
 
-// RematchEntryRef is the entry rematch's row: an auto-priced
-// game-backed entry with the identity fields a region-aware re-resolve
-// needs, plus its current snapshot fields - returned for potential
-// diffing, though the handler today just overwrites them
-// unconditionally from the resolved payload rather than re-picking
-// from these.
+// RematchEntryRef is the rematch's row: an auto-priced game-backed entry with
+// the identity fields a region-aware re-resolve needs, plus its current
+// snapshot fields (unused today; the handler overwrites unconditionally).
 type RematchEntryRef struct {
 	EntryID          uuid.UUID
 	ProductID        uuid.UUID
@@ -106,13 +103,9 @@ type RematchEntryRef struct {
 	LocalizedCoverURL     *string
 }
 
-// ListAutoGameRematchRefs lists every user's auto-priced game-backed
-// entries (platform id present - a resolve needs it) for the
-// entry rematch; deliberately unscoped like ListGameBackedRefs.
-// Ordered for deterministic output (tests, and a sane default for a
-// pagination-free full-table scan) - not because a caller depends on
-// the (game, platform, region) grouping this happens to produce; the
-// handler regroups via a map regardless of input order.
+// ListAutoGameRematchRefs lists every user's auto-priced game-backed entries
+// with a platform id, deliberately unscoped. Ordered for deterministic
+// output, not because a caller depends on the resulting grouping (the handler regroups via a map).
 func (s *Store) ListAutoGameRematchRefs(ctx context.Context) ([]RematchEntryRef, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, product_id, igdb_game_id, platform_igdb_id, region, first_release_date,
@@ -125,7 +118,7 @@ func (s *Store) ListAutoGameRematchRefs(ctx context.Context) ([]RematchEntryRef,
 	if err != nil {
 		return nil, fmt.Errorf("store: list rematch refs: %w", err)
 	}
-	return scanAll(rows, nil, "list rematch refs", func(r pgx.Rows) (RematchEntryRef, error) {
+	out, err := pgkit.ScanAll(rows, nil, func(r pgx.Rows) (RematchEntryRef, error) {
 		var ref RematchEntryRef
 		if err := r.Scan(&ref.EntryID, &ref.ProductID, &ref.IGDBGameID, &ref.PlatformIGDBID, &ref.Region,
 			&ref.FirstReleaseDate, &ref.LocalizedName, &ref.LocalizedNameTranslit, &ref.LocalizedCoverURL); err != nil {
@@ -133,13 +126,15 @@ func (s *Store) ListAutoGameRematchRefs(ctx context.Context) ([]RematchEntryRef,
 		}
 		return ref, nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("store: list rematch refs: %w", err)
+	}
+	return out, nil
 }
 
 // RepointEntry moves one entry to a sibling member and rewrites its
-// product-derived snapshot fields in the same statement (the
-// entry rematch's only write). Always a product change, so the
-// region-mismatch ack unconditionally clears - a fresh choice, not
-// yet reviewed.
+// product-derived snapshot in the same statement (the rematch's only write);
+// always a product change, so the region-mismatch ack unconditionally clears.
 func (s *Store) RepointEntry(ctx context.Context, entryID, productID uuid.UUID, d *time.Time, name, translit, cover *string, developers, publishers []string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE entries SET product_id = $2, first_release_date = $3, localized_name = $4,
@@ -161,27 +156,29 @@ type PlatformEntryRef struct {
 	PlatformName string
 }
 
-// ListNameOnlyPlatformEntries lists every entry with a platform_name
-// but no platform_igdb_id, across all users (the lever is an operator
-// tool). Stamped rows leave the set, so the lever is re-runnable.
+// ListNameOnlyPlatformEntries lists every entry with a platform_name but no
+// platform_igdb_id, across all users; stamped rows leave the set (re-runnable).
 func (s *Store) ListNameOnlyPlatformEntries(ctx context.Context) ([]PlatformEntryRef, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, platform_name FROM entries WHERE platform_name IS NOT NULL AND platform_igdb_id IS NULL`)
 	if err != nil {
 		return nil, fmt.Errorf("store: list name-only platforms: %w", err)
 	}
-	return scanAll(rows, nil, "list name-only platforms", func(r pgx.Rows) (PlatformEntryRef, error) {
+	out, err := pgkit.ScanAll(rows, nil, func(r pgx.Rows) (PlatformEntryRef, error) {
 		var ref PlatformEntryRef
 		if err := r.Scan(&ref.EntryID, &ref.PlatformName); err != nil {
 			return PlatformEntryRef{}, fmt.Errorf("store: scan platform ref: %w", err)
 		}
 		return ref, nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("store: list name-only platforms: %w", err)
+	}
+	return out, nil
 }
 
-// SetEntryPlatformIdentity stamps one entry's canonical platform id and
-// name (the lever's only write). Unscoped by user_id, matching the
-// unscoped selection - an operator tool.
+// SetEntryPlatformIdentity stamps one entry's canonical platform id and name
+// (the lever's only write); unscoped by user_id, matching the unscoped selection.
 func (s *Store) SetEntryPlatformIdentity(ctx context.Context, entryID uuid.UUID, igdbID int64, name string) error {
 	_, err := s.pool.Exec(ctx,
 		`UPDATE entries SET platform_igdb_id = $2, platform_name = $3, updated_at = now() WHERE id = $1`,
@@ -192,9 +189,9 @@ func (s *Store) SetEntryPlatformIdentity(ctx context.Context, entryID uuid.UUID,
 	return nil
 }
 
-// OpenRegionEntryRef is one row of the normalize-regions selection:
-// entries whose region sits outside the known set, with just enough
-// identity to decide the plain-write vs snapshot-re-pick arm.
+// OpenRegionEntryRef is one row of the normalize-regions selection: entries
+// outside the known set, with enough identity to pick the plain-write vs
+// snapshot-re-pick arm.
 type OpenRegionEntryRef struct {
 	EntryID    uuid.UUID
 	ProductID  *uuid.UUID
@@ -202,9 +199,8 @@ type OpenRegionEntryRef struct {
 	Region     string
 }
 
-// ListOpenRegionEntries lists entries holding a region outside the
-// known set - the normalize lever's selection. Deliberately unscoped
-// across users like its platform sibling; ordered for determinism.
+// ListOpenRegionEntries lists entries holding a region outside the known set;
+// deliberately unscoped across users like its platform sibling.
 func (s *Store) ListOpenRegionEntries(ctx context.Context, known []string) ([]OpenRegionEntryRef, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, product_id, igdb_game_id, region FROM entries
@@ -213,18 +209,21 @@ func (s *Store) ListOpenRegionEntries(ctx context.Context, known []string) ([]Op
 	if err != nil {
 		return nil, fmt.Errorf("store: list open region entries: %w", err)
 	}
-	return scanAll(rows, nil, "list open region entries", func(r pgx.Rows) (OpenRegionEntryRef, error) {
+	out, err := pgkit.ScanAll(rows, nil, func(r pgx.Rows) (OpenRegionEntryRef, error) {
 		var ref OpenRegionEntryRef
 		if err := r.Scan(&ref.EntryID, &ref.ProductID, &ref.IGDBGameID, &ref.Region); err != nil {
 			return OpenRegionEntryRef{}, fmt.Errorf("store: scan open region ref: %w", err)
 		}
 		return ref, nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("store: list open region entries: %w", err)
+	}
+	return out, nil
 }
 
-// PromoteEntryRegion canonicalizes one entry's region string. A
-// region change is a fresh choice, so the mismatch ack clears - the
-// same rule the update arm's CASE applies.
+// PromoteEntryRegion canonicalizes one entry's region string; a region change
+// is a fresh choice, so the mismatch ack clears.
 func (s *Store) PromoteEntryRegion(ctx context.Context, entryID uuid.UUID, region string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE entries SET region = $2, updated_at = now(), region_mismatch_ack_at = NULL
@@ -235,9 +234,8 @@ func (s *Store) PromoteEntryRegion(ctx context.Context, entryID uuid.UUID, regio
 	return nil
 }
 
-// PromoteEntryRegionSnapshot canonicalizes the region and re-picks
-// the product-derived snapshot in one statement (the igdb-backed arm:
-// the promoted region may now have localization chains).
+// PromoteEntryRegionSnapshot canonicalizes the region and re-picks the
+// product-derived snapshot in one statement, since promotion may unlock a localization chain.
 func (s *Store) PromoteEntryRegionSnapshot(ctx context.Context, entryID uuid.UUID, region string, d *time.Time, name, translit, cover *string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE entries SET region = $2, first_release_date = $3, localized_name = $4,
@@ -250,9 +248,8 @@ func (s *Store) PromoteEntryRegionSnapshot(ctx context.Context, entryID uuid.UUI
 	return nil
 }
 
-// PurgeUserData erases everything the user owns in one transaction:
-// entries (entry_tags cascade), tags, and saved views. Account
-// deletion calls this; purging an empty collection is a no-op.
+// PurgeUserData erases everything the user owns in one transaction: entries
+// (entry_tags cascade), tags, and saved views; purging an empty collection is a no-op.
 func (s *Store) PurgeUserData(ctx context.Context, userID uuid.UUID) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		for _, q := range []string{

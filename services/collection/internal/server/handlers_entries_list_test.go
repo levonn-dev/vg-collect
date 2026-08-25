@@ -6,6 +6,7 @@ package server_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -29,6 +30,27 @@ func listedEntry(user uuid.UUID, name string, mut func(*store.Entry)) store.Entr
 		mut(&e)
 	}
 	return e
+}
+
+// pagedStub serves a fixed entry set through the SQL-paginated list path
+// (CountEntriesFiltered + ListEntriesPage), mimicking LIMIT/OFFSET so the
+// count and the returned page stay consistent.
+func pagedStub(all []store.Entry) *stubStore {
+	return &stubStore{
+		countEntriesFiltered: func(context.Context, uuid.UUID, store.Filters) (int, error) {
+			return len(all), nil
+		},
+		listEntriesPage: func(_ context.Context, _ uuid.UUID, _ store.Filters, limit, offset int) ([]store.Entry, error) {
+			if offset >= len(all) {
+				return nil, nil
+			}
+			end := offset + limit
+			if end > len(all) {
+				end = len(all)
+			}
+			return all[offset:end], nil
+		},
+	}
 }
 
 func TestUnitListEntries_ValueSortAndComposition(t *testing.T) {
@@ -80,13 +102,9 @@ func TestUnitListEntries_ValueSortAndComposition(t *testing.T) {
 	}
 }
 
-// TestUnitListEntries_ValueSortPagesAfterComposing guards a
-// compose-before-slice regression: if the handler ever sliced the
-// page before pricing and re-sorting the full filtered set, a
-// high-value row sitting past the page boundary in store order would
-// never surface at the top of a value-desc page. Store order here is
-// the exact reverse of value order, and the priciest row sits last -
-// two spots beyond a limit=2 page - so a slice-first bug drops it.
+// TestUnitListEntries_ValueSortPagesAfterComposing guards against slicing the
+// page before pricing/re-sorting: store order here is the exact reverse of
+// value order, with the priciest row two spots past a limit=2 page.
 func TestUnitListEntries_ValueSortPagesAfterComposing(t *testing.T) {
 	user := uuid.New()
 	p1000 := listedEntry(user, "P1000", nil)
@@ -154,9 +172,7 @@ func TestUnitListEntries_ValueSortPagesAfterComposing(t *testing.T) {
 func TestUnitListEntries_DegradedPricing(t *testing.T) {
 	user := uuid.New()
 	e := listedEntry(user, "Solo", nil)
-	st := &stubStore{listEntries: func(context.Context, uuid.UUID, store.Filters) ([]store.Entry, error) {
-		return []store.Entry{e}, nil
-	}}
+	st := pagedStub([]store.Entry{e})
 	enrich := &stubEnrichment{batchPrices: func(context.Context, string, []uuid.UUID) (map[string]enrichapi.ProductPrices, error) {
 		return nil, enrichmentclient.ErrUnavailable
 	}}
@@ -183,9 +199,7 @@ func TestUnitListEntries_Grouping(t *testing.T) {
 	fav := store.TagRef{ID: uuid.New(), Name: "fav"}
 	multi := listedEntry(user, "Multi", func(e *store.Entry) { e.Tags = []store.TagRef{rpg, fav}; e.PricingMode = "disabled" })
 	bare := listedEntry(user, "Bare", func(e *store.Entry) { e.PricingMode = "disabled" })
-	st := &stubStore{listEntries: func(context.Context, uuid.UUID, store.Filters) ([]store.Entry, error) {
-		return []store.Entry{multi, bare}, nil
-	}}
+	st := pagedStub([]store.Entry{multi, bare})
 	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
 	resp := do(t, http.MethodGet, srv.URL+"/entries?group_by=tag", a.token(t, user.String()), nil)
 	var got struct {
@@ -213,10 +227,8 @@ func TestUnitListEntries_Grouping(t *testing.T) {
 	}
 }
 
-// TestUnitListEntries_GroupingDimensions covers the group_by
-// dimensions beyond tag: each has its own catch-all label for entries
-// missing the grouped field, and item_type (always populated) has
-// none.
+// TestUnitListEntries_GroupingDimensions covers group_by dimensions beyond
+// tag: each has its own catch-all label for missing fields; item_type (always populated) has none.
 func TestUnitListEntries_GroupingDimensions(t *testing.T) {
 	user := uuid.New()
 
@@ -233,9 +245,7 @@ func TestUnitListEntries_GroupingDimensions(t *testing.T) {
 			e.PricingMode = "disabled"
 			e.PlatformName = nil
 		})
-		st := &stubStore{listEntries: func(context.Context, uuid.UUID, store.Filters) ([]store.Entry, error) {
-			return []store.Entry{snes, genesis, unknown}, nil
-		}}
+		st := pagedStub([]store.Entry{snes, genesis, unknown})
 		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
 		resp := do(t, http.MethodGet, srv.URL+"/entries?group_by=platform", a.token(t, user.String()), nil)
 		var got struct {
@@ -272,9 +282,7 @@ func TestUnitListEntries_GroupingDimensions(t *testing.T) {
 			e.PricingMode = "disabled"
 			e.StorageLocation = nil
 		})
-		st := &stubStore{listEntries: func(context.Context, uuid.UUID, store.Filters) ([]store.Entry, error) {
-			return []store.Entry{closet, shelf, unassigned}, nil
-		}}
+		st := pagedStub([]store.Entry{closet, shelf, unassigned})
 		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
 		resp := do(t, http.MethodGet, srv.URL+"/entries?group_by=location", a.token(t, user.String()), nil)
 		var got struct {
@@ -311,9 +319,7 @@ func TestUnitListEntries_GroupingDimensions(t *testing.T) {
 			e.PricingMode = "disabled"
 			e.ItemType = "accessory"
 		})
-		st := &stubStore{listEntries: func(context.Context, uuid.UUID, store.Filters) ([]store.Entry, error) {
-			return []store.Entry{game, console, accessory}, nil
-		}}
+		st := pagedStub([]store.Entry{game, console, accessory})
 		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
 		resp := do(t, http.MethodGet, srv.URL+"/entries?group_by=item_type", a.token(t, user.String()), nil)
 		var got struct {
@@ -350,9 +356,7 @@ func TestUnitListEntries_Pagination(t *testing.T) {
 	game3 := listedEntry(user, "Game 3", nil) // auto: prices off its own product_id
 	game4 := listedEntry(user, "Game 4", func(e *store.Entry) { e.PricingMode = "disabled" })
 	all := []store.Entry{game0, game1, game2, game3, game4}
-	st := &stubStore{listEntries: func(context.Context, uuid.UUID, store.Filters) ([]store.Entry, error) {
-		return all, nil
-	}}
+	st := pagedStub(all)
 	var calls int
 	var capturedIDs []uuid.UUID
 	enrich := &stubEnrichment{batchPrices: func(_ context.Context, _ string, ids []uuid.UUID) (map[string]enrichapi.ProductPrices, error) {
@@ -362,8 +366,7 @@ func TestUnitListEntries_Pagination(t *testing.T) {
 	}}
 	srv, a := newUnitServer(t, st, enrich, newStubCache())
 
-	// The page (offset 2, limit 3) spans one entry of each pricing
-	// mode: proxy, auto, and disabled.
+	// The page (offset 2, limit 3) spans one entry of each pricing mode: proxy, auto, disabled.
 	resp := do(t, http.MethodGet, srv.URL+"/entries?limit=3&offset=2", a.token(t, user.String()), nil)
 	var got struct {
 		TotalCount int `json:"total_count"`
@@ -386,8 +389,7 @@ func TestUnitListEntries_Pagination(t *testing.T) {
 		t.Fatalf("one batch call per request: %d", calls)
 	}
 	// ...over the PAGE's effective ids only: proxy resolves through its
-	// override, auto through its own product, disabled contributes
-	// none at all.
+	// override, auto through its own product, disabled contributes none.
 	if len(capturedIDs) != 2 || capturedIDs[0] != proxyTarget || capturedIDs[1] != *game3.ProductID {
 		t.Fatalf("page-only effective ids: %v", capturedIDs)
 	}
@@ -404,22 +406,18 @@ func TestUnitListEntries_Pagination(t *testing.T) {
 	resp = do(t, http.MethodGet, srv.URL+"/entries?limit=501", a.token(t, user.String()), nil)
 	wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 
-	// Neither the empty page nor the validation failure placed a
-	// spurious batch call.
+	// Neither the empty page nor the validation failure placed a spurious batch call.
 	if calls != 1 {
 		t.Fatalf("no spurious batch calls: %d", calls)
 	}
 }
 
 // TestUnitListEntries_OffsetOverflowClampsToEmptyPage pins that an
-// absurd-but-contract-legal offset (the contract sets no upper bound)
-// answers a normal empty page rather than overflowing the paging math.
+// absurd-but-legal offset answers a normal empty page, not overflowing the paging math.
 func TestUnitListEntries_OffsetOverflowClampsToEmptyPage(t *testing.T) {
 	user := uuid.New()
 	only := listedEntry(user, "Only", nil)
-	st := &stubStore{listEntries: func(context.Context, uuid.UUID, store.Filters) ([]store.Entry, error) {
-		return []store.Entry{only}, nil
-	}}
+	st := pagedStub([]store.Entry{only})
 	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
 
 	resp := do(t, http.MethodGet, fmt.Sprintf("%s/entries?offset=%d", srv.URL, math.MaxInt),
@@ -440,22 +438,29 @@ func TestUnitListEntries_OffsetOverflowClampsToEmptyPage(t *testing.T) {
 	}
 }
 
-// TestUnitListEntries_DefaultSortAndOrder pins the unset-params
-// default: created_at desc, and a default limit generous enough that
-// a small result set reaches the response whole.
+// TestUnitListEntries_DefaultSortAndOrder pins the unset-params default:
+// created_at desc, and a default limit generous enough for a small set to reach the response whole.
 func TestUnitListEntries_DefaultSortAndOrder(t *testing.T) {
 	user := uuid.New()
 	ea := listedEntry(user, "A", func(e *store.Entry) { e.PricingMode = "disabled" })
 	eb := listedEntry(user, "B", func(e *store.Entry) { e.PricingMode = "disabled" })
 	ec := listedEntry(user, "C", func(e *store.Entry) { e.PricingMode = "disabled" })
-	st := &stubStore{listEntries: func(_ context.Context, _ uuid.UUID, f store.Filters) ([]store.Entry, error) {
+	assertDefault := func(f store.Filters) {
 		if f.Sort != "created_at" || f.Order != "desc" {
 			t.Fatalf("unset sort/order must default: %+v", f)
 		}
-		return []store.Entry{ea, eb, ec}, nil
-	}}
-	// batchPrices deliberately nil: every fixture is pricing-disabled,
-	// so a call here would panic the stub.
+	}
+	st := &stubStore{
+		countEntriesFiltered: func(_ context.Context, _ uuid.UUID, f store.Filters) (int, error) {
+			assertDefault(f)
+			return 3, nil
+		},
+		listEntriesPage: func(_ context.Context, _ uuid.UUID, f store.Filters, _, _ int) ([]store.Entry, error) {
+			assertDefault(f)
+			return []store.Entry{ea, eb, ec}, nil
+		},
+	}
+	// batchPrices deliberately nil: every fixture is pricing-disabled, so a call would panic the stub.
 	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
 	resp := do(t, http.MethodGet, srv.URL+"/entries", a.token(t, user.String()), nil)
 	if resp.StatusCode != http.StatusOK {
@@ -470,15 +475,50 @@ func TestUnitListEntries_DefaultSortAndOrder(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	// The default limit (200) must not truncate a 3-row set, and the
-	// default offset (0) must not skip any of it.
+	// The default limit (200) must not truncate a 3-row set, and the default offset (0) must not skip any.
 	if got.TotalCount != 3 || len(got.Entries) != 3 {
 		t.Fatalf("default page: %+v", got)
 	}
 }
 
-// region is deliberately absent from this list: it is open-world on
-// this param now, so no string value is a bad enum for it.
+// region is deliberately absent from this list: it is open-world now, so no string is a bad enum for it.
+// TestUnitListEntries_StoreErrorsMapTo500 covers the three read failures the
+// two list paths can hit: the value path's full fetch, and the SQL-orderable
+// path's count and page reads.
+func TestUnitListEntries_StoreErrorsMapTo500(t *testing.T) {
+	user := uuid.New()
+
+	t.Run("value list failure", func(t *testing.T) {
+		st := &stubStore{listEntries: func(context.Context, uuid.UUID, store.Filters) ([]store.Entry, error) {
+			return nil, errors.New("boom")
+		}}
+		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+		resp := do(t, http.MethodGet, srv.URL+"/entries?sort=value", a.token(t, user.String()), nil)
+		wantProblem(t, resp, http.StatusInternalServerError, "internal")
+	})
+
+	t.Run("count failure", func(t *testing.T) {
+		st := &stubStore{countEntriesFiltered: func(context.Context, uuid.UUID, store.Filters) (int, error) {
+			return 0, errors.New("boom")
+		}}
+		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+		resp := do(t, http.MethodGet, srv.URL+"/entries", a.token(t, user.String()), nil)
+		wantProblem(t, resp, http.StatusInternalServerError, "internal")
+	})
+
+	t.Run("page failure", func(t *testing.T) {
+		st := &stubStore{
+			countEntriesFiltered: func(context.Context, uuid.UUID, store.Filters) (int, error) { return 3, nil },
+			listEntriesPage: func(context.Context, uuid.UUID, store.Filters, int, int) ([]store.Entry, error) {
+				return nil, errors.New("boom")
+			},
+		}
+		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
+		resp := do(t, http.MethodGet, srv.URL+"/entries", a.token(t, user.String()), nil)
+		wantProblem(t, resp, http.StatusInternalServerError, "internal")
+	})
+}
+
 func TestUnitListEntries_BadEnumParam(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 	for _, q := range []string{"status=queued", "sort=alphabetical", "group_by=color", "order=up"} {
@@ -488,9 +528,7 @@ func TestUnitListEntries_BadEnumParam(t *testing.T) {
 }
 
 func TestUnitListEntries_Empty(t *testing.T) {
-	st := &stubStore{listEntries: func(context.Context, uuid.UUID, store.Filters) ([]store.Entry, error) {
-		return []store.Entry{}, nil
-	}}
+	st := pagedStub([]store.Entry{})
 	srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
 	resp := do(t, http.MethodGet, srv.URL+"/entries", a.token(t, uuid.NewString()), nil)
 	var got struct {
@@ -564,9 +602,8 @@ func TestListThroughTheStack(t *testing.T) {
 	}
 }
 
-// TestUnitListEntries_MixedCustomAndProxyComposition pins that a
-// custom-priced entry is composed alongside an enrichment-priced one
-// in the same list, and the two sort correctly against each other.
+// TestUnitListEntries_MixedCustomAndProxyComposition pins that a custom-priced
+// entry composes alongside an enrichment-priced one, sorting correctly against each other.
 func TestUnitListEntries_MixedCustomAndProxyComposition(t *testing.T) {
 	user := uuid.New()
 	proxyTarget := uuid.New()

@@ -15,12 +15,9 @@ import (
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-// listParams converts the generated, already-validated query params
-// into the store's filter shape (enum membership, item_type/status/
-// packaging/item_condition per-element and sort/order/group_by, and
-// the limit/offset bounds are specval's job now - every value here is
-// already known-good by the time this runs). Returns filters,
-// groupBy, limit, and offset.
+// listParams converts the generated, already-validated query params into the
+// store's filter shape; enum membership and limit/offset bounds are specval's
+// job, so every value here is already known-good.
 func listParams(params api.ListEntriesParams) (store.Filters, string, int, int) {
 	f := store.Filters{Sort: "created_at", Order: "desc"}
 	if params.ItemType != nil {
@@ -83,9 +80,8 @@ func listParams(params api.ListEntriesParams) (store.Filters, string, int, int) 
 	return f, groupBy, limit, offset
 }
 
-// sortEntriesByValue re-sorts in memory after price composition:
-// pinned first, then value with nulls last, then the standard
-// tiebreak. Stable, so equal keys keep the SQL base order.
+// sortEntriesByValue re-sorts in memory after price composition: pinned
+// first, then value with nulls last, then the standard tiebreak (stable).
 func sortEntriesByValue(entries []store.Entry, values map[uuid.UUID]*int64, order string) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		if entries[i].Pinned != entries[j].Pinned {
@@ -171,24 +167,17 @@ func buildGroups(entries []store.Entry, apiEntries []api.Entry, groupBy string) 
 	return groups
 }
 
-// ListEntries answers one page of the filter x sort x group matrix.
-// The full filtered set is fetched and sorted (person-scale by
-// design: pagination bounds payloads, not queries), total_count is
-// taken, then the page sliced. Prices arrive in one batched call -
-// over every effective id when sorting by value (the order needs them
-// all), otherwise over the page only. Enrichment being down degrades
-// to pricing_available=false, never a failure.
+// ListEntries answers one page of the filter x sort x group matrix. SQL-orderable
+// sorts page in the database; the value sort composes prices after the query, so
+// it materializes the whole set, sorts, then slices. Prices batch over every
+// effective id when sorting by value, otherwise over the page only; a down
+// enrichment degrades to pricing_available=false.
 func (h *Handlers) ListEntries(w http.ResponseWriter, r *http.Request, params api.ListEntriesParams) {
 	userID, bearer, ok := h.caller(w, r)
 	if !ok {
 		return
 	}
 	f, groupBy, limit, offset := listParams(params)
-	entries, err := h.store.ListEntries(r.Context(), userID, f)
-	if err != nil {
-		h.internalError(w, r, "list_entries", "list failed", err)
-		return
-	}
 
 	pricingAvailable := true
 	values := map[uuid.UUID]*int64{}
@@ -224,17 +213,34 @@ func (h *Handlers) ListEntries(w http.ResponseWriter, r *http.Request, params ap
 			}
 		}
 	}
+	var page []store.Entry
+	var total int
 	if f.Sort == "value" {
+		// Value orders by composed price, so this path materializes the whole
+		// set, sorts it, then slices the page.
+		entries, err := h.store.ListEntries(r.Context(), userID, f)
+		if err != nil {
+			h.internalError(w, r, "list_entries", "list failed", err)
+			return
+		}
 		compose(entries)
 		sortEntriesByValue(entries, values, f.Order)
-	}
-
-	total := len(entries)
-	// offset has no contract upper bound; clamp into range before adding
-	// limit so the sum can never overflow.
-	start := min(offset, total)
-	page := entries[start:min(start+limit, total)]
-	if f.Sort != "value" {
+		total = len(entries)
+		// offset has no contract upper bound; clamp into range before adding
+		// limit so the sum can never overflow.
+		start := min(offset, total)
+		page = entries[start:min(start+limit, total)]
+	} else {
+		// SQL-orderable sorts page in the database; the total is a separate count.
+		var err error
+		if total, err = h.store.CountEntriesFiltered(r.Context(), userID, f); err != nil {
+			h.internalError(w, r, "list_entries", "count failed", err)
+			return
+		}
+		if page, err = h.store.ListEntriesPage(r.Context(), userID, f, limit, offset); err != nil {
+			h.internalError(w, r, "list_entries", "list failed", err)
+			return
+		}
 		compose(page)
 	}
 

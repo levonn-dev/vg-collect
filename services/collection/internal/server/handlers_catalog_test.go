@@ -63,11 +63,9 @@ func TestPickReleaseDate(t *testing.T) {
 	}
 }
 
-// TestPickLocalization pins the region-picked presentation trio the
-// same way TestPickReleaseDate pins the date: chain hits per region,
-// sparse bundles (a region that ships only box art), the regions with
-// no chain at all, and the empty-string guard - a provider's empty
-// string is "no localized form", never a stored empty.
+// TestPickLocalization pins the region-picked presentation trio: chain hits
+// per region, sparse bundles, regions with no chain, and the empty-string
+// guard (a provider's empty string is "no localized form", never a stored empty).
 func TestPickLocalization(t *testing.T) {
 	name, translit, cover := "聖剣伝説3", "Seiken Densetsu 3", "https://x/jp.jpg"
 	meta := &common.IgdbMeta{Localizations: &[]common.Localization{
@@ -127,12 +125,9 @@ func TestPickLocalization(t *testing.T) {
 	}
 }
 
-// TestUnitCatalogSnapshot_CoverPrecedence is a direct 3-case pin of
-// catalogSnapshot's cover choice: provider (Igdb) cover wins where
-// present; absent that, the platform logo; absent both, the community
-// product's own cover fills. TestApproveNew_ForwardsCoverToMint
-// (handlers_test.go) discards the snapshot argument entirely, so it
-// does not cover this precedence.
+// TestUnitCatalogSnapshot_CoverPrecedence pins catalogSnapshot's cover choice:
+// provider (Igdb) cover wins where present, else platform logo, else the
+// community product's own cover.
 func TestUnitCatalogSnapshot_CoverPrecedence(t *testing.T) {
 	igdbCover := "https://img.example/igdb.jpg"
 	logoCover := "https://img.example/logo.jpg"
@@ -188,9 +183,8 @@ func TestUnitCatalogSnapshot_CoverPrecedence(t *testing.T) {
 	}
 }
 
-// TestUnitCatalogSnapshot_Credits pins the credit derive: IGDB
-// company credits split by role in wire order, community curated
-// lists as per-field gap-fill, and no credits anywhere staying nil.
+// TestUnitCatalogSnapshot_Credits pins the credit derive: IGDB credits split
+// by role in wire order, community curated lists as gap-fill, nil when no credits anywhere.
 func TestUnitCatalogSnapshot_Credits(t *testing.T) {
 	igdbProduct := enrichapi.Product{
 		Type: "game", Name: "Metroid Prime",
@@ -220,9 +214,8 @@ func TestUnitCatalogSnapshot_Credits(t *testing.T) {
 		t.Fatalf("community credits must fill: %v/%v", snap.Developers, snap.Publishers)
 	}
 
-	// Per-field precedence: the provider's publisher credit wins while
-	// the community developers still fill the role the provider left
-	// empty (same rule as the cover chain).
+	// Per-field precedence: the provider's publisher credit wins while community
+	// developers fill the role the provider left empty (same rule as the cover chain).
 	mixed := enrichapi.Product{
 		Type: "game", Name: "Repro Beta",
 		Igdb:      &common.IgdbMeta{GameId: 99, Companies: []common.CompanyCredit{{Name: "Nintendo", Publisher: true}}},
@@ -244,8 +237,7 @@ func TestUnitCatalogSnapshot_Credits(t *testing.T) {
 }
 
 // TestUnitListParams_CreditFilters pins the query-param mapping:
-// developer/publisher ride into the filter matrix verbatim, the same
-// open-world posture as region.
+// developer/publisher ride into the filter matrix verbatim, same open-world posture as region.
 func TestUnitListParams_CreditFilters(t *testing.T) {
 	dev := []string{"Nintendo", "Square"}
 	pub := []string{"Capcom"}
@@ -270,10 +262,8 @@ func TestUnitFiltersFromViewParams_Credits(t *testing.T) {
 	}
 }
 
-// TestConsoleRegionClassification pins the console-class guard direct
-// unit test (this file's package server, same rationale as the other
-// direct-call tests above): the region correctness check that decides
-// whether a region edit needs to hop to enrichment's resolve at all.
+// TestConsoleRegionClassification directly unit-tests the console-class guard:
+// the region correctness check deciding whether a region edit hops to enrichment's resolve.
 func TestConsoleRegionClassification(t *testing.T) {
 	cases := []struct {
 		console, region string

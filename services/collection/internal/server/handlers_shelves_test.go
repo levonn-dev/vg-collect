@@ -18,10 +18,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-// TestSharedEntryWhitelist pins the projection: the SharedEntry
-// contract type must expose exactly these JSON fields. A new field
-// here is a privacy decision, not a convenience - update the spec
-// section before touching this list.
+// TestSharedEntryWhitelist pins the projection: SharedEntry must expose
+// exactly these JSON fields; a new field here is a privacy decision.
 func TestSharedEntryWhitelist(t *testing.T) {
 	want := []string{
 		"id", "product_id", "item_type", "media_type", "display_name",
@@ -84,11 +82,8 @@ func TestUnitSharedShelf_Gate(t *testing.T) {
 	})
 }
 
-// TestUnitSharedShelfEntries_CarriesLocalizedSnapshot pins the
-// localized trio on the public projection: a visitor reading someone
-// else's shelf sees the same region-picked presentation the owner
-// does. The whitelist above is the privacy side of this decision;
-// this is the wiring side.
+// TestUnitSharedShelfEntries_CarriesLocalizedSnapshot pins the localized trio
+// on the public projection: a visitor sees the same region-picked presentation the owner does.
 func TestUnitSharedShelfEntries_CarriesLocalizedSnapshot(t *testing.T) {
 	owner := uuid.New()
 	shelf := store.View{ID: uuid.New(), UserID: owner, Name: "Imports", Slug: "Imports",
@@ -170,14 +165,9 @@ func TestUnitSharedShelfEntries_ExecutesStoredParams(t *testing.T) {
 	}
 }
 
-// TestUnitSharedShelfEntries_StoredRegionFilterIsOpenWorld guards
-// filtersFromViewParams' region dimension against regressing to a
-// keep()-style allowlist gate like status/packaging/item_type use.
-// region has no known-value set to gate against (open-world on the
-// live list endpoint too), so a stored free-text value - one that was
-// never a known region - must replay intact instead of silently
-// vanishing. Sibling to TestUnitSharedShelfEntries_ExecutesStoredParams,
-// isolating just this dimension.
+// TestUnitSharedShelfEntries_StoredRegionFilterIsOpenWorld guards region
+// against regressing to a keep()-style allowlist like status/packaging/item_type
+// use: a stored free-text region must replay intact, not silently vanish.
 func TestUnitSharedShelfEntries_StoredRegionFilterIsOpenWorld(t *testing.T) {
 	owner := uuid.New()
 	shelf := store.View{ID: uuid.New(), UserID: owner, Name: "Imports", Slug: "Imports",
@@ -200,11 +190,9 @@ func TestUnitSharedShelfEntries_StoredRegionFilterIsOpenWorld(t *testing.T) {
 	}
 }
 
-// TestUnitSharedShelfEntries_PaginationValidation pins that offset/limit
-// are validated against api/collection.yaml's bounds (limit 1-200,
-// offset >= 0) before any store call, including the shelf lookup - the
-// empty stubStore proves it. An unvalidated negative offset or
-// out-of-range limit would otherwise panic the page slice.
+// TestUnitSharedShelfEntries_PaginationValidation pins that offset/limit are
+// validated against the yaml's bounds (limit 1-200, offset>=0) before any
+// store call; an unvalidated value would otherwise panic the page slice.
 func TestUnitSharedShelfEntries_PaginationValidation(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 	tok := a.token(t, "viewer")
@@ -215,9 +203,8 @@ func TestUnitSharedShelfEntries_PaginationValidation(t *testing.T) {
 	}
 }
 
-// TestUnitSharedShelfEntries_PaginationAtUpperBoundSucceeds pins the
-// just-inside-bounds case: the yaml's declared max (200) must be
-// accepted, not rejected as out of range.
+// TestUnitSharedShelfEntries_PaginationAtUpperBoundSucceeds: the yaml's
+// declared max (200) must be accepted, not rejected as out of range.
 func TestUnitSharedShelfEntries_PaginationAtUpperBoundSucceeds(t *testing.T) {
 	owner := uuid.New()
 	shelf := store.View{ID: uuid.New(), UserID: owner, Name: "Backlog", Slug: "Backlog",
@@ -236,10 +223,8 @@ func TestUnitSharedShelfEntries_PaginationAtUpperBoundSucceeds(t *testing.T) {
 	}
 }
 
-// TestUnitSharedShelfEntries_PaginationAtLowerBoundSucceeds pins the
-// just-inside-bounds case at the other edge: limit=1 (the yaml's
-// declared minimum) must be accepted, not rejected as out of range,
-// and must actually constrain the page to one entry.
+// TestUnitSharedShelfEntries_PaginationAtLowerBoundSucceeds: limit=1 (the
+// yaml's minimum) must be accepted and actually constrain the page to one entry.
 func TestUnitSharedShelfEntries_PaginationAtLowerBoundSucceeds(t *testing.T) {
 	owner := uuid.New()
 	shelf := store.View{ID: uuid.New(), UserID: owner, Name: "Backlog", Slug: "Backlog",
@@ -364,10 +349,8 @@ func TestUnitListSharedShelves(t *testing.T) {
 		}
 	})
 
-	// owner_ids-absent case: Explore-recent's read. No owners must
-	// reach the store (nil, not a zero-length slice standing in for
-	// "everyone") - store.ListListedShelves' own nil-slice contract
-	// is what turns that into an unfiltered query.
+	// owner_ids-absent case (Explore-recent's read): nil, not a zero-length
+	// slice, must reach the store, since ListListedShelves' nil-slice contract unfilters the query.
 	t.Run("owner_ids absent lists unfiltered across every owner", func(t *testing.T) {
 		var gotOwners []uuid.UUID
 		ownersArgSeen := false
@@ -403,8 +386,7 @@ func TestUnitListSharedShelves(t *testing.T) {
 	})
 
 	t.Run("validation", func(t *testing.T) {
-		// The empty stubStore proves each guard answers 400 before any
-		// store call.
+		// The empty stubStore proves each guard answers 400 before any store call.
 		srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 		tok := a.token(t, "viewer")
 		validOwner := uuid.NewString()
@@ -417,9 +399,7 @@ func TestUnitListSharedShelves(t *testing.T) {
 			wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 		}
 		// owner_ids over its maxItems bound (5000): specval's contract
-		// enforcement answers this before the handler ever sees the
-		// request (the same generic invalid_param every other bound in
-		// this list answers).
+		// enforcement answers this before the handler sees the request.
 		q := url.Values{}
 		for range 5001 {
 			q.Add("owner_ids", uuid.NewString())
@@ -428,10 +408,8 @@ func TestUnitListSharedShelves(t *testing.T) {
 		wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 	})
 
-	// TestUnitListSharedShelves at-bound acceptance: the yaml's declared
-	// maxima (limit=100, owner_ids=5000) must be accepted, not rejected
-	// as out of range - the mirror image of the "validation" subtest's
-	// just-over-bound rejections above.
+	// TestUnitListSharedShelves at-bound acceptance: the yaml's declared maxima
+	// (limit=100, owner_ids=5000) must be accepted, mirroring the just-over-bound rejections above.
 	t.Run("limit=100 (the yaml max) is accepted", func(t *testing.T) {
 		var gotLimit int
 		st := &stubStore{
@@ -460,9 +438,8 @@ func TestUnitListSharedShelves(t *testing.T) {
 			},
 		}
 		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
-		// url.Values.Add + Encode builds the query in linear time (a
-		// single repeated key, no per-iteration string concatenation),
-		// same idiom as the 5001-id rejection case above.
+		// url.Values.Add + Encode builds the query in linear time (no
+		// per-iteration string concatenation), same idiom as the 5001-id case above.
 		q := url.Values{}
 		for range 5000 {
 			q.Add("owner_ids", uuid.NewString())
@@ -488,8 +465,7 @@ func TestUnitGetSharedShelvesByIds(t *testing.T) {
 		st := &stubStore{
 			sharedShelvesByIDs: func(_ context.Context, ids []uuid.UUID) ([]store.View, error) {
 				gotIDs = ids
-				// The store itself already excludes private/missing ids;
-				// the stub mirrors that by returning only the known one.
+				// The store already excludes private/missing ids; the stub mirrors that.
 				return []store.View{known}, nil
 			},
 			countEntriesFiltered: func(context.Context, uuid.UUID, store.Filters) (int, error) { return 3, nil },
@@ -522,8 +498,7 @@ func TestUnitGetSharedShelvesByIds(t *testing.T) {
 		}
 		srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 		resp := do(t, http.MethodGet, srv.URL+"/shared/shelves/by-ids?"+q.Encode(), a.token(t, "viewer"), nil)
-		// specval's contract enforcement (ids maxItems: 100) answers
-		// this before the handler ever sees the request.
+		// specval's contract enforcement (ids maxItems: 100) answers this before the handler sees the request.
 		wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 	})
 
@@ -543,11 +518,9 @@ func TestUnitGetSharedShelvesByIds(t *testing.T) {
 	})
 }
 
-// TestUnitSharedShelfSummaries_DropsPrivateDefenseInDepth pins
-// shelfSummaries' own guard: even if a store path forgets to filter
-// private (a bug, or a future caller), a private row must never reach
-// shared output. Routed through GetSharedShelvesByIds since
-// shelfSummaries itself is unexported.
+// TestUnitSharedShelfSummaries_DropsPrivateDefenseInDepth pins shelfSummaries'
+// own guard: a private row must never reach shared output even if a store path
+// forgets to filter it. Routed through GetSharedShelvesByIds since shelfSummaries is unexported.
 func TestUnitSharedShelfSummaries_DropsPrivateDefenseInDepth(t *testing.T) {
 	owner := uuid.New()
 	listed := store.View{ID: uuid.New(), UserID: owner, Name: "Backlog", Slug: "Backlog",

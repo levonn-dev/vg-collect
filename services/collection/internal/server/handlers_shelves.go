@@ -15,22 +15,16 @@ import (
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-// The /shared handlers serve any authenticated caller. They never
-// scope to the caller's sub: the OWNER of the shelf is the execution
-// subject, the caller only reads. Visibility gates here cover the
-// shelf only; the bff composes in the owner-profile half of the
-// effective-visibility rule.
+// The /shared handlers serve any authenticated caller and never scope to the
+// caller's sub: the shelf OWNER is the execution subject, the caller only
+// reads. Visibility gates here cover the shelf only; the bff composes the owner-profile half.
 
 const coverStripLimit = 4
 
 // filtersFromViewParams tolerantly parses the frontend's stored view
-// vocabulary ({v:1, item_type, status, packaging, region,
-// item_condition, platform_id, tag_id, sort, order, group_by, mode})
-// into Filters + groupBy. Unknown keys and invalid enum values are
-// dropped, matching the SPA's own tolerant parse; region has no enum
-// to drop against (open-world) and rides through verbatim. mode is
-// frontend-only. A stored sort the list machinery cannot serve
-// cheaply ("value") passes through to orderClause's stable default.
+// vocabulary into Filters + groupBy: unknown keys and invalid enums drop
+// (matching the SPA's parse); region has no enum to drop against and rides
+// through verbatim; mode is frontend-only; sort "value" falls to orderClause's stable default.
 func filtersFromViewParams(params []byte) (store.Filters, string) {
 	var doc struct {
 		ItemType      []string `json:"item_type"`
@@ -62,9 +56,8 @@ func filtersFromViewParams(params []byte) (store.Filters, string) {
 	f.ItemTypes = keep(doc.ItemType, validItemType)
 	f.Statuses = keep(doc.Status, validStatus)
 	f.Packagings = keep(doc.Packaging, validPackaging)
-	// region has no allowed set to gate against (open-world); a
-	// stored free-text value passes through exactly like the live
-	// list endpoint's own filter param. Credits share the posture.
+	// region has no allowed set to gate against (open-world); a stored free-text
+	// value passes through exactly like the live list endpoint. Credits share the posture.
 	f.Regions = doc.Region
 	f.Developers = doc.Developer
 	f.Publishers = doc.Publisher
@@ -101,11 +94,9 @@ func toSharedShelf(v store.View) (api.SharedShelf, error) {
 	}, nil
 }
 
-// toSharedEntry is the whitelist projection. Every field named here
-// is deliberate; TestSharedEntryWhitelist pins the contract side. The
-// per-field conversions mirror toAPIEntry's exactly (same
-// expressions, substituting SharedEntry's generated enum types) -
-// no new conversion helpers.
+// toSharedEntry is the whitelist projection; every field here is deliberate
+// (TestSharedEntryWhitelist pins the contract side). Per-field conversions
+// mirror toAPIEntry's exactly, substituting SharedEntry's generated enum types.
 func toSharedEntry(e store.Entry) common.SharedEntry {
 	out := common.SharedEntry{
 		Id:                    e.ID,
@@ -149,8 +140,7 @@ func toSharedEntry(e store.Entry) common.SharedEntry {
 	return out
 }
 
-// sharedShelfOr404 loads and gates a shelf; unknown and private are
-// the same 404 (no existence oracle).
+// sharedShelfOr404 loads and gates a shelf; unknown and private are the same 404 (no existence oracle).
 func (h *Handlers) sharedShelfOr404(w http.ResponseWriter, r *http.Request, id uuid.UUID) (store.View, bool) {
 	v, err := h.store.GetSharedShelf(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && v.Visibility == "private") {
@@ -196,9 +186,8 @@ func (h *Handlers) GetSharedShelfBySlug(w http.ResponseWriter, r *http.Request, 
 }
 
 func (h *Handlers) ListSharedShelfEntries(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID, params api.ListSharedShelfEntriesParams) {
-	// limit/offset are already known within bounds (specval enforces
-	// the contract's 1-200/>=0) by the time this runs; only the
-	// default-when-absent case needs handling here.
+	// limit/offset are already known within bounds (specval enforces 1-200/>=0);
+	// only the default-when-absent case needs handling here.
 	limit := 100
 	if params.Limit != nil {
 		limit = *params.Limit
@@ -234,15 +223,11 @@ func (h *Handlers) ListSharedShelfEntries(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, out)
 }
 
-// ListSharedShelves pages listed shelves, optionally scoped to a
-// caller-given owner set. owner_ids absent or empty means unfiltered
-// (Explore-recent's read, every listed owner); present, it scopes the
-// page to just those owners (the profile page's read). Either way
-// owners is nil when owner_ids is absent, so store.ListListedShelves'
-// own nil-slice contract (nil = no filter) does the rest. owner_ids'
-// maxItems and limit/offset's bounds are specval's job (contract
-// maxItems: 5000 and 1-100/>=0 respectively); only the
-// default-when-absent case needs handling here.
+// ListSharedShelves pages listed shelves, optionally scoped to a caller-given
+// owner set: absent/empty owner_ids means unfiltered (Explore-recent's read);
+// present scopes to those owners (the profile page's read), via
+// ListListedShelves' nil-slice contract. Bounds are specval's job (owner_ids
+// maxItems 5000, limit/offset 1-100/>=0).
 func (h *Handlers) ListSharedShelves(w http.ResponseWriter, r *http.Request, params api.ListSharedShelvesParams) {
 	limit := 20
 	if params.Limit != nil {
@@ -288,18 +273,15 @@ func (h *Handlers) GetSharedShelvesByIds(w http.ResponseWriter, r *http.Request,
 	writeJSON(w, http.StatusOK, map[string]any{"shelves": summaries})
 }
 
-// shelfSummaries composes card data per shelf: filtered entry count
-// plus the first covers in shelf order. Two small indexed queries per
-// shelf on a page of at most ~20 - fine at this tier; revisit only
-// with measurements.
+// shelfSummaries composes card data per shelf: filtered entry count plus the
+// first covers in shelf order; two small indexed queries per shelf, fine at ~20/page.
 func (h *Handlers) shelfSummaries(r *http.Request, views []store.View) ([]api.SharedShelfSummary, error) {
 	out := make([]api.SharedShelfSummary, 0, len(views))
 	for _, v := range views {
-		// Defense in depth: the store queries backing both callers
-		// already exclude private (ListListedShelves filters
-		// visibility='listed', SharedShelvesByIDs excludes
-		// visibility<>'private'), but private must never reach shared
-		// output even if some future store path forgets to filter it.
+		// Defense in depth: both store queries already exclude private
+		// (ListListedShelves filters visibility='listed', SharedShelvesByIDs
+		// excludes visibility<>'private'), but private must never reach output
+		// even if a future path forgets to filter it.
 		if v.Visibility == "private" {
 			continue
 		}
@@ -321,10 +303,8 @@ func (h *Handlers) shelfSummaries(r *http.Request, views []store.View) ([]api.Sh
 	return out, nil
 }
 
-// buildSharedGroups mirrors buildGroups (entries handler) over the
-// SharedEntry projection: same partition/sort/catch-all-last rules,
-// reusing groupLabels and catchAllLabels since both read the store
-// entries, not the API projection.
+// buildSharedGroups mirrors buildGroups (entries handler) over SharedEntry:
+// same partition/sort/catch-all-last rules, reusing groupLabels/catchAllLabels.
 func buildSharedGroups(entries []store.Entry, apiEntries []common.SharedEntry, groupBy string) []common.SharedEntryGroup {
 	byLabel := map[string][]common.SharedEntry{}
 	for i, e := range entries {

@@ -23,8 +23,7 @@ import (
 	"github.com/levonn-dev/vgkeep/services/collection/internal/store"
 )
 
-// consoleProduct is a hardware fixture: a valid proxy pricing target
-// that carries no IGDB game identity of its own.
+// consoleProduct is a hardware fixture: a valid proxy target with no IGDB game identity.
 func consoleProduct(id uuid.UUID) enrichapi.Product {
 	return enrichapi.Product{
 		Id:   id,
@@ -80,13 +79,18 @@ func TestUnitCreateEntry_SnapshotsCatalogFacts(t *testing.T) {
 	}
 	// The response composed the packaging-matched (cib) value.
 	var got struct {
-		ValueCents *int64 `json:"value_cents"`
+		Id         uuid.UUID `json:"id"`
+		ValueCents *int64    `json:"value_cents"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
 	if got.ValueCents == nil || *got.ValueCents != 4200 {
 		t.Fatalf("value: %v", got.ValueCents)
+	}
+	// The 201 names the created entry's own URL.
+	if want := "/entries/" + got.Id.String(); resp.Header.Get("Location") != want {
+		t.Fatalf("Location = %q, want %q", resp.Header.Get("Location"), want)
 	}
 	// The dashboard cache was invalidated for exactly this user.
 	if len(c.invalidated) != 1 || c.invalidated[0] != sub.String() {
@@ -136,10 +140,8 @@ func TestUnitCreateEntry_SnapshotsCoverURL(t *testing.T) {
 	}
 }
 
-// TestUnitCreateEntry_CoverFallsBackToPlatformLogo pins the entry
-// image chain: hardware (no igdb block) snapshots the platform logo,
-// while a game with real cover art keeps the cover even when a logo
-// is also present.
+// TestUnitCreateEntry_CoverFallsBackToPlatformLogo pins the cover fallback:
+// hardware snapshots the platform logo; a game keeps its cover art over a logo.
 func TestUnitCreateEntry_CoverFallsBackToPlatformLogo(t *testing.T) {
 	productID := uuid.New()
 	logo := "https://images.igdb.example/t_logo_med/pl7m.jpg"
@@ -195,8 +197,7 @@ func TestUnitCreateEntry_CoverFallsBackToPlatformLogo(t *testing.T) {
 	}
 }
 
-// Create maps the body field: absent -> auto; user -> user; an
-// unknown value answers 400 like pricing_mode does.
+// Create maps the body field: absent -> auto, user -> user, unknown -> 400.
 func TestCreateEntry_StampsMatchProvenance(t *testing.T) {
 	productID := uuid.New()
 	newStore := func(stored *store.Entry) *stubStore {
@@ -261,9 +262,8 @@ func TestUnitCreateEntry_ValidationMatrix(t *testing.T) {
 		code   string
 	}{
 		{"empty region", func(m map[string]any) { m["region"] = "   " }, "invalid_body"},
-		// 33 multi-byte runes (99 bytes): the cap counts code points,
-		// not bytes - see TestCreateEntry_RegionLengthIsRuneCounted for
-		// the accept-side 32-rune boundary this pairs with.
+		// 33 multi-byte runes: the cap counts code points, not bytes (pairs
+		// with the 32-rune accept boundary in TestCreateEntry_RegionLengthIsRuneCounted).
 		{"region too long", func(m map[string]any) { m["region"] = strings.Repeat("あ", 33) }, "invalid_body"},
 		{"bad packaging", func(m map[string]any) { m["packaging"] = "boxed" }, "invalid_body"},
 		{"bad status", func(m map[string]any) { m["status"] = "queued" }, "invalid_body"},
@@ -306,9 +306,8 @@ func TestUnitCreateEntry_ValidationMatrix(t *testing.T) {
 	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
-// TestCreateEntry_OpenWorldRegion pins the open-world contract: a
-// region outside the four known values is not a validation error - it
-// is trimmed and stored/returned as an honest display fact.
+// TestCreateEntry_OpenWorldRegion pins that a region outside the four known
+// values is not a validation error: it is trimmed and stored as a display fact.
 func TestCreateEntry_OpenWorldRegion(t *testing.T) {
 	var stored store.Entry
 	st := &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
@@ -344,9 +343,8 @@ func TestCreateEntry_OpenWorldRegion(t *testing.T) {
 	}
 }
 
-// TestCreateEntry_CustomCredits pins the custom-entry credit facts:
-// names are trimmed, empty elements drop, the arrays store and echo,
-// and an absent field stays nil.
+// TestCreateEntry_CustomCredits pins credit normalization: names trim, empty
+// elements drop, and an absent field stays nil.
 func TestCreateEntry_CustomCredits(t *testing.T) {
 	var stored store.Entry
 	st := &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
@@ -398,11 +396,8 @@ func TestCreateEntry_CustomCredits(t *testing.T) {
 	}
 }
 
-// TestCreateEntry_CreditCaps pins the contract's caps on developers/
-// publishers (maxItems 10, maxLength 120 per name): more than 10 names
-// or a name over 120 runes is a 400, enforced by specval's
-// request-validation middleware ahead of the handler, not by
-// libs/go/catalogval's NormalizeCredits.
+// TestCreateEntry_CreditCaps pins the contract caps (maxItems 10, maxLength
+// 120): specval's request-validation middleware enforces them, not catalogval.
 func TestCreateEntry_CreditCaps(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{}, &stubEnrichment{}, newStubCache())
 	base := func(devs []string) io.Reader {
@@ -425,13 +420,8 @@ func TestCreateEntry_CreditCaps(t *testing.T) {
 	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
-// TestCreateEntry_RegionLengthIsRuneCounted pins the 32-char cap as
-// code points, matching every other length cap in this file
-// (display_name, platform_name, storage_location all use
-// utf8.RuneCountInString, never len()). 32 multi-byte runes is 96
-// bytes - over 32 by byte count - and must still be accepted; the
-// ValidationMatrix's "region too long" row pins the reject side of
-// this same boundary at 33 runes.
+// TestCreateEntry_RegionLengthIsRuneCounted pins the cap at 32 code points,
+// not bytes: 32 multi-byte runes (96 bytes) must be accepted; 33 rejects.
 func TestCreateEntry_RegionLengthIsRuneCounted(t *testing.T) {
 	region32 := strings.Repeat("あ", 32)
 	var stored store.Entry
@@ -537,9 +527,7 @@ func TestUnitCreateEntry_ReferenceErrors(t *testing.T) {
 			e.Tags = []store.TagRef{}
 			return e, nil
 		}}
-		// Both enrichment fields deliberately nil: a call would panic.
-		// A custom create with disabled pricing works with the catalog
-		// fully down.
+		// Both enrichment fields deliberately nil: disabled pricing must need no enrichment call.
 		srv, a := newUnitServer(t, st, &stubEnrichment{}, newStubCache())
 		resp := do(t, http.MethodPost, srv.URL+"/entries", a.token(t, uuid.NewString()),
 			jsonBody(map[string]any{
@@ -646,11 +634,8 @@ func TestUnitCreateEntry_ReferenceErrors(t *testing.T) {
 	})
 }
 
-// TestUnitCreateEntry_HardwareProxyGrantsNoGameIdentity covers a custom
-// game proxied to a hardware product: the proxy prices the entry, but
-// hardware carries no IGDB game identity to adopt (contrast the
-// proxy-to-a-game case in TestUnitCreateEntry_ReferenceErrors above,
-// which does adopt the target's identity).
+// TestUnitCreateEntry_HardwareProxyGrantsNoGameIdentity: a hardware proxy
+// prices the entry but grants no IGDB game identity, unlike a game proxy.
 func TestUnitCreateEntry_HardwareProxyGrantsNoGameIdentity(t *testing.T) {
 	consoleID := uuid.New()
 	var stored store.Entry
@@ -683,18 +668,13 @@ func TestUnitCreateEntry_HardwareProxyGrantsNoGameIdentity(t *testing.T) {
 	}
 }
 
-// TestUnitCreateEntry_SnapshotsRegionScopedReleaseDate pins the create
-// snapshot to the region-scoped pick over the platform scalar: a
-// chain hit for the entry's region wins, and a region with no chain
-// (region_free) falls back to the scalar exactly like a product with
-// no per-region dates at all.
+// TestUnitCreateEntry_SnapshotsRegionScopedReleaseDate: a chain hit for the
+// entry's region wins over the scalar date; region_free falls back to the scalar.
 func TestUnitCreateEntry_SnapshotsRegionScopedReleaseDate(t *testing.T) {
 	productID := uuid.New()
 	dated := func(id uuid.UUID) enrichapi.Product {
 		p := gameProduct(id)
-		// The scalar is deliberately distinct from every row date below,
-		// so a test asserting the scalar (region_free) cannot pass by
-		// accident on a row's date instead.
+		// Distinct from every row date below, so a region_free pass can't be an accident.
 		scalar := openapi_types.Date{Time: time.Date(1994, time.December, 25, 0, 0, 0, 0, time.UTC)}
 		p.Igdb.FirstReleaseDate = &scalar
 		p.Igdb.ReleaseDates = &[]common.ReleaseDate{
@@ -750,13 +730,9 @@ func TestUnitCreateEntry_SnapshotsRegionScopedReleaseDate(t *testing.T) {
 	})
 }
 
-// TestUnitCreateEntry_SnapshotsRegionPickedLocalization pins the
-// create-time localized snapshot: an ntsc_j entry against a product
-// carrying a ja-JP bundle stores and returns the whole trio, while
-// the same product under ntsc_u (a region with no localization chain)
-// stores nothing and serializes nothing - the client never supplies
-// these, so an absent field is the only way to say "no localized
-// form".
+// TestUnitCreateEntry_SnapshotsRegionPickedLocalization: ntsc_j against a
+// ja-JP bundle stores and returns the localized trio; ntsc_u (no chain) stores
+// and serializes nothing, since an absent field is the only way to say none.
 func TestUnitCreateEntry_SnapshotsRegionPickedLocalization(t *testing.T) {
 	productID := uuid.New()
 	newStore := func(stored *store.Entry) *stubStore {
@@ -792,8 +768,7 @@ func TestUnitCreateEntry_SnapshotsRegionPickedLocalization(t *testing.T) {
 			t.Fatalf("stored localized snapshot: %v %v %v",
 				stored.LocalizedName, stored.LocalizedNameTranslit, stored.LocalizedCoverURL)
 		}
-		// The canonical snapshot is untouched: the localized fields are
-		// an addition to the display name and cover, not a replacement.
+		// Localized fields are an addition, not a replacement of the canonical snapshot.
 		if stored.DisplayName != "Chrono Trigger" {
 			t.Fatalf("display_name must stay canonical: %q", stored.DisplayName)
 		}
@@ -838,8 +813,7 @@ func TestCreateEntryPersistsThroughTheStack(t *testing.T) {
 	sub := uuid.New()
 	tok := s.auth.token(t, sub.String())
 
-	// Seed the caller's dashboard cache; creation must invalidate it in
-	// the real Valkey instance, not just in an in-memory stub.
+	// Seed the dashboard cache; creation must invalidate it in the real Valkey instance.
 	if err := s.cache.PutDashboard(context.Background(), sub.String(), []byte(`{"seed":true}`), 5*time.Minute); err != nil {
 		t.Fatal(err)
 	}
@@ -878,8 +852,7 @@ func TestCreateEntryPersistsThroughTheStack(t *testing.T) {
 	}
 }
 
-// storedGameEntry is a persisted-looking product-backed entry for
-// stub reads.
+// storedGameEntry is a persisted-looking product-backed entry for stub reads.
 func storedGameEntry(userID uuid.UUID) store.Entry {
 	rank := "n"
 	return store.Entry{
@@ -956,8 +929,7 @@ func TestUnitGetEntry_DisabledPricingSkipsComposition(t *testing.T) {
 	}
 }
 
-// TestUnitGetEntry_SealedPricesFromNewCents pins that packaging=sealed
-// composes the new-price quote, not the loose or cib figure.
+// TestUnitGetEntry_SealedPricesFromNewCents: packaging=sealed composes new_cents.
 func TestUnitGetEntry_SealedPricesFromNewCents(t *testing.T) {
 	user := uuid.New()
 	e := storedGameEntry(user)
@@ -1001,8 +973,7 @@ func TestUnitUpdateEntry(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("status %d", resp.StatusCode)
 		}
-		// Identity + snapshot survive; mutables replaced; rating set;
-		// absent notes cleared.
+		// Identity + snapshot survive; mutables replaced; absent notes cleared.
 		if updated.ProductID == nil || *updated.ProductID != *e.ProductID ||
 			updated.DisplayName != e.DisplayName ||
 			updated.Status != "beaten" || updated.Packaging != "loose" ||
@@ -1062,9 +1033,7 @@ func TestUnitUpdateEntry(t *testing.T) {
 		wantProblem(t, resp, http.StatusNotFound, "unknown_pricing_product")
 	})
 
-	// The gate's other disjunct: a product-backed entry proxying to its
-	// OWN product (rather than an unchanged proxy override) is also
-	// already known-good and needs no round-trip.
+	// A product-backed entry proxying to its OWN product is also already known-good.
 	t.Run("proxying to the entry's own product needs no validation", func(t *testing.T) {
 		var updated store.Entry
 		st := &stubStore{
@@ -1096,12 +1065,8 @@ func TestUnitUpdateEntry(t *testing.T) {
 	})
 
 	t.Run("switching disabled to proxy re-validates even if pricing_product_id was already stored", func(t *testing.T) {
-		// The column persists regardless of mode, so a prior PUT could
-		// have stashed pricing_product_id under mode "disabled" without
-		// ever validating it. Comparing only against the raw stored
-		// column (not the stored mode) would let that stale, unvalidated
-		// id become the active proxy target the moment mode flips to
-		// "proxy" - the bug this test guards against.
+		// pricing_product_id persists across modes; comparing only the raw stored
+		// value (not the mode) would activate a stale, unvalidated id on flip to proxy.
 		stale := e
 		stale.PricingMode = "disabled"
 		unknown := uuid.New()
@@ -1257,8 +1222,7 @@ func TestUnitUpdateEntry(t *testing.T) {
 			t.Fatalf("custom fields: %+v", updated)
 		}
 
-		// Setting a proxy adopts the target's identity; removing the
-		// proxy clears it.
+		// Setting a proxy adopts the target's identity; removing it clears it.
 		resp = do(t, http.MethodPut, srv.URL+"/entries/"+cust.ID.String(), a.token(t, owner.String()),
 			updateBody(func(m map[string]any) {
 				m["pricing_mode"] = "proxy"
@@ -1291,14 +1255,9 @@ func TestUnitUpdateEntry(t *testing.T) {
 	})
 
 	t.Run("custom platform_igdb_id requires platform_name", func(t *testing.T) {
-		// Update is full-replacement: the row already carries a valid
-		// pairing, but a body that sets platform_igdb_id while omitting
-		// platform_name would clear the name and keep the id - the same
-		// invalid pairing the DB's CHECK(platform_igdb_id IS NULL OR
-		// platform_name IS NOT NULL) rejects, regardless of current row
-		// state. updateEntry stands in for that constraint: if
-		// validation ever lets this body through, the store answers the
-		// way the real violation would.
+		// Full-replacement PUT: platform_igdb_id set with platform_name omitted must
+		// 400 before reaching the store, matching CHECK(platform_igdb_id IS NULL OR
+		// platform_name IS NOT NULL); updateEntry stands in for that constraint.
 		owner := uuid.New()
 		cust := storedGameEntry(owner)
 		cust.ProductID = nil
@@ -1416,9 +1375,8 @@ func TestUnitUpdateEntry(t *testing.T) {
 			}
 		})
 		t.Run("repoint re-picks the date from the new product's release dates", func(t *testing.T) {
-			// A repoint always re-fetches the new product (needed for
-			// the family check); the date pick reuses that same fetch
-			// rather than triggering a second GetProduct call.
+			// A repoint re-fetches the new product for the family check; the date
+			// pick reuses that fetch rather than a second GetProduct call.
 			releaseDates := []common.ReleaseDate{
 				{Region: "japan", Date: openapi_types.Date{Time: time.Date(1995, time.March, 11, 0, 0, 0, 0, time.UTC)}},
 				{Region: "north_america", Date: openapi_types.Date{Time: time.Date(1995, time.August, 22, 0, 0, 0, 0, time.UTC)}},
@@ -1455,9 +1413,7 @@ func TestUnitUpdateEntry(t *testing.T) {
 			}
 		})
 		t.Run("repoint re-picks the localized trio from the new product", func(t *testing.T) {
-			// Region unchanged (pal on both sides), so the repoint is the
-			// only trigger - the region-edit trigger has its own coverage
-			// in TestUnitUpdateEntry_RegionEditRePicksLocalization.
+			// Region unchanged (pal both sides), so the repoint is the only trigger here.
 			pal := e
 			pal.Region = "pal"
 			var updated store.Entry
@@ -1604,8 +1560,7 @@ func TestUpdateEntry_NarrowRematchStampsUser(t *testing.T) {
 	}
 }
 
-// A plain edit (notes/tags/status) on a user-provenance entry leaves
-// the column user.
+// A plain edit (notes/tags/status) on a user-provenance entry leaves the column user.
 func TestUpdateEntry_PlainEditPreservesProvenance(t *testing.T) {
 	user := uuid.New()
 	e := storedGameEntry(user)
@@ -1635,13 +1590,9 @@ func TestUpdateEntry_PlainEditPreservesProvenance(t *testing.T) {
 	}
 }
 
-// TestUnitUpdateEntry_RegionScopedReleaseDate covers the snapshot
-// re-pick triggers introduced for region-scoped dates: a region edit
-// on a game-backed entry re-fetches its product and re-picks, an
-// unchanged region never fetches, a fetch failure on a region-only
-// edit is a hard 502 (products are never deleted, so any failure here
-// reads as an availability problem), and hardware (no igdb_game_id)
-// never fetches on a region edit even though it is product-backed.
+// TestUnitUpdateEntry_RegionScopedReleaseDate covers the re-pick triggers: a
+// region edit on a game-backed entry re-fetches and re-picks; a fetch failure
+// is a hard 502, since products are never deleted.
 func TestUnitUpdateEntry_RegionScopedReleaseDate(t *testing.T) {
 	user := uuid.New()
 	naDate := time.Date(1995, time.August, 22, 0, 0, 0, 0, time.UTC)
@@ -1654,8 +1605,7 @@ func TestUnitUpdateEntry_RegionScopedReleaseDate(t *testing.T) {
 		}
 		return p
 	}
-	// gameBacked carries an igdb game id and an already-picked date -
-	// the precondition for a region edit to be fetch-eligible at all.
+	// gameBacked carries an igdb game id and a picked date: the precondition for fetch-eligibility.
 	gameBacked := func() store.Entry {
 		e := storedGameEntry(user)
 		e.IGDBGameID = new(int64(1000))
@@ -1735,8 +1685,7 @@ func TestUnitUpdateEntry_RegionScopedReleaseDate(t *testing.T) {
 		e := gameBacked()
 		st := &stubStore{
 			getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return e, nil },
-			// updateEntry deliberately nil: a fetch failure on the
-			// region-only trigger must return before any store write.
+			// updateEntry deliberately nil: a fetch failure must return before any store write.
 		}
 		enrich := &stubEnrichment{getProduct: func(context.Context, string, uuid.UUID) (enrichapi.Product, error) {
 			return enrichapi.Product{}, enrichmentclient.ErrUnavailable
@@ -1751,8 +1700,7 @@ func TestUnitUpdateEntry_RegionScopedReleaseDate(t *testing.T) {
 		hw := storedGameEntry(user)
 		hw.ItemType = "console"
 		hw.DisplayName = "Super NES Console"
-		// IGDBGameID stays nil: hardware has no igdb identity, so a
-		// region edit must not depend on enrichment being up.
+		// IGDBGameID stays nil: hardware has no igdb identity to fetch.
 		var calls int
 		var updated store.Entry
 		st := &stubStore{
@@ -1789,11 +1737,8 @@ func TestUnitUpdateEntry_RegionScopedReleaseDate(t *testing.T) {
 	})
 }
 
-// TestUnitUpdateEntry_RegionEditRePicksLocalization is the PUT-side
-// half of the localized snapshot: the region edit that re-picks the
-// date re-picks the presentation trio from the same fetch, and moving
-// into a region with no localized form clears what the old region
-// stored instead of leaving a stale native-script title behind.
+// TestUnitUpdateEntry_RegionEditRePicksLocalization: a region edit re-picks the
+// localized trio from the same fetch, clearing it when the new region has no form.
 func TestUnitUpdateEntry_RegionEditRePicksLocalization(t *testing.T) {
 	user := uuid.New()
 	gameBacked := func(region string) store.Entry {
@@ -1906,10 +1851,8 @@ func TestUnitDeleteEntry(t *testing.T) {
 	wantProblem(t, resp, http.StatusNotFound, "entry_not_found")
 }
 
-// TestAckEntryRegionMismatch pins the handler's ownership idiom: 204
-// and a stamp call for the owner, 404 entry_not_found for someone
-// else's entry (the store's ownership WHERE reports ErrNotFound
-// identically for foreign and missing rows, same as DeleteEntry).
+// TestAckEntryRegionMismatch: 204 and a stamp call for the owner, 404
+// entry_not_found for another user's entry (same as DeleteEntry).
 func TestAckEntryRegionMismatch(t *testing.T) {
 	user := uuid.New()
 	id := uuid.New()
@@ -1948,8 +1891,7 @@ func TestUpdateEntryRankTransitionThroughTheStack(t *testing.T) {
 		t.Fatal("backlog create must carry a rank")
 	}
 
-	// Leave the backlog: the rank clears (the DB CHECK would reject
-	// anything else).
+	// Leave the backlog: the rank clears (the DB CHECK rejects anything else).
 	resp = do(t, http.MethodPut, s.baseURL+"/entries/"+created.ID.String(), tok, updateBody(nil))
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -2090,9 +2032,7 @@ func TestReorderThroughTheStack(t *testing.T) {
 	wantProblem(t, resp, http.StatusConflict, "conflicting_order")
 }
 
-// manyUUIDStrings builds n distinct uuid strings for maxItems guard
-// tests (the contract's maxItems bounds on entry_ids, add_tag_ids, and
-// remove_tag_ids have no existing generator to reuse).
+// manyUUIDStrings builds n distinct uuid strings for maxItems guard tests.
 func manyUUIDStrings(n int) []string {
 	out := make([]string, n)
 	for i := range out {
@@ -2101,10 +2041,8 @@ func manyUUIDStrings(n int) []string {
 	return out
 }
 
-// TestUnitBulkUpdateEntries_ValidationMatrix mirrors
-// TestUnitCreateEntry_ValidationMatrix's idiom: every case reaches an
-// empty stubStore (BulkUpdateEntries unset), proving the guard 400s
-// before the store is ever touched (a call would panic).
+// TestUnitBulkUpdateEntries_ValidationMatrix uses an empty stubStore
+// (BulkUpdateEntries unset): a call would panic, proving the 400 guard fires first.
 func TestUnitBulkUpdateEntries_ValidationMatrix(t *testing.T) {
 	validID := uuid.NewString()
 	cases := []struct {
@@ -2133,9 +2071,8 @@ func TestUnitBulkUpdateEntries_ValidationMatrix(t *testing.T) {
 	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
-// TestUnitBulkUpdateEntries_Success proves a valid request reaches
-// the store with entry_ids and every action forwarded, and the
-// store's count becomes the response's updated_count.
+// TestUnitBulkUpdateEntries_Success: entry_ids and every action forward to the
+// store; the store's count becomes the response's updated_count.
 func TestUnitBulkUpdateEntries_Success(t *testing.T) {
 	user := uuid.New()
 	entryA, entryB, tagID := uuid.New(), uuid.New(), uuid.New()
@@ -2181,10 +2118,8 @@ func TestUnitBulkUpdateEntries_Success(t *testing.T) {
 	}
 }
 
-// TestUnitBulkUpdateEntries_TagCapExceededMapsTo400 pins the delegated
-// status/code choice for the bulk per-entry tag cap: 400, code
-// tag_cap_exceeded (distinct from the generic invalid_body every other
-// bulk-update guard answers).
+// TestUnitBulkUpdateEntries_TagCapExceededMapsTo400: the per-entry tag cap
+// answers 400 code tag_cap_exceeded, not the generic invalid_body.
 func TestUnitBulkUpdateEntries_TagCapExceededMapsTo400(t *testing.T) {
 	st := &stubStore{bulkUpdateEntries: func(context.Context, uuid.UUID, []uuid.UUID, store.BulkActions) (int, error) {
 		return 0, store.ErrTagCapExceeded
@@ -2276,9 +2211,8 @@ func TestUnitCustomPricing_ValidationMatrix(t *testing.T) {
 	}
 }
 
-// TestUnitCustomPricing_MaxValueAccepted pins that the
-// custom_value_cents cap is inclusive: exactly 1000000000 is a valid
-// value, not a rejection.
+// TestUnitCustomPricing_MaxValueAccepted: the custom_value_cents cap is
+// inclusive; exactly 1000000000 is valid.
 func TestUnitCustomPricing_MaxValueAccepted(t *testing.T) {
 	productID := uuid.New()
 	st := &stubStore{createEntry: func(_ context.Context, e store.Entry, _ []uuid.UUID) (store.Entry, error) {
@@ -2313,10 +2247,8 @@ func TestUnitCustomPricing_MaxValueAccepted(t *testing.T) {
 	}
 }
 
-// TestUnitEntryValue_CustomModeShortCircuitsEnrichment pins the custom
-// pricing short-circuit on both create and update: the composed value
-// is always the stored cents, never a packaging-matched enrichment
-// price, and enrichment is never even consulted for it.
+// TestUnitEntryValue_CustomModeShortCircuitsEnrichment: on create and update,
+// the composed value is always the stored cents; enrichment is never consulted.
 func TestUnitEntryValue_CustomModeShortCircuitsEnrichment(t *testing.T) {
 	productID := uuid.New()
 	user := uuid.New()
@@ -2377,8 +2309,7 @@ func TestUnitEntryValue_CustomModeShortCircuitsEnrichment(t *testing.T) {
 		t.Fatal("custom_value_set_at must be set")
 	}
 
-	// PUT the full baseline with a different packaging: the value must
-	// not move (packaging-independent under pricing_mode custom).
+	// A different packaging must not move the value under pricing_mode custom.
 	resp = do(t, http.MethodPut, srv.URL+"/entries/"+created.ID.String(), tok,
 		updateBody(func(m map[string]any) {
 			m["packaging"] = "sealed"
@@ -2400,9 +2331,8 @@ func TestUnitEntryValue_CustomModeShortCircuitsEnrichment(t *testing.T) {
 	}
 }
 
-// TestUnitEnteredPair_PassthroughOnCreate pins that the typed pair
-// rides create -> store -> response untouched, next to the USD
-// snapshot the backend actually computes with.
+// TestUnitEnteredPair_PassthroughOnCreate: the typed pair rides create ->
+// store -> response untouched, alongside the backend's USD snapshot.
 func TestUnitEnteredPair_PassthroughOnCreate(t *testing.T) {
 	productID := uuid.New()
 	var stored store.Entry
@@ -2451,11 +2381,8 @@ func TestUnitEnteredPair_PassthroughOnCreate(t *testing.T) {
 	}
 }
 
-// TestUnitCreateEntry_CustomOffCatalogWithCustomModeAndPCListingProxyBorrowsNothing
-// pins two off-catalog corners: pricing_mode custom needs no product
-// at all, and a pc_listing proxy target (like hardware) grants no
-// game identity, since the existing nil-guard on target.Igdb already
-// covers any anchor product that carries no igdb block.
+// TestUnitCreateEntry_CustomOffCatalogWithCustomModeAndPCListingProxyBorrowsNothing:
+// pricing_mode custom needs no product; a pc_listing proxy grants no game identity.
 func TestUnitCreateEntry_CustomOffCatalogWithCustomModeAndPCListingProxyBorrowsNothing(t *testing.T) {
 	t.Run("off-catalog custom pricing needs no product", func(t *testing.T) {
 		var stored store.Entry
@@ -2564,8 +2491,7 @@ func TestCreateEntry_CommunityProductSnapshotFallbacks(t *testing.T) {
 		getProduct: func(context.Context, string, uuid.UUID) (enrichapi.Product, error) {
 			return community, nil
 		},
-		// CreateEntry's response composes a value for the new
-		// auto-priced, product-backed entry.
+		// The response composes a value for the new auto-priced, product-backed entry.
 		batchPrices: pricedAs(1500, 4200, 9900),
 	}
 	srv, a := newUnitServer(t, st, enrich, newStubCache())
@@ -2632,14 +2558,9 @@ func TestEntryCustomCatalogFields_CoverAndPlatformId(t *testing.T) {
 	wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
 }
 
-// TestUnitCreateEntry_PlatformIgdbIdRequiresPlatformName guards the
-// platform pairing the DB enforces with
-// CHECK(platform_igdb_id IS NULL OR platform_name IS NOT NULL): a
-// custom body carrying platform_igdb_id with no usable platform_name
-// must 400 in application validation, never reach the store to trip
-// that constraint as a 500. createEntry stands in for the constraint
-// itself - if validation ever lets this body through, the store
-// answers the way the real violation would.
+// TestUnitCreateEntry_PlatformIgdbIdRequiresPlatformName: platform_igdb_id with
+// no platform_name must 400 in validation, matching CHECK(platform_igdb_id IS
+// NULL OR platform_name IS NOT NULL); createEntry stands in for that constraint.
 func TestUnitCreateEntry_PlatformIgdbIdRequiresPlatformName(t *testing.T) {
 	st := &stubStore{createEntry: func(context.Context, store.Entry, []uuid.UUID) (store.Entry, error) {
 		return store.Entry{}, errors.New(`pq: check constraint "products_platform_pairing" violated`)
@@ -2668,8 +2589,7 @@ func TestUnitCreateEntry_PlatformIgdbIdRequiresPlatformName(t *testing.T) {
 	}
 }
 
-// Region edit on an auto-priced game entry whose member is cross-class
-// re-resolves with the new region and repoints to the returned member;
+// A cross-class region edit on an auto-priced entry re-resolves and repoints;
 // snapshot fields re-pick from the resolved payload.
 func TestUpdateEntry_RegionChangeRepointsCrossClassAutoEntry(t *testing.T) {
 	user := uuid.New()
@@ -2749,20 +2669,15 @@ func TestUpdateEntry_RegionChangeRepointsCrossClassAutoEntry(t *testing.T) {
 	}
 }
 
-// Class-compatible members skip the resolve hop entirely (the stub
-// asserts resolve was never called): an in-region manual variant pick
-// survives a same-class region edit, and a ntsc_u -> region_free flip
-// stays on the base member.
+// Class-compatible members skip the resolve hop: a same-class region edit
+// keeps a manual variant pick, and ntsc_u -> region_free stays on the base member.
 func TestUpdateEntry_RegionChangeSkipsClassCompatibleMember(t *testing.T) {
 	user := uuid.New()
 
 	t.Run("hand-chosen JP variant listing stays once the region edit lands in its class", func(t *testing.T) {
 		productID := uuid.New()
-		// A manual pick made while the entry still carried region
-		// ntsc_u: the picker path ignores the passed region, so a JP
-		// listing can already sit on a ntsc_u entry. The class guard -
-		// not the region value at create time - decides whether a later
-		// region edit re-resolves.
+		// The picker path ignores the passed region, so a JP listing can already
+		// sit on a ntsc_u entry; the class guard, not region, decides re-resolves.
 		jpVariant := pricedGameProduct(productID, "Super Famicom")
 		var created store.Entry
 		st := &stubStore{
@@ -2872,9 +2787,8 @@ func TestUpdateEntry_RegionChangeSkipsClassCompatibleMember(t *testing.T) {
 	})
 }
 
-// A cross-class region change on a user-provenance entry re-picks
-// display fields only: product_id unchanged, no Resolve call
-// recorded on the stub.
+// A cross-class region change on a user-provenance entry re-picks display
+// fields only: product_id unchanged, no Resolve call.
 func TestUpdateEntry_RegionChangeSkipsUserPick(t *testing.T) {
 	user := uuid.New()
 	productID := uuid.New()
@@ -2939,22 +2853,18 @@ func TestUpdateEntry_RegionChangeSkipsUserPick(t *testing.T) {
 	}
 }
 
-// Non-auto entries never repoint on a region edit (display re-pick
-// only), and the explicit product_id repoint arm outranks the region
-// arm when both fire in one request.
+// Non-auto entries never repoint on a region edit; an explicit product_id
+// repoint outranks the region arm when both fire in one request.
 func TestUpdateEntry_RegionChangeNonAutoAndExplicitRepointPrecedence(t *testing.T) {
 	user := uuid.New()
 
 	t.Run("non-auto entry re-picks display fields but never repoints", func(t *testing.T) {
 		productID := uuid.New()
-		// Deliberately cross-class (base vs jp): if pricing_mode gated
-		// nothing, this shape would repoint. It must not, because
-		// pricing_mode is disabled.
+		// Deliberately cross-class (base vs jp): would repoint if pricing_mode
+		// didn't gate it, but pricing_mode is disabled here.
 		baseMember := pricedGameProduct(productID, "Super Nintendo")
-		// Two chain-eligible regions on the one product: the ntsc_u
-		// creation snapshot and the ntsc_j region-arm re-pick below must
-		// land different field values, proving the re-pick used the NEW
-		// region rather than just replaying the creation-time snapshot.
+		// Two chain-eligible regions so the ntsc_u creation snapshot and the
+		// ntsc_j re-pick land different values, proving the re-pick used the new region.
 		baseMember.Igdb.ReleaseDates = &[]common.ReleaseDate{
 			{Region: "north_america", Date: openapi_types.Date{Time: time.Date(1991, time.August, 23, 0, 0, 0, 0, time.UTC)}},
 			{Region: "japan", Date: openapi_types.Date{Time: time.Date(1990, time.January, 11, 0, 0, 0, 0, time.UTC)}},
@@ -3100,8 +3010,7 @@ func TestUpdateEntry_RegionChangeNonAutoAndExplicitRepointPrecedence(t *testing.
 	})
 }
 
-// Enrichment down during the region-arm resolve answers 502
-// enrichment_unavailable and leaves the entry unchanged.
+// Enrichment down during the region-arm resolve answers 502 and leaves the entry unchanged.
 func TestUpdateEntry_RegionChangeResolveOutageKeeps502Posture(t *testing.T) {
 	user := uuid.New()
 	productID := uuid.New()
@@ -3118,8 +3027,7 @@ func TestUpdateEntry_RegionChangeResolveOutageKeeps502Posture(t *testing.T) {
 			return e, nil
 		},
 		getEntry: func(context.Context, uuid.UUID, uuid.UUID) (store.Entry, error) { return created, nil },
-		// updateEntry deliberately nil: a resolve failure on the
-		// region arm must return before any store write.
+		// updateEntry deliberately nil: a resolve failure must return before any store write.
 	}
 	var resolveCalls int
 	enrich := &stubEnrichment{
